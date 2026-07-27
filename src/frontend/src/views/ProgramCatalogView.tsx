@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+
 import { apiService } from "../services/api";
 import type { Program } from "../types";
 
-type Props = {
+interface Props {
   onBack: () => void;
   onViewEnrollment: (programId: string) => void;
-};
+}
 
 type ViewState =
   | { status: "loading"; programs: Program[]; message: null }
@@ -13,86 +14,86 @@ type ViewState =
   | { status: "error"; programs: Program[]; message: string };
 
 const styles = {
-  page: {
-    maxWidth: "62rem",
-    margin: "2.5rem auto",
-    padding: "0 1.25rem 3rem",
-    color: "#172033",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: "1rem",
-    marginBottom: "1.5rem",
-  },
-  eyebrow: {
-    margin: "0 0 0.35rem",
-    color: "#9a3412",
-    fontSize: "0.78rem",
-    fontWeight: 800,
-    letterSpacing: "0.12em",
-    textTransform: "uppercase" as const,
-  },
-  title: { margin: 0, fontSize: "clamp(2rem, 6vw, 3.5rem)", lineHeight: 1 },
-  subtitle: { margin: "0.75rem 0 0", maxWidth: "38rem", color: "#526078" },
-  back: {
-    padding: "0.65rem 0.9rem",
-    border: "1px solid #c8c1b4",
-    background: "#fffdf8",
-    color: "#172033",
-    fontWeight: 700,
+  action: {
+    background: "#9a3412",
+    border: "none",
+    color: "#fff",
     cursor: "pointer",
+    fontWeight: 800,
+    marginTop: "1.25rem",
+    padding: "0.72rem 0.9rem",
+    width: "100%",
   },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
-    gap: "1rem",
-  },
-  card: {
-    display: "flex",
-    minHeight: "14rem",
-    flexDirection: "column" as const,
-    justifyContent: "space-between",
-    padding: "1.25rem",
-    border: "1px solid #d9d2c5",
+  back: {
     background: "#fffdf8",
-    boxShadow: "0 12px 30px rgba(67, 55, 38, 0.08)",
+    border: "1px solid #c8c1b4",
+    color: "#172033",
+    cursor: "pointer",
+    fontWeight: 700,
+    padding: "0.65rem 0.9rem",
   },
   badge: {
     alignSelf: "flex-start",
-    padding: "0.25rem 0.55rem",
     background: "#e7efe7",
     color: "#24513b",
     fontSize: "0.74rem",
     fontWeight: 800,
     letterSpacing: "0.05em",
+    padding: "0.25rem 0.55rem",
     textTransform: "uppercase" as const,
   },
-  cardTitle: { margin: "1rem 0 0.4rem", fontSize: "1.35rem" },
-  description: { margin: 0, color: "#526078", lineHeight: 1.6 },
-  action: {
-    width: "100%",
-    marginTop: "1.25rem",
-    padding: "0.72rem 0.9rem",
-    border: "none",
-    background: "#9a3412",
-    color: "#fff",
+  card: {
+    background: "#fffdf8",
+    border: "1px solid #d9d2c5",
+    boxShadow: "0 12px 30px rgba(67, 55, 38, 0.08)",
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "space-between",
+    minHeight: "14rem",
+    padding: "1.25rem",
+  },
+  cardTitle: { fontSize: "1.35rem", margin: "1rem 0 0.4rem" },
+  description: { color: "#526078", lineHeight: 1.6, margin: 0 },
+  error: {
+    background: "#fff4f1",
+    border: "1px solid #efb0a5",
+    color: "#9f2515",
+    padding: "1rem",
+  },
+  eyebrow: {
+    color: "#9a3412",
+    fontSize: "0.78rem",
     fontWeight: 800,
-    cursor: "pointer",
+    letterSpacing: "0.12em",
+    margin: "0 0 0.35rem",
+    textTransform: "uppercase" as const,
+  },
+  grid: {
+    display: "grid",
+    gap: "1rem",
+    gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
+  },
+  header: {
+    alignItems: "flex-end",
+    display: "flex",
+    gap: "1rem",
+    justifyContent: "space-between",
+    marginBottom: "1.5rem",
+  },
+  page: {
+    color: "#172033",
+    margin: "2.5rem auto",
+    maxWidth: "62rem",
+    padding: "0 1.25rem 3rem",
   },
   state: {
-    padding: "1.25rem",
-    border: "1px solid #d9d2c5",
     background: "#fffdf8",
+    border: "1px solid #d9d2c5",
     color: "#526078",
+    padding: "1.25rem",
   },
-  error: {
-    padding: "1rem",
-    border: "1px solid #efb0a5",
-    background: "#fff4f1",
-    color: "#9f2515",
-  },
+  subtitle: { color: "#526078", margin: "0.75rem 0 0", maxWidth: "38rem" },
+  title: { fontSize: "clamp(2rem, 6vw, 3.5rem)", lineHeight: 1, margin: 0 },
 };
 
 function getErrorMessage(error: unknown): string {
@@ -103,27 +104,30 @@ function getErrorMessage(error: unknown): string {
 
 export function ProgramCatalogView({ onBack, onViewEnrollment }: Props) {
   const [view, setView] = useState<ViewState>({
-    status: "loading",
-    programs: [],
     message: null,
+    programs: [],
+    status: "loading",
   });
 
   useEffect(() => {
     let cancelled = false;
-    void apiService
-      .getProgramsCatalog()
-      .then((programs) => {
-        if (!cancelled) setView({ status: "ready", programs, message: null });
-      })
-      .catch((error: unknown) => {
+    const fetchPrograms = async () => {
+      try {
+        const programs = await apiService.getProgramsCatalog();
+        if (!cancelled) {
+          setView({ message: null, programs, status: "ready" });
+        }
+      } catch (error: unknown) {
         if (!cancelled) {
           setView({
-            status: "error",
-            programs: [],
             message: getErrorMessage(error),
+            programs: [],
+            status: "error",
           });
         }
-      });
+      }
+    };
+    void fetchPrograms();
     return () => {
       cancelled = true;
     };

@@ -1,87 +1,85 @@
+import QRCode from "qrcode";
 // Full-screen high-contrast display of the member QR pass.
 // Renders a real, scannable QR code encoding qrCodeString so the Task 5
 // camera scanner (html5-qrcode) can decode it during check-in.
-import { useEffect, useState, type CSSProperties } from "react";
-import QRCode from "qrcode";
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 
-type Props = {
+interface Props {
   memberName: string;
   qrCodeString: string;
   onClose: () => void;
-};
+}
 
 const backdropStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
+  alignItems: "center",
   background: "rgba(2, 6, 23, 0.85)",
   display: "flex",
-  alignItems: "center",
+  inset: 0,
   justifyContent: "center",
   padding: "1.5rem",
+  position: "fixed",
   zIndex: 1000,
 };
 
 const cardStyle: CSSProperties = {
   background: "#fff",
   borderRadius: "1.25rem",
-  padding: "2rem",
-  maxWidth: "26rem",
-  width: "100%",
-  textAlign: "center",
   boxShadow: "0 24px 64px rgba(2, 6, 23, 0.35)",
+  maxWidth: "26rem",
+  padding: "2rem",
+  textAlign: "center",
+  width: "100%",
 };
 
 const titleStyle: CSSProperties = {
-  margin: 0,
+  color: "#0f172a",
   fontSize: "1.5rem",
   fontWeight: 700,
-  color: "#0f172a",
+  margin: 0,
 };
 
 const subtitleStyle: CSSProperties = {
-  margin: "0.25rem 0 1.5rem",
-  fontSize: "0.9rem",
   color: "#64748b",
+  fontSize: "0.875rem",
+  marginTop: "0.25rem",
 };
 
 const qrFrameStyle: CSSProperties = {
-  margin: "0 auto",
-  width: "18rem",
-  height: "18rem",
-  background: "#fff",
-  border: "4px solid #0f172a",
+  alignItems: "center",
+  background: "#f8fafc",
   borderRadius: "0.75rem",
   display: "flex",
-  alignItems: "center",
+  height: "280px",
   justifyContent: "center",
-  padding: "0.75rem",
-  boxSizing: "border-box",
+  margin: "1.5rem 0",
+  padding: "1rem",
+  width: "100%",
 };
 
 const qrImageStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  imageRendering: "pixelated",
+  height: "240px",
+  objectFit: "contain",
+  width: "240px",
 };
 
 const closeStyle: CSSProperties = {
-  marginTop: "1.5rem",
-  width: "100%",
-  padding: "0.85rem",
-  borderRadius: "0.75rem",
+  background: "#2563eb",
   border: "none",
-  background: "#0f172a",
+  borderRadius: "0.5rem",
   color: "#fff",
+  cursor: "pointer",
   fontSize: "1rem",
   fontWeight: 600,
-  cursor: "pointer",
+  marginTop: "1.25rem",
+  padding: "0.75rem 1.5rem",
+  width: "100%",
 };
 
 const codeStyle: CSSProperties = {
-  marginTop: "1rem",
-  fontFamily: "monospace",
+  color: "#64748b",
   fontSize: "0.75rem",
-  color: "#94a3b8",
+  marginTop: "1rem",
   wordBreak: "break-all",
 };
 
@@ -93,21 +91,46 @@ export function MemberPassModal({ memberName, qrCodeString, onClose }: Props) {
     let cancelled = false;
     setQrDataUrl(null);
     setQrError(false);
-    QRCode.toDataURL(qrCodeString, {
-      width: 480,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    })
-      .then((url) => {
-        if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setQrError(true);
-      });
+
+    const generateQr = async () => {
+      try {
+        const url = await QRCode.toDataURL(qrCodeString, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 480,
+        });
+        if (!cancelled) {
+          setQrDataUrl(url);
+        }
+      } catch {
+        if (!cancelled) {
+          setQrError(true);
+        }
+      }
+    };
+
+    void generateQr();
+
     return () => {
       cancelled = true;
     };
   }, [qrCodeString]);
+
+  const renderQrContent = () => {
+    if (qrDataUrl && !qrError) {
+      return (
+        <img
+          src={qrDataUrl}
+          alt={`QR code for ${memberName}`}
+          style={qrImageStyle}
+        />
+      );
+    }
+    if (qrError) {
+      return <span aria-hidden="true">QR generation failed.</span>;
+    }
+    return <span aria-hidden="true">Generating QR…</span>;
+  };
 
   return (
     <div
@@ -116,23 +139,18 @@ export function MemberPassModal({ memberName, qrCodeString, onClose }: Props) {
       aria-label={`QR Pass for ${memberName}`}
       style={backdropStyle}
       onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          onClose();
+        }
+      }}
       data-testid="member-pass-modal"
     >
       <div style={cardStyle} onClick={(event) => event.stopPropagation()}>
         <h2 style={titleStyle}>{memberName}</h2>
         <p style={subtitleStyle}>Member Check-In Pass</p>
         <div style={qrFrameStyle} data-testid="member-pass-qr">
-          {qrDataUrl && !qrError ? (
-            <img
-              src={qrDataUrl}
-              alt={`QR code for ${memberName}`}
-              style={qrImageStyle}
-            />
-          ) : qrError ? (
-            <span aria-hidden="true">QR generation failed.</span>
-          ) : (
-            <span aria-hidden="true">Generating QR…</span>
-          )}
+          {renderQrContent()}
         </div>
         <div style={codeStyle} data-testid="member-pass-code">
           {qrCodeString}

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { apiService } from "../services/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { ManualSearchInput } from "../components/ManualSearchInput";
+import { apiService } from "../services/api";
 import type { Event } from "../types";
 
 interface Props {
@@ -189,8 +190,10 @@ export function AttendanceScannerView({
     }
 
     let cancelled = false;
-    const div = document.getElementById(SCANNER_DIV_ID);
-    if (!div) return;
+    const div = document.querySelector(`#${SCANNER_DIV_ID}`);
+    if (!div) {
+      return;
+    }
 
     const scanner = new Html5Qrcode(SCANNER_DIV_ID);
     scannerRef.current = scanner;
@@ -202,7 +205,9 @@ export function AttendanceScannerView({
         async (decodedText) => {
           // On decode — stop scanner, call check-in
           await stopScanner();
-          if (cancelled) return;
+          if (cancelled) {
+            return;
+          }
           handleCheckIn(decodedText, "QR");
         },
         () => {
@@ -217,7 +222,9 @@ export function AttendanceScannerView({
       })
       .catch(() => {
         // Camera permission denied or unavailable
-        if (!cancelled) setScannerReady(false);
+        if (!cancelled) {
+          setScannerReady(false);
+        }
       });
 
     return () => {
@@ -262,11 +269,13 @@ export function AttendanceScannerView({
           message: res.message ?? "Check-in failed.",
         });
       }
-    } catch (err: unknown) {
+    } catch (error: unknown) {
       setScanResult({
         type: "error",
         message:
-          err instanceof Error ? err.message : "An unexpected error occurred.",
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
       });
     }
   };
@@ -277,8 +286,10 @@ export function AttendanceScannerView({
   };
 
   const handleQuickEnroll = async () => {
-    if (!scanResult || scanResult.type !== "notEnrolled") return;
-    const memberId = scanResult.memberId;
+    if (!scanResult || scanResult.type !== "notEnrolled") {
+      return;
+    }
+    const { memberId } = scanResult;
     const currentEvent = events.find((e) => e.eventId === selectedEventId);
     if (!currentEvent) {
       setScanResult({ type: "error", message: "Selected event not found." });
@@ -300,11 +311,10 @@ export function AttendanceScannerView({
         return;
       }
       await handleCheckIn(memberId, "MANUAL");
-    } catch (err: unknown) {
+    } catch (error: unknown) {
       setScanResult({
         type: "error",
-        message:
-          err instanceof Error ? err.message : "Enrollment failed.",
+        message: error instanceof Error ? error.message : "Enrollment failed.",
       });
     } finally {
       setEnrollingMemberId(null);
@@ -322,7 +332,7 @@ export function AttendanceScannerView({
       setScannerReady(false);
       // Re-trigger: force re-mount of scanner div
       // Use a key or timer approach
-      const div = document.getElementById(SCANNER_DIV_ID);
+      const div = document.querySelector(`#${SCANNER_DIV_ID}`);
       if (div) {
         const scanner = new Html5Qrcode(SCANNER_DIV_ID);
         scannerRef.current = scanner;
@@ -348,7 +358,7 @@ export function AttendanceScannerView({
   return (
     <div style={containerStyle}>
       <div style={styles.header}>
-        <button style={styles.backBtn} onClick={onBack}>
+        <button type="button" style={styles.backBtn} onClick={onBack}>
           &larr; Back
         </button>
         <h1 style={styles.title}>Attendance Scanner</h1>
@@ -383,7 +393,7 @@ export function AttendanceScannerView({
             )}
           </div>
           <p style={styles.scanHint}>
-            Point camera at member's QR pass to check in
+            Point camera at member&apos;s QR pass to check in
           </p>
         </div>
       )}

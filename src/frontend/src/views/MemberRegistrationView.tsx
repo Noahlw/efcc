@@ -1,116 +1,128 @@
 // Member self-registration form.
 // Matches existing Apps Script member registration fields: Name, Username, PIN, Phone, Address.
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
+
 import { apiService } from "../services/api";
 import type { RegisterPayload } from "../types";
 
-type Props = {
+interface Props {
   onCancel: () => void;
   onRegistered: () => void;
-};
+}
 
 type Status = "idle" | "submitting" | "error" | "success";
 
 const styles = {
-  card: {
-    maxWidth: "30rem",
-    margin: "3rem auto",
-    padding: "2rem",
-    borderRadius: "0.75rem",
-    background: "#fff",
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
-    fontFamily: "system-ui, sans-serif",
-  },
-  title: { margin: "0 0 0.25rem", fontSize: "1.5rem", color: "#0f172a" },
-  subtitle: { margin: "0 0 1.5rem", color: "#475569", fontSize: "0.95rem" },
-  row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" },
-  field: { display: "block", marginBottom: "0.85rem" },
-  label: {
-    display: "block",
-    marginBottom: "0.25rem",
-    color: "#1e293b",
-    fontWeight: 600,
-    fontSize: "0.9rem",
-  },
-  input: {
-    width: "100%",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    border: "1px solid #cbd5e1",
-    fontSize: "1rem",
-    boxSizing: "border-box" as const,
-    background: "#f8fafc",
-    color: "#0f172a",
-  },
-  textarea: {
-    width: "100%",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    border: "1px solid #cbd5e1",
-    fontSize: "1rem",
-    boxSizing: "border-box" as const,
-    background: "#f8fafc",
-    color: "#0f172a",
-    minHeight: "4.5rem",
-    resize: "vertical" as const,
-    fontFamily: "inherit",
-  },
-  error: {
-    margin: "0.5rem 0 1rem",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    border: "1px solid #fecaca",
-    fontSize: "0.9rem",
-  },
-  success: {
-    margin: "0.5rem 0 1rem",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    background: "#ecfdf5",
-    color: "#047857",
-    border: "1px solid #a7f3d0",
-    fontSize: "0.9rem",
-  },
   actions: {
     display: "flex",
     gap: "0.75rem",
     marginTop: "0.5rem",
   },
-  primary: {
-    flex: 1,
-    padding: "0.75rem",
+  card: {
+    background: "#fff",
+    borderRadius: "0.75rem",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+    fontFamily: "system-ui, sans-serif",
+    margin: "3rem auto",
+    maxWidth: "30rem",
+    padding: "2rem",
+  },
+  error: {
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
     borderRadius: "0.5rem",
-    border: "none",
-    background: "#1d4ed8",
-    color: "#fff",
-    fontWeight: 600,
-    fontSize: "1rem",
+    color: "#b91c1c",
+    fontSize: "0.9rem",
+    margin: "0.5rem 0 1rem",
+    padding: "0.6rem 0.75rem",
+  },
+  field: { display: "block", marginBottom: "0.85rem" },
+  ghost: {
+    background: "#fff",
+    border: "1px solid #cbd5e1",
+    borderRadius: "0.5rem",
+    color: "#1e293b",
     cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 600,
+    padding: "0.75rem 1rem",
+  },
+  input: {
+    background: "#f8fafc",
+    border: "1px solid #cbd5e1",
+    borderRadius: "0.5rem",
+    boxSizing: "border-box" as const,
+    color: "#0f172a",
+    fontSize: "1rem",
+    padding: "0.6rem 0.75rem",
+    width: "100%",
+  },
+  label: {
+    color: "#1e293b",
+    display: "block",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    marginBottom: "0.25rem",
+  },
+  primary: {
+    background: "#1d4ed8",
+    border: "none",
+    borderRadius: "0.5rem",
+    color: "#fff",
+    cursor: "pointer",
+    flex: 1,
+    fontSize: "1rem",
+    fontWeight: 600,
+    padding: "0.75rem",
   },
   primaryDisabled: { background: "#94a3b8", cursor: "not-allowed" },
-  ghost: {
-    padding: "0.75rem 1rem",
+  row: { display: "grid", gap: "0.85rem", gridTemplateColumns: "1fr 1fr" },
+  subtitle: { color: "#475569", fontSize: "0.95rem", margin: "0 0 1.5rem" },
+  success: {
+    background: "#ecfdf5",
+    border: "1px solid #a7f3d0",
     borderRadius: "0.5rem",
-    border: "1px solid #cbd5e1",
-    background: "#fff",
-    color: "#1e293b",
-    fontWeight: 600,
-    fontSize: "1rem",
-    cursor: "pointer",
+    color: "#047857",
+    fontSize: "0.9rem",
+    margin: "0.5rem 0 1rem",
+    padding: "0.6rem 0.75rem",
   },
+  textarea: {
+    background: "#f8fafc",
+    border: "1px solid #cbd5e1",
+    borderRadius: "0.5rem",
+    boxSizing: "border-box" as const,
+    color: "#0f172a",
+    fontFamily: "inherit",
+    fontSize: "1rem",
+    minHeight: "4.5rem",
+    padding: "0.6rem 0.75rem",
+    resize: "vertical" as const,
+    width: "100%",
+  },
+  title: { color: "#0f172a", fontSize: "1.5rem", margin: "0 0 0.25rem" },
 };
 
 function validate(payload: RegisterPayload): string | null {
-  if (!payload.name.trim()) return "Name is required.";
-  if (!payload.username.trim()) return "Username is required.";
-  if (!/^\d{4}$/.test(payload.pin)) return "PIN must be exactly 4 digits.";
-  if (payload.pin.replace(/\D/g, "").length !== 4)
+  if (!payload.name.trim()) {
+    return "Name is required.";
+  }
+  if (!payload.username.trim()) {
+    return "Username is required.";
+  }
+  if (!/^\d{4}$/u.test(payload.pin)) {
+    return "PIN must be exactly 4 digits.";
+  }
+  if (payload.pin.replaceAll(/\D/gu, "").length !== 4) {
     return "PIN must be digits only.";
-  if (!payload.phone || !payload.phone.trim()) return "Phone is required.";
-  if (!payload.address || !payload.address.trim())
+  }
+  if (!payload.phone || !payload.phone.trim()) {
+    return "Phone is required.";
+  }
+  if (!payload.address || !payload.address.trim()) {
     return "Address is required.";
+  }
   return null;
 }
 
@@ -126,11 +138,11 @@ export function MemberRegistrationView({ onCancel, onRegistered }: Props) {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const payload: RegisterPayload = {
-      name: name.trim(),
-      username: username.trim(),
-      pin: pin.replace(/\D/g, ""),
-      phone: phone.trim(),
       address: address.trim(),
+      name: name.trim(),
+      phone: phone.trim(),
+      pin: pin.replaceAll(/\D/gu, ""),
+      username: username.trim(),
     };
     const validationError = validate(payload);
     if (validationError) {
@@ -150,10 +162,10 @@ export function MemberRegistrationView({ onCancel, onRegistered }: Props) {
       setStatus("success");
       // Give the user a moment to read the success banner, then navigate.
       window.setTimeout(onRegistered, 1200);
-    } catch (caught: unknown) {
+    } catch (registerError: unknown) {
       const message =
-        caught instanceof Error
-          ? caught.message
+        registerError instanceof Error
+          ? registerError.message
           : "Registration failed. Please try again.";
       setError(message);
       setStatus("error");
@@ -210,7 +222,7 @@ export function MemberRegistrationView({ onCancel, onRegistered }: Props) {
               autoComplete="new-password"
               value={pin}
               onChange={(event) =>
-                setPin(event.target.value.replace(/\D/g, "").slice(0, 4))
+                setPin(event.target.value.replaceAll(/\D/gu, "").slice(0, 4))
               }
               style={styles.input}
               data-testid="register-pin"
@@ -247,13 +259,9 @@ export function MemberRegistrationView({ onCancel, onRegistered }: Props) {
           </div>
         )}
         {status === "success" && (
-          <div
-            role="status"
-            style={styles.success}
-            data-testid="register-success"
-          >
+          <output style={styles.success} data-testid="register-success">
             Registration complete. Redirecting to sign in…
-          </div>
+          </output>
         )}
         <div style={styles.actions}>
           <button

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiService } from "../services/api";
+
 import { CreateEventForm } from "../components/CreateEventForm";
+import { apiService } from "../services/api";
 import type { Event } from "../types";
 
 interface Props {
@@ -142,7 +143,9 @@ export function EventManagementView({
   };
 
   const handleCancel = async (eventId: string) => {
-    if (!window.confirm("Are you sure you want to cancel this event?")) return;
+    if (!window.confirm("Are you sure you want to cancel this event?")) {
+      return;
+    }
     setCancellingId(eventId);
     try {
       const res = await apiService.cancelEvent({
@@ -177,12 +180,16 @@ export function EventManagementView({
     <div style={MSG_STYLE.container}>
       <div style={MSG_STYLE.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button style={MSG_STYLE.backBtn} onClick={onBack}>
+          <button type="button" style={MSG_STYLE.backBtn} onClick={onBack}>
             &larr; Back
           </button>
           <h1 style={MSG_STYLE.title}>Event Management</h1>
         </div>
-        <button style={MSG_STYLE.createBtn} onClick={() => setShowForm(true)}>
+        <button
+          type="button"
+          style={MSG_STYLE.createBtn}
+          onClick={() => setShowForm(true)}
+        >
           + Create Event
         </button>
       </div>
@@ -213,7 +220,7 @@ export function EventManagementView({
         <div style={MSG_STYLE.empty}>Loading events...</div>
       ) : events.length === 0 ? (
         <div style={MSG_STYLE.empty}>
-          No upcoming events. Click "Create Event" to add one.
+          No upcoming events. Click &quot;Create Event&quot; to add one.
         </div>
       ) : (
         events.map((event) => (
@@ -227,6 +234,7 @@ export function EventManagementView({
               </p>
             </div>
             <button
+              type="button"
               style={MSG_STYLE.cancelBtn}
               onClick={() => handleCancel(event.eventId)}
               disabled={cancellingId === event.eventId}

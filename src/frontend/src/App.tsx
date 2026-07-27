@@ -1,31 +1,44 @@
 // Top-level App: routes between Login, Registration, and Profile views based on session state.
 // Per ADR-0005: PIN login flow is the canonical path; Gmail SSO is deferred.
 import { useEffect, useState } from "react";
+
 import { getSession } from "./services/session";
 import type { SessionPayload } from "./types";
+import { AttendanceScannerView } from "./views/AttendanceScannerView";
+import { CareDashboardView } from "./views/CareDashboardView";
+import { EventManagementView } from "./views/EventManagementView";
 import { LoginView } from "./views/LoginView";
 import { MemberRegistrationView } from "./views/MemberRegistrationView";
 import { MyProfileView } from "./views/MyProfileView";
 import { ProgramCatalogView } from "./views/ProgramCatalogView";
 import { ProgramEnrollmentView } from "./views/ProgramEnrollmentView";
-import { EventManagementView } from "./views/EventManagementView";
-import { AttendanceScannerView } from "./views/AttendanceScannerView";
-import { CareDashboardView } from "./views/CareDashboardView";
 
-type Route = "login" | "register" | "profile" | "programs" | "enrollment" | "events" | "attendance-scanner" | "care-dashboard";
+type Route =
+  | "login"
+  | "register"
+  | "profile"
+  | "programs"
+  | "enrollment"
+  | "events"
+  | "attendance-scanner"
+  | "care-dashboard";
 
 const pageStyle = {
-  minHeight: "100vh",
   background: "linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%)",
   fontFamily: "system-ui, sans-serif",
+  minHeight: "100vh",
 };
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() =>
     getSession() ? "profile" : "login"
   );
-  const [selectedProgramId, setSelectedProgramId] = useState<string | undefined>();
-  const [activeSession, setActiveSession] = useState<SessionPayload | null>(() => getSession());
+  const [selectedProgramId, setSelectedProgramId] = useState<
+    string | undefined
+  >();
+  const [activeSession, setActiveSession] = useState<SessionPayload | null>(
+    () => getSession()
+  );
 
   // React to logouts/login changes from other tabs or programmatic clears.
   useEffect(() => {
@@ -98,9 +111,7 @@ export default function App() {
         />
       )}
       {route === "care-dashboard" && activeSession && (
-        <CareDashboardView
-          onBack={() => setRoute("profile")}
-        />
+        <CareDashboardView onBack={() => setRoute("profile")} />
       )}
     </main>
   );

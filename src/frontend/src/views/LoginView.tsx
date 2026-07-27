@@ -1,78 +1,80 @@
 // Member PIN login form.
 // Username + 4-digit PIN flow (unchanged from Apps Script UX per ADR-0005).
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
+
 import { apiService } from "../services/api";
 import { setSession } from "../services/session";
 import type { LoginResponse } from "../types";
 
-type Props = {
+interface Props {
   onNavigateRegister: () => void;
   onLoggedIn: () => void;
-};
+}
 
 type Status = "idle" | "submitting" | "error";
 
 const styles = {
   card: {
-    maxWidth: "26rem",
-    margin: "4rem auto",
-    padding: "2rem",
-    borderRadius: "0.75rem",
     background: "#fff",
+    borderRadius: "0.75rem",
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
     fontFamily: "system-ui, sans-serif",
-  },
-  title: { margin: "0 0 0.25rem", fontSize: "1.5rem", color: "#0f172a" },
-  subtitle: { margin: "0 0 1.5rem", color: "#475569", fontSize: "0.95rem" },
-  field: { display: "block", marginBottom: "0.85rem" },
-  label: {
-    display: "block",
-    marginBottom: "0.25rem",
-    color: "#1e293b",
-    fontWeight: 600,
-    fontSize: "0.9rem",
-  },
-  input: {
-    width: "100%",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    border: "1px solid #cbd5e1",
-    fontSize: "1rem",
-    boxSizing: "border-box" as const,
-    background: "#f8fafc",
-    color: "#0f172a",
+    margin: "4rem auto",
+    maxWidth: "26rem",
+    padding: "2rem",
   },
   error: {
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    borderRadius: "0.5rem",
+    color: "#b91c1c",
+    fontSize: "0.9rem",
     margin: "0.5rem 0 1rem",
     padding: "0.6rem 0.75rem",
-    borderRadius: "0.5rem",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    border: "1px solid #fecaca",
-    fontSize: "0.9rem",
   },
-  primary: {
-    width: "100%",
-    padding: "0.75rem",
+  field: { display: "block", marginBottom: "0.85rem" },
+  input: {
+    background: "#f8fafc",
+    border: "1px solid #cbd5e1",
     borderRadius: "0.5rem",
-    border: "none",
-    background: "#1d4ed8",
-    color: "#fff",
-    fontWeight: 600,
+    boxSizing: "border-box" as const,
+    color: "#0f172a",
     fontSize: "1rem",
-    cursor: "pointer",
-    marginTop: "0.5rem",
+    padding: "0.6rem 0.75rem",
+    width: "100%",
   },
-  primaryDisabled: { background: "#94a3b8", cursor: "not-allowed" },
+  label: {
+    color: "#1e293b",
+    display: "block",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    marginBottom: "0.25rem",
+  },
   linkBtn: {
-    marginTop: "1rem",
     background: "none",
     border: "none",
     color: "#1d4ed8",
     cursor: "pointer",
     fontSize: "0.9rem",
+    marginTop: "1rem",
     padding: 0,
   },
+  primary: {
+    background: "#1d4ed8",
+    border: "none",
+    borderRadius: "0.5rem",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 600,
+    marginTop: "0.5rem",
+    padding: "0.75rem",
+    width: "100%",
+  },
+  primaryDisabled: { background: "#94a3b8", cursor: "not-allowed" },
+  subtitle: { color: "#475569", fontSize: "0.95rem", margin: "0 0 1.5rem" },
+  title: { color: "#0f172a", fontSize: "1.5rem", margin: "0 0 0.25rem" },
 };
 
 function persistSession(response: LoginResponse): void {
@@ -82,12 +84,12 @@ function persistSession(response: LoginResponse): void {
   const { userId, name, role, sessionToken, qrCodeString, expiryTimestamp } =
     response.data;
   setSession({
-    userId,
+    expiryTimestamp,
     name,
+    qrCodeString,
     role,
     sessionToken,
-    qrCodeString,
-    expiryTimestamp,
+    userId,
   });
 }
 
@@ -100,12 +102,12 @@ export function LoginView({ onNavigateRegister, onLoggedIn }: Props) {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const cleanedUsername = username.trim();
-    const cleanedPin = pin.replace(/\D/g, "");
+    const cleanedPin = pin.replaceAll(/\D/gu, "");
     if (!cleanedUsername) {
       setError("Please enter your username.");
       return;
     }
-    if (!/^\d{4}$/.test(cleanedPin)) {
+    if (!/^\d{4}$/u.test(cleanedPin)) {
       setError("PIN must be exactly 4 digits.");
       return;
     }
@@ -116,10 +118,10 @@ export function LoginView({ onNavigateRegister, onLoggedIn }: Props) {
       persistSession(response);
       setStatus("idle");
       onLoggedIn();
-    } catch (caught: unknown) {
+    } catch (loginError: unknown) {
       const message =
-        caught instanceof Error
-          ? caught.message
+        loginError instanceof Error
+          ? loginError.message
           : "Login failed. Please try again.";
       setError(message);
       setStatus("idle");
@@ -163,7 +165,7 @@ export function LoginView({ onNavigateRegister, onLoggedIn }: Props) {
             name="pin"
             value={pin}
             onChange={(event) =>
-              setPin(event.target.value.replace(/\D/g, "").slice(0, 4))
+              setPin(event.target.value.replaceAll(/\D/gu, "").slice(0, 4))
             }
             style={styles.input}
             data-testid="login-pin"

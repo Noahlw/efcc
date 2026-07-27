@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { apiService } from "../services/api";
 import type { Program, CreateEventPayload, Event } from "../types";
 
@@ -10,7 +11,9 @@ interface Props {
 
 function toDdMmYyyy(isoDate: string): string {
   const parts = isoDate.split("-");
-  if (parts.length !== 3) return isoDate;
+  if (parts.length !== 3) {
+    return isoDate;
+  }
   const [yyyy, mm, dd] = parts;
   return `${dd}/${mm}/${yyyy}`;
 }
@@ -99,11 +102,7 @@ const FORM_STYLE: Record<string, React.CSSProperties> = {
   },
 };
 
-export function CreateEventForm({
-  createdBy,
-  onCreated,
-  onCancel,
-}: Props) {
+export function CreateEventForm({ createdBy, onCreated, onCancel }: Props) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -153,8 +152,8 @@ export function CreateEventForm({
       } else {
         setError("Failed to create event.");
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred.");
+    } catch (caught: unknown) {
+      setError(caught instanceof Error ? caught.message : "An error occurred.");
     } finally {
       setLoading(false);
     }
@@ -250,6 +249,7 @@ export function CreateEventForm({
 
         <div style={FORM_STYLE.actions}>
           <button
+            type="button"
             style={FORM_STYLE.btnSecondary}
             onClick={onCancel}
             disabled={loading}
@@ -257,6 +257,7 @@ export function CreateEventForm({
             Cancel
           </button>
           <button
+            type="button"
             style={FORM_STYLE.btnPrimary}
             onClick={handleSubmit}
             disabled={loading}

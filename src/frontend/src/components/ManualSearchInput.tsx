@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import { apiService } from "../services/api";
 
 interface SearchMember {
@@ -17,50 +18,58 @@ interface Props {
 const SEARCH_DEBOUNCE_MS = 250;
 
 const styles: Record<string, React.CSSProperties> = {
-  wrapper: { marginTop: 16 },
-  label: {
-    display: "block",
-    fontSize: "0.85rem",
+  checkInBtn: {
+    background: "#2563eb",
+    border: "none",
+    borderRadius: "0.375rem",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: "0.875rem",
     fontWeight: 600,
-    color: "#334155",
+    padding: "0.5rem 1rem",
+  },
+  checkInBtnDisabled: { cursor: "not-allowed", opacity: 0.5 },
+  hint: { color: "#94a3b8", fontSize: "0.78rem", marginTop: 4 },
+  input: {
+    border: "1px solid #cbd5e1",
+    borderRadius: "0.5rem",
+    boxSizing: "border-box",
+    fontSize: "0.95rem",
+    padding: "0.75rem 1rem",
+    width: "100%",
+  },
+  label: {
+    color: "#475569",
+    display: "block",
+    fontSize: "0.875rem",
+    fontWeight: 600,
     marginBottom: 6,
   },
-  input: {
-    width: "100%",
-    padding: "0.65rem 0.85rem",
-    borderRadius: "0.6rem",
-    border: "1px solid #cbd5e1",
+  resultInfo: { flex: 1 },
+  resultItem: {
+    alignItems: "center",
+    borderBottom: "1px solid #f1f5f9",
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "0.75rem 0",
+  },
+  resultMeta: { color: "#64748b", fontSize: "0.78rem", margin: "2px 0 0" },
+  resultName: {
+    color: "#0f172a",
     fontSize: "0.95rem",
-    boxSizing: "border-box",
+    fontWeight: 600,
+    margin: 0,
   },
   results: {
-    marginTop: 8,
+    background: "#fff",
     border: "1px solid #e2e8f0",
-    borderRadius: "0.6rem",
-    overflow: "hidden",
-  },
-  resultItem: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0.6rem 0.85rem",
-    borderBottom: "1px solid #f1f5f9",
-  },
-  resultInfo: { flex: 1 },
-  resultName: { margin: 0, fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" },
-  resultMeta: { margin: "2px 0 0", fontSize: "0.78rem", color: "#64748b" },
-  checkInBtn: {
-    padding: "0.4rem 0.9rem",
     borderRadius: "0.5rem",
-    border: "none",
-    background: "#0f172a",
-    color: "#fff",
-    fontSize: "0.85rem",
-    fontWeight: 600,
-    cursor: "pointer",
+    marginTop: 8,
+    maxHeight: 240,
+    overflowY: "auto",
+    padding: "0 1rem",
   },
-  checkInBtnDisabled: { opacity: 0.5, cursor: "not-allowed" },
-  hint: { marginTop: 4, fontSize: "0.78rem", color: "#94a3b8" },
+  wrapper: { marginTop: 16 },
 };
 
 export function ManualSearchInput({
@@ -85,22 +94,27 @@ export function ManualSearchInput({
       return;
     }
     setSearching(true);
-    debounceRef.current = window.setTimeout(() => {
-      const seq = ++requestSeq.current;
-      apiService
-        .searchMembers(trimmed, grantedUserId, sessionToken)
-        .then((members) => {
-          if (seq !== requestSeq.current) return;
+    debounceRef.current = window.setTimeout(async () => {
+      requestSeq.current += 1;
+      const seq = requestSeq.current;
+      try {
+        const members = await apiService.searchMembers(
+          trimmed,
+          grantedUserId,
+          sessionToken
+        );
+        if (seq === requestSeq.current) {
           setResults(members);
-        })
-        .catch(() => {
-          if (seq !== requestSeq.current) return;
+        }
+      } catch {
+        if (seq === requestSeq.current) {
           setResults([]);
-        })
-        .finally(() => {
-          if (seq !== requestSeq.current) return;
+        }
+      } finally {
+        if (seq === requestSeq.current) {
           setSearching(false);
-        });
+        }
+      }
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(debounceRef.current ?? undefined);
@@ -140,7 +154,7 @@ export function ManualSearchInput({
                 <p style={styles.resultName}>{member.name}</p>
                 <p style={styles.resultMeta}>
                   {member.userId}
-                  {member.phone ? ` \u00b7 ${member.phone}` : ""}
+                  {member.phone ? ` \u00B7 ${member.phone}` : ""}
                 </p>
               </div>
               <button

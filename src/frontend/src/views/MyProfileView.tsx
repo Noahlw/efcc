@@ -1,31 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 
+import { MemberPassModal } from "../components/MemberPassModal";
 // Member profile / dashboard view.
 // On mount, validates cached session via api_getCurrentSession; renders role badge +
 // "Show My QR Pass" + "Logout" controls.
 import { apiService } from "../services/api";
-import {
-  clearSession,
-  getSession,
-  setSession,
-} from "../services/session";
-import type { SessionPayload } from "../types";
-import type { Role } from "../types";
-import { MemberPassModal } from "../components/MemberPassModal";
+import { clearSession, getSession, setSession } from "../services/session";
+import type { SessionPayload, Role } from "../types";
 
-type Props = {
+interface Props {
   onLogout: () => void;
   onOpenPrograms: () => void;
   onOpenEvents?: () => void;
   onOpenScanner?: () => void;
   onOpenCareDashboard?: () => void;
-};
+}
 type ViewState =
   | { status: "loading" }
   | { status: "unauthenticated" }
   | { status: "ready"; session: SessionPayload; serverConfirmed: boolean };
 
-const ROLES: ReadonlyArray<Role> = ["ADMIN", "STAFF", "EVENT_LEADER", "MEMBER"];
+const ROLES: readonly Role[] = ["ADMIN", "STAFF", "EVENT_LEADER", "MEMBER"];
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrator",
   STAFF: "Staff",
@@ -134,9 +129,13 @@ const styles = {
 };
 
 function normalizeRole(raw: string | undefined | null): Role {
-  if (!raw) return "MEMBER";
+  if (!raw) {
+    return "MEMBER";
+  }
   const upper = raw.trim().toUpperCase();
-  if (ROLES.includes(upper as Role)) return upper as Role;
+  if (ROLES.includes(upper as Role)) {
+    return upper as Role;
+  }
   return "MEMBER";
 }
 
@@ -166,7 +165,13 @@ async function verifyWithServer(
     return null;
   }
 }
-export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenScanner, onOpenCareDashboard }: Props) {
+export function MyProfileView({
+  onLogout,
+  onOpenPrograms,
+  onOpenEvents,
+  onOpenScanner,
+  onOpenCareDashboard,
+}: Props) {
   const [view, setView] = useState<ViewState>({ status: "loading" });
   const [showPass, setShowPass] = useState(false);
   const logoutInFlight = useRef(false);
@@ -182,7 +187,9 @@ export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenSc
     }
     void (async () => {
       const session = await verifyWithServer(cached);
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       if (session) {
         setView({ status: "ready", session, serverConfirmed: true });
       } else {
@@ -196,7 +203,9 @@ export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenSc
   }, []);
 
   const handleLogout = async () => {
-    if (logoutInFlight.current) return;
+    if (logoutInFlight.current) {
+      return;
+    }
     logoutInFlight.current = true;
     const cached = getSession();
     try {

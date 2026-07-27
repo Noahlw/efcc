@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { apiService } from "../services/api";
 import { getSession } from "../services/session";
 import type { ActivityProfile, CareDashboardData } from "../types";
@@ -14,7 +15,8 @@ type DashboardState =
   | { status: "empty" };
 
 type ModalState =
-  { open: false } | { open: true; profile: ActivityProfile; loading: boolean };
+  | { open: false }
+  | { open: true; profile: ActivityProfile; loading: boolean };
 
 const THRESHOLD_OPTIONS = [14, 30, 60, 90] as const;
 
@@ -256,7 +258,9 @@ export function CareDashboardView({ onBack }: Props) {
           threshold,
           session.sessionToken
         );
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         if (!data || !data.inactiveMembers) {
           setDashboard({
             status: "error",
@@ -269,9 +273,11 @@ export function CareDashboardView({ onBack }: Props) {
           return;
         }
         setDashboard({ status: "loaded", data });
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : "Unexpected error";
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        const msg = error instanceof Error ? error.message : "Unexpected error";
         setDashboard({ status: "error", message: msg });
       }
     })();
@@ -284,7 +290,9 @@ export function CareDashboardView({ onBack }: Props) {
   const openProfile = async (member: ActivityProfile) => {
     setModal({ open: true, profile: member, loading: true });
     const session = getSession();
-    if (!session) return;
+    if (!session) {
+      return;
+    }
 
     try {
       const fullProfile = await apiService.getUserActivityProfile(
@@ -302,7 +310,6 @@ export function CareDashboardView({ onBack }: Props) {
   };
 
   const closeModal = () => setModal({ open: false });
-
 
   return (
     <section style={styles.page} data-testid="care-dashboard">

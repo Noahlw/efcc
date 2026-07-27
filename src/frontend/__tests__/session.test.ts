@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
 import {
   SESSION_EXPIRY_DAYS,
   SESSION_STORAGE_KEY,
@@ -30,7 +31,7 @@ describe("session", () => {
     expect(getSession()).toBeNull();
   });
 
-  it("round-trips a payload via setSession + getSession", () => {
+  it("restores a payload via setSession + getSession", () => {
     const payload: SessionPayload = {
       ...basePayload,
       expiryTimestamp: Date.now() + 7 * 24 * 60 * 60 * 1000,
@@ -41,6 +42,14 @@ describe("session", () => {
     expect(restored?.userId).toBe("USER-TEST-1");
     expect(restored?.name).toBe("Test Member");
     expect(restored?.role).toBe("MEMBER");
+  });
+  it("carries the session token and QR code string", () => {
+    const payload: SessionPayload = {
+      ...basePayload,
+      expiryTimestamp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    };
+    setSession(payload);
+    const restored = getSession();
     expect(restored?.sessionToken).toBe("test-token-abc");
     expect(restored?.qrCodeString).toBe("EFCC|USER-TEST-1|1700000000");
   });
