@@ -10,6 +10,7 @@ import type {
   CheckInPayload,
   CreateEventPayload,
   Event,
+  GrantedUserEventsResponse,
   LoginResponse,
   Program,
   ProgramWithEnrollment,
@@ -210,17 +211,16 @@ export const apiService = {
         .api_cancelEnrollment(userId, programId, session.sessionToken);
     });
   },
-
   createEvent(payload: CreateEventPayload): Promise<Event> {
     return new Promise((resolve, reject) => {
       const mockEvent: Event = {
         eventId: `EVT-MOCK-${Date.now()}`,
         programId: payload.programId,
-        title: payload.title,
-        date: payload.date,
-        startTime: payload.startTime,
-        endTime: payload.endTime,
-        location: payload.location,
+        eventName: payload.eventName,
+        eventDate: payload.eventDate,
+        timeSlot: payload.timeSlot,
+        eventType: payload.eventType,
+        recurrence: payload.recurrence,
         status: "ACTIVE",
         createdBy: payload.createdBy,
         createdAt: new Date().toISOString(),
@@ -229,13 +229,14 @@ export const apiService = {
         delay(MOCK_DELAY_MS).then(() => resolve(mockEvent));
         return;
       }
+      const session = getSession();
+      const prodPayload = { ...payload, __sessionToken: session?.sessionToken ?? "" };
       google.script.run
         .withSuccessHandler((result: Event) => resolve(result))
         .withFailureHandler(reject)
-        .api_createEvent(payload);
+        .api_createEvent(prodPayload);
     });
   },
-
   cancelEvent(
     payload: CancelEventPayload
   ): Promise<{ success: boolean; message?: string }> {
@@ -247,13 +248,50 @@ export const apiService = {
         });
         return;
       }
+      const session = getSession();
+      const prodPayload = { ...payload, __sessionToken: session?.sessionToken ?? "" };
       google.script.run
         .withSuccessHandler((result: { success: boolean; message?: string }) =>
           resolve(result)
         )
         .withFailureHandler(reject)
-        .api_cancelEvent(payload);
+        .api_cancelEvent(prodPayload);
     });
+  },
+
+  getGrantedUserEvents(
+    grantedUserId: string,
+    sessionToken: string
+  ): Promise<GrantedUserEventsResponse> {
+    const { promise, resolve, reject } = Promise.withResolvers<GrantedUserEventsResponse>();
+    if (isMockMode()) {
+      delay(MOCK_DELAY_MS).then(() =>
+        resolve({
+          success: true,
+          data: [
+            {
+              eventId: "EVT-MOCK-001",
+              programId: "PRG-001",
+              programName: "Sunday Service",
+              eventName: "Sunday Service - 28/07/2026",
+              eventDate: "28/07/2026",
+              timeSlot: "10:00",
+              eventType: "REGULAR",
+              recurrence: "WEEKLY",
+              status: "ACTIVE",
+              createdBy: grantedUserId,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        })
+      );
+      return promise;
+    }
+    google.script.run
+      .withSuccessHandler((result: GrantedUserEventsResponse) => resolve(result))
+      .withFailureHandler(reject)
+      .api_getGrantedUserEvents(grantedUserId, sessionToken);
+    return promise;
   },
 
   checkInMember(payload: CheckInPayload): Promise<{

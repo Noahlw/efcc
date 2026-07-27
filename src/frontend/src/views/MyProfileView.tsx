@@ -16,6 +16,7 @@ import { MemberPassModal } from "../components/MemberPassModal";
 type Props = {
   onLogout: () => void;
   onOpenPrograms: () => void;
+  onOpenEvents?: () => void;
 };
 type ViewState =
   | { status: "loading" }
@@ -163,8 +164,7 @@ async function verifyWithServer(
     return null;
   }
 }
-
-export function MyProfileView({ onLogout, onOpenPrograms }: Props) {
+export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents }: Props) {
   const [view, setView] = useState<ViewState>({ status: "loading" });
   const [showPass, setShowPass] = useState(false);
   const logoutInFlight = useRef(false);
@@ -243,6 +243,16 @@ export function MyProfileView({ onLogout, onOpenPrograms }: Props) {
           >
             Programs
           </button>
+          {role !== "MEMBER" && onOpenEvents && (
+            <button
+              type="button"
+              onClick={onOpenEvents}
+              style={styles.tab}
+              data-testid="events-tab"
+            >
+              Manage Events
+            </button>
+          )}
           <span
             data-testid="role-badge"
             data-role={role}

@@ -38,14 +38,15 @@ export interface ProgramWithEnrollment extends Program {
 export interface Event {
   eventId: string;
   programId: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location?: string;
+  programName?: string;
+  eventName: string;
+  eventDate: string;
+  timeSlot: string;
+  eventType: "REGULAR" | "SPECIAL";
+  recurrence: "NONE" | "WEEKLY" | "MONTHLY";
   status: "ACTIVE" | "CANCELLED";
-  createdBy: string;
-  createdAt: string;
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface Attendance {
@@ -91,14 +92,13 @@ export interface RegisterPayload {
   phone?: string;
   address?: string;
 }
-
 export interface CreateEventPayload {
   programId: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location?: string;
+  eventName: string;
+  eventDate: string;
+  timeSlot: string;
+  eventType: "REGULAR" | "SPECIAL";
+  recurrence: "NONE" | "WEEKLY" | "MONTHLY";
   createdBy: string;
 }
 
@@ -144,6 +144,12 @@ export interface RegisterResponse {
 export interface MemberActivityResponse {
   success: boolean;
   data?: ActivityProfile;
+  message?: string;
+}
+
+export interface GrantedUserEventsResponse {
+  success: boolean;
+  data?: Event[];
   message?: string;
 }
 

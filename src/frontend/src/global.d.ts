@@ -17,6 +17,7 @@ declare namespace google {
       api_getCareDashboard(thresholdDays: number): void;
       api_logoutUser(): void;
       api_getCurrentSession(userId: string, sessionToken: string): void;
+      api_getGrantedUserEvents(grantedUserId: string, sessionToken: string): void;
     }
     const run: RunClient;
   }

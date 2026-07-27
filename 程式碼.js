@@ -799,3 +799,261 @@ function api_cancelEnrollment(userId, programId, sessionToken) {
   }
   return cancelEnrollment(userId, programId);
 }
+
+// =============================================================================
+// Task 4 — Granted User Dynamic Event Creation & Management
+// Per ADR-0005: server-authoritative role check on every RPC.
+// =============================================================================
+
+function checkRoleAtLeast_(userId, requiredRole) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return 'MEMBER';
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) return 'MEMBER';
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  var idIdx = headers.indexOf('user_id');
+  if (idIdx === -1) idIdx = headers.indexOf('user id');
+  var roleIdx = headers.indexOf('role');
+  if (idIdx === -1) return 'MEMBER';
+  var targetId = normalizeId_(userId);
+  for (var i = 1; i < data.length; i++) {
+    if (normalizeId_(data[i][idIdx]) !== targetId) continue;
+    var role = roleIdx !== -1 && data[i][roleIdx]
+      ? String(data[i][roleIdx]).trim().toUpperCase()
+      : 'MEMBER';
+    if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'EVENT_LEADER' && role !== 'MEMBER') {
+      role = 'MEMBER';
+    }
+    return role;
+  }
+  return 'MEMBER';
+}
+
+function checkIsGrantedUser_(userId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    return { granted: false, message: 'Session invalid or expired.' };
+  }
+  var role = checkRoleAtLeast_(userId, 'EVENT_LEADER');
+  if (role === 'MEMBER') {
+    return { granted: false, message: 'Permission denied. Only granted users can create events.' };
+  }
+  return { granted: true, role: role };
+}
+
+function api_createEvent(payload) {
+  if (!payload) return { success: false, message: 'Missing payload.' };
+  var userId = String(payload.createdBy == null ? '' : payload.createdBy).trim();
+  var sessionToken = String(payload.__sessionToken || payload.sessionToken || payload._sessionToken || '').trim();
+  if (!userId || !sessionToken) return { success: false, message: 'Missing user session.' };
+  var check = checkIsGrantedUser_(userId, sessionToken);
+  if (!check.granted) return { success: false, message: check.message };
+  var role = check.role;
+
+  if (role === 'MEMBER') {
+    return { success: false, message: 'Permission denied. Only granted users can create events.' };
+  }
+
+  var eventName = String(payload.eventName == null ? '' : payload.eventName).trim();
+  var eventDate = String(payload.eventDate == null ? '' : payload.eventDate).trim();
+  var timeSlot = String(payload.timeSlot == null ? '' : payload.timeSlot).trim();
+  var programId = String(payload.programId == null ? '' : payload.programId).trim();
+  var eventType = String(payload.eventType == null ? '' : payload.eventType).trim().toUpperCase();
+  if (eventType !== 'REGULAR' && eventType !== 'SPECIAL') eventType = 'REGULAR';
+  var recurrence = String(payload.recurrence == null ? '' : payload.recurrence).trim().toUpperCase();
+  if (recurrence !== 'NONE' && recurrence !== 'WEEKLY' && recurrence !== 'MONTHLY') recurrence = 'NONE';
+
+  if (!eventName) return { success: false, message: 'Event name is required.' };
+  if (!eventDate) return { success: false, message: 'Event date is required.' };
+  if (!timeSlot) return { success: false, message: 'Time slot is required.' };
+  if (!programId) return { success: false, message: 'Program ID is required.' };
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var eventsSheet = ss.getSheetByName('Events');
+  if (!eventsSheet) return { success: false, message: 'Events sheet missing.' };
+
+  var headers = eventsSheet.getRange(1, 1, 1, eventsSheet.getLastColumn()).getValues()[0];
+  var mappedHeaders = headers.map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+  function colIdx(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = mappedHeaders.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  var eventIdCol = colIdx(['Event_ID', 'EventID']);
+  var progIdCol = colIdx(['Program_ID', 'ProgramID']);
+  var eventNameCol = colIdx(['Event_Name', 'EventName']);
+  var eventDateCol = colIdx(['Event_Date', 'EventDate']);
+  var timeSlotCol = colIdx(['Time_Slot', 'TimeSlot']);
+  var eventTypeCol = colIdx(['Event_Type', 'EventType']);
+  var recurCol = colIdx(['Recurrence_Type', 'RecurrenceType', 'Recurrence']);
+  var statusCol = colIdx(['Status']);
+  var createdByCol = colIdx(['Created_By', 'CreatedBy']);
+  var createdAtCol = colIdx(['Created_At', 'CreatedAt']);
+
+  var newId = 'EVT-' + Utilities.getUuid().substring(0, 8).toUpperCase();
+  var now = new Date().toISOString();
+
+  var row = new Array(headers.length).fill('');
+  if (eventIdCol > -1) row[eventIdCol] = newId;
+  if (progIdCol > -1) row[progIdCol] = programId;
+  if (eventNameCol > -1) row[eventNameCol] = eventName;
+  if (eventDateCol > -1) row[eventDateCol] = eventDate;
+  if (timeSlotCol > -1) row[timeSlotCol] = timeSlot;
+  if (eventTypeCol > -1) row[eventTypeCol] = eventType;
+  if (recurCol > -1) row[recurCol] = recurrence;
+  if (statusCol > -1) row[statusCol] = 'Active';
+  if (createdByCol > -1) row[createdByCol] = userId;
+  if (createdAtCol > -1) row[createdAtCol] = now;
+
+  eventsSheet.appendRow(row);
+
+  return {
+    success: true,
+    data: {
+      eventId: newId,
+      programId: programId,
+      eventName: eventName,
+      eventDate: eventDate,
+      timeSlot: timeSlot,
+      eventType: eventType,
+      recurrence: recurrence,
+      status: 'ACTIVE',
+      createdBy: userId,
+      createdAt: now,
+    }
+  };
+}
+
+function api_cancelEvent(payload) {
+  if (!payload) return { success: false, message: 'Missing payload.' };
+  var eventId = String(payload.eventId == null ? '' : payload.eventId).trim();
+  var userId = String(payload.cancelledBy == null ? '' : payload.cancelledBy).trim();
+  var sessionToken = String(payload.__sessionToken || payload.sessionToken || payload._sessionToken || '').trim();
+  if (!eventId) return { success: false, message: 'Event ID is required.' };
+  if (!userId || !sessionToken) return { success: false, message: 'Missing user session.' };
+  var check = checkIsGrantedUser_(userId, sessionToken);
+  if (!check.granted) return { success: false, message: check.message };
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var eventsSheet = ss.getSheetByName('Events');
+  if (!eventsSheet) return { success: false, message: 'Events sheet missing.' };
+
+  var data = eventsSheet.getDataRange().getValues();
+  if (!data || data.length < 2) return { success: false, message: 'No events found.' };
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+  function colIdx(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = headers.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  var eventIdCol = colIdx(['Event_ID', 'EventID']);
+  var statusCol = colIdx(['Status']);
+  if (eventIdCol === -1) return { success: false, message: 'Event_ID column not found.' };
+  if (statusCol === -1) return { success: false, message: 'Status column not found.' };
+
+  var targetId = normalizeId_(eventId);
+  for (var i = 1; i < data.length; i++) {
+    if (normalizeId_(data[i][eventIdCol]) !== targetId) continue;
+    var rowNum = i + 1;
+    eventsSheet.getRange(rowNum + 1, statusCol + 1).setValue('Cancelled');
+    return { success: true, message: 'Event cancelled successfully.' };
+  }
+  return { success: false, message: 'Event not found.' };
+}
+
+function api_getGrantedUserEvents(grantedUserId, sessionToken) {
+  if (!grantedUserId || !sessionToken) {
+    return { success: false, message: 'Missing user session.' };
+  }
+  var check = checkIsGrantedUser_(grantedUserId, sessionToken);
+  if (!check.granted) return { success: false, message: check.message };
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var eventsSheet = ss.getSheetByName('Events');
+  if (!eventsSheet) return { success: false, message: 'Events sheet missing.' };
+
+  var data = eventsSheet.getDataRange().getValues();
+  if (!data || data.length < 2) return { success: true, data: [] };
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+  function colIdx(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = headers.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  var eventIdCol = colIdx(['Event_ID', 'EventID']);
+  var progIdCol = colIdx(['Program_ID', 'ProgramID']);
+  var eventNameCol = colIdx(['Event_Name', 'EventName']);
+  var eventDateCol = colIdx(['Event_Date', 'EventDate']);
+  var timeSlotCol = colIdx(['Time_Slot', 'TimeSlot']);
+  var eventTypeCol = colIdx(['Event_Type', 'EventType']);
+  var recurCol = colIdx(['Recurrence_Type', 'RecurrenceType', 'Recurrence']);
+  var statusCol = colIdx(['Status']);
+  var createdByCol = colIdx(['Created_By', 'CreatedBy']);
+  var createdAtCol = colIdx(['Created_At', 'CreatedAt']);
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var events = [];
+  for (var i = 1; i < data.length; i++) {
+    var rowStatus = statusCol > -1 ? String(data[i][statusCol] == null ? '' : data[i][statusCol]).trim().toLowerCase() : '';
+    if (rowStatus !== '' && rowStatus !== 'active') continue;
+
+    var rawDate = data[i][eventDateCol];
+    var eventDateStr = String(rawDate == null ? '' : rawDate).trim();
+    if (!eventDateStr) continue;
+
+    // Parse dd/MM/YYYY format (existing convention)
+    var dateParts = eventDateStr.split('/');
+    if (dateParts.length === 3) {
+      var eventDate = new Date(parseInt(dateParts[2], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[0], 10));
+      if (eventDate < today) continue;
+    }
+
+    var createdBy = createdByCol > -1 ? String(data[i][createdByCol] == null ? '' : data[i][createdByCol]).trim() : '';
+    var createdAt = createdAtCol > -1 ? String(data[i][createdAtCol] == null ? '' : data[i][createdAtCol]).trim() : '';
+    var eventType = eventTypeCol > -1 ? String(data[i][eventTypeCol] == null ? '' : data[i][eventTypeCol]).trim().toUpperCase() : 'REGULAR';
+    if (eventType !== 'REGULAR' && eventType !== 'SPECIAL') eventType = 'REGULAR';
+    var recurrence = recurCol > -1 ? String(data[i][recurCol] == null ? '' : data[i][recurCol]).trim().toUpperCase() : 'NONE';
+    if (recurrence !== 'NONE' && recurrence !== 'WEEKLY' && recurrence !== 'MONTHLY') recurrence = 'NONE';
+
+    events.push({
+      eventId: eventIdCol > -1 ? normalizeId_(data[i][eventIdCol]) : '',
+      programId: progIdCol > -1 ? normalizeId_(data[i][progIdCol]) : '',
+      programName: '',
+      eventName: eventNameCol > -1 ? String(data[i][eventNameCol] == null ? '' : data[i][eventNameCol]).trim() : '',
+      eventDate: eventDateStr,
+      timeSlot: timeSlotCol > -1 ? String(data[i][timeSlotCol] == null ? '' : data[i][timeSlotCol]).trim() : '',
+      eventType: eventType,
+      recurrence: recurrence,
+      status: 'ACTIVE',
+      createdBy: createdBy || undefined,
+      createdAt: createdAt || undefined,
+    });
+  }
+
+  // Sort by eventDate ascending
+  events.sort(function(a, b) {
+    var da = a.eventDate.split('/');
+    var db = b.eventDate.split('/');
+    if (da.length === 3 && db.length === 3) {
+      var dateA = new Date(parseInt(da[2], 10), parseInt(da[1], 10) - 1, parseInt(da[0], 10));
+      var dateB = new Date(parseInt(db[2], 10), parseInt(db[1], 10) - 1, parseInt(db[0], 10));
+      return dateA - dateB;
+    }
+    return 0;
+  });
+
+  return { success: true, data: events };
+}

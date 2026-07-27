@@ -8,8 +8,9 @@ import { MemberRegistrationView } from "./views/MemberRegistrationView";
 import { MyProfileView } from "./views/MyProfileView";
 import { ProgramCatalogView } from "./views/ProgramCatalogView";
 import { ProgramEnrollmentView } from "./views/ProgramEnrollmentView";
+import { EventManagementView } from "./views/EventManagementView";
 
-type Route = "login" | "register" | "profile" | "programs" | "enrollment";
+type Route = "login" | "register" | "profile" | "programs" | "enrollment" | "events";
 
 const pageStyle = {
   minHeight: "100vh",
@@ -59,6 +60,7 @@ export default function App() {
             setRoute("login");
           }}
           onOpenPrograms={() => setRoute("programs")}
+          onOpenEvents={() => setRoute("events")}
         />
       )}
       {route === "programs" && activeSession && (
@@ -75,6 +77,13 @@ export default function App() {
           currentUserId={activeSession.userId}
           initialProgramId={selectedProgramId}
           onBack={() => setRoute("programs")}
+        />
+      )}
+      {route === "events" && activeSession && (
+        <EventManagementView
+          grantedUserId={activeSession.userId}
+          sessionToken={activeSession.sessionToken}
+          onBack={() => setRoute("profile")}
         />
       )}
     </main>
