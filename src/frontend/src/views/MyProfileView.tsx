@@ -18,6 +18,7 @@ type Props = {
   onOpenPrograms: () => void;
   onOpenEvents?: () => void;
   onOpenScanner?: () => void;
+  onOpenCareDashboard?: () => void;
 };
 type ViewState =
   | { status: "loading" }
@@ -165,7 +166,7 @@ async function verifyWithServer(
     return null;
   }
 }
-export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenScanner }: Props) {
+export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenScanner, onOpenCareDashboard }: Props) {
   const [view, setView] = useState<ViewState>({ status: "loading" });
   const [showPass, setShowPass] = useState(false);
   const logoutInFlight = useRef(false);
@@ -262,6 +263,16 @@ export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenSc
               data-testid="scanner-tab"
             >
               Scan Attendance
+            </button>
+          )}
+          {role !== "MEMBER" && onOpenCareDashboard && (
+            <button
+              type="button"
+              onClick={onOpenCareDashboard}
+              style={styles.tab}
+              data-testid="care-dashboard-tab"
+            >
+              Care Dashboard
             </button>
           )}
           <span

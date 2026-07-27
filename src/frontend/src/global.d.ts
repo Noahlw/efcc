@@ -13,8 +13,8 @@ declare namespace google {
       api_cancelEvent(payload: unknown): void;
       api_checkInMember(payload: unknown): void;
       api_getEventAttendance(eventId: string, sessionToken: string): void;
-      api_getUserActivityProfile(userId: string): void;
-      api_getCareDashboard(thresholdDays: number): void;
+      api_getUserActivityProfile(userId: string, sessionToken: string): void;
+      api_getCareDashboard(thresholdDays: number, sessionToken: string): void;
       api_logoutUser(): void;
       api_getCurrentSession(userId: string, sessionToken: string): void;
       api_getGrantedUserEvents(grantedUserId: string, sessionToken: string): void;

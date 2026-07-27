@@ -10,8 +10,9 @@ import { ProgramCatalogView } from "./views/ProgramCatalogView";
 import { ProgramEnrollmentView } from "./views/ProgramEnrollmentView";
 import { EventManagementView } from "./views/EventManagementView";
 import { AttendanceScannerView } from "./views/AttendanceScannerView";
+import { CareDashboardView } from "./views/CareDashboardView";
 
-type Route = "login" | "register" | "profile" | "programs" | "enrollment" | "events" | "attendance-scanner";
+type Route = "login" | "register" | "profile" | "programs" | "enrollment" | "events" | "attendance-scanner" | "care-dashboard";
 
 const pageStyle = {
   minHeight: "100vh",
@@ -63,6 +64,7 @@ export default function App() {
           onOpenPrograms={() => setRoute("programs")}
           onOpenEvents={() => setRoute("events")}
           onOpenScanner={() => setRoute("attendance-scanner")}
+          onOpenCareDashboard={() => setRoute("care-dashboard")}
         />
       )}
       {route === "programs" && activeSession && (
@@ -92,6 +94,11 @@ export default function App() {
         <AttendanceScannerView
           grantedUserId={activeSession.userId}
           sessionToken={activeSession.sessionToken}
+          onBack={() => setRoute("profile")}
+        />
+      )}
+      {route === "care-dashboard" && activeSession && (
+        <CareDashboardView
           onBack={() => setRoute("profile")}
         />
       )}

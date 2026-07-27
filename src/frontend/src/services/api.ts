@@ -351,7 +351,7 @@ export const apiService = {
     return promise;
   },
 
-  getUserActivityProfile(userId: string): Promise<ActivityProfile> {
+  getUserActivityProfile(userId: string, sessionToken: string): Promise<ActivityProfile> {
     return new Promise((resolve, reject) => {
       const mockProfile: ActivityProfile = {
         userId,
@@ -368,11 +368,11 @@ export const apiService = {
       google.script.run
         .withSuccessHandler((result: ActivityProfile) => resolve(result))
         .withFailureHandler(reject)
-        .api_getUserActivityProfile(userId);
+        .api_getUserActivityProfile(userId, sessionToken);
     });
   },
 
-  getCareDashboard(thresholdDays: number): Promise<CareDashboardData> {
+  getCareDashboard(thresholdDays: number, sessionToken: string): Promise<CareDashboardData> {
     return new Promise((resolve, reject) => {
       const mockDashboard: CareDashboardData = {
         generatedAt: new Date().toISOString(),
@@ -386,9 +386,10 @@ export const apiService = {
       google.script.run
         .withSuccessHandler((result: CareDashboardData) => resolve(result))
         .withFailureHandler(reject)
-        .api_getCareDashboard(thresholdDays);
+        .api_getCareDashboard(thresholdDays, sessionToken);
     });
   },
+
   getCurrentSession(
     userId: string,
     sessionToken: string
