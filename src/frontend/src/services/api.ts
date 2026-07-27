@@ -324,8 +324,12 @@ export const apiService = {
     });
   },
 
-  getEventAttendance(eventId: string): Promise<AttendanceEntry[]> {
-    return new Promise((resolve, reject) => {
+  getEventAttendance(
+    eventId: string,
+    sessionToken: string
+  ): Promise<AttendanceEntry[]> {
+    const { promise, resolve, reject } = Promise.withResolvers<AttendanceEntry[]>();
+    if (isMockMode()) {
       const mockEntries: AttendanceEntry[] = [
         {
           attendanceId: "ATT-MOCK-1",
@@ -337,15 +341,14 @@ export const apiService = {
           checkInBy: "STAFF-MOCK",
         },
       ];
-      if (isMockMode()) {
-        delay(MOCK_DELAY_MS).then(() => resolve(mockEntries));
-        return;
-      }
-      google.script.run
-        .withSuccessHandler((result: AttendanceEntry[]) => resolve(result))
-        .withFailureHandler(reject)
-        .api_getEventAttendance(eventId);
-    });
+      delay(MOCK_DELAY_MS).then(() => resolve(mockEntries));
+      return promise;
+    }
+    google.script.run
+      .withSuccessHandler((result: AttendanceEntry[]) => resolve(result))
+      .withFailureHandler(reject)
+      .api_getEventAttendance(eventId, sessionToken);
+    return promise;
   },
 
   getUserActivityProfile(userId: string): Promise<ActivityProfile> {

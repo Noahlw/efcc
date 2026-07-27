@@ -112,6 +112,7 @@ export interface CheckInPayload {
   userId: string;
   method: "QR" | "MANUAL";
   staffId: string;
+  sessionToken: string;
 }
 
 // =============================================================================

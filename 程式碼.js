@@ -1057,3 +1057,173 @@ function api_getGrantedUserEvents(grantedUserId, sessionToken) {
 
   return { success: true, data: events };
 }
+// =============================================================================
+// Task 5 — Attendance QR Scanner & Manual Check-In
+// Per ADR-0005: server-authoritative role gate (MEMBER cannot check in).
+// LockService atomic duplicate check + append.
+// =============================================================================
+
+function api_checkInMember(payload) {
+  if (!payload) return { success: false, message: 'Missing payload.' };
+
+  var staffId = String(payload.staffId || '').trim();
+  var sessionToken = String(payload.sessionToken || '').trim();
+  if (!staffId || !sessionToken) return { success: false, message: 'Missing user session.' };
+
+  // 1. Verify session
+  if (!verifySessionToken_(staffId, sessionToken)) {
+    return { success: false, message: 'Session invalid or expired.' };
+  }
+
+  // 2. Role gate — MEMBER cannot check in
+  var role = checkRoleAtLeast_(staffId, 'EVENT_LEADER');
+  if (role === 'MEMBER') {
+    return { success: false, message: 'Permission denied. Only granted users can check in members.' };
+  }
+
+  var eventId = String(payload.eventId || '').trim();
+  var memberId = String(payload.userId || '').trim(); // member being checked in
+  var method = String(payload.method || '').trim();
+  if (!eventId) return { success: false, message: 'Event ID is required.' };
+  if (!memberId) return { success: false, message: 'Member ID is required.' };
+
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(5000)) {
+      return { success: false, message: 'System busy. Please try again.' };
+    }
+
+    var attSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Attendance');
+    if (!attSheet) {
+      lock.releaseLock();
+      return { success: false, message: 'Attendance sheet missing.' };
+    }
+
+    var attData = attSheet.getDataRange().getValues();
+    var headers = attData.length > 0 ? attData[0] : [];
+    var normHeaders = headers.map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+    function colIdx(names) {
+      for (var n = 0; n < names.length; n++) {
+        var idx = normHeaders.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    }
+
+    var attEventIdx = colIdx(['event_id', 'eventid']);
+    var attMemberIdx = colIdx(['user_id', 'userid', 'member_id', 'memberid']);
+    var attStatusIdx = colIdx(['status']);
+    var attTimeIdx = colIdx(['check_in_time', 'checkintime']);
+
+    // 3. Duplicate check — look for existing Active row for this event + member
+    if (attData.length > 1 && attEventIdx > -1 && attMemberIdx > -1) {
+      for (var i = 1; i < attData.length; i++) {
+        var eId = normalizeId_(attData[i][attEventIdx]);
+        var mId = normalizeId_(attData[i][attMemberIdx]);
+        if (eId !== eventId || mId !== memberId) continue;
+        var status = attStatusIdx > -1 ? String(attData[i][attStatusIdx] == null ? '' : attData[i][attStatusIdx]).trim().toLowerCase() : '';
+        if (status === '' || status === 'active') {
+          var existingTime = attTimeIdx > -1 ? String(attData[i][attTimeIdx] == null ? '' : attData[i][attTimeIdx]).trim() : '';
+          lock.releaseLock();
+          return {
+            success: false,
+            duplicate: true,
+            data: { checkInTime: existingTime },
+            message: 'Member already checked in.'
+          };
+        }
+      }
+    }
+
+    // 4. Append new attendance row
+    var newId = 'ATT-' + Utilities.getUuid().substring(0, 8).toUpperCase();
+    var now = new Date().toISOString();
+
+    // Re-fetch fresh headers for column mapping
+    var freshHeaders = attSheet.getRange(1, 1, 1, attSheet.getLastColumn()).getValues()[0];
+    var freshNorm = freshHeaders.map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+    function freshColIdx(names) {
+      for (var n = 0; n < names.length; n++) {
+        var idx = freshNorm.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    }
+
+    var row = new Array(freshHeaders.length).fill('');
+    var idCol = freshColIdx(['attendance_id', 'attendanceid']);
+    var eventCol = freshColIdx(['event_id', 'eventid']);
+    var userCol = freshColIdx(['user_id', 'userid', 'member_id', 'memberid']);
+    var timeCol = freshColIdx(['check_in_time', 'checkintime']);
+    var sourceCol = freshColIdx(['check_in_method', 'checkinmethod', 'source']);
+    var byCol = freshColIdx(['check_in_by', 'checkinby']);
+    var statusCol = freshColIdx(['status']);
+
+    if (idCol > -1) row[idCol] = newId;
+    if (eventCol > -1) row[eventCol] = eventId;
+    if (userCol > -1) row[userCol] = memberId;
+    if (timeCol > -1) row[timeCol] = now;
+    if (sourceCol > -1) row[sourceCol] = method;
+    if (byCol > -1) row[byCol] = staffId;
+    if (statusCol > -1) row[statusCol] = 'Active';
+
+    attSheet.appendRow(row);
+    lock.releaseLock();
+
+    return {
+      success: true,
+      data: { checkInTime: now }
+    };
+  } catch (e) {
+    lock.releaseLock();
+    return { success: false, message: 'Error during check-in: ' + e.message };
+  }
+}
+
+function api_getEventAttendance(eventId, sessionToken) {
+  if (!eventId) return [];
+  if (!sessionToken) return [];
+
+  var attSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Attendance');
+  if (!attSheet) return [];
+
+  var attData = attSheet.getDataRange().getValues();
+  if (!attData || attData.length < 2) return [];
+
+  var headers = attData[0];
+  var normHeaders = headers.map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
+
+  function colIdx(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = normHeaders.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  var attEventIdx = colIdx(['event_id', 'eventid']);
+  var attMemberIdx = colIdx(['user_id', 'userid', 'member_id', 'memberid']);
+  var attTimeIdx = colIdx(['check_in_time', 'checkintime']);
+  var attSourceIdx = colIdx(['check_in_method', 'checkinmethod', 'source']);
+  var attByIdx = colIdx(['check_in_by', 'checkinby']);
+  var attIdIdx = colIdx(['attendance_id', 'attendanceid']);
+
+  var result = [];
+  for (var i = 1; i < attData.length; i++) {
+    var eId = normalizeId_(attData[i][attEventIdx]);
+    if (eId !== eventId) continue;
+    result.push({
+      attendanceId: attIdIdx > -1 ? String(attData[i][attIdIdx] == null ? '' : attData[i][attIdIdx]).trim() : '',
+      eventId: eId,
+      userId: attMemberIdx > -1 ? normalizeId_(attData[i][attMemberIdx]) : '',
+      userName: '',
+      checkInTime: attTimeIdx > -1 ? String(attData[i][attTimeIdx] == null ? '' : attData[i][attTimeIdx]).trim() : '',
+      checkInMethod: attSourceIdx > -1 ? String(attData[i][attSourceIdx] == null ? '' : attData[i][attSourceIdx]).trim() : '',
+      checkInBy: attByIdx > -1 ? String(attData[i][attByIdx] == null ? '' : attData[i][attByIdx]).trim() : ''
+    });
+  }
+
+  return result;
+}
