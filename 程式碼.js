@@ -1127,12 +1127,17 @@ function api_searchMembers(query, grantedUserId, sessionToken) {
   var nameIdx = headers.indexOf('name'); if (nameIdx === -1) nameIdx = headers.indexOf('full name');
   var phoneIdx = headers.indexOf('phone');
   var statusIdx = headers.indexOf('status');
+  var roleIdx = headers.indexOf('role');
   if (idIdx === -1) return { success: true, data: [] };
 
   var results = [];
   for (var i = 1; i < data.length && results.length < 10; i++) {
     var statusRaw = statusIdx > -1 ? String(data[i][statusIdx] == null ? '' : data[i][statusIdx]).trim().toLowerCase() : 'active';
     if (statusRaw && statusRaw !== 'active') continue;
+    var roleRaw = roleIdx > -1 && data[i][roleIdx]
+      ? String(data[i][roleIdx]).trim().toUpperCase()
+      : 'MEMBER';
+    if (roleRaw !== 'MEMBER') continue;
     var uid = normalizeId_(data[i][idIdx]);
     if (!uid) continue;
     var name = nameIdx > -1 ? String(data[i][nameIdx] == null ? '' : data[i][nameIdx]).trim() : '';

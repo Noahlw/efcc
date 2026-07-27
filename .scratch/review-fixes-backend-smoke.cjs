@@ -219,7 +219,11 @@ const memberDeniedSearch = context.api_searchMembers("member", "USER-MEMBER-A", 
 if (memberDeniedSearch.success !== false) {
   throw new Error("api_searchMembers allowed a MEMBER-role caller");
 }
-console.log("PASS: api_searchMembers finds matches and is role-gated");
+const staffLeakSearch = context.api_searchMembers("staff", "USER-STAFF", staffToken);
+if (!staffLeakSearch.success || staffLeakSearch.data.length !== 0) {
+  throw new Error("api_searchMembers leaked a STAFF-role account into member search results: " + JSON.stringify(staffLeakSearch));
+}
+console.log("PASS: api_searchMembers finds matches, is role-gated, and excludes non-MEMBER accounts");
 
 // --- 6. api_getEventAttendance auth + role gate ---
 const attNoAuth = context.api_getEventAttendance("EVT-2", "", "");

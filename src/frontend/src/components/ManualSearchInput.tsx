@@ -79,6 +79,7 @@ export function ManualSearchInput({
     clearTimeout(debounceRef.current ?? undefined);
     const trimmed = query.trim();
     if (!trimmed) {
+      requestSeq.current += 1;
       setResults([]);
       setSearching(false);
       return;
