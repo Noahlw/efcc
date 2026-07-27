@@ -1,0 +1,22 @@
+declare namespace google {
+  namespace script {
+    interface RunClient {
+      withSuccessHandler<T>(handler: (result: T) => void): RunClient;
+      withFailureHandler(handler: (error: Error) => void): RunClient;
+      api_loginUser(username: string, pin: string): void;
+      api_registerUser(payload: unknown): void;
+      api_getProgramsCatalog(): void;
+      api_getAvailablePrograms(userId: string): void;
+      api_enrollUser(userId: string, programId: string): void;
+      api_cancelEnrollment(userId: string, programId: string): void;
+      api_createEvent(payload: unknown): void;
+      api_cancelEvent(payload: unknown): void;
+      api_checkInMember(payload: unknown): void;
+      api_getEventAttendance(eventId: string): void;
+      api_getUserActivityProfile(userId: string): void;
+      api_getCareDashboard(thresholdDays: number): void;
+      api_logoutUser(): void;
+    }
+    const run: RunClient;
+  }
+}
