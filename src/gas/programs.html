@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂 — Programs</title>
+    <?!= include('styles') ?>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <h1 class="page-title">Programs</h1>
+        <p class="page-subtitle">Browse and manage your program enrollments</p>
+      </header>
+
+      <div id="status-msg" class="hidden"></div>
+
+      <div class="tabs" id="tabs-bar">
+        <button class="tab-btn tab-btn--active" data-tab="all">
+          All Programs
+        </button>
+        <button class="tab-btn" data-tab="mine">My Enrollments</button>
+      </div>
+
+      <div
+        id="spinner-container"
+        class="text-center mt-lg"
+        style="display: none"
+      >
+        <span class="spinner"></span>
+      </div>
+
+      <div id="program-list" class="card-list mt-md"></div>
+
+      <div id="empty-state" class="card text-center mt-md hidden">
+        <p>You are not enrolled in any programs.</p>
+      </div>
+
+      <div id="staff-enroll-section" class="card mt-lg hidden">
+        <h3 class="label" style="margin-bottom: var(--space-sm)">
+          Staff Quick Enroll
+        </h3>
+        <div class="flex-col">
+          <div class="form-group" style="margin-bottom: var(--space-sm)">
+            <label class="label" for="member-id">Member ID</label>
+            <input
+              class="input"
+              type="text"
+              id="member-id"
+              placeholder="e.g. GC-ABCD-EF01"
+            />
+          </div>
+          <div class="form-group" style="margin-bottom: var(--space-sm)">
+            <label class="label" for="staff-program-select">Program</label>
+            <select class="input" id="staff-program-select">
+              <option value="">-- Select a program --</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-full" id="staff-enroll-btn">
+            Enroll Member
+          </button>
+        </div>
+      </div>
+
+      <p class="text-center mt-lg">
+        <a href="?page=profile" class="btn btn-ghost btn-sm">Back to Profile</a>
+      </p>
+    </main>
+
+    <?!= include('app.js') ?>
+    <script>
+      (function () {
+        "use strict";
+
+        var currentTab = "all";
+        var allPrograms = [];
+        var user = null;
+        var statusEl = document.getElementById("status-msg");
+        var spinnerContainer = document.getElementById("spinner-container");
+        var programList = document.getElementById("program-list");
+        var emptyState = document.getElementById("empty-state");
+        var tabsBar = document.getElementById("tabs-bar");
+        var staffSection = document.getElementById("staff-enroll-section");
+        var staffProgramSelect = document.getElementById(
+          "staff-program-select"
+        );
+        var memberIdInput = document.getElementById("member-id");
+        var staffEnrollBtn = document.getElementById("staff-enroll-btn");
+
+        // --- Init ---------------------------------------------------------------
+
+        restoreSession()
+          .then(function (u) {
+            user = u;
+            initStaffSection();
+            loadPrograms();
+          })
+          .catch(function () {});
+
+        // --- Tab switching ------------------------------------------------------
+
+        tabsBar.addEventListener("click", function (e) {
+          var btn = e.target.closest(".tab-btn");
+          if (!btn) return;
+          var tab = btn.getAttribute("data-tab");
+          if (tab === currentTab) return;
+
+          currentTab = tab;
+          tabsBar.querySelectorAll(".tab-btn").forEach(function (b) {
+            b.classList.toggle("tab-btn--active", b === btn);
+          });
+          renderPrograms();
+        });
+
+        // --- Staff section ------------------------------------------------------
+
+        function initStaffSection() {
+          if (!isStaff()) return;
+          staffSection.classList.remove("hidden");
+          populateStaffProgramDropdown();
+        }
+
+        function populateStaffProgramDropdown() {
+          api
+            .call(
+              "api_getProgramsCatalog",
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response || !response.success || !response.data) return;
+              staffProgramSelect.innerHTML =
+                '<option value="">-- Select a program --</option>';
+              response.data.forEach(function (p) {
+                var opt = document.createElement("option");
+                opt.value = p.programId;
+                opt.textContent = p.title + (p.type ? " (" + p.type + ")" : "");
+                staffProgramSelect.appendChild(opt);
+              });
+            })
+            .catch(function () {});
+        }
+
+        staffEnrollBtn.addEventListener("click", function () {
+          var memberId = memberIdInput.value.trim();
+          var programId = staffProgramSelect.value;
+
+          if (!memberId) {
+            showStatus("Please enter a Member ID.", "error");
+            return;
+          }
+          if (!programId) {
+            showStatus("Please select a program.", "error");
+            return;
+          }
+
+          staffEnrollBtn.disabled = true;
+          staffEnrollBtn.textContent = "Enrolling...";
+
+          api
+            .call(
+              "api_staffEnrollMember",
+              user.userId,
+              memberId,
+              programId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success) {
+                showStatus(response.message || "Enrollment failed.", "error");
+                return;
+              }
+              showStatus("Member enrolled successfully.", "success");
+              memberIdInput.value = "";
+              staffProgramSelect.value = "";
+              loadPrograms();
+            })
+            .catch(function (err) {
+              showStatus(err.message || "Network error.", "error");
+            })
+            .finally(function () {
+              staffEnrollBtn.disabled = false;
+              staffEnrollBtn.textContent = "Enroll Member";
+            });
+        });
+
+        // --- Load & render ------------------------------------------------------
+
+        function loadPrograms() {
+          spinnerContainer.style.display = "block";
+          programList.innerHTML = "";
+          emptyState.classList.add("hidden");
+
+          api
+            .call(
+              "api_getAvailablePrograms",
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (
+                response &&
+                response.success &&
+                Array.isArray(response.data)
+              ) {
+                allPrograms = response.data;
+              } else {
+                allPrograms = [];
+              }
+              renderPrograms();
+            })
+            .catch(function () {
+              allPrograms = [];
+              renderPrograms();
+            })
+            .finally(function () {
+              spinnerContainer.style.display = "none";
+            });
+        }
+
+        function renderPrograms() {
+          var programs =
+            currentTab === "mine"
+              ? allPrograms.filter(function (p) {
+                  return p.isEnrolled;
+                })
+              : allPrograms;
+
+          if (programs.length === 0) {
+            programList.innerHTML = "";
+            if (currentTab === "mine") {
+              emptyState.classList.remove("hidden");
+            } else {
+              emptyState.classList.add("hidden");
+            }
+            return;
+          }
+
+          emptyState.classList.add("hidden");
+          programList.innerHTML = programs.map(renderProgramCard).join("");
+          attachCardListeners();
+        }
+
+        function renderProgramCard(p) {
+          var typeBadge = p.type
+            ? '<span class="badge badge-regular">' +
+              escapeHtml(p.type) +
+              "</span>"
+            : "";
+          var desc = p.description
+            ? '<p class="text-sm" style="margin-top:var(--space-xs);color:var(--color-text-muted);">' +
+              escapeHtml(p.description) +
+              "</p>"
+            : "";
+          var schedule = "";
+          if (p.dayOfWeek || p.startTime) {
+            var parts = [];
+            if (p.dayOfWeek) parts.push(escapeHtml(p.dayOfWeek));
+            if (p.startTime && p.endTime)
+              parts.push(
+                escapeHtml(p.startTime) + " - " + escapeHtml(p.endTime)
+              );
+            else if (p.startTime) parts.push(escapeHtml(p.startTime));
+            if (parts.length)
+              schedule =
+                '<p class="text-sm" style="color:var(--color-text-muted);margin-top:var(--space-xs);"><span style="font-weight:600;">Schedule:</span> ' +
+                parts.join(", ") +
+                "</p>";
+          }
+          var btnLabel = p.isEnrolled ? "Cancel Enrollment" : "Enroll";
+          var btnClass = p.isEnrolled ? "btn-danger" : "btn-primary";
+
+          return (
+            '<div class="card" data-program-id="' +
+            escapeHtml(p.programId) +
+            '">' +
+            '<div class="flex-between" style="margin-bottom:var(--space-xs);">' +
+            "<strong>" +
+            escapeHtml(p.title) +
+            "</strong>" +
+            typeBadge +
+            "</div>" +
+            desc +
+            schedule +
+            '<div style="margin-top:var(--space-sm);">' +
+            '<button class="btn btn-sm btn-full ' +
+            btnClass +
+            '" data-action="' +
+            (p.isEnrolled ? "cancel" : "enroll") +
+            '" data-program-id="' +
+            escapeHtml(p.programId) +
+            '">' +
+            btnLabel +
+            "</button>" +
+            "</div>" +
+            "</div>"
+          );
+        }
+
+        function attachCardListeners() {
+          programList.querySelectorAll("[data-action]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              var action = btn.getAttribute("data-action");
+              var programId = btn.getAttribute("data-program-id");
+              if (action === "enroll") {
+                doEnroll(programId, btn);
+              } else {
+                doCancel(programId, btn);
+              }
+            });
+          });
+        }
+
+        function doEnroll(programId, btn) {
+          btn.disabled = true;
+          btn.textContent = "Enrolling...";
+          statusEl.classList.add("hidden");
+
+          api
+            .call(
+              "api_enrollUser",
+              user.userId,
+              programId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success) {
+                showStatus(response.message || "Enrollment failed.", "error");
+                btn.disabled = false;
+                btn.textContent = "Enroll";
+                return;
+              }
+              loadPrograms();
+            })
+            .catch(function (err) {
+              showStatus(err.message || "Network error.", "error");
+              btn.disabled = false;
+              btn.textContent = "Enroll";
+            });
+        }
+
+        function doCancel(programId, btn) {
+          btn.disabled = true;
+          btn.textContent = "Cancelling...";
+          statusEl.classList.add("hidden");
+
+          api
+            .call(
+              "api_cancelEnrollment",
+              user.userId,
+              programId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success) {
+                showStatus(response.message || "Cancellation failed.", "error");
+                btn.disabled = false;
+                btn.textContent = "Cancel Enrollment";
+                return;
+              }
+              loadPrograms();
+            })
+            .catch(function (err) {
+              showStatus(err.message || "Network error.", "error");
+              btn.disabled = false;
+              btn.textContent = "Cancel Enrollment";
+            });
+        }
+
+        // --- Helpers ------------------------------------------------------------
+
+        function showStatus(msg, type) {
+          statusEl.textContent = msg;
+          statusEl.className = type === "error" ? "msg-error" : "msg-success";
+          statusEl.classList.remove("hidden");
+        }
+
+        function escapeHtml(str) {
+          var div = document.createElement("div");
+          div.appendChild(document.createTextNode(str));
+          return div.innerHTML;
+        }
+      })();
+    </script>
+  </body>
+</html>

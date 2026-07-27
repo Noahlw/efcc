@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂 — Event Management</title>
+    <?!= include('styles') ?>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <h1 class="page-title">Event Management</h1>
+        <p class="page-subtitle">Create &amp; manage church events</p>
+      </header>
+
+      <!-- Access denied for non-granted users -->
+      <div id="access-denied" class="msg-error hidden">
+        Access denied. Only staff and event leaders can manage events.
+      </div>
+
+      <!-- Event section (granted users only) -->
+      <div id="event-section" class="hidden">
+        <div class="flex-between mb-lg">
+          <a href="?page=profile" class="btn btn-ghost btn-sm"
+            >&larr; Back to Profile</a
+          >
+          <button id="show-create-btn" class="btn btn-primary btn-sm">
+            + Create New Event
+          </button>
+        </div>
+
+        <div id="msg-el" class="msg-success hidden"></div>
+        <div id="error-el" class="msg-error hidden"></div>
+
+        <!-- Create Event Form -->
+        <div id="create-form" class="card hidden mb-lg">
+          <h2
+            style="
+              font-size: var(--text-lg);
+              font-weight: 600;
+              margin-bottom: var(--space-md);
+            "
+          >
+            Create New Event
+          </h2>
+
+          <div class="form-group">
+            <label class="label" for="prog-select">Program</label>
+            <select id="prog-select" class="input" required>
+              <option value="">-- Select a program --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="event-name">Event Name</label>
+            <input
+              id="event-name"
+              class="input"
+              type="text"
+              required
+              placeholder="e.g. Sunday Worship"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="event-date">Event Date</label>
+            <input id="event-date" class="input" type="date" required />
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="time-slot">Time Slot</label>
+            <input
+              id="time-slot"
+              class="input"
+              type="text"
+              required
+              placeholder="e.g. 3:00 PM - 4:30 PM"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="label">Event Type</label>
+            <div class="flex-row">
+              <label
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--space-xs);
+                  cursor: pointer;
+                "
+              >
+                <input type="radio" name="event-type" value="REGULAR" checked />
+                <span class="badge badge-regular">Regular</span>
+              </label>
+              <label
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--space-xs);
+                  cursor: pointer;
+                "
+              >
+                <input type="radio" name="event-type" value="SPECIAL" />
+                <span class="badge badge-special">Special</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="recurrence">Recurrence</label>
+            <select id="recurrence" class="input">
+              <option value="NONE">None</option>
+              <option value="WEEKLY">Weekly</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+          </div>
+
+          <div class="flex-row" style="gap: var(--space-sm)">
+            <button id="create-btn" class="btn btn-primary">Create</button>
+            <button id="cancel-create-btn" class="btn btn-ghost">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Event List -->
+        <h2
+          style="
+            font-size: var(--text-lg);
+            font-weight: 600;
+            margin-bottom: var(--space-md);
+          "
+        >
+          Upcoming Events
+        </h2>
+        <div id="event-list" class="card-list">
+          <div class="card text-center" style="color: var(--color-text-muted)">
+            <div class="spinner"></div>
+            <p class="mt-sm">Loading events...</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <?!= include('app.js') ?>
+    <script>
+      (function () {
+        "use strict";
+
+        var accessDeniedEl = document.getElementById("access-denied");
+        var eventSectionEl = document.getElementById("event-section");
+        var msgEl = document.getElementById("msg-el");
+        var errorEl = document.getElementById("error-el");
+        var eventListEl = document.getElementById("event-list");
+        var createFormEl = document.getElementById("create-form");
+        var showCreateBtn = document.getElementById("show-create-btn");
+        var cancelCreateBtn = document.getElementById("cancel-create-btn");
+        var createBtn = document.getElementById("create-btn");
+        var progSelect = document.getElementById("prog-select");
+        var eventNameInput = document.getElementById("event-name");
+        var eventDateInput = document.getElementById("event-date");
+        var timeSlotInput = document.getElementById("time-slot");
+        var recurrenceSelect = document.getElementById("recurrence");
+
+        // ---------- Init ----------
+
+        restoreSession()
+          .then(function (user) {
+            if (!isGrantedUser()) {
+              accessDeniedEl.classList.remove("hidden");
+              return;
+            }
+            eventSectionEl.classList.remove("hidden");
+            loadPrograms();
+            loadEvents();
+          })
+          .catch(function () {
+            // restoreSession already redirects to login
+          });
+
+        // ---------- Helpers ----------
+
+        function showError(msg) {
+          errorEl.textContent = msg;
+          errorEl.classList.remove("hidden");
+          msgEl.classList.add("hidden");
+        }
+
+        function showSuccess(msg) {
+          msgEl.textContent = msg;
+          msgEl.classList.remove("hidden");
+          errorEl.classList.add("hidden");
+        }
+
+        function clearMessages() {
+          errorEl.classList.add("hidden");
+          msgEl.classList.add("hidden");
+        }
+
+        function getEventType() {
+          var checked = document.querySelector(
+            'input[name="event-type"]:checked'
+          );
+          return checked ? checked.value : "REGULAR";
+        }
+
+        // ---------- Load Programs ----------
+
+        function loadPrograms() {
+          var user = sessionManager.getUser();
+          api
+            .call(
+              "api_getProgramsCatalog",
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success || !response.data) {
+                return;
+              }
+              var programs = response.data;
+              for (var i = 0; i < programs.length; i++) {
+                var opt = document.createElement("option");
+                opt.value =
+                  programs[i].programId || programs[i].Program_ID || "";
+                opt.textContent =
+                  programs[i].title || programs[i].type
+                    ? programs[i].title + " (" + programs[i].type + ")"
+                    : programs[i].title || "";
+                progSelect.appendChild(opt);
+              }
+            })
+            .catch(function () {
+              // Silently ignore — programs dropdown will be empty
+            });
+        }
+
+        // ---------- Load Events ----------
+
+        function loadEvents() {
+          var user = sessionManager.getUser();
+          eventListEl.innerHTML =
+            '<div class="card text-center" style="color: var(--color-text-muted);"><div class="spinner"></div><p class="mt-sm">Loading events...</p></div>';
+
+          api
+            .call(
+              "api_getGrantedUserEvents",
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success) {
+                showError(response.message || "Failed to load events.");
+                eventListEl.innerHTML = "";
+                return;
+              }
+              renderEvents(response.data || []);
+            })
+            .catch(function (err) {
+              showError(err.message || "Network error.");
+              eventListEl.innerHTML = "";
+            });
+        }
+
+        function renderEvents(events) {
+          eventListEl.innerHTML = "";
+
+          if (!events || events.length === 0) {
+            eventListEl.innerHTML =
+              '<div class="card text-center" style="color: var(--color-text-muted);"><p>No upcoming events.</p></div>';
+            return;
+          }
+
+          for (var i = 0; i < events.length; i++) {
+            var evt = events[i];
+            eventListEl.appendChild(buildEventCard(evt));
+          }
+        }
+
+        function buildEventCard(evt) {
+          var card = document.createElement("div");
+          card.className = "card";
+
+          var typeBadgeClass =
+            evt.eventType === "SPECIAL" ? "badge-special" : "badge-regular";
+          var typeLabel = evt.eventType === "SPECIAL" ? "Special" : "Regular";
+          var statusBadgeClass = "badge-active";
+          var isCancelled = false;
+          if (evt.status && evt.status.toUpperCase() === "CANCELLED") {
+            statusBadgeClass = "badge-cancelled";
+            isCancelled = true;
+          }
+
+          var inner = "";
+          inner += '<div class="flex-between">';
+          inner +=
+            '<strong style="font-size: var(--text-base);">' +
+            escapeHtml(evt.eventName || "") +
+            "</strong>";
+          inner +=
+            '<span class="badge ' +
+            statusBadgeClass +
+            '">' +
+            (isCancelled ? "Cancelled" : "Active") +
+            "</span>";
+          inner += "</div>";
+
+          inner +=
+            '<div class="flex-row flex-wrap mt-sm" style="gap: var(--space-xs);">';
+          inner +=
+            '<span class="badge ' +
+            typeBadgeClass +
+            '">' +
+            escapeHtml(typeLabel) +
+            "</span>";
+          if (evt.programName) {
+            inner +=
+              '<span class="badge badge-member">' +
+              escapeHtml(evt.programName) +
+              "</span>";
+          }
+          if (evt.recurrence && evt.recurrence !== "NONE") {
+            inner +=
+              '<span class="badge badge-event-leader">' +
+              escapeHtml(evt.recurrence) +
+              "</span>";
+          }
+          inner += "</div>";
+
+          inner +=
+            '<p class="mt-sm" style="font-size: var(--text-sm); color: var(--color-text-muted);">';
+          inner +=
+            "<strong>Date:</strong> " +
+            escapeHtml(evt.eventDate || "") +
+            " &middot; <strong>Time:</strong> " +
+            escapeHtml(evt.timeSlot || "");
+          inner += "</p>";
+
+          if (!isCancelled) {
+            inner +=
+              '<div class="flex-row mt-md" style="gap: var(--space-xs);">';
+            inner +=
+              '<button class="btn btn-danger btn-sm cancel-event-btn" data-event-id="' +
+              escapeAttr(evt.eventId) +
+              '">Cancel Event</button>';
+            inner += "</div>";
+          }
+
+          card.innerHTML = inner;
+
+          // Attach cancel handler
+          var cancelBtns = card.querySelectorAll(".cancel-event-btn");
+          for (var b = 0; b < cancelBtns.length; b++) {
+            cancelBtns[b].addEventListener("click", function (e) {
+              var id = e.currentTarget.getAttribute("data-event-id");
+              handleCancel(id);
+            });
+          }
+
+          return card;
+        }
+
+        function escapeHtml(str) {
+          var div = document.createElement("div");
+          div.appendChild(document.createTextNode(str));
+          return div.innerHTML;
+        }
+
+        function escapeAttr(str) {
+          return String(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        // ---------- Cancel Event ----------
+
+        function handleCancel(eventId) {
+          if (!confirm("Are you sure you want to cancel this event?")) {
+            return;
+          }
+
+          var user = sessionManager.getUser();
+          api
+            .call("api_cancelEvent", {
+              eventId: eventId,
+              cancelledBy: user.userId,
+              sessionToken: sessionManager.getToken(),
+            })
+            .then(function (response) {
+              if (!response.success) {
+                showError(response.message || "Failed to cancel event.");
+                return;
+              }
+              showSuccess("Event cancelled successfully.");
+              loadEvents();
+            })
+            .catch(function (err) {
+              showError(err.message || "Network error.");
+            });
+        }
+
+        // ---------- Create Form Toggle ----------
+
+        showCreateBtn.addEventListener("click", function () {
+          createFormEl.classList.remove("hidden");
+          showCreateBtn.classList.add("hidden");
+          clearMessages();
+        });
+
+        cancelCreateBtn.addEventListener("click", function () {
+          createFormEl.classList.add("hidden");
+          showCreateBtn.classList.remove("hidden");
+          clearMessages();
+        });
+
+        // ---------- Create Event ----------
+
+        createBtn.addEventListener("click", function () {
+          clearMessages();
+
+          var programId = progSelect.value.trim();
+          var eventName = eventNameInput.value.trim();
+          var eventDate = eventDateInput.value.trim();
+          var timeSlot = timeSlotInput.value.trim();
+          var eventType = getEventType();
+          var recurrence = recurrenceSelect.value.trim();
+
+          if (!programId) {
+            showError("Please select a program.");
+            return;
+          }
+          if (!eventName) {
+            showError("Event name is required.");
+            return;
+          }
+          if (!eventDate) {
+            showError("Event date is required.");
+            return;
+          }
+          if (!timeSlot) {
+            showError("Time slot is required.");
+            return;
+          }
+
+          // Convert YYYY-MM-DD to dd/MM/YYYY for GAS backend
+          var dateParts = eventDate.split("-");
+          var displayDate = eventDate;
+          if (dateParts.length === 3) {
+            displayDate =
+              dateParts[2] + "/" + dateParts[1] + "/" + dateParts[0];
+          }
+
+          var user = sessionManager.getUser();
+          createBtn.disabled = true;
+          createBtn.textContent = "Creating...";
+
+          api
+            .call("api_createEvent", {
+              createdBy: user.userId,
+              sessionToken: sessionManager.getToken(),
+              eventName: eventName,
+              eventDate: displayDate,
+              timeSlot: timeSlot,
+              programId: programId,
+              eventType: eventType,
+              recurrence: recurrence,
+            })
+            .then(function (response) {
+              createBtn.disabled = false;
+              createBtn.textContent = "Create";
+
+              if (!response.success) {
+                showError(response.message || "Failed to create event.");
+                return;
+              }
+
+              showSuccess("Event created successfully!");
+
+              // Reset form
+              eventNameInput.value = "";
+              eventDateInput.value = "";
+              timeSlotInput.value = "";
+              recurrenceSelect.value = "NONE";
+              document.querySelector(
+                'input[name="event-type"][value="REGULAR"]'
+              ).checked = true;
+
+              createFormEl.classList.add("hidden");
+              showCreateBtn.classList.remove("hidden");
+
+              loadEvents();
+            })
+            .catch(function (err) {
+              createBtn.disabled = false;
+              createBtn.textContent = "Create";
+              showError(err.message || "Network error.");
+            });
+        });
+      })();
+    </script>
+  </body>
+</html>

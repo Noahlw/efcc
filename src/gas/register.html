@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂 — 註冊</title>
+    <?!= include('styles') ?>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <h1 class="page-title">Register New Member</h1>
+        <p class="page-subtitle">Create your EFCC account</p>
+      </header>
+
+      <div id="error-msg" class="msg-error hidden"></div>
+
+      <form id="register-form">
+        <div class="form-group">
+          <label class="label" for="name">Full Name</label>
+          <input
+            class="input"
+            type="text"
+            id="name"
+            name="name"
+            autocomplete="name"
+            required
+            placeholder="Your full name"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="label" for="username">Username</label>
+          <input
+            class="input"
+            type="text"
+            id="username"
+            name="username"
+            autocomplete="username"
+            required
+            placeholder="Choose a username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="label" for="pin">PIN Code</label>
+          <input
+            class="input"
+            type="password"
+            id="pin"
+            name="pin"
+            inputmode="numeric"
+            maxlength="4"
+            autocomplete="new-password"
+            required
+            placeholder="4-digit PIN"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="label" for="phone">Phone</label>
+          <input
+            class="input"
+            type="tel"
+            id="phone"
+            name="phone"
+            autocomplete="tel"
+            required
+            placeholder="Your phone number"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="label" for="address">Address</label>
+          <textarea
+            class="input"
+            id="address"
+            name="address"
+            rows="2"
+            placeholder="Your address"
+          ></textarea>
+        </div>
+
+        <button
+          type="submit"
+          class="btn btn-primary btn-full"
+          id="register-btn"
+        >
+          Register
+        </button>
+      </form>
+
+      <!-- Success card (hidden by default) -->
+      <div id="success-card" class="card hidden text-center mt-lg">
+        <div class="msg-success">Registration successful!</div>
+        <p class="mt-md">
+          Your username: <strong id="success-username"></strong>
+        </p>
+        <p>Your PIN: <strong id="success-pin"></strong></p>
+        <p class="text-center mt-lg">
+          <button type="button" class="btn btn-primary" id="goto-login">
+            Go to Login
+          </button>
+        </p>
+      </div>
+
+      <p class="text-center mt-md">
+        <a href="?page=login" class="btn btn-ghost btn-sm">Back to Login</a>
+      </p>
+    </main>
+
+    <?!= include('app.js') ?>
+    <script>
+      var form = document.getElementById("register-form");
+      var errorEl = document.getElementById("error-msg");
+      var btn = document.getElementById("register-btn");
+      var nameInput = document.getElementById("name");
+      var usernameInput = document.getElementById("username");
+      var pinInput = document.getElementById("pin");
+      var phoneInput = document.getElementById("phone");
+      var addressInput = document.getElementById("address");
+      var successCard = document.getElementById("success-card");
+      var successUsername = document.getElementById("success-username");
+      var successPin = document.getElementById("success-pin");
+
+      function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.remove("hidden");
+        successCard.classList.add("hidden");
+      }
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var name = nameInput.value.trim();
+        var username = usernameInput.value.trim();
+        var pin = pinInput.value.trim();
+        var phone = phoneInput.value.trim();
+        var address = addressInput.value.trim();
+
+        // Client-side validation
+        if (!name) {
+          showError("Name is required.");
+          return;
+        }
+        if (!username) {
+          showError("Username is required.");
+          return;
+        }
+        if (!pin || !/^\d{4}$/.test(pin)) {
+          showError("PIN must be exactly 4 digits.");
+          return;
+        }
+        if (!phone) {
+          showError("Phone is required.");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Registering...";
+        errorEl.classList.add("hidden");
+
+        api
+          .call("api_registerUser", {
+            name: name,
+            username: username,
+            pin: pin,
+            phone: phone,
+            address: address,
+          })
+          .then(function (response) {
+            if (!response.success) {
+              showError(response.message || "Registration failed.");
+              return;
+            }
+            // Show success
+            var d = response.data;
+            form.classList.add("hidden");
+            successUsername.textContent = username;
+            successPin.textContent = pin;
+            successCard.classList.remove("hidden");
+          })
+          .catch(function (err) {
+            showError(err.message || "Network error. Please try again.");
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = "Register";
+          });
+      });
+
+      document
+        .getElementById("goto-login")
+        .addEventListener("click", function () {
+          navigate("login");
+        });
+    </script>
+  </body>
+</html>

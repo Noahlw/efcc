@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂 — 會員資料</title>
+    <?!= include('styles') ?>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-header">
+        <h1 class="page-title" id="profile-name">My Profile</h1>
+      </header>
+
+      <!-- Info Card -->
+      <div class="card mb-lg">
+        <div class="text-center">
+          <p
+            class="mb-md"
+            style="font-size: var(--text-lg); font-weight: 700"
+            id="display-name"
+          ></p>
+          <p class="mb-md">
+            <span class="badge" id="role-badge"></span>
+          </p>
+          <p
+            class="mb-md"
+            style="font-size: var(--text-sm); color: var(--color-text-muted)"
+          >
+            User ID: <strong id="display-userid"></strong>
+          </p>
+        </div>
+      </div>
+
+      <!-- QR Pass Section -->
+      <div class="card mb-lg">
+        <p style="font-weight: 600; margin-bottom: var(--space-sm)">QR Pass</p>
+        <p
+          style="
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+            margin-bottom: var(--space-md);
+          "
+        >
+          Show this QR code for event check-in.
+        </p>
+        <button type="button" class="btn btn-primary btn-full" id="show-qr-btn">
+          Show QR Pass
+        </button>
+      </div>
+
+      <!-- Update PIN Section -->
+      <div class="card mb-lg">
+        <p style="font-weight: 600; margin-bottom: var(--space-sm)">
+          Update PIN
+        </p>
+        <div id="pin-error-msg" class="msg-error hidden"></div>
+        <div id="pin-success-msg" class="msg-success hidden"></div>
+
+        <div class="form-group">
+          <label class="label" for="new-username">Username</label>
+          <input
+            class="input"
+            type="text"
+            id="new-username"
+            autocomplete="username"
+          />
+        </div>
+        <div class="form-group">
+          <label class="label" for="new-pin">New PIN</label>
+          <input
+            class="input"
+            type="password"
+            id="new-pin"
+            inputmode="numeric"
+            maxlength="4"
+            autocomplete="new-password"
+            placeholder="4-digit PIN"
+          />
+        </div>
+        <div class="form-group">
+          <label class="label" for="confirm-pin">Confirm New PIN</label>
+          <input
+            class="input"
+            type="password"
+            id="confirm-pin"
+            inputmode="numeric"
+            maxlength="4"
+            autocomplete="new-password"
+            placeholder="Re-enter PIN"
+          />
+        </div>
+        <button
+          type="button"
+          class="btn btn-primary btn-full"
+          id="update-pin-btn"
+        >
+          Update
+        </button>
+      </div>
+
+      <!-- Granted-User Nav (hidden for MEMBER) -->
+      <div id="granted-nav" class="card mb-lg hidden">
+        <p style="font-weight: 600; margin-bottom: var(--space-sm)">
+          Staff Tools
+        </p>
+        <div class="flex-col">
+          <a href="?page=events" class="btn btn-ghost btn-full"
+            >Manage Events</a
+          >
+          <a href="?page=scanner" class="btn btn-ghost btn-full"
+            >Attendance Scanner</a
+          >
+          <a href="?page=dashboard" class="btn btn-ghost btn-full"
+            >Care Dashboard</a
+          >
+        </div>
+      </div>
+
+      <!-- Logout -->
+      <button type="button" class="btn btn-danger btn-full" id="logout-btn">
+        Logout
+      </button>
+    </main>
+
+    <!-- QR Full-Screen Overlay -->
+    <div id="qr-modal" class="modal-backdrop hidden" style="display: none">
+      <div id="qr-container" class="modal-box">
+        <p style="font-weight: 600; margin-bottom: var(--space-md)">
+          Your QR Pass
+        </p>
+        <img
+          id="qr-image"
+          src=""
+          alt="QR Code"
+          style="max-width: 280px; width: 100%"
+        />
+        <p class="mt-md">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            id="qr-toggle-fullscreen"
+          >
+            Expand to Full Screen
+          </button>
+        </p>
+        <p class="mt-sm">
+          <button type="button" class="btn btn-danger btn-sm" id="qr-close">
+            Close
+          </button>
+        </p>
+      </div>
+    </div>
+
+    <?!= include('app.js') ?>
+    <script>
+      // --- State ---
+      var currentUser = null;
+      var isFullscreen = false;
+
+      // --- DOM refs ---
+      var displayName = document.getElementById("display-name");
+      var displayUserId = document.getElementById("display-userid");
+      var roleBadge = document.getElementById("role-badge");
+      var showQrBtn = document.getElementById("show-qr-btn");
+      var grantedNav = document.getElementById("granted-nav");
+
+      var newUsernameInput = document.getElementById("new-username");
+      var newPinInput = document.getElementById("new-pin");
+      var confirmPinInput = document.getElementById("confirm-pin");
+      var updatePinBtn = document.getElementById("update-pin-btn");
+      var pinErrorEl = document.getElementById("pin-error-msg");
+      var pinSuccessEl = document.getElementById("pin-success-msg");
+
+      var qrModal = document.getElementById("qr-modal");
+      var qrContainer = document.getElementById("qr-container");
+      var qrImage = document.getElementById("qr-image");
+      var qrToggleBtn = document.getElementById("qr-toggle-fullscreen");
+      var qrCloseBtn = document.getElementById("qr-close");
+      var logoutBtn = document.getElementById("logout-btn");
+
+      // --- Init ---
+      restoreSession()
+        .then(function (user) {
+          currentUser = user;
+          renderProfile();
+        })
+        .catch(function (err) {
+          // Should not reach here — restoreSession handles its own errors.
+          // Fallback: show error message and redirect.
+          document.body.innerHTML =
+            '<main class="page"><div class="page-header"><h1 class="page-title">Session Error</h1></div>' +
+            '<div class="msg-error">' +
+            (err.message || "Unable to verify session.") +
+            "</div>" +
+            '<p class="text-center mt-md">Redirecting to login...</p></main>';
+          setTimeout(function () {
+            navigate("login");
+          }, 2500);
+        });
+
+      function renderProfile() {
+        if (!currentUser) return;
+        displayName.textContent = currentUser.name || "Member";
+        displayUserId.textContent = currentUser.userId || "—";
+        roleBadge.textContent = (currentUser.role || "MEMBER").toUpperCase();
+        roleBadge.className = getRoleBadgeClass(currentUser.role);
+
+        // Pre-fill username
+        newUsernameInput.value = currentUser.name || "";
+
+        // Granted-user nav
+        if (isGrantedUser()) {
+          grantedNav.classList.remove("hidden");
+        }
+      }
+
+      // --- QR Pass ---
+      showQrBtn.addEventListener("click", function () {
+        if (!currentUser || !currentUser.qrCodeString) return;
+
+        // Generate QR code image
+        var qrString = currentUser.qrCodeString || currentUser.userId;
+        QRCode.toDataURL(
+          qrString,
+          { width: 400, margin: 2 },
+          function (err, url) {
+            if (err) return;
+            qrImage.src = url;
+            qrContainer.className = "modal-box";
+            isFullscreen = false;
+            qrToggleBtn.textContent = "Expand to Full Screen";
+            qrModal.classList.remove("hidden");
+            qrModal.style.display = "flex";
+          }
+        );
+      });
+
+      qrToggleBtn.addEventListener("click", function () {
+        isFullscreen = !isFullscreen;
+        if (isFullscreen) {
+          qrContainer.className = "modal-box--fullscreen";
+          qrImage.style.maxWidth = "80vmin";
+          qrImage.style.width = "80vmin";
+          qrToggleBtn.textContent = "Exit Full Screen";
+        } else {
+          qrContainer.className = "modal-box";
+          qrImage.style.maxWidth = "280px";
+          qrImage.style.width = "100%";
+          qrToggleBtn.textContent = "Expand to Full Screen";
+        }
+      });
+
+      qrCloseBtn.addEventListener("click", function () {
+        qrModal.classList.add("hidden");
+        qrModal.style.display = "none";
+        qrImage.src = "";
+      });
+
+      // Close modal on backdrop click
+      qrModal.addEventListener("click", function (e) {
+        if (e.target === qrModal) {
+          qrModal.classList.add("hidden");
+          qrModal.style.display = "none";
+          qrImage.src = "";
+        }
+      });
+
+      // --- Update PIN ---
+      updatePinBtn.addEventListener("click", function () {
+        pinErrorEl.classList.add("hidden");
+        pinSuccessEl.classList.add("hidden");
+
+        var newPin = newPinInput.value.trim();
+        var confirmPin = confirmPinInput.value.trim();
+        var newUsername = newUsernameInput.value.trim();
+
+        if (!newPin || !/^\d{4}$/.test(newPin)) {
+          pinErrorEl.textContent = "New PIN must be exactly 4 digits.";
+          pinErrorEl.classList.remove("hidden");
+          return;
+        }
+        if (newPin !== confirmPin) {
+          pinErrorEl.textContent = "PINs do not match.";
+          pinErrorEl.classList.remove("hidden");
+          return;
+        }
+        if (!newUsername) {
+          pinErrorEl.textContent = "Username is required.";
+          pinErrorEl.classList.remove("hidden");
+          return;
+        }
+
+        updatePinBtn.disabled = true;
+        updatePinBtn.textContent = "Updating...";
+
+        api
+          .call("updateCredentials", currentUser.userId, newUsername, newPin)
+          .then(function (response) {
+            if (!response.success) {
+              pinErrorEl.textContent = response.message || "Update failed.";
+              pinErrorEl.classList.remove("hidden");
+              return;
+            }
+            pinSuccessEl.textContent = "PIN updated successfully.";
+            pinSuccessEl.classList.remove("hidden");
+            newPinInput.value = "";
+            confirmPinInput.value = "";
+          })
+          .catch(function (err) {
+            pinErrorEl.textContent =
+              err.message || "Network error. Please try again.";
+            pinErrorEl.classList.remove("hidden");
+          })
+          .finally(function () {
+            updatePinBtn.disabled = false;
+            updatePinBtn.textContent = "Update";
+          });
+      });
+
+      // --- Logout ---
+      logoutBtn.addEventListener("click", function () {
+        logout();
+      });
+    </script>
+  </body>
+</html>

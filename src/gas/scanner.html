@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂 — Attendance Scanner</title>
+    <?!= include('styles') ?>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  </head>
+  <body>
+    <!-- Success chime -->
+    <audio id="chime" preload="auto">
+      <source
+        src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+Ag=="
+      />
+    </audio>
+
+    <main class="page">
+      <header class="page-header">
+        <h1 class="page-title">Attendance Scanner</h1>
+        <p class="page-subtitle">
+          Scan QR codes or search members for check-in
+        </p>
+      </header>
+
+      <!-- Access denied for non-granted users -->
+      <div id="access-denied" class="msg-error hidden">
+        Access denied. Only staff and event leaders can manage attendance.
+      </div>
+
+      <!-- Scanner section (granted users only) -->
+      <div id="scanner-section" class="hidden">
+        <div class="flex-between mb-md">
+          <a href="?page=profile" class="btn btn-ghost btn-sm"
+            >&larr; Back to Profile</a
+          >
+        </div>
+
+        <!-- Event selector -->
+        <div class="form-group">
+          <label class="label" for="event-select">Event</label>
+          <select id="event-select" class="input"></select>
+        </div>
+
+        <!-- QR Scanner -->
+        <div class="form-group">
+          <label class="label">QR Scanner</label>
+          <div id="reader"></div>
+          <div id="camera-error" class="msg-error hidden">
+            Camera unavailable &mdash; use manual search below.
+          </div>
+        </div>
+
+        <!-- Scan result flash overlay -->
+        <div id="scan-overlay" class="scan-overlay hidden">
+          <div id="scan-flash" class="scan-flash">
+            <div id="scan-flash-msg"></div>
+            <div id="scan-flash-action" class="mt-sm"></div>
+          </div>
+        </div>
+
+        <!-- Manual search -->
+        <div class="form-group mt-lg">
+          <label class="label" for="search-input">Manual Search</label>
+          <input
+            id="search-input"
+            class="input"
+            type="text"
+            placeholder="Search by name or phone..."
+          />
+          <div id="search-results" class="card-list mt-sm hidden"></div>
+        </div>
+
+        <!-- Attendance table -->
+        <div class="mt-lg">
+          <div class="flex-between mb-sm">
+            <h2 style="font-size: var(--text-lg); font-weight: 600">
+              Attendance
+            </h2>
+            <button id="refresh-btn" class="btn btn-ghost btn-sm">
+              Refresh
+            </button>
+          </div>
+          <div id="attendance-list">
+            <div
+              class="card text-center"
+              style="color: var(--color-text-muted)"
+            >
+              <div class="spinner"></div>
+              <p class="mt-sm">Loading attendance...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <?!= include('app.js') ?>
+    <script>
+      (function () {
+        "use strict";
+
+        var accessDeniedEl = document.getElementById("access-denied");
+        var scannerSectionEl = document.getElementById("scanner-section");
+        var eventSelectEl = document.getElementById("event-select");
+        var readerEl = document.getElementById("reader");
+        var cameraErrorEl = document.getElementById("camera-error");
+        var scanOverlayEl = document.getElementById("scan-overlay");
+        var scanFlashEl = document.getElementById("scan-flash");
+        var scanFlashMsgEl = document.getElementById("scan-flash-msg");
+        var scanFlashActionEl = document.getElementById("scan-flash-action");
+        var searchInputEl = document.getElementById("search-input");
+        var searchResultsEl = document.getElementById("search-results");
+        var attendanceListEl = document.getElementById("attendance-list");
+        var refreshBtn = document.getElementById("refresh-btn");
+        var chimeEl = document.getElementById("chime");
+
+        var scanner = null;
+        var selectedEventId = "";
+        var selectedProgramId = "";
+        var autoDismissTimer = null;
+        var lastScannedText = ""; // Prevent double-fire
+
+        // --- Init ---
+
+        restoreSession()
+          .then(function (user) {
+            if (!isGrantedUser()) {
+              accessDeniedEl.classList.remove("hidden");
+              return;
+            }
+            scannerSectionEl.classList.remove("hidden");
+            loadEvents().then(function () {
+              loadAttendance();
+            });
+          })
+          .catch(function () {
+            // restoreSession redirects to login
+          });
+
+        // --- Event Loading ---
+
+        function loadEvents() {
+          var user = sessionManager.getUser();
+          return api
+            .call(
+              "api_getGrantedUserEvents",
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (
+                !response.success ||
+                !response.data ||
+                response.data.length === 0
+              ) {
+                eventSelectEl.innerHTML =
+                  '<option value="">-- No events available --</option>';
+                return;
+              }
+
+              var events = response.data;
+              eventSelectEl.innerHTML = "";
+              for (var i = 0; i < events.length; i++) {
+                var ev = events[i];
+                var opt = document.createElement("option");
+                opt.value = ev.eventId;
+                opt.textContent = ev.eventName + " (" + ev.eventDate + ")";
+                if (ev.programId)
+                  opt.setAttribute("data-program-id", ev.programId);
+                eventSelectEl.appendChild(opt);
+              }
+
+              // Set selected event
+              var firstOpt = eventSelectEl.options[0];
+              selectedEventId = firstOpt.value;
+              if (firstOpt.getAttribute("data-program-id")) {
+                selectedProgramId = firstOpt.getAttribute("data-program-id");
+              }
+
+              startScanner();
+            })
+            .catch(function () {
+              eventSelectEl.innerHTML =
+                '<option value="">-- Failed to load events --</option>';
+            });
+        }
+
+        eventSelectEl.addEventListener("change", function () {
+          selectedEventId = eventSelectEl.value;
+          var selOpt = eventSelectEl.options[eventSelectEl.selectedIndex];
+          selectedProgramId = selOpt
+            ? selOpt.getAttribute("data-program-id") || ""
+            : "";
+          loadAttendance();
+        });
+
+        // --- QR Scanner ---
+
+        function startScanner() {
+          if (typeof Html5Qrcode === "undefined") {
+            cameraErrorEl.classList.remove("hidden");
+            readerEl.classList.add("hidden");
+            return;
+          }
+
+          scanner = new Html5Qrcode("reader");
+
+          Html5Qrcode.getCameras()
+            .then(function (cameras) {
+              if (!cameras || cameras.length === 0) {
+                cameraErrorEl.classList.remove("hidden");
+                readerEl.classList.add("hidden");
+                return;
+              }
+
+              // Prefer back camera
+              var cameraId = cameras[0].id;
+              for (var c = 0; c < cameras.length; c++) {
+                if (
+                  cameras[c].label &&
+                  cameras[c].label.toLowerCase().indexOf("back") !== -1
+                ) {
+                  cameraId = cameras[c].id;
+                  break;
+                }
+              }
+
+              scanner
+                .start(
+                  cameraId,
+                  { fps: 10, qrbox: { width: 200, height: 200 } },
+                  onScanSuccess,
+                  function () {
+                    /* ignore scan errors */
+                  }
+                )
+                .catch(function () {
+                  cameraErrorEl.classList.remove("hidden");
+                  readerEl.classList.add("hidden");
+                });
+            })
+            .catch(function () {
+              cameraErrorEl.classList.remove("hidden");
+              readerEl.classList.add("hidden");
+            });
+        }
+
+        function onScanSuccess(decodedText) {
+          // Prevent duplicate fires for the same scan
+          if (decodedText === lastScannedText) return;
+          lastScannedText = decodedText;
+
+          // Reset after 2 seconds to allow re-scan of same QR
+          setTimeout(function () {
+            lastScannedText = "";
+          }, 2000);
+
+          performCheckIn(decodedText, "QR");
+        }
+
+        // --- Check-in ---
+
+        function performCheckIn(memberId, method) {
+          var user = sessionManager.getUser();
+          return api
+            .call("api_checkInMember", {
+              staffId: user.userId,
+              sessionToken: sessionManager.getToken(),
+              eventId: selectedEventId,
+              userId: memberId,
+              method: method,
+            })
+            .then(function (response) {
+              if (response.success) {
+                showScanResult(
+                  "success",
+                  "\u2705 " +
+                    escapeHtml(response.data.memberName) +
+                    " checked in at " +
+                    escapeHtml(response.data.checkInTime)
+                );
+                try {
+                  chimeEl.play();
+                } catch (_) {}
+              } else if (response.duplicate) {
+                showScanResult(
+                  "duplicate",
+                  "\u26A0 " + escapeHtml(response.message)
+                );
+              } else if (response.notEnrolled) {
+                showScanResult(
+                  "notEnrolled",
+                  "\u274C " + escapeHtml(response.message)
+                );
+                // Show Quick Enroll button
+                scanFlashActionEl.innerHTML =
+                  '<button id="quick-enroll-btn" class="btn btn-primary btn-sm">Quick Enroll</button>';
+                var qeBtn = document.getElementById("quick-enroll-btn");
+                if (qeBtn) {
+                  qeBtn.addEventListener("click", function () {
+                    qeBtn.disabled = true;
+                    qeBtn.textContent = "Enrolling...";
+                    quickEnrollThenRetry(
+                      response.data.memberId,
+                      response.data.programId,
+                      memberId
+                    );
+                  });
+                }
+              } else {
+                showScanResult("error", "\u274C Member not found");
+                scanFlashActionEl.innerHTML = "";
+              }
+            })
+            .catch(function (err) {
+              showScanResult("error", "\u274C Network error");
+              scanFlashActionEl.innerHTML = "";
+            });
+        }
+
+        function quickEnrollThenRetry(memberId, programId, retryMemberId) {
+          var user = sessionManager.getUser();
+          api
+            .call(
+              "api_staffEnrollMember",
+              user.userId,
+              memberId,
+              programId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (response && response.success) {
+                // Auto-retry check-in
+                performCheckIn(retryMemberId, "QR");
+              } else {
+                showScanResult(
+                  "error",
+                  "\u274C Enrollment failed: " +
+                    (response && response.message
+                      ? response.message
+                      : "Unknown error")
+                );
+                scanFlashActionEl.innerHTML = "";
+              }
+            })
+            .catch(function (err) {
+              showScanResult(
+                "error",
+                "\u274C Enrollment failed: " + (err.message || "Network error")
+              );
+              scanFlashActionEl.innerHTML = "";
+            });
+        }
+
+        // --- Scan Result Flash ---
+
+        function showScanResult(type, message) {
+          if (autoDismissTimer) clearTimeout(autoDismissTimer);
+
+          var cssType = type === "notEnrolled" ? "error" : type;
+          scanFlashEl.className = "scan-flash scan-flash--" + cssType;
+          scanFlashMsgEl.textContent = message;
+
+          if (type !== "notEnrolled") {
+            scanFlashActionEl.innerHTML = "";
+          }
+
+          scanOverlayEl.classList.remove("hidden");
+
+          autoDismissTimer = setTimeout(
+            function () {
+              scanOverlayEl.classList.add("hidden");
+              scanFlashActionEl.innerHTML = "";
+            },
+            type === "notEnrolled" ? 10000 : 3000
+          );
+
+          loadAttendance();
+        }
+
+        // --- Manual Search ---
+
+        searchInputEl.addEventListener("input", function () {
+          var query = searchInputEl.value.trim();
+          if (!query) {
+            searchResultsEl.innerHTML = "";
+            searchResultsEl.classList.add("hidden");
+            return;
+          }
+
+          var user = sessionManager.getUser();
+          api
+            .call(
+              "api_searchMembers",
+              query,
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (
+                !response.success ||
+                !response.data ||
+                response.data.length === 0
+              ) {
+                searchResultsEl.innerHTML =
+                  '<div class="card text-center" style="color: var(--color-text-muted);"><p>No members found.</p></div>';
+                searchResultsEl.classList.remove("hidden");
+                return;
+              }
+
+              searchResultsEl.innerHTML = "";
+              for (var i = 0; i < response.data.length; i++) {
+                var m = response.data[i];
+                var item = document.createElement("div");
+                item.className = "card flex-between";
+                item.innerHTML =
+                  "<div>" +
+                  "<strong>" +
+                  escapeHtml(m.name) +
+                  "</strong>" +
+                  (m.phone
+                    ? '<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">' +
+                      escapeHtml(m.phone) +
+                      "</span>"
+                    : "") +
+                  "</div>" +
+                  '<button class="btn btn-primary btn-sm check-in-btn" data-member-id="' +
+                  escapeAttr(m.userId) +
+                  '">Check In</button>';
+                searchResultsEl.appendChild(item);
+              }
+
+              // Attach click handlers
+              var btns = searchResultsEl.querySelectorAll(".check-in-btn");
+              for (var b = 0; b < btns.length; b++) {
+                btns[b].addEventListener("click", function (e) {
+                  var id = e.currentTarget.getAttribute("data-member-id");
+                  e.currentTarget.disabled = true;
+                  e.currentTarget.textContent = "...";
+                  performCheckIn(id, "Manual").then(function () {
+                    e.currentTarget.disabled = false;
+                    e.currentTarget.textContent = "Check In";
+                  });
+                });
+              }
+
+              searchResultsEl.classList.remove("hidden");
+            })
+            .catch(function () {
+              searchResultsEl.innerHTML =
+                '<div class="card text-center" style="color: var(--color-text-muted);"><p>Search error.</p></div>';
+              searchResultsEl.classList.remove("hidden");
+            });
+        });
+
+        // --- Attendance Table ---
+
+        function loadAttendance() {
+          if (!selectedEventId) return;
+
+          attendanceListEl.innerHTML =
+            '<div class="card text-center" style="color: var(--color-text-muted);"><div class="spinner"></div><p class="mt-sm">Loading attendance...</p></div>';
+
+          var user = sessionManager.getUser();
+          api
+            .call(
+              "api_getEventAttendance",
+              selectedEventId,
+              user.userId,
+              sessionManager.getToken()
+            )
+            .then(function (response) {
+              if (!response.success) {
+                attendanceListEl.innerHTML =
+                  '<div class="card text-center" style="color: var(--color-text-muted);"><p>Failed to load attendance.</p></div>';
+                return;
+              }
+              renderAttendance(response.data || []);
+            })
+            .catch(function () {
+              attendanceListEl.innerHTML =
+                '<div class="card text-center" style="color: var(--color-text-muted);"><p>Network error loading attendance.</p></div>';
+            });
+        }
+
+        function renderAttendance(records) {
+          if (!records || records.length === 0) {
+            attendanceListEl.innerHTML =
+              '<div class="card text-center" style="color: var(--color-text-muted);"><p>No check-ins yet.</p></div>';
+            return;
+          }
+
+          var html = '<table class="att-table"><thead><tr>';
+          html += "<th>Name</th><th>Check-in Time</th><th>Method</th>";
+          html += "</tr></thead><tbody>";
+
+          for (var i = 0; i < records.length; i++) {
+            var r = records[i];
+            html += "<tr>";
+            html += "<td>" + escapeHtml(r.userName) + "</td>";
+            html += "<td>" + escapeHtml(r.checkInTime) + "</td>";
+            html +=
+              '<td><span class="badge badge-regular">' +
+              escapeHtml(r.checkInMethod) +
+              "</span></td>";
+            html += "</tr>";
+          }
+
+          html += "</tbody></table>";
+          attendanceListEl.innerHTML = html;
+        }
+
+        refreshBtn.addEventListener("click", loadAttendance);
+
+        // --- Helpers ---
+
+        function escapeHtml(str) {
+          var div = document.createElement("div");
+          div.appendChild(document.createTextNode(str));
+          return div.innerHTML;
+        }
+
+        function escapeAttr(str) {
+          return String(str).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+      })();
+    </script>
+  </body>
+</html>
