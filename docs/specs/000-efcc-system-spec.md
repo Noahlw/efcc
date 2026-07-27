@@ -83,19 +83,20 @@ EFCC-dev/
 ### Session Management (`session.ts`)
 
 - Session payload stored in `localStorage.setItem('efcc_session', JSON.stringify(sessionData))`.
-- Contains `userId`, `name`, `role`, `sessionToken` (server-verified hash), `qrCodeString`, and `expiryTimestamp` (30 days rolling).
+- Contains `userId`, `name`, `role`, `sessionToken` (server-verified SHA-256 HMAC of `userId + pin_hash + salt`), `qrCodeString`, and `expiryTimestamp` (30 days rolling).
 - On app launch, `session.ts` validates session expiry. If valid, restores active user state without prompting for PIN.
-- Calling `api_logoutUser()` clears `localStorage` immediately and invalidates the session.
+- Calling `api_logoutUser()` clears `localStorage` immediately and invalidates the session on the server.
 
 ### Security & Concurrency Guardrails
 
-1. **Server-Authoritative Role & Token Verification**: `localStorage` only caches role for client UI tab rendering. Every Apps Script backend RPC handler verifies `sessionToken` (`verifySessionToken_(userId, sessionToken)`) and re-fetches `user.role` directly from the `Users` spreadsheet, ignoring any client-provided role parameters.
-2. **LockService Atomic Attendance Writing**: All check-in RPCs (`api_checkInMember`) acquire `LockService.getScriptLock()` for up to 5000ms to guarantee atomic duplicate checking and row insertion during concurrent event scans.
-3. **Safe Role Priority Fallback**: `checkPermission_` sanitizes `user.role` with `rolesPriority[role] || 1` to ensure invalid or unknown role strings safely default to standard `MEMBER` priority (1).
-4. **Validation & Attendance UI Branches**: `api_checkInMember` validates (a) `User_ID` exists, (b) `Event_ID` is active, and (c) member is enrolled in the event's program. `AttendanceScannerView` presents 3 explicit UI branches:
+1. **Server-Authoritative Role & HMAC Token Verification**: `localStorage` only caches role for client UI tab rendering. Every Apps Script backend RPC handler verifies `sessionToken` (`verifySessionToken_(userId, sessionToken)`) against the server HMAC and re-fetches `user.role` directly from the `Users` spreadsheet, ignoring any client-provided role parameters.
+2. **LockService Atomic Attendance Writing**: All check-in RPCs (`api_checkInMember`) acquire `LockService.getScriptLock()` for up to 5000ms. If lock acquisition times out under heavy contention, the server returns `{ success: false, message: "System busy. Please rescan in a moment." }` without crashing or writing incomplete rows.
+3. **Quick-Enroll Conflict & Consent Check**: Quick-Enroll from the staff scanner still executes the mandatory schedule-conflict verification (`enrollUser_`) to ensure a member is never enrolled into a program with overlapping event time slots.
+4. **Safe Role Priority Fallback**: `checkPermission_` sanitizes `user.role` with `rolesPriority[role] || 1` to ensure invalid or unknown role strings safely default to standard `MEMBER` priority (1).
+5. **Validation & Attendance UI Branches**: `api_checkInMember` validates (a) `User_ID` exists, (b) `Event_ID` is active, and (c) member is enrolled in the event's program. `AttendanceScannerView` presents 3 explicit UI branches:
    - 🟢 **Success**: Green banner + success chime + member name.
    - 🟡 **Duplicate**: Amber banner (`"⚠️ Already checked in at 15:30:12"`).
-   - 🔴 **Not Enrolled**: Red warning banner with 1-tap `"Quick Enroll & Check In"` button.
+   - 🔴 **Not Enrolled**: Red warning banner + 1-tap `"Quick Enroll & Check In"` button (with schedule conflict validation).
 
 ---
 
