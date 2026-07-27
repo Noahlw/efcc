@@ -16,6 +16,7 @@ import type {
   RegisterPayload,
   RegisterResponse,
 } from "../types";
+import { getSession } from "./session";
 
 const MOCK_DELAY_MS = 300;
 
@@ -100,10 +101,15 @@ export const apiService = {
         delay(MOCK_DELAY_MS).then(() => resolve(mockCatalog));
         return;
       }
+      const session = getSession();
+      if (!session) {
+        reject(new Error("Session expired. Please sign in again."));
+        return;
+      }
       google.script.run
         .withSuccessHandler((result: Program[]) => resolve(result))
         .withFailureHandler(reject)
-        .api_getProgramsCatalog();
+        .api_getProgramsCatalog(session.userId, session.sessionToken);
     });
   },
 
@@ -137,12 +143,17 @@ export const apiService = {
         });
         return;
       }
+      const session = getSession();
+      if (!session || session.userId !== userId) {
+        reject(new Error("Session expired. Please sign in again."));
+        return;
+      }
       google.script.run
         .withSuccessHandler((result: ProgramWithEnrollment[]) =>
           resolve(result)
         )
         .withFailureHandler(reject)
-        .api_getAvailablePrograms(userId);
+        .api_getAvailablePrograms(userId, session.sessionToken);
     });
   },
 
@@ -159,12 +170,17 @@ export const apiService = {
         });
         return;
       }
+      const session = getSession();
+      if (!session || session.userId !== userId) {
+        reject(new Error("Session expired. Please sign in again."));
+        return;
+      }
       google.script.run
         .withSuccessHandler((result: { success: boolean; message?: string }) =>
           resolve(result)
         )
         .withFailureHandler(reject)
-        .api_enrollUser(userId, programId);
+        .api_enrollUser(userId, programId, session.sessionToken);
     });
   },
 
@@ -181,12 +197,17 @@ export const apiService = {
         });
         return;
       }
+      const session = getSession();
+      if (!session || session.userId !== userId) {
+        reject(new Error("Session expired. Please sign in again."));
+        return;
+      }
       google.script.run
         .withSuccessHandler((result: { success: boolean; message?: string }) =>
           resolve(result)
         )
         .withFailureHandler(reject)
-        .api_cancelEnrollment(userId, programId);
+        .api_cancelEnrollment(userId, programId, session.sessionToken);
     });
   },
 

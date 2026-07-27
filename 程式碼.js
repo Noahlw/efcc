@@ -102,7 +102,7 @@ function isActiveStatus_(raw) {
   return !s || s === 'active';
 }
 
-var PROGRAMS_CACHE_KEY_ = 'programs_catalog_v1';
+var PROGRAMS_CACHE_KEY_ = 'programs_catalog_v2';
 var PROGRAMS_CACHE_TTL_SEC_ = 300;
 
 function getUserEnrolledProgramIds_(userId) {
@@ -120,7 +120,7 @@ function getUserEnrolledProgramLookup_(userId) {
   if (!targetUserId) return result;
 
   var enrSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Enrollments');
-  if (!enrSheet) return result;
+  if (!enrSheet) throw new Error('Enrollments sheet missing.');
 
   var lastRow = enrSheet.getLastRow();
   if (lastRow < 2) return result;
@@ -129,7 +129,9 @@ function getUserEnrolledProgramLookup_(userId) {
   var enrProgIdx = findHeaderIndex_(headers, ['program_id', 'program id', 'programid']);
   var enrUserIdx = findHeaderIndex_(headers, ['user_id', 'user id', 'userid', 'member_id', 'member id']);
   var enrStatusIdx = findHeaderIndex_(headers, ['status', 'enrollment_status', 'enrollment status']);
-  if (enrProgIdx === -1 || enrUserIdx === -1) return result;
+  if (enrProgIdx === -1 || enrUserIdx === -1) {
+    throw new Error('Enrollments missing User_ID or Program_ID column.');
+  }
 
   var minCol = Math.min(enrUserIdx, enrProgIdx, enrStatusIdx === -1 ? enrUserIdx : enrStatusIdx) + 1;
   var maxCol = Math.max(enrUserIdx, enrProgIdx, enrStatusIdx === -1 ? enrProgIdx : enrStatusIdx) + 1;
@@ -153,25 +155,28 @@ function getProgramsCatalog_() {
   if (cached) return JSON.parse(cached);
 
   var progSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Programs');
-  if (!progSheet) return [];
+  if (!progSheet) throw new Error('Programs sheet missing.');
 
   var data = progSheet.getDataRange().getValues();
-  if (!data || data.length < 2) return [];
+  if (!data || data.length < 1) throw new Error('Programs sheet empty.');
 
   var headers = data[0];
   var idIdx = findHeaderIndex_(headers, ['program_id', 'program id', 'programid']);
   var nameIdx = findHeaderIndex_(headers, ['program_name', 'program name', 'name']);
   var typeIdx = findHeaderIndex_(headers, ['type']);
   var descIdx = findHeaderIndex_(headers, ['description', 'program_description', 'program description']);
+  if (idIdx === -1 || nameIdx === -1) {
+    throw new Error('Programs missing Program_ID or Program_Name column.');
+  }
 
   var programs = [];
   for (var i = 1; i < data.length; i++) {
     var pId = idIdx !== -1 ? normalizeId_(data[i][idIdx]) : '';
     if (!pId) continue;
     programs.push({
-      id: pId,
-      name: nameIdx !== -1 ? data[i][nameIdx] : 'Unnamed',
-      type: typeIdx !== -1 ? data[i][typeIdx] : '',
+      programId: pId,
+      title: nameIdx !== -1 ? String(data[i][nameIdx] || '').trim() : 'Unnamed',
+      type: typeIdx !== -1 ? String(data[i][typeIdx] || '').trim() : '',
       description: descIdx !== -1 ? String(data[i][descIdx] || '').trim() : ''
     });
   }
@@ -183,11 +188,7 @@ function getProgramsCatalog_() {
 }
 
 function getProgramsCatalog() {
-  try {
-    return getProgramsCatalog_();
-  } catch (error) {
-    return [];
-  }
+  return getProgramsCatalog_();
 }
 
 function getUserEnrolledProgramIds(userId) {
@@ -199,21 +200,17 @@ function getUserEnrolledProgramIds(userId) {
 }
 
 function getAvailablePrograms(userId) {
-  try {
-    var programs = getProgramsCatalog_();
-    var enrolledLookup = getUserEnrolledProgramLookup_(userId);
-    return programs.map(function(prog) {
-      return {
-        id: prog.id,
-        name: prog.name,
-        type: prog.type,
-        description: prog.description,
-        isEnrolled: enrolledLookup.hasOwnProperty(prog.id)
-      };
-    });
-  } catch (error) {
-    return [];
-  }
+  var programs = getProgramsCatalog_();
+  var enrolledLookup = getUserEnrolledProgramLookup_(userId);
+  return programs.map(function(prog) {
+    return {
+      programId: prog.programId,
+      title: prog.title,
+      type: prog.type,
+      description: prog.description,
+      isEnrolled: enrolledLookup.hasOwnProperty(prog.programId)
+    };
+  });
 }
 
 function enrollUser(userId, programId) {
@@ -238,18 +235,22 @@ function enrollUser(userId, programId) {
 
   // 2. Map all Events to check for exact clashes
   var evData = eventsSheet.getDataRange().getValues();
+  if (!evData || evData.length < 1) {
+    return { success: false, message: 'System error: Events sheet empty.' };
+  }
   var evHeaders = evData[0];
-  
   var evProgIdx = findHeaderIndex_(evHeaders, ['program_id', 'program id', 'programid']);
   var evDateIdx = findHeaderIndex_(evHeaders, ['event_date', 'event date', 'eventdate']);
   var evTimeIdx = findHeaderIndex_(evHeaders, ['time_slot', 'time slot', 'timeslot']);
   var evNameIdx = findHeaderIndex_(evHeaders, ['event_name', 'event name', 'eventname']);
+  if (evProgIdx === -1 || evDateIdx === -1 || evTimeIdx === -1 || evNameIdx === -1) {
+    return { success: false, message: 'System error: Events missing required schedule columns.' };
+  }
 
   var bookedSlots = [];
   var targetEvents = [];
 
   for (var e = 1; e < evData.length; e++) {
-    if (evProgIdx === -1) break;
     var eProgId = normalizeId_(evData[e][evProgIdx]);
     if (!eProgId) continue;
 
@@ -264,16 +265,16 @@ function enrollUser(userId, programId) {
       bookedSlots.push(slotKey); 
     }
     if (eProgId === targetProgramId) {
-      targetEvents.push({ name: eName, key: slotKey }); 
+      targetEvents.push({ name: eName, key: slotKey, time: eTime });
     }
   }
 
   // 3. Compare Target Events against Booked Slots
   for (var t = 0; t < targetEvents.length; t++) {
     if (bookedSlots.indexOf(targetEvents[t].key) !== -1) {
-      return { 
-        success: false, 
-        message: "Time conflict detected: The event '" + targetEvents[t].name + "' crashes with your schedule." 
+      return {
+        success: false,
+        message: targetEvents[t].name + " at " + targetEvents[t].time
       };
     }
   }
@@ -768,4 +769,33 @@ function api_registerUser(payload) {
     success: true,
     data: { userId: newHexId, name: name, role: 'MEMBER' }
   };
+}
+
+// Task 3 authenticated program catalog and enrollment RPCs.
+function api_getProgramsCatalog(userId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    throw new Error('Session invalid or expired.');
+  }
+  return getProgramsCatalog();
+}
+
+function api_getAvailablePrograms(userId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    throw new Error('Session invalid or expired.');
+  }
+  return getAvailablePrograms(userId);
+}
+
+function api_enrollUser(userId, programId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    return { success: false, message: 'Session invalid or expired.' };
+  }
+  return enrollUser(userId, programId);
+}
+
+function api_cancelEnrollment(userId, programId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    return { success: false, message: 'Session invalid or expired.' };
+  }
+  return cancelEnrollment(userId, programId);
 }

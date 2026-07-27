@@ -16,6 +16,7 @@ export interface Program {
   programId: string;
   title: string;
   description?: string;
+  type?: string;
   dayOfWeek?: string;
   startTime?: string;
   endTime?: string;

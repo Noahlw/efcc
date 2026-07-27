@@ -15,8 +15,8 @@ import { MemberPassModal } from "../components/MemberPassModal";
 
 type Props = {
   onLogout: () => void;
+  onOpenPrograms: () => void;
 };
-
 type ViewState =
   | { status: "loading" }
   | { status: "unauthenticated" }
@@ -47,6 +47,20 @@ const styles = {
     alignItems: "flex-start",
     gap: "1rem",
     marginBottom: "1.5rem",
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+  },
+  tab: {
+    padding: "0.45rem 0.7rem",
+    borderRadius: "0.5rem",
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+    color: "#1e293b",
+    fontWeight: 700,
+    cursor: "pointer",
   },
   name: { margin: 0, fontSize: "1.5rem", fontWeight: 700 },
   id: { margin: "0.25rem 0 0", color: "#475569", fontSize: "0.85rem" },
@@ -150,7 +164,7 @@ async function verifyWithServer(
   }
 }
 
-export function MyProfileView({ onLogout }: Props) {
+export function MyProfileView({ onLogout, onOpenPrograms }: Props) {
   const [view, setView] = useState<ViewState>({ status: "loading" });
   const [showPass, setShowPass] = useState(false);
   const logoutInFlight = useRef(false);
@@ -220,13 +234,23 @@ export function MyProfileView({ onLogout }: Props) {
           <h1 style={styles.name}>{session.name}</h1>
           <p style={styles.id}>Member ID: {session.userId}</p>
         </div>
-        <span
-          data-testid="role-badge"
-          data-role={role}
-          style={styles.badge(role)}
-        >
-          {roleLabel}
-        </span>
+        <div style={styles.headerActions}>
+          <button
+            type="button"
+            onClick={onOpenPrograms}
+            style={styles.tab}
+            data-testid="programs-tab"
+          >
+            Programs
+          </button>
+          <span
+            data-testid="role-badge"
+            data-role={role}
+            style={styles.badge(role)}
+          >
+            {roleLabel}
+          </span>
+        </div>
       </header>
       <div style={styles.infoCard}>
         <div style={styles.infoLabel}>Session expires</div>

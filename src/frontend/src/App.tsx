@@ -2,11 +2,14 @@
 // Per ADR-0005: PIN login flow is the canonical path; Gmail SSO is deferred.
 import { useEffect, useState } from "react";
 import { getSession } from "./services/session";
+import type { SessionPayload } from "./types";
 import { LoginView } from "./views/LoginView";
 import { MemberRegistrationView } from "./views/MemberRegistrationView";
 import { MyProfileView } from "./views/MyProfileView";
+import { ProgramCatalogView } from "./views/ProgramCatalogView";
+import { ProgramEnrollmentView } from "./views/ProgramEnrollmentView";
 
-type Route = "login" | "register" | "profile";
+type Route = "login" | "register" | "profile" | "programs" | "enrollment";
 
 const pageStyle = {
   minHeight: "100vh",
@@ -18,12 +21,15 @@ export default function App() {
   const [route, setRoute] = useState<Route>(() =>
     getSession() ? "profile" : "login"
   );
+  const [selectedProgramId, setSelectedProgramId] = useState<string | undefined>();
+  const [activeSession, setActiveSession] = useState<SessionPayload | null>(() => getSession());
 
   // React to logouts/login changes from other tabs or programmatic clears.
   useEffect(() => {
     const handleStorage = () => {
-      const session = getSession();
-      setRoute(session ? "profile" : "login");
+      const nextSession = getSession();
+      setActiveSession(nextSession);
+      setRoute(nextSession ? "profile" : "login");
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
@@ -34,7 +40,10 @@ export default function App() {
       {route === "login" && (
         <LoginView
           onNavigateRegister={() => setRoute("register")}
-          onLoggedIn={() => setRoute("profile")}
+          onLoggedIn={() => {
+            setActiveSession(getSession());
+            setRoute("profile");
+          }}
         />
       )}
       {route === "register" && (
@@ -44,7 +53,29 @@ export default function App() {
         />
       )}
       {route === "profile" && (
-        <MyProfileView onLogout={() => setRoute("login")} />
+        <MyProfileView
+          onLogout={() => {
+            setActiveSession(null);
+            setRoute("login");
+          }}
+          onOpenPrograms={() => setRoute("programs")}
+        />
+      )}
+      {route === "programs" && activeSession && (
+        <ProgramCatalogView
+          onBack={() => setRoute("profile")}
+          onViewEnrollment={(programId) => {
+            setSelectedProgramId(programId);
+            setRoute("enrollment");
+          }}
+        />
+      )}
+      {route === "enrollment" && activeSession && (
+        <ProgramEnrollmentView
+          currentUserId={activeSession.userId}
+          initialProgramId={selectedProgramId}
+          onBack={() => setRoute("programs")}
+        />
       )}
     </main>
   );
