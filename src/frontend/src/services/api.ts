@@ -232,7 +232,15 @@ export const apiService = {
       const session = getSession();
       const prodPayload = { ...payload, __sessionToken: session?.sessionToken ?? "" };
       google.script.run
-        .withSuccessHandler((result: Event) => resolve(result))
+        .withSuccessHandler(
+          (result: { success: boolean; data?: Event; message?: string }) => {
+            if (!result.success || !result.data) {
+              reject(new Error(result.message || "Failed to create event."));
+              return;
+            }
+            resolve(result.data);
+          }
+        )
         .withFailureHandler(reject)
         .api_createEvent(prodPayload);
     });
@@ -296,8 +304,9 @@ export const apiService = {
 
   checkInMember(payload: CheckInPayload): Promise<{
     success: boolean;
-    data?: { checkInTime: string };
+    notEnrolled?: boolean;
     duplicate?: boolean;
+    data?: { checkInTime?: string; memberId?: string; memberName?: string };
     message?: string;
   }> {
     return new Promise((resolve, reject) => {
@@ -305,7 +314,10 @@ export const apiService = {
         delay(MOCK_DELAY_MS).then(() =>
           resolve({
             success: true,
-            data: { checkInTime: new Date().toISOString() },
+            data: {
+              checkInTime: new Date().toISOString(),
+              memberName: payload.userId,
+            },
           })
         );
         return;
@@ -314,8 +326,9 @@ export const apiService = {
         .withSuccessHandler(
           (result: {
             success: boolean;
-            data?: { checkInTime: string };
+            notEnrolled?: boolean;
             duplicate?: boolean;
+            data?: { checkInTime?: string; memberId?: string; memberName?: string };
             message?: string;
           }) => resolve(result)
         )
@@ -326,6 +339,7 @@ export const apiService = {
 
   getEventAttendance(
     eventId: string,
+    viewerId: string,
     sessionToken: string
   ): Promise<AttendanceEntry[]> {
     const { promise, resolve, reject } = Promise.withResolvers<AttendanceEntry[]>();
@@ -345,9 +359,17 @@ export const apiService = {
       return promise;
     }
     google.script.run
-      .withSuccessHandler((result: AttendanceEntry[]) => resolve(result))
+      .withSuccessHandler(
+        (result: { success: boolean; data?: AttendanceEntry[]; message?: string }) => {
+          if (!result.success || !result.data) {
+            reject(new Error(result.message || "Failed to load attendance."));
+            return;
+          }
+          resolve(result.data);
+        }
+      )
       .withFailureHandler(reject)
-      .api_getEventAttendance(eventId, sessionToken);
+      .api_getEventAttendance(eventId, viewerId, sessionToken);
     return promise;
   },
 
@@ -418,7 +440,7 @@ export const apiService = {
     });
   },
 
-  logoutUser(): Promise<{ success: boolean }> {
+  logoutUser(userId: string, sessionToken: string): Promise<{ success: boolean }> {
     return new Promise((resolve, reject) => {
       if (isMockMode()) {
         delay(MOCK_DELAY_MS).then(() => resolve({ success: true }));
@@ -427,7 +449,75 @@ export const apiService = {
       google.script.run
         .withSuccessHandler((result: { success: boolean }) => resolve(result))
         .withFailureHandler(reject)
-        .api_logoutUser();
+        .api_logoutUser(userId, sessionToken);
     });
+  },
+
+  staffEnrollMember(
+    grantedUserId: string,
+    memberId: string,
+    programId: string,
+    sessionToken: string
+  ): Promise<{ success: boolean; message?: string }> {
+    return new Promise((resolve, reject) => {
+      if (isMockMode()) {
+        delay(MOCK_DELAY_MS).then(() => resolve({ success: true }));
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(
+          (result: { success: boolean; message?: string }) => resolve(result)
+        )
+        .withFailureHandler(reject)
+        .api_staffEnrollMember(grantedUserId, memberId, programId, sessionToken);
+    });
+  },
+
+  searchMembers(
+    query: string,
+    grantedUserId: string,
+    sessionToken: string
+  ): Promise<Array<{ userId: string; name: string; phone?: string }>> {
+    const { promise, resolve, reject } = Promise.withResolvers<
+      Array<{ userId: string; name: string; phone?: string }>
+    >();
+    if (isMockMode()) {
+      const mockMembers = [
+        { userId: "GC-MOCK-0001", name: "Alice Chen", phone: "0912-345-678" },
+        { userId: "GC-MOCK-0002", name: "Bob Wang", phone: "0987-654-321" },
+        { userId: "GC-MOCK-0003", name: "Carol Liu", phone: "0955-123-456" },
+      ];
+      const q = query.toLowerCase().trim();
+      delay(MOCK_DELAY_MS).then(() =>
+        resolve(
+          q
+            ? mockMembers.filter(
+                (m) =>
+                  m.name.toLowerCase().includes(q) ||
+                  m.userId.toLowerCase().includes(q) ||
+                  m.phone.includes(q)
+              )
+            : []
+        )
+      );
+      return promise;
+    }
+    google.script.run
+      .withSuccessHandler(
+        (result: {
+          success: boolean;
+          data?: Array<{ userId: string; name: string; phone?: string }>;
+          message?: string;
+        }) => {
+          if (!result.success || !result.data) {
+            reject(new Error(result.message || "Search failed."));
+            return;
+          }
+          resolve(result.data);
+        }
+      )
+      .withFailureHandler(reject)
+      .api_searchMembers(query, grantedUserId, sessionToken);
+    return promise;
   },
 };

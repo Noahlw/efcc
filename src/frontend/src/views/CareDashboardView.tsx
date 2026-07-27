@@ -234,7 +234,7 @@ const styles = {
 };
 
 export function CareDashboardView({ onBack }: Props) {
-  const [threshold, setThreshold] = useState<number>(60);
+  const [threshold, setThreshold] = useState<number>(30);
   const [dashboard, setDashboard] = useState<DashboardState>({
     status: "loading",
   });

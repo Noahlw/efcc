@@ -8,6 +8,13 @@ interface Props {
   onCancel: () => void;
 }
 
+function toDdMmYyyy(isoDate: string): string {
+  const parts = isoDate.split("-");
+  if (parts.length !== 3) return isoDate;
+  const [yyyy, mm, dd] = parts;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 const FORM_STYLE: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
@@ -132,7 +139,7 @@ export function CreateEventForm({
     const payload: CreateEventPayload = {
       programId: form.programId,
       eventName: form.eventName,
-      eventDate: form.eventDate,
+      eventDate: toDdMmYyyy(form.eventDate),
       timeSlot: form.timeSlot,
       eventType: form.eventType,
       recurrence: form.recurrence,

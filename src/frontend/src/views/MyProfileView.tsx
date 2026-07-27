@@ -198,8 +198,11 @@ export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenSc
   const handleLogout = async () => {
     if (logoutInFlight.current) return;
     logoutInFlight.current = true;
+    const cached = getSession();
     try {
-      await apiService.logoutUser();
+      if (cached) {
+        await apiService.logoutUser(cached.userId, cached.sessionToken);
+      }
     } catch {
       // Even if server-side logout fails, clear local state.
     }
@@ -265,7 +268,7 @@ export function MyProfileView({ onLogout, onOpenPrograms, onOpenEvents, onOpenSc
               Scan Attendance
             </button>
           )}
-          {role !== "MEMBER" && onOpenCareDashboard && (
+          {(role === "STAFF" || role === "ADMIN") && onOpenCareDashboard && (
             <button
               type="button"
               onClick={onOpenCareDashboard}

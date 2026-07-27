@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
+import { apiService } from "../services/api";
 
 interface SearchMember {
   userId: string;
@@ -7,29 +8,13 @@ interface SearchMember {
 }
 
 interface Props {
+  grantedUserId: string;
+  sessionToken: string;
   onCheckIn: (memberId: string, memberName: string) => void;
   disabled?: boolean;
 }
 
-// Mock members for development mode — in production this calls a server RPC.
-const MOCK_MEMBERS: SearchMember[] = [
-  { userId: "GC-MOCK-0001", name: "Alice Chen", phone: "0912-345-678" },
-  { userId: "GC-MOCK-0002", name: "Bob Wang", phone: "0987-654-321" },
-  { userId: "GC-MOCK-0003", name: "Carol Liu", phone: "0955-123-456" },
-  { userId: "GC-MOCK-0004", name: "David Lin", phone: "0933-789-012" },
-  { userId: "GC-MOCK-0005", name: "Eva Huang", phone: "0977-456-789" },
-];
-
-function filterMembers(query: string): SearchMember[] {
-  const q = query.toLowerCase().trim();
-  if (!q) return [];
-  return MOCK_MEMBERS.filter(
-    (m) =>
-      m.name.toLowerCase().includes(q) ||
-      m.userId.toLowerCase().includes(q) ||
-      (m.phone ?? "").includes(q)
-  );
-}
+const SEARCH_DEBOUNCE_MS = 250;
 
 const styles: Record<string, React.CSSProperties> = {
   wrapper: { marginTop: 16 },
@@ -37,65 +22,93 @@ const styles: Record<string, React.CSSProperties> = {
     display: "block",
     fontSize: "0.85rem",
     fontWeight: 600,
-    color: "#475569",
+    color: "#334155",
     marginBottom: 6,
   },
   input: {
     width: "100%",
-    padding: "10px 12px",
-    fontSize: "1rem",
+    padding: "0.65rem 0.85rem",
+    borderRadius: "0.6rem",
     border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    outline: "none",
+    fontSize: "0.95rem",
     boxSizing: "border-box",
   },
   results: {
-    marginTop: 4,
+    marginTop: 8,
     border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    maxHeight: 240,
-    overflowY: "auto",
-    background: "#fff",
+    borderRadius: "0.6rem",
+    overflow: "hidden",
   },
   resultItem: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "10px 12px",
+    padding: "0.6rem 0.85rem",
     borderBottom: "1px solid #f1f5f9",
   },
   resultInfo: { flex: 1 },
-  resultName: {
-    margin: 0,
-    fontSize: "0.9rem",
-    fontWeight: 600,
-    color: "#0f172a",
-  },
+  resultName: { margin: 0, fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" },
   resultMeta: { margin: "2px 0 0", fontSize: "0.78rem", color: "#64748b" },
   checkInBtn: {
-    padding: "6px 14px",
-    fontSize: "0.8rem",
-    fontWeight: 600,
+    padding: "0.4rem 0.9rem",
+    borderRadius: "0.5rem",
     border: "none",
-    borderRadius: 6,
-    background: "#2563eb",
+    background: "#0f172a",
     color: "#fff",
+    fontSize: "0.85rem",
+    fontWeight: 600,
     cursor: "pointer",
-    whiteSpace: "nowrap",
   },
   checkInBtnDisabled: { opacity: 0.5, cursor: "not-allowed" },
   hint: { marginTop: 4, fontSize: "0.78rem", color: "#94a3b8" },
 };
 
-export function ManualSearchInput({ onCheckIn, disabled }: Props) {
+export function ManualSearchInput({
+  grantedUserId,
+  sessionToken,
+  onCheckIn,
+  disabled,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchMember[]>([]);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef<number | null>(null);
+  const requestSeq = useRef(0);
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setQuery(val);
-    setResults(filterMembers(val));
-  }, []);
+  useEffect(() => {
+    clearTimeout(debounceRef.current ?? undefined);
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = window.setTimeout(() => {
+      const seq = ++requestSeq.current;
+      apiService
+        .searchMembers(trimmed, grantedUserId, sessionToken)
+        .then((members) => {
+          if (seq !== requestSeq.current) return;
+          setResults(members);
+        })
+        .catch(() => {
+          if (seq !== requestSeq.current) return;
+          setResults([]);
+        })
+        .finally(() => {
+          if (seq !== requestSeq.current) return;
+          setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(debounceRef.current ?? undefined);
+    };
+  }, [query, grantedUserId, sessionToken]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+  };
 
   const handleSelect = (member: SearchMember) => {
     onCheckIn(member.userId, member.name);
@@ -144,7 +157,7 @@ export function ManualSearchInput({ onCheckIn, disabled }: Props) {
           ))}
         </div>
       )}
-      {query && results.length === 0 && (
+      {!searching && query.trim() && results.length === 0 && (
         <p style={styles.hint}>No matching members found.</p>
       )}
     </div>

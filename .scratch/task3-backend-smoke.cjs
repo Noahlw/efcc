@@ -86,8 +86,13 @@ context.CacheService = {
     },
   }),
 };
+const scriptProps = {};
 context.PropertiesService = {
-  getScriptProperties: () => ({ getProperty: () => "test-salt" }),
+  getScriptProperties: () => ({
+    getProperty: (key) => (key === "EFCC_SESSION_SALT" ? "test-salt" : scriptProps[key] ?? null),
+    setProperty: (key, value) => { scriptProps[key] = value; },
+    deleteProperty: (key) => { delete scriptProps[key]; },
+  }),
 };
 context.Utilities = {
   computeHmacSha256Signature: (value) =>
@@ -98,6 +103,7 @@ context.Utilities = {
 context.Session = { getScriptTimeZone: () => "UTC" };
 
 const token = context.sha256Hmac_("USER-1|1234|test-salt");
+context.setSessionIssuedNow_("USER-1");
 const catalog = context.api_getProgramsCatalog("USER-1", token);
 if (
   catalog.length !== 2 ||

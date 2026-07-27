@@ -556,6 +556,31 @@ function sha256Hmac_(input) {
   return bytes.join('');
 }
 
+function getSessionIssuedAt_(userId) {
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty('session_issued_' + normalizeId_(userId));
+  return raw ? Number(raw) : 0;
+}
+
+function setSessionIssuedNow_(userId) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('session_issued_' + normalizeId_(userId), String(Date.now()));
+}
+
+function clearSessionIssued_(userId) {
+  var props = PropertiesService.getScriptProperties();
+  props.deleteProperty('session_issued_' + normalizeId_(userId));
+}
+
+// True only if a login issued this user's current token within SESSION_TTL_MS_
+// and no logout has revoked it since. Deterministic tokens (userId|pinHash|salt)
+// stay constant across logins, so expiry/revocation must be tracked separately.
+function isSessionActiveForUser_(userId) {
+  var issuedAt = getSessionIssuedAt_(userId);
+  if (!issuedAt) return false;
+  return (Date.now() - issuedAt) <= SESSION_TTL_MS_;
+}
+
 function lookupUserByCredentials_(username, pin) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
   if (!sheet) return { ok: false, message: "System error: Users sheet missing." };
@@ -631,14 +656,18 @@ function verifySessionToken_(userId, sessionToken) {
   if (idIdx === -1) idIdx = headers.indexOf('user id');
   var pinIdx = headers.indexOf('pin_code');
   if (pinIdx === -1) pinIdx = headers.indexOf('pin');
+  var statusIdx = headers.indexOf('status');
   if (idIdx === -1 || pinIdx === -1) return false;
 
   var targetId = normalizeId_(userId);
   for (var i = 1; i < data.length; i++) {
     if (normalizeId_(data[i][idIdx]) !== targetId) continue;
+    var statusRaw = statusIdx !== -1 ? String(data[i][statusIdx] == null ? '' : data[i][statusIdx]).trim().toLowerCase() : 'active';
+    if (statusRaw && statusRaw !== 'active') return false;
     var pinHash = String(data[i][pinIdx] == null ? '' : data[i][pinIdx]).trim();
     var expected = sha256Hmac_(targetId + '|' + pinHash + '|' + getSessionSalt_());
-    return expected === String(sessionToken);
+    if (expected !== String(sessionToken)) return false;
+    return isSessionActiveForUser_(targetId);
   }
   return false;
 }
@@ -646,6 +675,7 @@ function verifySessionToken_(userId, sessionToken) {
 function api_loginUser(username, pin) {
   var matched = lookupUserByCredentials_(username, pin);
   if (!matched.ok) return { success: false, message: matched.message };
+  setSessionIssuedNow_(matched.userId);
   var expiry = Date.now() + SESSION_TTL_MS_;
   var token = sha256Hmac_(matched.userId + '|' + matched.pinHash + '|' + getSessionSalt_());
   return {
@@ -691,14 +721,17 @@ function api_getCurrentSession(userId, sessionToken) {
         role: role,
         sessionToken: String(sessionToken),
         qrCodeString: qrIdx !== -1 ? String(data[i][qrIdx]).trim() : targetId,
-        expiryTimestamp: Date.now() + SESSION_TTL_MS_
+        expiryTimestamp: getSessionIssuedAt_(targetId) + SESSION_TTL_MS_
       }
     };
   }
   return { success: false, message: 'User not found.' };
 }
 
-function api_logoutUser() {
+function api_logoutUser(userId, sessionToken) {
+  if (userId && sessionToken && verifySessionToken_(userId, sessionToken)) {
+    clearSessionIssued_(userId);
+  }
   return { success: true };
 }
 
@@ -798,6 +831,18 @@ function api_cancelEnrollment(userId, programId, sessionToken) {
     return { success: false, message: 'Session invalid or expired.' };
   }
   return cancelEnrollment(userId, programId);
+}
+
+// Granted-user enrollment on behalf of a scanned member (Task 5 Quick Enroll).
+// The caller's own session must be a granted user; the enrollment itself
+// targets memberId, not the caller — this is deliberate staff-assisted enrollment.
+function api_staffEnrollMember(grantedUserId, memberId, programId, sessionToken) {
+  if (!grantedUserId || !sessionToken) return { success: false, message: 'Missing user session.' };
+  var check = checkIsGrantedUser_(grantedUserId, sessionToken);
+  if (!check.granted) return { success: false, message: check.message };
+  if (!memberId) return { success: false, message: 'Member ID is required.' };
+  if (!programId) return { success: false, message: 'Program ID is required.' };
+  return enrollUser(memberId, programId);
 }
 
 // =============================================================================
@@ -962,7 +1007,7 @@ function api_cancelEvent(payload) {
   for (var i = 1; i < data.length; i++) {
     if (normalizeId_(data[i][eventIdCol]) !== targetId) continue;
     var rowNum = i + 1;
-    eventsSheet.getRange(rowNum + 1, statusCol + 1).setValue('Cancelled');
+    eventsSheet.getRange(rowNum, statusCol + 1).setValue('Cancelled');
     return { success: true, message: 'Event cancelled successfully.' };
   }
   return { success: false, message: 'Event not found.' };
@@ -1063,6 +1108,42 @@ function api_getGrantedUserEvents(grantedUserId, sessionToken) {
 // LockService atomic duplicate check + append.
 // =============================================================================
 
+// Real member search for manual attendance check-in (Task 5).
+// Role-gated: only granted users may search the member roster.
+function api_searchMembers(query, grantedUserId, sessionToken) {
+  if (!grantedUserId || !sessionToken) return { success: false, message: 'Missing user session.', data: [] };
+  var check = checkIsGrantedUser_(grantedUserId, sessionToken);
+  if (!check.granted) return { success: false, message: check.message, data: [] };
+
+  var q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!q) return { success: true, data: [] };
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return { success: false, message: 'Users sheet missing.', data: [] };
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) return { success: true, data: [] };
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  var idIdx = headers.indexOf('user_id'); if (idIdx === -1) idIdx = headers.indexOf('user id');
+  var nameIdx = headers.indexOf('name'); if (nameIdx === -1) nameIdx = headers.indexOf('full name');
+  var phoneIdx = headers.indexOf('phone');
+  var statusIdx = headers.indexOf('status');
+  if (idIdx === -1) return { success: true, data: [] };
+
+  var results = [];
+  for (var i = 1; i < data.length && results.length < 10; i++) {
+    var statusRaw = statusIdx > -1 ? String(data[i][statusIdx] == null ? '' : data[i][statusIdx]).trim().toLowerCase() : 'active';
+    if (statusRaw && statusRaw !== 'active') continue;
+    var uid = normalizeId_(data[i][idIdx]);
+    if (!uid) continue;
+    var name = nameIdx > -1 ? String(data[i][nameIdx] == null ? '' : data[i][nameIdx]).trim() : '';
+    var phone = phoneIdx > -1 ? String(data[i][phoneIdx] == null ? '' : data[i][phoneIdx]).trim() : '';
+    var haystack = (name + ' ' + uid + ' ' + phone).toLowerCase();
+    if (haystack.indexOf(q) === -1) continue;
+    results.push({ userId: uid, name: name || uid, phone: phone || undefined });
+  }
+  return { success: true, data: results };
+}
+
 function api_checkInMember(payload) {
   if (!payload) return { success: false, message: 'Missing payload.' };
 
@@ -1081,11 +1162,75 @@ function api_checkInMember(payload) {
     return { success: false, message: 'Permission denied. Only granted users can check in members.' };
   }
 
-  var eventId = String(payload.eventId || '').trim();
-  var memberId = String(payload.userId || '').trim(); // member being checked in
+  var eventId = normalizeId_(String(payload.eventId || '').trim());
+  var memberId = normalizeId_(String(payload.userId || '').trim()); // member being checked in
   var method = String(payload.method || '').trim();
   if (!eventId) return { success: false, message: 'Event ID is required.' };
   if (!memberId) return { success: false, message: 'Member ID is required.' };
+
+  // Look up the event's program and confirm it is active.
+  var eventsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Events');
+  if (!eventsSheet) return { success: false, message: 'Events sheet missing.' };
+  var evData = eventsSheet.getDataRange().getValues();
+  var evHeaders = evData.length > 0 ? evData[0].map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); }) : [];
+  function evColIdx(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = evHeaders.indexOf(names[n].toLowerCase().replace(/[\s_]+/g, ''));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+  var evIdCol = evColIdx(['event_id', 'eventid']);
+  var evProgCol = evColIdx(['program_id', 'programid']);
+  var evStatusCol = evColIdx(['status']);
+  var eventProgramId = '';
+  var eventFound = false;
+  for (var e = 1; e < evData.length; e++) {
+    if (evIdCol === -1 || normalizeId_(evData[e][evIdCol]) !== eventId) continue;
+    eventFound = true;
+    var evStatus = evStatusCol > -1 ? String(evData[e][evStatusCol] == null ? '' : evData[e][evStatusCol]).trim().toLowerCase() : 'active';
+    if (evStatus && evStatus !== 'active') {
+      return { success: false, message: 'This event is not active.' };
+    }
+    eventProgramId = evProgCol > -1 ? normalizeId_(evData[e][evProgCol]) : '';
+    break;
+  }
+  if (!eventFound) return { success: false, message: 'Event not found.' };
+
+  // Look up the member's display name and confirm the account exists.
+  var usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  var memberName = memberId;
+  var memberFound = false;
+  if (usersSheet) {
+    var uData = usersSheet.getDataRange().getValues();
+    if (uData && uData.length > 1) {
+      var uHeaders = uData[0].map(function(h) { return String(h).trim().toLowerCase(); });
+      var uIdIdx = uHeaders.indexOf('user_id'); if (uIdIdx === -1) uIdIdx = uHeaders.indexOf('user id');
+      var uNameIdx = uHeaders.indexOf('name'); if (uNameIdx === -1) uNameIdx = uHeaders.indexOf('full name');
+      if (uIdIdx > -1) {
+        for (var u = 1; u < uData.length; u++) {
+          if (normalizeId_(uData[u][uIdIdx]) !== memberId) continue;
+          memberFound = true;
+          memberName = uNameIdx > -1 ? (String(uData[u][uNameIdx] || '').trim() || memberId) : memberId;
+          break;
+        }
+      }
+    }
+  }
+  if (!memberFound) return { success: false, message: 'Member not found.' };
+
+  // Enrollment eligibility — member must be actively enrolled in the event's program.
+  if (eventProgramId) {
+    var enrolledIds = getUserEnrolledProgramIds_(memberId);
+    if (enrolledIds.indexOf(eventProgramId) === -1) {
+      return {
+        success: false,
+        notEnrolled: true,
+        data: { memberId: memberId, memberName: memberName },
+        message: memberName + ' is not enrolled in this program.'
+      };
+    }
+  }
 
   var lock = LockService.getScriptLock();
   try {
@@ -1116,7 +1261,7 @@ function api_checkInMember(payload) {
     var attStatusIdx = colIdx(['status']);
     var attTimeIdx = colIdx(['check_in_time', 'checkintime']);
 
-    // 3. Duplicate check — look for existing Active row for this event + member
+    // Duplicate check — look for existing Active row for this event + member
     if (attData.length > 1 && attEventIdx > -1 && attMemberIdx > -1) {
       for (var i = 1; i < attData.length; i++) {
         var eId = normalizeId_(attData[i][attEventIdx]);
@@ -1129,14 +1274,14 @@ function api_checkInMember(payload) {
           return {
             success: false,
             duplicate: true,
-            data: { checkInTime: existingTime },
-            message: 'Member already checked in.'
+            data: { checkInTime: existingTime, memberName: memberName },
+            message: memberName + ' is already checked in.'
           };
         }
       }
     }
 
-    // 4. Append new attendance row
+    // Append new attendance row
     var newId = 'ATT-' + Utilities.getUuid().substring(0, 8).toUpperCase();
     var now = new Date().toISOString();
 
@@ -1174,7 +1319,7 @@ function api_checkInMember(payload) {
 
     return {
       success: true,
-      data: { checkInTime: now }
+      data: { checkInTime: now, memberName: memberName }
     };
   } catch (e) {
     lock.releaseLock();
@@ -1182,15 +1327,22 @@ function api_checkInMember(payload) {
   }
 }
 
-function api_getEventAttendance(eventId, sessionToken) {
-  if (!eventId) return [];
-  if (!sessionToken) return [];
+function api_getEventAttendance(eventId, viewerId, sessionToken) {
+  if (!eventId) return { success: false, message: 'Event ID is required.', data: [] };
+  if (!viewerId || !sessionToken) return { success: false, message: 'Missing user session.', data: [] };
+  if (!verifySessionToken_(viewerId, sessionToken)) {
+    return { success: false, message: 'Session invalid or expired.', data: [] };
+  }
+  var role = checkRoleAtLeast_(viewerId, 'EVENT_LEADER');
+  if (role === 'MEMBER') {
+    return { success: false, message: 'Permission denied. Only granted users can view attendance.', data: [] };
+  }
 
   var attSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Attendance');
-  if (!attSheet) return [];
+  if (!attSheet) return { success: true, data: [] };
 
   var attData = attSheet.getDataRange().getValues();
-  if (!attData || attData.length < 2) return [];
+  if (!attData || attData.length < 2) return { success: true, data: [] };
 
   var headers = attData[0];
   var normHeaders = headers.map(function(h) { return String(h).trim().toLowerCase().replace(/[\s_]+/g, ''); });
@@ -1210,22 +1362,42 @@ function api_getEventAttendance(eventId, sessionToken) {
   var attByIdx = colIdx(['check_in_by', 'checkinby']);
   var attIdIdx = colIdx(['attendance_id', 'attendanceid']);
 
+  var usersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  var nameLookup = {};
+  if (usersSheet) {
+    var uData = usersSheet.getDataRange().getValues();
+    if (uData && uData.length > 1) {
+      var uHeaders = uData[0].map(function(h) { return String(h).trim().toLowerCase(); });
+      var uIdIdx = uHeaders.indexOf('user_id'); if (uIdIdx === -1) uIdIdx = uHeaders.indexOf('user id');
+      var uNameIdx = uHeaders.indexOf('name'); if (uNameIdx === -1) uNameIdx = uHeaders.indexOf('full name');
+      if (uIdIdx > -1 && uNameIdx > -1) {
+        for (var u = 1; u < uData.length; u++) {
+          var uid = normalizeId_(uData[u][uIdIdx]);
+          if (!uid) continue;
+          nameLookup[uid] = String(uData[u][uNameIdx] || '').trim();
+        }
+      }
+    }
+  }
+
   var result = [];
+  var targetEventId = normalizeId_(eventId);
   for (var i = 1; i < attData.length; i++) {
     var eId = normalizeId_(attData[i][attEventIdx]);
-    if (eId !== eventId) continue;
+    if (eId !== targetEventId) continue;
+    var memberUid = attMemberIdx > -1 ? normalizeId_(attData[i][attMemberIdx]) : '';
     result.push({
       attendanceId: attIdIdx > -1 ? String(attData[i][attIdIdx] == null ? '' : attData[i][attIdIdx]).trim() : '',
       eventId: eId,
-      userId: attMemberIdx > -1 ? normalizeId_(attData[i][attMemberIdx]) : '',
-      userName: '',
+      userId: memberUid,
+      userName: nameLookup[memberUid] || '',
       checkInTime: attTimeIdx > -1 ? String(attData[i][attTimeIdx] == null ? '' : attData[i][attTimeIdx]).trim() : '',
       checkInMethod: attSourceIdx > -1 ? String(attData[i][attSourceIdx] == null ? '' : attData[i][attSourceIdx]).trim() : '',
       checkInBy: attByIdx > -1 ? String(attData[i][attByIdx] == null ? '' : attData[i][attByIdx]).trim() : ''
     });
   }
 
-  return result;
+  return { success: true, data: result };
 }
 
 // =============================================================================
@@ -1248,6 +1420,7 @@ function resolveSessionUser_(sessionToken) {
   if (idIdx === -1) idIdx = headers.indexOf('user id');
   var pinIdx = headers.indexOf('pin_code');
   if (pinIdx === -1) pinIdx = headers.indexOf('pin');
+  var statusIdx = headers.indexOf('status');
   if (idIdx === -1 || pinIdx === -1) return null;
   var salt = getSessionSalt_();
   for (var i = 1; i < data.length; i++) {
@@ -1255,7 +1428,11 @@ function resolveSessionUser_(sessionToken) {
     if (!uid) continue;
     var pinHash = String(data[i][pinIdx] == null ? '' : data[i][pinIdx]).trim();
     var expected = sha256Hmac_(uid + '|' + pinHash + '|' + salt);
-    if (expected === String(sessionToken)) return uid;
+    if (expected !== String(sessionToken)) continue;
+    var statusRaw = statusIdx !== -1 ? String(data[i][statusIdx] == null ? '' : data[i][statusIdx]).trim().toLowerCase() : 'active';
+    if (statusRaw && statusRaw !== 'active') return null;
+    if (!isSessionActiveForUser_(uid)) return null;
+    return uid;
   }
   return null;
 }
@@ -1296,8 +1473,7 @@ function api_getUserActivityProfile(userId, sessionToken) {
   if (!targetName) return null;
 
   // Get enrolled programs
-  var progCatalog = [];
-  try { progCatalog = getProgramsCatalog_(); } catch (e) {}
+  var progCatalog = getProgramsCatalog_();
   var progLookup = {};
   for (var p = 0; p < progCatalog.length; p++) {
     progLookup[progCatalog[p].programId] = progCatalog[p];
@@ -1453,11 +1629,10 @@ function api_getCareDashboard(thresholdDays, sessionToken) {
   }
 
   // Read Programs catalog for name lookups
-  var progCatalog = [];
-  try { progCatalog = getProgramsCatalog_(); } catch (e) {}
-  var progNameLookup = {};
+  var progCatalog = getProgramsCatalog_();
+  var progLookup = {};
   for (var p = 0; p < progCatalog.length; p++) {
-    progNameLookup[progCatalog[p].programId] = progCatalog[p].title;
+    progLookup[progCatalog[p].programId] = progCatalog[p];
   }
 
   var nowMs = Date.now();
@@ -1489,7 +1664,7 @@ function api_getCareDashboard(thresholdDays, sessionToken) {
       phone: (uPhoneIdx > -1 && usersData[i][uPhoneIdx]) ? String(usersData[i][uPhoneIdx]).trim() : undefined,
       lastCheckInAt: lastCheckIn || undefined,
       totalCheckIns: attCount[memberId] || 0,
-      enrolledPrograms: [],
+      enrolledPrograms: (enrProgramIds[memberId] || []).map(function(pid) { return progLookup[pid]; }).filter(function(p) { return !!p; }),
       attendance: []
     });
   }

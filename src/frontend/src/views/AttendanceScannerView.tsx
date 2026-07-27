@@ -239,23 +239,17 @@ export function AttendanceScannerView({
       });
 
       if (res.success) {
-        // Check for not-enrolled status — simulate via mock condition
-        const isNotEnrolled =
-          memberId.startsWith("GC-MOCK-000") &&
-          !["GC-MOCK-0001", "GC-MOCK-0002"].includes(memberId);
-        if (isNotEnrolled) {
-          setScanResult({
-            type: "notEnrolled",
-            memberId,
-            memberName: memberId,
-          });
-        } else {
-          setScanResult({
-            type: "success",
-            memberName: memberId,
-            checkInTime: res.data?.checkInTime ?? new Date().toISOString(),
-          });
-        }
+        setScanResult({
+          type: "success",
+          memberName: res.data?.memberName ?? memberId,
+          checkInTime: res.data?.checkInTime ?? new Date().toISOString(),
+        });
+      } else if (res.notEnrolled) {
+        setScanResult({
+          type: "notEnrolled",
+          memberId: res.data?.memberId ?? memberId,
+          memberName: res.data?.memberName ?? memberId,
+        });
       } else if (res.duplicate) {
         setScanResult({
           type: "duplicate",
@@ -278,31 +272,40 @@ export function AttendanceScannerView({
   };
 
   const handleManualCheckIn = (memberId: string, _memberName: string) => {
+    void _memberName;
     handleCheckIn(memberId, "MANUAL");
   };
 
   const handleQuickEnroll = async () => {
     if (!scanResult || scanResult.type !== "notEnrolled") return;
-    setEnrollingMemberId(scanResult.memberId);
+    const memberId = scanResult.memberId;
+    const currentEvent = events.find((e) => e.eventId === selectedEventId);
+    if (!currentEvent) {
+      setScanResult({ type: "error", message: "Selected event not found." });
+      return;
+    }
+    setEnrollingMemberId(memberId);
     try {
-      // Quick-enroll into the first program available
-      const programs = await apiService.getAvailablePrograms(grantedUserId);
-      const firstProgram = programs.find((p) => !p.isEnrolled);
-      if (firstProgram && firstProgram.programId) {
-        const res = await apiService.enrollUser(
-          scanResult.memberId,
-          firstProgram.programId
-        );
-        if (res.success) {
-          setScanResult({
-            type: "success",
-            memberName: scanResult.memberName,
-            checkInTime: new Date().toISOString(),
-          });
-        }
+      const enrollRes = await apiService.staffEnrollMember(
+        grantedUserId,
+        memberId,
+        currentEvent.programId,
+        sessionToken
+      );
+      if (!enrollRes.success) {
+        setScanResult({
+          type: "error",
+          message: enrollRes.message || "Enrollment failed.",
+        });
+        return;
       }
-    } catch {
-      // enrollment failed silently
+      await handleCheckIn(memberId, "MANUAL");
+    } catch (err: unknown) {
+      setScanResult({
+        type: "error",
+        message:
+          err instanceof Error ? err.message : "Enrollment failed.",
+      });
     } finally {
       setEnrollingMemberId(null);
     }
@@ -468,6 +471,8 @@ export function AttendanceScannerView({
       {/* Manual search fallback */}
       {selectedEventId && (
         <ManualSearchInput
+          grantedUserId={grantedUserId}
+          sessionToken={sessionToken}
           onCheckIn={handleManualCheckIn}
           disabled={!!scanResult}
         />

@@ -12,12 +12,14 @@ declare namespace google {
       api_createEvent(payload: unknown): void;
       api_cancelEvent(payload: unknown): void;
       api_checkInMember(payload: unknown): void;
-      api_getEventAttendance(eventId: string, sessionToken: string): void;
+      api_getEventAttendance(eventId: string, viewerId: string, sessionToken: string): void;
       api_getUserActivityProfile(userId: string, sessionToken: string): void;
       api_getCareDashboard(thresholdDays: number, sessionToken: string): void;
-      api_logoutUser(): void;
+      api_logoutUser(userId: string, sessionToken: string): void;
       api_getCurrentSession(userId: string, sessionToken: string): void;
       api_getGrantedUserEvents(grantedUserId: string, sessionToken: string): void;
+      api_staffEnrollMember(grantedUserId: string, memberId: string, programId: string, sessionToken: string): void;
+      api_searchMembers(query: string, grantedUserId: string, sessionToken: string): void;
     }
     const run: RunClient;
   }
