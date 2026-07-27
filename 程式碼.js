@@ -523,3 +523,249 @@ function generateMonthlyRecurringEvents() {
     eventsSheet.getRange(startRow, 1, newRows.length, newRows[0].length).setValues(newRows);
   }
 }
+
+// =============================================================================
+// Task 2 — Member PIN Auth, Persistent Session & Profile Pass View
+// New RPC entry points: api_loginUser, api_registerUser, api_logoutUser,
+// api_getCurrentSession. Helpers: SESSION_SALT_, sha256Hmac_, verifySessionToken_.
+// Per ADR-0005: server is authoritative for `role`; client localStorage is cache only.
+// =============================================================================
+
+var SESSION_TTL_MS_ = 30 * 24 * 60 * 60 * 1000; // 30-day rolling session
+var DEFAULT_DEV_SALT_ = 'static-dev-salt-change-me';
+
+function getSessionSalt_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var stored = props.getProperty('EFCC_SESSION_SALT');
+    if (stored) return stored;
+  } catch (e) {}
+  return DEFAULT_DEV_SALT_;
+}
+
+function sha256Hmac_(input) {
+  var raw = String(input == null ? '' : input);
+  var digest = Utilities.computeHmacSha256Signature(raw, getSessionSalt_());
+  var bytes = [];
+  for (var i = 0; i < digest.length; i++) {
+    var hex = (digest[i] & 0xFF).toString(16);
+    if (hex.length === 1) hex = '0' + hex;
+    bytes.push(hex);
+  }
+  return bytes.join('');
+}
+
+function lookupUserByCredentials_(username, pin) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return { ok: false, message: "System error: Users sheet missing." };
+
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) return { ok: false, message: "System error: Users sheet empty." };
+
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  function col(name) { return headers.indexOf(name); }
+  var userIdx = col('username'); if (userIdx === -1) userIdx = col('user name');
+  var pinIdx = col('pin_code'); if (pinIdx === -1) pinIdx = col('pin');
+  var idIdx = col('user_id'); if (idIdx === -1) idIdx = col('user id');
+  var nameIdx = col('name'); if (nameIdx === -1) nameIdx = col('full name');
+  var qrIdx = col('qr_code_string'); if (qrIdx === -1) qrIdx = col('qr code string');
+  var roleIdx = col('role');
+  var statusIdx = col('status');
+
+  if (userIdx === -1 || pinIdx === -1 || idIdx === -1 || qrIdx === -1) {
+    return { ok: false, message: "System error: Required columns missing." };
+  }
+
+  function normalizePin(value) {
+    var s = String(value == null ? '' : value).trim().replace(/\D/g, '');
+    if (!s) return '';
+    if (s.length > 4) s = s.substring(s.length - 4);
+    while (s.length < 4) s = '0' + s;
+    return s;
+  }
+
+  var inputUser = String(username == null ? '' : username).trim().toLowerCase();
+  var inputPin = normalizePin(pin);
+
+  var sawUsername = false;
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][userIdx]) continue;
+    var rowUser = String(data[i][userIdx]).trim().toLowerCase();
+    var rowPin = normalizePin(data[i][pinIdx]);
+    if (rowUser === inputUser) sawUsername = true;
+    if (rowUser !== inputUser || rowPin !== inputPin) continue;
+
+    var statusRaw = statusIdx !== -1 ? String(data[i][statusIdx]).trim().toLowerCase() : 'active';
+    if (statusRaw === 'pending') return { ok: false, message: 'Account pending approval.' };
+    if (statusRaw && statusRaw !== 'active') return { ok: false, message: 'Account not active.' };
+
+    var userId = normalizeId_(data[i][idIdx]);
+    var role = roleIdx !== -1 && data[i][roleIdx]
+      ? String(data[i][roleIdx]).trim().toUpperCase()
+      : 'MEMBER';
+    if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'EVENT_LEADER' && role !== 'MEMBER') {
+      role = 'MEMBER';
+    }
+    return {
+      ok: true,
+      userId: userId,
+      name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : 'Member',
+      role: role,
+      qrCodeString: String(data[i][qrIdx]).trim(),
+      pinHash: rowPin
+    };
+  }
+  if (sawUsername) return { ok: false, message: 'PIN incorrect.' };
+  return { ok: false, message: 'Invalid Username or PIN.' };
+}
+
+function verifySessionToken_(userId, sessionToken) {
+  if (!userId || !sessionToken) return false;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return false;
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) return false;
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  var idIdx = headers.indexOf('user_id');
+  if (idIdx === -1) idIdx = headers.indexOf('user id');
+  var pinIdx = headers.indexOf('pin_code');
+  if (pinIdx === -1) pinIdx = headers.indexOf('pin');
+  if (idIdx === -1 || pinIdx === -1) return false;
+
+  var targetId = normalizeId_(userId);
+  for (var i = 1; i < data.length; i++) {
+    if (normalizeId_(data[i][idIdx]) !== targetId) continue;
+    var pinHash = String(data[i][pinIdx] == null ? '' : data[i][pinIdx]).trim();
+    var expected = sha256Hmac_(targetId + '|' + pinHash + '|' + getSessionSalt_());
+    return expected === String(sessionToken);
+  }
+  return false;
+}
+
+function api_loginUser(username, pin) {
+  var matched = lookupUserByCredentials_(username, pin);
+  if (!matched.ok) return { success: false, message: matched.message };
+  var expiry = Date.now() + SESSION_TTL_MS_;
+  var token = sha256Hmac_(matched.userId + '|' + matched.pinHash + '|' + getSessionSalt_());
+  return {
+    success: true,
+    data: {
+      userId: matched.userId,
+      name: matched.name,
+      role: matched.role,
+      sessionToken: token,
+      qrCodeString: matched.qrCodeString,
+      expiryTimestamp: expiry
+    }
+  };
+}
+
+function api_getCurrentSession(userId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    return { success: false, message: 'Session invalid or expired.' };
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return { success: false, message: 'Users sheet missing.' };
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 2) return { success: false, message: 'Users sheet empty.' };
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+  var idIdx = headers.indexOf('user_id'); if (idIdx === -1) idIdx = headers.indexOf('user id');
+  var nameIdx = headers.indexOf('name'); if (nameIdx === -1) nameIdx = headers.indexOf('full name');
+  var qrIdx = headers.indexOf('qr_code_string'); if (qrIdx === -1) qrIdx = headers.indexOf('qr code string');
+  var roleIdx = headers.indexOf('role');
+  var targetId = normalizeId_(userId);
+  for (var i = 1; i < data.length; i++) {
+    if (normalizeId_(data[i][idIdx]) !== targetId) continue;
+    var role = roleIdx !== -1 && data[i][roleIdx]
+      ? String(data[i][roleIdx]).trim().toUpperCase()
+      : 'MEMBER';
+    if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'EVENT_LEADER' && role !== 'MEMBER') {
+      role = 'MEMBER';
+    }
+    return {
+      success: true,
+      data: {
+        userId: targetId,
+        name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : 'Member',
+        role: role,
+        sessionToken: String(sessionToken),
+        qrCodeString: qrIdx !== -1 ? String(data[i][qrIdx]).trim() : targetId,
+        expiryTimestamp: Date.now() + SESSION_TTL_MS_
+      }
+    };
+  }
+  return { success: false, message: 'User not found.' };
+}
+
+function api_logoutUser() {
+  return { success: true };
+}
+
+function api_registerUser(payload) {
+  if (!payload) return { success: false, message: 'Missing registration payload.' };
+  var name = String(payload.name == null ? '' : payload.name).trim();
+  var username = String(payload.username == null ? '' : payload.username).trim().toLowerCase();
+  var pin = String(payload.pin == null ? '' : payload.pin).trim().replace(/\D/g, '');
+  var phone = String(payload.phone == null ? '' : payload.phone).trim();
+  var address = String(payload.address == null ? '' : payload.address).trim();
+
+  if (!name) return { success: false, message: 'Name is required.' };
+  if (!username) return { success: false, message: 'Username is required.' };
+  if (!/^\d{4}$/.test(pin)) return { success: false, message: 'PIN must be exactly 4 digits.' };
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return { success: false, message: 'Users sheet missing.' };
+  var data = sheet.getDataRange().getValues();
+  if (!data || data.length < 1) return { success: false, message: 'Users sheet empty.' };
+  var headers = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+
+  function col(name) { return headers.indexOf(name); }
+  var userIdx = col('username'); if (userIdx === -1) userIdx = col('user name');
+  if (userIdx === -1) return { success: false, message: 'Username column missing.' };
+
+  // Reject duplicate usernames (case-insensitive).
+  for (var r = 1; r < data.length; r++) {
+    if (!data[r][userIdx]) continue;
+    if (String(data[r][userIdx]).trim().toLowerCase() === username) {
+      return { success: false, message: 'Username already taken.' };
+    }
+  }
+
+  function pickCol(names) {
+    for (var n = 0; n < names.length; n++) {
+      var idx = col(names[n]);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  var idIdx = pickCol(['user_id', 'user id']);
+  var nameIdx = pickCol(['name', 'full name']);
+  var pinIdx = pickCol(['pin_code', 'pin']);
+  var phoneIdx = col('phone');
+  var addressIdx = col('address');
+  var qrIdx = pickCol(['qr_code_string', 'qr code string']);
+  var roleIdx = col('role');
+  var statusIdx = col('status');
+
+  var newHex1 = Math.floor(Math.random() * (65535 - 4096 + 1) + 4096).toString(16).toUpperCase();
+  var newHex2 = Math.floor(Math.random() * (65535 - 4096 + 1) + 4096).toString(16).toUpperCase();
+  var newHexId = 'GC-' + newHex1 + '-' + newHex2;
+
+  var row = new Array(headers.length).fill('');
+  if (idIdx > -1) row[idIdx] = newHexId;
+  if (nameIdx > -1) row[nameIdx] = name;
+  if (userIdx > -1) row[userIdx] = username;
+  if (pinIdx > -1) row[pinIdx] = pin;
+  if (phoneIdx > -1) row[phoneIdx] = phone;
+  if (addressIdx > -1) row[addressIdx] = address;
+  if (qrIdx > -1) row[qrIdx] = newHexId;
+  if (roleIdx > -1) row[roleIdx] = 'MEMBER';
+  if (statusIdx > -1) row[statusIdx] = 'Active';
+
+  sheet.appendRow(row);
+  return {
+    success: true,
+    data: { userId: newHexId, name: name, role: 'MEMBER' }
+  };
+}

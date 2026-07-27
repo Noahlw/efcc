@@ -125,6 +125,7 @@ export interface LoginResponse {
     role: Role;
     sessionToken: string;
     qrCodeString: string;
+    expiryTimestamp: number; // epoch ms, 30-day rolling from login
   };
   message?: string;
 }

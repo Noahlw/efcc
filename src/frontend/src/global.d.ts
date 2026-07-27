@@ -16,6 +16,7 @@ declare namespace google {
       api_getUserActivityProfile(userId: string): void;
       api_getCareDashboard(thresholdDays: number): void;
       api_logoutUser(): void;
+      api_getCurrentSession(userId: string, sessionToken: string): void;
     }
     const run: RunClient;
   }

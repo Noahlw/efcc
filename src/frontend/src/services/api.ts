@@ -39,6 +39,7 @@ export const apiService = {
               role: "MEMBER",
               sessionToken: `mock-token-${Date.now()}`,
               qrCodeString: `EFCC|USER-MOCK-1|${Date.now()}`,
+              expiryTimestamp: Date.now() + 30 * 24 * 60 * 60 * 1000,
             },
           })
         );
@@ -324,6 +325,33 @@ export const apiService = {
         .withSuccessHandler((result: CareDashboardData) => resolve(result))
         .withFailureHandler(reject)
         .api_getCareDashboard(thresholdDays);
+    });
+  },
+  getCurrentSession(
+    userId: string,
+    sessionToken: string
+  ): Promise<LoginResponse> {
+    return new Promise((resolve, reject) => {
+      if (isMockMode()) {
+        delay(MOCK_DELAY_MS).then(() =>
+          resolve({
+            success: true,
+            data: {
+              userId,
+              name: "Mock Member",
+              role: "MEMBER",
+              sessionToken,
+              qrCodeString: `EFCC|${userId}|${Date.now()}`,
+              expiryTimestamp: Date.now() + 30 * 24 * 60 * 60 * 1000,
+            },
+          })
+        );
+        return;
+      }
+      google.script.run
+        .withSuccessHandler((result: LoginResponse) => resolve(result))
+        .withFailureHandler(reject)
+        .api_getCurrentSession(userId, sessionToken);
     });
   },
 
