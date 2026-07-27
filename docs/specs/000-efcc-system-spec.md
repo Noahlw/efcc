@@ -34,17 +34,18 @@ Migrate the system to a modern **TypeScript React Web Application** based on the
 ## User Stories
 
 1. **As a Church Member**, I want to log in securely using my Username and 4-digit PIN, so that I can access my account without needing a complex password or Google account setup.
-2. **As a Church Member**, I want the app to remember my login session across weekly visits, so that I don't have to re-enter my PIN every Sunday.
-3. **As a Church Member**, I want to view a full-screen, high-contrast digital QR pass on my mobile device, so that staff can quickly scan me in at church events.
-4. **As a Church Member**, I want to browse available programs, view their details, and enroll in programs without schedule conflicts, so that I can join church activities seamlessly.
-5. **As a Church Member**, I want to cancel my program enrollment if my schedule changes, so that program rosters remain accurate.
-6. **As an Event Leader / Staff**, I want to create a new event instance (date, time slot, event title) from the UI, so that I don't need a developer to edit backend scripts.
-7. **As an Event Leader / Staff**, I want to use my device camera with a live HUD and audio/haptic feedback to scan member QR codes at event entry, so that check-ins are recorded instantly.
-8. **As an Event Leader / Staff**, I want to search for members by name or phone number with instant typeahead filter and check them in manually, so that members without smartphones can still be checked in quickly.
-9. **As a Church Staff / Admin**, I want the system to warn me if a member is scanned twice for the same event, so that duplicate attendance rows are prevented.
-10. **As a Church Staff / Admin**, I want to view an inactive member care dashboard highlighting members enrolled in programs who haven't attended in 30+ days, so that our pastoral team knows who to care for and contact.
-11. **As a Church Staff / Admin**, I want to click a one-touch WhatsApp link pre-populated with a friendly care message, so that I can reach out to inactive members directly.
-12. **As a Frontend Developer**, I want to run `npm run dev` in `src/frontend/` with mock data responses, so that I can build and test UI components locally without deploying to Apps Script.
+2. **As a Church Member**, I want to register for a new church account with my name, phone, and address, so that the church has my updated record.
+3. **As a Church Member**, I want the app to remember my login session across weekly visits, so that I don't have to re-enter my PIN every Sunday.
+4. **As a Church Member**, I want to view a full-screen, high-contrast digital QR pass on my mobile device, so that staff can quickly scan me in at church events.
+5. **As a Church Member**, I want to browse available programs, view their details, and enroll in programs without schedule conflicts, so that I can join church activities seamlessly.
+6. **As a Church Member**, I want to cancel my program enrollment if my schedule changes, so that program rosters remain accurate.
+7. **As an Event Leader / Staff**, I want to create a new event instance (date, time slot, event title) from the UI, so that I don't need a developer to edit backend scripts.
+8. **As an Event Leader / Staff**, I want to use my device camera with a live HUD and audio/haptic feedback to scan member QR codes at event entry, so that check-ins are recorded instantly.
+9. **As an Event Leader / Staff**, I want to search for members by name or phone number with instant typeahead filter and check them in manually, so that members without smartphones can still be checked in quickly.
+10. **As a Church Staff / Admin**, I want the system to warn me if a member is scanned twice for the same event, so that duplicate attendance rows are prevented.
+11. **As a Church Staff / Admin**, I want to view an inactive member care dashboard highlighting members enrolled in programs who haven't attended in 30+ days, so that our pastoral team knows who to care for and contact.
+12. **As a Church Staff / Admin**, I want to click a one-touch WhatsApp link pre-populated with a friendly care message, so that I can reach out to inactive members directly.
+13. **As a Frontend Developer**, I want to run `npm run dev` in `src/frontend/` with mock data responses, so that I can build and test UI components locally without deploying to Apps Script.
 
 ---
 
@@ -82,14 +83,19 @@ EFCC-dev/
 ### Session Management (`session.ts`)
 
 - Session payload stored in `localStorage.setItem('efcc_session', JSON.stringify(sessionData))`.
-- Contains `userId`, `name`, `role`, `qrCodeString`, and `expiryTimestamp` (30 days rolling).
+- Contains `userId`, `name`, `role`, `sessionToken` (server-verified hash), `qrCodeString`, and `expiryTimestamp` (30 days rolling).
 - On app launch, `session.ts` validates session expiry. If valid, restores active user state without prompting for PIN.
+- Calling `api_logoutUser()` clears `localStorage` immediately and invalidates the session.
 
 ### Security & Concurrency Guardrails
 
-1. **Server-Authoritative Role Verification**: `localStorage` only caches the role for client-side tab visibility. Every Apps Script backend RPC handler re-fetches `user.role` directly from the `Users` spreadsheet using the verified `userId`, ignoring any client-provided role parameters.
+1. **Server-Authoritative Role & Token Verification**: `localStorage` only caches role for client UI tab rendering. Every Apps Script backend RPC handler verifies `sessionToken` (`verifySessionToken_(userId, sessionToken)`) and re-fetches `user.role` directly from the `Users` spreadsheet, ignoring any client-provided role parameters.
 2. **LockService Atomic Attendance Writing**: All check-in RPCs (`api_checkInMember`) acquire `LockService.getScriptLock()` for up to 5000ms to guarantee atomic duplicate checking and row insertion during concurrent event scans.
 3. **Safe Role Priority Fallback**: `checkPermission_` sanitizes `user.role` with `rolesPriority[role] || 1` to ensure invalid or unknown role strings safely default to standard `MEMBER` priority (1).
+4. **Validation & Attendance UI Branches**: `api_checkInMember` validates (a) `User_ID` exists, (b) `Event_ID` is active, and (c) member is enrolled in the event's program. `AttendanceScannerView` presents 3 explicit UI branches:
+   - 🟢 **Success**: Green banner + success chime + member name.
+   - 🟡 **Duplicate**: Amber banner (`"⚠️ Already checked in at 15:30:12"`).
+   - 🔴 **Not Enrolled**: Red warning banner with 1-tap `"Quick Enroll & Check In"` button.
 
 ---
 
