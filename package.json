@@ -1,0 +1,29 @@
+{
+  "name": "efcc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "顯恩堂系統 — EFCC Church Management System (TypeScript WebApp)",
+  "workspaces": [
+    "src/frontend"
+  ],
+  "type": "module",
+  "scripts": {
+    "prepare": "husky",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.0",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0",
+    "ultracite": "7.9.4"
+  },
+  "lint-staged": {
+    "*.{js,cjs,mjs,jsx,ts,tsx,cts,mts}": "ultracite fix",
+    "*.{json,jsonc,css,scss,html,md}": "oxfmt --write"
+  }
+}
