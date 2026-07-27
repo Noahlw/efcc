@@ -85,6 +85,12 @@ EFCC-dev/
 - Contains `userId`, `name`, `role`, `qrCodeString`, and `expiryTimestamp` (30 days rolling).
 - On app launch, `session.ts` validates session expiry. If valid, restores active user state without prompting for PIN.
 
+### Security & Concurrency Guardrails
+
+1. **Server-Authoritative Role Verification**: `localStorage` only caches the role for client-side tab visibility. Every Apps Script backend RPC handler re-fetches `user.role` directly from the `Users` spreadsheet using the verified `userId`, ignoring any client-provided role parameters.
+2. **LockService Atomic Attendance Writing**: All check-in RPCs (`api_checkInMember`) acquire `LockService.getScriptLock()` for up to 5000ms to guarantee atomic duplicate checking and row insertion during concurrent event scans.
+3. **Safe Role Priority Fallback**: `checkPermission_` sanitizes `user.role` with `rolesPriority[role] || 1` to ensure invalid or unknown role strings safely default to standard `MEMBER` priority (1).
+
 ---
 
 ## Testing Decisions
