@@ -102,6 +102,7 @@ function loadAllGas(context) {
     "rpc-envelope.gs",
     "users-repository.gs",
     "session.js.gs",
+    "program-leaders-repository.gs",
     "Code.gs",
   ]) {
     loadGasModule(context, name);

@@ -282,4 +282,130 @@
   .view-error .login-card {
     text-align: center;
   }
+
+  /* -----------------------------------------------------------------
+   * Navigation items (issue #67)
+   * ----------------------------------------------------------------- */
+
+  .nav-item {
+    appearance: none;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--color-muted);
+    transition: color 0.15s;
+  }
+
+  .nav-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  /* Phone bottom nav */
+  .nav-item-phone {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: var(--space-2) var(--space-1);
+    min-height: 48px;
+  }
+
+  .nav-item-phone .nav-item-label {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  /* Desktop side rail */
+  .nav-item-desktop {
+    flex: none;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    width: 100%;
+    gap: var(--space-2);
+    font-size: var(--text-md);
+  }
+
+  .nav-item-desktop:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  /* Active state */
+  .nav-item-active {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .nav-item-desktop.nav-item-active {
+    background: rgba(47, 111, 235, 0.08);
+  }
+
+  /* Nav item label */
+  .nav-item-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* -----------------------------------------------------------------
+   * More menu (phone overflow) — issue #67
+   * ----------------------------------------------------------------- */
+
+  .nav-item-more {
+    position: relative;
+  }
+
+  .more-menu {
+    position: absolute;
+    bottom: calc(100% + var(--space-2));
+    right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    min-width: 140px;
+    z-index: 100;
+    padding: var(--space-1);
+  }
+
+  .more-menu-item {
+    appearance: none;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--text-md);
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--color-text);
+  }
+
+  .more-menu-item:hover {
+    background: var(--color-bg);
+  }
+
+  /* -----------------------------------------------------------------
+   * Placeholder and Forbidden section views (issue #67)
+   * ----------------------------------------------------------------- */
+
+  .view-placeholder,
+  .view-forbidden {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .view-forbidden h2 {
+    color: var(--color-error);
+  }
 </style>

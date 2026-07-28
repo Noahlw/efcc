@@ -61,6 +61,10 @@
     // True between the moment a user clicks "登入" and the moment
     // the server replies. Suppresses duplicate submits.
     var loginPending_ = false;
+    // Server-authorized sections from bootstrap (issue #67).
+    var sections_ = [];
+    // The currently active section key (e.g. "profile").
+    var currentSection_ = null;
 
     // -----------------------------------------------------------------
     // Tiny DOM helpers
@@ -254,6 +258,352 @@
           ]),
         ])
       );
+    }
+
+    // -----------------------------------------------------------------
+    // Navigation rendering (issue #67) — phone bottom nav with "More"
+    // overflow for >4 sections; desktop side rail with all sections.
+    // -----------------------------------------------------------------
+    var PHONE_MAX_VISIBLE = 4;
+
+    function renderNavigation_() {
+      renderNavPhone_();
+      renderNavDesktop_();
+      updateActiveNav_();
+    }
+
+    function renderNavPhone_() {
+      var nav = $("app-nav-phone");
+      if (!nav) return;
+      clearChildren(nav);
+      if (sections_.length === 0) {
+        nav.setAttribute("hidden", "");
+        return;
+      }
+      nav.removeAttribute("hidden");
+
+      var visible = sections_;
+      var overflow = [];
+      if (sections_.length > PHONE_MAX_VISIBLE) {
+        visible = sections_.slice(0, PHONE_MAX_VISIBLE - 1);
+        overflow = sections_.slice(PHONE_MAX_VISIBLE - 1);
+      }
+
+      for (var i = 0; i < visible.length; i++) {
+        nav.appendChild(buildNavItem_(visible[i], true));
+      }
+
+      if (overflow.length > 0) {
+        nav.appendChild(buildMoreButton_(overflow));
+      }
+    }
+
+    function renderNavDesktop_() {
+      var nav = $("app-nav-desktop");
+      if (!nav) return;
+      clearChildren(nav);
+      if (sections_.length === 0) {
+        nav.setAttribute("hidden", "");
+        return;
+      }
+      nav.removeAttribute("hidden");
+
+      for (var i = 0; i < sections_.length; i++) {
+        nav.appendChild(buildNavItem_(sections_[i], false));
+      }
+    }
+
+    function buildNavItem_(section, isPhone) {
+      var label = section.label;
+      // Phone nav uses compact labels for space.
+      if (isPhone) {
+        if (section.key === "profile") label = "個人";
+        else if (section.key === "programs") label = "課程";
+        else if (section.key === "events") label = "聚會";
+        else if (section.key === "scanner") label = "掃描";
+        else if (section.key === "care") label = "關懷";
+        else if (section.key === "permissions") label = "權限";
+      }
+      return el(
+        "button",
+        {
+          class: isPhone
+            ? "nav-item nav-item-phone"
+            : "nav-item nav-item-desktop",
+          type: "button",
+          "data-section": section.key,
+          "aria-current": "false",
+          role: "link",
+          onclick: (function (key) {
+            return function () {
+              navigateTo_(key);
+            };
+          })(section.key),
+        },
+        [el("span", { class: "nav-item-label", text: label })]
+      );
+    }
+
+    function buildMoreButton_(overflowSections) {
+      var btn = el(
+        "button",
+        {
+          class: "nav-item nav-item-phone nav-item-more",
+          type: "button",
+          "data-section": "more",
+          "aria-haspopup": "true",
+          role: "link",
+          onclick: toggleMoreMenu_,
+        },
+        [el("span", { class: "nav-item-label", text: "更多" })]
+      );
+      // Build the overflow menu (hidden by default).
+      var menu = el("div", {
+        id: "more-menu",
+        class: "more-menu hidden",
+        role: "menu",
+      });
+      for (var i = 0; i < overflowSections.length; i++) {
+        var s = overflowSections[i];
+        menu.appendChild(
+          el(
+            "button",
+            {
+              class: "more-menu-item",
+              type: "button",
+              role: "menuitem",
+              "data-section": s.key,
+              onclick: (function (key) {
+                return function () {
+                  hideMoreMenu_();
+                  navigateTo_(key);
+                };
+              })(s.key),
+            },
+            s.label
+          )
+        );
+      }
+      btn.appendChild(menu);
+      return btn;
+    }
+
+    function toggleMoreMenu_() {
+      var menu = $("more-menu");
+      if (!menu) return;
+      if (menu.classList.contains("hidden")) {
+        menu.classList.remove("hidden");
+      } else {
+        hideMoreMenu_();
+      }
+    }
+
+    function hideMoreMenu_() {
+      var menu = $("more-menu");
+      if (menu) menu.classList.add("hidden");
+    }
+
+    function updateActiveNav_() {
+      // Iterate children of both nav containers rather than using
+      // document.querySelectorAll which may not be available in test
+      // harness minimal DOM mocks.
+      var containers = [$("app-nav-phone"), $("app-nav-desktop")];
+      for (var ci = 0; ci < containers.length; ci++) {
+        var container = containers[ci];
+        if (!container) continue;
+        var children = container.children;
+        for (var i = 0; i < children.length; i++) {
+          var item = children[i];
+          if (!item.getAttribute) continue;
+          var section = item.getAttribute("data-section");
+          if (section === currentSection_) {
+            item.setAttribute("aria-current", "page");
+            item.classList.add("nav-item-active");
+          } else if (section !== "more") {
+            item.setAttribute("aria-current", "false");
+            item.classList.remove("nav-item-active");
+          }
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Section navigation (issue #67)
+    // -----------------------------------------------------------------
+    function navigateTo_(sectionKey) {
+      if (sectionKey === currentSection_) return;
+      // Check authorization: server-authorized sections only.
+      var authorized = false;
+      for (var i = 0; i < sections_.length; i++) {
+        if (sections_[i].key === sectionKey) {
+          authorized = true;
+          break;
+        }
+      }
+      if (!authorized) {
+        renderForbidden_(sectionKey);
+        return;
+      }
+      currentSection_ = sectionKey;
+      updateActiveNav_();
+      hideMoreMenu_();
+      renderSection_(sectionKey);
+    }
+
+    function renderSection_(sectionKey) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+
+      switch (sectionKey) {
+        case "profile":
+          if (session_) {
+            renderProfileContent_(session_);
+          } else {
+            content.appendChild(
+              el("section", { class: "page view-placeholder" }, [
+                el("div", { class: "login-card text-center" }, [
+                  el("h2", { text: "個人資料" }),
+                  el("p", { class: "muted", text: "載入中..." }),
+                ]),
+              ])
+            );
+          }
+          break;
+        case "programs":
+          content.appendChild(
+            buildPlaceholderSection_("課程", "課程列表將於後續版本提供。")
+          );
+          break;
+        case "events":
+          content.appendChild(
+            buildPlaceholderSection_("聚會", "聚會管理將於後續版本提供。")
+          );
+          break;
+        case "scanner":
+          content.appendChild(
+            buildPlaceholderSection_("掃描", "出席掃描將於後續版本提供。")
+          );
+          break;
+        case "care":
+          content.appendChild(
+            buildPlaceholderSection_("關懷", "關懷儀表板將於後續版本提供。")
+          );
+          break;
+        case "permissions":
+          content.appendChild(
+            buildPlaceholderSection_("權限管理", "權限管理將於後續版本提供。")
+          );
+          break;
+        default:
+          renderForbidden_(sectionKey);
+      }
+    }
+
+    function renderProfileContent_(sessionData) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el("section", { class: "page view-profile" }, [
+          el("div", { class: "login-card" }, [
+            el("h2", { text: "個人資料" }),
+            el("p", {
+              class: "muted",
+              text: "已登入：" + (sessionData.name || ""),
+            }),
+            el("dl", { class: "profile-fields" }, [
+              el("dt", { text: "使用者名稱" }),
+              el("dd", { text: sessionData.username || "" }),
+              el("dt", { text: "角色" }),
+              el("dd", { text: sessionData.role || "" }),
+              el("dt", { text: "QR 碼" }),
+              el("dd", {}, [
+                (function () {
+                  var img = document.createElement("img");
+                  img.src =
+                    "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+                    encodeURIComponent(sessionData.qrCodeString || "");
+                  img.alt = "QR 碼";
+                  img.width = 200;
+                  img.height = 200;
+                  return img;
+                })(),
+              ]),
+            ]),
+            el(
+              "button",
+              {
+                id: "profile-logout",
+                class: "btn btn-primary btn-full",
+                type: "button",
+                "data-action": "logout",
+                onclick: handleLogoutClick_,
+              },
+              "登出"
+            ),
+          ]),
+        ])
+      );
+    }
+
+    function buildPlaceholderSection_(title, message) {
+      return el("section", { class: "page view-placeholder" }, [
+        el("div", { class: "login-card text-center" }, [
+          el("h2", { text: title }),
+          el("p", { class: "muted", text: message }),
+        ]),
+      ]);
+    }
+
+    function renderForbidden_(sectionKey) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el("section", { class: "page view-forbidden" }, [
+          el("div", { class: "login-card text-center" }, [
+            el("h2", { text: "無法存取" }),
+            el("p", {
+              class: "muted",
+              text: "你沒有權限使用此功能（" + sectionKey + "）。",
+            }),
+            el(
+              "button",
+              {
+                class: "btn btn-primary btn-full",
+                type: "button",
+                onclick: function () {
+                  navigateToNearestPermitted_();
+                },
+              },
+              "返回"
+            ),
+          ]),
+        ])
+      );
+    }
+
+    function navigateToNearestPermitted_() {
+      if (sections_.length > 0) {
+        navigateTo_(sections_[0].key);
+      } else {
+        currentSection_ = null;
+        updateActiveNav_();
+        renderProfileContent_(session_);
+      }
+    }
+
+    /**
+     * Refresh navigation after a sheet-side role/leadership change
+     * (issue #67 AC #10). Re-calls api_restoreApp to get current
+     * capabilities, then re-renders navigation and invalidates any
+     * now-forbidden active section.
+     */
+    function refreshAuthorization_() {
+      if (!session_) return;
+      setAppState(STATE.RESTORING);
+      restoreFromStorage_();
     }
 
     function renderLoadingSection_() {
@@ -508,6 +858,15 @@
         showLoginError_(message);
         return;
       }
+      // FORBIDDEN: the session is valid but this operation is not
+      // authorized (e.g. role/leadership changed sheet-side).
+      // Refresh capabilities and let the server re-route to the
+      // nearest permitted Section (issue #67 AC #10).
+      if (code === "FORBIDDEN") {
+        setStatus("");
+        refreshAuthorization_();
+        return;
+      }
       if (tag === "login") {
         setAppState(STATE.SIGNED_OUT);
         renderLogin_();
@@ -553,25 +912,37 @@
         userId: data.session.userId,
         name: data.session.name,
         role: data.session.role,
+        username: data.profile.username,
         qrCodeString: data.session.qrCodeString,
         sessionId: data.session.sessionId,
         sessionToken: data.session.sessionToken,
       };
+      // Store server-authorized sections for navigation rendering.
+      sections_ = Array.isArray(data.sections) ? data.sections : [];
       writeStoredSession_(session_);
       setAppState(STATE.LOADING_SECTION);
       setStatus("載入中...");
       renderLoadingSection_();
+      // Render navigation from server-authorized sections (issue #67).
+      renderNavigation_();
       // Defer one tick so the LOADING_SECTION paint is observable.
       window.setTimeout(function () {
         setAppState(STATE.READY);
         setStatus("");
-        renderProfile_(data);
+        navigateTo_("profile");
       }, 0);
     }
 
     function clearAuthenticatedClientState_() {
       session_ = null;
+      sections_ = [];
+      currentSection_ = null;
       clearStoredSession_();
+      // Hide navigation when signed out so bare Login has no nav.
+      var pn = $("app-nav-phone");
+      var dn = $("app-nav-desktop");
+      if (pn) pn.setAttribute("hidden", "");
+      if (dn) dn.setAttribute("hidden", "");
     }
 
     // -----------------------------------------------------------------

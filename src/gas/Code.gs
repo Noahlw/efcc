@@ -60,26 +60,44 @@ function include(filename) {
  */
 
 /**
- * Compute the Sections list for a given role. Per ADR-0006 / issue
- * #64 Day 1, every authenticated role lands on Profile. Programs and
- * Events are visible to every authenticated user; the server still
- * rechecks per-RPC authorization, so this is presentation, not
- * enforcement.
+ * Compute the Sections list for a given user. Per ADR-0006 / issue
+ * #64 Day 1 / issue #67, every authenticated role lands on Profile.
+ * Programs and Events are visible to every authenticated user.
+ * Scanner is visible to Program Leaders (if they have active
+ * assignments), STAFF, and ADMIN. Care and Permissions are visible
+ * only to STAFF and ADMIN. Every protected RPC independently
+ * rechecks authorization — this is presentation, not enforcement.
  *
  * @param {string} role One of "MEMBER" / "STAFF" / "ADMIN".
+ * @param {string} userId Used to check Program_Leaders assignments.
  * @returns {Array<{key: string, label: string, capability: string}>}
  */
-function bootstrapSectionsForRole_(role) {
+function bootstrapSectionsForRole_(role, userId) {
   var sections = [{ key: "profile", label: "個人資料", capability: "READ" }];
-  // Day 1: Programs and Events are visible to all authenticated
-  // users. The full STAFF/ADMIN/Program Leader capability matrix
-  // belongs to a later ticket (issue #63) and is enforced per-RPC.
   sections.push({ key: "programs", label: "課程", capability: "READ" });
-  sections.push({ key: "events", label: "聚會", capability: "READ" });
-  if (role === "STAFF" || role === "ADMIN") {
+
+  var isProgramLeader = programLeadersHasActiveAssignment_(userId);
+  var isStaffOrAbove = role === "STAFF" || role === "ADMIN";
+
+  // Ordering matches the issue #67 acceptance criteria:
+  //   MEMBER:       profile, programs, events
+  //   PL:           profile, programs, events, scanner
+  //   STAFF/ADMIN:  profile, programs, scanner, events, care, permissions
+  if (isStaffOrAbove) {
     sections.push({ key: "scanner", label: "掃描", capability: "USE" });
-    sections.push({ key: "care", label: "關懷", capability: "READ" });
   }
+
+  sections.push({ key: "events", label: "聚會", capability: "READ" });
+
+  if (!isStaffOrAbove && isProgramLeader) {
+    sections.push({ key: "scanner", label: "掃描", capability: "USE" });
+  }
+
+  if (isStaffOrAbove) {
+    sections.push({ key: "care", label: "關懷", capability: "READ" });
+    sections.push({ key: "permissions", label: "權限管理", capability: "USE" });
+  }
+
   return sections;
 }
 
@@ -105,7 +123,7 @@ function bootstrapBuild_(user, issued) {
       sessionId: issued.sessionId,
       sessionToken: issued.sessionToken,
     },
-    sections: bootstrapSectionsForRole_(user.role),
+    sections: bootstrapSectionsForRole_(user.role, user.userId),
     profile: {
       userId: user.userId,
       name: user.name,
