@@ -223,7 +223,7 @@ function sessionVerify_(sessionId, sessionToken) {
 
   // Live status check — covers account deactivation.
   var status = usersStatusById_(userId);
-  if (status !== "Active") {
+  if (String(status).toLowerCase() !== "active") {
     return { ok: false, reason: "FORBIDDEN" };
   }
 

@@ -285,8 +285,8 @@
       var visible = sections_;
       var overflow = [];
       if (sections_.length > PHONE_MAX_VISIBLE) {
-        visible = sections_.slice(0, PHONE_MAX_VISIBLE - 1);
-        overflow = sections_.slice(PHONE_MAX_VISIBLE - 1);
+        visible = sections_.slice(0, PHONE_MAX_VISIBLE);
+        overflow = sections_.slice(PHONE_MAX_VISIBLE);
       }
 
       for (var i = 0; i < visible.length; i++) {
