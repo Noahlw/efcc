@@ -493,12 +493,14 @@
         clearAuthenticatedClientState_();
         setAppState(STATE.SIGNED_OUT);
         renderLogin_();
+        setStatus("");
         showLoginError_(message);
         return;
       }
       if (tag === "login") {
         setAppState(STATE.SIGNED_OUT);
         renderLogin_();
+        setStatus("");
         showLoginError_(message);
         return;
       }
@@ -516,6 +518,7 @@
         if (tag === "login") {
           setAppState(STATE.SIGNED_OUT);
           renderLogin_();
+          setStatus("");
           showLoginError_(err.message);
           return;
         }

@@ -385,6 +385,27 @@ describe("Issue #66 — login + bootstrap RPC, session mechanics (issue #73)", (
     assert.equal(restore.error.code, "AUTH_REQUIRED");
   });
 
+  test("Bug: login succeeds when the Sheet's User_ID column is auto-detected as a Number (real Sheets behavior for numeric-looking IDs)", () => {
+    // Google Sheets returns numeric-looking cell values as JS
+    // Number, not String, from getValues(). Users sheet fixtures
+    // elsewhere in this file all use string ids ("U-1") which
+    // masks any strict `===` comparison bug against the raw sheet
+    // value. Reproduce with a plain Number id, matching what a
+    // production sheet with numeric-looking User_ID cells returns.
+    const users = makeUsersSheet([
+      { userId: 1001, username: "alice", pinCode: "1234", status: "Active" },
+    ]);
+    env.sheets["Users"] = { getDataRange: () => ({ getValues: () => users }) };
+    loadAllGas(env.context);
+
+    const res = env.context.api_loginUser("alice", "1234");
+    assert.equal(
+      res.success,
+      true,
+      "correct username/PIN must succeed even when User_ID is a Number cell"
+    );
+  });
+
   test("api_logoutUser: deletes exactly the calling session's property and no others", () => {
     const users = makeUsersSheet([
       { userId: "U-1", username: "alice", pinCode: "1234", status: "Active" },

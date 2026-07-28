@@ -763,6 +763,11 @@ describe("shell-session.js.html — issue #66 client controller", () => {
       "login form must remain interactive after failure"
     );
     assert.equal(
+      env.dom.index["app-status"].textContent,
+      "",
+      "登入中... must be cleared once the failure response arrives"
+    );
+    assert.equal(
       env.localStorage.getItem("efccSession"),
       null,
       "failed login must NOT persist efccSession"

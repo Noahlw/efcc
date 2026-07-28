@@ -108,7 +108,7 @@ function usersFindById_(userId) {
   if (!userId) return null;
   var rows = usersReadAll_();
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][USERS_COL.USER_ID] === userId) {
+    if (String(rows[i][USERS_COL.USER_ID]) === String(userId)) {
       return usersRowToDto_(rows[i], i + 1);
     }
   }
@@ -127,7 +127,7 @@ function usersCurrentPinById_(userId) {
   if (!userId) return "";
   var rows = usersReadAll_();
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][USERS_COL.USER_ID] === userId) {
+    if (String(rows[i][USERS_COL.USER_ID]) === String(userId)) {
       return sessionNormalizePin_(rows[i][USERS_COL.PIN_CODE]);
     }
   }
