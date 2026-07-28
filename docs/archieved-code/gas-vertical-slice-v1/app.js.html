@@ -97,9 +97,34 @@
       document.body.removeChild(a);
     }
 
+    // Fallback for non-user-activation contexts (setTimeout, Promise.then,
+    // google.script.run callbacks). The synthetic anchor click is blocked
+    // in these contexts, so use a meta-refresh which the GAS IFRAME
+    // sandbox allows. This writes a tiny visible message first so the
+    // user sees what happened, then refreshes to the target page.
+    function redirectViaMetaRefresh(page) {
+      var msg =
+        '<main class="page"><div class="page-header">' +
+        '<h1 class="page-title">Redirecting...</h1></div>' +
+        '<p class="text-center">Taking you to ' + page + '.</p></main>';
+      document.body.innerHTML = msg;
+      var meta = document.createElement("meta");
+      meta.httpEquiv = "refresh";
+      meta.content = "0; url=?page=" + encodeURIComponent(page);
+      document.head.appendChild(meta);
+    }
+
+    // Try synthetic-anchor first. If we're in a context where it would
+    // be blocked (async callback), fall back to meta-refresh after a
+    // short delay. If the anchor navigation succeeds, the page reloads
+    // before the meta-refresh fires; if the anchor is blocked, the
+    // meta-refresh kicks in. This covers both user-activation and
+    // non-user-activation contexts without changing call sites.
     window.navigate = function (page) {
       clickAnchor(page);
+      setTimeout(function () { redirectViaMetaRefresh(page); }, 300);
     };
+
 
     window.getCurrentPage = function () {
       var params = new URLSearchParams(window.location.search);

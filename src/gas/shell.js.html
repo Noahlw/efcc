@@ -1,0 +1,40 @@
+<script>
+  (function () {
+    "use strict";
+
+    // EFCC 顯恩堂 — client bootstrap.
+    // Owns only static shell wiring for this ticket: it flips the app's
+    // boot state once the DOM is ready and prevents the inert login form
+    // from performing a real top-level submit. All real navigation,
+    // session, and data wiring belongs to later tickets.
+
+    function markShellReady() {
+      var root = document.getElementById("app");
+      if (root) {
+        root.setAttribute("data-app-state", "SIGNED_OUT");
+      }
+    }
+
+    function bindLoginForm() {
+      var form = document.getElementById("login-form");
+      if (!form) return;
+      form.addEventListener("submit", function (event) {
+        // Real authentication is implemented in a later ticket. For now
+        // we only block the native top-level submit inside the IFRAME so
+        // the IFRAME sandbox never tries to navigate.
+        event.preventDefault();
+      });
+    }
+
+    function onReady() {
+      markShellReady();
+      bindLoginForm();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", onReady);
+    } else {
+      onReady();
+    }
+  })();
+</script>
