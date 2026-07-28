@@ -227,7 +227,18 @@
               el("dt", { text: "角色" }),
               el("dd", { text: bootstrap.profile.role || "" }),
               el("dt", { text: "QR 碼" }),
-              el("dd", { text: bootstrap.profile.qrCodeString || "" }),
+              el("dd", {}, [
+                (function () {
+                  var img = document.createElement("img");
+                  img.src =
+                    "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+                    encodeURIComponent(bootstrap.profile.qrCodeString || "");
+                  img.alt = "QR 碼";
+                  img.width = 200;
+                  img.height = 200;
+                  return img;
+                })(),
+              ]),
             ]),
             el(
               "button",
