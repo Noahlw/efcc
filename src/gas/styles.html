@@ -69,7 +69,7 @@
     flex: 1 1 auto;
     padding: var(--space-5) var(--space-4);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
   }
 
@@ -115,22 +115,36 @@
     }
   }
 
-  /* Desktop shell: row layout, side rail for desktop nav, bottom phone
-     nav is hidden regardless of its `hidden` attribute state. The 768px
-     breakpoint is the spec switch per ADR-0010 / spec 009. */
+  /* Desktop shell: header and status span the full top width; the
+     desktop nav rail and content share the row beneath. CSS Grid (not
+     a flat flex row) is required here because .app-header/.app-status
+     must span the full row width while .app-nav-desktop/.app-content
+     split the remaining height — a single-axis flex container can't
+     express both constraints on the same set of siblings. The bottom
+     phone nav is hidden regardless of its `hidden` attribute state.
+     The 768px breakpoint is the spec switch per ADR-0010 / spec 009. */
   @media (min-width: 768px) {
     .app-shell {
-      flex-direction: row;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        "header header"
+        "status status"
+        "nav-desktop content";
+      min-height: 100vh;
     }
-    .app-header,
+    .app-header {
+      grid-area: header;
+    }
     .app-status {
-      flex: 1 1 100%;
-    }
-    .app-content {
-      flex: 1 1 auto;
+      grid-area: status;
     }
     .app-nav-desktop {
-      display: flex;
+      grid-area: nav-desktop;
+    }
+    .app-content {
+      grid-area: content;
     }
     .app-nav-phone {
       display: none !important;
