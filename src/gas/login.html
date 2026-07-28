@@ -2,10 +2,10 @@
 <html lang="zh-HK">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <base target="_top" />
     <title>EFCC 顯恩堂 — 登入</title>
-    <?!= include('styles') ?>
+    <?!= include('styles'); ?>
   </head>
   <body>
     <main class="page">
@@ -13,116 +13,149 @@
         <h1 class="page-title">顯恩堂系統</h1>
         <p class="page-subtitle">EFCC Church Member Portal</p>
       </header>
-
       <div id="error-msg" class="msg-error hidden"></div>
-
       <form id="login-form">
         <div class="form-group">
-          <label class="label" for="username">Username</label>
-          <input
+          <label class="label" for="username">Username</label
+          ><input
             class="input"
-            type="text"
             id="username"
             name="username"
+            type="text"
             autocomplete="username"
             required
-            placeholder="Your username"
           />
         </div>
-
         <div class="form-group">
-          <label class="label" for="pin">PIN Code</label>
-          <input
+          <label class="label" for="pin">PIN Code</label
+          ><input
             class="input"
-            type="password"
             id="pin"
             name="pin"
+            type="password"
             inputmode="numeric"
             maxlength="4"
             autocomplete="current-password"
             required
-            placeholder="4-digit PIN"
           />
         </div>
-
-        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
-          Login
+        <button class="btn btn-primary btn-full" id="login-btn" type="submit">
+          Login / 登入
         </button>
       </form>
-
-      <div id="login-success" class="card text-center mt-lg hidden">
-        <h2 id="success-greeting" class="page-title"></h2>
-        <p>Your session is active. Use the link below to continue.</p>
-        <a
-          id="continue-link"
-          href="?page=profile"
-          target="_top"
-          class="btn btn-primary btn-full mt-md"
-          >Continue to Profile</a
-        >
-      </div>
-
       <p class="text-center mt-md">
-        <a href="?page=register" class="btn btn-ghost btn-sm"
-          >Register New Member</a
+        <a href="#" id="register-link" class="btn btn-ghost btn-sm"
+          >Register New Member / 註冊新會員</a
         >
       </p>
     </main>
-
-    <?!= include('app.js') ?>
     <script>
-      var form = document.getElementById("login-form");
-      var errorEl = document.getElementById("error-msg");
-      var btn = document.getElementById("login-btn");
-      var usernameInput = document.getElementById("username");
-      var pinInput = document.getElementById("pin");
-
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var username = usernameInput.value.trim();
-        var pin = pinInput.value.trim();
-
-        if (!username || !pin) {
-          showError("Please enter your username and PIN.");
-          return;
+      (function () {
+        var form = document.getElementById("login-form");
+        var error = document.getElementById("error-msg");
+        var button = document.getElementById("login-btn");
+        function showError(message) {
+          error.textContent = message;
+          error.classList.remove("hidden");
         }
-
-        btn.disabled = true;
-        btn.textContent = "Logging in...";
-        errorEl.classList.add("hidden");
-
-        api
-          .call("api_loginUser", username, pin)
-          .then(function (response) {
-            if (!response.success) {
-              showError(response.message || "Login failed.");
-              return;
-            }
-            var d = response.data;
-            sessionManager.set(d.sessionToken, {
-              userId: d.userId,
-              name: d.name,
-              role: d.role,
-              qrCodeString: d.qrCodeString,
-            });
-            document.getElementById("success-greeting").textContent =
-              "Welcome, " + (d.name || "Member");
-            document.getElementById("login-success").classList.remove("hidden");
-            document.getElementById("login-form").classList.add("hidden");
-          })
-          .catch(function (err) {
-            showError(err.message || "Network error. Please try again.");
-          })
-          .finally(function () {
-            btn.disabled = false;
-            btn.textContent = "Login";
+        function swapToMain() {
+          google.script.run
+            .withSuccessHandler(function (html) {
+              document.open();
+              document.write(html);
+              document.close();
+            })
+            .withFailureHandler(function () {
+              localStorage.removeItem("efccSession");
+              showError("Unable to load the application.");
+            })
+            .loadMainShell_();
+        }
+        function validateStoredSession() {
+          var raw;
+          try {
+            raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+          } catch (_) {
+            raw = null;
+          }
+          if (
+            !raw ||
+            !raw.token ||
+            !raw.userId ||
+            !raw.expiry ||
+            Number(raw.expiry) <= Date.now()
+          )
+            return;
+          google.script.run
+            .withSuccessHandler(function (response) {
+              if (response && response.success && response.data) {
+                localStorage.setItem(
+                  "efccSession",
+                  JSON.stringify({
+                    token: response.data.sessionToken,
+                    expiry: response.data.expiryTimestamp,
+                    userId: response.data.userId,
+                  })
+                );
+                swapToMain();
+              } else localStorage.removeItem("efccSession");
+            })
+            .withFailureHandler(function () {
+              localStorage.removeItem("efccSession");
+            })
+            .api_getCurrentSession(raw.userId, raw.token);
+        }
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          error.classList.add("hidden");
+          button.disabled = true;
+          button.textContent = "Logging in…";
+          google.script.run
+            .withSuccessHandler(function (response) {
+              if (!response || !response.success || !response.data) {
+                button.disabled = false;
+                button.textContent = "Login / 登入";
+                showError((response && response.message) || "Login failed.");
+                return;
+              }
+              var d = response.data;
+              localStorage.setItem(
+                "efccSession",
+                JSON.stringify({
+                  token: d.sessionToken,
+                  expiry: d.expiryTimestamp,
+                  userId: d.userId,
+                })
+              );
+              swapToMain();
+            })
+            .withFailureHandler(function (err) {
+              button.disabled = false;
+              button.textContent = "Login / 登入";
+              showError(err && err.message ? err.message : "Login failed.");
+            })
+            .api_loginUser(
+              document.getElementById("username").value.trim(),
+              document.getElementById("pin").value.trim()
+            );
+        });
+        document
+          .getElementById("register-link")
+          .addEventListener("click", function (event) {
+            event.preventDefault();
+            google.script.run
+              .withSuccessHandler(function (html) {
+                document.open();
+                document.write(html);
+                document.close();
+              })
+              .withFailureHandler(function () {
+                showError("Unable to load registration.");
+              })
+              .loadRegisterPage_();
           });
-      });
-
-      function showError(msg) {
-        errorEl.textContent = msg;
-        errorEl.classList.remove("hidden");
-      }
+        validateStoredSession();
+      })();
     </script>
   </body>
 </html>

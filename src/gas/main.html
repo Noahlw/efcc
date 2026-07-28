@@ -49,11 +49,8 @@
       }
 
       /* Sidebar — hidden on mobile, visible on desktop ≥768px.
-       NOTE: #menu and #bottom-tabs ul intentionally render EMPTY in this ticket
-       (T00). No CSS placeholder text — the lists must stay visually empty
-       until T01 supplies the real accessible-pages entries. The T01
-       population contract is documented at the loadMenuPage() definition
-       below. */
+       #menu and #bottom-tabs ul are populated at runtime by the
+       DOMContentLoaded bootstrap below, from api_getAccessiblePages(). */
       #sidebar {
         display: none;
         width: 240px;
@@ -175,20 +172,20 @@
         <aside id="sidebar" aria-label="主導航">
           <div id="sidebar-header">EFCC</div>
           <ul id="menu">
-            <!-- empty until T01 -->
+            <!-- populated at runtime by DOMContentLoaded bootstrap -->
           </ul>
         </aside>
 
         <main id="content">
           <div id="main-content">
-            <!-- Empty by design in this ticket — T01 will load the initial fragment after login. -->
+            <!-- populated by loadMenuPage('profile', ...) from the DOMContentLoaded bootstrap -->
           </div>
         </main>
       </div>
 
       <nav id="bottom-tabs" aria-label="行動導航">
         <ul>
-          <!-- empty until T01 -->
+          <!-- populated at runtime by DOMContentLoaded bootstrap -->
         </ul>
       </nav>
     </div>
@@ -265,10 +262,114 @@
         if (sidebar) sidebar.classList.toggle("active");
       }
 
-      function logout() {
-        // T01 will replace this stub with the real session-clearing flow.
-        console.warn("logout() is a stub in T00 — T01 wires the real flow.");
+      function toLoginShell_() {
+        google.script.run
+          .withSuccessHandler(function (html) {
+            document.open();
+            document.write(html);
+            document.close();
+          })
+          .loadLoginShell_();
       }
+
+      function logout() {
+        var raw;
+        try {
+          raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+        } catch (_) {
+          raw = null;
+        }
+        var userId = raw && raw.userId;
+        var token = raw && raw.token;
+        localStorage.removeItem("efccSession");
+        if (userId && token) {
+          google.script.run
+            .withSuccessHandler(toLoginShell_)
+            .withFailureHandler(toLoginShell_)
+            .api_logoutUser(userId, token);
+        } else {
+          toLoginShell_();
+        }
+      }
+
+      function populateMenu_(pages) {
+        var LABELS = {
+          profile: "Profile 會員資料",
+          programs: "Programs 課程",
+          events: "Events 聚會",
+          scanner: "Scanner 掃描",
+          dashboard: "Dashboard 儀表板",
+          care: "Care 關懷",
+        };
+        var itemsHtml = pages
+          .map(function (name) {
+            var label = LABELS[name] || name;
+            return (
+              '<li><a href="#" onclick="loadMenuPage(\'' +
+              name +
+              "', this); return false;\">" +
+              label +
+              "</a></li>"
+            );
+          })
+          .join("");
+        document.getElementById("menu").innerHTML = itemsHtml;
+        document.querySelector("#bottom-tabs ul").innerHTML = itemsHtml;
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        var raw;
+        try {
+          raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+        } catch (_) {
+          raw = null;
+        }
+        if (
+          !raw ||
+          !raw.token ||
+          !raw.userId ||
+          Number(raw.expiry) <= Date.now()
+        ) {
+          localStorage.removeItem("efccSession");
+          toLoginShell_();
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function (sessionResponse) {
+            if (
+              !sessionResponse ||
+              !sessionResponse.success ||
+              !sessionResponse.data
+            ) {
+              localStorage.removeItem("efccSession");
+              toLoginShell_();
+              return;
+            }
+            google.script.run
+              .withSuccessHandler(function (pagesResponse) {
+                var pages = (pagesResponse &&
+                  pagesResponse.success &&
+                  pagesResponse.data) || ["profile"];
+                populateMenu_(pages);
+                var landing =
+                  pages.indexOf("profile") !== -1 ? "profile" : pages[0];
+                var landingLink = document.querySelector(
+                  "#menu a[onclick*=\"'" + landing + "'\"]"
+                );
+                loadMenuPage(landing, landingLink);
+              })
+              .withFailureHandler(function () {
+                populateMenu_(["profile"]);
+                loadMenuPage("profile", document.querySelector("#menu a"));
+              })
+              .api_getAccessiblePages(raw.userId, raw.token);
+          })
+          .withFailureHandler(function () {
+            localStorage.removeItem("efccSession");
+            toLoginShell_();
+          })
+          .api_getCurrentSession(raw.userId, raw.token);
+      });
     </script>
   </body>
 </html>

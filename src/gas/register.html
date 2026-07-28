@@ -2,28 +2,33 @@
 <html lang="zh-HK">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <base target="_top" />
     <title>EFCC 顯恩堂 — 註冊</title>
-    <?!= include('styles') ?>
+    <?!= include('styles'); ?>
   </head>
   <body>
     <main class="page">
       <header class="page-header">
-        <h1 class="page-title">Register New Member</h1>
-        <p class="page-subtitle">Create your EFCC account</p>
+        <h1 class="page-title">Register</h1>
+        <p class="page-subtitle">Create your EFCC member account</p>
       </header>
 
-      <div id="error-msg" class="msg-error hidden"></div>
+      <div
+        id="error-msg"
+        class="msg-error hidden"
+        role="alert"
+        aria-live="assertive"
+      ></div>
 
-      <form id="register-form">
+      <form id="register-form" novalidate>
         <div class="form-group">
           <label class="label" for="name">Full Name</label>
           <input
             class="input"
-            type="text"
             id="name"
             name="name"
+            type="text"
             autocomplete="name"
             required
             placeholder="Your full name"
@@ -34,9 +39,9 @@
           <label class="label" for="username">Username</label>
           <input
             class="input"
-            type="text"
             id="username"
             name="username"
+            type="text"
             autocomplete="username"
             required
             placeholder="Choose a username"
@@ -44,13 +49,14 @@
         </div>
 
         <div class="form-group">
-          <label class="label" for="pin">PIN Code</label>
+          <label class="label" for="pin">PIN Code (4 digits)</label>
           <input
             class="input"
-            type="password"
             id="pin"
             name="pin"
+            type="password"
             inputmode="numeric"
+            pattern="[0-9]{4}"
             maxlength="4"
             autocomplete="new-password"
             required
@@ -62,9 +68,9 @@
           <label class="label" for="phone">Phone</label>
           <input
             class="input"
-            type="tel"
             id="phone"
             name="phone"
+            type="tel"
             autocomplete="tel"
             required
             placeholder="Your phone number"
@@ -72,7 +78,7 @@
         </div>
 
         <div class="form-group">
-          <label class="label" for="address">Address</label>
+          <label class="label" for="address">Address (optional)</label>
           <textarea
             class="input"
             id="address"
@@ -83,117 +89,150 @@
         </div>
 
         <button
-          type="submit"
           class="btn btn-primary btn-full"
           id="register-btn"
+          type="submit"
         >
           Register
         </button>
       </form>
 
-      <!-- Success card (hidden by default) -->
-      <div id="success-card" class="card hidden text-center mt-lg">
-        <div class="msg-success">Registration successful!</div>
+      <div
+        id="success-card"
+        class="card text-center mt-lg hidden"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="msg-success">Registration submitted</div>
         <p class="mt-md">
-          Your username: <strong id="success-username"></strong>
+          Thanks, <strong id="success-name"></strong>. Your account (<strong
+            id="success-username"
+          ></strong
+          >) is now pending staff approval.
         </p>
-        <p>Your PIN: <strong id="success-pin"></strong></p>
-        <p class="text-center mt-lg">
-          <button type="button" class="btn btn-primary" id="goto-login">
-            Go to Login
-          </button>
+        <p>
+          You'll be able to log in once a staff member approves your account.
+        </p>
+        <p class="mt-lg">
+          <a href="#" class="btn btn-primary" id="goto-login-link"
+            >Go to Login</a
+          >
         </p>
       </div>
 
-      <p class="text-center mt-md">
-        <a href="?page=login" class="btn btn-ghost btn-sm">Back to Login</a>
+      <p class="text-center mt-md" id="back-to-login-row">
+        <a href="#" id="back-to-login-link" class="btn btn-ghost btn-sm"
+          >Back to Login</a
+        >
       </p>
     </main>
 
-    <?!= include('app.js') ?>
     <script>
-      var form = document.getElementById("register-form");
-      var errorEl = document.getElementById("error-msg");
-      var btn = document.getElementById("register-btn");
-      var nameInput = document.getElementById("name");
-      var usernameInput = document.getElementById("username");
-      var pinInput = document.getElementById("pin");
-      var phoneInput = document.getElementById("phone");
-      var addressInput = document.getElementById("address");
-      var successCard = document.getElementById("success-card");
-      var successUsername = document.getElementById("success-username");
-      var successPin = document.getElementById("success-pin");
+      (function () {
+        var form = document.getElementById("register-form");
+        var error = document.getElementById("error-msg");
+        var button = document.getElementById("register-btn");
+        var successCard = document.getElementById("success-card");
+        var successName = document.getElementById("success-name");
+        var successUsername = document.getElementById("success-username");
+        var backRow = document.getElementById("back-to-login-row");
+        var gotoLoginLink = document.getElementById("goto-login-link");
 
-      function showError(msg) {
-        errorEl.textContent = msg;
-        errorEl.classList.remove("hidden");
-        successCard.classList.add("hidden");
-      }
+        var nameInput = document.getElementById("name");
+        var usernameInput = document.getElementById("username");
+        var pinInput = document.getElementById("pin");
+        var phoneInput = document.getElementById("phone");
+        var addressInput = document.getElementById("address");
 
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var name = nameInput.value.trim();
-        var username = usernameInput.value.trim();
-        var pin = pinInput.value.trim();
-        var phone = phoneInput.value.trim();
-        var address = addressInput.value.trim();
-
-        // Client-side validation
-        if (!name) {
-          showError("Name is required.");
-          return;
-        }
-        if (!username) {
-          showError("Username is required.");
-          return;
-        }
-        if (!pin || !/^\d{4}$/.test(pin)) {
-          showError("PIN must be exactly 4 digits.");
-          return;
-        }
-        if (!phone) {
-          showError("Phone is required.");
-          return;
+        function showError(message) {
+          error.textContent = message;
+          error.classList.remove("hidden");
         }
 
-        btn.disabled = true;
-        btn.textContent = "Registering...";
-        errorEl.classList.add("hidden");
+        function clearError() {
+          error.textContent = "";
+          error.classList.add("hidden");
+        }
 
-        api
-          .call("api_registerUser", {
-            name: name,
-            username: username,
-            pin: pin,
-            phone: phone,
-            address: address,
-          })
-          .then(function (response) {
-            if (!response.success) {
-              showError(response.message || "Registration failed.");
-              return;
-            }
-            // Show success
-            var d = response.data;
-            form.classList.add("hidden");
-            successUsername.textContent = username;
-            successPin.textContent = pin;
-            successCard.classList.remove("hidden");
-          })
-          .catch(function (err) {
-            showError(err.message || "Network error. Please try again.");
-          })
-          .finally(function () {
-            btn.disabled = false;
-            btn.textContent = "Register";
-          });
-      });
+        function validate(name, username, pin, phone) {
+          if (!name || name.length < 2) return "Please enter your full name.";
+          if (!username || !/^[a-zA-Z0-9_.]{3,32}$/.test(username))
+            return 'Username must be 3-32 characters (letters, numbers, "_" or ".").';
+          if (!/^\d{4}$/.test(pin))
+            return "PIN must be exactly 4 numeric digits.";
+          if (!phone || !/^[0-9+\-\s()]{7,20}$/.test(phone))
+            return "Please enter a valid phone number.";
+          return null;
+        }
 
-      document
-        .getElementById("goto-login")
-        .addEventListener("click", function () {
-          navigate("login");
+        function goToLoginShell_(event) {
+          if (event) event.preventDefault();
+          google.script.run
+            .withSuccessHandler(function (html) {
+              document.open();
+              document.write(html);
+              document.close();
+            })
+            .withFailureHandler(function () {
+              clearError();
+              error.textContent = "Unable to load login.";
+              error.classList.remove("hidden");
+            })
+            .loadLoginShell_();
+        }
+
+        gotoLoginLink.addEventListener("click", goToLoginShell_);
+        document
+          .getElementById("back-to-login-link")
+          .addEventListener("click", goToLoginShell_);
+
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          clearError();
+
+          var name = nameInput.value.trim();
+          var username = usernameInput.value.trim();
+          var pin = pinInput.value.trim();
+          var phone = phoneInput.value.trim();
+          var address = addressInput.value.trim();
+
+          var validationError = validate(name, username, pin, phone);
+          if (validationError) {
+            showError(validationError);
+            return;
+          }
+
+          button.disabled = true;
+          button.textContent = "Registering…";
+
+          google.script.run
+            .withSuccessHandler(function (response) {
+              button.disabled = false;
+              button.textContent = "Register";
+              if (!response || !response.success) {
+                showError(
+                  (response && response.message) || "Registration failed."
+                );
+                return;
+              }
+              form.classList.add("hidden");
+              backRow.classList.add("hidden");
+              successName.textContent = name;
+              successUsername.textContent = username;
+              successCard.classList.remove("hidden");
+            })
+            .withFailureHandler(function (err) {
+              button.disabled = false;
+              button.textContent = "Register";
+              showError(
+                err && err.message
+                  ? err.message
+                  : "Registration failed. Please try again."
+              );
+            })
+            .api_registerUser(name, username, pin, phone, address);
         });
+      })();
     </script>
   </body>
 </html>
