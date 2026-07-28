@@ -37,11 +37,11 @@ Authenticate members using a combination of a **username** (lowercased, sanitize
 
 ## Account Status Lifecycle
 
-| Status | Meaning | Login allowed? |
-|--------|---------|----------------|
-| `Active` | Fully registered member | Yes |
-| `Pending` | Awaiting admin approval | No ("Account pending approval.") |
-| *any other* | Inactive / removed | No ("Account not active.") |
+| Status      | Meaning                 | Login allowed?                   |
+| ----------- | ----------------------- | -------------------------------- |
+| `Active`    | Fully registered member | Yes                              |
+| `Pending`   | Awaiting admin approval | No ("Account pending approval.") |
+| _any other_ | Inactive / removed      | No ("Account not active.")       |
 
 ## Consequences
 

@@ -8,14 +8,17 @@
 
 ## 1. Purpose
 
-Allow members to enroll in church programs and cancel their enrollment. The system prevents time-slot conflicts between programs that share overlapping event schedules.
+Allow members to enroll in church Programs and soft-cancel their own enrollment,
+and allow authorized STAFF, ADMIN, and Program Leaders to manage enrollment for
+another active Member within their capability scope. A dated Event clash may be
+reported as an advisory warning but never blocks Program enrollment.
 
 ---
 
 ## 2. Data Model (Enrollments Sheet)
 
 | Column | Example | Notes |
-|--------|---------|-------|
+| --- | --- | --- |
 | Enrollment_ID | `ENR-A1B2C3D4` | Auto-generated UUID (first 8 hex chars), prefixed "ENR-". |
 | User_ID | `GC-A1B2-C3D4` | References Users.User_ID. |
 | Program_ID | `dd646847` | References Programs.Program_ID. |
@@ -29,19 +32,26 @@ Allow members to enroll in church programs and cancel their enrollment. The syst
 **Trigger**: Member clicks "Enroll" on a program in the web app.
 
 1. **Validate inputs** — normalize User_ID and Program_ID. Reject if either is empty.
-2. **Fetch user's active enrollments** — builds a lookup of all program IDs the user is currently enrolled in (status = "Active").
-3. **Fetch all events** — reads the Events sheet to build two sets:
-   - `bookedSlots`: date|time keys of events belonging to the user's already-enrolled programs.
-   - `targetEvents`: list of events (name + time slot key) belonging to the target program.
-4. **Conflict check** — for each target event, check if its time slot key (date|time) appears in the booked slots. If any match, return error with the conflicting event name.
-5. **Create enrollment** — generate `ENR-XXXXXXXX` ID, build a new row with all known columns, set status "Active", write via `appendRow`.
-6. Return `{ success: true }`.
+2. **Validate actor and target** — self-service requires the target to be the
+   authenticated Member. Assisted enrollment requires STAFF/ADMIN, or an active
+   Program Leader grant for the exact target Program. The target Member and
+   Program must both be Active.
+3. **Optional conflict warning** — dated, future, Active Events may be compared
+   in Hong Kong church time. Any clash is advisory and cannot reject enrollment;
+   past and Cancelled Events are ignored. Enrollment does not require an Events
+   sheet.
+4. **Minimal critical section** — acquire one short script lock, re-read the
+   exact Member/Program Active-enrollment state, and reject a duplicate before
+   writing.
+5. **Create enrollment** — generate `ENR-XXXXXXXX` ID, append one Active row,
+   flush, and release the lock in `finally`.
+6. Return the canonical RPC envelope and any advisory warning.
 
 ### Code Location
 
 `function enrollUser(userId, programId)` at line 219 of `程式碼.js`.
 
-### Conflict Check Logic
+### Event clash advisory
 
 ```
 bookedSlots = [
@@ -51,20 +61,24 @@ bookedSlots = [
 ]
 
 targetEvents = [
-  { name: "青崇 - 01/08/2026", key: "01/08/2026|3:00 PM" },  // CONFLICT!
+  { name: "青崇 - 01/08/2026", key: "01/08/2026|3:00 PM" },  // WARNING
   ...
 ]
 ```
 
-The system compares only date + time. Two different programs that happen at the same time on the same date are considered conflicting, even if they are in different rooms or run by different leaders.
+If implemented, the system compares date and time in Hong Kong church time and
+returns the overlapping Event information as a warning. The user may still
+enroll. This advisory is optional for the first release.
 
 ### Acceptance Criteria
 
 - [ ] User must provide a valid User_ID and Program_ID.
 - [ ] Enrollment creates a row in the Enrollments sheet with Status = "Active".
-- [ ] If any event in the target program has the same date+time as an event in an already-enrolled program, enrollment is rejected with a conflict message naming the conflicting event.
-- [ ] Multiple enrollments in the same program are allowed (no duplicate check — but a second enrollment is redundant).
+- [ ] A dated Event overlap never rejects Program enrollment; any warning is non-blocking.
+- [ ] At most one Active enrollment exists for the same Member and Program.
 - [ ] Enrollment_ID is unique and formatted `ENR-XXXXXXXX`.
+- [ ] Assisted enrollment is authorized server-side: STAFF/ADMIN for any Active
+      Program and an active Program Leader only for an exact Program they lead.
 
 ---
 
@@ -76,6 +90,11 @@ The system compares only date + time. Two different programs that happen at the 
 2. Change the Status cell to "Cancelled" (soft delete — row is never removed).
 3. Return `{ success: true }`.
 4. If no active enrollment found, return `{ success: false, message: "Active enrollment record not found." }`.
+
+For privileged cancellation of another Member, STAFF/ADMIN may act in any
+Program and an active Program Leader may act only in a Program they lead. The
+mutation is audited, uses the same minimal final recheck/write lock, preserves
+past Attendance, and never runs from Scanner.
 
 ### Code Location
 
@@ -108,15 +127,16 @@ Returns the full Programs catalog with an `isEnrolled` boolean per program — u
 ## 6. Edge Cases & Error Handling
 
 | Scenario | Behavior |
-|----------|----------|
+| --- | --- |
 | Enrollments sheet missing | Returns `{ success: false, message: "System error: Database sheets missing." }` |
-| Events sheet missing | Same as above. |
+| Events sheet missing | Enrollment still works; an optional clash advisory is omitted. |
 | User_ID format mismatch | Normalized via `normalizeId_()` — lowercased, whitespace stripped. |
-| Enrolling without time conflict | Proceeds normally. |
-| Enrolling into a program with no events | No events to check against — enrollment proceeds with no conflict check. |
+| Enrolling with a dated Event conflict | Enrollment proceeds; an implemented advisory may identify the overlap. |
+| Enrolling into a program with no events | Enrollment proceeds normally. |
 | Cancelling after already cancelled | Returns `"Active enrollment record not found."` |
 | Enrollments sheet has extra/missing columns | Column lookup by header name — graceful fallback for optional columns (Timestamp, Status) |
-| Two users enrolled in same program | Both rows exist independently — no duplicate-prevention by design. |
+| Same Member enrolled twice in same Program | Minimal final lock/recheck prevents a second Active row. |
+| Two different Members enrolled in same Program | Both rows exist independently. |
 
 ---
 

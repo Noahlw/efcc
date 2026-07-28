@@ -11,6 +11,7 @@ export default defineConfig({
     "docs/**",
     "index.html",
     "程式碼.js",
+    "src/gas/template-reference/**",
   ],
   rules: {
     // Scoped via overrides below where possible; only truly global suppressions here

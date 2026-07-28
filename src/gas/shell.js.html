@@ -1,0 +1,42 @@
+<script>
+  (function () {
+    "use strict";
+
+    // EFCC 顯恩堂 — static shell wiring (issue #65 baseline).
+    // Flips the data-app-state once the DOM is ready and prevents
+    // the inert login form from performing a real top-level submit
+    // inside the IFRAME sandbox. All session, login, and bootstrap
+    // wiring lives in shell-session.js.html, loaded after this
+    // module so the static-shell contract remains independent of
+    // the authenticated shell wiring (issue #66).
+
+    function markShellReady() {
+      var root = document.getElementById("app");
+      if (root) {
+        root.setAttribute("data-app-state", "SIGNED_OUT");
+      }
+    }
+
+    function bindLoginForm() {
+      var form = document.getElementById("login-form");
+      if (!form) return;
+      form.addEventListener("submit", function (event) {
+        // Block the native top-level submit inside the IFRAME so
+        // the IFRAME sandbox never tries to navigate. The actual
+        // login RPC is wired in shell-session.js.html.
+        event.preventDefault();
+      });
+    }
+
+    function onReady() {
+      markShellReady();
+      bindLoginForm();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", onReady);
+    } else {
+      onReady();
+    }
+  })();
+</script>

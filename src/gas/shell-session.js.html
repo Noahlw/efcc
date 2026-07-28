@@ -1,0 +1,627 @@
+<script>
+  (function () {
+    "use strict";
+
+    // EFCC 顯恩堂 — session, login, and bootstrap controller.
+    // Per ADR-0010 / docs/specs/009-phone-first-shell-navigation.md /
+    // issue #64 (parent) + #50 (auth boundary) + #73 (session detail).
+    //
+    // This module is the live-wiring sibling of shell.js.html. The
+    // static-shell contract (issue #65) forbids RPC calls in
+    // shell.js.html, so all server interaction lives here. The
+    // App Document includes both modules in this order:
+    //   1) shell.js        — flips data-app-state to SIGNED_OUT
+    //   2) shell-session.js — restores or renders Login, owns
+    //                         the state machine, login form, and
+    //                         authenticated Profile render.
+    //
+    // Module responsibilities:
+    //   - data-app-state machine (BOOTING -> SIGNED_OUT ->
+    //     AUTHENTICATING -> LOADING_SECTION -> READY, plus
+    //     RESTORING and RECOVERABLE_ERROR);
+    //   - the single canonical localStorage key
+    //     ("efccSession") holding {userId, sessionId, sessionToken};
+    //   - login form wiring (calls api_loginUser with both success
+    //     and failure handlers per spec 009);
+    //   - bootstrap-on-load (calls api_restoreApp when a stored
+    //     session is present; otherwise stays in SIGNED_OUT with
+    //     zero server calls);
+    //   - session-expiry recovery (AUTH_REQUIRED from a protected
+    //     RPC clears client state and returns to Login in the
+    //     same document, never via navigation);
+    //   - visible recovery UI on transport / server / timeout
+    //     failures with an explicit retry action;
+    //   - rendering the minimal Profile fragment into #app-content
+    //     after a successful login or restore.
+    //
+    // Hard rules (enforced by tests/gas/app-shell.contract.test.js):
+    //   - NEVER use document.write/open/close;
+    //   - NEVER set location.href, location.replace, or
+    //     window.top.location;
+    //   - NEVER use meta-refresh;
+    //   - NEVER include a query-string router;
+    //   - every google.script.run MUST register a failure handler.
+
+    var STORAGE_KEY = "efccSession";
+    var STATE = {
+      BOOTING: "BOOTING",
+      SIGNED_OUT: "SIGNED_OUT",
+      AUTHENTICATING: "AUTHENTICATING",
+      RESTORING: "RESTORING",
+      LOADING_SECTION: "LOADING_SECTION",
+      READY: "READY",
+      RECOVERABLE_ERROR: "RECOVERABLE_ERROR",
+    };
+
+    // Monotonic request id so a slow/stale RPC cannot overwrite a
+    // newer view (spec 009 client responsibilities).
+    var inflightRequestId_ = 0;
+    // The current user/session in memory. Cleared on logout / expiry.
+    var session_ = null;
+    // True between the moment a user clicks "登入" and the moment
+    // the server replies. Suppresses duplicate submits.
+    var loginPending_ = false;
+
+    // -----------------------------------------------------------------
+    // Tiny DOM helpers
+    // -----------------------------------------------------------------
+    function $(id) {
+      return document.getElementById(id);
+    }
+    function appRoot() {
+      return $("app");
+    }
+    function setAppState(state) {
+      var root = appRoot();
+      if (root) root.setAttribute("data-app-state", state);
+    }
+    function setStatus(text) {
+      var el = $("app-status");
+      if (el) el.textContent = text || "";
+    }
+    function clearChildren(el) {
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        Object.keys(attrs).forEach(function (k) {
+          if (k === "class") node.className = attrs[k];
+          else if (k === "text") node.textContent = attrs[k];
+          else if (
+            k === "type" ||
+            k === "id" ||
+            k === "name" ||
+            k === "autocomplete" ||
+            k === "inputmode" ||
+            k === "maxlength" ||
+            k === "pattern" ||
+            k === "role" ||
+            k === "aria-live" ||
+            k === "for" ||
+            k === "required"
+          ) {
+            node.setAttribute(k, attrs[k]);
+          } else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") {
+            node.addEventListener(k.slice(2), attrs[k]);
+          }
+        });
+      }
+      // Normalize children to an array — a single child may be a
+      // string (text content) or a single element, and the caller
+      // should not have to wrap a one-off in an array literal.
+      var kids = children;
+      if (kids == null) kids = [];
+      else if (!Array.isArray(kids)) kids = [kids];
+      for (var i = 0; i < kids.length; i++) {
+        var c = kids[i];
+        if (c == null) continue;
+        if (typeof c === "string") {
+          node.appendChild(document.createTextNode(c));
+        } else {
+          node.appendChild(c);
+        }
+      }
+      return node;
+    }
+
+    // -----------------------------------------------------------------
+    // localStorage helpers
+    // -----------------------------------------------------------------
+    function readStoredSession_() {
+      try {
+        var raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+        if (!parsed.userId || !parsed.sessionId || !parsed.sessionToken)
+          return null;
+        return parsed;
+      } catch (e) {
+        return null;
+      }
+    }
+    function writeStoredSession_(s) {
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            userId: s.userId,
+            sessionId: s.sessionId,
+            sessionToken: s.sessionToken,
+          })
+        );
+      } catch (e) {
+        // localStorage may be disabled (private mode). Continue
+        // with the in-memory session; the next reload will land
+        // back on Login.
+      }
+    }
+    function clearStoredSession_() {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+    }
+
+    // -----------------------------------------------------------------
+    // RPC wrapper — enforces success + failure handlers and request
+    // id monotonicity. The caller passes a stable `idTag` (e.g.
+    // "login") and a runner. If a newer call with the same tag
+    // starts before this one finishes, the older response is
+    // dropped (spec 009).
+    // -----------------------------------------------------------------
+    var inflightTags_ = {};
+    function callServer_(idTag, runner, onSuccess, onError) {
+      var myId = ++inflightRequestId_;
+      inflightTags_[idTag] = myId;
+      function maybeApply(tag, fn, value) {
+        if (inflightTags_[tag] !== myId) return;
+        fn(value);
+      }
+      function success(value) {
+        maybeApply(idTag, onSuccess, value);
+      }
+      function failure(err) {
+        // Per spec 009: unexpected execution exceptions reach the
+        // failure handler; render a generic recoverable error.
+        var message = err && err.message ? String(err.message) : "";
+        maybeApply(idTag, onError, {
+          kind: "TRANSPORT",
+          code: "INTERNAL_ERROR",
+          message: message || "網絡連線不穩定，請稍後再試。",
+        });
+      }
+      try {
+        var maybe = runner(success, failure);
+        if (maybe && typeof maybe.then === "function") {
+          maybe.then(success, failure);
+        }
+      } catch (e) {
+        failure(e);
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Section rendering — Profile is the Day 1 landing section per
+    // ADR-0010 / spec 009 / issue #64. Intentionally self-contained
+    // so the AC "bootstrap returns initial Profile data" is met
+    // without committing to a full Section-controller registry
+    // (later ticket).
+    // -----------------------------------------------------------------
+    function renderProfile_(bootstrap) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el("section", { class: "page view-profile" }, [
+          el("div", { class: "login-card" }, [
+            el("h2", { text: "個人資料" }),
+            el("p", {
+              class: "muted",
+              text: "已登入：" + (bootstrap.session.name || ""),
+            }),
+            el("dl", { class: "profile-fields" }, [
+              el("dt", { text: "使用者名稱" }),
+              el("dd", { text: bootstrap.profile.username || "" }),
+              el("dt", { text: "角色" }),
+              el("dd", { text: bootstrap.profile.role || "" }),
+              el("dt", { text: "QR 碼" }),
+              el("dd", {}, [
+                (function () {
+                  var img = document.createElement("img");
+                  img.src =
+                    "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
+                    encodeURIComponent(bootstrap.profile.qrCodeString || "");
+                  img.alt = "QR 碼";
+                  img.width = 200;
+                  img.height = 200;
+                  return img;
+                })(),
+              ]),
+            ]),
+            el(
+              "button",
+              {
+                id: "profile-logout",
+                class: "btn btn-primary btn-full",
+                type: "button",
+                "data-action": "logout",
+                onclick: handleLogoutClick_,
+              },
+              "登出"
+            ),
+          ]),
+        ])
+      );
+    }
+
+    function renderLoadingSection_() {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el("section", { class: "page view-loading" }, [
+          el("div", { class: "login-card text-center" }, [
+            el("p", { class: "muted", text: "載入中..." }),
+          ]),
+        ])
+      );
+    }
+
+    function renderLogin_() {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      // Rebuild the Login fragment client-side. The IDs MUST match
+      // the markup-only view-login.html fragment so any future
+      // contract test on that fragment remains valid.
+      content.appendChild(
+        el("section", { id: "view-login", class: "page view-login" }, [
+          el("div", { class: "login-card" }, [
+            el("h2", { class: "text-center", text: "登入" }),
+            el("p", { class: "text-center muted", text: "歡迎使用顯恩堂系統" }),
+            el(
+              "form",
+              {
+                id: "login-form",
+                class: "form",
+                autocomplete: "off",
+                onsubmit: handleLoginSubmit_,
+              },
+              [
+                el("div", { class: "form-group" }, [
+                  el("label", {
+                    class: "label",
+                    for: "login-username",
+                    text: "使用者名稱",
+                  }),
+                  el("input", {
+                    id: "login-username",
+                    class: "input",
+                    type: "text",
+                    name: "username",
+                    autocomplete: "username",
+                    required: "required",
+                  }),
+                ]),
+                el("div", { class: "form-group" }, [
+                  el("label", {
+                    class: "label",
+                    for: "login-pin",
+                    text: "PIN 碼",
+                  }),
+                  el("input", {
+                    id: "login-pin",
+                    class: "input",
+                    type: "password",
+                    name: "pin",
+                    inputmode: "numeric",
+                    maxlength: "4",
+                    pattern: "\\d{4}",
+                    autocomplete: "current-password",
+                    required: "required",
+                  }),
+                ]),
+                el("button", {
+                  id: "login-submit",
+                  class: "btn btn-primary btn-full",
+                  type: "submit",
+                  text: "登入",
+                }),
+                el("div", {
+                  id: "login-msg",
+                  class: "msg-error hidden",
+                  role: "alert",
+                }),
+              ]
+            ),
+          ]),
+        ])
+      );
+      var u = $("login-username");
+      if (u && u.focus) u.focus();
+    }
+
+    function showLoginError_(message) {
+      var msg = $("login-msg");
+      if (!msg) return;
+      msg.textContent = message || "登入失敗，請再試一次。";
+      msg.classList.remove("hidden");
+    }
+    function clearLoginError_() {
+      var msg = $("login-msg");
+      if (!msg) return;
+      msg.textContent = "";
+      msg.classList.add("hidden");
+    }
+
+    // -----------------------------------------------------------------
+    // Recovery UI for transport/timeout/INTERNAL_ERROR. Renders
+    // into the content area without replacing the document.
+    // -----------------------------------------------------------------
+    function renderRecoverableError_(kind) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      var heading = "載入失敗";
+      var detail = "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。";
+      if (kind === "AUTH_REQUIRED") {
+        heading = "登入工作階段已失效";
+        detail = "請重新登入。";
+      } else if (kind === "BOOTSTRAP_FAILED") {
+        heading = "無法載入個人資料";
+        detail = "請稍後再試。";
+      }
+      content.appendChild(
+        el("section", { class: "page view-error" }, [
+          el("div", { class: "login-card text-center" }, [
+            el("h2", { text: heading }),
+            el("p", { class: "muted", text: detail }),
+            el(
+              "button",
+              {
+                id: "error-retry",
+                class: "btn btn-primary btn-full",
+                type: "button",
+                "data-action": "retry",
+                onclick: handleRetryClick_,
+              },
+              "重試"
+            ),
+          ]),
+        ])
+      );
+    }
+
+    function handleRetryClick_() {
+      if (session_) {
+        setAppState(STATE.RESTORING);
+        renderLoadingSection_();
+        restoreFromStorage_();
+      } else {
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Login submit / logout click handlers
+    // -----------------------------------------------------------------
+    function handleLoginSubmit_(event) {
+      if (event && event.preventDefault) event.preventDefault();
+      if (loginPending_) return;
+      var u = $("login-username");
+      var p = $("login-pin");
+      if (!u || !p) return;
+      var username = u.value;
+      var pin = p.value;
+      if (!username || !pin) {
+        showLoginError_("請輸入使用者名稱和 PIN 碼。");
+        return;
+      }
+      loginPending_ = true;
+      var submit = $("login-submit");
+      if (submit) submit.setAttribute("disabled", "disabled");
+      setStatus("登入中...");
+      callServer_(
+        "login",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_loginUser(username, pin);
+        },
+        function (envelope) {
+          loginPending_ = false;
+          if (submit) submit.removeAttribute("disabled");
+          handleRpcEnvelope_(envelope, "login");
+        },
+        function (err) {
+          loginPending_ = false;
+          if (submit) submit.removeAttribute("disabled");
+          handleRpcFailure_(err, "login");
+        }
+      );
+    }
+
+    function handleLogoutClick_() {
+      if (!session_) {
+        clearAuthenticatedClientState_();
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+        return;
+      }
+      callServer_(
+        "logout",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_logoutUser(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken
+            );
+        },
+        function () {
+          clearAuthenticatedClientState_();
+          setAppState(STATE.SIGNED_OUT);
+          renderLogin_();
+        },
+        function () {
+          clearAuthenticatedClientState_();
+          setAppState(STATE.SIGNED_OUT);
+          renderLogin_();
+        }
+      );
+    }
+
+    // -----------------------------------------------------------------
+    // RPC envelope handling — spec 009 dispatch table.
+    // -----------------------------------------------------------------
+    function handleRpcEnvelope_(envelope, tag) {
+      if (!envelope || typeof envelope !== "object") {
+        handleRpcFailure_(
+          { kind: "MALFORMED", message: "伺服器回應格式不正確。" },
+          tag
+        );
+        return;
+      }
+      if (envelope.success === true) {
+        if (tag === "login" || tag === "restore") {
+          applyBootstrap_(envelope.data);
+        }
+        // logout is handled inline in handleLogoutClick_
+        return;
+      }
+      // RpcFailure shape per rpc-envelope.gs:
+      //   { success: false, requestId, error: { code, message } }.
+      var code = (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
+      var message =
+        (envelope.error && envelope.error.message) || "操作失敗，請稍後再試。";
+      if (code === "AUTH_REQUIRED") {
+        clearAuthenticatedClientState_();
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+        setStatus("");
+        showLoginError_(message);
+        return;
+      }
+      if (tag === "login") {
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+        setStatus("");
+        showLoginError_(message);
+        return;
+      }
+      if (tag === "restore") {
+        setAppState(STATE.RECOVERABLE_ERROR);
+        renderRecoverableError_("BOOTSTRAP_FAILED");
+        return;
+      }
+      setAppState(STATE.RECOVERABLE_ERROR);
+      renderRecoverableError_("GENERIC");
+    }
+
+    function handleRpcFailure_(err, tag) {
+      if (err && err.kind === "TRANSPORT") {
+        if (tag === "login") {
+          setAppState(STATE.SIGNED_OUT);
+          renderLogin_();
+          setStatus("");
+          showLoginError_(err.message);
+          return;
+        }
+        setAppState(STATE.RECOVERABLE_ERROR);
+        renderRecoverableError_("TRANSPORT");
+        return;
+      }
+      setAppState(STATE.RECOVERABLE_ERROR);
+      renderRecoverableError_("TRANSPORT");
+    }
+
+    function applyBootstrap_(data) {
+      if (!data || !data.session || !data.profile) {
+        handleRpcFailure_(
+          { kind: "MALFORMED", message: "伺服器回應格式不正確。" },
+          "bootstrap"
+        );
+        return;
+      }
+      session_ = {
+        userId: data.session.userId,
+        name: data.session.name,
+        role: data.session.role,
+        qrCodeString: data.session.qrCodeString,
+        sessionId: data.session.sessionId,
+        sessionToken: data.session.sessionToken,
+      };
+      writeStoredSession_(session_);
+      setAppState(STATE.LOADING_SECTION);
+      setStatus("載入中...");
+      renderLoadingSection_();
+      // Defer one tick so the LOADING_SECTION paint is observable.
+      window.setTimeout(function () {
+        setAppState(STATE.READY);
+        setStatus("");
+        renderProfile_(data);
+      }, 0);
+    }
+
+    function clearAuthenticatedClientState_() {
+      session_ = null;
+      clearStoredSession_();
+    }
+
+    // -----------------------------------------------------------------
+    // Bootstrap-on-load: if localStorage has a session, call
+    // api_restoreApp once. Otherwise stay in SIGNED_OUT with zero
+    // server calls (issue #66 AC #1).
+    // -----------------------------------------------------------------
+    function restoreFromStorage_() {
+      var stored = readStoredSession_();
+      if (!stored) {
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+        return;
+      }
+      setAppState(STATE.RESTORING);
+      renderLoadingSection_();
+      setStatus("載入中...");
+      callServer_(
+        "restore",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_restoreApp(
+              stored.userId,
+              stored.sessionId,
+              stored.sessionToken
+            );
+        },
+        function (envelope) {
+          handleRpcEnvelope_(envelope, "restore");
+        },
+        function (err) {
+          handleRpcFailure_(err, "restore");
+        }
+      );
+    }
+
+    function onReady() {
+      // Issue #66 AC #1: with no stored session, stay in
+      // SIGNED_OUT and show Login without any server call.
+      // restoreFromStorage_ honors that by checking localStorage
+      // first.
+      restoreFromStorage_();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", onReady);
+    } else {
+      onReady();
+    }
+  })();
+</script>

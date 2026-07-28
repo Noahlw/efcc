@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-HK">
+  <head>
+    <meta charset="UTF-8" />
+    <base target="_top" />
+    <title>EFCC 顯恩堂</title>
+    <?!= include('styles'); ?>
+  </head>
+  <body>
+    <div id="app" class="app-shell" data-app-state="BOOTING">
+      <header id="app-header" class="app-header">
+        <h1 class="app-title">顯恩堂系統</h1>
+      </header>
+      <div
+        id="app-status"
+        class="app-status"
+        role="status"
+        aria-live="polite"
+      ></div>
+      <main id="app-content" class="app-content">
+        <?!= include('view-login'); ?>
+      </main>
+      <nav id="app-nav-phone" class="app-nav-phone" hidden></nav>
+      <nav id="app-nav-desktop" class="app-nav-desktop" hidden></nav>
+    </div>
+    <?!= include('shell.js'); ?> <?!= include('shell-session.js'); ?>
+  </body>
+</html>

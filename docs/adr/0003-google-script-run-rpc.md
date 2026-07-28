@@ -27,15 +27,15 @@ Communicate between the browser-side web app and the Apps Script server using `g
 ```javascript
 // Client-side pattern
 google.script.run
-  .withSuccessHandler(function(result) {
+  .withSuccessHandler(function (result) {
     if (result.success) {
       // handle success
     } else {
-      showError(result.message);  // business logic error
+      showError(result.message); // business logic error
     }
   })
-  .withFailureHandler(function(error) {
-    showError("Server error: " + error.message);  // unexpected failure
+  .withFailureHandler(function (error) {
+    showError("Server error: " + error.message); // unexpected failure
   })
   .enrollUser(userId, programId);
 ```
@@ -50,6 +50,19 @@ google.script.run
 - `withFailureHandler` is reserved for infrastructure errors (missing sheets, permission errors). Business errors ("PIN incorrect", "Time conflict") are delivered through the success path.
 - The deployment boundary is the entire project — any code change requires a `clasp push` to update both server and client.
 - Adding a new feature means: add the server function → add the client call in the HTML script → push.
+
+## Proposed amendment: structured application failures
+
+**Status:** Proposed — official API support verified; deployed proof pending
+
+All browser-callable APIs will use one application-failure envelope with a
+stable `code`: `AUTH_REQUIRED`, `FORBIDDEN`, `VALIDATION`, `NOT_FOUND`,
+`CONFLICT`, or `UNAVAILABLE`. Expected authentication, authorization,
+validation, lookup, business-conflict, and temporary-service failures return
+this envelope through the success handler. Unexpected execution exceptions are
+handled by `withFailureHandler()` and never expose raw stack traces to the user.
+This amendment becomes accepted only after every code and one deliberately
+thrown exception pass through a deployed `/exec` web app.
 
 ## Alternatives Considered
 

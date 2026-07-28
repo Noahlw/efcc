@@ -15,7 +15,7 @@ Maintain a catalog of church programs (activities, ministries, classes) that mem
 ## 2. Data Model (Programs Sheet)
 
 | Column | Example | Notes |
-|--------|---------|-------|
+| --- | --- | --- |
 | Program_ID | `dd646847` | Primary key. Free-text identifier. |
 | Program_Name | `青崇` | Display name shown in the enrollment UI. |
 | Type | `Youth` | Categorization field (e.g. Youth, Bible Study, Fellowship). Free text. |
@@ -27,20 +27,22 @@ Maintain a catalog of church programs (activities, ministries, classes) that mem
 
 The Programs catalog uses `CacheService.getScriptCache()` to reduce spreadsheet reads.
 
-| Setting | Value |
-|---------|-------|
-| Cache key | `programs_catalog_v1` |
-| TTL | 300 seconds (5 minutes) |
+| Setting        | Value                                         |
+| -------------- | --------------------------------------------- |
+| Cache key      | `programs_catalog_v1`                         |
+| TTL            | 300 seconds (5 minutes)                       |
 | Storage format | `JSON.stringify` of the parsed programs array |
 
 **Flow**:
+
 1. On `getProgramsCatalog_()`: check cache → if hit, parse and return.
 2. If cache miss: read Programs sheet, parse rows into objects, cache the result, return.
 3. Cache is not explicitly invalidated — it expires after 5 minutes, or when the script's execution cache is cleared.
 
 **Code Constants**:
+
 ```javascript
-var PROGRAMS_CACHE_KEY_ = 'programs_catalog_v1';
+var PROGRAMS_CACHE_KEY_ = "programs_catalog_v1";
 var PROGRAMS_CACHE_TTL_SEC_ = 300;
 ```
 
@@ -53,6 +55,7 @@ var PROGRAMS_CACHE_TTL_SEC_ = 300;
 Returns the full list of programs. Wrapped in try-catch for safe error handling (returns empty array on failure).
 
 **Return format**:
+
 ```json
 [
   { "id": "dd646847", "name": "青崇", "type": "Youth", "description": "..." },
@@ -65,10 +68,23 @@ Returns the full list of programs. Wrapped in try-catch for safe error handling 
 Returns the full program catalog with an `isEnrolled` boolean per program, indicating whether the given user is actively enrolled.
 
 **Return format**:
+
 ```json
 [
-  { "id": "dd646847", "name": "青崇", "type": "Youth", "description": "...", "isEnrolled": true },
-  { "id": "...", "name": "...", "type": "...", "description": "...", "isEnrolled": false }
+  {
+    "id": "dd646847",
+    "name": "青崇",
+    "type": "Youth",
+    "description": "...",
+    "isEnrolled": true
+  },
+  {
+    "id": "...",
+    "name": "...",
+    "type": "...",
+    "description": "...",
+    "isEnrolled": false
+  }
 ]
 ```
 
@@ -81,7 +97,7 @@ This is the primary function consumed by the web app to render the enrollment sc
 Column indexes are resolved by fuzzy header name matching via `findHeaderIndex_()`:
 
 | Lookup Priority | Matches |
-|----------------|---------|
+| --- | --- |
 | Program_ID | `program_id`, `program id`, `programid` |
 | Program_Name | `program_name`, `program name`, `name` |
 | Type | `type` |
@@ -94,7 +110,7 @@ This allows the sheet to have extra columns (e.g. Location, Leader, Max Capacity
 ## 6. Edge Cases & Error Handling
 
 | Scenario | Behavior |
-|----------|----------|
+| --- | --- |
 | Programs sheet missing | Returns empty array `[]`. |
 | Programs sheet has header but no data rows | Returns empty array `[]`. |
 | Program_ID missing on a row | Row is skipped entirely (not included in results). |

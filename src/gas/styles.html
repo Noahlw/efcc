@@ -1,0 +1,285 @@
+<style>
+  :root {
+    --color-bg: #f6f7f9;
+    --color-surface: #ffffff;
+    --color-text: #1f2328;
+    --color-muted: #5b6470;
+    --color-primary: #2f6feb;
+    --color-primary-contrast: #ffffff;
+    --color-border: #d8dde3;
+    --color-error: #b42318;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --font-sans:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK",
+      "Microsoft JhengHei", "Noto Sans CJK HK", system-ui, sans-serif;
+    --text-sm: 14px;
+    --text-md: 16px;
+    --text-lg: 20px;
+    --text-xl: 24px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: 1.5;
+  }
+
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .app-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .app-title {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .app-status {
+    padding: var(--space-2) var(--space-4);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    min-height: 1px;
+  }
+
+  .app-content {
+    flex: 1 1 auto;
+    padding: var(--space-5) var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+  }
+
+  .app-nav-phone {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-around;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    position: sticky;
+    bottom: 0;
+  }
+
+  .app-nav-desktop {
+    display: flex;
+    flex-direction: column;
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    padding: var(--space-4);
+  }
+
+  /* Keep the native `hidden` attribute authoritative. Author class
+     rules above would otherwise beat the UA `[hidden] { display: none }`
+     default; this forces the override. */
+  .app-nav-phone[hidden],
+  .app-nav-desktop[hidden] {
+    display: none !important;
+  }
+
+  /* Phone shell: single column, bottom navigation reachable. */
+  @media (max-width: 767.98px) {
+    .app-shell {
+      padding-bottom: 56px;
+    }
+    .app-nav-phone {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+    .app-content {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+  /* Desktop shell: header and status span the full top width; the
+     desktop nav rail and content share the row beneath. CSS Grid (not
+     a flat flex row) is required here because .app-header/.app-status
+     must span the full row width while .app-nav-desktop/.app-content
+     split the remaining height — a single-axis flex container can't
+     express both constraints on the same set of siblings. The bottom
+     phone nav is hidden regardless of its `hidden` attribute state.
+     The 768px breakpoint is the spec switch per ADR-0010 / spec 009. */
+  @media (min-width: 768px) {
+    .app-shell {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        "header header"
+        "status status"
+        "nav-desktop content";
+    }
+    .app-header {
+      grid-area: header;
+    }
+    .app-status {
+      grid-area: status;
+    }
+    .app-nav-desktop {
+      grid-area: nav-desktop;
+    }
+    .app-content {
+      grid-area: content;
+    }
+    .app-nav-phone {
+      display: none !important;
+    }
+  }
+
+  .page {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  .login-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .login-card h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-xl);
+    font-weight: 600;
+  }
+
+  .muted {
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    margin: 0 0 var(--space-5);
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .label {
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+
+  .input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    font: inherit;
+    color: inherit;
+  }
+
+  .input:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-4);
+    font: inherit;
+    cursor: pointer;
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .btn-primary {
+    background: var(--color-primary);
+    color: var(--color-primary-contrast);
+    border-color: var(--color-primary);
+  }
+
+  .btn-full {
+    width: 100%;
+  }
+
+  .msg-error {
+    color: var(--color-error);
+    font-size: var(--text-sm);
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  .text-center {
+    text-align: center;
+  }
+
+  .profile-fields {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: var(--space-4);
+    row-gap: var(--space-2);
+    margin: 0 0 var(--space-4);
+  }
+  .profile-fields dt {
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+  }
+  .profile-fields dd {
+    margin: 0;
+    font-size: var(--text-md);
+    word-break: break-all;
+  }
+
+  .profile-fields img {
+    max-width: 100%;
+    height: auto;
+  }
+  .view-loading,
+  .view-error,
+  .view-profile {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .view-loading .login-card,
+  .view-error .login-card {
+    text-align: center;
+  }
+</style>

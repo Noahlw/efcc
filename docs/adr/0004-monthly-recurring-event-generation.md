@@ -27,11 +27,11 @@ Generate recurring program events (e.g. weekly Sunday youth worship) via a serve
 ```javascript
 var recurringPrograms = [
   {
-    programId: "dd646847",  // References Programs.Program_ID
-    dayOfWeek: 0,            // 0 = Sunday, 1 = Monday, ...
-    startTime: "3:00 PM",    // Display-only time string
-    namePrefix: "青崇"       // Used to build Event_Name
-  }
+    programId: "dd646847", // References Programs.Program_ID
+    dayOfWeek: 0, // 0 = Sunday, 1 = Monday, ...
+    startTime: "3:00 PM", // Display-only time string
+    namePrefix: "青崇", // Used to build Event_Name
+  },
 ];
 ```
 
