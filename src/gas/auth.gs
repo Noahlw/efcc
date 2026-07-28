@@ -11,9 +11,10 @@ var EFCC_MENU_PAGES_ = Object.freeze([
   "programs",
   "events",
   "scanner",
-  "dashboard",
   "care",
 ]);
+// "dashboard" removed — see Code.gs's SPA_FRAGMENT_ALLOWLIST_ note; no
+// separate feature exists beyond "care".
 
 function normalizePin_(value) {
   var pin = String(value == null ? "" : value).trim().replace(/\D/g, "");

@@ -47,9 +47,14 @@ var SPA_FRAGMENT_ALLOWLIST_ = Object.freeze([
   "programs",
   "events",
   "scanner",
-  "dashboard",
   "care",
 ]);
+// NOTE: "dashboard" was removed from this list (was in T00's original
+// scaffold). Verified against docs/specs/007 and 程式碼.js: the old build's
+// dashboard.html/dashboard-svc.gs are literally the Pastoral Care Dashboard
+// feature under an old filename, not a separate aggregate-metrics page.
+// "care" is the correct fragment name for that one feature; there is no
+// second "dashboard" feature to allow.
 
 /**
  * loadPage(name) — returns the rendered HTML string of a fragment.

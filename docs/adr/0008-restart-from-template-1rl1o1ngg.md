@@ -36,7 +36,7 @@ Full rebuild of `src/gas/` on the template's SPA-shell + DOM-swap architecture, 
 | 3.3 | Chrome content rules | **A** — Show all pages the user has any access to (RBAC filter at render time) |
 | 3.4 | Login flow | **A** — Template's pattern + EFCC fields (username + PIN, not email + password) |
 | 3.5 | Rebuild scope | **A**, reconfirmed under CEO Review Approach 3 — reimplement from `程式碼.js`, discard current `src/gas/` entirely (server + client) |
-| 4.1 | Fragment file naming | **A** — Bare names: `profile.html`, `programs.html`, `events.html`, `scanner.html`, `dashboard.html`, `care.html` |
+| 4.1 | Fragment file naming | **A** — Bare names, corrected to 5 real pages during implementation: `profile.html`, `programs.html`, `events.html`, `scanner.html`, `care.html` (a phantom 6th "dashboard" page was in the original scaffold and menu logic; verified during T02/T06 wave prep against `docs/specs/007` and `程式碼.js` that "dashboard" was never a distinct feature — the old build's `dashboard.html`/`dashboard-svc.gs` files are literally the Pastoral Care Dashboard under an old name. T05 (issue #46) was closed as a duplicate of T06 (#47); `Code.gs`'s `SPA_FRAGMENT_ALLOWLIST_` and `auth.gs`'s `EFCC_MENU_PAGES_` corrected to 5 entries.) |
 | 4.2 | Port scope | **C**, reconfirmed under CEO Review Approach 3 — port all 48 `程式碼.js` functions, then audit and prune |
 | 5.1 | Audit log write pattern | **C** — single `writeAuditLog()` helper + `LockService` (see ADR-0009) |
 | 5.3 | Asset strategy | **B** — `styles.html` kept as a separate file, included via `<?!= include('styles'); ?>` |

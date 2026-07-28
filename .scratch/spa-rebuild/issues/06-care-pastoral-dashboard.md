@@ -8,7 +8,7 @@
 
 - [ ] Server care-dashboard functions reimplemented from `程式碼.js` (inactive-member detection, activity profile aggregation) — read-only, no privileged mutation, no audit-log requirement.
 - [ ] `care.html` fragment: renders the inactivity-flagged member list with the existing badge thresholds (green/amber/red per days-inactive); defines `initCare()`.
-- [ ] `Care` appears in chrome only for global `STAFF`/`ADMIN` roles (Grill 3.3), same gating pattern as Slice 05.
+- [ ] `Care` appears in chrome only for global `STAFF`/`ADMIN` roles (Grill 3.3).
 - [ ] Smoke test: as a Staff test account, Care appears in chrome and renders the inactivity list without error; a direct `loadPage('care')` call from a Member session is rejected server-side.
 
 ---
