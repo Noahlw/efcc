@@ -201,7 +201,7 @@
        *   - T01 fills #menu (desktop sidebar) with one <li><a> per page, each
        *     anchor carrying onclick="loadMenuPage('<pageName>', this)".
        *   - T01 fills #bottom-tabs > ul (mobile tab bar) with the same set.
-       *   - T01 then calls loadMenuPage('dashboard', ...) to render the
+       *   - T01 then calls loadMenuPage('profile', ...) to render the
        *     initial fragment into #main-content.
        */
       function loadMenuPage(pageName, el) {
@@ -247,6 +247,13 @@
             if (typeof initFn === "function") {
               initFn();
             }
+          })
+          .withFailureHandler(function (err) {
+            container.innerHTML =
+              '<div class="msg-error">' +
+              "Unable to load this page. " +
+              (err && err.message ? err.message : "Please try again.") +
+              "</div>";
           })
           .loadPage(pageName);
 
@@ -298,7 +305,6 @@
           programs: "Programs 課程",
           events: "Events 聚會",
           scanner: "Scanner 掃描",
-          dashboard: "Dashboard 儀表板",
           care: "Care 關懷",
         };
         var itemsHtml = pages
