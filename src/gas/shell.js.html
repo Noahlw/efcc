@@ -2,11 +2,13 @@
   (function () {
     "use strict";
 
-    // EFCC 顯恩堂 — client bootstrap.
-    // Owns only static shell wiring for this ticket: it flips the app's
-    // boot state once the DOM is ready and prevents the inert login form
-    // from performing a real top-level submit. All real navigation,
-    // session, and data wiring belongs to later tickets.
+    // EFCC 顯恩堂 — static shell wiring (issue #65 baseline).
+    // Flips the data-app-state once the DOM is ready and prevents
+    // the inert login form from performing a real top-level submit
+    // inside the IFRAME sandbox. All session, login, and bootstrap
+    // wiring lives in shell-session.js.html, loaded after this
+    // module so the static-shell contract remains independent of
+    // the authenticated shell wiring (issue #66).
 
     function markShellReady() {
       var root = document.getElementById("app");
@@ -19,9 +21,9 @@
       var form = document.getElementById("login-form");
       if (!form) return;
       form.addEventListener("submit", function (event) {
-        // Real authentication is implemented in a later ticket. For now
-        // we only block the native top-level submit inside the IFRAME so
-        // the IFRAME sandbox never tries to navigate.
+        // Block the native top-level submit inside the IFRAME so
+        // the IFRAME sandbox never tries to navigate. The actual
+        // login RPC is wired in shell-session.js.html.
         event.preventDefault();
       });
     }

@@ -15,7 +15,7 @@ Generate individual event instances for recurring programs (e.g. weekly youth wo
 ## 2. Data Model (Events Sheet)
 
 | Column | Example | Notes |
-|--------|---------|-------|
+| --- | --- | --- |
 | Event_ID | `A1B2C3D4` | First 8 hex chars of `Utilities.getUuid()`, uppercased. |
 | Program_ID | `dd646847` | References Programs.Program_ID. |
 | Event_Date | `01/08/2026` | Formatted as `dd/MM/YYYY` using the script's timezone. |
@@ -29,9 +29,15 @@ Generate individual event instances for recurring programs (e.g. weekly youth wo
 **Trigger**: Time-driven trigger (recommended: monthly) or manual execution via script editor.
 
 1. **Define recurring programs** — currently a hardcoded array in the function body:
+
    ```javascript
    var recurringPrograms = [
-     { programId: "dd646847", dayOfWeek: 0, startTime: "3:00 PM", namePrefix: "青崇" }
+     {
+       programId: "dd646847",
+       dayOfWeek: 0,
+       startTime: "3:00 PM",
+       namePrefix: "青崇",
+     },
    ];
    ```
    - `dayOfWeek`: 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -55,8 +61,8 @@ Generate individual event instances for recurring programs (e.g. weekly youth wo
 
 ### Current Recurring Programs (Hardcoded)
 
-| Program_ID | Day | Time | Name Prefix |
-|-----------|-----|------|-------------|
+| Program_ID | Day        | Time    | Name Prefix          |
+| ---------- | ---------- | ------- | -------------------- |
 | `dd646847` | Sunday (0) | 3:00 PM | 青崇 (Youth Worship) |
 
 Additional programs can be added by uncommenting and customizing entries in the `recurringPrograms` array.
@@ -81,7 +87,7 @@ The function is designed to run on a **monthly time trigger**. To configure:
 ## 5. Edge Cases & Error Handling
 
 | Scenario | Behavior |
-|----------|----------|
+| --- | --- |
 | Events sheet is missing | Function returns early — no events generated. |
 | Events sheet has extra columns | `setValues` writes only the defined columns. Extra columns in the sheet remain empty for new rows. |
 | Program_ID in `recurringPrograms` doesn't match any Programs catalog entry | Events are still generated — Program_ID is a foreign key by convention only, no referential check is performed. |

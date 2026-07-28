@@ -1,18 +1,18 @@
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-const source = fs.readFileSync("程式碼.js", "utf8");
+const source = fs.readFileSync("程式碼.js", "utf-8");
 const context = {
-  console,
-  Date,
-  Math,
-  JSON,
-  Object,
   Array,
-  String,
+  Date,
+  JSON,
+  Math,
   Number,
-  isNaN,
+  Object,
+  String,
+  console,
   isFinite,
+  isNaN,
 };
 vm.createContext(context);
 vm.runInContext(source, context, { filename: "程式碼.js" });
@@ -26,9 +26,13 @@ function range(values, onSet) {
 
 function sheet(data, options = {}) {
   return {
+    appendRow: (row) => {
+      data.push(row);
+      if (options.appended) options.appended.push(row);
+    },
     getDataRange: () => range(data),
-    getLastRow: () => data.length,
     getLastColumn: () => data[0].length,
+    getLastRow: () => data.length,
     getRange: (row, col, rowCount, colCount) => {
       const values = data
         .slice(row - 1, row - 1 + (rowCount || 1))
@@ -36,10 +40,6 @@ function sheet(data, options = {}) {
       return range(values, (value) => {
         data[row - 1][col - 1] = value;
       });
-    },
-    appendRow: (row) => {
-      data.push(row);
-      if (options.appended) options.appended.push(row);
     },
   };
 }
@@ -67,10 +67,10 @@ const appended = [];
 const puts = [];
 let cacheValue = null;
 const sheets = {
-  Users: sheet(users),
   Enrollments: sheet(enrollments, { appended }),
   Events: sheet(events),
   Programs: sheet(programs),
+  Users: sheet(users),
 };
 context.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
@@ -89,16 +89,21 @@ context.CacheService = {
 const scriptProps = {};
 context.PropertiesService = {
   getScriptProperties: () => ({
-    getProperty: (key) => (key === "EFCC_SESSION_SALT" ? "test-salt" : scriptProps[key] ?? null),
-    setProperty: (key, value) => { scriptProps[key] = value; },
-    deleteProperty: (key) => { delete scriptProps[key]; },
+    deleteProperty: (key) => {
+      delete scriptProps[key];
+    },
+    getProperty: (key) =>
+      key === "EFCC_SESSION_SALT" ? "test-salt" : (scriptProps[key] ?? null),
+    setProperty: (key, value) => {
+      scriptProps[key] = value;
+    },
   }),
 };
 context.Utilities = {
   computeHmacSha256Signature: (value) =>
     Array.from(Buffer.from(value)).slice(0, 32),
-  getUuid: () => "abcdef12-3456-7890-abcd-ef1234567890",
   formatDate: (value) => value.toISOString().slice(0, 10),
+  getUuid: () => "abcdef12-3456-7890-abcd-ef1234567890",
 };
 context.Session = { getScriptTimeZone: () => "UTC" };
 
@@ -113,9 +118,9 @@ if (
   throw new Error("Catalog RPC returned the wrong Program shape");
 }
 if (puts.length !== 1 || puts[0].ttl !== 300)
-  throw new Error("Catalog cache TTL is not 300 seconds");
+  {throw new Error("Catalog cache TTL is not 300 seconds");}
 context.api_getProgramsCatalog("USER-1", token);
-if (puts.length !== 1) throw new Error("Catalog did not reuse cache");
+if (puts.length !== 1) {throw new Error("Catalog did not reuse cache");}
 
 const available = context.api_getAvailablePrograms("USER-1", token);
 if (available.length !== 2 || available.some((program) => program.isEnrolled)) {
@@ -124,7 +129,7 @@ if (available.length !== 2 || available.some((program) => program.isEnrolled)) {
 
 const invalid = context.api_enrollUser("USER-1", "PROG-FREE", "bad-token");
 if (invalid.success !== false || appended.length !== 0)
-  throw new Error("Invalid session was not rejected");
+  {throw new Error("Invalid session was not rejected");}
 
 const conflict = context.api_enrollUser("USER-1", "PROG-TARGET", token);
 if (
@@ -137,7 +142,7 @@ if (
 
 const enrolled = context.api_enrollUser("USER-1", "PROG-FREE", token);
 if (!enrolled.success || appended.length !== 1)
-  throw new Error("Valid enrollment was not appended");
+  {throw new Error("Valid enrollment was not appended");}
 if (
   !/^ENR-[A-F0-9]{8}$/.test(appended[0][0]) ||
   appended[0][1] !== "USER-1" ||
@@ -149,7 +154,7 @@ if (
 
 const cancelled = context.api_cancelEnrollment("USER-1", "PROG-FREE", token);
 if (!cancelled.success || enrollments[2][4] !== "Cancelled")
-  throw new Error("Cancellation did not soft-delete");
+  {throw new Error("Cancellation did not soft-delete");}
 const missing = context.api_cancelEnrollment("USER-1", "PROG-FREE", token);
 if (
   missing.success !== false ||

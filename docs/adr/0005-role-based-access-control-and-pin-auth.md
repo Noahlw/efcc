@@ -1,6 +1,6 @@
 # ADR-0005: Role-Based Access Control (RBAC) via PIN Auth
 
-**Status**: Accepted  
+**Status**: Accepted — Amended by [ADR-0006](./0006-admin-capability-matrix.md) (2026-07-28)  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 / EFCC Church Management System  
 **Parent Wayfinder Ticket**: #3 — Gmail-based Permission System & Role Hierarchy Architecture
@@ -29,7 +29,7 @@ Implement Role-Based Access Control (RBAC) by adding a `Role` column to the `Use
 ## Data Model Updates (`Users` Sheet)
 
 | Column Header | Type | Allowed Values | Default | Description |
-|---------------|------|----------------|---------|-------------|
+| --- | --- | --- | --- | --- |
 | `Role` | String | `ADMIN`, `STAFF`, `EVENT_LEADER`, `MEMBER` | `MEMBER` | Determines UI tabs unlocked and RPC endpoint authorization. |
 
 ---
@@ -44,7 +44,7 @@ function checkPermission_(userId, requiredRole) {
   if (!user || !user.role) {
     throw new Error("Unauthorized: Role required");
   }
-  var rolesPriority = { "MEMBER": 1, "EVENT_LEADER": 2, "STAFF": 3, "ADMIN": 4 };
+  var rolesPriority = { MEMBER: 1, EVENT_LEADER: 2, STAFF: 3, ADMIN: 4 };
   if (rolesPriority[user.role] < rolesPriority[requiredRole]) {
     throw new Error("Forbidden: Insufficient privileges");
   }
@@ -64,3 +64,13 @@ function checkPermission_(userId, requiredRole) {
 - Member login remains 100% unchanged — users log in using Username + 4-digit PIN.
 - Staff/Admins use their existing PIN credentials to log in, and their `Role` in the `Users` sheet automatically unlocks staff-only UI tabs (Care Dashboard, Event Creator, Attendance Scanner).
 - Role changes are performed by updating the `Role` column in the `Users` spreadsheet or via the Admin UI.
+
+---
+
+## Amendment (2026-07-28, ADR-0006)
+
+[ADR-0006](./0006-admin-capability-matrix.md) retires the global `EVENT_LEADER` role and the `rolesPriority` table above. The role hierarchy in this ADR is now historical: it describes the model as originally accepted, not the current implementation.
+
+**What changed**: the hierarchy shrank from four tiers to three (`ADMIN` > `STAFF` > `MEMBER`). `EVENT_LEADER`'s operational capability (create/manage events, take attendance) moved to a new orthogonal concept, **Program Leader** — a per-program, many-to-many assignment independent of `Users.Role`, defined in ADR-0006. `STAFF` also gained near-full parity with `ADMIN`; see ADR-0006 for the current capability matrix and the one remaining `STAFF` restriction (role changes touching an existing `STAFF` account).
+
+**Why an amendment note instead of rewriting this ADR**: this document is a historical record of the original RBAC decision and its reasoning at the time. ADR-0006 is the current source of truth for the role model; read it alongside this ADR, not instead of the sections above.

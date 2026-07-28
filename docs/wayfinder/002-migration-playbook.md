@@ -2,7 +2,7 @@
 
 **Ticket**: #7 — TS WebApp Feature Parity Port & Singlefile Deployment Playbook  
 **Date**: 2026-07-27  
-**Parent Wayfinder Map**: #1  
+**Parent Wayfinder Map**: #1
 
 ---
 
@@ -37,25 +37,30 @@ This playbook defines the exact, wave-by-wave execution roadmap to port **顯恩
 ```
 
 ### Wave 1: Scaffolding
+
 - Initialize `src/frontend/` with Vite, React 19, TypeScript, and `vite-plugin-singlefile`.
 - Author `src/frontend/src/types.ts` defining all domain entities (`User`, `Program`, `Enrollment`, `Event`, `Attendance`, `Role`).
 - Implement `src/frontend/src/services/api.ts` with local mock data fallback (`typeof google === "undefined"`).
 
 ### Wave 2: Core Parity
+
 - Build `LoginView.tsx` (Username + 4-digit PIN authentication).
 - Build `MemberRegistrationView.tsx` (New member sign-up form with phone & address).
 - Build `MyProfileView.tsx` (Member profile view & QR check-in display).
 
 ### Wave 3: Catalog & Enrollment Parity
+
 - Build `ProgramCatalogView.tsx` (Browse church programs, view descriptions and schedules).
 - Build `ProgramEnrollmentView.tsx` (Enroll in programs with schedule conflict checking, cancel enrollment).
 
 ### Wave 4: New Staff Capabilities
+
 - Build `EventManagementView.tsx` (Granted users create and manage events dynamically per Spec 005).
 - Build `AttendanceScannerView.tsx` (HTML5 camera QR scanner + fast name/phone manual search per Spec 006).
 - Build `CareDashboardView.tsx` (Pastoral care dashboard identifying inactive members with direct WhatsApp outreach links per Spec 007).
 
 ### Wave 5: Backend Integration & Deployment
+
 - Update `程式碼.js` with new server-side RPC handlers:
   - `api_createEvent`, `api_cancelEvent`
   - `api_checkInMember`, `api_getEventAttendance`

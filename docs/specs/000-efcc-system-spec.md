@@ -3,13 +3,14 @@
 **Status**: Published (ready-for-agent)  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 (Evangelical Free Church of China — Glorious Grace Church)  
-**Parent Wayfinder Map**: #1  
+**Parent Wayfinder Map**: #1
 
 ---
 
 ## Problem Statement
 
 The current 顯恩堂 (EFCC) church management system is implemented using inline vanilla HTML/JS inside Google Apps Script (`index.html` and `程式碼.js`). While functional for basic PIN login, member registration, program catalog, program enrollment, and recurring event generation, the system faces critical limitations:
+
 1. **Developer Experience & Maintainability**: Monolithic inline HTML/JS in Apps Script lacks modern TypeScript type safety, component modularity, and fast local hot-reloading.
 2. **Lack of Attendance Tracking**: Church staff currently have no digital system to check in members at events via QR code scanning or manual search.
 3. **Manual Event Management**: Creating new event instances requires developer script updates or static hardcoded recurring rules rather than dynamic staff UI creation.
@@ -21,6 +22,7 @@ The current 顯恩堂 (EFCC) church management system is implemented using inlin
 ## Solution
 
 Migrate the system to a modern **TypeScript React Web Application** based on the reference architecture in `/Users/noah.wong/Desktop/code/Budget`, preserving 100% of existing member features while serving a single bundled HTML artifact (`index.html`) via Google Apps Script:
+
 - **TypeScript React WebApp (`src/frontend/`)**: Vite + React 19 + TypeScript + `vite-plugin-singlefile` compiled into a single `index.html` served by `HtmlService.createHtmlOutputFromFile('index')`.
 - **Persistent Session & "Remember Me" UX**: Stores authenticated session tokens in browser `localStorage`. When members reopen the web app weekly, it automatically bypasses login and opens directly to their Member QR Pass.
 - **Client RPC & Mock Layer (`api.ts`)**: Unified RPC service communicating with `google.script.run` in production while providing instant mock data responses in local Vite development (`npm run dev`).

@@ -24,6 +24,7 @@
 ## File Structure & Changes
 
 ### Created
+
 - `src/frontend/package.json` — Vite/React/TS dependencies & scripts.
 - `src/frontend/vite.config.ts` — Vite + `viteSingleFile()` plugin.
 - `src/frontend/tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json` — TS strict mode.
@@ -48,10 +49,12 @@
 - `src/frontend/__tests__/*.test.ts` — Vitest unit tests per module.
 
 ### Modified
+
 - `程式碼.js` — New RPC handlers (`api_createEvent`, `api_cancelEvent`, `api_checkInMember`, `api_getEventAttendance`, `api_getUserActivityProfile`, `api_getCareDashboard`, `api_logoutUser`, `api_getCurrentSession`) + `verifySessionToken_` + `checkPermission_` + `enrollUser_` (with schedule-conflict) + `LockService` guards.
 - `index.html` — Now a singlefile build artifact (overwritten by `npm run build`).
 
 ### Schema (Google Sheets, manual)
+
 - `Users`: add `Role` column (`ADMIN|STAFF|EVENT_LEADER|MEMBER`, default `MEMBER`).
 - `Events`: add `Created_By` (User_ID) and `Status` (`Active|Cancelled`).
 - `Attendance` (new): `Attendance_ID`, `Event_ID`, `User_ID`, `CheckIn_Time`, `CheckIn_Method`, `CheckIn_By`, `Status`.
@@ -128,16 +131,19 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 1: Scaffold TS WebApp Architecture & Mock RPC Layer
 
 **Files:**
+
 - Create: `src/frontend/package.json`, `src/frontend/vite.config.ts`, `src/frontend/tsconfig.json`, `src/frontend/tsconfig.app.json`, `src/frontend/tsconfig.node.json`, `src/frontend/index.html`
 - Create: `src/frontend/src/main.tsx`, `src/frontend/src/App.tsx`, `src/frontend/src/types.ts`
 - Create: `src/frontend/src/services/api.ts`, `src/frontend/src/services/session.ts`
 
 **OMP dispatch:**
+
 - Agent: `task` invoking `/skill:implement`
 - Inputs: this task block + Plan Header + spec pointer (`docs/specs/000-efcc-system-spec.md`)
 - Reviewer gate: OMP `reviewer` via `code-review` (Spec axis) before marking complete
 
 **Interfaces (defined here, consumed by Tasks 2-6):**
+
 - `apiService.loginUser(username: string, pin: string): Promise<LoginResponse>` — Returns `{ success, data: { userId, name, role, sessionToken, qrCodeString } }`.
 - `apiService.registerUser(payload): Promise<RegisterResponse>`
 - `apiService.getProgramsCatalog(): Promise<Program[]>`
@@ -153,6 +159,7 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 - `apiService.logoutUser(): Promise<{ success }>`
 
 **Acceptance:**
+
 - [ ] `npm run dev` runs locally with mock fallback (mock data returns after 300ms delay).
 - [ ] `npm run build` outputs a single `index.html` at project root.
 - [ ] `tsc --noEmit` passes with 0 errors.
@@ -163,6 +170,7 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 2: Member PIN Auth, Persistent Session & Profile Pass View
 
 **Files:**
+
 - Create: `src/frontend/src/views/LoginView.tsx`, `MemberRegistrationView.tsx`, `MyProfileView.tsx`
 - Create: `src/frontend/src/components/MemberPassModal.tsx`
 - Modify: `程式碼.js` (extend `loginUser` to return `sessionToken` HMAC, add `api_logoutUser`, `api_getCurrentSession`, `verifySessionToken_`)
@@ -170,6 +178,7 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 **OMP dispatch:** `task` invoking `/skill:implement`; reviewer gate via `code-review`
 
 **Acceptance:**
+
 - [ ] PIN login succeeds; persists `sessionToken` in `localStorage` (30 days).
 - [ ] On app launch, valid session bypasses login and shows `MyProfileView`.
 - [ ] Logout clears `localStorage` and returns to login.
@@ -180,12 +189,14 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 3: Program Catalog & Schedule-Conflict Enrollment View
 
 **Files:**
+
 - Create: `src/frontend/src/views/ProgramCatalogView.tsx`, `ProgramEnrollmentView.tsx`
 - Modify: `程式碼.js` (port existing `getProgramsCatalog`, `enrollUser`, `cancelEnrollment`; wrap RPC as `api_*`)
 
 **OMP dispatch:** `task` invoking `/skill:implement`; reviewer gate via `code-review`
 
 **Acceptance:**
+
 - [ ] Catalog renders all programs with `isEnrolled` badges.
 - [ ] Enroll rejects time-slot conflicts with explicit error message.
 - [ ] Cancel soft-deletes enrollment (Status → `Cancelled`).
@@ -195,12 +206,14 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 4: Granted User Dynamic Event Creation & Management
 
 **Files:**
+
 - Create: `src/frontend/src/views/EventManagementView.tsx` (with embedded `CreateEventModal`)
 - Modify: `程式碼.js` (add `api_createEvent`, `api_cancelEvent`; guard with `checkPermission_(userId, "EVENT_LEADER")`)
 
 **OMP dispatch:** `task` invoking `/skill:implement`; reviewer gate via `code-review`
 
 **Acceptance:**
+
 - [ ] Tab visible only to `ADMIN` / `STAFF` / `EVENT_LEADER`.
 - [ ] Create event writes row with `Created_By` and `Status=Active`.
 - [ ] Soft-cancel sets `Status=Cancelled`.
@@ -210,6 +223,7 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 5: Event Attendance Camera QR Scanner & Manual Search
 
 **Files:**
+
 - Create: `src/frontend/src/components/QRScanner.tsx`, `src/frontend/src/views/AttendanceScannerView.tsx`
 - Create: `src/frontend/src/components/WhistleBanner.tsx`
 - Modify: `程式碼.js` (add `api_checkInMember` with `LockService` + event/enrollment validation; `api_getEventAttendance`)
@@ -217,6 +231,7 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 **OMP dispatch:** `task` invoking `/skill:implement`; reviewer gate via `code-review`
 
 **Acceptance:**
+
 - [ ] HTML5 camera scans member QR codes.
 - [ ] Manual search filters by name/phone with 1-tap check-in.
 - [ ] LockService tryLock(5000) prevents duplicate race.
@@ -229,12 +244,14 @@ Implementation will be dispatched via the OMP `implement` skill which handles TD
 ### Task 6: Inactive Member Pastoral Care Dashboard
 
 **Files:**
+
 - Create: `src/frontend/src/views/CareDashboardView.tsx`, `MemberActivityProfileModal.tsx`
 - Modify: `程式碼.js` (add `api_getCareDashboard`, `api_getUserActivityProfile`)
 
 **OMP dispatch:** `task` invoking `/skill:implement`; reviewer gate via `code-review`
 
 **Acceptance:**
+
 - [ ] Tab visible to `STAFF` / `ADMIN`.
 - [ ] Inactivity threshold filter (14/30/60/90 days).
 - [ ] Color-coded inactivity badges.

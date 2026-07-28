@@ -11,6 +11,7 @@
 To migrate **顯恩堂系統 (EFCC)** from legacy inline Apps Script HTML (`index.html` + `程式碼.js`) to a modern TypeScript web app, we adopt the singlefile Vite bundling architecture established in `Budget`.
 
 This setup yields two major benefits:
+
 1. **Developer Experience**: Fast local development (`npm run dev`) with instant hot-module replacement and mock RPC data without waiting for clasp pushes or Apps Script deployments.
 2. **Production Deployment**: A single self-contained `index.html` file produced by `vite-plugin-singlefile`, served natively by Google Apps Script via `HtmlService.createHtmlOutputFromFile('index')`.
 
@@ -118,7 +119,7 @@ function invokeGas<T>(rpcMethod: string, payload?: any): Promise<T> {
       // Fallback handled per endpoint in apiService
       return;
     }
-    
+
     google.script.run
       .withSuccessHandler((result: any) => {
         if (result && result.success !== false) {
