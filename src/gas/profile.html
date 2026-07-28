@@ -10,6 +10,28 @@
     </p>
     <p><strong>QR Code / QR 碼:</strong> <code id="profile-qr">—</code></p>
   </section>
+
+  <section class="card mt-md" aria-live="polite">
+    <h2 class="label" style="margin-bottom: var(--space-sm)">
+      My Enrollments / 我的報名
+    </h2>
+    <div
+      id="profile-enrollments-loading"
+      class="text-sm"
+      style="color: var(--color-text-muted)"
+    >
+      Loading enrollments…
+    </div>
+    <div id="profile-enrollments-list" class="hidden card-list"></div>
+    <p
+      id="profile-enrollments-empty"
+      class="text-sm hidden"
+      style="color: var(--color-text-muted)"
+    >
+      You are not currently enrolled in any programs.
+    </p>
+    <p id="profile-enrollments-error" class="msg-error hidden"></p>
+  </section>
 </div>
 <script>
   function initProfile() {
@@ -32,5 +54,81 @@
       })
       .withFailureHandler(function () {})
       .api_getCurrentSession(raw.userId, raw.token);
+    loadMyEnrollments(raw.userId, raw.token);
+  }
+
+  function loadMyEnrollments(userId, token) {
+    var loadingEl = document.getElementById("profile-enrollments-loading");
+    var listEl = document.getElementById("profile-enrollments-list");
+    var emptyEl = document.getElementById("profile-enrollments-empty");
+    var errEl = document.getElementById("profile-enrollments-error");
+
+    function hide(el) {
+      if (el) el.classList.add("hidden");
+    }
+    function show(el) {
+      if (el) el.classList.remove("hidden");
+    }
+
+    google.script.run
+      .withSuccessHandler(function (response) {
+        hide(loadingEl);
+        if (!response || !response.success || !Array.isArray(response.data)) {
+          hide(listEl);
+          hide(emptyEl);
+          if (errEl) {
+            errEl.textContent =
+              (response && response.message) || "Failed to load enrollments.";
+            show(errEl);
+          }
+          return;
+        }
+        hide(errEl);
+        var enrolled = response.data.filter(function (r) {
+          return r.status === "Active";
+        });
+        if (enrolled.length === 0) {
+          hide(listEl);
+          show(emptyEl);
+          return;
+        }
+        function esc(s) {
+          var d = document.createElement("div");
+          d.appendChild(document.createTextNode(String(s == null ? "" : s)));
+          return d.innerHTML;
+        }
+        listEl.innerHTML =
+          "<ul>" +
+          enrolled
+            .map(function (r) {
+              return (
+                '<li style="margin-bottom:var(--space-xs);">' +
+                "<strong>" +
+                esc(r.title) +
+                "</strong>" +
+                (r.type
+                  ? ' <span class="badge badge-regular">' +
+                    esc(r.type) +
+                    "</span>"
+                  : "") +
+                ' — <span class="badge badge-active">Active</span>' +
+                "</li>"
+              );
+            })
+            .join("") +
+          "</ul>";
+        show(listEl);
+        hide(emptyEl);
+      })
+      .withFailureHandler(function () {
+        hide(loadingEl);
+        hide(listEl);
+        hide(emptyEl);
+        if (errEl) {
+          errEl.textContent = "Network error loading enrollments.";
+          show(errEl);
+        }
+      })
+      .api_getMyEnrollments(userId, token);
   }
 </script>

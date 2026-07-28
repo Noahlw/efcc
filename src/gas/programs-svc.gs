@@ -1,45 +1,61 @@
 // =============================================================================
-// programs.gs — Program Catalog & Enrollment Functions
-// Ported verbatim from 程式碼.js. Depends on utilities in Code.gs (shared scope).
+// programs-svc.gs — Program Catalog & Enrollment Functions (T02)
+// Reimplemented from 程式碼.js (archive) against the Programs/Enrollments sheet
+// schema in CONTEXT.md. Lives in the shared global scope of the GAS runtime;
+// depends on normalize utilities in Code.gs (normalizeId_, findHeaderIndex_,
+// isActiveStatus_, normalizeHeader_) and the session infrastructure in
+// auth.gs (verifySessionToken_). Constants PROGRAMS_CACHE_KEY_ and
+// PROGRAMS_CACHE_TTL_SEC_ are declared in Code.gs.
+//
+// AUDIT NOTE (T02 / ADR-0009): a member self-enrolling or self-cancelling is
+// not a privileged mutation per ADR-0006's capability matrix — any active
+// member can do it; no role/approval boundary is crossed. Per ADR-0009 §Decision
+// the two-phase writeAuditLog pattern is for "privileged mutations" (role
+// change, member approval, event cancellation). We therefore do NOT call
+// writeAuditLog from enrollUser / cancelEnrollment. If a future STAFF-on-behalf
+// "quick enroll" path is added (api_staffEnrollMember in the archive), that
+// IS a privileged mutation acting on another user and SHOULD be audited — but
+// that endpoint is owned by the Scanner/Quick-Enroll ticket, not T02.
 // =============================================================================
 
+// --- Internal: per-user enrolled program lookup ------------------------------
+
 function getUserEnrolledProgramIds_(userId) {
-  const ids = [];
-  const lookup = getUserEnrolledProgramLookup_(userId);
-  for (let id in lookup) {
-    if (lookup.hasOwnProperty(id)) {ids.push(id);}
+  var ids = [];
+  var lookup = getUserEnrolledProgramLookup_(userId);
+  for (var id in lookup) {
+    if (lookup.hasOwnProperty(id)) ids.push(id);
   }
   return ids;
 }
 
 function getUserEnrolledProgramLookup_(userId) {
-  const result = {};
-  const targetUserId = normalizeId_(userId);
-  if (!targetUserId) {return result;}
+  var result = {};
+  var targetUserId = normalizeId_(userId);
+  if (!targetUserId) return result;
 
-  const enrSheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Enrollments");
-  if (!enrSheet) {throw new Error("Enrollments sheet missing.");}
+  var enrSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Enrollments");
+  if (!enrSheet) throw new Error("Enrollments sheet missing.");
 
-  const lastRow = enrSheet.getLastRow();
-  if (lastRow < 2) {return result;}
+  var lastRow = enrSheet.getLastRow();
+  if (lastRow < 2) return result;
 
-  const headers = enrSheet
+  var headers = enrSheet
     .getRange(1, 1, 1, enrSheet.getLastColumn())
     .getValues()[0];
-  const enrProgIdx = findHeaderIndex_(headers, [
+  var enrProgIdx = findHeaderIndex_(headers, [
     "program_id",
     "program id",
     "programid",
   ]);
-  const enrUserIdx = findHeaderIndex_(headers, [
+  var enrUserIdx = findHeaderIndex_(headers, [
     "user_id",
     "user id",
     "userid",
     "member_id",
     "member id",
   ]);
-  const enrStatusIdx = findHeaderIndex_(headers, [
+  var enrStatusIdx = findHeaderIndex_(headers, [
     "status",
     "enrollment_status",
     "enrollment status",
@@ -48,79 +64,73 @@ function getUserEnrolledProgramLookup_(userId) {
     throw new Error("Enrollments missing User_ID or Program_ID column.");
   }
 
-  const minCol =
+  var minCol =
     Math.min(
       enrUserIdx,
       enrProgIdx,
       enrStatusIdx === -1 ? enrUserIdx : enrStatusIdx
     ) + 1;
-  const maxCol =
+  var maxCol =
     Math.max(
       enrUserIdx,
       enrProgIdx,
       enrStatusIdx === -1 ? enrProgIdx : enrStatusIdx
     ) + 1;
-  const rows = enrSheet.getRange(2, minCol, lastRow, maxCol).getValues();
-  const relUserIdx = enrUserIdx + 1 - minCol;
-  const relProgIdx = enrProgIdx + 1 - minCol;
-  const relStatusIdx = enrStatusIdx === -1 ? -1 : enrStatusIdx + 1 - minCol;
+  var rows = enrSheet.getRange(2, minCol, lastRow, maxCol - minCol + 1).getValues();
+  var relUserIdx = enrUserIdx + 1 - minCol;
+  var relProgIdx = enrProgIdx + 1 - minCol;
+  var relStatusIdx = enrStatusIdx === -1 ? -1 : enrStatusIdx + 1 - minCol;
 
-  for (let i = 0; i < rows.length; i++) {
-    if (normalizeId_(rows[i][relUserIdx]) !== targetUserId) {continue;}
-    if (relStatusIdx !== -1 && !isActiveStatus_(rows[i][relStatusIdx]))
-      {continue;}
-    const enrolledProgId = normalizeId_(rows[i][relProgIdx]);
-    if (enrolledProgId) {result[enrolledProgId] = true;}
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeId_(rows[i][relUserIdx]) !== targetUserId) continue;
+    if (relStatusIdx !== -1 && !isActiveStatus_(rows[i][relStatusIdx])) continue;
+    var enrolledProgId = normalizeId_(rows[i][relProgIdx]);
+    if (enrolledProgId) result[enrolledProgId] = true;
   }
   return result;
 }
 
+// --- Catalog reader (cached) --------------------------------------------------
+
 function getProgramsCatalog_() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(PROGRAMS_CACHE_KEY_);
-  if (cached) {return JSON.parse(cached);}
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(PROGRAMS_CACHE_KEY_);
+  if (cached) return JSON.parse(cached);
 
-  const progSheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Programs");
-  if (!progSheet) {throw new Error("Programs sheet missing.");}
+  var progSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Programs");
+  if (!progSheet) throw new Error("Programs sheet missing.");
 
-  const data = progSheet.getDataRange().getValues();
-  if (!data || data.length < 1) {throw new Error("Programs sheet empty.");}
+  var data = progSheet.getDataRange().getValues();
+  if (!data || data.length < 1) throw new Error("Programs sheet empty.");
 
-  const headers = data[0];
-  const idIdx = findHeaderIndex_(headers, [
+  var headers = data[0];
+  var idIdx = findHeaderIndex_(headers, [
     "program_id",
     "program id",
     "programid",
   ]);
-  const nameIdx = findHeaderIndex_(headers, [
+  var nameIdx = findHeaderIndex_(headers, [
     "program_name",
     "program name",
     "name",
   ]);
-  const typeIdx = findHeaderIndex_(headers, ["type"]);
-  const descIdx = findHeaderIndex_(headers, [
+  var typeIdx = findHeaderIndex_(headers, ["type"]);
+  var descIdx = findHeaderIndex_(headers, [
     "description",
     "program_description",
     "program description",
   ]);
-  const dayIdx = findHeaderIndex_(headers, ["day", "day_of_week", "day of week", "dayofweek"]);
-  const startIdx = findHeaderIndex_(headers, ["start_time", "start time", "starttime", "time_start", "time start"]);
-  const endIdx = findHeaderIndex_(headers, ["end_time", "end time", "endtime", "time_end", "time end"]);
   if (idIdx === -1 || nameIdx === -1) {
     throw new Error("Programs missing Program_ID or Program_Name column.");
   }
 
-  const programs = [];
-  for (let i = 1; i < data.length; i++) {
-    const pId = idIdx !== -1 ? normalizeId_(data[i][idIdx]) : "";
-    if (!pId) {continue;}
+  var programs = [];
+  for (var i = 1; i < data.length; i++) {
+    var pId = idIdx !== -1 ? normalizeId_(data[i][idIdx]) : "";
+    if (!pId) continue;
     programs.push({
-      dayOfWeek: dayIdx !== -1 ? String(data[i][dayIdx] || "").trim() : "",
       description: descIdx !== -1 ? String(data[i][descIdx] || "").trim() : "",
-      endTime: endIdx !== -1 ? String(data[i][endIdx] || "").trim() : "",
       programId: pId,
-      startTime: startIdx !== -1 ? String(data[i][startIdx] || "").trim() : "",
       title: nameIdx !== -1 ? String(data[i][nameIdx] || "").trim() : "Unnamed",
       type: typeIdx !== -1 ? String(data[i][typeIdx] || "").trim() : "",
     });
@@ -132,7 +142,7 @@ function getProgramsCatalog_() {
       JSON.stringify(programs),
       PROGRAMS_CACHE_TTL_SEC_
     );
-  } catch {}
+  } catch (_) {}
   return programs;
 }
 
@@ -143,15 +153,15 @@ function getProgramsCatalog() {
 function getUserEnrolledProgramIds(userId) {
   try {
     return getUserEnrolledProgramIds_(userId);
-  } catch {
+  } catch (_) {
     return [];
   }
 }
 
 function getAvailablePrograms(userId) {
-  const programs = getProgramsCatalog_();
-  const enrolledLookup = getUserEnrolledProgramLookup_(userId);
-  return programs.map((prog) => {
+  var programs = getProgramsCatalog_();
+  var enrolledLookup = getUserEnrolledProgramLookup_(userId);
+  return programs.map(function (prog) {
     return {
       programId: prog.programId,
       title: prog.title,
@@ -162,133 +172,125 @@ function getAvailablePrograms(userId) {
   });
 }
 
+// --- Self-enroll / cancel (no audit, per ADR-0009 note above) ---------------
+
 function enrollUser(userId, programId) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const enrSheet = ss.getSheetByName("Enrollments");
-  const eventsSheet = ss.getSheetByName("Events");
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var enrSheet = ss.getSheetByName("Enrollments");
+  var eventsSheet = ss.getSheetByName("Events");
 
-  if (!enrSheet || !eventsSheet)
-    {return {
-      success: false,
-      message: "System error: Database sheets missing.",
-    };}
+  if (!enrSheet || !eventsSheet) {
+    return { success: false, message: "System error: Database sheets missing." };
+  }
 
-  const targetUserId = normalizeId_(userId);
-  const targetProgramId = normalizeId_(programId);
+  var targetUserId = normalizeId_(userId);
+  var targetProgramId = normalizeId_(programId);
   if (!targetUserId || !targetProgramId) {
-    return { message: "Missing user or program id.", success: false };
+    return { success: false, message: "Missing user or program id." };
   }
 
-  // 1. Get User's Active Program Enrollments (only this user's rows)
-  const enrolledLookup = getUserEnrolledProgramLookup_(targetUserId);
-  const activeProgramIds = [];
-  for (let enrolledId in enrolledLookup) {
-    if (enrolledLookup.hasOwnProperty(enrolledId))
-      {activeProgramIds.push(enrolledId);}
+  // 1. Get user's already-active program enrollments (clash candidates).
+  var enrolledLookup = getUserEnrolledProgramLookup_(targetUserId);
+  var activeProgramIds = [];
+  for (var enrolledId in enrolledLookup) {
+    if (enrolledLookup.hasOwnProperty(enrolledId)) activeProgramIds.push(enrolledId);
   }
 
-  // 2. Map all Events to check for exact clashes
-  const evData = eventsSheet.getDataRange().getValues();
+  // 2. Map all events to detect same-time-same-date clashes.
+  var evData = eventsSheet.getDataRange().getValues();
   if (!evData || evData.length < 1) {
-    return { message: "System error: Events sheet empty.", success: false };
+    return { success: false, message: "System error: Events sheet empty." };
   }
-  const evHeaders = evData[0];
-  const evProgIdx = findHeaderIndex_(evHeaders, [
+  var evHeaders = evData[0];
+  var evProgIdx = findHeaderIndex_(evHeaders, [
     "program_id",
     "program id",
     "programid",
   ]);
-  const evDateIdx = findHeaderIndex_(evHeaders, [
+  var evDateIdx = findHeaderIndex_(evHeaders, [
     "event_date",
     "event date",
     "eventdate",
   ]);
-  const evTimeIdx = findHeaderIndex_(evHeaders, [
+  var evTimeIdx = findHeaderIndex_(evHeaders, [
     "time_slot",
     "time slot",
     "timeslot",
   ]);
-  const evNameIdx = findHeaderIndex_(evHeaders, [
+  var evNameIdx = findHeaderIndex_(evHeaders, [
     "event_name",
     "event name",
     "eventname",
   ]);
-  if (
-    evProgIdx === -1 ||
-    evDateIdx === -1 ||
-    evTimeIdx === -1 ||
-    evNameIdx === -1
-  ) {
+  if (evProgIdx === -1 || evDateIdx === -1 || evTimeIdx === -1 || evNameIdx === -1) {
     return {
-      message: "System error: Events missing required schedule columns.",
       success: false,
+      message: "System error: Events missing required schedule columns.",
     };
   }
 
-  const bookedSlots = [];
-  const targetEvents = [];
+  var bookedSlots = [];
+  var targetEvents = [];
 
-  for (let e = 1; e < evData.length; e++) {
-    const eProgId = normalizeId_(evData[e][evProgIdx]);
-    if (!eProgId) {continue;}
+  for (var e = 1; e < evData.length; e++) {
+    var eProgId = normalizeId_(evData[e][evProgIdx]);
+    if (!eProgId) continue;
 
-    const eDate = evDateIdx !== -1 ? normalizeId_(evData[e][evDateIdx]) : "";
-    const eTime = evTimeIdx !== -1 ? String(evData[e][evTimeIdx]).trim() : "";
-    const slotKey = eDate + "|" + eTime;
+    var eDate = evDateIdx !== -1 ? normalizeId_(evData[e][evDateIdx]) : "";
+    var eTime = evTimeIdx !== -1 ? String(evData[e][evTimeIdx]).trim() : "";
+    var slotKey = eDate + "|" + eTime;
 
-    if (slotKey === "|") {continue;}
-    const eName =
+    if (slotKey === "|") continue;
+    var eName =
       evNameIdx !== -1 ? String(evData[e][evNameIdx]).trim() : "Unnamed Event";
 
-    if (activeProgramIds.indexOf(eProgId) !== -1) {
-      bookedSlots.push(slotKey);
-    }
+    if (activeProgramIds.indexOf(eProgId) !== -1) bookedSlots.push(slotKey);
     if (eProgId === targetProgramId) {
       targetEvents.push({ key: slotKey, name: eName, time: eTime });
     }
   }
 
-  // 3. Compare Target Events against Booked Slots
-  for (let t = 0; t < targetEvents.length; t++) {
+  // 3. Any clash with a current enrollment fails this enrollment.
+  for (var t = 0; t < targetEvents.length; t++) {
     if (bookedSlots.indexOf(targetEvents[t].key) !== -1) {
       return {
-        message: targetEvents[t].name + " at " + targetEvents[t].time,
         success: false,
+        message: targetEvents[t].name + " at " + targetEvents[t].time,
       };
     }
   }
 
-  // 4. Process the enrollment
-  const headers = enrSheet
+  // 4. Write the new active enrollment row.
+  var headers = enrSheet
     .getRange(1, 1, 1, enrSheet.getLastColumn())
     .getValues()[0];
-  const enrollId = "ENR-" + Utilities.getUuid().substring(0, 8).toUpperCase();
-  const newRow = new Array(headers.length).fill("");
+  var enrollId = "ENR-" + Utilities.getUuid().substring(0, 8).toUpperCase();
+  var newRow = new Array(headers.length).fill("");
 
-  const idIdx = findHeaderIndex_(headers, [
+  var idIdx = findHeaderIndex_(headers, [
     "enrollment_id",
     "enrollment id",
     "enrollmentid",
   ]);
-  const progIdx = findHeaderIndex_(headers, [
+  var progIdx = findHeaderIndex_(headers, [
     "program_id",
     "program id",
     "programid",
   ]);
-  const userIdx = findHeaderIndex_(headers, [
+  var userIdx = findHeaderIndex_(headers, [
     "user_id",
     "user id",
     "userid",
     "member_id",
     "member id",
   ]);
-  const dateIdx = findHeaderIndex_(headers, [
+  var dateIdx = findHeaderIndex_(headers, [
     "timestamp",
     "enrollment_date",
     "enrollment date",
     "date",
   ]);
-  const statusIdx = findHeaderIndex_(headers, [
+  var statusIdx = findHeaderIndex_(headers, [
     "status",
     "enrollment_status",
     "enrollment status",
@@ -296,45 +298,43 @@ function enrollUser(userId, programId) {
 
   if (progIdx === -1 || userIdx === -1) {
     return {
-      message:
-        "System error: Enrollments missing User_ID or Program_ID column.",
       success: false,
+      message: "System error: Enrollments missing User_ID or Program_ID column.",
     };
   }
 
-  if (idIdx > -1) {newRow[idIdx] = enrollId;}
+  if (idIdx > -1) newRow[idIdx] = enrollId;
   newRow[progIdx] = targetProgramId;
   newRow[userIdx] = targetUserId;
-  if (dateIdx > -1) {newRow[dateIdx] = new Date();}
-  if (statusIdx > -1) {newRow[statusIdx] = "Active";}
+  if (dateIdx > -1) newRow[dateIdx] = new Date();
+  if (statusIdx > -1) newRow[statusIdx] = "Active";
 
   enrSheet.appendRow(newRow);
   return { success: true };
 }
 
 function cancelEnrollment(userId, programId) {
-  const sheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Enrollments");
-  if (!sheet) {return { success: false, message: "Enrollments sheet missing." };}
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Enrollments");
+  if (!sheet) return { success: false, message: "Enrollments sheet missing." };
 
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0].map(function (h) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0].map(function (h) {
     return String(h).trim().toLowerCase();
   });
 
-  const userIdx = headers.indexOf("user_id");
-  const progIdx = headers.indexOf("program_id");
-  const statusIdx = headers.indexOf("status");
+  var userIdx = headers.indexOf("user_id");
+  var progIdx = headers.indexOf("program_id");
+  var statusIdx = headers.indexOf("status");
 
   if (userIdx === -1 || progIdx === -1 || statusIdx === -1) {
     return {
-      message: "System error: Missing Status column in Enrollments.",
       success: false,
+      message: "System error: Missing Status column in Enrollments.",
     };
   }
 
-  // Find the exact active enrollment and change it to Cancelled
-  for (let i = 1; i < data.length; i++) {
+  // Find the exact active enrollment and change it to Cancelled.
+  for (var i = 1; i < data.length; i++) {
     if (
       String(data[i][userIdx]).trim() === String(userId).trim() &&
       String(data[i][progIdx]).trim() === String(programId).trim() &&
@@ -344,58 +344,160 @@ function cancelEnrollment(userId, programId) {
       return { success: true };
     }
   }
-  return { message: "Active enrollment record not found.", success: false };
+  return { success: false, message: "Active enrollment record not found." };
 }
 
-// --- Authenticated RPC Endpoints ---------------------------------------------
+// --- Authenticated RPC endpoints (SPA shell callers) -------------------------
 
 function api_getProgramsCatalog(userId, sessionToken) {
   if (!verifySessionToken_(userId, sessionToken)) {
-    return { message: "Session invalid or expired.", success: false, data: [] };
+    return { success: false, message: "Session invalid or expired.", data: [] };
   }
   try {
-    return { data: getProgramsCatalog(), success: true };
+    return { success: true, data: getProgramsCatalog() };
   } catch (e) {
-    return { message: e.message, success: false, data: [] };
+    return { success: false, message: e.message, data: [] };
   }
 }
 
 function api_getAvailablePrograms(userId, sessionToken) {
   if (!verifySessionToken_(userId, sessionToken)) {
-    return { message: "Session invalid or expired.", success: false, data: [] };
+    return { success: false, message: "Session invalid or expired.", data: [] };
   }
   try {
-    return { data: getAvailablePrograms(userId), success: true };
+    return { success: true, data: getAvailablePrograms(userId) };
   } catch (e) {
-    return { message: e.message, success: false, data: [] };
+    return { success: false, message: e.message, data: [] };
   }
 }
 
 function api_enrollUser(userId, programId, sessionToken) {
   if (!verifySessionToken_(userId, sessionToken)) {
-    return { message: "Session invalid or expired.", success: false };
+    return { success: false, message: "Session invalid or expired." };
   }
   return enrollUser(userId, programId);
 }
 
 function api_cancelEnrollment(userId, programId, sessionToken) {
   if (!verifySessionToken_(userId, sessionToken)) {
-    return { message: "Session invalid or expired.", success: false };
+    return { success: false, message: "Session invalid or expired." };
   }
   return cancelEnrollment(userId, programId);
 }
 
-function api_staffEnrollMember(
-  grantedUserId,
-  memberId,
-  programId,
-  sessionToken
-) {
-  if (!grantedUserId || !sessionToken)
-    return { success: false, message: "Missing user session." };
-  var check = checkIsGrantedUser_(grantedUserId, sessionToken);
-  if (!check.granted) return { success: false, message: check.message };
-  if (!memberId) return { success: false, message: "Member ID is required." };
-  if (!programId) return { success: false, message: "Program ID is required." };
-  return enrollUser(memberId, programId);
+/**
+ * api_getMyEnrollments(userId, sessionToken)
+ * Used by the Profile fragment to render the member's enrollments.
+ * Returns an array of `{ programId, title, type, status, timestamp, enrollmentId }`
+ * rows for both Active and Cancelled records (the Profile filters for "Active",
+ * but having status available avoids a second server round-trip later).
+ */
+function api_getMyEnrollments(userId, sessionToken) {
+  if (!verifySessionToken_(userId, sessionToken)) {
+    return { success: false, message: "Session invalid or expired.", data: [] };
+  }
+  var targetUserId = normalizeId_(userId);
+  if (!targetUserId) return { success: false, message: "Invalid user id.", data: [] };
+
+  var enrSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Enrollments");
+  if (!enrSheet) return { success: false, message: "Enrollments sheet missing.", data: [] };
+
+  var lastRow = enrSheet.getLastRow();
+  if (lastRow < 2) return { success: true, data: [] };
+
+  var headers = enrSheet
+    .getRange(1, 1, 1, enrSheet.getLastColumn())
+    .getValues()[0];
+  var enrIdIdx = findHeaderIndex_(headers, [
+    "enrollment_id",
+    "enrollment id",
+    "enrollmentid",
+  ]);
+  var enrUserIdx = findHeaderIndex_(headers, [
+    "user_id",
+    "user id",
+    "userid",
+    "member_id",
+    "member id",
+  ]);
+  var enrProgIdx = findHeaderIndex_(headers, [
+    "program_id",
+    "program id",
+    "programid",
+  ]);
+  var enrDateIdx = findHeaderIndex_(headers, [
+    "timestamp",
+    "enrollment_date",
+    "enrollment date",
+    "date",
+  ]);
+  var enrStatusIdx = findHeaderIndex_(headers, [
+    "status",
+    "enrollment_status",
+    "enrollment status",
+  ]);
+  if (enrUserIdx === -1 || enrProgIdx === -1) {
+    return { success: false, message: "Enrollments missing required columns.", data: [] };
+  }
+
+  // Build programId -> {title, type} lookup from the cached catalog.
+  // Read failure is non-fatal — fall back to rendering bare programId.
+  var catalogLookup = {};
+  try {
+    var catalog = getProgramsCatalog_();
+    for (var c = 0; c < catalog.length; c++) {
+      catalogLookup[catalog[c].programId] = {
+        title: catalog[c].title,
+        type: catalog[c].type,
+      };
+    }
+  } catch (_) {}
+
+  // Compute min/max column window over ONLY the columns we found, so that a
+  // missing (-1) column does not poison Math.min/max. minCol/maxCol are 1-based.
+  var presentIdx = [enrIdIdx, enrUserIdx, enrProgIdx, enrDateIdx, enrStatusIdx].filter(function (x) {
+    return x >= 0;
+  });
+  var minCol = Math.min.apply(null, presentIdx) + 1;
+  var maxCol = Math.max.apply(null, presentIdx) + 1;
+  var numRows = lastRow - 1; // header is row 1
+  var numCols = maxCol - minCol + 1;
+  var rows = enrSheet.getRange(2, minCol, numRows, numCols).getValues();
+
+  // Translate each absolute index to its offset within the returned window.
+  // Same shape as the archive's getUserEnrolledProgramLookup_ pattern.
+  function rel(absIdx) {
+    return absIdx < 0 ? -1 : absIdx + 1 - minCol;
+  }
+  var relId = rel(enrIdIdx);
+  var relUser = rel(enrUserIdx);
+  var relProg = rel(enrProgIdx);
+  var relDate = rel(enrDateIdx);
+  var relStatus = rel(enrStatusIdx);
+
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (normalizeId_(rows[i][relUser]) !== targetUserId) continue;
+    var progId = normalizeId_(rows[i][relProg]);
+    if (!progId) continue;
+    var meta = catalogLookup[progId] || { title: progId, type: "" };
+    var statusRaw = relStatus >= 0 ? String(rows[i][relStatus] || "").trim().toLowerCase() : "";
+    var status = statusRaw ? statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1) : "Active";
+    out.push({
+      enrollmentId: relId >= 0 ? String(rows[i][relId] || "").trim() : "",
+      programId: progId,
+      status: status,
+      timestamp: relDate >= 0 ? String(rows[i][relDate] || "").trim() : "",
+      title: meta.title,
+      type: meta.type,
+    });
+  }
+  // Newest first by timestamp (lexicographic — ISO strings and serialised
+  // getValues() Date strings both sort the same direction).
+  out.sort(function (a, b) {
+    if (a.timestamp < b.timestamp) return 1;
+    if (a.timestamp > b.timestamp) return -1;
+    return 0;
+  });
+  return { success: true, data: out };
 }

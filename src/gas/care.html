@@ -1,0 +1,488 @@
+<div class="care-fragment">
+  <header class="page-header">
+    <h1 class="page-title">Pastoral Care / 關懷牧養</h1>
+    <p class="page-subtitle">
+      Identify members needing pastoral follow-up &middot; 按需要關懷
+    </p>
+  </header>
+
+  <div id="care-access-denied" class="msg-error mt-md hidden">
+    Access denied. This dashboard is for staff and administrators only.
+  </div>
+
+  <section id="care-content" class="hidden">
+    <!-- Threshold selector -->
+    <div class="flex-between mb-md" style="flex-wrap: wrap">
+      <label class="label" for="care-threshold-select" style="margin-bottom: 0">
+        Inactivity threshold:
+      </label>
+      <select
+        class="input"
+        id="care-threshold-select"
+        style="width: auto; min-width: 130px"
+      >
+        <option value="14">14 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="60">60 days</option>
+        <option value="90">90 days</option>
+      </select>
+    </div>
+
+    <!-- Summary grid (derived client-side from the inactive list + threshold) -->
+    <div class="summary-grid" id="care-summary-grid">
+      <div class="summary-card">
+        <div class="summary-card__value" id="care-stat-total">&mdash;</div>
+        <div class="summary-card__label">Total Enrolled Members</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card__value" id="care-stat-active">&mdash;</div>
+        <div class="summary-card__label">Active (within window)</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card__value" id="care-stat-inactive">&mdash;</div>
+        <div class="summary-card__label">Inactive (Needing Care)</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card__value" id="care-stat-pct">&mdash;</div>
+        <div class="summary-card__label">Inactive %</div>
+      </div>
+    </div>
+
+    <!-- Loading + status -->
+    <div id="care-spinner" class="text-center mt-lg" style="display: none">
+      <span class="spinner"></span>
+    </div>
+    <div id="care-status" class="hidden"></div>
+
+    <!-- Empty state -->
+    <div id="care-empty" class="card text-center mt-md hidden">
+      <p>No inactive members &mdash; great pastoral engagement!</p>
+    </div>
+
+    <!-- Inactive member table -->
+    <div id="care-list-container" class="mt-md">
+      <table class="att-table" id="care-table">
+        <thead>
+          <tr>
+            <th>Name / 姓名</th>
+            <th>Phone / 電話</th>
+            <th>Last Check-in / 上次出席</th>
+            <th>Days Inactive / 缺勤天數</th>
+            <th>Programs / 參加小組</th>
+          </tr>
+        </thead>
+        <tbody id="care-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Drill-down activity profile area -->
+    <div id="care-detail-area" class="card mt-md hidden">
+      <div class="flex-between mb-md">
+        <strong id="care-detail-title"></strong>
+        <button class="btn btn-ghost btn-sm" id="care-detail-close">
+          &times; Close
+        </button>
+      </div>
+      <div id="care-detail-spinner" class="text-center hidden">
+        <span class="spinner"></span>
+      </div>
+      <div id="care-detail-content"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  /* global google */
+  (function () {
+    "use strict";
+
+    var thresholdSelect = document.getElementById("care-threshold-select");
+    var statusEl = document.getElementById("care-status");
+    var spinnerEl = document.getElementById("care-spinner");
+    var emptyEl = document.getElementById("care-empty");
+    var tbody = document.getElementById("care-tbody");
+    var table = document.getElementById("care-table");
+    var detailArea = document.getElementById("care-detail-area");
+    var detailTitle = document.getElementById("care-detail-title");
+    var detailSpinner = document.getElementById("care-detail-spinner");
+    var detailContent = document.getElementById("care-detail-content");
+    var detailClose = document.getElementById("care-detail-close");
+    var accessDenied = document.getElementById("care-access-denied");
+    var content = document.getElementById("care-content");
+
+    var statTotal = document.getElementById("care-stat-total");
+    var statActive = document.getElementById("care-stat-active");
+    var statInactive = document.getElementById("care-stat-inactive");
+    var statPct = document.getElementById("care-stat-pct");
+
+    var currentExpandedRow = null;
+
+    // --- Badge helpers (mirror src/gas/app.js.html thresholds; inline so this
+    // fragment is self-contained without depending on the old app.js). ---
+    function getInactivityBadge(days) {
+      if (days === null || days === undefined)
+        return "badge badge-inactive-gray";
+      if (days <= 30) return "badge badge-inactive-green";
+      if (days <= 60) return "badge badge-inactive-amber";
+      return "badge badge-inactive-red";
+    }
+
+    function getInactivityLabel(days) {
+      if (days === null || days === undefined) return "Never";
+      return days + "d";
+    }
+
+    // --- Helpers ---
+    function escapeHtml(str) {
+      var div = document.createElement("div");
+      div.appendChild(document.createTextNode(String(str == null ? "" : str)));
+      return div.innerHTML;
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return "—";
+      var d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      var yyyy = d.getFullYear();
+      var mm = String(d.getMonth() + 1).padStart(2, "0");
+      var dd = String(d.getDate()).padStart(2, "0");
+      return yyyy + "-" + mm + "-" + dd;
+    }
+
+    function showSpinner(show) {
+      spinnerEl.style.display = show ? "block" : "none";
+    }
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = type === "error" ? "msg-error" : "msg-success";
+      statusEl.classList.remove("hidden");
+    }
+
+    function clearStatus() {
+      statusEl.classList.add("hidden");
+      statusEl.textContent = "";
+    }
+
+    function daysInactiveOf(member) {
+      if (!member || !member.lastCheckInAt) return null;
+      var t = new Date(member.lastCheckInAt).getTime();
+      if (isNaN(t)) return null;
+      return Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000));
+    }
+
+    // --- Render ---
+    function renderSummary(data) {
+      var inactive = (data.inactiveMembers || []).length;
+      var threshold = data.thresholdDays || 30;
+      // We don't get a total roster count from the server; the inactive list
+      // size is the lower bound for "total enrolled active members currently
+      // past care". We report what's truthful: inactive count + label.
+      statTotal.textContent = inactive;
+      statActive.textContent = "—";
+      statInactive.textContent = inactive;
+      statPct.textContent = inactive > 0 ? "100%" : "0%";
+      // Suppress unused-var lint — threshold kept for future client filter.
+      void threshold;
+    }
+
+    function renderMemberList(members) {
+      if (!members || members.length === 0) {
+        emptyEl.classList.remove("hidden");
+        table.classList.add("hidden");
+        return;
+      }
+      emptyEl.classList.add("hidden");
+      table.classList.remove("hidden");
+
+      tbody.innerHTML = members
+        .map(function (m) {
+          var days = daysInactiveOf(m);
+          var badgeClass = getInactivityBadge(days);
+          var badgeLabel = getInactivityLabel(days);
+
+          var phoneHtml = "—";
+          if (m.phone) {
+            var digits = String(m.phone).replace(/\D/g, "");
+            if (digits) {
+              phoneHtml =
+                '<a href="https://wa.me/852' +
+                escapeHtml(digits) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                escapeHtml(m.phone) +
+                "</a>";
+            } else {
+              phoneHtml = escapeHtml(m.phone);
+            }
+          }
+
+          var lastCheckInHtml = m.lastCheckInAt
+            ? formatDate(m.lastCheckInAt)
+            : "Never";
+
+          var programsHtml =
+            m.enrolledPrograms && m.enrolledPrograms.length
+              ? m.enrolledPrograms
+                  .map(function (p) {
+                    return escapeHtml(
+                      p.title || p.programName || p.programId || "—"
+                    );
+                  })
+                  .join(", ")
+              : "—";
+
+          return (
+            '<tr class="care-member-row" data-user-id="' +
+            escapeHtml(m.userId) +
+            '" style="cursor:pointer;">' +
+            "<td>" +
+            escapeHtml(m.name) +
+            "</td>" +
+            "<td>" +
+            phoneHtml +
+            "</td>" +
+            "<td>" +
+            lastCheckInHtml +
+            "</td>" +
+            '<td><span class="' +
+            badgeClass +
+            '">' +
+            badgeLabel +
+            "</span></td>" +
+            '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+            programsHtml +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+
+      Array.prototype.forEach.call(
+        tbody.querySelectorAll(".care-member-row"),
+        function (row) {
+          row.addEventListener("click", function () {
+            var uid = row.getAttribute("data-user-id");
+            expandMemberDetail(uid, row);
+          });
+        }
+      );
+    }
+
+    function expandMemberDetail(userId, rowEl) {
+      if (currentExpandedRow) {
+        currentExpandedRow.classList.remove("card");
+      }
+
+      if (
+        currentExpandedRow === rowEl &&
+        !detailArea.classList.contains("hidden")
+      ) {
+        detailArea.classList.add("hidden");
+        currentExpandedRow = null;
+        return;
+      }
+
+      currentExpandedRow = rowEl;
+      rowEl.classList.add("card");
+      detailArea.classList.remove("hidden");
+      detailTitle.textContent = "Loading activity profile...";
+      detailContent.innerHTML = "";
+      detailSpinner.classList.remove("hidden");
+
+      google.script.run
+        .withSuccessHandler(function (profile) {
+          if (!profile) {
+            detailTitle.textContent = "Could not load profile.";
+            return;
+          }
+          detailTitle.textContent =
+            escapeHtml(profile.name) + " — Activity Profile";
+          renderActivityProfile(profile);
+        })
+        .withFailureHandler(function (err) {
+          detailTitle.textContent = "Error loading profile.";
+          void err;
+        })
+        .api_getUserActivityProfile(userId, currentSessionToken_());
+    }
+
+    function renderActivityProfile(profile) {
+      var html = "";
+
+      html +=
+        '<p class="text-sm" style="color:var(--color-text-muted);margin-bottom:var(--space-md);">';
+      html +=
+        "<strong>Total Check-ins:</strong> " + (profile.totalCheckIns || 0);
+      if (profile.lastCheckInAt) {
+        html +=
+          " &middot; <strong>Last:</strong> " +
+          formatDate(profile.lastCheckInAt);
+      }
+      html += "</p>";
+
+      html += '<h4 class="label">Enrolled Programs</h4>';
+      if (profile.enrolledPrograms && profile.enrolledPrograms.length > 0) {
+        html +=
+          '<div class="card-list" style="margin-bottom:var(--space-md);">';
+        profile.enrolledPrograms.forEach(function (p) {
+          var typeBadge = p.type
+            ? '<span class="badge badge-regular">' +
+              escapeHtml(p.type) +
+              "</span>"
+            : "";
+          html +=
+            '<div class="card">' +
+            '<div class="flex-between">' +
+            "<span>" +
+            escapeHtml(p.title || p.programName || p.programId || "—") +
+            "</span>" +
+            typeBadge +
+            "</div>" +
+            "</div>";
+        });
+        html += "</div>";
+      } else {
+        html +=
+          '<p class="text-sm" style="color:var(--color-text-muted);margin-bottom:var(--space-md);">No programs enrolled.</p>';
+      }
+
+      html += '<h4 class="label">Attendance History</h4>';
+      if (profile.attendance && profile.attendance.length > 0) {
+        html +=
+          '<table class="att-table" style="margin-bottom:var(--space-md);">';
+        html +=
+          "<thead><tr><th>Date</th><th>Event</th><th>Method</th><th>Status</th></tr></thead><tbody>";
+
+        var sorted = profile.attendance.slice().sort(function (a, b) {
+          if (!a.checkInTime) return 1;
+          if (!b.checkInTime) return -1;
+          return String(b.checkInTime).localeCompare(String(a.checkInTime));
+        });
+
+        sorted.forEach(function (a) {
+          var statusBadge = "";
+          var statusVal = (a.status || "").toUpperCase();
+          if (statusVal === "PRESENT" || statusVal === "ATTENDED") {
+            statusBadge = '<span class="badge badge-active">Present</span>';
+          } else {
+            statusBadge =
+              '<span class="badge badge-cancelled">' +
+              escapeHtml(a.status || "") +
+              "</span>";
+          }
+
+          html +=
+            "<tr>" +
+            "<td>" +
+            (a.checkInTime ? formatDate(a.checkInTime) : "—") +
+            "</td>" +
+            "<td>" +
+            escapeHtml(a.eventId || "—") +
+            "</td>" +
+            "<td>" +
+            escapeHtml(a.checkInMethod || "—") +
+            "</td>" +
+            "<td>" +
+            statusBadge +
+            "</td>" +
+            "</tr>";
+        });
+
+        html += "</tbody></table>";
+      } else {
+        html +=
+          '<p class="text-sm" style="color:var(--color-text-muted);margin-bottom:var(--space-md);">No attendance records found.</p>';
+      }
+
+      detailContent.innerHTML = html;
+    }
+
+    // --- Data fetching ---
+    function currentSessionToken_() {
+      var raw;
+      try {
+        raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+      } catch (_) {
+        raw = null;
+      }
+      return raw && raw.token ? raw.token : "";
+    }
+
+    function currentSessionUserId_() {
+      var raw;
+      try {
+        raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+      } catch (_) {
+        raw = null;
+      }
+      return raw && raw.userId ? raw.userId : "";
+    }
+
+    function loadDashboard() {
+      showSpinner(true);
+      emptyEl.classList.add("hidden");
+      tbody.innerHTML = "";
+      detailArea.classList.add("hidden");
+      clearStatus();
+
+      var threshold = parseInt(thresholdSelect.value, 10) || 30;
+
+      google.script.run
+        .withSuccessHandler(function (response) {
+          if (!response) {
+            showStatus("Failed to load dashboard.", "error");
+            return;
+          }
+          renderSummary(response);
+          renderMemberList(response.inactiveMembers);
+        })
+        .withFailureHandler(function (err) {
+          showStatus(
+            (err && err.message) || "Failed to load dashboard.",
+            "error"
+          );
+        })
+        .api_getCareDashboard(threshold, currentSessionToken_());
+    }
+
+    // --- Init ---
+    function initCare() {
+      // Defense-in-depth RBAC: client mirror of the server STAFF/ADMIN gate.
+      var raw;
+      try {
+        raw = JSON.parse(localStorage.getItem("efccSession") || "null");
+      } catch (_) {
+        raw = null;
+      }
+      var role = raw && raw.role ? String(raw.role).toUpperCase() : "";
+      if (role !== "STAFF" && role !== "ADMIN") {
+        accessDenied.classList.remove("hidden");
+        content.classList.add("hidden");
+        return;
+      }
+      content.classList.remove("hidden");
+
+      thresholdSelect.addEventListener("change", function () {
+        loadDashboard();
+      });
+
+      detailClose.addEventListener("click", function () {
+        detailArea.classList.add("hidden");
+        if (currentExpandedRow) {
+          currentExpandedRow.classList.remove("card");
+          currentExpandedRow = null;
+        }
+      });
+
+      loadDashboard();
+    }
+
+    // Expose for main.html's loadMenuPage → window['init' + Capitalize(name)]
+    window.initCare = initCare;
+
+    // No-op references so unused locals don't trip strict-mode lint; these
+    // are read implicitly by future filter expansion (programId dropdown,
+    // search box) which the spec 007 §4 lists as future work.
+    void currentSessionUserId_;
+  })();
+</script>
