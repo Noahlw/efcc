@@ -24,6 +24,6 @@
   },
   "lint-staged": {
     "*.{js,cjs,mjs,jsx,ts,tsx,cts,mts}": "ultracite fix",
-    "*.{json,jsonc,css,scss,html,md}": "oxfmt --write"
+    "*.{json,jsonc,css,scss,html,md}": "oxfmt --write --no-error-on-unmatched-pattern"
   }
 }
