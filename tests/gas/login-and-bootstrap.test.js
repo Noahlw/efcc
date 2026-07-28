@@ -406,6 +406,64 @@ describe("Issue #66 — login + bootstrap RPC, session mechanics (issue #73)", (
     );
   });
 
+  test("Bug: login succeeds against the real production Users sheet column layout (Username/Name swapped, PIN_Code at 7, System_Role, extra columns)", () => {
+    // Root cause of the live bug report: usersReadAll_ assumed a
+    // fixed column order (User_ID, Name, Username, PIN_Code, Phone,
+    // Role, Status, QR_Code_String). The real production Users
+    // sheet carries a completely different order plus extra
+    // columns (Email, Date of Birth, Age, Whatsapp Message, 青崇？)
+    // and names the role column "System_Role", not "Role" — with
+    // mixed-case values ("Admin", not "ADMIN"). This fixture
+    // mirrors the real header row and row values captured live via
+    // a temporary diagnostic RPC during debugging.
+    const header = [
+      "User_ID",
+      "Username",
+      "Name",
+      "Email",
+      "Phone",
+      "Date of Birth",
+      "Age",
+      "PIN_Code",
+      "QR_Code_String",
+      "System_Role",
+      "Status",
+      "Whatsapp Message",
+      "青崇？",
+    ];
+    const row = [
+      "GC-C436-4943",
+      "noah",
+      "noah",
+      "noah@example.com",
+      "97706811",
+      new Date("2003-11-08T16:00:00.000Z"),
+      "22",
+      "6883",
+      "GC-C436-4943",
+      "Admin",
+      "Active",
+      "Send WhatsApp",
+      "1",
+    ];
+    env.sheets["Users"] = {
+      getDataRange: () => ({ getValues: () => [header, row] }),
+    };
+    loadAllGas(env.context);
+
+    const res = env.context.api_loginUser("noah", "6883");
+    assert.equal(
+      res.success,
+      true,
+      "correct credentials must succeed against the real column layout"
+    );
+    assert.equal(
+      res.data.session.role,
+      "ADMIN",
+      "mixed-case 'Admin' sheet value must normalize to uppercase ADMIN"
+    );
+  });
+
   test("api_logoutUser: deletes exactly the calling session's property and no others", () => {
     const users = makeUsersSheet([
       { userId: "U-1", username: "alice", pinCode: "1234", status: "Active" },
