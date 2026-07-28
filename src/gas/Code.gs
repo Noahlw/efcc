@@ -11,36 +11,61 @@ var PROGRAMS_CACHE_TTL_SEC_ = 300;
 var SESSION_TTL_MS_ = 30 * 24 * 60 * 60 * 1000; // 30-day rolling session
 var DEFAULT_DEV_SALT_ = "static-dev-salt-change-me";
 
-// --- Web App Routing --------------------------------------------------------
+// --- Web App Routing (ADR-0008 T00: SPA shell, no query-string routing) -----
 
+/**
+ * doGet(e) — ADR-0008 lock: always returns login.html. No query-string
+ * routing. Auth gating is done client-side (post-login) — server has no idea
+ * what page the user is on, only which HTML fragment to bootstrap with.
+ *
+ * NOTE for T01 (issue://42): `login.html` is not added by this ticket (T00).
+ * Deploying this entry before T01 lands will error at template-eval time.
+ */
 function doGet(e) {
-  var page = "login";
-  if (e && e.parameter && e.parameter.page) {
-    page = String(e.parameter.page).trim().toLowerCase();
-  }
-  var allowed = [
-    "login",
-    "register",
-    "profile",
-    "programs",
-    "events",
-    "scanner",
-    "dashboard",
-  ];
-  if (allowed.indexOf(page) === -1) {
-    page = "login";
-  }
-
-  return HtmlService.createTemplateFromFile(page)
+  return HtmlService.createTemplateFromFile("login")
     .evaluate()
     .setTitle("EFCC 顯恩堂")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1, maximum-scale=1");
+    .addMetaTag("viewport", "width=device-width, initial-scale=1, maximum-scale=1")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-// --- Template Include -------------------------------------------------------
+// --- Template Include --------------------------------------------------------
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// --- Fragment Loader (ADR-0008 T00) ------------------------------------------
+
+/**
+ * Single source of truth for which client-side navigation targets are valid.
+ * loadPage() refuses any name not on this list, so a client (or a buggy
+ * caller) cannot coerce the server into reading arbitrary .html files.
+ */
+var SPA_FRAGMENT_ALLOWLIST_ = Object.freeze([
+  "profile",
+  "programs",
+  "events",
+  "scanner",
+  "dashboard",
+  "care",
+]);
+
+/**
+ * loadPage(name) — returns the rendered HTML string of a fragment.
+ * Validates `name` against SPA_FRAGMENT_ALLOWLIST_ before touching
+ * HtmlService; throws for any unlisted name rather than silently
+ * falling through to a 404 or an arbitrary file read.
+ */
+function loadPage(name) {
+  var key = String(name == null ? "" : name).trim().toLowerCase();
+  if (SPA_FRAGMENT_ALLOWLIST_.indexOf(key) === -1) {
+    throw new Error(
+      'loadPage: unknown fragment "' + name + '". ' +
+      "Allowed: " + SPA_FRAGMENT_ALLOWLIST_.join(", ") + "."
+    );
+  }
+  return HtmlService.createTemplateFromFile(key).evaluate().getContent();
 }
 
 // --- Normalisation Utilities ------------------------------------------------
