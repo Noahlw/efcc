@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# OS / editor auto-generated junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Test / coverage output
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
