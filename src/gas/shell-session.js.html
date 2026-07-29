@@ -91,6 +91,28 @@
     // Events demo counter seeded at 150 for deterministic badge assertion.
     var eventsDemoCounter_ = 150;
 
+    // Monotonic navigation generation (issue #69). Bumped every time
+    // a real per-Section async load starts. A late RPC response
+    // whose captured generation no longer matches the current value
+    // has been superseded by a subsequent navigation and is dropped
+    // — this is what prevents a late response from an abandoned
+    // Section overwriting the user's newer location (AC #3),
+    // distinct from callServer_'s per-tag dedup (which only guards
+    // against two calls racing under the SAME tag).
+    var navGeneration_ = 0;
+    // Per-Section async state machine (issue #69), used for
+    // Sections that load real data via an RPC. Only Programs uses
+    // this in this branch; other Sections remain synchronous
+    // placeholders. sectionKey -> { state, data, errorCode }.
+    var SECTION_STATE = Object.freeze({
+      IDLE: "IDLE",
+      LOADING: "LOADING",
+      READY: "READY",
+      EMPTY: "EMPTY",
+      ERROR: "ERROR",
+    });
+    var sectionStates_ = {};
+
     // -----------------------------------------------------------------
     // Tiny DOM helpers
     // -----------------------------------------------------------------
@@ -601,7 +623,434 @@
       return container;
     }
 
+    // -----------------------------------------------------------------
+    // Async Section recovery UI (issue #69). Distinct Traditional
+    // Chinese copy per error code, plus loading/empty/error card
+    // renderers scoped to the content region. Only Programs uses
+    // these in this branch (see loadProgramsSection_ below); the
+    // functions are written generically so a future Section RPC can
+    // reuse them without duplicating copy.
+    // -----------------------------------------------------------------
+    function errorCopyFor_(code) {
+      switch (code) {
+        case "AUTH_REQUIRED":
+          return { heading: "登入工作階段已失效", detail: "請重新登入。" };
+        case "FORBIDDEN":
+          return { heading: "無法存取", detail: "你沒有權限使用此功能。" };
+        case "INTERNAL_ERROR":
+          return {
+            heading: "伺服器錯誤",
+            detail: "系統發生錯誤，請稍後再試。",
+          };
+        case "TRANSPORT":
+          return {
+            heading: "網絡連線失敗",
+            detail: "請檢查網絡連線後再試。",
+          };
+        case "RENDER_ERROR":
+          return {
+            heading: "顯示錯誤",
+            detail: "頁面顯示時發生錯誤，請重新整理或返回其他頁面。",
+          };
+        default:
+          return {
+            heading: "載入失敗",
+            detail: "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。",
+          };
+      }
+    }
+
+    function renderSectionLoadingCard_(sectionKey) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el(
+          "section",
+          { class: "page view-loading", "data-section": sectionKey },
+          [
+            el("div", { class: "login-card text-center" }, [
+              el("p", { class: "muted", text: "載入中..." }),
+            ]),
+          ]
+        )
+      );
+    }
+
+    function renderSectionErrorCard_(sectionKey, code) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      var copy = errorCopyFor_(code);
+      content.appendChild(
+        el(
+          "section",
+          { class: "page view-error", "data-section": sectionKey },
+          [
+            el("div", { class: "login-card text-center" }, [
+              el("h2", { text: copy.heading }),
+              el("p", { class: "muted", text: copy.detail }),
+              el(
+                "button",
+                {
+                  class: "btn btn-primary btn-full",
+                  type: "button",
+                  "data-action": "section-retry",
+                  "data-section": sectionKey,
+                  onclick: (function (k) {
+                    return function () {
+                      handleSectionRetry_(k);
+                    };
+                  })(sectionKey),
+                },
+                "重試"
+              ),
+            ]),
+          ]
+        )
+      );
+    }
+
+    function renderProgramsEmpty_() {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      content.appendChild(
+        el(
+          "section",
+          {
+            class: "page view-empty",
+            "data-section": SECTION_KEYS.PROGRAMS,
+          },
+          [
+            el("div", { class: "login-card text-center" }, [
+              el("h2", { text: "課程" }),
+              el("p", { class: "muted", text: "目前沒有課程資料。" }),
+              el(
+                "button",
+                {
+                  class: "btn btn-refresh",
+                  type: "button",
+                  "data-action": "refresh-section",
+                  "data-section": SECTION_KEYS.PROGRAMS,
+                  "aria-label": "重新整理",
+                  onclick: function () {
+                    refreshSection_(SECTION_KEYS.PROGRAMS);
+                  },
+                },
+                "重新整理"
+              ),
+            ]),
+          ]
+        )
+      );
+    }
+
+    function renderProgramsContent_(programs) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      var container = el("section", { class: "page view-programs" });
+      var card = el("div", { class: "login-card" });
+      card.appendChild(el("h2", { text: "課程" }));
+      card.appendChild(
+        el(
+          "button",
+          {
+            class: "btn btn-refresh",
+            type: "button",
+            "data-action": "refresh-section",
+            "data-section": SECTION_KEYS.PROGRAMS,
+            "aria-label": "重新整理",
+            onclick: function () {
+              refreshSection_(SECTION_KEYS.PROGRAMS);
+            },
+          },
+          "重新整理"
+        )
+      );
+      var list = el("ul", { class: "programs-list" });
+      for (var i = 0; i < programs.length; i++) {
+        var p = programs[i];
+        list.appendChild(
+          el("li", { class: "programs-list-item", "data-program-id": p.id }, [
+            el("strong", { text: p.name }),
+            el("span", { class: "muted", text: " (" + p.type + ")" }),
+            el("p", { class: "muted", text: p.description }),
+          ])
+        );
+      }
+      card.appendChild(list);
+      // Demo detail task preserved from issue #68's nested-task proof.
+      card.appendChild(
+        el(
+          "button",
+          {
+            class: "btn btn-open-task",
+            type: "button",
+            "data-action": "open-task",
+            "data-task": "programs-detail-demo",
+            onclick: function () {
+              openTask_({
+                key: "programs-detail-demo",
+                parentSection: SECTION_KEYS.PROGRAMS,
+                parentLabel: "課程",
+                title: "詳情",
+                kind: "detail",
+              });
+            },
+          },
+          "查看範例課程詳情"
+        )
+      );
+      container.appendChild(card);
+      content.appendChild(container);
+    }
+
+    // -----------------------------------------------------------------
+    // Programs Section async loader (issue #69, prerequisite slice of
+    // #53). This is the ONE real Section RPC in this branch; other
+    // Sections remain synchronous placeholders (see renderSectionImpl_
+    // below). Uses callServer_ for per-tag request dedup AND
+    // navGeneration_ for cross-Section stale-response protection.
+    // -----------------------------------------------------------------
+    function loadProgramsSection_() {
+      var sectionKey = SECTION_KEYS.PROGRAMS;
+      if (!session_) return;
+      sectionStates_[sectionKey] = { state: SECTION_STATE.LOADING };
+      renderSectionLoadingCard_(sectionKey);
+      // Capture (do not increment) — renderSection_ already bumped
+      // navGeneration_ for THIS render pass. Any older in-flight
+      // Programs load from a PRIOR render pass will see a mismatch
+      // below and drop its response silently.
+      var myGeneration = navGeneration_;
+      callServer_(
+        "section:programs",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_getPrograms(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken
+            );
+        },
+        function (envelope) {
+          if (myGeneration !== navGeneration_) return; // superseded
+          handleProgramsEnvelope_(envelope);
+        },
+        function (err) {
+          if (myGeneration !== navGeneration_) return; // superseded
+          handleProgramsFailure_(err);
+        }
+      );
+    }
+
+    function isValidProgramItem_(p) {
+      return (
+        p !== null &&
+        typeof p === "object" &&
+        typeof p.id === "string" &&
+        p.id.length > 0 &&
+        typeof p.name === "string" &&
+        typeof p.type === "string" &&
+        typeof p.description === "string"
+      );
+    }
+
+    // Given ALREADY-VALIDATED Programs data (empty or non-empty),
+    // set the correct state (EMPTY vs READY) and render it, wrapped
+    // in its own try/catch (issue #69 AC #9). Shared by the initial
+    // RPC success path AND the render-only retry path so both
+    // dispatch identically between the empty-state view and the
+    // content view — a render-only retry after an EMPTY-state crash
+    // must not regress to showing content-view chrome for zero
+    // items, and vice versa.
+    function applyProgramsData_(data) {
+      var sectionKey = SECTION_KEYS.PROGRAMS;
+      if (data.length === 0) {
+        sectionStates_[sectionKey] = { state: SECTION_STATE.EMPTY, data: [] };
+        try {
+          renderProgramsEmpty_();
+        } catch (e) {
+          if (typeof console !== "undefined" && console.error) {
+            console.error("Programs empty-state render error:", e);
+          }
+          sectionStates_[sectionKey] = {
+            state: SECTION_STATE.ERROR,
+            errorCode: "RENDER_ERROR",
+            data: [],
+          };
+          renderSectionErrorCard_(sectionKey, "RENDER_ERROR");
+        }
+        return;
+      }
+      sectionStates_[sectionKey] = { state: SECTION_STATE.READY, data: data };
+      try {
+        renderProgramsContent_(data);
+      } catch (e) {
+        if (typeof console !== "undefined" && console.error) {
+          console.error("Programs content render error:", e);
+        }
+        sectionStates_[sectionKey] = {
+          state: SECTION_STATE.ERROR,
+          errorCode: "RENDER_ERROR",
+          data: data,
+        };
+        renderSectionErrorCard_(sectionKey, "RENDER_ERROR");
+      }
+    }
+
+    function handleProgramsEnvelope_(envelope) {
+      var sectionKey = SECTION_KEYS.PROGRAMS;
+      if (!envelope || typeof envelope !== "object") {
+        handleProgramsFailure_({
+          kind: "MALFORMED",
+          message: "伺服器回應格式不正確。",
+        });
+        return;
+      }
+      if (envelope.success === true) {
+        var data = envelope.data;
+        if (!Array.isArray(data)) {
+          // Malformed success envelope (data is not an array) is a
+          // server contract violation, distinct from a genuinely
+          // empty catalog. Route through the same MALFORMED failure
+          // path as a structurally invalid envelope.
+          handleProgramsFailure_({
+            kind: "MALFORMED",
+            message: "伺服器回應格式不正確。",
+          });
+          return;
+        }
+        if (data.length === 0) {
+          applyProgramsData_([]);
+          return;
+        }
+        // Validate every item BEFORE transitioning to READY. A
+        // malformed item (null, missing field) inside an otherwise
+        // valid array must not reach renderProgramsContent_, since
+        // this async RPC callback path is NOT covered by
+        // renderSection_'s synchronous error boundary — an
+        // uncaught exception here would leak past any recovery UI.
+        for (var i = 0; i < data.length; i++) {
+          if (!isValidProgramItem_(data[i])) {
+            handleProgramsFailure_({
+              kind: "MALFORMED",
+              message: "伺服器回應格式不正確。",
+            });
+            return;
+          }
+        }
+        applyProgramsData_(data);
+        return;
+      }
+      var code = (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
+      var message = (envelope.error && envelope.error.message) || null;
+      if (code === "AUTH_REQUIRED") {
+        sectionStates_[sectionKey] = {
+          state: SECTION_STATE.ERROR,
+          errorCode: code,
+        };
+        clearAuthenticatedClientState_();
+        setAppState(STATE.SIGNED_OUT);
+        renderLogin_();
+        setStatus("");
+        showLoginError_(message || "登入工作階段已失效，請重新登入。");
+        return;
+      }
+      if (code === "FORBIDDEN") {
+        sectionStates_[sectionKey] = {
+          state: SECTION_STATE.ERROR,
+          errorCode: code,
+        };
+        setStatus("");
+        refreshAuthorization_();
+        return;
+      }
+      sectionStates_[sectionKey] = {
+        state: SECTION_STATE.ERROR,
+        errorCode: code,
+      };
+      renderSectionErrorCard_(sectionKey, code);
+    }
+
+    function handleProgramsFailure_(err) {
+      var sectionKey = SECTION_KEYS.PROGRAMS;
+      var code = "TRANSPORT";
+      if (err && err.kind === "MALFORMED") code = "INTERNAL_ERROR";
+      sectionStates_[sectionKey] = {
+        state: SECTION_STATE.ERROR,
+        errorCode: code,
+      };
+      renderSectionErrorCard_(sectionKey, code);
+    }
+
+    function handleSectionRetry_(sectionKey) {
+      if (sectionKey === SECTION_KEYS.PROGRAMS) {
+        var existing = sectionStates_[sectionKey];
+        if (
+          existing &&
+          existing.errorCode === "RENDER_ERROR" &&
+          Array.isArray(existing.data)
+        ) {
+          // The data already fetched successfully — only the
+          // rendering step failed. Repeat ONLY the failed operation
+          // (render), not the already-succeeded RPC (AC #6).
+          // applyProgramsData_ dispatches EMPTY vs READY correctly
+          // (an EMPTY-view render failure must retry into the EMPTY
+          // view again, not regress into the content view for zero
+          // items) and re-wraps the retry in its own try/catch, so a
+          // repeat failure stays RENDER_ERROR with the same data
+          // preserved rather than silently falling back to a
+          // network re-fetch for what is a client-side rendering
+          // defect.
+          applyProgramsData_(existing.data);
+          return;
+        }
+        sectionStates_[sectionKey] = { state: SECTION_STATE.IDLE };
+        loadProgramsSection_();
+        return;
+      }
+      // Generic render-error retry (issue #69 AC #9): re-attempt
+      // rendering the same Section. The error boundary in
+      // renderSection_ will catch a repeat failure.
+      renderSection_(sectionKey);
+    }
+
     function renderSection_(sectionKey) {
+      // Monotonic navigation generation (issue #69 AC #3): every
+      // render intent — whether from navigateTo_, closeTask_,
+      // refreshSection_, or recovery navigation — bumps this
+      // counter. A Programs load started under an OLDER generation
+      // drops its response silently when it resolves, so a late
+      // response from a Section the user has since left (or
+      // re-entered) cannot overwrite the current view.
+      navGeneration_ += 1;
+      // Error boundary (issue #69 AC #9): an unexpected client
+      // rendering exception must never leave a blank document. Any
+      // throw inside renderSectionImpl_ is caught and replaced with
+      // a recoverable error panel. Preserve any already-loaded data
+      // for the Section so a retry can re-attempt rendering ONLY
+      // (AC #6), without discarding a previously successful fetch.
+      var priorState = sectionStates_[sectionKey];
+      try {
+        renderSectionImpl_(sectionKey);
+      } catch (e) {
+        if (typeof console !== "undefined" && console.error) {
+          console.error("Section render error for " + sectionKey + ":", e);
+        }
+        sectionStates_[sectionKey] = {
+          state: SECTION_STATE.ERROR,
+          errorCode: "RENDER_ERROR",
+          data: priorState && priorState.data,
+        };
+        renderSectionErrorCard_(sectionKey, "RENDER_ERROR");
+      }
+    }
+
+    function renderSectionImpl_(sectionKey) {
       var content = $("app-content");
       if (!content) return;
       clearChildren(content);
@@ -626,11 +1075,29 @@
             );
           }
           break;
-        case SECTION_KEYS.PROGRAMS:
-          content.appendChild(
-            buildSectionCard_(sectionKey, "課程", "課程列表將於後續版本提供。")
-          );
+        case SECTION_KEYS.PROGRAMS: {
+          // Programs is the one real async Section RPC in this
+          // branch (issue #69, prerequisite slice of #53). Render
+          // from cached state if READY/EMPTY/ERROR; otherwise
+          // (IDLE, or LOADING from a now-superseded generation)
+          // start a fresh load for the CURRENT generation. Always
+          // (re)starting here — rather than treating LOADING as a
+          // no-op — is what keeps the loading UI visible instead of
+          // going blank when the user revisits Programs while an
+          // older, now-abandoned request is still in flight.
+          var progState = sectionStates_[SECTION_KEYS.PROGRAMS];
+          var progStateName = progState ? progState.state : SECTION_STATE.IDLE;
+          if (progStateName === SECTION_STATE.READY) {
+            renderProgramsContent_(progState.data);
+          } else if (progStateName === SECTION_STATE.EMPTY) {
+            renderProgramsEmpty_();
+          } else if (progStateName === SECTION_STATE.ERROR) {
+            renderSectionErrorCard_(SECTION_KEYS.PROGRAMS, progState.errorCode);
+          } else {
+            loadProgramsSection_();
+          }
           break;
+        }
         case SECTION_KEYS.EVENTS:
           content.appendChild(
             buildSectionCard_(sectionKey, "聚會", "聚會管理將於後續版本提供。")
@@ -824,8 +1291,19 @@
     }
 
     function refreshSection_(sectionKey) {
-      // For now, refresh is client-only: re-render the section.
-      // Future tickets will wire this through api_loadSection.
+      // Defensive guard: the refresh button only ever renders inside
+      // its own Section's card, so a legitimate click's sectionKey
+      // always matches currentSection_ (task-open state does not
+      // change currentSection_ — see openTask_). Reject anything
+      // else rather than risk replacing a different active view.
+      if (sectionKey !== currentSection_) return;
+      // Explicit Refresh action (issue #64/#69). For Programs, force
+      // a real re-fetch by resetting cached state to IDLE — without
+      // this, renderSectionImpl_'s READY branch would just re-render
+      // the stale cached list instead of calling the RPC again.
+      if (sectionKey === SECTION_KEYS.PROGRAMS) {
+        sectionStates_[sectionKey] = { state: SECTION_STATE.IDLE };
+      }
       if (activeTask_ !== null) {
         // If a task is open, invalidate the parent section so returning
         // forces a fresh render. Do not re-render while the task is visible.
@@ -840,6 +1318,13 @@
     // -----------------------------------------------------------------
     function openTask_(descriptor) {
       if (!descriptor || !descriptor.key) return;
+      // Bump the navigation generation (issue #69 AC #3): opening a
+      // task does not call renderSection_, so without this a Programs
+      // (or any future async Section) load that was in flight when
+      // the task opened would still apply its late response over the
+      // now-displayed task view. See renderSection_ for the primary
+      // bump point covering ordinary navigation.
+      navGeneration_ += 1;
       // Save scroll position of the current section to its cache entry.
       var content = $("app-content");
       if (content) {
@@ -1322,6 +1807,11 @@
       session_ = null;
       sections_ = [];
       currentSection_ = null;
+      sectionStates_ = {};
+      // Invalidate any in-flight Programs load so a late response
+      // after logout/session-expiry cannot render into a signed-out
+      // document (issue #69 AC #3/#8).
+      navGeneration_ += 1;
       clearStoredSession_();
       // Hide navigation when signed out so bare Login has no nav.
       var pn = $("app-nav-phone");
@@ -1387,6 +1877,8 @@
     // implementations that already enforce section authorization.
     // -----------------------------------------------------------------
     window.__e2eNavigate = navigateTo_;
+    var _origRenderProgramsContent_ = renderProgramsContent_;
+    var _origRenderProgramsEmpty_ = renderProgramsEmpty_;
     window.__test__ = {
       navigateTo_: navigateTo_,
       openTask_: openTask_,
@@ -1395,6 +1887,35 @@
       updateBadge_: updateBadge_,
       invalidateSection_: invalidateSection_,
       refreshSection_: refreshSection_,
+      loadProgramsSection_: loadProgramsSection_,
+      handleSectionRetry_: handleSectionRetry_,
+      getSectionState_: function (key) {
+        var s = sectionStates_[key];
+        return s ? s.state : SECTION_STATE.IDLE;
+      },
+      getSectionErrorCode_: function (key) {
+        var s = sectionStates_[key];
+        return s ? s.errorCode : null;
+      },
+      getNavGeneration_: function () {
+        return navGeneration_;
+      },
+      makeRenderProgramsContentThrow_: function () {
+        renderProgramsContent_ = function () {
+          throw new Error("Simulated Programs rendering crash");
+        };
+      },
+      restoreRenderProgramsContent_: function () {
+        renderProgramsContent_ = _origRenderProgramsContent_;
+      },
+      makeRenderProgramsEmptyThrow_: function () {
+        renderProgramsEmpty_ = function () {
+          throw new Error("Simulated Programs empty-state rendering crash");
+        };
+      },
+      restoreRenderProgramsEmpty_: function () {
+        renderProgramsEmpty_ = _origRenderProgramsEmpty_;
+      },
       getEventsDemoCounter: function () {
         return eventsDemoCounter_;
       },

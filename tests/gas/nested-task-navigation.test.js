@@ -419,7 +419,12 @@ function createGoogleRun(queuedHandlers) {
         return builder;
       },
     };
-    for (const name of ["api_loginUser", "api_restoreApp", "api_logoutUser"]) {
+    for (const name of [
+      "api_loginUser",
+      "api_restoreApp",
+      "api_logoutUser",
+      "api_getPrograms",
+    ]) {
       builder[name] = (...args) => {
         calls.push({
           method: name,
@@ -440,6 +445,30 @@ function createGoogleRun(queuedHandlers) {
               typeof builder._failure === "function"
             ) {
               builder._failure(behavior.value);
+            }
+          });
+        } else if (name === "api_getPrograms") {
+          // Issue #69: these pre-existing #68 navigation tests don't
+          // exercise Programs' real data contract — they only need
+          // the async Section RPC to resolve so Programs renders
+          // its READY state ("課程" heading) rather than staying in
+          // an unresolved LOADING/transport-failure state. Tests
+          // that DO care about the Programs contract queue their
+          // own behavior above and this branch is skipped.
+          queueMicrotask(() => {
+            if (typeof builder._success === "function") {
+              builder._success({
+                success: true,
+                requestId: "default-programs",
+                data: [
+                  {
+                    id: "P001",
+                    name: "主日學",
+                    type: "Bible Study",
+                    description: "示範課程",
+                  },
+                ],
+              });
             }
           });
         }
@@ -655,6 +684,7 @@ describe("nested-task-navigation.js.html — issue #68", () => {
 
     // Navigate to Programs.
     hooks.navigateTo_("programs");
+    await flushMicrotasks();
     assert.ok(
       content.children.length > 0,
       "content should have children after navigating to Programs"
@@ -837,6 +867,7 @@ describe("nested-task-navigation.js.html — issue #68", () => {
     const hooks = getTest(context);
 
     hooks.navigateTo_("programs");
+    await flushMicrotasks();
     hooks.openTask_({
       key: "programs-detail-demo",
       parentSection: "programs",
@@ -847,6 +878,7 @@ describe("nested-task-navigation.js.html — issue #68", () => {
 
     // While task is open, navigate to the same root (programs).
     hooks.navigateTo_("programs");
+    await flushMicrotasks();
 
     const content = dom.index["app-content"];
 
