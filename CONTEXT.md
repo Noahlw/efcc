@@ -37,13 +37,30 @@ A single Google Spreadsheet with these named sheets:
 
 | Sheet | Purpose | Key Columns |
 | --- | --- | --- |
-| `Users` | Member & Staff records | User_ID, Name, Username, PIN_Code, Phone, Role, Status, QR_Code_String |
+| `Users` | Member & Staff records | See [Users sheet structure](#users-sheet) below — 13 columns, resolved by header name |
 | `Programs` | Program catalog | Program_ID, Program_Name, Type, Description |
 | `Enrollments` | Program membership | Enrollment_ID, User_ID, Program_ID, Timestamp, Status |
 | `Events` | Scheduled instances | Event_ID, Program_ID, Event_Date, Time_Slot, Event_Name |
 | `Attendance` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By |
 | `Program_Leaders` | Per-program leader assignments (ADR-0006) | Assignment_ID, Program_ID, User_ID, Assigned_By, Assigned_Date, Status |
 | `Audit_Log` | Admin action audit trail (ADR-0006) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Old_Value, New_Value, Reason |
+
+### Users sheet
+
+The production `Users` sheet (as exported from the church spreadsheet) has the following header row, in this order:
+
+```
+User_ID | Username | Name | Email | Phone | Date of Birth | Age | PIN_Code | QR_Code_String | System_Role | Status | Whatsapp Message | 青崇？
+```
+
+**Key implementation notes:**
+
+- The role column is named **`System_Role`**, not `Role`. The repository handles both (`["Role", "System_Role"]` candidates in `users-repository.gs`), but the canonical production header is `System_Role`.
+- Extra columns (`Email`, `Date of Birth`, `Age`, `Whatsapp Message`, `青崇？`) exist in the production sheet but are **not read** by the application. They do not interfere — `usersResolveColumns_` matches only the 8 logical fields by header name.
+- When `System_Role` is empty or missing, the user defaults to `MEMBER`.
+- When `Status` is empty, the user **cannot log in** — the login flow requires `String(status).toLowerCase() === "active"`.
+- Column order is **not fixed** — `usersResolveColumns_` matches by header name (case-insensitive). Adding, removing, or reordering columns does not break the resolver as long as the 8 logical field headers are present.
+- `QR_Code_String` defaults to the `User_ID` when empty (the QR code is the same as the user ID).
 
 See ADR-0001 for the rationale behind Google Sheets as the database layer.
 
