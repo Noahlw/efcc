@@ -2,10 +2,9 @@
 
 **Status:** Active
 **Date:** 2026-07-30
-**Source:** Production spreadsheet "Copy of Church Attendance System.xlsx"
-
-## Purpose
-
+**Source:** Production spreadsheet "Copy of Church Attendance System.xlsx" (990-row Users sheet, exported for structural reference)
+**Supersedes:** `CONTEXT.md § Data Store` — DB-001 is the canonical record; CONTEXT.md is a convenience summary that cross-references here.
+**Depends on:** ADR-0001 (Google Sheets as the database layer); ADR-0006 (Admin capability matrix, for the role/assignment concepts this spec encodes).
 This document is the **single authoritative record** of the Google Sheets database
 structure. Every repository file, test fixture, CONTEXT.md entry, and future schema
 change MUST derive from this document. When a column name, order, or sheet tab
@@ -130,38 +129,21 @@ repository returns empty results when the sheet is missing.
 |-----------|----------|---------------------|--------------------|
 | `users-repository.gs` | Users | `USERS_COL.<FIELD>` (resolved) | No |
 | `programs-repository.gs` | Programs | `cols.<field>` (resolved) | No |
-| `program-leaders-repository.gs` | Program_Leaders | `PROGRAM_LEADERS_COL_` (resolved) **BUT NOT USED** | **YES — `row[1]`, `row[2]`, `row[5]` hardcoded** |
+| `program-leaders-repository.gs` | Program_Leaders | `PROGRAM_LEADERS_COL_` (resolved) | No (as of `6816607`) |
 | `session.js.gs` | Users | Via `usersCurrentPinById_()` / `usersStatusById_()` | Inherits repository |
 | `Code.gs` | None directly | Via `usersFindById_()` / `programsList_()` | Inherits repository |
 
 ## Known issues
 
-1. **CRITICAL: `program-leaders-repository.gs` hardcoded indexes** (lines 118-119, 141-142)
-   - Uses `row[2]` for User_ID, `row[5]` for Status, `row[1]` for Program_ID
-   - Should use `PROGRAM_LEADERS_COL_.USER_ID`, `PROGRAM_LEADERS_COL_.STATUS`, `PROGRAM_LEADERS_COL_.PROGRAM_ID`
-   - Impact: column reorder in the Program_Leaders sheet silently corrupts all leader lookups
+| # | Severity | Issue | Status |
+|---|----------|-------|--------|
+| 1 | HIGH | `users-repository.gs` header comment (lines 5-6) documents the column order as `(0) User_ID, (1) Name, (2) Username`. The actual production order is `(0) User_ID, (1) Username, (2) Name`. The header-name resolver handles this correctly at runtime, but the doc is misleading. | Open — doc fix only, no code change needed |
+| 2 | MEDIUM | Test fixtures use a simplified 8-column Users header (via `makeUsersSheet` helpers in `tests/gas/*.test.js`); only `login-and-bootstrap.test.js` exercises the real 14-column production layout. A future column addition to the production sheet would not be caught by most unit tests. | Open — add a "shape parity" test that compares each fixture header to the ADR-0013 column list |
+| 3 | MEDIUM | `programLeadersReadAll_()` sheet-missing path returns `[]` directly without populating `PROGRAM_LEADERS_CACHE_`, so subsequent calls re-run `SpreadsheetApp.getActiveSpreadsheet()` and `getSheetByName()` instead of short-circuiting. Functionally harmless but a caching regression. | Open — set `PROGRAM_LEADERS_CACHE_ = []` in the missing-sheet path, not `null` |
+| 4 | LOW | Header-candidate list for `ROLE` in `USERS_COL_CANDIDATES_` accepts `["Role", "System_Role"]`. The second is production-canonical; the first is a legacy fallback for older sheets. Once the production Sheet is guaranteed to use `System_Role` exclusively, the `Role` candidate could be removed. | Open — coordinate with user before removing |
 
-2. **CRITICAL: `program-leaders-repository.gs` stray brace** (line 101)
-   - `programLeadersSetRowsForTesting_` has a closing `}` on its own line after the function
-   - Makes the function definition syntactically broken in isolation; works only because it's inside a script tag
+## Resolved issues (logged for traceability)
 
-3. **HIGH: `users-repository.gs` doc comment is wrong** (lines 5-6)
-   - Claims columns are: `(0) User_ID, (1) Name, (2) Username...`
-   - Actual production order: `(0) User_ID, (1) Username, (2) Name`
-   - The header-name resolver handles this correctly at runtime, but the doc is misleading
-
-4. **HIGH: CONTEXT.md documents 8 columns but production has 14**
-   - `CONTEXT.md` says 8 columns (User_ID, Name, Username, PIN_Code, Phone, Role, Status, QR_Code_String)
-   - Production Users sheet has 14 columns (includes Email, Date of Birth, Age, System_Role instead of Role, Whatsapp Message, 青崇？, empty column)
-   - This document (DB-001) supersedes CONTEXT.md for sheet structure
-
-5. **MEDIUM: Test fixtures use simplified 8-column Users headers**
-   - `makeUsersSheet` in multiple test files creates a simplified header
-   - Only `login-and-bootstrap.test.js` exercises the real 14-column production layout
-   - Column addition to the production sheet would not be caught by most unit tests
-
-6. **HIGH: Rows 99–111 in production Users sheet have column misalignment**
-   - The Phone value is in the Email column (col 4), shifting all subsequent values left
-   - This causes `Status` to read as empty → login blocked
-   - Root cause: manual editing without referencing the column structure
-   - Fix: insert empty cells for Email, DOB, Age before PIN_Code for affected rows
+| # | Issue | Fixed in | Note |
+|---|-------|----------|------|
+| 1 | `program-leaders-repository.gs` used hardcoded numeric indexes (`row[1]`, `row[2]`, `row[5]`) instead of `PROGRAM_LEADERS_COL_` lookups. | `6816607` (commit on `feat/issue-70-form-protection`) | Any column reorder in Program_Leaders would have silently corrupted leader lookups. Replaced all six hardcoded indices with `PROGRAM_LEADERS_COL_.<FIELD>` references. Verified by 150/150 Vitest tests passing. |
