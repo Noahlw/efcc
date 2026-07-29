@@ -383,3 +383,98 @@ function api_logoutUser(userId, sessionId, sessionToken) {
     );
   }
 }
+
+/**
+ * api_getPrograms — read-only Programs list for the Programs Section
+ * (issue #69, prerequisite slice of #53).
+ *
+ * Reuses the same authenticated boundary as api_restoreApp: a bare
+ * userId parameter could be forged from the browser, so every call
+ * re-verifies (sessionId, sessionToken) via sessionVerify_ and
+ * rechecks the live Users Sheet status. Available to every active
+ * authenticated role per issue #64's navigation matrix — Programs is
+ * visible to MEMBER, Program Leader, STAFF, and ADMIN.
+ *
+ * Scope note: this RPC does NOT read Enrollments and does NOT
+ * compute isEnrolled. That is issue #53's scope (self-service and
+ * assisted enrollment). Building it here would duplicate #53's
+ * ticket — see docs/specs/069-async-recovery-acceptance-plan.md.
+ *
+ * Unexpected exceptions here deliberately return RPC_CODES.
+ * INTERNAL_ERROR rather than UNAVAILABLE (unlike the other three
+ * RPCs in this file) — the user's explicit choice during the
+ * grilling session for this ticket; see the acceptance plan for the
+ * rationale record.
+ *
+ * SECURITY NOTE (deliberate divergence from api_restoreApp): a
+ * mismatched userId parameter against an otherwise-VALID
+ * (sessionId, sessionToken) pair does NOT revoke the session here.
+ * sessionId is not secret (it travels alongside the token, and a
+ * client-side bug or a stale multi-tab race could pair the wrong
+ * userId with a real token); revoking on mismatch would let anyone
+ * who merely observes a sessionId force-log-out a legitimate,
+ * unrelated session — a denial-of-service surface issue #73's
+ * multi-session design does not accept. api_restoreApp has the same
+ * revoke-on-mismatch pattern today; that is flagged here as a
+ * follow-up hardening candidate, not fixed retroactively in this
+ * branch since #66/#73 are already shipped and out of scope for #69.
+ *
+ * @param {string} userId
+ * @param {string} sessionId
+ * @param {string} sessionToken
+ * @returns {RpcSuccess<Array<{id: string, name: string, type: string, description: string}>>|RpcFailure}
+ */
+function api_getPrograms(userId, sessionId, sessionToken) {
+  var op = "api_getPrograms";
+  var requestId = rpcRequestId_();
+  var t0 = Date.now();
+  try {
+    var verification = sessionVerify_(sessionId, sessionToken);
+    if (!verification.ok) {
+      rpcLog_(
+        op,
+        requestId,
+        verification.reason || "AUTH_REQUIRED",
+        Date.now() - t0
+      );
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    if (verification.userId !== userId) {
+      // Mismatched userId parameter on an otherwise-VALID session —
+      // fail the request WITHOUT revoking the session (see the
+      // SECURITY NOTE above). This deliberately does not match
+      // api_restoreApp's current revoke-on-mismatch behavior.
+      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    var user = usersFindById_(verification.userId);
+    if (!user || user.status !== "Active") {
+      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    var programs = programsList_();
+    rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+    return rpcSuccess_(requestId, programs);
+  } catch (e) {
+    rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
+    return rpcFailure_(
+      requestId,
+      RPC_CODES.INTERNAL_ERROR,
+      "系統發生錯誤，請稍後再試。"
+    );
+  }
+}
