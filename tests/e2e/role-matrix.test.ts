@@ -153,10 +153,9 @@ async function login(
   await pinInput.fill(pin);
   await Promise.all([
     frame.waitForFunction(
-      // oxlint-disable-next-line unicorn/prefer-dom-node-dataset -- browser-context live DOM Element inside waitForFunction callback; `.dataset` is functionally equivalent but `.getAttribute` matches the auth.ts readAppState idiom and keeps the change surface tight (no logic change).
       () =>
-        document.querySelector("#app")?.dataset.appState ===
-        "READY",
+        (document.querySelector("#app") as HTMLElement | null)?.dataset
+          .appState === "READY",
       null,
       { timeout: APP_READY_TIMEOUT_MS }
     ),

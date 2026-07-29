@@ -22,5 +22,7 @@ coverage/
 npm-debug.log*
 
 # E2E auth (Playwright storage state — session cookies, never commit)
-.auth/
+.auth/*
 .env
+!.auth/.example/
+!.auth/.example/**
