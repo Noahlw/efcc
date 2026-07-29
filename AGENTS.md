@@ -90,4 +90,4 @@ When an implementation requires a schema change (new sheet tab, new column, seed
 
 This rule applies to every phase: implementation, testing, deployment, and debugging. The only permitted sheet interaction is reading the exported `.xlsx` snapshot for structural reference.
 
-The authoritative sheet structure is documented in [CONTEXT.md § Data Store](CONTEXT.md#data-store-google-sheets), including the exact column names, order, and quirks of the production `Users` sheet (13 columns, `System_Role` not `Role`, empty-`Status` login blocking). Always refer to CONTEXT.md for the current schema before writing or debugging sheet-dependent code.
+The authoritative sheet structure is documented in [ADR-0013: Google Sheets Database Structure](docs/adr/0013-google-sheets-database-structure.md). CONTEXT.md § Data Store is a summary; ADR-0013 is the canonical record. Always refer to ADR-0013 for the current schema before writing or debugging sheet-dependent code.

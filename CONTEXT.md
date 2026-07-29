@@ -32,6 +32,11 @@
 ---
 
 ## Data Store (Google Sheets)
+**Authoritative reference:** [ADR-0013: Google Sheets Database Structure](docs/adr/0013-google-sheets-database-structure.md) —
+this document is the canonical, version-controlled source of truth for every sheet tab,
+column name, column position, and valid value. The summary below is for convenience;
+ADR-0013 governs when they conflict.
+
 
 A single Google Spreadsheet with these named sheets:
 
