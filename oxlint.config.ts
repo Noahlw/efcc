@@ -119,5 +119,18 @@ export default defineConfig({
         "jsx-a11y/prefer-tag-over-role": "off",
       },
     },
+    {
+      // Playwright automation is inherently sequential-polling code
+      // (findAppFrame's while-loop, per-tick frame checks) — the
+      // "collect promises, then await all" rewrite the rule suggests
+      // does not apply to a bounded polling loop with an early return.
+      // Also works around an oxlint 1.76.0 quirk where inline
+      // oxlint-disable-next-line comments for this rule do not
+      // reliably suppress inside this file's specific AST shape.
+      files: ["tests/e2e/**/*.ts"],
+      rules: {
+        "no-await-in-loop": "off",
+      },
+    },
   ],
 });

@@ -11,12 +11,14 @@
     "test:gas": "vitest run tests/gas",
     "e2e:auth": "tsx tests/e2e/auth.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
+    "posttest:e2e": "tsx tests/e2e/plan-doc-appender.ts",
     "build": "npm run build --workspaces --if-present",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
+    "@types/node": "^26.1.2",
     "husky": "^9.1.7",
     "lint-staged": "^15.4.0",
     "oxfmt": "0.61.0",
