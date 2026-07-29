@@ -27,6 +27,7 @@
 | Session | 登入工作階段 | A server-validated authenticated period for one Member. Whether a Member may hold one or multiple concurrent Sessions is intentionally deferred to a separate authentication-hardening decision. |
 | Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
+| Storage State | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
 
 ---
 
@@ -63,6 +64,7 @@ See ADR-0001 for the rationale behind Google Sheets as the database layer.
 | 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Accepted |
 | 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
 | 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
+| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
 
 ---
 
