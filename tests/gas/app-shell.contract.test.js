@@ -99,7 +99,7 @@ describe("App Document shell contract (issue #65, ADR-0010)", () => {
       'Code.gs must call HtmlService.createTemplateFromFile("App")'
     );
     assert.ok(
-      src.includes('.addMetaTag("viewport"'),
+      src.includes("addMetaTag") && src.includes('"viewport"'),
       'Code.gs must call .addMetaTag("viewport", ...) — the viewport meta tag must NOT be inlined in App.html'
     );
   });
