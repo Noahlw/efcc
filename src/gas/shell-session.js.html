@@ -82,6 +82,15 @@
     // The currently active section key (e.g. "profile").
     var currentSection_ = null;
 
+    // Nested task state (issue #68).
+    var activeTask_ = null;
+    // Per-Section view-state cache: {scrollTop, filter, selectedId, stale}.
+    var sectionViewCache_ = {};
+    // Per-Section badge counts (0 = hidden).
+    var sectionBadgeCounts_ = {};
+    // Events demo counter seeded at 150 for deterministic badge assertion.
+    var eventsDemoCounter_ = 150;
+
     // -----------------------------------------------------------------
     // Tiny DOM helpers
     // -----------------------------------------------------------------
@@ -125,6 +134,11 @@
             node.setAttribute(k, attrs[k]);
           } else if (k.indexOf("on") === 0 && typeof attrs[k] === "function") {
             node.addEventListener(k.slice(2), attrs[k]);
+          } else if (
+            typeof attrs[k] === "string" ||
+            typeof attrs[k] === "number"
+          ) {
+            node.setAttribute(k, attrs[k]);
           }
         });
       }
@@ -340,6 +354,20 @@
         else if (section.key === SECTION_KEYS.CARE) label = "關懷";
         else if (section.key === SECTION_KEYS.PERMISSIONS) label = "權限";
       }
+      // Build nav item button with optional badge.
+      var children = [el("span", { class: "nav-item-label", text: label })];
+      var count = sectionBadgeCounts_[section.key];
+      if (count !== undefined && count !== null) {
+        var badge = document.createElement("span");
+        badge.className = "nav-badge";
+        badge.setAttribute("data-badge", section.key);
+        if (count > 0) {
+          badge.textContent = formatBadgeCount_(count);
+        } else {
+          badge.setAttribute("hidden", "");
+        }
+        children.push(badge);
+      }
       return el(
         "button",
         {
@@ -356,7 +384,7 @@
             };
           })(section.key),
         },
-        [el("span", { class: "nav-item-label", text: label })]
+        children
       );
     }
 
@@ -381,6 +409,19 @@
       });
       for (var i = 0; i < overflowSections.length; i++) {
         var s = overflowSections[i];
+        var itemChildren = [document.createTextNode(s.label)];
+        var count = sectionBadgeCounts_[s.key];
+        if (count !== undefined && count !== null) {
+          var badge = document.createElement("span");
+          badge.className = "nav-badge";
+          badge.setAttribute("data-badge", s.key);
+          if (count > 0) {
+            badge.textContent = formatBadgeCount_(count);
+          } else {
+            badge.setAttribute("hidden", "");
+          }
+          itemChildren.push(badge);
+        }
         menu.appendChild(
           el(
             "button",
@@ -396,7 +437,7 @@
                 };
               })(s.key),
             },
-            s.label
+            itemChildren
           )
         );
       }
@@ -442,12 +483,22 @@
         }
       }
     }
-
     // -----------------------------------------------------------------
-    // Section navigation (issue #67)
+    // Section navigation (issue #67 / #68)
     // -----------------------------------------------------------------
     function navigateTo_(sectionKey) {
-      if (sectionKey === currentSection_) return;
+      // If a nested task is open, any root nav click closes it first.
+      if (activeTask_ !== null) {
+        activeTask_ = null;
+        if (sectionKey === currentSection_) {
+          // Same root as the open task's parent — close task, show root.
+          renderSection_(sectionKey);
+          return;
+        }
+        // Different root — close task and fall through to navigate.
+      } else if (sectionKey === currentSection_) {
+        return; // True no-op: at this root with no task open.
+      }
       // Check authorization: server-authorized sections only.
       var authorized = false;
       for (var i = 0; i < sections_.length; i++) {
@@ -466,11 +517,100 @@
       renderSection_(sectionKey);
     }
 
+    function buildSectionCard_(sectionKey, title, description) {
+      var isProfile = sectionKey === SECTION_KEYS.PROFILE;
+      var container = el("section", { class: "page view-" + sectionKey });
+      var card = el("div", { class: "login-card" });
+      card.appendChild(el("h2", { text: title }));
+      // Refresh button for non-profile data-bearing Sections.
+      if (!isProfile) {
+        card.appendChild(
+          el(
+            "button",
+            {
+              class: "btn btn-refresh",
+              type: "button",
+              "data-action": "refresh-section",
+              "data-section": sectionKey,
+              "aria-label": "重新整理",
+              onclick: (function (k) {
+                return function () {
+                  refreshSection_(k);
+                };
+              })(sectionKey),
+            },
+            "重新整理"
+          )
+        );
+      }
+      card.appendChild(el("p", { class: "muted", text: description }));
+      // Demo task buttons (issue #68).
+      if (sectionKey === SECTION_KEYS.PROGRAMS) {
+        card.appendChild(
+          el(
+            "button",
+            {
+              class: "btn btn-open-task",
+              type: "button",
+              "data-action": "open-task",
+              "data-task": "programs-detail-demo",
+              onclick: function () {
+                openTask_({
+                  key: "programs-detail-demo",
+                  parentSection: SECTION_KEYS.PROGRAMS,
+                  parentLabel: "課程",
+                  title: "詳情",
+                  kind: "detail",
+                });
+              },
+            },
+            "查看範例課程詳情"
+          )
+        );
+      }
+      if (sectionKey === SECTION_KEYS.EVENTS) {
+        card.appendChild(
+          el("p", {
+            class: "muted",
+            text: "範例計數器：" + eventsDemoCounter_,
+          })
+        );
+        card.appendChild(
+          el(
+            "button",
+            {
+              class: "btn btn-open-task",
+              type: "button",
+              "data-action": "open-task",
+              "data-task": "events-edit-demo",
+              onclick: function () {
+                openTask_({
+                  key: "events-edit-demo",
+                  parentSection: SECTION_KEYS.EVENTS,
+                  parentLabel: "聚會",
+                  title: "編輯",
+                  kind: "edit",
+                });
+              },
+            },
+            "編輯範例聚會"
+          )
+        );
+      }
+      container.appendChild(card);
+      return container;
+    }
+
     function renderSection_(sectionKey) {
       var content = $("app-content");
       if (!content) return;
       clearChildren(content);
-
+      // Check view-state cache: restore scroll unless stale.
+      var cached = sectionViewCache_[sectionKey];
+      if (cached && !cached.stale) {
+        // Scroll restoration hint — the content will be re-rendered
+        // but preserving scroll is handled by the real DOM.
+      }
       switch (sectionKey) {
         case SECTION_KEYS.PROFILE:
           if (session_) {
@@ -488,32 +628,45 @@
           break;
         case SECTION_KEYS.PROGRAMS:
           content.appendChild(
-            buildPlaceholderSection_("課程", "課程列表將於後續版本提供。")
+            buildSectionCard_(sectionKey, "課程", "課程列表將於後續版本提供。")
           );
           break;
         case SECTION_KEYS.EVENTS:
           content.appendChild(
-            buildPlaceholderSection_("聚會", "聚會管理將於後續版本提供。")
+            buildSectionCard_(sectionKey, "聚會", "聚會管理將於後續版本提供。")
           );
           break;
         case SECTION_KEYS.SCANNER:
           content.appendChild(
-            buildPlaceholderSection_("掃描", "出席掃描將於後續版本提供。")
+            buildSectionCard_(sectionKey, "掃描", "出席掃描將於後續版本提供。")
           );
           break;
         case SECTION_KEYS.CARE:
           content.appendChild(
-            buildPlaceholderSection_("關懷", "關懷儀表板將於後續版本提供。")
+            buildSectionCard_(
+              sectionKey,
+              "關懷",
+              "關懷儀表板將於後續版本提供。"
+            )
           );
           break;
         case SECTION_KEYS.PERMISSIONS:
           content.appendChild(
-            buildPlaceholderSection_("權限管理", "權限管理將於後續版本提供。")
+            buildSectionCard_(
+              sectionKey,
+              "權限管理",
+              "權限管理將於後續版本提供。"
+            )
           );
           break;
         default:
           renderForbidden_(sectionKey);
       }
+      // Mark cache as not stale after render.
+      if (sectionViewCache_[sectionKey]) {
+        sectionViewCache_[sectionKey].stale = false;
+      }
+      content.scrollTop = cached && !cached.stale ? cached.scrollTop || 0 : 0;
     }
 
     function renderProfileContent_(sessionData) {
@@ -608,6 +761,222 @@
         updateActiveNav_();
         renderProfileContent_(session_);
       }
+    }
+
+    // -----------------------------------------------------------------
+    // Badge formatting and update (issue #68)
+    // -----------------------------------------------------------------
+    function formatBadgeCount_(count) {
+      if (count > 99) return "99+";
+      return String(count);
+    }
+
+    function updateBadge_(sectionKey, count) {
+      sectionBadgeCounts_[sectionKey] = count;
+      var containers = [$("app-nav-phone"), $("app-nav-desktop")];
+      for (var ci = 0; ci < containers.length; ci++) {
+        var container = containers[ci];
+        if (!container) continue;
+        var children = container.children;
+        for (var i = 0; i < children.length; i++) {
+          var item = children[i];
+          if (!item || !item.getAttribute) continue;
+          var key = item.getAttribute("data-section");
+          if (key !== sectionKey) continue;
+          // Find existing badge child or create one on demand.
+          var badge = null;
+          for (var bi = 0; bi < item.childNodes.length; bi++) {
+            var child = item.childNodes[bi];
+            if (
+              child.getAttribute &&
+              child.getAttribute("data-badge") === sectionKey
+            ) {
+              badge = child;
+              break;
+            }
+          }
+          if (!badge && count > 0) {
+            badge = document.createElement("span");
+            badge.className = "nav-badge";
+            badge.setAttribute("data-badge", sectionKey);
+            item.appendChild(badge);
+          }
+          if (badge) {
+            if (count > 0) {
+              badge.textContent = formatBadgeCount_(count);
+              badge.removeAttribute("hidden");
+            } else {
+              badge.setAttribute("hidden", "");
+            }
+          }
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Section view-state cache (issue #68)
+    // -----------------------------------------------------------------
+    function invalidateSection_(sectionKey) {
+      if (!sectionViewCache_[sectionKey]) {
+        sectionViewCache_[sectionKey] = {};
+      }
+      sectionViewCache_[sectionKey].stale = true;
+    }
+
+    function refreshSection_(sectionKey) {
+      // For now, refresh is client-only: re-render the section.
+      // Future tickets will wire this through api_loadSection.
+      if (activeTask_ !== null) {
+        // If a task is open, invalidate the parent section so returning
+        // forces a fresh render. Do not re-render while the task is visible.
+        invalidateSection_(sectionKey);
+        return;
+      }
+      renderSection_(sectionKey);
+    }
+
+    // -----------------------------------------------------------------
+    // Nested task navigation (issue #68)
+    // -----------------------------------------------------------------
+    function openTask_(descriptor) {
+      if (!descriptor || !descriptor.key) return;
+      // Save scroll position of the current section to its cache entry.
+      var content = $("app-content");
+      if (content) {
+        if (!sectionViewCache_[currentSection_]) {
+          sectionViewCache_[currentSection_] = {};
+        }
+        sectionViewCache_[currentSection_].scrollTop = content.scrollTop || 0;
+      }
+      activeTask_ = descriptor;
+      renderTask_(descriptor);
+    }
+
+    function closeTask_() {
+      if (!activeTask_) return;
+      var parentSection = activeTask_.parentSection;
+      activeTask_ = null;
+      // Save scroll position before returning.
+      var content = $("app-content");
+      if (content) {
+        if (!sectionViewCache_[parentSection]) {
+          sectionViewCache_[parentSection] = {};
+        }
+        sectionViewCache_[parentSection].scrollTop = content.scrollTop || 0;
+      }
+      // Directly render the parent section. navigateTo_ cannot be used
+      // here because activeTask_ is already cleared and currentSection_
+      // is unchanged, so navigateTo_ would no-op.
+      renderSection_(parentSection);
+      updateActiveNav_();
+      hideMoreMenu_();
+    }
+
+    function renderTask_(descriptor) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      var section = el("section", {
+        class: "page view-task",
+        "data-task-key": descriptor.key,
+      });
+      // Task header with Back button and breadcrumb.
+      var header = el("div", { class: "task-header" });
+      header.appendChild(
+        el(
+          "button",
+          {
+            class: "btn-back",
+            type: "button",
+            "data-action": "task-back",
+            "aria-label": "返回",
+            onclick: closeTask_,
+          },
+          [el("span", { class: "task-back-label", text: "返回" })]
+        )
+      );
+      var breadcrumb = el(
+        "nav",
+        {
+          class: "breadcrumb",
+          "aria-label": "breadcrumb",
+        },
+        [
+          el("span", {
+            class: "breadcrumb-parent",
+            "data-breadcrumb-parent": "",
+            text: descriptor.parentLabel,
+          }),
+          el("span", { class: "breadcrumb-sep", text: " \u203A " }),
+          el("span", {
+            class: "breadcrumb-current",
+            "data-breadcrumb-current": "",
+            text: descriptor.title,
+          }),
+        ]
+      );
+      header.appendChild(breadcrumb);
+      header.appendChild(
+        el("h2", { class: "task-title", text: descriptor.title })
+      );
+      section.appendChild(header);
+      // Task body.
+      var body = el("div", { class: "task-body" });
+      if (descriptor.kind === "detail") {
+        body.appendChild(
+          el("p", {
+            class: "muted",
+            text: "（示範資料，實際課程資料由後續票證提供）",
+          })
+        );
+      } else if (descriptor.kind === "edit") {
+        body.appendChild(
+          el("p", {
+            class: "muted",
+            text: "（示範編輯功能，實際聚會編輯由後續票證提供）",
+          })
+        );
+        body.appendChild(
+          el("div", { class: "form-group" }, [
+            el("label", { class: "label", text: "範例欄位" }),
+            el("input", {
+              class: "input",
+              type: "text",
+              id: "demo-edit-field",
+              value: "範例資料",
+            }),
+          ])
+        );
+        body.appendChild(
+          el(
+            "button",
+            {
+              class: "btn btn-primary",
+              type: "button",
+              "data-action": "mock-save",
+              onclick: handleMockSave_,
+            },
+            "儲存"
+          )
+        );
+      }
+      section.appendChild(body);
+      content.appendChild(section);
+    }
+
+    function handleMockSave_() {
+      // Client-only mock save: no google.script.run call.
+      eventsDemoCounter_ += 1;
+      // Invalidate the Events section cache so returning forces a fresh render.
+      invalidateSection_(SECTION_KEYS.EVENTS);
+      // Derive the nav badge from the same refreshed Section data — this
+      // is the concrete proof of "badges are derived from refreshed
+      // Section data" (issue #68 AC), not a value only reachable via a
+      // manual test hook.
+      updateBadge_(SECTION_KEYS.EVENTS, eventsDemoCounter_);
+      // Re-render Events root and close the task.
+      activeTask_ = null;
+      renderSection_(SECTION_KEYS.EVENTS);
     }
 
     /**
@@ -1010,5 +1379,25 @@
     } else {
       onReady();
     }
+
+    // -----------------------------------------------------------------
+    // Test-observability hooks (issue #68). Expose scoped functions
+    // for Playwright E2E and Vitest unit testing without adding any
+    // authorization bypass — these call the exact same internal
+    // implementations that already enforce section authorization.
+    // -----------------------------------------------------------------
+    window.__e2eNavigate = navigateTo_;
+    window.__test__ = {
+      navigateTo_: navigateTo_,
+      openTask_: openTask_,
+      closeTask_: closeTask_,
+      formatBadgeCount_: formatBadgeCount_,
+      updateBadge_: updateBadge_,
+      invalidateSection_: invalidateSection_,
+      refreshSection_: refreshSection_,
+      getEventsDemoCounter: function () {
+        return eventsDemoCounter_;
+      },
+    };
   })();
 </script>

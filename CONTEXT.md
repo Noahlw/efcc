@@ -66,6 +66,45 @@ See ADR-0001 for the rationale behind Google Sheets as the database layer.
 
 ---
 
+## Application Architecture (`src/gas/`)
+
+Read this section before opening `src/gas/` source files cold — it is the
+file map and contract cheat sheet a fresh session otherwise has to
+reconstruct by reading every file's header comment.
+
+### File map
+
+| File | Responsibility |
+| --- | --- |
+| `Code.gs` | Server entry point. `doGet()` (data-free, per ADR-0010 — must not read Sheets or validate sessions). `SECTION_KEYS` const + `bootstrapSectionsForRole_(role, userId)` (the single source of truth for which Sections a role sees). Public RPCs: `api_loginUser`, `api_restoreApp`, `api_logoutUser`, all returning the `AuthenticatedBootstrap` DTO. |
+| `rpc-envelope.gs` | Shared `RpcSuccess`/`RpcFailure` envelope builders (`rpcSuccess_`, `rpcFailure_`), `RPC_CODES` (`AUTH_REQUIRED`, `FORBIDDEN`, `VALIDATION`, `NOT_FOUND`, `CONFLICT`, `BUSY`, `UNAVAILABLE`, …), and `rpcLog_`/`rpcRequestId_` structured diagnostics (no PII). |
+| `session.js.gs` | Session issue/verify/revoke against `PropertiesService`, HMAC-signed tokens, PIN normalization. Non-expiring sessions until revoked (issue #73). |
+| `users-repository.gs` | `Users` sheet resolver — header-name matched, tolerant of extra/reordered columns (see [Users sheet](#users-sheet)). |
+| `program-leaders-repository.gs` | `Program_Leaders` sheet — active-assignment lookup used to grant Scanner access to Program Leaders. |
+| `appsscript.json` | Manifest: V8 runtime, `webapp.access = ANYONE`, `webapp.executeAs = USER_DEPLOYING`. |
+| `App.html` | The one stable HTML Service document (ADR-0010). Shell skeleton (`#app`, `#app-content` outlet, `#app-nav-phone`/`#app-nav-desktop`), server-includes `styles.html` + `view-login.html` (initial SSR), then `shell.js.html` and `shell-session.js.html` in that order. |
+| `shell.js.html` | Flips `data-app-state` to `SIGNED_OUT` on load. The static-shell contract (issue #65, enforced by `tests/gas/app-shell.contract.test.js`) forbids RPC calls in this file. |
+| `shell-session.js.html` | The live client controller: the `data-app-state` machine (`BOOTING → SIGNED_OUT → AUTHENTICATING/RESTORING → LOADING_SECTION → READY`, plus `RECOVERABLE_ERROR`), the `efccSession` `localStorage` key, login/logout wiring, bootstrap-on-load, and root-Section navigation (`navigateTo_`/`renderSection_`) rendering phone bottom nav + desktop side rail from the server-authorized `sections_` list. |
+| `view-login.html` | Markup-only Login fragment (SSR'd once by `doGet()`; `shell-session.js.html` rebuilds the same DOM client-side after logout/expiry — IDs must stay in sync between the two). |
+| `styles.html` | Single stylesheet, mobile-first with a 768px desktop breakpoint. |
+
+### Client/server contracts
+
+- **RPC envelope**: `{success:true, requestId, data}` or `{success:false, requestId, error:{code, message}}`. Every `google.script.run` call MUST register both a success and a failure handler (contract-tested).
+- **`AuthenticatedBootstrap` DTO** (returned identically by `api_loginUser` and `api_restoreApp`): `{session:{userId,name,role,qrCodeString,sessionId,sessionToken}, sections:[{key,label,capability}], profile:{userId,name,username,phone,role,status,qrCodeString}}`.
+- **`SECTION_KEYS`**: `profile`, `programs`, `events`, `scanner`, `care`, `permissions`. Defined independently in `Code.gs` (server) and `shell-session.js.html` (client) — the two JS realms cannot share a binding, so the strings are intentionally duplicated; drift is caught by `tests/gas/role-navigation.test.js`.
+- **Current Section content status**: Profile is fully wired to real bootstrap data. Programs/Events/Scanner/Care/Permissions render placeholder text only — their read RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) do not exist yet (see `docs/specs/067-follow-up-section-rpcs.md`, not yet filed as a tracked issue).
+- **Navigation model**: in-memory client router per issue #64's Implementation Decisions — no browser URL hash routing, no `google.script.history` sync in Day 1 (this supersedes the older `/exec#/<section-key>` sketch in `docs/specs/009-phone-first-shell-navigation.md`'s Route Contract, which predates that decision).
+
+### Testing & deployment quick reference
+
+- `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. This is the fast, deterministic layer; it cannot prove the deployed HTML Service iframe or `google.script.run` actually works.
+- `pnpm test:e2e` — Playwright against a **deployed** `/exec` URL using per-role storage states in `.auth/` (ADR-0012). Requires `E2E_TARGET_URL` exported and `.auth/{alice,bob,noah}.storage.json` captured via `pnpm e2e:auth -- --role=<role>`. A passing run auto-appends an "Executed results" table to the relevant ticket's plan doc under `docs/specs/`.
+- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned deployment; update `E2E_TARGET_URL` afterward. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
+- Full step-by-step workflow: `README.md` § "Push and deploy" and § "Where things live".
+
+---
+
 ## Architecture Decisions
 
 | #    | Title                                         | Status   |

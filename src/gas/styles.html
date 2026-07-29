@@ -412,4 +412,166 @@
   .view-forbidden h2 {
     color: var(--color-error);
   }
+
+  /* -----------------------------------------------------------------
+   * Nested task navigation (issue #68)
+   * ----------------------------------------------------------------- */
+
+  .view-task {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 480px;
+  }
+
+  .task-header {
+    margin-bottom: var(--space-4);
+  }
+
+  .btn-back {
+    appearance: none;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    color: var(--color-primary);
+    padding: var(--space-2) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-md);
+  }
+
+  .btn-back:hover {
+    text-decoration: underline;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    margin-bottom: var(--space-2);
+  }
+
+  .breadcrumb-parent {
+    color: var(--color-primary);
+  }
+
+  .breadcrumb-sep {
+    user-select: none;
+  }
+
+  .breadcrumb-current {
+    color: var(--color-muted);
+  }
+
+  .task-title {
+    margin: 0;
+    font-size: var(--text-xl);
+    font-weight: 600;
+  }
+
+  .task-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  /* Phone: show back button, hide breadcrumb */
+  @media (max-width: 767.98px) {
+    .breadcrumb {
+      display: none !important;
+    }
+  }
+
+  /* Desktop: show breadcrumb, hide back button */
+  @media (min-width: 768px) {
+    .btn-back {
+      display: none !important;
+    }
+  }
+
+  /* -----------------------------------------------------------------
+   * Section Refresh button (issue #68)
+   * ----------------------------------------------------------------- */
+
+  .btn-refresh {
+    appearance: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-3);
+    color: var(--color-muted);
+    margin-bottom: var(--space-3);
+  }
+
+  .btn-refresh:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  /* -----------------------------------------------------------------
+   * Demo task open button (issue #68)
+   * ----------------------------------------------------------------- */
+
+  .btn-open-task {
+    appearance: none;
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--text-md);
+    padding: var(--space-2) var(--space-4);
+    color: var(--color-primary);
+    margin-top: var(--space-2);
+    width: 100%;
+  }
+
+  .btn-open-task:hover {
+    background: rgba(47, 111, 235, 0.08);
+  }
+
+  /* -----------------------------------------------------------------
+   * Navigation badges (issue #68)
+   * ----------------------------------------------------------------- */
+
+  .nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--color-primary);
+    color: var(--color-primary-contrast);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    /* [hidden] override per ADR-0010 / contract-test convention. */
+  }
+
+  .nav-badge[hidden] {
+    display: none !important;
+  }
+
+  .nav-item-phone .nav-badge {
+    position: absolute;
+    top: 2px;
+    right: var(--space-1);
+  }
+
+  .nav-item-phone {
+    position: relative;
+  }
+
+  .nav-item-desktop .nav-badge {
+    margin-left: auto;
+  }
 </style>
