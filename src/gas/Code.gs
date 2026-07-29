@@ -27,7 +27,10 @@ function doGet(e) {
   return HtmlService.createTemplateFromFile("App")
     .evaluate()
     .setTitle("EFCC 顯恩堂")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1, maximum-scale=1")
+    .addMetaTag(
+      "viewport",
+      "width=device-width, initial-scale=1, maximum-scale=1"
+    )
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -59,7 +62,6 @@ function include(filename) {
  *   session shape.
  */
 
-
 /**
  * Stable server-side Section key constants. Used by
  * bootstrapSectionsForRole_ and intended to be reused by any
@@ -72,11 +74,11 @@ function include(filename) {
  * matrix tests in tests/gas/role-navigation.test.js.
  */
 var SECTION_KEYS = Object.freeze({
-  PROFILE: "profile",       // AC #2 / #3 / #4 / #5
-  PROGRAMS: "programs",     // AC #2 / #3 / #4 / #5
-  EVENTS: "events",         // AC #2 / #3 / #4 / #5
-  SCANNER: "scanner",       // AC #3 (PL) / #4 (STAFF/ADMIN)
-  CARE: "care",             // AC #4 (STAFF/ADMIN)
+  PROFILE: "profile", // AC #2 / #3 / #4 / #5
+  PROGRAMS: "programs", // AC #2 / #3 / #4 / #5
+  EVENTS: "events", // AC #2 / #3 / #4 / #5
+  SCANNER: "scanner", // AC #3 (PL) / #4 (STAFF/ADMIN)
+  CARE: "care", // AC #4 (STAFF/ADMIN)
   PERMISSIONS: "permissions", // AC #4 (STAFF/ADMIN)
 });
 
@@ -97,7 +99,11 @@ function bootstrapSectionsForRole_(role, userId) {
   var sections = [
     { key: SECTION_KEYS.PROFILE, label: "個人資料", capability: "READ" },
   ];
-  sections.push({ key: SECTION_KEYS.PROGRAMS, label: "課程", capability: "READ" });
+  sections.push({
+    key: SECTION_KEYS.PROGRAMS,
+    label: "課程",
+    capability: "READ",
+  });
 
   var isProgramLeader = programLeadersHasActiveAssignment_(userId);
   var isStaffOrAbove = role === "STAFF" || role === "ADMIN";
@@ -107,18 +113,38 @@ function bootstrapSectionsForRole_(role, userId) {
   //   PL:           profile, programs, events, scanner
   //   STAFF/ADMIN:  profile, programs, scanner, events, care, permissions
   if (isStaffOrAbove) {
-    sections.push({ key: SECTION_KEYS.SCANNER, label: "掃描", capability: "USE" });
+    sections.push({
+      key: SECTION_KEYS.SCANNER,
+      label: "掃描",
+      capability: "USE",
+    });
   }
 
-  sections.push({ key: SECTION_KEYS.EVENTS, label: "聚會", capability: "READ" });
+  sections.push({
+    key: SECTION_KEYS.EVENTS,
+    label: "聚會",
+    capability: "READ",
+  });
 
   if (!isStaffOrAbove && isProgramLeader) {
-    sections.push({ key: SECTION_KEYS.SCANNER, label: "掃描", capability: "USE" });
+    sections.push({
+      key: SECTION_KEYS.SCANNER,
+      label: "掃描",
+      capability: "USE",
+    });
   }
 
   if (isStaffOrAbove) {
-    sections.push({ key: SECTION_KEYS.CARE, label: "關懷", capability: "READ" });
-    sections.push({ key: SECTION_KEYS.PERMISSIONS, label: "權限管理", capability: "USE" });
+    sections.push({
+      key: SECTION_KEYS.CARE,
+      label: "關懷",
+      capability: "READ",
+    });
+    sections.push({
+      key: SECTION_KEYS.PERMISSIONS,
+      label: "權限管理",
+      capability: "USE",
+    });
   }
 
   return sections;

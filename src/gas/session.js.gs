@@ -83,9 +83,10 @@ function sessionNormalizePin_(raw) {
  * @returns {string}
  */
 function sessionSignatureValue_(sessionId, userId, currentPin, issuedAt) {
-  return SESSION_DELIMITER + [
-    sessionId, userId, currentPin, issuedAt
-  ].join(SESSION_DELIMITER);
+  return (
+    SESSION_DELIMITER +
+    [sessionId, userId, currentPin, issuedAt].join(SESSION_DELIMITER)
+  );
 }
 
 /**

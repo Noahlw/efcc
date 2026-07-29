@@ -73,7 +73,10 @@ function programLeadersHasActiveAssignment_(userId) {
   var rows = programLeadersReadAll_();
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
-    if (String(row[2]) === String(userId) && String(row[5]).trim() === "Active") {
+    if (
+      String(row[2]) === String(userId) &&
+      String(row[5]).trim() === "Active"
+    ) {
       return true;
     }
   }
@@ -93,7 +96,10 @@ function programLeadersActiveProgramIds_(userId) {
   var ids = [];
   for (var i = 1; i < rows.length; i++) {
     var row = rows[i];
-    if (String(row[2]) === String(userId) && String(row[5]).trim() === "Active") {
+    if (
+      String(row[2]) === String(userId) &&
+      String(row[5]).trim() === "Active"
+    ) {
       ids.push(String(row[1]));
     }
   }
