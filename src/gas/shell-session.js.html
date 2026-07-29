@@ -61,6 +61,22 @@
     // True between the moment a user clicks "登入" and the moment
     // the server replies. Suppresses duplicate submits.
     var loginPending_ = false;
+
+    // Stable client-side Section key constants. Must match the
+    // server-side SECTION_KEYS in Code.gs (bootstrapSectionsForRole_).
+    // The server is authoritative — these are just a convenience
+    // for the client to compare against without re-typing string
+    // literals. Used by renderSection_ switch, navigateTo_ boot
+    // call, and buildNavItem_ phone-label map.
+    var SECTION_KEYS = Object.freeze({
+      PROFILE: "profile",
+      PROGRAMS: "programs",
+      EVENTS: "events",
+      SCANNER: "scanner",
+      CARE: "care",
+      PERMISSIONS: "permissions",
+    });
+
     // Server-authorized sections from bootstrap (issue #67).
     var sections_ = [];
     // The currently active section key (e.g. "profile").
@@ -317,12 +333,12 @@
       var label = section.label;
       // Phone nav uses compact labels for space.
       if (isPhone) {
-        if (section.key === "profile") label = "個人";
-        else if (section.key === "programs") label = "課程";
-        else if (section.key === "events") label = "聚會";
-        else if (section.key === "scanner") label = "掃描";
-        else if (section.key === "care") label = "關懷";
-        else if (section.key === "permissions") label = "權限";
+        if (section.key === SECTION_KEYS.PROFILE) label = "個人";
+        else if (section.key === SECTION_KEYS.PROGRAMS) label = "課程";
+        else if (section.key === SECTION_KEYS.EVENTS) label = "聚會";
+        else if (section.key === SECTION_KEYS.SCANNER) label = "掃描";
+        else if (section.key === SECTION_KEYS.CARE) label = "關懷";
+        else if (section.key === SECTION_KEYS.PERMISSIONS) label = "權限";
       }
       return el(
         "button",
@@ -456,7 +472,7 @@
       clearChildren(content);
 
       switch (sectionKey) {
-        case "profile":
+        case SECTION_KEYS.PROFILE:
           if (session_) {
             renderProfileContent_(session_);
           } else {
@@ -470,27 +486,27 @@
             );
           }
           break;
-        case "programs":
+        case SECTION_KEYS.PROGRAMS:
           content.appendChild(
             buildPlaceholderSection_("課程", "課程列表將於後續版本提供。")
           );
           break;
-        case "events":
+        case SECTION_KEYS.EVENTS:
           content.appendChild(
             buildPlaceholderSection_("聚會", "聚會管理將於後續版本提供。")
           );
           break;
-        case "scanner":
+        case SECTION_KEYS.SCANNER:
           content.appendChild(
             buildPlaceholderSection_("掃描", "出席掃描將於後續版本提供。")
           );
           break;
-        case "care":
+        case SECTION_KEYS.CARE:
           content.appendChild(
             buildPlaceholderSection_("關懷", "關懷儀表板將於後續版本提供。")
           );
           break;
-        case "permissions":
+        case SECTION_KEYS.PERMISSIONS:
           content.appendChild(
             buildPlaceholderSection_("權限管理", "權限管理將於後續版本提供。")
           );
@@ -929,7 +945,7 @@
       window.setTimeout(function () {
         setAppState(STATE.READY);
         setStatus("");
-        navigateTo_("profile");
+        navigateTo_(SECTION_KEYS.PROFILE);
       }, 0);
     }
 

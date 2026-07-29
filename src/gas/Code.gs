@@ -59,6 +59,27 @@ function include(filename) {
  *   session shape.
  */
 
+
+/**
+ * Stable server-side Section key constants. Used by
+ * bootstrapSectionsForRole_ and intended to be reused by any
+ * future server-side RPC (e.g. api_getPrograms, api_getEvents)
+ * that re-checks section authorization. Matches the client-side
+ * SECTION_KEYS in shell-session.js.html by convention — the two
+ * files live in different execution contexts (server vs browser
+ * IIFE) and cannot share a binding, so the strings are duplicated
+ * intentionally. Drift between the two is caught by the role-
+ * matrix tests in tests/gas/role-navigation.test.js.
+ */
+var SECTION_KEYS = Object.freeze({
+  PROFILE: "profile",       // AC #2 / #3 / #4 / #5
+  PROGRAMS: "programs",     // AC #2 / #3 / #4 / #5
+  EVENTS: "events",         // AC #2 / #3 / #4 / #5
+  SCANNER: "scanner",       // AC #3 (PL) / #4 (STAFF/ADMIN)
+  CARE: "care",             // AC #4 (STAFF/ADMIN)
+  PERMISSIONS: "permissions", // AC #4 (STAFF/ADMIN)
+});
+
 /**
  * Compute the Sections list for a given user. Per ADR-0006 / issue
  * #64 Day 1 / issue #67, every authenticated role lands on Profile.
@@ -73,8 +94,10 @@ function include(filename) {
  * @returns {Array<{key: string, label: string, capability: string}>}
  */
 function bootstrapSectionsForRole_(role, userId) {
-  var sections = [{ key: "profile", label: "個人資料", capability: "READ" }];
-  sections.push({ key: "programs", label: "課程", capability: "READ" });
+  var sections = [
+    { key: SECTION_KEYS.PROFILE, label: "個人資料", capability: "READ" },
+  ];
+  sections.push({ key: SECTION_KEYS.PROGRAMS, label: "課程", capability: "READ" });
 
   var isProgramLeader = programLeadersHasActiveAssignment_(userId);
   var isStaffOrAbove = role === "STAFF" || role === "ADMIN";
@@ -84,18 +107,18 @@ function bootstrapSectionsForRole_(role, userId) {
   //   PL:           profile, programs, events, scanner
   //   STAFF/ADMIN:  profile, programs, scanner, events, care, permissions
   if (isStaffOrAbove) {
-    sections.push({ key: "scanner", label: "掃描", capability: "USE" });
+    sections.push({ key: SECTION_KEYS.SCANNER, label: "掃描", capability: "USE" });
   }
 
-  sections.push({ key: "events", label: "聚會", capability: "READ" });
+  sections.push({ key: SECTION_KEYS.EVENTS, label: "聚會", capability: "READ" });
 
   if (!isStaffOrAbove && isProgramLeader) {
-    sections.push({ key: "scanner", label: "掃描", capability: "USE" });
+    sections.push({ key: SECTION_KEYS.SCANNER, label: "掃描", capability: "USE" });
   }
 
   if (isStaffOrAbove) {
-    sections.push({ key: "care", label: "關懷", capability: "READ" });
-    sections.push({ key: "permissions", label: "權限管理", capability: "USE" });
+    sections.push({ key: SECTION_KEYS.CARE, label: "關懷", capability: "READ" });
+    sections.push({ key: SECTION_KEYS.PERMISSIONS, label: "權限管理", capability: "USE" });
   }
 
   return sections;
