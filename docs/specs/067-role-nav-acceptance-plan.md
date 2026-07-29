@@ -6,11 +6,12 @@
 **Branch:** `feat/issue-67-role-navigation`
 
 
->**Status: PARTIALLY EXECUTED (2026-07-29)** — Cold-start (AC #1) executed against @29 via headless browser and **PASSED** (8/8 assertions: SIGNED_OUT state, hidden nav, login form). Note: the trace ran before the mobile sidebar + viewport scroll fixes landed; the current deployment is @33 which additionally includes those fixes (verified independently at 375/1280 widths, see code-review handoff for evidence). All other ACs require test users in the dev Google Sheet (per AGENTS.md no-mutate rule, user must add them manually) or server-side RPC enforcement that does not exist yet.
+>**Status: PARTIALLY EXECUTED (2026-07-29)** — Cold-start (AC #1) executed against @29 via headless browser and **PASSED** (8/8 assertions: SIGNED_OUT state, hidden nav, login form). Subsequent deployments added and verified independently: mobile sidebar hide @31, viewport scroll lock @33, mobile-vs-desktop nav visibility @35. **Full role-matrix trace (AC #2-#8, AC #12) BLOCKED on headless-browser authentication** — even with deployment access set to "Anyone", `google.script.run` callbacks fail with TRANSPORT in the headless browser because the iframe routes RPC calls through a sign-in wall that the headless browser cannot pass. User must run the role-matrix trace in a real signed-in browser (or grant headless browser owner auth). Acceptance criteria executed vs deferred listed below.
+>
 >
 >**Deferred to follow-up tickets:**
 >- **AC #9 (protected RPC returns forbidden)** — deferred. The 5 section RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) do not exist in `Code.gs`; `renderSection_` currently shows static placeholder text. Requires a separate ticket for the section content work.
->- **AC #12 (full /exec matrix run)** — partial. Cold-start + login UI verified against @32. Full role-matrix trace blocked on dev sheet test users (see "User-supplied prerequisites" below).
+>- **AC #12 (full /exec matrix run)** — partial. Cold-start + login UI verified against @29 headless. Independent CSS fix verification at @31/@33/@35. Full role-matrix trace (login → per-role nav assertion) blocked on headless browser auth — see Status header.
 >
 ## Role matrix
 
