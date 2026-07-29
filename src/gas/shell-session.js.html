@@ -512,7 +512,10 @@
     // -----------------------------------------------------------------
     function navigateTo_(sectionKey) {
       // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
-      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+      if (
+        activeFormGuard_ &&
+        (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
+      ) {
         window.EfccFormGuard.confirmDiscard({
           message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {
@@ -1390,7 +1393,10 @@
 
     function closeTask_() {
       // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
-      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+      if (
+        activeFormGuard_ &&
+        (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
+      ) {
         window.EfccFormGuard.confirmDiscard({
           message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {
@@ -1808,7 +1814,10 @@
 
     function handleLogoutClick_() {
       // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
-      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+      if (
+        activeFormGuard_ &&
+        (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
+      ) {
         window.EfccFormGuard.confirmDiscard({
           message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {

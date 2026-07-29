@@ -172,36 +172,30 @@ test.describe("EFCC form-protection — dirty-form discard blocks on cancel (AC 
       CREDENTIALS_BY_PROJECT.alice.pin
     );
 
-    // Navigate to Programs and open the demo detail task.
-    await clickSectionNav(frame, "programs");
-    await expect(frame.locator("#app-content h2").first()).toHaveText("課程");
-    await frame
-      .locator('.btn-open-task[data-task="programs-detail-demo"]')
-      .click();
+    // Navigate to Events and open the demo edit task.
+    await clickSectionNav(frame, "events");
+    await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
+    await frame.locator('.btn-open-task[data-task="events-edit-demo"]').click();
     const taskSection = frame.locator(
-      'section.view-task[data-task-key="programs-detail-demo"]'
+      'section.view-task[data-task-key="events-edit-demo"]'
     );
     await expect(taskSection).toBeVisible();
 
-    // Make the form dirty by typing into a form field inside the task view.
+    // Make the form dirty by typing into the demo edit field.
     const formInput = taskSection.locator("input, textarea, select").first();
     await formInput.fill("modified value");
 
-    // Attempt to navigate away (click Events in the phone nav).
-    await clickSectionNav(frame, "events");
+    // Attempt to navigate away (click Programs in the phone nav).
+    await clickSectionNav(frame, "programs");
 
     // AC: The confirmation dialog renders and blocks navigation.
-    const confirmDialog = frame.locator(".discard-confirm-dialog");
+    const confirmDialog = frame.locator(".discard-overlay");
     await expect(confirmDialog).toBeVisible();
-    await expect(confirmDialog.locator("p, h3").first()).toContainText(
-      "discard"
-    );
+    await expect(confirmDialog).toContainText("捨棄");
 
-    // Click the cancel button inside the confirmation — navigation is
-    // blocked and the task view remains visible.
-    const cancelBtn = confirmDialog.locator(
-      'button[data-action="discard-cancel"], .btn-cancel'
-    );
+    // Click the cancel button ("繼續編輯") — navigation is blocked and
+    // the task view remains visible.
+    const cancelBtn = confirmDialog.locator(".btn-secondary");
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
 
@@ -232,42 +226,38 @@ test.describe("EFCC form-protection — confirm discards and navigates (AC 6b)",
       CREDENTIALS_BY_PROJECT.alice.pin
     );
 
-    // Navigate to Programs and open the demo detail task.
-    await clickSectionNav(frame, "programs");
-    await expect(frame.locator("#app-content h2").first()).toHaveText("課程");
-    await frame
-      .locator('.btn-open-task[data-task="programs-detail-demo"]')
-      .click();
+    // Navigate to Events and open the demo edit task.
+    await clickSectionNav(frame, "events");
+    await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
+    await frame.locator('.btn-open-task[data-task="events-edit-demo"]').click();
     await expect(
-      frame.locator('section.view-task[data-task-key="programs-detail-demo"]')
+      frame.locator('section.view-task[data-task-key="events-edit-demo"]')
     ).toBeVisible();
 
     // Make the form dirty.
     const formInput = frame
-      .locator('section.view-task[data-task-key="programs-detail-demo"]')
+      .locator('section.view-task[data-task-key="events-edit-demo"]')
       .locator("input, textarea, select")
       .first();
     await formInput.fill("modified value");
 
     // Attempt to navigate away.
-    await clickSectionNav(frame, "events");
+    await clickSectionNav(frame, "programs");
 
     // Confirm the discard dialog.
-    const confirmDialog = frame.locator(".discard-confirm-dialog");
+    const confirmDialog = frame.locator(".discard-overlay");
     await expect(confirmDialog).toBeVisible();
-    const confirmBtn = confirmDialog.locator(
-      'button[data-action="discard-confirm"], .btn-confirm'
-    );
+    const confirmBtn = confirmDialog.locator(".btn-danger");
     await expect(confirmBtn).toBeVisible();
     await confirmBtn.click();
 
     // AC: The dialog is dismissed and the app lands on the target
-    // section (Events), not the Programs detail task.
+    // section (Programs), not the Events detail task.
     await expect(confirmDialog).not.toBeVisible();
     await expect(
-      frame.locator('section.view-task[data-task-key="programs-detail-demo"]')
+      frame.locator('section.view-task[data-task-key="events-edit-demo"]')
     ).toHaveCount(0);
-    await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
+    await expect(frame.locator("#app-content h2").first()).toHaveText("課程");
   });
 });
 
@@ -290,14 +280,12 @@ test.describe("EFCC form-protection — submit button structural assertion (AC 6
       CREDENTIALS_BY_PROJECT.alice.pin
     );
 
-    // Navigate to Programs and open the demo detail task.
-    await clickSectionNav(frame, "programs");
-    await expect(frame.locator("#app-content h2").first()).toHaveText("課程");
-    await frame
-      .locator('.btn-open-task[data-task="programs-detail-demo"]')
-      .click();
+    // Navigate to Events and open the demo edit task.
+    await clickSectionNav(frame, "events");
+    await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
+    await frame.locator('.btn-open-task[data-task="events-edit-demo"]').click();
     await expect(
-      frame.locator('section.view-task[data-task-key="programs-detail-demo"]')
+      frame.locator('section.view-task[data-task-key="events-edit-demo"]')
     ).toBeVisible();
 
     // AC: The submit button inside the task view has the expected
@@ -305,7 +293,7 @@ test.describe("EFCC form-protection — submit button structural assertion (AC 6
     // RPC path requires the real server, so we assert the DOM contract
     // that the client-side view produces.
     const submitBtn = frame.locator(
-      'section.view-task[data-task-key="programs-detail-demo"] ' +
+      'section.view-task[data-task-key="events-edit-demo"] ' +
         'button[data-action="demo-form-submit"]'
     );
     await expect(submitBtn).toBeVisible();
