@@ -61,6 +61,18 @@ function loadShellSessionSource() {
   return match[1];
 }
 
+const FORM_GUARD = path.join(REPO_ROOT, "src", "gas", "form-guard.js.html");
+
+function loadFormGuardSource() {
+  const raw = readFileSync(FORM_GUARD, "utf-8");
+  const match = raw.match(/<script[^>]*>(?<body>[\s\S]*?)<\/script>/iu);
+  assert.ok(
+    match !== null,
+    `form-guard.js.html must contain a <script> block (file=${FORM_GUARD})`
+  );
+  return match[1];
+}
+
 // ---------------------------------------------------------------------------
 // Minimal localStorage shim
 // ---------------------------------------------------------------------------
@@ -385,6 +397,49 @@ function createFakeDom() {
     return t;
   };
 
+  document.createDocumentFragment = () => {
+    const frag = {
+      _children: [],
+      childNodes: [],
+      appendChild(child) {
+        frag._children.push(child);
+        frag.childNodes.push(child);
+        return child;
+      },
+      get firstChild() {
+        return frag._children[0] || null;
+      },
+    };
+    return frag;
+  };
+
+  document.querySelector = (selector) => {
+    // Support [data-action="value"] selectors used in the source.
+    const attrMatch = selector.match(
+      /^\[(?<name>[a-zA-Z-]+)="(?<value>[^"]*)"\]$/u
+    );
+    if (attrMatch) {
+      const { name } = attrMatch.groups;
+      const { value } = attrMatch.groups;
+      const walk = (node) => {
+        if (node.getAttribute && node.getAttribute(name) === value) {
+          return node;
+        }
+        if (node.children) {
+          for (const child of node.children) {
+            const found = walk(child);
+            if (found) {
+              return found;
+            }
+          }
+        }
+        return null;
+      };
+      return walk(document.body || app);
+    }
+    return null;
+  };
+
   return {
     document,
     index,
@@ -489,6 +544,65 @@ function createGoogleRun(queuedHandlers) {
 }
 
 // ---------------------------------------------------------------------------
+// Controllable google.script.run fake — every call is captured with
+// explicit resolve()/reject() functions the test invokes manually,
+// rather than an auto-dispatching queue. Includes api_submitDemoTaskForm.
+// ---------------------------------------------------------------------------
+
+function createControllableGoogleRun() {
+  const pending = [];
+
+  function makeBuilder() {
+    const builder = {
+      _success: null,
+      _failure: null,
+      withSuccessHandler(fn) {
+        builder._success = fn;
+        return builder;
+      },
+      withFailureHandler(fn) {
+        builder._failure = fn;
+        return builder;
+      },
+    };
+    for (const name of [
+      "api_loginUser",
+      "api_restoreApp",
+      "api_logoutUser",
+      "api_getPrograms",
+      "api_submitDemoTaskForm",
+    ]) {
+      builder[name] = (...args) => {
+        const entry = {
+          method: name,
+          args,
+          resolve(value) {
+            if (typeof builder._success === "function") {
+              builder._success(value);
+            }
+          },
+          reject(err) {
+            if (typeof builder._failure === "function") {
+              builder._failure(err);
+            }
+          },
+        };
+        pending.push(entry);
+        return builder;
+      };
+    }
+    return builder;
+  }
+
+  const run = { pending };
+  Object.defineProperty(run, "run", {
+    get: () => makeBuilder(),
+    configurable: true,
+  });
+  return run;
+}
+
+// ---------------------------------------------------------------------------
 // Boot the controller inside a vm context
 // ---------------------------------------------------------------------------
 
@@ -527,6 +641,10 @@ function bootShellSession({ storedSession = null, queuedHandlers = [] } = {}) {
   context.self = context;
 
   vm.createContext(context);
+  // Load form-guard.js.html BEFORE shell-session.js.html per App.html.
+  vm.runInContext(loadFormGuardSource(), context, {
+    filename: "form-guard.js.html",
+  });
   vm.runInContext(loadShellSessionSource(), context, {
     filename: "shell-session.js.html",
   });
@@ -663,6 +781,83 @@ describe("nested-task-navigation.js.html — issue #68", () => {
     });
     await flushMicrotasks();
     return result;
+  }
+
+  /**
+   * Helper: boot and bootstrap as MEMBER with a controllable google.run
+   * that includes api_submitDemoTaskForm. Returns googleRun.pending for
+   * manual resolve/reject.
+   */
+  async function bootAsMemberControllable() {
+    const bootstrap = profileDto();
+    const googleRun = createControllableGoogleRun();
+    const dom = createFakeDom();
+    const ls = createLocalStorage();
+    ls.setItem(
+      "efccSession",
+      JSON.stringify({
+        userId: "U001",
+        sessionId: "sid-001",
+        sessionToken: "tok-001",
+      })
+    );
+
+    const context = {
+      console,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+      queueMicrotask,
+      Promise,
+      JSON,
+      Date,
+      Math,
+      URL,
+      localStorage: ls,
+      document: dom.document,
+      window: {},
+      google: { script: googleRun },
+    };
+    context.window.document = dom.document;
+    context.window.localStorage = ls;
+    context.window.google = context.google;
+    context.window.queueMicrotask = queueMicrotask;
+    context.window.Promise = Promise;
+    context.window.setTimeout = setTimeout;
+    context.window.clearTimeout = clearTimeout;
+    context.self = context;
+
+    vm.createContext(context);
+    // Load form-guard.js.html BEFORE shell-session.js.html per App.html.
+    vm.runInContext(loadFormGuardSource(), context, {
+      filename: "form-guard.js.html",
+    });
+    vm.runInContext(loadShellSessionSource(), context, {
+      filename: "shell-session.js.html",
+    });
+
+    // Fire DOMContentLoaded.
+    const ready = makeEvent("DOMContentLoaded");
+    const docListeners =
+      context.document._listeners?.get("DOMContentLoaded") ?? [];
+    for (const fn of docListeners) {
+      fn(ready);
+    }
+
+    await flushMicrotasks();
+
+    // Resolve the bootstrap restoreApp call.
+    const restoreCall = googleRun.pending.shift();
+    assert.ok(
+      restoreCall !== undefined,
+      "bootstrap api_restoreApp should be pending"
+    );
+    assert.strictEqual(restoreCall.method, "api_restoreApp");
+    restoreCall.resolve(successEnvelope(bootstrap));
+    await flushMicrotasks();
+
+    return { dom, localStorage: ls, googleRun, context };
   }
 
   test("AC #1: root Section switching still works post-change", async () => {
@@ -904,8 +1099,8 @@ describe("nested-task-navigation.js.html — issue #68", () => {
     );
   });
 
-  test("AC #6: mock-save on Events demo task invalidates and refreshes without google.script.run", async () => {
-    const { dom, context, googleRun } = await bootAsMember();
+  test("AC #6: demo-form-submit calls api_submitDemoTaskForm RPC and shows updated Events root", async () => {
+    const { dom, googleRun, context } = await bootAsMemberControllable();
     const hooks = getTest(context);
 
     hooks.navigateTo_("events");
@@ -919,34 +1114,76 @@ describe("nested-task-navigation.js.html — issue #68", () => {
       kind: "edit",
     });
 
-    // Find and click the mock-save button.
+    // Find and click the demo-form-submit button.
     const content = dom.index["app-content"];
-    const mockSave = findElementByDataAction(content, "mock-save");
-    assert.ok(mockSave !== null, "mock-save button should exist");
+    const submitBtn = findElementByDataAction(content, "demo-form-submit");
+    assert.ok(submitBtn !== null, "demo-form-submit button should exist");
+    assert.strictEqual(
+      submitBtn.dataset.action,
+      "demo-form-submit",
+      "submit button data-action should be demo-form-submit"
+    );
+
+    // Type into the field to make the form dirty (PRISTINE -> DIRTY),
+    // then dispatch input so handleFieldInput_ calls activeFormGuard_.markDirty().
+    const fieldEl = dom.index["demo-edit-field"];
+    assert.ok(fieldEl !== null, "demo-edit-field input should exist");
+    fieldEl.value = "修改資料";
+    const inputEvent = makeEvent("input");
+    fieldEl.dispatchEvent(inputEvent);
+
+    // Dirty the form guard — make sure it's now DIRTY before we submit.
+    assert.strictEqual(
+      hooks.getFormGuardState(),
+      "DIRTY",
+      "form guard should be DIRTY after field input"
+    );
 
     const clickEvent = makeEvent("click");
-    mockSave.dispatchEvent(clickEvent);
+    submitBtn.dispatchEvent(clickEvent);
 
-    // After mock-save: the Events root should render.
-    // No new google.script.run call should have been made — only the
-    // bootstrap api_restoreApp call (1 call total).
+    // Assert beginSubmit() worked — form guard shows SUBMITTING.
     assert.strictEqual(
-      googleRun.calls.length,
+      hooks.getFormGuardState(),
+      "SUBMITTING",
+      "form guard should be in SUBMITTING state after click"
+    );
+
+    // Assert the submit button is disabled while pending.
+    assert.strictEqual(
+      submitBtn.getAttribute("disabled"),
+      "disabled",
+      "submit button should be disabled while pending"
+    );
+
+    // 1 bootstrap call (api_restoreApp) was already resolved and shifted
+    // by bootAsMemberControllable. The submit call is now the only pending
+    // entry in googleRun.pending.
+    assert.strictEqual(
+      googleRun.pending.length,
       1,
-      "no additional google.script.run calls after mock-save"
+      "should have exactly 1 pending RPC call after submit (api_submitDemoTaskForm)"
     );
 
-    // The demo counter should have incremented.
+    // Resolve the submit RPC with a success envelope.
+    const [submitCall] = googleRun.pending;
     assert.strictEqual(
-      hooks.getEventsDemoCounter(),
-      counterBefore + 1,
-      "eventsDemoCounter should increment after mock-save"
+      submitCall.method,
+      "api_submitDemoTaskForm",
+      "the pending call should be api_submitDemoTaskForm"
     );
+    submitCall.resolve({
+      success: true,
+      requestId: "submit-req-001",
+      data: {},
+    });
+    await flushMicrotasks();
 
-    // The content should show Events root (not the task).
+    // After resolution: the task should close and Events root should render
+    // with the incremented counter.
     assert.ok(
       content.children.length > 0,
-      "content should render after mock-save"
+      "content should render after successful submit"
     );
     assert.ok(
       content.children[0].textContent.includes(
@@ -955,25 +1192,32 @@ describe("nested-task-navigation.js.html — issue #68", () => {
       "Events root should show updated demo counter value"
     );
 
+    // The demo counter should have incremented.
+    assert.strictEqual(
+      hooks.getEventsDemoCounter(),
+      counterBefore + 1,
+      "eventsDemoCounter should increment after submit"
+    );
+
     // The nav badge for events must derive automatically from the
-    // same mock-save flow — not require a manual updateBadge_ call.
+    // submit flow — not require a manual updateBadge_ call.
     // counterBefore starts at 150 (seeded), so after one increment
     // (151) the badge must still cap-display as "99+".
     const navPhone = dom.index["app-nav-phone"];
     const eventsBadge = findBadgeBySection(navPhone, "events");
     assert.ok(
       eventsBadge !== null,
-      "events nav badge should exist automatically after mock-save"
+      "events nav badge should exist automatically after submit"
     );
     assert.strictEqual(
       eventsBadge.textContent,
       "99+",
-      "events nav badge should read 99+ immediately after mock-save, with no manual updateBadge_ call"
+      "events nav badge should read 99+ immediately after submit, with no manual updateBadge_ call"
     );
     assert.strictEqual(
       eventsBadge.getAttribute("hidden"),
       null,
-      "events nav badge should not be hidden after mock-save"
+      "events nav badge should not be hidden after submit"
     );
   });
 

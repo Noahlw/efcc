@@ -492,8 +492,8 @@ test.describe("EFCC nested-task desktop navigation — STAFF (issue #68 AC, step
       frame.locator('section.view-task[data-task-key="events-edit-demo"]')
     ).toBeVisible();
 
-    // Click the mock save button.
-    await frame.locator('[data-action="mock-save"]').click();
+    // Click the demo form submit button.
+    await frame.locator('[data-action="demo-form-submit"]').click();
 
     // AC: the task closes and the view returns to the Events root.
     await expect(frame.locator("section.view-task")).toHaveCount(0);
@@ -598,7 +598,7 @@ test.describe("EFCC nested-task badge display — MEMBER (issue #68 AC, step 8)"
     await clickSectionNav(frame, "events");
     await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
     await frame.locator('.btn-open-task[data-task="events-edit-demo"]').click();
-    await frame.locator('[data-action="mock-save"]').click();
+    await frame.locator('[data-action="demo-form-submit"]').click();
 
     // Task closed → back to Events root.
     await expect(frame.locator("#app-content h2").first()).toHaveText("聚會");
