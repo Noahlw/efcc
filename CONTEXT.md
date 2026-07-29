@@ -85,6 +85,7 @@ reconstruct by reading every file's header comment.
 | `App.html` | The one stable HTML Service document (ADR-0010). Shell skeleton (`#app`, `#app-content` outlet, `#app-nav-phone`/`#app-nav-desktop`), server-includes `styles.html` + `view-login.html` (initial SSR), then `shell.js.html` and `shell-session.js.html` in that order. |
 | `shell.js.html` | Flips `data-app-state` to `SIGNED_OUT` on load. The static-shell contract (issue #65, enforced by `tests/gas/app-shell.contract.test.js`) forbids RPC calls in this file. |
 | `shell-session.js.html` | The live client controller: the `data-app-state` machine (`BOOTING → SIGNED_OUT → AUTHENTICATING/RESTORING → LOADING_SECTION → READY`, plus `RECOVERABLE_ERROR`), the `efccSession` `localStorage` key, login/logout wiring, bootstrap-on-load, and root-Section navigation (`navigateTo_`/`renderSection_`) rendering phone bottom nav + desktop side rail from the server-authorized `sections_` list. |
+| `form-guard.js.html` | Form state machine, safe rendering, and discard-confirmation module (issue #70). Included in App.html before shell-session.js.html. |
 | `view-login.html` | Markup-only Login fragment (SSR'd once by `doGet()`; `shell-session.js.html` rebuilds the same DOM client-side after logout/expiry — IDs must stay in sync between the two). |
 | `styles.html` | Single stylesheet, mobile-first with a 768px desktop breakpoint. |
 
@@ -95,6 +96,7 @@ reconstruct by reading every file's header comment.
 - **`SECTION_KEYS`**: `profile`, `programs`, `events`, `scanner`, `care`, `permissions`. Defined independently in `Code.gs` (server) and `shell-session.js.html` (client) — the two JS realms cannot share a binding, so the strings are intentionally duplicated; drift is caught by `tests/gas/role-navigation.test.js`.
 - **Current Section content status**: Profile is fully wired to real bootstrap data. Programs/Events/Scanner/Care/Permissions render placeholder text only — their read RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) do not exist yet (see `docs/specs/067-follow-up-section-rpcs.md`, not yet filed as a tracked issue).
 - **Navigation model**: in-memory client router per issue #64's Implementation Decisions — no browser URL hash routing, no `google.script.history` sync in Day 1 (this supersedes the older `/exec#/<section-key>` sketch in `docs/specs/009-phone-first-shell-navigation.md`'s Route Contract, which predates that decision).
+- **Demo form RPC**: `api_submitDemoTaskForm(userId, sessionId, sessionToken, requestKey, fieldValue)` — returns `{echoedValue, submittedAt, idempotent}` on success. Idempotency enforced server-side via CacheService using the requestKey. Added in issue #70. |
 
 ### Testing & deployment quick reference
 

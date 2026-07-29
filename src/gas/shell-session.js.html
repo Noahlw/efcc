@@ -90,6 +90,8 @@
     var sectionBadgeCounts_ = {};
     // Events demo counter seeded at 150 for deterministic badge assertion.
     var eventsDemoCounter_ = 150;
+    // Active form guard for the demo edit task (issue #70).
+    var activeFormGuard_ = null;
 
     // Monotonic navigation generation (issue #69). Bumped every time
     // a real per-Section async load starts. A late RPC response
@@ -509,6 +511,21 @@
     // Section navigation (issue #67 / #68)
     // -----------------------------------------------------------------
     function navigateTo_(sectionKey) {
+      // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
+      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+        window.EfccFormGuard.confirmDiscard({
+          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
+          onConfirm: function () {
+            activeFormGuard_ = null;
+            navigateToImpl_(sectionKey);
+          },
+          restoreFocusTo: $("demo-edit-field"),
+        });
+        return;
+      }
+      navigateToImpl_(sectionKey);
+    }
+    function navigateToImpl_(sectionKey) {
       // If a nested task is open, any root nav click closes it first.
       if (activeTask_ !== null) {
         activeTask_ = null;
@@ -776,7 +793,37 @@
           el("li", { class: "programs-list-item", "data-program-id": p.id }, [
             el("strong", { text: p.name }),
             el("span", { class: "muted", text: " (" + p.type + ")" }),
-            el("p", { class: "muted", text: p.description }),
+            (function () {
+              var descEl = document.createElement("p");
+              descEl.className = "muted";
+              var descText = String(p.description);
+              // Scan for first http/https URL token and linkify it.
+              var urlMatch = descText.match(/(https?:\/\/[^\s]+)/);
+              if (urlMatch) {
+                var idx = urlMatch.index;
+                var before = descText.slice(0, idx);
+                var urlStr = urlMatch[1];
+                var after = descText.slice(idx + urlStr.length);
+                if (before) {
+                  descEl.appendChild(
+                    window.EfccFormGuard.renderMultilineText(before)
+                  );
+                }
+                descEl.appendChild(
+                  window.EfccFormGuard.buildSafeLink(urlStr, urlStr)
+                );
+                if (after) {
+                  descEl.appendChild(
+                    window.EfccFormGuard.renderMultilineText(after)
+                  );
+                }
+              } else {
+                descEl.appendChild(
+                  window.EfccFormGuard.renderMultilineText(descText)
+                );
+              }
+              return descEl;
+            })(),
           ])
         );
       }
@@ -1318,6 +1365,10 @@
     // -----------------------------------------------------------------
     function openTask_(descriptor) {
       if (!descriptor || !descriptor.key) return;
+      // Create form guard for edit tasks (issue #70).
+      if (descriptor.kind === "edit") {
+        activeFormGuard_ = window.EfccFormGuard.create();
+      }
       // Bump the navigation generation (issue #69 AC #3): opening a
       // task does not call renderSection_, so without this a Programs
       // (or any future async Section) load that was in flight when
@@ -1338,6 +1389,21 @@
     }
 
     function closeTask_() {
+      // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
+      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+        window.EfccFormGuard.confirmDiscard({
+          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
+          onConfirm: function () {
+            activeFormGuard_ = null;
+            closeTaskImpl_();
+          },
+          restoreFocusTo: $("demo-edit-field"),
+        });
+        return;
+      }
+      closeTaskImpl_();
+    }
+    function closeTaskImpl_() {
       if (!activeTask_) return;
       var parentSection = activeTask_.parentSection;
       activeTask_ = null;
@@ -1429,8 +1495,17 @@
               type: "text",
               id: "demo-edit-field",
               value: "範例資料",
+              oninput: handleFieldInput_,
             }),
           ])
+        );
+        // Error message container for failed submissions (issue #70).
+        body.appendChild(
+          el("div", {
+            id: "demo-submit-msg",
+            class: "msg-error hidden",
+            role: "alert",
+          })
         );
         body.appendChild(
           el(
@@ -1438,8 +1513,8 @@
             {
               class: "btn btn-primary",
               type: "button",
-              "data-action": "mock-save",
-              onclick: handleMockSave_,
+              "data-action": "demo-form-submit",
+              onclick: handleDemoFormSubmit_,
             },
             "儲存"
           )
@@ -1449,19 +1524,85 @@
       content.appendChild(section);
     }
 
-    function handleMockSave_() {
-      // Client-only mock save: no google.script.run call.
-      eventsDemoCounter_ += 1;
-      // Invalidate the Events section cache so returning forces a fresh render.
-      invalidateSection_(SECTION_KEYS.EVENTS);
-      // Derive the nav badge from the same refreshed Section data — this
-      // is the concrete proof of "badges are derived from refreshed
-      // Section data" (issue #68 AC), not a value only reachable via a
-      // manual test hook.
-      updateBadge_(SECTION_KEYS.EVENTS, eventsDemoCounter_);
-      // Re-render Events root and close the task.
-      activeTask_ = null;
-      renderSection_(SECTION_KEYS.EVENTS);
+    function handleFieldInput_() {
+      if (activeFormGuard_) {
+        activeFormGuard_.markDirty();
+      }
+    }
+
+    function handleDemoFormSubmit_() {
+      if (!activeFormGuard_ || !activeFormGuard_.beginSubmit()) return;
+      var fieldEl = $("demo-edit-field");
+      if (!fieldEl) return;
+      // Disable the submit button while pending.
+      var submitBtn = document.querySelector(
+        '[data-action="demo-form-submit"]'
+      );
+      if (submitBtn) submitBtn.setAttribute("disabled", "disabled");
+      // Clear any previous error.
+      var errMsg = $("demo-submit-msg");
+      if (errMsg) {
+        errMsg.textContent = "";
+        errMsg.classList.add("hidden");
+      }
+      var requestKey = activeFormGuard_.getRequestKey();
+      callServer_(
+        "task:submit:events-edit-demo",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_submitDemoTaskForm(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken,
+              requestKey,
+              fieldEl.value
+            );
+        },
+        function (envelope) {
+          // Re-enable submit button.
+          if (submitBtn) submitBtn.removeAttribute("disabled");
+          if (!envelope || typeof envelope !== "object") {
+            if (activeFormGuard_) activeFormGuard_.failed();
+            if (errMsg) {
+              errMsg.textContent = "網絡連線不穩定，請稍後再試。";
+              errMsg.classList.remove("hidden");
+            }
+            return;
+          }
+          if (envelope.success === true) {
+            activeFormGuard_.succeeded();
+            activeFormGuard_ = null;
+            // Keep existing side effects from the old mock-save.
+            eventsDemoCounter_ += 1;
+            invalidateSection_(SECTION_KEYS.EVENTS);
+            updateBadge_(SECTION_KEYS.EVENTS, eventsDemoCounter_);
+            activeTask_ = null;
+            renderSection_(SECTION_KEYS.EVENTS);
+            return;
+          }
+          // Server-side failure (validation, auth, etc.)
+          activeFormGuard_.failed();
+          var serverMsg =
+            (envelope.error && envelope.error.message) ||
+            "提交失敗，請稍後再試。";
+          if (errMsg) {
+            errMsg.textContent = serverMsg;
+            errMsg.classList.remove("hidden");
+          }
+          // Field value is NOT touched — user can retry.
+        },
+        function (err) {
+          // Transport failure.
+          if (submitBtn) submitBtn.removeAttribute("disabled");
+          if (activeFormGuard_) activeFormGuard_.failed();
+          if (errMsg) {
+            errMsg.textContent = "網絡連線不穩定，請稍後再試。";
+            errMsg.classList.remove("hidden");
+          }
+        }
+      );
     }
 
     /**
@@ -1666,6 +1807,21 @@
     }
 
     function handleLogoutClick_() {
+      // Dirty-form guard (issue #70): if a form is dirty, confirm discard first.
+      if (activeFormGuard_ && activeFormGuard_.isDirty()) {
+        window.EfccFormGuard.confirmDiscard({
+          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
+          onConfirm: function () {
+            activeFormGuard_ = null;
+            handleLogoutClickImpl_();
+          },
+          restoreFocusTo: $("demo-edit-field"),
+        });
+        return;
+      }
+      handleLogoutClickImpl_();
+    }
+    function handleLogoutClickImpl_() {
       if (!session_) {
         clearAuthenticatedClientState_();
         setAppState(STATE.SIGNED_OUT);
@@ -1881,8 +2037,10 @@
     var _origRenderProgramsEmpty_ = renderProgramsEmpty_;
     window.__test__ = {
       navigateTo_: navigateTo_,
+      navigateToImpl_: navigateToImpl_,
       openTask_: openTask_,
       closeTask_: closeTask_,
+      handleDemoFormSubmit_: handleDemoFormSubmit_,
       formatBadgeCount_: formatBadgeCount_,
       updateBadge_: updateBadge_,
       invalidateSection_: invalidateSection_,
@@ -1918,6 +2076,12 @@
       },
       getEventsDemoCounter: function () {
         return eventsDemoCounter_;
+      },
+      getFormGuardState: function () {
+        return activeFormGuard_ ? activeFormGuard_.getState() : null;
+      },
+      getDemoSubmitRequestKey: function () {
+        return activeFormGuard_ ? activeFormGuard_.getRequestKey() : null;
       },
     };
   })();

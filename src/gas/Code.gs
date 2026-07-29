@@ -478,3 +478,124 @@ function api_getPrograms(userId, sessionId, sessionToken) {
     );
   }
 }
+
+/**
+ * api_submitDemoTaskForm — demo form submission with idempotency
+ * protection (issue #70 / #64).
+ *
+ * Demonstrates the client-to-server data flow for form-protection
+ * patterns. Uses CacheService for duplicate-submit detection; no
+ * Sheet read or write occurs — this is a pure in-memory/CacheService
+ * demonstration RPC.
+ *
+ * Auth boundary matches api_getPrograms exactly: re-verify the
+ * session, reject a mismatched userId without revoking the session
+ * (see api_getPrograms's SECURITY NOTE), reject inactive users.
+ * Validation runs after the auth boundary (auth failures take
+ * precedence).
+ *
+ * @param {string} userId
+ * @param {string} sessionId
+ * @param {string} sessionToken
+ * @param {string} requestKey Client-generated idempotency key.
+ * @param {string} fieldValue Raw demo form field string value.
+ * @returns {RpcSuccess<{echoedValue: string, submittedAt: string, idempotent: boolean}>|RpcFailure}
+ */
+function api_submitDemoTaskForm(
+  userId,
+  sessionId,
+  sessionToken,
+  requestKey,
+  fieldValue
+) {
+  var op = "api_submitDemoTaskForm";
+  var requestId = rpcRequestId_();
+  var t0 = Date.now();
+  try {
+    var verification = sessionVerify_(sessionId, sessionToken);
+    if (!verification.ok) {
+      rpcLog_(
+        op,
+        requestId,
+        verification.reason || "AUTH_REQUIRED",
+        Date.now() - t0
+      );
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    if (verification.userId !== userId) {
+      // Mismatched userId parameter on an otherwise-VALID session —
+      // fail the request WITHOUT revoking the session (matching
+      // api_getPrograms's SECURITY NOTE pattern).
+      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    var user = usersFindById_(verification.userId);
+    if (!user || user.status !== "Active") {
+      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    // Validation — runs after auth boundary per the contract (auth
+    // failures take precedence).
+    var trimmed = String(fieldValue || "").trim();
+    if (trimmed === "" || trimmed.length > 200) {
+      rpcLog_(op, requestId, "VALIDATION", Date.now() - t0);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.VALIDATION,
+        "請輸入範例欄位內容（1–200 字元）。"
+      );
+    }
+    // Idempotency check — CacheService backed.
+    var cacheKey = "demoform_" + requestKey;
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      try {
+        var parsed = JSON.parse(cached);
+        parsed.idempotent = true;
+        rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+        return rpcSuccess_(requestId, parsed);
+      } catch (e) {
+        // Corrupt cache entry — fall through to process as fresh.
+      }
+    }
+    // First successful submission for this requestKey.
+    var data = {
+      echoedValue: trimmed,
+      submittedAt: Utilities.formatDate(
+        new Date(),
+        "Asia/Hong_Kong",
+        "yyyy-MM-dd HH:mm:ss"
+      ),
+      idempotent: false,
+    };
+    try {
+      cache.put(cacheKey, JSON.stringify(data), 60);
+    } catch (e) {
+      // Cache-put failure (e.g. size limit) is non-fatal.
+    }
+    rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+    return rpcSuccess_(requestId, data);
+  } catch (e) {
+    rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
+    return rpcFailure_(
+      requestId,
+      RPC_CODES.INTERNAL_ERROR,
+      "系統發生錯誤，請稍後再試。"
+    );
+  }
+}

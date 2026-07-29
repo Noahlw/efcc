@@ -50,6 +50,15 @@ function loadShellSessionSource() {
   return match[1];
 }
 
+const FORM_GUARD = path.join(REPO_ROOT, "src", "gas", "form-guard.js.html");
+
+function loadFormGuardSource() {
+  const raw = readFileSync(FORM_GUARD, "utf-8");
+  const match = raw.match(/<script[^>]*>(?<body>[\s\S]*?)<\/script>/iu);
+  assert.ok(match !== null, "form-guard.js.html must contain a <script> block");
+  return match[1];
+}
+
 // ---------------------------------------------------------------------------
 // Minimal localStorage shim
 // ---------------------------------------------------------------------------
@@ -263,6 +272,49 @@ function createFakeDom() {
     listeners.get(type).push(fn);
   };
 
+  document.createDocumentFragment = () => {
+    const frag = {
+      _children: [],
+      childNodes: [],
+      appendChild(child) {
+        frag._children.push(child);
+        frag.childNodes.push(child);
+        return child;
+      },
+      get firstChild() {
+        return frag._children[0] || null;
+      },
+    };
+    return frag;
+  };
+
+  document.querySelector = (selector) => {
+    // Support [data-action="value"] selectors used in the source.
+    const attrMatch = selector.match(
+      /^\[(?<name>[a-zA-Z-]+)="(?<value>[^"]*)"\]$/u
+    );
+    if (attrMatch) {
+      const { name } = attrMatch.groups;
+      const { value } = attrMatch.groups;
+      const walk = (node) => {
+        if (node.getAttribute && node.getAttribute(name) === value) {
+          return node;
+        }
+        if (node.children) {
+          for (const child of node.children) {
+            const found = walk(child);
+            if (found) {
+              return found;
+            }
+          }
+        }
+        return null;
+      };
+      return walk(document.body || app);
+    }
+    return null;
+  };
+
   return { document, index };
 }
 
@@ -361,6 +413,10 @@ function bootShellSession({ storedSession = null } = {}) {
   context.self = context;
 
   vm.createContext(context);
+  // Load form-guard.js.html BEFORE shell-session.js.html per App.html.
+  vm.runInContext(loadFormGuardSource(), context, {
+    filename: "form-guard.js.html",
+  });
   vm.runInContext(loadShellSessionSource(), context, {
     filename: "shell-session.js.html",
   });
