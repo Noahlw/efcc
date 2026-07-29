@@ -97,26 +97,38 @@ async function findAppFrame(page: Page, role: Role): Promise<Frame> {
   }
 
   while (Date.now() < deadline) {
-    // Check every currently-known frame in parallel per poll tick — order
-    // doesn't matter, we just need the first frame (if any) that has
-    // reached SIGNED_OUT this tick. (no-await-in-loop is off for
-    // tests/e2e/**/*.ts — see oxlint.config.ts.)
+    let frames: Frame[] = [];
+    try {
+      frames = page.frames();
+    } catch {
+      if (page.isClosed()) {
+        break;
+      }
+      try {
+        await page.waitForTimeout(POLL_INTERVAL_MS);
+      } catch {
+        /* closed */
+      }
+      continue;
+    }
+
     const states = await Promise.all(
-      page.frames().map(async (frame) => ({
+      frames.map(async (frame) => ({
         frame,
         state: await readAppState(frame),
       }))
     );
     const ready = states.find((s) => s.state === "SIGNED_OUT");
-    // Only report success once the EFCC shell has reached SIGNED_OUT — the
-    // marker that the Google-account layer succeeded AND the
-    // google.script.run RPC bridge is alive (transient LOADING / INIT
-    // states are not safe to capture against; their storage state would
-    // replay mid-boot and break the test session).
     if (ready) {
       return ready.frame;
     }
-    await page.waitForTimeout(POLL_INTERVAL_MS);
+    try {
+      await page.waitForTimeout(POLL_INTERVAL_MS);
+    } catch {
+      if (page.isClosed()) {
+        break;
+      }
+    }
   }
   throw new Error(
     `timed out after ${APP_READY_TIMEOUT_MS / 1000}s waiting for an EFCC app frame (#app[data-app-state="SIGNED_OUT"]) to appear for role "${role}". ` +
@@ -157,7 +169,10 @@ async function main(): Promise<void> {
     ].join("\n")
   );
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({
+    headless: false,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
