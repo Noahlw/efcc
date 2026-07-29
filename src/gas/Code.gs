@@ -183,6 +183,7 @@ function api_loginUser(username, pin) {
       );
     }
     if (String(user.status).toLowerCase() !== "active") {
+      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
       // Same code/message as a wrong PIN — no user enumeration.
       return rpcFailure_(
         requestId,

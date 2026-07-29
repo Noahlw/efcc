@@ -5,6 +5,13 @@
 **Date:** 2026-07-29
 **Branch:** `feat/issue-67-role-navigation`
 
+
+>**Status: PARTIALLY EXECUTED (2026-07-29)** — Cold-start (AC #1) executed against @32 via headless browser and **PASSED** (8/8 assertions: SIGNED_OUT state, hidden nav, login form). All other ACs require test users in the dev Google Sheet (per AGENTS.md no-mutate rule, user must add them manually) or server-side RPC enforcement that does not exist yet.
+>
+>**Deferred to follow-up tickets:**
+>- **AC #9 (protected RPC returns forbidden)** — deferred. The 5 section RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) do not exist in `Code.gs`; `renderSection_` currently shows static placeholder text. Requires a separate ticket for the section content work.
+>- **AC #12 (full /exec matrix run)** — partial. Cold-start + login UI verified against @32. Full role-matrix trace blocked on dev sheet test users (see "User-supplied prerequisites" below).
+>
 ## Role matrix
 
 | Role | Username | PIN | Sections expected (phone order) |
@@ -107,3 +114,22 @@
 - Direct RPC forbidden testing (requires server-side RPC calls to protected endpoints not yet exposed).
 - Session expiry testing (requires waiting for or forcing session expiry).
 - Refresh-after-role-change (requires modifying sheet data mid-test).
+
+## User-supplied prerequisites (manual dev-sheet edits)
+
+Per AGENTS.md "no automatic sheet mutation" rule, the following rows must be
+added to the **Users** tab of the dev Google Sheet by the user before
+the full role-matrix trace (steps 2-14) can run:
+
+| User_ID | Username | Name | PIN_Code | System_Role | Status | QR_Code_String |
+|---------|----------|------|----------|-------------|--------|----------------|
+| U-TEST-M | alice | Alice | 1234 | Member | Active | QR-alice |
+| U-TEST-S | bob | Bob | 5678 | STAFF | Active | QR-bob |
+| U-TEST-A | noah | Noah | 6883 | ADMIN | Active | QR-noah |
+
+(Use these exact PINs in the headless trace.)
+
+For Program Leader trace (AC #3 client-side), also add a **Program_Leaders** tab if not present, with header row `Assignment_ID | Program_ID | User_ID | Assigned_By | Assigned_Date | Status` and one Active row referencing U-TEST-M to make alice a Program Leader.
+
+When complete, confirm by running the headless trace and the agent will
+update this doc with executed results.

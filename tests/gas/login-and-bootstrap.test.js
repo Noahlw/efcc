@@ -985,6 +985,42 @@ describe("Issue #66 — login + bootstrap RPC, session mechanics (issue #73)", (
     );
   });
 
+  // Regression: an Inactive-status login attempt MUST emit an
+  // audit log record. A previous edit accidentally dropped the
+  // rpcLog_ call on the inactive branch while making the Status
+  // check case-insensitive. This test pins the log-on-inactive
+  // behavior so a future refactor cannot silently re-introduce the
+  // drop.
+  test("regression: Inactive-status login attempt emits an audit log record", () => {
+    const users = makeUsersSheet([
+      {
+        userId: "U-INACTIVE",
+        username: "alice",
+        pinCode: "1234",
+        role: "MEMBER",
+        status: "Inactive",
+      },
+    ]);
+    env.sheets["Users"] = { getDataRange: () => ({ getValues: () => users }) };
+    const logs = [];
+    env.context.console = { log: (entry) => logs.push(entry) };
+    loadAllGas(env.context);
+
+    const res = env.context.api_loginUser("alice", "1234");
+    assert.equal(res.success, false, "Inactive user must not log in");
+    assert.equal(res.error.code, "AUTH_REQUIRED");
+    assert.ok(
+      logs.some(
+        (l) =>
+          l.operation === "api_loginUser" &&
+          l.outcome === "FORBIDDEN" &&
+          typeof l.requestId === "string" &&
+          typeof l.durationMs === "number"
+      ),
+      `expected one api_loginUser FORBIDDEN log record (got ${logs.length} entries: ${JSON.stringify(logs)})`
+    );
+  });
+
   // -----------------------------------------------------------------------
   // AC #10 — automated tests cover malformed RPC response and
   // failed bootstrap (server-side: a failure envelope on restore).
