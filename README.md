@@ -21,9 +21,8 @@ Google Apps Script on the V8 runtime, Google Sheets, HTML Service, and clasp pow
 Install:
 
 - Git;
-- Node.js and npm (CI uses Node 20; see [.github/workflows/e2e.yml](.github/workflows/e2e.yml));
-- clasp, authenticated for the Apps Script project;
-- Chromium for the Playwright E2E suite when working on login-gated behavior.
+- Node.js 20+;
+- clasp, authenticated for the Apps Script project.
 
 The repository does not define a local development-server script. Runtime verification happens through unit tests and a deployed Apps Script `/exec` URL.
 
@@ -32,29 +31,29 @@ The repository does not define a local development-server script. Runtime verifi
 ```sh
 git clone https://github.com/Noahlw/efcc.git
 cd efcc
-npm ci
+pnpm install
 ```
 
-`npm ci` installs the exact dependency graph recorded by the lockfile. The `prepare` lifecycle script also installs the repository's Husky hooks.
+`pnpm install` installs the exact dependency graph recorded by the lockfile, auto-approves the esbuild build scripts required by vitest and tsx, downloads Chromium for the E2E pipeline, and runs the Husky `prepare` hook. After this single command, the repo is ready to run tests.
 
 ### Run local checks
 
 Run the Apps Script unit suite:
 
 ```sh
-npm run test:gas
+pnpm test:gas
 ```
 
 Run the complete repository test command:
 
 ```sh
-npm test
+pnpm test
 ```
 
 Run the configured static checks:
 
 ```sh
-npm run check
+pnpm check
 ```
 
 See [Testing](#testing) before running login-gated E2E checks; they require a deployed URL and captured authentication state.
@@ -101,7 +100,7 @@ A typical behavioral change follows this sequence:
 3. For Apps Script methods or deployment behavior, satisfy the [official-documentation evidence rule](AGENTS.md#apps-script-docs-backed-method-rule).
 4. Write the acceptance plan required by the [headless browser gate](AGENTS.md#implementation-verification-workflow--headless-browser-gate) before implementation.
 5. Edit the relevant server `.gs` and client `.html` files under [`src/gas/`](src/gas/).
-6. Add or update focused VM-harness coverage in [`tests/gas/`](tests/gas/), then run `npm run test:gas`.
+6. Add or update focused VM-harness coverage in [`tests/gas/`](tests/gas/), then run `pnpm test:gas`.
 7. Push to Apps Script and create a fresh versioned deployment with `clasp push` and `clasp deploy`.
 8. Use the Orca `browser` tool for deployed cold-start, signed-out, CSS, layout, and one-off debugging checks.
 9. For any login-gated behavior, add or update the Playwright specification under [`tests/e2e/`](tests/e2e/) and follow its [onboarding guide](tests/e2e/README.md).
