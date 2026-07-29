@@ -119,7 +119,7 @@ EFCC has three complementary verification layers:
 [`tests/gas/`](tests/gas/) exercises server and shell behavior with Vitest and mocked Apps Script globals. Run it from the repository root:
 
 ```sh
-npm run test:gas
+pnpm test:gas
 ```
 
 These tests are fast and deterministic, but they cannot prove the deployed HTML Service iframe, `google.script.run`, Google authentication, or a versioned `/exec` deployment works end to end.
@@ -131,13 +131,13 @@ These tests are fast and deterministic, but they cannot prove the deployed HTML 
 The verified local entry points are:
 
 ```sh
-npm run e2e:auth -- --role=alice
-npm run e2e:auth -- --role=bob
-npm run e2e:auth -- --role=noah
-npm run test:e2e
+pnpm e2e:auth -- --role=alice
+pnpm e2e:auth -- --role=bob
+pnpm e2e:auth -- --role=noah
+pnpm test:e2e
 ```
 
-Before those commands, export the current deployment URL exactly as shown in the [E2E setup guide](tests/e2e/README.md#set-the-target-url). Authentication-state files contain live session cookies; follow the guide's security and rotation instructions rather than committing or sharing them.
+Before those commands, export the current deployment URL exactly as shown in the [E2E setup guide](tests/e2e/README.md#1-set-the-target-url). Authentication-state files contain live session cookies; follow the guide's security and rotation instructions rather than committing or sharing them.
 
 ### Manual deployed-browser checks
 
@@ -161,9 +161,9 @@ A newly created deployment receives a new deployment ID and therefore a new `/ex
 After deployment:
 
 1. Copy the fresh `/exec` URL.
-2. Export it locally as `E2E_TARGET_URL` using the command in [`tests/e2e/README.md`](tests/e2e/README.md#set-the-target-url).
+2. Export it locally as `E2E_TARGET_URL` using the command in [`tests/e2e/README.md`](tests/e2e/README.md#1-set-the-target-url).
 3. Update the GitHub Actions repository variable `E2E_TARGET_URL`.
-4. Refresh an expired role's Storage State (儲存狀態) and corresponding secret by following the [rotation procedure](tests/e2e/README.md#when-a-captured-session-expires).
+4. Refresh an expired role's Storage State (儲存狀態) and corresponding secret by following the [rotation procedure](tests/e2e/README.md#4-when-a-captured-session-expires).
 5. Run the appropriate cold-start and login-gated acceptance paths.
 
 [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) runs on every push. It installs Node 20 dependencies and Chromium, restores three role-specific storage states from repository secrets, runs Playwright against `E2E_TARGET_URL`, appends available results to the acceptance plan, and uploads diagnostic artifacts. The exact secret names and encoding contract live in the [E2E CI table](tests/e2e/README.md#ci-secrets-table).

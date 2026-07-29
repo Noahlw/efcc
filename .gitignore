@@ -1,6 +1,6 @@
-# Dependencies
+# Dependencies (pnpm)
 node_modules/
-
+package-lock.json
 # Build output
 dist/
 build/

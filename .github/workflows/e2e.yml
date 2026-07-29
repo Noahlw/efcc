@@ -2,7 +2,7 @@
 #
 # Per ADR-0012 (docs/adr/0012-e2e-testing-strategy.md), this workflow runs the
 # Playwright pipeline on every push. Storage states are pre-generated locally
-# via `npm run e2e:auth -- --role=<role>` (NOT regenerated in CI), then uploaded
+# via `pnpm e2e:auth -- --role=<role>` (NOT regenerated in CI), then uploaded
 # as base64-encoded repo secrets and decoded here at job start.
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`. A red CI badge with
@@ -36,25 +36,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        # Corepack auto-downloads pnpm@11.7.0 from the `packageManager`
+        # field in package.json — no manual version pinning needed here.
+        run: corepack enable
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # No `.nvmrc` or `engines` field pinned in the repo; Node 20 is the
-          # current LTS and the recommended baseline for Playwright.
           node-version: "20"
-          cache: "npm"
+          cache: "pnpm"
 
       - name: Install dependencies
-        # `npm ci` (not `npm install`) — CI must use the lockfile exactly so
-        # the test environment matches local dev byte-for-byte.
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser
-        # Documented Playwright CI setup step. `--with-deps` apt-installs the
-        # system libraries Chromium needs on Ubuntu runners; without it,
-        # browser launch fails with missing .so errors.
-        run: npx playwright install --with-deps chromium
-
+      - name: Install Playwright browser system deps
+        # `--with-deps` apt-installs the system libraries Chromium needs on
+        # Ubuntu runners; without it, browser launch fails with missing .so
+        # errors. The postinstall hook handles the browser binary locally;
+        # CI needs the extra system-deps pass.
+        run: pnpm exec playwright install --with-deps chromium
       - name: Decode storage-state secrets
         # The secrets are base64-encoded JSON files (so the newline / quote /
         # unicode content survives the GitHub secret-string transport without
@@ -79,28 +80,28 @@ jobs:
         # hardcoded URL) — see header comment for the rotation reason.
         #
         # No `continue-on-error`, no `|| true`. A failing test is a failing
-        # job. We deliberately invoke `npx playwright test` here instead
-        # of `npm run test:e2e` so the npm `posttest:e2e` hook does NOT
-        # fire here — the appender step below runs unconditionally via
+        # job. We deliberately invoke `pnpm exec playwright test` directly
+        # instead of `pnpm test:e2e` so the pnpm `posttest:e2e` hook does
+        # NOT fire here — the appender step below runs unconditionally via
         # `if: always()` and would otherwise be double-invoked on success.
-        # Local dev runs use `npm run test:e2e` and get the post-hook for
+        # Local dev runs use `pnpm test:e2e` and get the post-hook for
         # convenience (no double-fire risk there because there is no
         # separate appender step). See tests/e2e/README.md "Run the suite"
         # for the two paths.
         env:
           E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
-        run: npx playwright test --config=tests/e2e/playwright.config.ts
+        run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
 
       - name: Append results to plan doc
         # Per-issue-67 AC #12, per-assertion pass/fail evidence lands in
         # the ticket's plan doc as an '## Executed results' section. This
         # step runs on success AND on failure (`if: always()`), and only
         # when the JSON reporter actually wrote its output file. Rationale
-        # for `if: always()`: npm post-hooks are SKIPPED on script
+        # for `if: always()`: pnpm post-hooks are SKIPPED on script
         # failure (verified empirically with a minimal repro before this
         # step was added), and the only way to guarantee the plan doc
         # reflects the actual run is to invoke the appender separately
-        # from npm's lifecycle. Rationale for `hashFiles(...) != ''`:
+        # from pnpm's lifecycle. Rationale for `hashFiles(...) != ''`:
         # if Playwright crashed before writing the reporter (rare but
         # possible), there is nothing to append, so the step is correctly
         # skipped instead of invoking the appender on a missing file.
@@ -112,14 +113,13 @@ jobs:
         env:
           E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
         run: |
-          npx tsx tests/e2e/plan-doc-appender.ts
+          tsx tests/e2e/plan-doc-appender.ts
 
       - name: Hint on common failure cause
         # Best-effort diagnostic — does not affect job status. The job is
         # already red at this point if we got here.
-        if: failure()
         run: |
-          echo "::error::Playwright E2E run failed. The most common cause is an expired Google session cookie in one of the three storage-state secrets. To rotate, re-run \`npm run e2e:auth -- --role=<role>\` locally for the failing role, base64-encode the resulting .auth/<role>.storage.json, and update the matching repo secret (ALICE_STORAGE_STATE / BOB_STORAGE_STATE / NOAH_STORAGE_STATE). See docs/adr/0012-e2e-testing-strategy.md §6 for the full rotation procedure."
+          echo "::error::Playwright E2E run failed. The most common cause is an expired Google session cookie in one of the three storage-state secrets. To rotate, re-run \`pnpm e2e:auth -- --role=<role>\` locally for the failing role, base64-encode the resulting .auth/<role>.storage.json, and update the matching repo secret (ALICE_STORAGE_STATE / BOB_STORAGE_STATE / NOAH_STORAGE_STATE). See docs/adr/0012-e2e-testing-strategy.md §6 for the full rotation procedure."
 
       - name: Upload test artifacts
         # Evidence on failure — the JSON report, any retained-on-failure

@@ -6,13 +6,14 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test:gas && npm run test --workspaces --if-present",
+    "postinstall": "playwright install chromium",
+    "typecheck": "tsc --noEmit --project tests/e2e/tsconfig.json",
+    "test": "pnpm test:gas",
     "test:gas": "vitest run tests/gas",
     "e2e:auth": "tsx tests/e2e/auth.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
     "posttest:e2e": "tsx tests/e2e/plan-doc-appender.ts",
-    "build": "npm run build --workspaces --if-present",
+    "build": "echo No build step; see src/gas/",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },
@@ -30,5 +31,6 @@
   "lint-staged": {
     "*.{js,cjs,mjs,jsx,ts,tsx,cts,mts}": "ultracite fix",
     "*.{json,jsonc,css,scss,html,md}": "oxfmt --write --no-error-on-unmatched-pattern"
-  }
+  },
+  "packageManager": "pnpm@11.7.0"
 }
