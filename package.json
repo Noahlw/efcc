@@ -7,7 +7,7 @@
   "scripts": {
     "prepare": "husky",
     "postinstall": "playwright install chromium",
-    "typecheck": "tsc --noEmit --project tests/e2e/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/e2e/tsconfig.json",
     "test": "pnpm test:gas",
     "test:gas": "vitest run tests/gas",
     "e2e:auth": "tsx tests/e2e/auth.ts",

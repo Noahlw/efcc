@@ -105,8 +105,11 @@ reconstruct by reading every file's header comment.
 
 ### Testing & deployment quick reference
 
-- `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. This is the fast, deterministic layer; it cannot prove the deployed HTML Service iframe or `google.script.run` actually works.
+- `pnpm typecheck` — Runs TypeScript compiler (`tsc --noEmit`) sequentially across root `tsconfig.json` and `tests/e2e/tsconfig.json` (ADR-0014).
+- `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. Fast, deterministic unit layer.
 - `pnpm test:e2e` — Playwright against a **deployed** `/exec` URL using per-role storage states in `.auth/` (ADR-0012). Requires `E2E_TARGET_URL` exported and `.auth/{alice,bob,noah}.storage.json` captured via `pnpm e2e:auth -- --role=<role>`. A passing run auto-appends an "Executed results" table to the relevant ticket's plan doc under `docs/specs/`.
+- `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
+- GitHub Actions (`.github/workflows/`) — `precheck.yml` (typecheck + `test:gas` unit suite) and `e2e.yml` (Playwright E2E suite) run automatically on `push` and `pull_request` events to gate mergeability (ADR-0014).
 - `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned deployment; update `E2E_TARGET_URL` afterward. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
 - Full step-by-step workflow: `README.md` § "Push and deploy" and § "Where things live".
 
@@ -128,6 +131,8 @@ reconstruct by reading every file's header comment.
 | 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
 | 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
 | 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
+| 0013 | Google Sheets Database Structure | Accepted |
+| 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
 
 ---
 
