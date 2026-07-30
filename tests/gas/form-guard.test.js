@@ -338,6 +338,16 @@ describe("form-guard.js.html — issue #70", () => {
       assert.strictEqual(f.getState(), g.guard.STATE.FAILED);
     });
 
+    test("isDirty() returns true for FAILED state (prevents silent data loss, #70 AC #6)", () => {
+      const g = bootFormGuard();
+      const f = g.guard.create();
+      f.markDirty();
+      f.beginSubmit();
+      f.failed();
+      assert.strictEqual(f.getState(), g.guard.STATE.FAILED);
+      assert.strictEqual(f.isDirty(), true);
+    });
+
     test("succeeded() and failed() are no-ops from non-SUBMITTING states", () => {
       const g = bootFormGuard();
       const f = g.guard.create();

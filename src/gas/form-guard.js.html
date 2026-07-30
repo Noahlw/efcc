@@ -56,7 +56,7 @@
           return state;
         },
         isDirty: function () {
-          return state === STATE.DIRTY;
+          return state === STATE.DIRTY || state === STATE.FAILED;
         },
         isPending: function () {
           return state === STATE.SUBMITTING;
