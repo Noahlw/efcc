@@ -795,3 +795,28 @@ function diagSetupScriptProperties() {
 
   console.log("diagSetupScriptProperties complete.");
 }
+
+/**
+ * diagSheetStructure_ — read every sheet tab's header row from the
+ * configured spreadsheet. Returns a JSON-safe object mapping sheet
+ * name → { header: [...], rowCount: number }. Intended for one-time
+ * diagnostics via ?diag=sheet-structure on doGet().
+ *
+ * Apps Script APIs used:
+ *   - SpreadsheetApp.openById / Sheet.getSheetName / getDataRange / getValues
+ */
+function diagSheetStructure_() {
+  var ss = efccSpreadsheet_();
+  var sheets = ss.getSheets();
+  var result = {};
+  for (var i = 0; i < sheets.length; i++) {
+    var sheet = sheets[i];
+    var name = sheet.getSheetName();
+    var data = sheet.getDataRange().getValues();
+    result[name] = {
+      header: data.length > 0 ? data[0] : [],
+      rowCount: data.length,
+    };
+  }
+  return result;
+}

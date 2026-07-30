@@ -223,3 +223,45 @@ These are the canonical IDs for the project's Google resources. They are not har
 | Google Spreadsheet | `1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw` | Script Property `EFCC_SPREADSHEET_ID` |
 
 These two IDs plus `EFCC_SESSION_SALT` (a random hex string set once in Script Properties) are the only values the standalone Apps Script project must be configured with before a deployment will accept logins. Run `diagSetupScriptProperties` from the Apps Script editor to seed all three. See [Push and deploy](#push-and-deploy) for the push/deploy cycle and the [diagnosis document](docs/research/2026-07-30-login-failure-diagnosis.md) for the rationale.
+
+## First-time deployment checklist
+
+Before the login gate accepts logins on a new standalone Apps Script project, complete these steps once.
+
+### 1. Authorize OAuth scopes
+
+`clasp deploy` cannot trigger the OAuth consent dialog — it must be done from the Apps Script editor.
+
+1. Open the [Apps Script editor](https://script.google.com/home/projects/1NvyYCSXEl3dBZzmEPOQNfwJbHm49WFxFFb3OHzENBP45H-myiU0FQppX/edit).
+2. From the function dropdown, select `doGet`.
+3. Click **Run** (▶). A dialog prompts for the `spreadsheets` scope.
+4. Click **Review permissions**, select your account, and click **Allow**.
+5. Verify the Executions log shows a successful run (the `doGet` call itself will return HTML — this is expected).
+
+See [Google's authorization documentation](https://developers.google.com/apps-script/guides/services/authorization) for the official OAuth flow reference.
+
+### 2. Seed Script Properties
+
+Run `diagSetupScriptProperties` once to set `EFCC_SPREADSHEET_ID` and `EFCC_SESSION_SALT`.
+
+1. From the editor function dropdown, select `diagSetupScriptProperties`.
+2. Click **Run** (▶).
+3. Check **Executions** — you should see `EFCC_SPREADSHEET_ID set.` and `EFCC_SESSION_SALT set.`.
+
+These properties persist across deployments — they only need to be set once per project.
+
+### 3. Verify Script Properties
+
+1. Open **Project Settings** (⚙) > **Script Properties**.
+2. Confirm `EFCC_SPREADSHEET_ID` = `1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw`.
+3. Confirm `EFCC_SESSION_SALT` exists and is non-empty.
+
+### 4. Deploy and test
+
+1. Click **Deploy** > **New deployment**, type **Web app**.
+2. Set **Execute as** = "Me (`...@gmail.com`)".
+3. Set **Who has access** = "Anyone".
+4. Click **Deploy**, copy the `/exec` URL.
+5. Open the URL. The login form must render with username and PIN fields.
+6. Submit valid credentials — you must reach the Profile section.
+7. Update `E2E_TARGET_URL` with the new URL per [Deployment](#deployment).
