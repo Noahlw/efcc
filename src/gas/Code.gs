@@ -751,3 +751,47 @@ function api_submitDemoTaskForm(
     );
   }
 }
+
+/**
+ * diagSetupScriptProperties — one-time setup for standalone Apps Script
+ * projects. Runs from the Apps Script editor (select function, click Run,
+ * authorize when prompted). Sets the two Script Properties required by
+ * the login and session RPCs:
+ *
+ *   EFCC_SPREADSHEET_ID — the Google Sheet backing the application
+ *   EFCC_SESSION_SALT   — a random hex string for HMAC session signatures
+ *
+ * Idempotent: skips properties that are already set (non-empty).
+ * Logs each action so the operator can verify the result in Executions.
+ *
+ * Apps Script APIs used (per AGENTS.md docs-backed method rule):
+ *   - PropertiesService.getScriptProperties().setProperty(key, value):
+ *     https://developers.google.com/apps-script/reference/properties/properties-service
+ *   - Utilities.getUuid():
+ *     https://developers.google.com/apps-script/reference/utilities/utilities#getUuid()
+ */
+function diagSetupScriptProperties() {
+  var props = PropertiesService.getScriptProperties();
+
+  var existingSheetId = props.getProperty("EFCC_SPREADSHEET_ID");
+  if (!existingSheetId || existingSheetId.trim() === "") {
+    props.setProperty(
+      "EFCC_SPREADSHEET_ID",
+      "1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw"
+    );
+    console.log("EFCC_SPREADSHEET_ID set.");
+  } else {
+    console.log("EFCC_SPREADSHEET_ID already set (skipped).");
+  }
+
+  var existingSalt = props.getProperty("EFCC_SESSION_SALT");
+  if (!existingSalt || existingSalt.trim() === "") {
+    var salt = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty("EFCC_SESSION_SALT", salt);
+    console.log("EFCC_SESSION_SALT set.");
+  } else {
+    console.log("EFCC_SESSION_SALT already set (skipped).");
+  }
+
+  console.log("diagSetupScriptProperties complete.");
+}

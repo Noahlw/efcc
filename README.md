@@ -212,3 +212,14 @@ Keep these entry points close at hand:
 - E2E decision: [`docs/adr/0012-e2e-testing-strategy.md`](docs/adr/0012-e2e-testing-strategy.md)
 - E2E workflow: [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml)
 - Role-navigation acceptance plan: [`docs/specs/067-role-nav-acceptance-plan.md`](docs/specs/067-role-nav-acceptance-plan.md)
+
+## External resource IDs
+
+These are the canonical IDs for the project's Google resources. They are not hard-coded in application source (the app reads the spreadsheet ID from a Script Property), but operators and CI need them to configure and verify the deployment.
+
+| Resource | ID | Where configured |
+| --- | --- | --- |
+| Apps Script project | `1NvyYCSXEl3dBZzmEPOQNfwJbHm49WFxFFb3OHzENBP45H-myiU0FQppX` | [`.clasp.json`](.clasp.json) (push target) |
+| Google Spreadsheet | `1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw` | Script Property `EFCC_SPREADSHEET_ID` |
+
+These two IDs plus `EFCC_SESSION_SALT` (a random hex string set once in Script Properties) are the only values the standalone Apps Script project must be configured with before a deployment will accept logins. Run `diagSetupScriptProperties` from the Apps Script editor to seed all three. See [Push and deploy](#push-and-deploy) for the push/deploy cycle and the [diagnosis document](docs/research/2026-07-30-login-failure-diagnosis.md) for the rationale.
