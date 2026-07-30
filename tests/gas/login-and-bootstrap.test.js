@@ -34,14 +34,14 @@ const GAS_DIR = path.join(REPO_ROOT, "src", "gas");
 
 function buildContext({ salt = "test-salt", setSalt = true } = {}) {
   const sheets = {};
-  const scriptProps = {};
+  const scriptProps = { EFCC_SPREADSHEET_ID: "test-spreadsheet-id" };
   if (setSalt) {
     scriptProps["EFCC_SESSION_SALT"] = salt;
   }
   const context = {
     console: { log: () => {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({
+      openById: () => ({
         getSheetByName: (name) => sheets[name] || null,
       }),
     },
@@ -100,6 +100,7 @@ function loadGasModule(context, filename) {
 function loadAllGas(context) {
   for (const name of [
     "rpc-envelope.gs",
+    "spreadsheet-access.gs",
     "users-repository.gs",
     "session.js.gs",
     "program-leaders-repository.gs",

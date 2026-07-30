@@ -11,9 +11,12 @@
  * user has no active leadership assignments). This allows the app to
  * function before STAFF/ADMIN create the first assignment.
  *
+ * Sheet access is opened by ID via efccSpreadsheet_()
+ * (spreadsheet-access.gs / ADR-0015), not
+ * SpreadsheetApp.getActiveSpreadsheet() — this script is standalone,
+ * not bound to the spreadsheet.
+ *
  * Apps Script APIs used (per AGENTS.md docs-backed method rule):
- *   - SpreadsheetApp.getActiveSpreadsheet():
- *     https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet-app#getActiveSpreadsheet()
  *   - Sheet.getDataRange().getValues():
  *     https://developers.google.com/apps-script/reference/spreadsheet/sheet#getDataRange()
  */
@@ -77,7 +80,7 @@ function programLeadersResolveColumns_(headerRow) {
  */
 function programLeadersReadAll_() {
   if (PROGRAM_LEADERS_CACHE_) return PROGRAM_LEADERS_CACHE_;
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = efccSpreadsheet_();
   var sheet = ss.getSheetByName(PROGRAM_LEADERS_SHEET_NAME);
   if (!sheet) {
     // Sheet doesn't exist yet — no assignments. Return a minimal

@@ -8,7 +8,7 @@
  * row skipping, and the script-cache read-through per spec 004 §3/§5.
  *
  * Apps Script APIs exercised (see programs-repository.gs header for
- * citations): SpreadsheetApp.getActiveSpreadsheet(),
+ * citations): SpreadsheetApp.openById() (via spreadsheet-access.gs),
  * Sheet.getDataRange().getValues(), CacheService.getScriptCache().
  */
 
@@ -41,14 +41,20 @@ function toPlain(value) {
 
 function buildContext() {
   const sheets = {};
+  const scriptProps = { EFCC_SPREADSHEET_ID: "test-spreadsheet-id" };
   const cacheStore = new Map();
   const cachePutCalls = [];
   const context = {
     sheets,
     console: { log: () => {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({
+      openById: () => ({
         getSheetByName: (name) => sheets[name] || null,
+      }),
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (k in scriptProps ? scriptProps[k] : null),
       }),
     },
     CacheService: {
@@ -89,6 +95,7 @@ describe("programs-repository.gs — issue #69 prerequisite slice of #53", () =>
     const env = buildContext();
     ctx = env.context;
     ({ sheets, cacheStore, cachePutCalls } = env);
+    loadGasModule(ctx, "spreadsheet-access.gs");
     loadGasModule(ctx, "programs-repository.gs");
     // Reset the in-memory cache guard the repository keeps to avoid
     // cross-test leakage of the CacheService.getScriptCache() read-through.

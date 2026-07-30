@@ -6,13 +6,11 @@
  *    (0)      (1)     (2)       (3)       (4)     (5)    (6)       (7)
  *
  * Sheet access follows the existing repo convention
- * (SpreadsheetApp.getActiveSpreadsheet().getSheetByName(...)). All
- * Sheets reads return JSON-safe plain objects — no Date / Range ever
- * crosses an RPC boundary.
+ * (efccSpreadsheet_().getSheetByName(...), see spreadsheet-access.gs
+ * / ADR-0015). All Sheets reads return JSON-safe plain objects — no
+ * Date / Range ever crosses an RPC boundary.
  *
  * Apps Script APIs used (per AGENTS.md docs-backed method rule):
- *   - SpreadsheetApp.getActiveSpreadsheet():
- *     https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet-app#getActiveSpreadsheet()
  *   - Sheet.getDataRange().getValues():
  *     https://developers.google.com/apps-script/reference/spreadsheet/sheet#getDataRange()
  *
@@ -94,8 +92,7 @@ var USERS_ROW_CACHE_ = null;
  */
 function usersReadAll_() {
   if (USERS_ROW_CACHE_) return USERS_ROW_CACHE_;
-  var sheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(USERS_SHEET_NAME);
+  var sheet = efccSpreadsheet_().getSheetByName(USERS_SHEET_NAME);
   if (!sheet) {
     throw new Error(
       "Users sheet '" +
