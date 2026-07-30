@@ -41,7 +41,7 @@ function buildContext({ salt = "test-salt", setSalt = true } = {}) {
       "1bkRPQTCrNKu4MNDTRn-vkTTRMKgV6MEBNfierKDng3o";
   }
   const context = {
-    console: { log: () => {} },
+    console: { log: () => {}, error: () => {} },
     SpreadsheetApp: {
       openById: () => ({
         getSheetByName: (name) => sheets[name] || null,

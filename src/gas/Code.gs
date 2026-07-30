@@ -257,9 +257,7 @@ function api_loginUser(username, pin) {
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, dto);
   } catch (e) {
-    // Salt missing (or other unconfigured environment) surfaces as
-    // UNAVAILABLE per the fail-closed contract. The client renders
-    // a generic recoverable error.
+    console.error(e);
     rpcLog_(op, requestId, "UNAVAILABLE", Date.now() - t0);
     return rpcFailure_(
       requestId,
@@ -345,6 +343,7 @@ function api_restoreApp(userId, sessionId, sessionToken) {
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, dto);
   } catch (e) {
+    console.error(e);
     rpcLog_(op, requestId, "UNAVAILABLE", Date.now() - t0);
     return rpcFailure_(
       requestId,
@@ -384,6 +383,7 @@ function api_logoutUser(userId, sessionId, sessionToken) {
     rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
     return rpcSuccess_(requestId, {});
   } catch (e) {
+    console.error(e);
     rpcLog_(op, requestId, "UNAVAILABLE", Date.now() - t0);
     return rpcFailure_(
       requestId,
@@ -479,6 +479,7 @@ function api_getPrograms(userId, sessionId, sessionToken) {
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, programs);
   } catch (e) {
+    console.error(e);
     rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
     return rpcFailure_(
       requestId,
@@ -558,6 +559,7 @@ function api_authorizedNavigate(userId, sessionId, sessionToken, sectionKey) {
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, { authorized: true });
   } catch (e) {
+    console.error(e);
     rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
     return rpcFailure_(
       requestId,
@@ -740,6 +742,7 @@ function api_submitDemoTaskForm(
       lock.releaseLock();
     }
   } catch (e) {
+    console.error(e);
     rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
     return rpcFailure_(
       requestId,

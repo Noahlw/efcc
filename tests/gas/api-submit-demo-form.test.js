@@ -38,7 +38,7 @@ function buildContext({ salt = "test-salt" } = {}) {
   const lockAcquired = [];
   const lockReleased = [];
   const context = {
-    console: { log: () => {} },
+    console: { log: () => {}, error: () => {} },
     sheets,
     SpreadsheetApp: {
       openById: () => ({

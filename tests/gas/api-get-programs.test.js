@@ -42,7 +42,7 @@ function buildContext({ salt = "test-salt" } = {}) {
   };
   const cacheStore = new Map();
   const context = {
-    console: { log: () => {} },
+    console: { log: () => {}, error: () => {} },
     sheets,
     SpreadsheetApp: {
       openById: () => ({
