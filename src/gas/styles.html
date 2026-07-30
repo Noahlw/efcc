@@ -115,6 +115,7 @@
       left: 0;
       right: 0;
       bottom: 0;
+      padding-bottom: env(safe-area-inset-bottom);
       z-index: 10;
     }
     .app-nav-desktop {
@@ -123,7 +124,7 @@
     .app-content {
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      padding-bottom: 64px;
+      padding-bottom: calc(64px + env(safe-area-inset-bottom));
     }
   }
 
@@ -237,6 +238,14 @@
     border-color: var(--color-primary);
   }
 
+  .btn:disabled,
+  .btn-primary:disabled,
+  .btn-refresh:disabled,
+  .btn-open-task:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .btn-full {
     width: 100%;
   }
@@ -311,6 +320,15 @@
     outline-offset: -2px;
   }
 
+  .btn:focus-visible,
+  .btn-back:focus-visible,
+  .btn-refresh:focus-visible,
+  .btn-open-task:focus-visible,
+  .more-menu-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
   /* Phone bottom nav */
   .nav-item-phone {
     flex: 1 1 0;
@@ -351,6 +369,10 @@
     background: rgba(47, 111, 235, 0.08);
   }
 
+  .nav-item-phone.nav-item-active {
+    box-shadow: inset 0 2px 0 0 var(--color-primary);
+  }
+
   /* Nav item label */
   .nav-item-label {
     white-space: nowrap;
@@ -364,6 +386,12 @@
 
   .nav-item-more {
     position: relative;
+  }
+
+  .nav-more-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .more-menu {
@@ -392,6 +420,7 @@
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm);
     color: var(--color-text);
+    min-height: 44px;
   }
 
   .more-menu-item:hover {
@@ -436,6 +465,7 @@
     font: inherit;
     color: var(--color-primary);
     padding: var(--space-2) 0;
+    min-height: 44px;
     display: flex;
     align-items: center;
     gap: var(--space-1);
@@ -508,6 +538,9 @@
     padding: var(--space-1) var(--space-3);
     color: var(--color-muted);
     margin-bottom: var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .btn-refresh:hover {
@@ -531,6 +564,9 @@
     color: var(--color-primary);
     margin-top: var(--space-2);
     width: 100%;
+    display: flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .btn-open-task:hover {
@@ -573,5 +609,35 @@
 
   .nav-item-desktop .nav-badge {
     margin-left: auto;
+  }
+
+  /* -----------------------------------------------------------------
+   * Skip-to-content link (issue #71). Visually hidden until it
+   * receives keyboard focus, then pinned to the top-left corner so
+   * a keyboard user can bypass the header/nav and land directly in
+   * #app-content on every page load.
+   * ----------------------------------------------------------------- */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 1000;
+    background: var(--color-primary);
+    color: var(--color-primary-contrast);
+    padding: var(--space-2) var(--space-4);
+    border-radius: 0 0 var(--radius-sm) 0;
+    font-size: var(--text-sm);
+  }
+  .skip-link:focus {
+    left: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>

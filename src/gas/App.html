@@ -7,6 +7,7 @@
     <?!= include('styles'); ?>
   </head>
   <body>
+    <a href="#app-content" class="skip-link">跳至主要內容</a>
     <div id="app" class="app-shell" data-app-state="BOOTING">
       <header id="app-header" class="app-header">
         <h1 class="app-title">顯恩堂系統</h1>
@@ -17,13 +18,23 @@
         role="status"
         aria-live="polite"
       ></div>
-      <main id="app-content" class="app-content">
+      <main id="app-content" class="app-content" tabindex="-1">
         <?!= include('view-login'); ?>
       </main>
-      <nav id="app-nav-phone" class="app-nav-phone" hidden></nav>
-      <nav id="app-nav-desktop" class="app-nav-desktop" hidden></nav>
+      <nav
+        id="app-nav-phone"
+        class="app-nav-phone"
+        aria-label="主要導覽（手機）"
+        hidden
+      ></nav>
+      <nav
+        id="app-nav-desktop"
+        class="app-nav-desktop"
+        aria-label="主要導覽（桌面）"
+        hidden
+      ></nav>
     </div>
-    <?!= include('shell.js'); ?> <?!= include('form-guard.js'); ?> <?!=
-    include('shell-session.js'); ?>
+    <?!= include('copy.js'); ?> <?!= include('shell.js'); ?> <?!=
+    include('form-guard.js'); ?> <?!= include('shell-session.js'); ?>
   </body>
 </html>

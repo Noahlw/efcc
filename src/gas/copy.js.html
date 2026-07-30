@@ -1,0 +1,134 @@
+<script>
+  (function () {
+    "use strict";
+
+    // EFCC 顯恩堂 — centralized Traditional Chinese copy source (issue #71).
+    // Per issue #64 AC #35/#36: all user-visible copy is Traditional
+    // Chinese, and internal identifiers stay stable and English so a
+    // wording change cannot break routing or error handling. This module
+    // is that copy source — shell-session.js.html and form-guard.js.html
+    // read from window.EfccCopy instead of scattering literals.
+    //
+    // Load order: copy.js.html MUST be included before form-guard.js.html
+    // and shell-session.js.html (both reference window.EfccCopy at call
+    // time, not at parse time, so the include order only needs copy.js.html
+    // to have executed first).
+
+    var NAV_LABEL = Object.freeze({
+      profile: "個人資料",
+      programs: "課程",
+      events: "聚會",
+      scanner: "掃描",
+      care: "關懷",
+      permissions: "權限管理",
+    });
+
+    // Compact phone-nav labels (space-constrained bottom bar).
+    var NAV_LABEL_PHONE = Object.freeze({
+      profile: "個人",
+      programs: "課程",
+      events: "聚會",
+      scanner: "掃描",
+      care: "關懷",
+      permissions: "權限",
+    });
+
+    var ERROR_COPY = Object.freeze({
+      AUTH_REQUIRED: Object.freeze({
+        heading: "登入工作階段已失效",
+        detail: "請重新登入。",
+      }),
+      FORBIDDEN: Object.freeze({
+        heading: "無法存取",
+        detail: "你沒有權限使用此功能。",
+      }),
+      INTERNAL_ERROR: Object.freeze({
+        heading: "伺服器錯誤",
+        detail: "系統發生錯誤，請稍後再試。",
+      }),
+      TRANSPORT: Object.freeze({
+        heading: "網絡連線失敗",
+        detail: "請檢查網絡連線後再試。",
+      }),
+      RENDER_ERROR: Object.freeze({
+        heading: "顯示錯誤",
+        detail: "頁面顯示時發生錯誤，請重新整理或返回其他頁面。",
+      }),
+      DEFAULT: Object.freeze({
+        heading: "載入失敗",
+        detail: "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。",
+      }),
+    });
+
+    window.EfccCopy = Object.freeze({
+      navLabel: NAV_LABEL,
+      navLabelPhone: NAV_LABEL_PHONE,
+      errorCopy: ERROR_COPY,
+
+      // Landmark / nav
+      navPhoneLabel: "主要導覽（手機）",
+      navDesktopLabel: "主要導覽（桌面）",
+      navMore: "更多",
+      navMoreExpandedSuffix: "選單已展開",
+      navMoreCollapsedSuffix: "選單已收合",
+      skipToContent: "跳至主要內容",
+
+      // Common actions
+      logout: "登出",
+      refresh: "重新整理",
+      retry: "重試",
+      back: "返回",
+      login: "登入",
+
+      // Profile
+      profileHeading: "個人資料",
+      profileSignedInAs: "已登入：",
+      profileUsername: "使用者名稱",
+      profileRole: "角色",
+      profileQrCode: "QR 碼",
+
+      // Login
+      loginHeading: "登入",
+      loginWelcome: "歡迎使用顯恩堂系統",
+      loginUsernameLabel: "使用者名稱",
+      loginPinLabel: "PIN 碼",
+
+      // Status / loading
+      loading: "載入中...",
+      programsHeading: "課程",
+      programsEmpty: "目前沒有課程資料。",
+      programsDemoDetail: "查看範例課程詳情",
+      eventsDemoCounterPrefix: "範例計數器：",
+      eventsDemoEdit: "編輯範例聚會",
+
+      // Recoverable transport error (default when no server code applies)
+      transportFailureMessage: "網絡連線不穩定，請稍後再試。",
+      malformedResponseMessage: "伺服器回應格式不正確。",
+      genericFailureMessage: "操作失敗，請稍後再試。",
+      loginFailureMessage: "登入失敗，請再試一次。",
+      loginValidationMessage: "請輸入使用者名稱和 PIN 碼。",
+      loggingIn: "登入中...",
+      submitFailureMessage: "提交失敗，請稍後再試。",
+      save: "儲存",
+      bootstrapFailedHeading: "無法載入個人資料",
+      bootstrapFailedDetail: "請稍後再試。",
+
+      // Discard / dirty-form confirmation
+      discardHeading: "確認離開",
+      discardMessage: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
+      discardConfirm: "捨棄變更",
+      discardCancel: "繼續編輯",
+
+      // Task navigation
+      taskDetailTitle: "詳情",
+      taskEditTitle: "編輯",
+
+      // Forbidden
+      forbiddenHeading: "無法存取",
+      forbiddenDetail: "你沒有權限使用此功能，已為你切換至可用頁面。",
+
+      // Badge accessible label — {count} is replaced by the caller.
+      badgeLabelTemplate: "{count} 項待處理",
+    });
+  })();
+</script>
