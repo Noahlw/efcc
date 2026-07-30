@@ -35,6 +35,8 @@ function buildContext({ salt = "test-salt" } = {}) {
     EFCC_SPREADSHEET_ID: "1bkRPQTCrNKu4MNDTRn-vkTTRMKgV6MEBNfierKDng3o",
   };
   const cacheStore = new Map();
+  const lockAcquired = [];
+  const lockReleased = [];
   const context = {
     console: { log: () => {} },
     sheets,
@@ -64,6 +66,17 @@ function buildContext({ salt = "test-salt" } = {}) {
           // oxlint-disable-next-line typescript/no-dynamic-delete
           delete scriptProps[k];
         },
+        getKeys: () => Object.keys(scriptProps),
+      }),
+    },
+    LockService: {
+      getScriptLock: () => ({
+        waitLock: (timeoutMs) => {
+          lockAcquired.push(timeoutMs);
+        },
+        releaseLock: () => {
+          lockReleased.push(true);
+        },
       }),
     },
     Utilities: {
@@ -76,7 +89,14 @@ function buildContext({ salt = "test-salt" } = {}) {
     },
   };
   vm.createContext(context);
-  return { context, sheets, scriptProps, cacheStore };
+  return {
+    context,
+    sheets,
+    scriptProps,
+    cacheStore,
+    lockAcquired,
+    lockReleased,
+  };
 }
 
 function loadGasModule(context, filename) {
@@ -326,5 +346,61 @@ describe("api_submitDemoTaskForm — issue #70 form protection", () => {
     assert.equal(res.error.code, "INTERNAL_ERROR");
     // Never expose the raw exception message to the user.
     assert.notEqual(res.error.message, "Simulated cache failure");
+  });
+
+  test("acquires and releases LockService on every call (#70 AC #4)", () => {
+    const session = loginAndGetSession();
+    submitForm(session, "lock-test-key", "value");
+    assert.ok(
+      env.lockAcquired.length >= 1,
+      "LockService.getScriptLock().waitLock() must be called"
+    );
+    assert.ok(
+      env.lockReleased.length >= 1,
+      "lock.releaseLock() must be called after processing"
+    );
+  });
+
+  test("Script Properties is authoritative - idempotent even after CacheService clear", () => {
+    const session = loginAndGetSession();
+    const res1 = submitForm(session, "sp-key", "first value");
+    assert.equal(res1.success, true);
+    assert.equal(res1.data.idempotent, false);
+
+    // Clear CacheService to prove Script Properties is the authoritative store
+    env.cacheStore.clear();
+
+    const res2 = submitForm(session, "sp-key", "first value");
+    assert.equal(res2.success, true);
+    assert.equal(
+      res2.data.idempotent,
+      true,
+      "Script Properties must retain idempotency data"
+    );
+    assert.equal(res2.data.echoedValue, "first value");
+  });
+
+  test("cleans up old demoform_* entries from Script Properties", () => {
+    const session = loginAndGetSession();
+    // Inject an old entry (timestamp 120 seconds ago) into scriptProps
+    const oldTimestamp = Date.now() - 120_000;
+    env.scriptProps["demoform_old-key"] = JSON.stringify({
+      echoedValue: "old",
+      submittedAt: "2026-01-01 00:00:00",
+      idempotent: false,
+      timestamp: oldTimestamp,
+    });
+
+    submitForm(session, "new-key", "new value");
+
+    assert.equal(
+      env.scriptProps["demoform_old-key"],
+      undefined,
+      "old demoform_* entry must be cleaned up"
+    );
+    assert.ok(
+      env.scriptProps["demoform_new-key"],
+      "new entry must be stored in Script Properties"
+    );
   });
 });

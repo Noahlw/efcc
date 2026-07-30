@@ -647,10 +647,14 @@ function api_submitDemoTaskForm(
         "請輸入範例欄位內容（1–200 字元）。"
       );
     }
-    // Idempotency check — CacheService backed.
+    // Idempotency check - CacheService fast path, then LockService +
+    // Script Properties authoritative store (D16, CEO review Issue 8.1).
     var cacheKey = "demoform_" + requestKey;
+    var spKey = "demoform_" + requestKey;
     var cache = CacheService.getScriptCache();
     var cached = cache.get(cacheKey);
+
+    // Fast path: CacheService hit (skip lock).
     if (cached) {
       try {
         var parsed = JSON.parse(cached);
@@ -658,26 +662,79 @@ function api_submitDemoTaskForm(
         rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
         return rpcSuccess_(requestId, parsed);
       } catch (e) {
-        // Corrupt cache entry — fall through to process as fresh.
+        // Corrupt cache entry - fall through to authoritative store.
       }
     }
-    // First successful submission for this requestKey.
-    var data = {
-      echoedValue: trimmed,
-      submittedAt: Utilities.formatDate(
-        new Date(),
-        "Asia/Hong_Kong",
-        "yyyy-MM-dd HH:mm:ss"
-      ),
-      idempotent: false,
-    };
+
+    // Authoritative path: LockService + Script Properties.
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
     try {
-      cache.put(cacheKey, JSON.stringify(data), 60);
-    } catch (e) {
-      // Cache-put failure (e.g. size limit) is non-fatal.
+      var sp = PropertiesService.getScriptProperties();
+      var existing = sp.getProperty(spKey);
+      if (existing) {
+        try {
+          var existingData = JSON.parse(existing);
+          if (existingData.timestamp && Date.now() - existingData.timestamp < 60000) {
+            existingData.idempotent = true;
+            rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+            return rpcSuccess_(requestId, existingData);
+          }
+        } catch (e) {
+          // Corrupt property - fall through to process as fresh.
+        }
+      }
+
+      // First successful submission for this requestKey.
+      var data = {
+        echoedValue: trimmed,
+        submittedAt: Utilities.formatDate(
+          new Date(),
+          "Asia/Hong_Kong",
+          "yyyy-MM-dd HH:mm:ss"
+        ),
+        idempotent: false,
+        timestamp: Date.now(),
+      };
+
+      // Store in Script Properties (authoritative).
+      try {
+        sp.setProperty(spKey, JSON.stringify(data));
+      } catch (e) {
+        // Property store failure is non-fatal.
+      }
+
+      // Also store in CacheService (fast path for next call).
+      try {
+        cache.put(cacheKey, JSON.stringify(data), 60);
+      } catch (e) {
+        // Cache-put failure (e.g. size limit) is non-fatal.
+      }
+
+      // Cleanup: remove expired demoform_* entries from Script Properties.
+      try {
+        var allKeys = sp.getKeys();
+        for (var ki = 0; ki < allKeys.length; ki++) {
+          if (allKeys[ki].indexOf("demoform_") === 0) {
+            try {
+              var entry = JSON.parse(sp.getProperty(allKeys[ki]));
+              if (!entry.timestamp || Date.now() - entry.timestamp >= 60000) {
+                sp.deleteProperty(allKeys[ki]);
+              }
+            } catch (e) {
+              sp.deleteProperty(allKeys[ki]);
+            }
+          }
+        }
+      } catch (e) {
+        // Cleanup failure is non-fatal.
+      }
+
+      rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+      return rpcSuccess_(requestId, data);
+    } finally {
+      lock.releaseLock();
     }
-    rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
-    return rpcSuccess_(requestId, data);
   } catch (e) {
     rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
     return rpcFailure_(

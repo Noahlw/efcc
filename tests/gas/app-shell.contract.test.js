@@ -106,21 +106,28 @@ describe("App Document shell contract (issue #65, ADR-0010)", () => {
 
   test("Code.gs: doGet must not branch on e.parameter or touch data/session services", () => {
     const src = readGas("Code.gs");
+    // Extract only the doGet function body for bootstrap-specific checks.
+    // Other functions (api_*) may legitimately use LockService, SpreadsheetApp, etc.
+    const doGetMatch = src.match(
+      /function\s+doGet\s*\([^)]*\)\s*\{(?<body>[\s\S]*?)\n\}/u
+    );
+    const doGetBody = doGetMatch ? doGetMatch.groups.body : "";
+    assert.ok(doGetBody.length > 0, "doGet function must exist in Code.gs");
     assert.ok(
-      !src.includes("e.parameter"),
-      "Code.gs must not reference e.parameter (no query-string routing)"
+      !doGetBody.includes("e.parameter"),
+      "doGet must not reference e.parameter (no query-string routing)"
     );
     assert.ok(
-      !src.includes("SpreadsheetApp"),
-      "Code.gs must not touch SpreadsheetApp at bootstrap"
+      !doGetBody.includes("SpreadsheetApp"),
+      "doGet must not touch SpreadsheetApp at bootstrap"
     );
     assert.ok(
-      !src.includes("LockService"),
-      "Code.gs must not acquire locks at bootstrap"
+      !doGetBody.includes("LockService"),
+      "doGet must not acquire locks at bootstrap"
     );
     assert.ok(
-      !src.includes("Session."),
-      "Code.gs must not access Session at bootstrap"
+      !doGetBody.includes("Session."),
+      "doGet must not access Session at bootstrap"
     );
   });
 
