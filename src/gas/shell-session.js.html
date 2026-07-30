@@ -115,6 +115,27 @@
     });
     var sectionStates_ = {};
 
+    // Traditional Chinese copy source (issue #71): all user-visible
+    // shell copy lives in window.EfccCopy so wording is centrally
+    // controllable. copyText_ resolves a dotted path with a literal
+    // fallback so the controller still renders the right text when
+    // EfccCopy is absent (e.g. legacy test harnesses that do not
+    // inject it) and so a new copy key never crashes an old build.
+    function copyText_(path, fallback) {
+      try {
+        var node = window.EfccCopy;
+        if (!node) return fallback;
+        var parts = path.split(".");
+        for (var i = 0; i < parts.length; i++) {
+          if (node == null) return fallback;
+          node = node[parts[i]];
+        }
+        return node == null ? fallback : String(node);
+      } catch (e) {
+        return fallback;
+      }
+    }
+
     // -----------------------------------------------------------------
     // Tiny DOM helpers
     // -----------------------------------------------------------------
@@ -247,7 +268,12 @@
         maybeApply(idTag, onError, {
           kind: "TRANSPORT",
           code: "INTERNAL_ERROR",
-          message: message || "網絡連線不穩定，請稍後再試。",
+          message:
+            message ||
+            copyText_(
+              "transportFailureMessage",
+              "網絡連線不穩定，請稍後再試。"
+            ),
         });
       }
       try {
@@ -270,28 +296,33 @@
     function renderProfile_(bootstrap) {
       var content = $("app-content");
       if (!content) return;
-      clearChildren(content);
       content.appendChild(
         el("section", { class: "page view-profile" }, [
           el("div", { class: "login-card" }, [
-            el("h2", { text: "個人資料" }),
+            el("h2", {
+              tabindex: "-1",
+              "data-app-heading": "",
+              text: copyText_("profileHeading", "個人資料"),
+            }),
             el("p", {
               class: "muted",
-              text: "已登入：" + (bootstrap.session.name || ""),
+              text:
+                copyText_("profileSignedInAs", "已登入：") +
+                (bootstrap.session.name || ""),
             }),
             el("dl", { class: "profile-fields" }, [
-              el("dt", { text: "使用者名稱" }),
+              el("dt", { text: copyText_("profileUsername", "使用者名稱") }),
               el("dd", { text: bootstrap.profile.username || "" }),
-              el("dt", { text: "角色" }),
+              el("dt", { text: copyText_("profileRole", "角色") }),
               el("dd", { text: bootstrap.profile.role || "" }),
-              el("dt", { text: "QR 碼" }),
+              el("dt", { text: copyText_("profileQrCode", "QR 碼") }),
               el("dd", {}, [
                 (function () {
                   var img = document.createElement("img");
                   img.src =
                     "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
                     encodeURIComponent(bootstrap.profile.qrCodeString || "");
-                  img.alt = "QR 碼";
+                  img.alt = copyText_("profileQrCode", "QR 碼");
                   img.width = 200;
                   img.height = 200;
                   return img;
@@ -307,7 +338,7 @@
                 "data-action": "logout",
                 onclick: handleLogoutClick_,
               },
-              "登出"
+              copyText_("logout", "登出")
             ),
           ]),
         ])
@@ -371,12 +402,7 @@
       var label = section.label;
       // Phone nav uses compact labels for space.
       if (isPhone) {
-        if (section.key === SECTION_KEYS.PROFILE) label = "個人";
-        else if (section.key === SECTION_KEYS.PROGRAMS) label = "課程";
-        else if (section.key === SECTION_KEYS.EVENTS) label = "聚會";
-        else if (section.key === SECTION_KEYS.SCANNER) label = "掃描";
-        else if (section.key === SECTION_KEYS.CARE) label = "關懷";
-        else if (section.key === SECTION_KEYS.PERMISSIONS) label = "權限";
+        label = copyText_("navLabelPhone." + section.key, label) || label;
       }
       // Build nav item button with optional badge.
       var children = [el("span", { class: "nav-item-label", text: label })];
@@ -387,6 +413,16 @@
         badge.setAttribute("data-badge", section.key);
         if (count > 0) {
           badge.textContent = formatBadgeCount_(count);
+          // Issue #71: a badge's count is the information the
+          // screen-reader user actually needs; label the badge so
+          // AT reads "5 項待處理" in addition to the item's
+          // visible label, so the badge never becomes the only
+          // name AND the count never becomes silent.
+          var template = copyText_("badgeLabelTemplate", "{count} 項待處理");
+          badge.setAttribute(
+            "aria-label",
+            String(template).replace("{count}", formatBadgeCount_(count))
+          );
         } else {
           badge.setAttribute("hidden", "");
         }
@@ -401,7 +437,7 @@
           type: "button",
           "data-section": section.key,
           "aria-current": "false",
-          role: "link",
+          "data-app-nav-item": section.key,
           onclick: (function (key) {
             return function () {
               navigateTo_(key);
@@ -412,28 +448,58 @@
       );
     }
 
+    // Anchor element id that wraps the overflow trigger + popup so
+    // the focus-restoration logic has a stable target.
+    var moreWrapId_ = "nav-more-wrap";
+
     function buildMoreButton_(overflowSections) {
+      // Issue #71: a `<button>` containing other buttons is invalid
+      // HTML and produces undefined AT behavior. The trigger and
+      // the popup are now siblings inside a wrapper that takes the
+      // same flex slot the More button used to occupy in the phone
+      // bottom nav (see .nav-more-wrap in styles.html).
+      var wrap = el("div", {
+        class: "nav-item nav-item-phone nav-more-wrap",
+        id: moreWrapId_,
+        "data-app-nav-wrap": "more",
+      });
       var btn = el(
         "button",
         {
           class: "nav-item nav-item-phone nav-item-more",
           type: "button",
           "data-section": "more",
-          "aria-haspopup": "true",
-          role: "link",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+          "aria-controls": "more-menu",
+          "data-app-nav-item": "more",
           onclick: toggleMoreMenu_,
         },
-        [el("span", { class: "nav-item-label", text: "更多" })]
+        [
+          el("span", {
+            class: "nav-item-label",
+            text: copyText_("navMore", "更多"),
+          }),
+        ]
       );
-      // Build the overflow menu (hidden by default).
+      // Build the overflow menu (hidden by default). Sibling of
+      // the trigger, not a child — valid HTML and standard ARIA
+      // menu pattern.
       var menu = el("div", {
         id: "more-menu",
         class: "more-menu hidden",
         role: "menu",
+        "aria-label": copyText_("navMore", "更多"),
+        "data-app-more-menu": "",
       });
+      // Track the menu items for keyboard navigation (arrow /
+      // Home / End). Stored on the menu element itself so any
+      // close path can find them.
+      var menuItems = [];
       for (var i = 0; i < overflowSections.length; i++) {
         var s = overflowSections[i];
-        var itemChildren = [document.createTextNode(s.label)];
+        var itemLabel = s.label;
+        var itemChildren = [document.createTextNode(itemLabel)];
         var count = sectionBadgeCounts_[s.key];
         if (count !== undefined && count !== null) {
           var badge = document.createElement("span");
@@ -441,53 +507,202 @@
           badge.setAttribute("data-badge", s.key);
           if (count > 0) {
             badge.textContent = formatBadgeCount_(count);
+            var template = copyText_("badgeLabelTemplate", "{count} 項待處理");
+            badge.setAttribute(
+              "aria-label",
+              String(template).replace("{count}", formatBadgeCount_(count))
+            );
           } else {
             badge.setAttribute("hidden", "");
           }
           itemChildren.push(badge);
         }
-        menu.appendChild(
-          el(
-            "button",
-            {
-              class: "more-menu-item",
-              type: "button",
-              role: "menuitem",
-              "data-section": s.key,
-              onclick: (function (key) {
-                return function () {
-                  hideMoreMenu_();
-                  navigateTo_(key);
-                };
-              })(s.key),
-            },
-            itemChildren
-          )
+        var menuItem = el(
+          "button",
+          {
+            class: "more-menu-item",
+            type: "button",
+            role: "menuitem",
+            tabindex: "-1",
+            "data-section": s.key,
+            onclick: (function (key) {
+              return function () {
+                hideMoreMenu_();
+                navigateTo_(key);
+              };
+            })(s.key),
+          },
+          itemChildren
         );
+        menuItems.push(menuItem);
+        menu.appendChild(menuItem);
       }
-      btn.appendChild(menu);
-      return btn;
+      menu._efccMenuItems = menuItems;
+      wrap.appendChild(btn);
+      wrap.appendChild(menu);
+      return wrap;
     }
-
-    function toggleMoreMenu_() {
-      var menu = $("more-menu");
-      if (!menu) return;
-      if (menu.classList.contains("hidden")) {
-        menu.classList.remove("hidden");
-      } else {
-        hideMoreMenu_();
+    // Issue #71 keyboard-accessible menu widget (More overflow):
+    // - Opens the menu (toggles the .hidden class), updates
+    //   aria-expanded on the trigger, and moves focus to the first
+    //   menuitem.
+    // - Closes via Escape, Tab past the last item, click outside,
+    //   or selection — and restores focus to the trigger.
+    // - Supports Arrow / Home / End navigation between menuitems.
+    // The trigger button (data-section="more") lives next to the
+    // menu in a `.nav-more-wrap` element (see buildMoreButton_).
+    var moreMenuKeyHandler_ = null;
+    var moreMenuDocClickHandler_ = null;
+    function moreTriggerButton_() {
+      var wrap = document.getElementById(moreWrapId_);
+      if (!wrap) return null;
+      for (var i = 0; i < wrap.children.length; i++) {
+        var c = wrap.children[i];
+        if (c.getAttribute && c.getAttribute("data-section") === "more") {
+          return c;
+        }
       }
+      return null;
+    }
+    function moreMenuElement_() {
+      return document.getElementById("more-menu");
+    }
+    function moreMenuItems_(menu) {
+      if (!menu) return [];
+      if (menu._efccMenuItems) return menu._efccMenuItems;
+      var items = [];
+      for (var i = 0; i < menu.children.length; i++) {
+        var c = menu.children[i];
+        if (c.getAttribute && c.getAttribute("role") === "menuitem") {
+          items.push(c);
+        }
+      }
+      menu._efccMenuItems = items;
+      return items;
+    }
+    function setMoreMenuOpen_(open) {
+      var menu = moreMenuElement_();
+      var trigger = moreTriggerButton_();
+      if (!menu || !trigger) return;
+      if (open) {
+        menu.classList.remove("hidden");
+        trigger.setAttribute("aria-expanded", "true");
+        var items = moreMenuItems_(menu);
+        if (items.length > 0) {
+          window.setTimeout(function () {
+            if (items[0] && items[0].focus) items[0].focus();
+          }, 0);
+        }
+        // Document-level keyboard handler (arrow / Home / End /
+        // Escape) while the menu is open. Bound to document so it
+        // survives the menu's children being re-created by an
+        // updateBadge_ pass.
+        moreMenuKeyHandler_ = function (e) {
+          var m = moreMenuElement_();
+          if (!m || m.classList.contains("hidden")) return;
+          var its = moreMenuItems_(m);
+          if (its.length === 0) return;
+          var active = document.activeElement;
+          var idx = -1;
+          for (var i = 0; i < its.length; i++) {
+            if (its[i] === active) {
+              idx = i;
+              break;
+            }
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setMoreMenuOpen_(false);
+            if (moreTriggerButton_() && moreTriggerButton_().focus) {
+              moreTriggerButton_().focus();
+            }
+            return;
+          }
+          if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+            e.preventDefault();
+            var next = its[idx < 0 ? 0 : (idx + 1) % its.length];
+            if (next && next.focus) next.focus();
+            return;
+          }
+          if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            var prev = its[idx <= 0 ? its.length - 1 : idx - 1];
+            if (prev && prev.focus) prev.focus();
+            return;
+          }
+          if (e.key === "Home") {
+            e.preventDefault();
+            if (its[0] && its[0].focus) its[0].focus();
+            return;
+          }
+          if (e.key === "End") {
+            e.preventDefault();
+            var last = its[its.length - 1];
+            if (last && last.focus) last.focus();
+            return;
+          }
+          if (e.key === "Tab") {
+            // Tab past the last item closes the menu and lets
+            // focus continue to the next focusable element.
+            if (idx === its.length - 1) {
+              setMoreMenuOpen_(false);
+            }
+          }
+        };
+        document.addEventListener("keydown", moreMenuKeyHandler_);
+        // Click-outside-to-close: if the user clicks anywhere
+        // outside the wrapper while the menu is open, close it.
+        moreMenuDocClickHandler_ = function (e) {
+          var w = document.getElementById(moreWrapId_);
+          if (!w) return;
+          var t = e.target;
+          // walk up — is target inside the wrapper?
+          var inside = false;
+          while (t) {
+            if (t === w) {
+              inside = true;
+              break;
+            }
+            t = t.parentNode;
+          }
+          if (!inside) setMoreMenuOpen_(false);
+        };
+        // Use a microtask-bound setTimeout so the click that
+        // opened the menu doesn't immediately close it.
+        window.setTimeout(function () {
+          document.addEventListener("click", moreMenuDocClickHandler_);
+        }, 0);
+      } else {
+        menu.classList.add("hidden");
+        trigger.setAttribute("aria-expanded", "false");
+        if (moreMenuKeyHandler_) {
+          document.removeEventListener("keydown", moreMenuKeyHandler_);
+          moreMenuKeyHandler_ = null;
+        }
+        if (moreMenuDocClickHandler_) {
+          document.removeEventListener("click", moreMenuDocClickHandler_);
+          moreMenuDocClickHandler_ = null;
+        }
+      }
+    }
+    function toggleMoreMenu_() {
+      var menu = moreMenuElement_();
+      if (!menu) return;
+      setMoreMenuOpen_(menu.classList.contains("hidden"));
     }
 
     function hideMoreMenu_() {
-      var menu = $("more-menu");
-      if (menu) menu.classList.add("hidden");
+      setMoreMenuOpen_(false);
     }
 
+    // Issue #71: when a section becomes active, the trigger inside
+    // the More wrapper should also be highlighted so a phone user
+    // whose current section is in the overflow menu (Care /
+    // Permissions) still sees their current location indicator.
+    // Also adds aria-current on the More trigger when one of its
+    // overflow children is the active section, so AT hears the
+    // relationship ("More menu, current page Care").
     function updateActiveNav_() {
-      // Iterate children of both nav containers rather than using
-      // document.querySelectorAll which may not be available in test
-      // harness minimal DOM mocks.
       var containers = [$("app-nav-phone"), $("app-nav-desktop")];
       for (var ci = 0; ci < containers.length; ci++) {
         var container = containers[ci];
@@ -506,7 +721,56 @@
           }
         }
       }
+      // Highlight the More trigger when the active section is
+      // inside its overflow menu.
+      var moreMenu = moreMenuElement_();
+      var moreTrigger = moreTriggerButton_();
+      if (moreTrigger) {
+        var overflowHasCurrent = false;
+        if (moreMenu) {
+          var its = moreMenuItems_(moreMenu);
+          for (var j = 0; j < its.length; j++) {
+            if (its[j].getAttribute("data-section") === currentSection_) {
+              overflowHasCurrent = true;
+              break;
+            }
+          }
+        }
+        if (overflowHasCurrent) {
+          moreTrigger.setAttribute("aria-current", "page");
+          moreTrigger.classList.add("nav-item-active");
+        } else {
+          moreTrigger.setAttribute("aria-current", "false");
+          moreTrigger.classList.remove("nav-item-active");
+        }
+      }
     }
+
+    function focusSectionHeading_(sectionKey) {
+      // Issue #71: after navigating to a new Section, focus the
+      // Section's heading so a screen-reader / keyboard user
+      // immediately hears the new location. The heading is rendered
+      // with tabindex="-1" (data-app-heading) so .focus() works on
+      // a non-link element. Falls back to the content region when
+      // the heading is not in the DOM yet (e.g. async loading card
+      // that has no h2 until content arrives — a defer ensures the
+      // focus is set after the next paint via the .catch below).
+      var node = document.querySelector(
+        '#app-content [data-app-heading="' + sectionKey + '"]'
+      );
+      if (!node) {
+        node = document.querySelector("#app-content [data-app-heading]");
+      }
+      if (!node) {
+        node = $("app-content");
+      }
+      if (node && node.focus) {
+        try {
+          node.focus();
+        } catch (e) {}
+      }
+    }
+
     // -----------------------------------------------------------------
     // Section navigation (issue #67 / #68)
     // -----------------------------------------------------------------
@@ -517,7 +781,6 @@
         (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
       ) {
         window.EfccFormGuard.confirmDiscard({
-          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {
             activeFormGuard_ = null;
             navigateToImpl_(sectionKey);
@@ -535,6 +798,11 @@
         if (sectionKey === currentSection_) {
           // Same root as the open task's parent — close task, show root.
           renderSection_(sectionKey);
+          // Focus the now-restored Section heading so a keyboard
+          // / screen-reader user hears the location change.
+          window.setTimeout(function () {
+            focusSectionHeading_(sectionKey);
+          }, 0);
           return;
         }
         // Different root — close task and fall through to navigate.
@@ -551,19 +819,50 @@
       }
       if (!authorized) {
         renderForbidden_(sectionKey);
+        window.setTimeout(function () {
+          // Move focus to the forbidden card's primary action (the
+          // "返回" button) so the user has a clear next step.
+          var btn = document.querySelector(
+            '.view-forbidden [data-action="forbidden-back"]'
+          );
+          if (btn && btn.focus) {
+            try {
+              btn.focus();
+            } catch (e) {}
+          }
+        }, 0);
         return;
       }
       currentSection_ = sectionKey;
       updateActiveNav_();
       hideMoreMenu_();
       renderSection_(sectionKey);
+      // Issue #71: move focus to the new Section's heading so a
+      // keyboard / AT user hears the new location. Deferred so the
+      // focus lands AFTER the new content has been painted
+      // (especially for async Sections that call renderSection_ →
+      // renderSectionLoadingCard_ synchronously and then a
+      // separate success callback swaps the content for the
+      // real heading).
+      window.setTimeout(function () {
+        focusSectionHeading_(sectionKey);
+      }, 0);
     }
 
     function buildSectionCard_(sectionKey, title, description) {
       var isProfile = sectionKey === SECTION_KEYS.PROFILE;
       var container = el("section", { class: "page view-" + sectionKey });
       var card = el("div", { class: "login-card" });
-      card.appendChild(el("h2", { text: title }));
+      // The Section heading carries tabindex=-1 and a stable
+      // data-app-heading attribute so navigateToImpl_ can move
+      // focus to it after a navigation transition.
+      card.appendChild(
+        el("h2", {
+          tabindex: "-1",
+          "data-app-heading": sectionKey,
+          text: title,
+        })
+      );
       // Refresh button for non-profile data-bearing Sections.
       if (!isProfile) {
         card.appendChild(
@@ -574,14 +873,14 @@
               type: "button",
               "data-action": "refresh-section",
               "data-section": sectionKey,
-              "aria-label": "重新整理",
+              "aria-label": copyText_("refresh", "重新整理"),
               onclick: (function (k) {
                 return function () {
                   refreshSection_(k);
                 };
               })(sectionKey),
             },
-            "重新整理"
+            copyText_("refresh", "重新整理")
           )
         );
       }
@@ -600,13 +899,13 @@
                 openTask_({
                   key: "programs-detail-demo",
                   parentSection: SECTION_KEYS.PROGRAMS,
-                  parentLabel: "課程",
-                  title: "詳情",
+                  parentLabel: copyText_("navLabel.programs", "課程"),
+                  title: copyText_("taskDetailTitle", "詳情"),
                   kind: "detail",
                 });
               },
             },
-            "查看範例課程詳情"
+            copyText_("programsDemoDetail", "查看範例課程詳情")
           )
         );
       }
@@ -614,7 +913,9 @@
         card.appendChild(
           el("p", {
             class: "muted",
-            text: "範例計數器：" + eventsDemoCounter_,
+            text:
+              copyText_("eventsDemoCounterPrefix", "範例計數器：") +
+              eventsDemoCounter_,
           })
         );
         card.appendChild(
@@ -629,13 +930,13 @@
                 openTask_({
                   key: "events-edit-demo",
                   parentSection: SECTION_KEYS.EVENTS,
-                  parentLabel: "聚會",
-                  title: "編輯",
+                  parentLabel: copyText_("navLabel.events", "聚會"),
+                  title: copyText_("taskEditTitle", "編輯"),
                   kind: "edit",
                 });
               },
             },
-            "編輯範例聚會"
+            copyText_("eventsDemoEdit", "編輯範例聚會")
           )
         );
       }
@@ -650,34 +951,59 @@
     // these in this branch (see loadProgramsSection_ below); the
     // functions are written generically so a future Section RPC can
     // reuse them without duplicating copy.
-    // -----------------------------------------------------------------
+    // Per-code fallback literals — used when window.EfccCopy is
+    // absent (legacy test harnesses) or lacks the specific code.
+    // Issue #71's copyText_("errorCopy." + code, ...) lookup can
+    // override any of these at runtime via copy.js.html without
+    // touching this file.
+    var ERROR_COPY_FALLBACK_ = {
+      AUTH_REQUIRED: { heading: "登入工作階段已失效", detail: "請重新登入。" },
+      FORBIDDEN: { heading: "無法存取", detail: "你沒有權限使用此功能。" },
+      INTERNAL_ERROR: {
+        heading: "伺服器錯誤",
+        detail: "系統發生錯誤，請稍後再試。",
+      },
+      TRANSPORT: { heading: "網絡連線失敗", detail: "請檢查網絡連線後再試。" },
+      RENDER_ERROR: {
+        heading: "顯示錯誤",
+        detail: "頁面顯示時發生錯誤，請重新整理或返回其他頁面。",
+      },
+      DEFAULT: {
+        heading: "載入失敗",
+        detail: "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。",
+      },
+    };
     function errorCopyFor_(code) {
-      switch (code) {
-        case "AUTH_REQUIRED":
-          return { heading: "登入工作階段已失效", detail: "請重新登入。" };
-        case "FORBIDDEN":
-          return { heading: "無法存取", detail: "你沒有權限使用此功能。" };
-        case "INTERNAL_ERROR":
-          return {
-            heading: "伺服器錯誤",
-            detail: "系統發生錯誤，請稍後再試。",
-          };
-        case "TRANSPORT":
-          return {
-            heading: "網絡連線失敗",
-            detail: "請檢查網絡連線後再試。",
-          };
-        case "RENDER_ERROR":
-          return {
-            heading: "顯示錯誤",
-            detail: "頁面顯示時發生錯誤，請重新整理或返回其他頁面。",
-          };
-        default:
-          return {
-            heading: "載入失敗",
-            detail: "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。",
-          };
+      var fallback = ERROR_COPY_FALLBACK_[code] || ERROR_COPY_FALLBACK_.DEFAULT;
+      var entry = copyText_("errorCopy." + code, null);
+      if (entry && typeof entry === "object") {
+        return {
+          heading: String(entry.heading || fallback.heading),
+          detail: String(entry.detail || fallback.detail),
+        };
       }
+      return { heading: fallback.heading, detail: fallback.detail };
+    }
+
+    // Issue #71: every section-level card renderer wraps its
+    // content in a role="status" aria-live="polite" region so
+    // screen-reader users hear loading, success, empty, error,
+    // forbidden, and session-expired feedback once per transition
+    // rather than only seeing the visual swap. `polite` is used
+    // (not `assertive`) so announcements do not interrupt the
+    // user's own speech or other currently-pending AT messages.
+    function sectionStatusRegion_(sectionKey, viewClass, children) {
+      return el(
+        "section",
+        {
+          class: "page " + viewClass,
+          "data-section": sectionKey,
+          role: "status",
+          "aria-live": "polite",
+          "aria-atomic": "true",
+        },
+        children
+      );
     }
 
     function renderSectionLoadingCard_(sectionKey) {
@@ -685,15 +1011,14 @@
       if (!content) return;
       clearChildren(content);
       content.appendChild(
-        el(
-          "section",
-          { class: "page view-loading", "data-section": sectionKey },
-          [
-            el("div", { class: "login-card text-center" }, [
-              el("p", { class: "muted", text: "載入中..." }),
-            ]),
-          ]
-        )
+        sectionStatusRegion_(sectionKey, "view-loading", [
+          el("div", { class: "login-card text-center" }, [
+            el("p", {
+              class: "muted",
+              text: copyText_("loading", "載入中..."),
+            }),
+          ]),
+        ])
       );
     }
 
@@ -702,33 +1027,44 @@
       if (!content) return;
       clearChildren(content);
       var copy = errorCopyFor_(code);
-      content.appendChild(
-        el(
-          "section",
-          { class: "page view-error", "data-section": sectionKey },
-          [
-            el("div", { class: "login-card text-center" }, [
-              el("h2", { text: copy.heading }),
-              el("p", { class: "muted", text: copy.detail }),
-              el(
-                "button",
-                {
-                  class: "btn btn-primary btn-full",
-                  type: "button",
-                  "data-action": "section-retry",
-                  "data-section": sectionKey,
-                  onclick: (function (k) {
-                    return function () {
-                      handleSectionRetry_(k);
-                    };
-                  })(sectionKey),
-                },
-                "重試"
-              ),
-            ]),
-          ]
-        )
-      );
+      var root = sectionStatusRegion_(sectionKey, "view-error", [
+        el("div", { class: "login-card text-center" }, [
+          el("h2", { text: copy.heading }),
+          el("p", { class: "muted", text: copy.detail }),
+          el(
+            "button",
+            {
+              class: "btn btn-primary btn-full",
+              type: "button",
+              "data-action": "section-retry",
+              "data-section": sectionKey,
+              // The retry button is the natural focus target on
+              // the error card — when the user hits a Section-
+              // level failure they can press Enter immediately to
+              // retry. tabindex=0 (default) keeps it in the
+              // document tab order so the existing rule applies.
+              onclick: (function (k) {
+                return function () {
+                  handleSectionRetry_(k);
+                };
+              })(sectionKey),
+            },
+            copyText_("retry", "重試")
+          ),
+        ]),
+      ]);
+      content.appendChild(root);
+      // Move focus to the retry button so a keyboard / screen-
+      // reader user can immediately re-attempt the load without
+      // hunting for the affordance.
+      var btn = document.querySelector('[data-action="section-retry"]');
+      if (btn && btn.focus) {
+        window.setTimeout(function () {
+          try {
+            btn.focus();
+          } catch (e) {}
+        }, 0);
+      }
     }
 
     function renderProgramsEmpty_() {
@@ -736,33 +1072,29 @@
       if (!content) return;
       clearChildren(content);
       content.appendChild(
-        el(
-          "section",
-          {
-            class: "page view-empty",
-            "data-section": SECTION_KEYS.PROGRAMS,
-          },
-          [
-            el("div", { class: "login-card text-center" }, [
-              el("h2", { text: "課程" }),
-              el("p", { class: "muted", text: "目前沒有課程資料。" }),
-              el(
-                "button",
-                {
-                  class: "btn btn-refresh",
-                  type: "button",
-                  "data-action": "refresh-section",
-                  "data-section": SECTION_KEYS.PROGRAMS,
-                  "aria-label": "重新整理",
-                  onclick: function () {
-                    refreshSection_(SECTION_KEYS.PROGRAMS);
-                  },
+        sectionStatusRegion_(SECTION_KEYS.PROGRAMS, "view-empty", [
+          el("div", { class: "login-card text-center" }, [
+            el("h2", { text: copyText_("programsHeading", "課程") }),
+            el("p", {
+              class: "muted",
+              text: copyText_("programsEmpty", "目前沒有課程資料。"),
+            }),
+            el(
+              "button",
+              {
+                class: "btn btn-refresh",
+                type: "button",
+                "data-action": "refresh-section",
+                "data-section": SECTION_KEYS.PROGRAMS,
+                "aria-label": copyText_("refresh", "重新整理"),
+                onclick: function () {
+                  refreshSection_(SECTION_KEYS.PROGRAMS);
                 },
-                "重新整理"
-              ),
-            ]),
-          ]
-        )
+              },
+              copyText_("refresh", "重新整理")
+            ),
+          ]),
+        ])
       );
     }
 
@@ -772,7 +1104,13 @@
       clearChildren(content);
       var container = el("section", { class: "page view-programs" });
       var card = el("div", { class: "login-card" });
-      card.appendChild(el("h2", { text: "課程" }));
+      card.appendChild(
+        el("h2", {
+          tabindex: "-1",
+          "data-app-heading": SECTION_KEYS.PROGRAMS,
+          text: copyText_("programsHeading", "課程"),
+        })
+      );
       card.appendChild(
         el(
           "button",
@@ -781,12 +1119,12 @@
             type: "button",
             "data-action": "refresh-section",
             "data-section": SECTION_KEYS.PROGRAMS,
-            "aria-label": "重新整理",
+            "aria-label": copyText_("refresh", "重新整理"),
             onclick: function () {
               refreshSection_(SECTION_KEYS.PROGRAMS);
             },
           },
-          "重新整理"
+          copyText_("refresh", "重新整理")
         )
       );
       var list = el("ul", { class: "programs-list" });
@@ -844,13 +1182,13 @@
               openTask_({
                 key: "programs-detail-demo",
                 parentSection: SECTION_KEYS.PROGRAMS,
-                parentLabel: "課程",
-                title: "詳情",
+                parentLabel: copyText_("navLabel.programs", "課程"),
+                title: copyText_("taskDetailTitle", "詳情"),
                 kind: "detail",
               });
             },
           },
-          "查看範例課程詳情"
+          copyText_("programsDemoDetail", "查看範例課程詳情")
         )
       );
       container.appendChild(card);
@@ -957,7 +1295,10 @@
       if (!envelope || typeof envelope !== "object") {
         handleProgramsFailure_({
           kind: "MALFORMED",
-          message: "伺服器回應格式不正確。",
+          message: copyText_(
+            "malformedResponseMessage",
+            "伺服器回應格式不正確。"
+          ),
         });
         return;
       }
@@ -970,7 +1311,10 @@
           // path as a structurally invalid envelope.
           handleProgramsFailure_({
             kind: "MALFORMED",
-            message: "伺服器回應格式不正確。",
+            message: copyText_(
+              "malformedResponseMessage",
+              "伺服器回應格式不正確。"
+            ),
           });
           return;
         }
@@ -988,7 +1332,10 @@
           if (!isValidProgramItem_(data[i])) {
             handleProgramsFailure_({
               kind: "MALFORMED",
-              message: "伺服器回應格式不正確。",
+              message: copyText_(
+                "malformedResponseMessage",
+                "伺服器回應格式不正確。"
+              ),
             });
             return;
           }
@@ -1007,7 +1354,11 @@
         setAppState(STATE.SIGNED_OUT);
         renderLogin_();
         setStatus("");
-        showLoginError_(message || "登入工作階段已失效，請重新登入。");
+        showLoginError_(
+          message ||
+            copyText_("errorCopy.AUTH_REQUIRED.heading", "登入工作階段已失效") +
+              "，請重新登入。"
+        );
         return;
       }
       if (code === "FORBIDDEN") {
@@ -1118,8 +1469,11 @@
             content.appendChild(
               el("section", { class: "page view-placeholder" }, [
                 el("div", { class: "login-card text-center" }, [
-                  el("h2", { text: "個人資料" }),
-                  el("p", { class: "muted", text: "載入中..." }),
+                  el("h2", { text: copyText_("profileHeading", "個人資料") }),
+                  el("p", {
+                    class: "muted",
+                    text: copyText_("loading", "載入中..."),
+                  }),
                 ]),
               ])
             );
@@ -1150,19 +1504,27 @@
         }
         case SECTION_KEYS.EVENTS:
           content.appendChild(
-            buildSectionCard_(sectionKey, "聚會", "聚會管理將於後續版本提供。")
+            buildSectionCard_(
+              sectionKey,
+              copyText_("navLabel.events", "聚會"),
+              "聚會管理將於後續版本提供。"
+            )
           );
           break;
         case SECTION_KEYS.SCANNER:
           content.appendChild(
-            buildSectionCard_(sectionKey, "掃描", "出席掃描將於後續版本提供。")
+            buildSectionCard_(
+              sectionKey,
+              copyText_("navLabel.scanner", "掃描"),
+              "出席掃描將於後續版本提供。"
+            )
           );
           break;
         case SECTION_KEYS.CARE:
           content.appendChild(
             buildSectionCard_(
               sectionKey,
-              "關懷",
+              copyText_("navLabel.care", "關懷"),
               "關懷儀表板將於後續版本提供。"
             )
           );
@@ -1171,7 +1533,7 @@
           content.appendChild(
             buildSectionCard_(
               sectionKey,
-              "權限管理",
+              copyText_("navLabel.permissions", "權限管理"),
               "權限管理將於後續版本提供。"
             )
           );
@@ -1193,24 +1555,30 @@
       content.appendChild(
         el("section", { class: "page view-profile" }, [
           el("div", { class: "login-card" }, [
-            el("h2", { text: "個人資料" }),
+            el("h2", {
+              tabindex: "-1",
+              "data-app-heading": SECTION_KEYS.PROFILE,
+              text: copyText_("profileHeading", "個人資料"),
+            }),
             el("p", {
               class: "muted",
-              text: "已登入：" + (sessionData.name || ""),
+              text:
+                copyText_("profileSignedInAs", "已登入：") +
+                (sessionData.name || ""),
             }),
             el("dl", { class: "profile-fields" }, [
-              el("dt", { text: "使用者名稱" }),
+              el("dt", { text: copyText_("profileUsername", "使用者名稱") }),
               el("dd", { text: sessionData.username || "" }),
-              el("dt", { text: "角色" }),
+              el("dt", { text: copyText_("profileRole", "角色") }),
               el("dd", { text: sessionData.role || "" }),
-              el("dt", { text: "QR 碼" }),
+              el("dt", { text: copyText_("profileQrCode", "QR 碼") }),
               el("dd", {}, [
                 (function () {
                   var img = document.createElement("img");
                   img.src =
                     "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" +
                     encodeURIComponent(sessionData.qrCodeString || "");
-                  img.alt = "QR 碼";
+                  img.alt = copyText_("profileQrCode", "QR 碼");
                   img.width = 200;
                   img.height = 200;
                   return img;
@@ -1226,7 +1594,7 @@
                 "data-action": "logout",
                 onclick: handleLogoutClick_,
               },
-              "登出"
+              copyText_("logout", "登出")
             ),
           ]),
         ])
@@ -1247,23 +1615,27 @@
       if (!content) return;
       clearChildren(content);
       content.appendChild(
-        el("section", { class: "page view-forbidden" }, [
+        sectionStatusRegion_(sectionKey, "view-forbidden", [
           el("div", { class: "login-card text-center" }, [
-            el("h2", { text: "無法存取" }),
+            el("h2", { text: copyText_("forbiddenHeading", "無法存取") }),
             el("p", {
               class: "muted",
-              text: "你沒有權限使用此功能（" + sectionKey + "）。",
+              text: copyText_(
+                "forbiddenDetail",
+                "你沒有權限使用此功能，已為你切換至可用頁面。"
+              ),
             }),
             el(
               "button",
               {
                 class: "btn btn-primary btn-full",
                 type: "button",
+                "data-action": "forbidden-back",
                 onclick: function () {
                   navigateToNearestPermitted_();
                 },
               },
-              "返回"
+              copyText_("back", "返回")
             ),
           ]),
         ])
@@ -1322,8 +1694,17 @@
             if (count > 0) {
               badge.textContent = formatBadgeCount_(count);
               badge.removeAttribute("hidden");
+              var template = copyText_(
+                "badgeLabelTemplate",
+                "{count} 項待處理"
+              );
+              badge.setAttribute(
+                "aria-label",
+                String(template).replace("{count}", formatBadgeCount_(count))
+              );
             } else {
               badge.setAttribute("hidden", "");
+              badge.removeAttribute("aria-label");
             }
           }
         }
@@ -1366,6 +1747,13 @@
     // -----------------------------------------------------------------
     // Nested task navigation (issue #68)
     // -----------------------------------------------------------------
+    // Track the Section key that opened the current task so close
+    // paths can restore focus to the nav item that triggered entry
+    // (issue #71 AC #7 — focus moves intentionally after nested
+    // task entry/exit). The parent Section key already lives on
+    // the descriptor (`descriptor.parentSection`); we only need
+    // to remember which top-level nav item the user clicked.
+    var taskEntryFocusKey_ = null;
     function openTask_(descriptor) {
       if (!descriptor || !descriptor.key) return;
       // Create form guard for edit tasks (issue #70).
@@ -1387,8 +1775,37 @@
         }
         sectionViewCache_[currentSection_].scrollTop = content.scrollTop || 0;
       }
+      // Remember the currently focused element so the close path
+      // can restore focus to it. The button that opened this task
+      // is typically the most recent focus owner, so snapshot it
+      // BEFORE we render the task and the activeElement moves
+      // elsewhere.
+      try {
+        taskEntryFocusKey_ =
+          document.activeElement && document.activeElement.getAttribute
+            ? document.activeElement.getAttribute("data-section") ||
+              descriptor.parentSection ||
+              null
+            : descriptor.parentSection || null;
+      } catch (e) {
+        taskEntryFocusKey_ = descriptor.parentSection || null;
+      }
       activeTask_ = descriptor;
       renderTask_(descriptor);
+      // Issue #71: focus moves intentionally to the task's Back
+      // button on entry so a keyboard user can immediately
+      // back out, and the task's title is announced (h2 with
+      // tabindex=-1) for screen-reader users.
+      window.setTimeout(function () {
+        var back = document.querySelector(
+          '.view-task [data-action="task-back"]'
+        );
+        if (back && back.focus) {
+          try {
+            back.focus();
+          } catch (e) {}
+        }
+      }, 0);
     }
 
     function closeTask_() {
@@ -1398,7 +1815,6 @@
         (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
       ) {
         window.EfccFormGuard.confirmDiscard({
-          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {
             activeFormGuard_ = null;
             closeTaskImpl_();
@@ -1412,7 +1828,12 @@
     function closeTaskImpl_() {
       if (!activeTask_) return;
       var parentSection = activeTask_.parentSection;
+      // Snapshot the section key to restore focus to before
+      // clearing activeTask_ (focus restoration runs after
+      // render).
+      var restoreKey = taskEntryFocusKey_ || parentSection;
       activeTask_ = null;
+      taskEntryFocusKey_ = null;
       // Save scroll position before returning.
       var content = $("app-content");
       if (content) {
@@ -1427,6 +1848,31 @@
       renderSection_(parentSection);
       updateActiveNav_();
       hideMoreMenu_();
+      // Issue #71: restore focus to the nav item that opened the
+      // task (or the parent Section's first nav item) so a
+      // keyboard user lands back where they started.
+      window.setTimeout(function () {
+        try {
+          var target = null;
+          if (restoreKey) {
+            // data-section on the nav item, or data-app-nav-item
+            // = "more" wrapper if the original trigger was in
+            // the overflow menu.
+            var sel = '[data-app-nav-item="' + restoreKey + '"]';
+            target = document.querySelector(sel);
+          }
+          if (!target) {
+            target = document.querySelector(
+              '[data-app-heading="' + parentSection + '"]'
+            );
+          }
+          if (target && target.focus) {
+            try {
+              target.focus();
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }, 0);
     }
 
     function renderTask_(descriptor) {
@@ -1436,6 +1882,11 @@
       var section = el("section", {
         class: "page view-task",
         "data-task-key": descriptor.key,
+        // The task view is also a status region so screen-reader
+        // users hear the task-title announcement on entry.
+        role: "status",
+        "aria-live": "polite",
+        "aria-atomic": "true",
       });
       // Task header with Back button and breadcrumb.
       var header = el("div", { class: "task-header" });
@@ -1446,10 +1897,15 @@
             class: "btn-back",
             type: "button",
             "data-action": "task-back",
-            "aria-label": "返回",
+            "aria-label": copyText_("back", "返回"),
             onclick: closeTask_,
           },
-          [el("span", { class: "task-back-label", text: "返回" })]
+          [
+            el("span", {
+              class: "task-back-label",
+              text: copyText_("back", "返回"),
+            }),
+          ]
         )
       );
       var breadcrumb = el(
@@ -1474,7 +1930,13 @@
       );
       header.appendChild(breadcrumb);
       header.appendChild(
-        el("h2", { class: "task-title", text: descriptor.title })
+        el("h2", {
+          class: "task-title",
+          tabindex: "-1",
+          "data-app-heading":
+            (descriptor.parentSection || "task") + ":" + descriptor.key,
+          text: descriptor.title,
+        })
       );
       section.appendChild(header);
       // Task body.
@@ -1522,14 +1984,13 @@
               "data-action": "demo-form-submit",
               onclick: handleDemoFormSubmit_,
             },
-            "儲存"
+            copyText_("save", "儲存")
           )
         );
       }
       section.appendChild(body);
       content.appendChild(section);
     }
-
     function handleFieldInput_() {
       if (activeFormGuard_) {
         activeFormGuard_.markDirty();
@@ -1572,7 +2033,10 @@
           if (!envelope || typeof envelope !== "object") {
             if (activeFormGuard_) activeFormGuard_.failed();
             if (errMsg) {
-              errMsg.textContent = "網絡連線不穩定，請稍後再試。";
+              errMsg.textContent = copyText_(
+                "transportFailureMessage",
+                "網絡連線不穩定，請稍後再試。"
+              );
               errMsg.classList.remove("hidden");
             }
             return;
@@ -1592,7 +2056,7 @@
           activeFormGuard_.failed();
           var serverMsg =
             (envelope.error && envelope.error.message) ||
-            "提交失敗，請稍後再試。";
+            copyText_("submitFailureMessage", "提交失敗，請稍後再試。");
           if (errMsg) {
             errMsg.textContent = serverMsg;
             errMsg.classList.remove("hidden");
@@ -1604,7 +2068,10 @@
           if (submitBtn) submitBtn.removeAttribute("disabled");
           if (activeFormGuard_) activeFormGuard_.failed();
           if (errMsg) {
-            errMsg.textContent = "網絡連線不穩定，請稍後再試。";
+            errMsg.textContent = copyText_(
+              "transportFailureMessage",
+              "網絡連線不穩定，請稍後再試。"
+            );
             errMsg.classList.remove("hidden");
           }
         }
@@ -1630,7 +2097,10 @@
       content.appendChild(
         el("section", { class: "page view-loading" }, [
           el("div", { class: "login-card text-center" }, [
-            el("p", { class: "muted", text: "載入中..." }),
+            el("p", {
+              class: "muted",
+              text: copyText_("loading", "載入中..."),
+            }),
           ]),
         ])
       );
@@ -1646,8 +2116,14 @@
       content.appendChild(
         el("section", { id: "view-login", class: "page view-login" }, [
           el("div", { class: "login-card" }, [
-            el("h2", { class: "text-center", text: "登入" }),
-            el("p", { class: "text-center muted", text: "歡迎使用顯恩堂系統" }),
+            el("h2", {
+              class: "text-center",
+              text: copyText_("loginHeading", "登入"),
+            }),
+            el("p", {
+              class: "text-center muted",
+              text: copyText_("loginWelcome", "歡迎使用顯恩堂系統"),
+            }),
             el(
               "form",
               {
@@ -1661,7 +2137,7 @@
                   el("label", {
                     class: "label",
                     for: "login-username",
-                    text: "使用者名稱",
+                    text: copyText_("loginUsernameLabel", "使用者名稱"),
                   }),
                   el("input", {
                     id: "login-username",
@@ -1676,7 +2152,7 @@
                   el("label", {
                     class: "label",
                     for: "login-pin",
-                    text: "PIN 碼",
+                    text: copyText_("loginPinLabel", "PIN 碼"),
                   }),
                   el("input", {
                     id: "login-pin",
@@ -1694,7 +2170,7 @@
                   id: "login-submit",
                   class: "btn btn-primary btn-full",
                   type: "submit",
-                  text: "登入",
+                  text: copyText_("loginHeading", "登入"),
                 }),
                 el("div", {
                   id: "login-msg",
@@ -1713,7 +2189,8 @@
     function showLoginError_(message) {
       var msg = $("login-msg");
       if (!msg) return;
-      msg.textContent = message || "登入失敗，請再試一次。";
+      msg.textContent =
+        message || copyText_("loginFailureMessage", "登入失敗，請再試一次。");
       msg.classList.remove("hidden");
     }
     function clearLoginError_() {
@@ -1731,14 +2208,20 @@
       var content = $("app-content");
       if (!content) return;
       clearChildren(content);
-      var heading = "載入失敗";
-      var detail = "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。";
+      var heading = copyText_("errorCopy.DEFAULT.heading", "載入失敗");
+      var detail = copyText_(
+        "errorCopy.DEFAULT.detail",
+        "網絡連線不穩定或伺服器暫時無法回應，請稍後再試。"
+      );
       if (kind === "AUTH_REQUIRED") {
-        heading = "登入工作階段已失效";
-        detail = "請重新登入。";
+        heading = copyText_(
+          "errorCopy.AUTH_REQUIRED.heading",
+          "登入工作階段已失效"
+        );
+        detail = copyText_("errorCopy.AUTH_REQUIRED.detail", "請重新登入。");
       } else if (kind === "BOOTSTRAP_FAILED") {
-        heading = "無法載入個人資料";
-        detail = "請稍後再試。";
+        heading = copyText_("bootstrapFailedHeading", "無法載入個人資料");
+        detail = copyText_("bootstrapFailedDetail", "請稍後再試。");
       }
       content.appendChild(
         el("section", { class: "page view-error" }, [
@@ -1754,7 +2237,7 @@
                 "data-action": "retry",
                 onclick: handleRetryClick_,
               },
-              "重試"
+              copyText_("retry", "重試")
             ),
           ]),
         ])
@@ -1784,13 +2267,15 @@
       var username = u.value;
       var pin = p.value;
       if (!username || !pin) {
-        showLoginError_("請輸入使用者名稱和 PIN 碼。");
+        showLoginError_(
+          copyText_("loginValidationMessage", "請輸入使用者名稱和 PIN 碼。")
+        );
         return;
       }
       loginPending_ = true;
       var submit = $("login-submit");
       if (submit) submit.setAttribute("disabled", "disabled");
-      setStatus("登入中...");
+      setStatus(copyText_("loggingIn", "登入中..."));
       callServer_(
         "login",
         function (onSuccess, onFailure) {
@@ -1819,7 +2304,6 @@
         (activeFormGuard_.isDirty() || activeFormGuard_.isPending())
       ) {
         window.EfccFormGuard.confirmDiscard({
-          message: "系統將捨棄尚未儲存的變更，確定要離開嗎？",
           onConfirm: function () {
             activeFormGuard_ = null;
             handleLogoutClickImpl_();
@@ -1868,7 +2352,13 @@
     function handleRpcEnvelope_(envelope, tag) {
       if (!envelope || typeof envelope !== "object") {
         handleRpcFailure_(
-          { kind: "MALFORMED", message: "伺服器回應格式不正確。" },
+          {
+            kind: "MALFORMED",
+            message: copyText_(
+              "malformedResponseMessage",
+              "伺服器回應格式不正確。"
+            ),
+          },
           tag
         );
         return;
@@ -1884,7 +2374,8 @@
       //   { success: false, requestId, error: { code, message } }.
       var code = (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
       var message =
-        (envelope.error && envelope.error.message) || "操作失敗，請稍後再試。";
+        (envelope.error && envelope.error.message) ||
+        copyText_("genericFailureMessage", "操作失敗，請稍後再試。");
       if (code === "AUTH_REQUIRED") {
         clearAuthenticatedClientState_();
         setAppState(STATE.SIGNED_OUT);
@@ -1938,7 +2429,13 @@
     function applyBootstrap_(data) {
       if (!data || !data.session || !data.profile) {
         handleRpcFailure_(
-          { kind: "MALFORMED", message: "伺服器回應格式不正確。" },
+          {
+            kind: "MALFORMED",
+            message: copyText_(
+              "malformedResponseMessage",
+              "伺服器回應格式不正確。"
+            ),
+          },
           "bootstrap"
         );
         return;
@@ -2092,6 +2589,13 @@
       getDemoSubmitRequestKey: function () {
         return activeFormGuard_ ? activeFormGuard_.getRequestKey() : null;
       },
+      copyText_: copyText_,
+      errorCopyFor_: errorCopyFor_,
+      isMoreMenuOpen_: function () {
+        var menu = moreMenuElement_();
+        return !!(menu && !menu.classList.contains("hidden"));
+      },
+      closeMoreMenu_: hideMoreMenu_,
     };
   })();
 </script>

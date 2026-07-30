@@ -152,11 +152,16 @@
      * Returns the overlay element (for potential cleanup by test harness).
      */
     function confirmDiscard(opts) {
+      var copy = window.EfccCopy || {};
       var message =
-        (opts && opts.message) || "系統將捨棄尚未儲存的變更，確定要離開嗎？";
+        (opts && opts.message) ||
+        copy.discardMessage ||
+        "系統將捨棄尚未儲存的變更，確定要離開嗎？";
+      var headingText = copy.discardHeading || "確認離開";
+      var confirmText = copy.discardConfirm || "捨棄變更";
+      var cancelText = copy.discardCancel || "繼續編輯";
       var onConfirm = (opts && opts.onConfirm) || function () {};
       var restoreFocusTo = (opts && opts.restoreFocusTo) || null;
-
       // Overlay
       var overlay = document.createElement("div");
       overlay.className = "discard-overlay";
@@ -175,14 +180,18 @@
       // Heading
       var heading = document.createElement("h3");
       heading.style.cssText = "margin:0 0 12px 0;font-size:16px;";
-      heading.textContent = "確認離開";
+      heading.textContent = headingText;
+      heading.setAttribute("id", "discard-dialog-heading");
       dialog.appendChild(heading);
 
       // Message body
       var msgP = document.createElement("p");
       msgP.style.cssText = "margin:0 0 20px 0;font-size:14px;color:#555;";
       msgP.textContent = message;
+      msgP.setAttribute("id", "discard-dialog-message");
       dialog.appendChild(msgP);
+      dialog.setAttribute("aria-labelledby", "discard-dialog-heading");
+      dialog.setAttribute("aria-describedby", "discard-dialog-message");
 
       // Buttons container
       var btnRow = document.createElement("div");
@@ -195,7 +204,7 @@
       confirmBtn.style.cssText =
         "padding:8px 16px;border:none;border-radius:4px;cursor:pointer;" +
         "background:#d32f2f;color:#fff;font-size:14px;";
-      confirmBtn.textContent = "捨棄變更";
+      confirmBtn.textContent = confirmText;
 
       // Cancel button: "繼續編輯" (continue editing) — safer default (focus first)
       var cancelBtn = document.createElement("button");
@@ -204,20 +213,25 @@
       cancelBtn.style.cssText =
         "padding:8px 16px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" +
         "background:#fff;color:#333;font-size:14px;";
-      cancelBtn.textContent = "繼續編輯";
+      cancelBtn.textContent = cancelText;
 
       btnRow.appendChild(confirmBtn);
       btnRow.appendChild(cancelBtn);
       dialog.appendChild(btnRow);
       overlay.appendChild(dialog);
-      document.body.appendChild(overlay);
+      var mountTarget = document.getElementById("app") || document.body;
+      mountTarget.appendChild(overlay);
 
       // Escape keydown handler (shared cleanup)
       var escHandler;
+      var tabTrapHandler;
 
       function removeOverlay() {
         if (escHandler) {
           document.removeEventListener("keydown", escHandler);
+        }
+        if (tabTrapHandler) {
+          document.removeEventListener("keydown", tabTrapHandler);
         }
         if (overlay.parentNode) {
           overlay.parentNode.removeChild(overlay);
@@ -248,6 +262,20 @@
         }
       };
       document.addEventListener("keydown", escHandler);
+
+      // Tab key: trap focus between cancel and confirm buttons.
+      tabTrapHandler = function (e) {
+        if (e.key !== "Tab") return;
+        if (!document.activeElement) return;
+        if (e.shiftKey && document.activeElement === cancelBtn) {
+          e.preventDefault();
+          confirmBtn.focus();
+        } else if (!e.shiftKey && document.activeElement === confirmBtn) {
+          e.preventDefault();
+          cancelBtn.focus();
+        }
+      };
+      document.addEventListener("keydown", tabTrapHandler);
 
       // Focus the cancel button (safer default) after attaching handlers.
       setTimeout(function () {

@@ -82,7 +82,18 @@ function programLeadersReadAll_() {
   if (!sheet) {
     // Sheet doesn't exist yet — no assignments. Return a minimal
     // header row so callers always get a valid 2D array.
-    PROGRAM_LEADERS_COL_ = programLeadersResolveColumns_([["Assignment_ID","Program_ID","User_ID","Assigned_By","Assigned_Date","Status"]][0]);
+    PROGRAM_LEADERS_COL_ = programLeadersResolveColumns_(
+      [
+        [
+          "Assignment_ID",
+          "Program_ID",
+          "User_ID",
+          "Assigned_By",
+          "Assigned_Date",
+          "Status",
+        ],
+      ][0]
+    );
     PROGRAM_LEADERS_CACHE_ = null; // let fall-through below populate
     return []; // no assignments yet
   }

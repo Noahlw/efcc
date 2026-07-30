@@ -18,6 +18,7 @@
     "fix": "ultracite fix"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.62.0",
     "@types/node": "^26.1.2",
     "husky": "^9.1.7",
