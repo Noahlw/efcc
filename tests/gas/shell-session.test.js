@@ -465,7 +465,12 @@ function createGoogleRun(queuedHandlers) {
         return builder;
       },
     };
-    for (const name of ["api_loginUser", "api_restoreApp", "api_logoutUser"]) {
+    for (const name of [
+      "api_loginUser",
+      "api_restoreApp",
+      "api_logoutUser",
+      "api_authorizedNavigate",
+    ]) {
       builder[name] = (...args) => {
         calls.push({
           method: name,
@@ -619,6 +624,21 @@ async function flushMicrotasks() {
     // eslint-disable-next-line no-await-in-loop -- sequential drain
     await Promise.resolve();
   }
+}
+
+function findRetryButton(root) {
+  for (const c of root.children ?? []) {
+    if (
+      c.tagName &&
+      c.tagName.toLowerCase() === "button" &&
+      c.textContent === "重試"
+    ) {
+      return c;
+    }
+    const inner = findRetryButton(c);
+    if (inner) {return inner;}
+  }
+  return null;
 }
 
 const CJK = /[\u4E00-\u9FFF]/u;
@@ -934,5 +954,251 @@ describe("shell-session.js.html — issue #66 client controller", () => {
     assert.ok(logoutCalls[0].hasSuccess, "success handler registered");
     assert.ok(logoutCalls[0].hasFailure, "failure handler registered");
     assert.ok(env.dom.index["app"], "logout must not replace #app");
+  });
+
+  describe("tiered auth navigation (issue #69 AC #7)", () => {
+    function dtoWithGuardedSection(role = "STAFF") {
+      return profileDto({
+        session: {
+          userId: "U001",
+          name: "王小明",
+          role,
+          qrCodeString: "QR-U001",
+          sessionId: "sid-001",
+          sessionToken: "tok-001",
+        },
+        sections: [
+          {
+            key: "profile",
+            label: "個人資料",
+            capability: "READ",
+            requiresServerAuth: false,
+          },
+          {
+            key: "scanner",
+            label: "掃描",
+            capability: "READ",
+            requiresServerAuth: true,
+          },
+        ],
+      });
+    }
+
+    test("guarded section triggers api_authorizedNavigate before rendering", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          { kind: "success", value: successEnvelope({ authorized: true }) },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+
+      const authCalls = env.googleRun.calls.filter(
+        (c) => c.method === "api_authorizedNavigate"
+      );
+      assert.equal(
+        authCalls.length,
+        1,
+        "guarded section must call api_authorizedNavigate"
+      );
+      assert.deepEqual(
+        authCalls[0].args,
+        ["U001", "sid-001", "tok-001", "scanner"],
+        "api_authorizedNavigate args must be (userId, sessionId, sessionToken, sectionKey)"
+      );
+      assert.ok(authCalls[0].hasSuccess, "success handler must be registered");
+      assert.ok(authCalls[0].hasFailure, "failure handler must be registered");
+      assert.ok(
+        env.dom.index["app-content"].textContent.includes("掃描"),
+        "scanner placeholder must render after successful auth"
+      );
+    });
+
+    test("non-guarded section does NOT call api_authorizedNavigate", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("profile");
+      await flushMicrotasks();
+
+      const authCalls = env.googleRun.calls.filter(
+        (c) => c.method === "api_authorizedNavigate"
+      );
+      assert.equal(
+        authCalls.length,
+        0,
+        "profile must not call api_authorizedNavigate"
+      );
+    });
+
+    test("FORBIDDEN from api_authorizedNavigate renders forbidden view", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          {
+            kind: "success",
+            value: failureEnvelope(
+              "FORBIDDEN",
+              "你沒有權限使用此功能（scanner）"
+            ),
+          },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+
+      const content = env.dom.index["app-content"].textContent;
+      assert.ok(
+        content.includes("個人資料"),
+        "FORBIDDEN must auto-redirect to nearest permitted section (profile)"
+      );
+      assert.ok(
+        !content.includes("無法存取"),
+        "FORBIDDEN must not show static forbidden page"
+      );
+    });
+
+    test("AUTH_REQUIRED from api_authorizedNavigate clears session and returns to Login", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          {
+            kind: "success",
+            value: failureEnvelope("AUTH_REQUIRED", "工作階段已過期"),
+          },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+
+      assert.equal(env.dom.index["app"].dataset.appState, "SIGNED_OUT");
+      assert.equal(env.localStorage.getItem("efccSession"), null);
+      assert.ok(env.dom.index["login-form"], "login form must be visible");
+      const loginMsg = env.dom.index["login-msg"];
+      assert.ok(loginMsg && loginMsg.textContent.includes("工作階段已過期"));
+    });
+
+    test("transport failure on api_authorizedNavigate renders recoverable error with retry", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          {
+            kind: "failure",
+            value: { status: "ERROR", message: "network down" },
+          },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+
+      assert.ok(
+        env.dom.index["app-content"].textContent.includes("重試"),
+        "transport failure must show retry button"
+      );
+    });
+
+    test("retry on guarded section error re-runs api_authorizedNavigate", async () => {
+      const stored = {
+        userId: "U001",
+        sessionId: "sid-stored",
+        sessionToken: "tok-stored",
+      };
+      const env = bootShellSession({
+        storedSession: stored,
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          {
+            kind: "failure",
+            value: { status: "ERROR", message: "network down" },
+          },
+          { kind: "success", value: successEnvelope({ authorized: true }) },
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+
+      const retryBtn = findRetryButton(env.dom.index["app-content"]);
+      assert.ok(retryBtn, "error card must expose retry button");
+      retryBtn.dispatchEvent({
+        type: "click",
+        defaultPrevented: false,
+        target: retryBtn,
+        currentTarget: retryBtn,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+      });
+      await flushMicrotasks();
+
+      const authCalls = env.googleRun.calls.filter(
+        (c) => c.method === "api_authorizedNavigate"
+      );
+      assert.equal(
+        authCalls.length,
+        2,
+        "retry must issue a second api_authorizedNavigate"
+      );
+      assert.ok(
+        env.dom.index["app-content"].textContent.includes("掃描"),
+        "scanner must render after retry succeeds"
+      );
+    });
   });
 });

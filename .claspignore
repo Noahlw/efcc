@@ -3,3 +3,15 @@
 !**/*.html
 !appsscript.json
 template-reference/**
+
+# Repository-only developer and E2E surfaces. The clasp root remains src/gas;
+# these rules are defense in depth so tests and credentials cannot be pushed.
+tests/
+docs/
+memory/
+.scratch/
+.auth/
+.claude/
+.serena/
+client_secret*.json
+docs/client_secret*.json

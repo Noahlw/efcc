@@ -1,26 +1,3 @@
-# GitHub Actions: Playwright E2E pipeline for issue #67 role-navigation acceptance.
-#
-# Per ADR-0012 (docs/adr/0012-e2e-testing-strategy.md), this workflow runs the
-# Playwright pipeline on every push. Storage states are pre-generated locally
-# via `pnpm e2e:auth -- --role=<role>` (NOT regenerated in CI), then uploaded
-# as base64-encoded repo secrets and decoded here at job start.
-#
-# Failures are LOUD: no `continue-on-error`, no `|| true`. A red CI badge with
-# a clear cause (most commonly an expired Google session cookie in one of the
-# three storage states) is the desired outcome — see ADR-0012 §6.
-#
-# Repo secrets required (case-sensitive — do not rename):
-#   ALICE_STORAGE_STATE  — base64 of .auth/alice.storage.json
-#   BOB_STORAGE_STATE    — base64 of .auth/bob.storage.json
-#   NOAH_STORAGE_STATE   — base64 of .auth/noah.storage.json
-#
-# Repo variable required:
-#   E2E_TARGET_URL       — the deployed Apps Script /exec URL under test.
-#                          Variables (not secrets) because the URL itself is
-#                          not sensitive — only the storage-state cookies are.
-#                          Rotates on every `clasp deploy` unless `-i <id>`
-#                          targets an existing deployment.
-
 name: E2E (Playwright)
 
 on:
@@ -31,114 +8,56 @@ on:
 
 jobs:
   e2e:
-    name: Role-navigation acceptance
+    name: DEV role-navigation acceptance
     runs-on: ubuntu-latest
-    # No permission tightening needed beyond the default GITHUB_TOKEN scope —
-    # this job doesn't create issues, push branches, or comment on PRs.
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup pnpm
-        # Corepack auto-downloads pnpm@11.7.0 from the `packageManager`
-        # field in package.json — no manual version pinning needed here.
         run: corepack enable
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "pnpm"
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser system deps
-        # `--with-deps` apt-installs the system libraries Chromium needs on
-        # Ubuntu runners; without it, browser launch fails with missing .so
-        # errors. The postinstall hook handles the browser binary locally;
-        # CI needs the extra system-deps pass.
+      - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
-      - name: Decode storage-state secrets
-        # The secrets are base64-encoded JSON files (so the newline / quote /
-        # unicode content survives the GitHub secret-string transport without
-        # corruption). We decode into `.auth/*.storage.json` exactly where
-        # playwright.config.ts's `storageState:` paths point.
-        #
-        # The decoded content is written directly to a file — never `echo`ed —
-        # so the JSON (which contains live session cookies) never lands in the
-        # job log.
+
+      - name: Decode Google storage states
         env:
           ALICE_STORAGE_STATE: ${{ secrets.ALICE_STORAGE_STATE }}
           BOB_STORAGE_STATE: ${{ secrets.BOB_STORAGE_STATE }}
           NOAH_STORAGE_STATE: ${{ secrets.NOAH_STORAGE_STATE }}
         run: |
+          test -n "$ALICE_STORAGE_STATE"
+          test -n "$BOB_STORAGE_STATE"
+          test -n "$NOAH_STORAGE_STATE"
           mkdir -p .auth
-          echo "$ALICE_STORAGE_STATE" | base64 -d > .auth/alice.storage.json
-          echo "$BOB_STORAGE_STATE"   | base64 -d > .auth/bob.storage.json
-          echo "$NOAH_STORAGE_STATE"  | base64 -d > .auth/noah.storage.json
+          echo "$ALICE_STORAGE_STATE" | base64 --decode > .auth/alice.storage.json
+          echo "$BOB_STORAGE_STATE" | base64 --decode > .auth/bob.storage.json
+          echo "$NOAH_STORAGE_STATE" | base64 --decode > .auth/noah.storage.json
 
-      - name: Run Playwright E2E
-        # E2E_TARGET_URL comes from a repo variable (NOT a secret, NOT a
-        # hardcoded URL) — see header comment for the rotation reason.
-        #
-        # No `continue-on-error`, no `|| true`. A failing test is a failing
-        # job. We deliberately invoke `pnpm exec playwright test` directly
-        # instead of `pnpm test:e2e` so the pnpm `posttest:e2e` hook does
-        # NOT fire here — the appender step below runs unconditionally via
-        # `if: always()` and would otherwise be double-invoked on success.
-        # Local dev runs use `pnpm test:e2e` and get the post-hook for
-        # convenience (no double-fire risk there because there is no
-        # separate appender step). See tests/e2e/README.md "Run the suite"
-        # for the two paths.
+      - name: Run Playwright E2E against approved DEV deployment
         env:
           E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
         run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
 
-      - name: Append results to plan doc
-        # Per-issue-67 AC #12, per-assertion pass/fail evidence lands in
-        # the ticket's plan doc as an '## Executed results' section. This
-        # step runs on success AND on failure (`if: always()`), and only
-        # when the JSON reporter actually wrote its output file. Rationale
-        # for `if: always()`: pnpm post-hooks are SKIPPED on script
-        # failure (verified empirically with a minimal repro before this
-        # step was added), and the only way to guarantee the plan doc
-        # reflects the actual run is to invoke the appender separately
-        # from pnpm's lifecycle. Rationale for `hashFiles(...) != ''`:
-        # if Playwright crashed before writing the reporter (rare but
-        # possible), there is nothing to append, so the step is correctly
-        # skipped instead of invoking the appender on a missing file.
-        #
-        # When a report exists, the appender is part of the evidence gate.
-        # Any appender failure propagates normally and fails the job; it is
-        # not best-effort and its exit code is never masked.
+      - name: Append executed results to acceptance plan
         if: always() && hashFiles('test-results/e2e-results.json') != ''
         env:
           E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
-        run: |
-          tsx tests/e2e/plan-doc-appender.ts
+        run: pnpm exec tsx tests/e2e/plan-doc-appender.ts
 
-      - name: Hint on common failure cause
-        # Best-effort diagnostic — does not affect job status. The job is
-        # already red at this point if we got here.
-        run: |
-          echo "::error::Playwright E2E run failed. The most common cause is an expired Google session cookie in one of the three storage-state secrets. To rotate, re-run \`pnpm e2e:auth -- --role=<role>\` locally for the failing role, base64-encode the resulting .auth/<role>.storage.json, and update the matching repo secret (ALICE_STORAGE_STATE / BOB_STORAGE_STATE / NOAH_STORAGE_STATE). See docs/adr/0012-e2e-testing-strategy.md §6 for the full rotation procedure."
-
-      - name: Upload test artifacts
-        # Evidence on failure — the JSON report, any retained-on-failure
-        # Playwright traces/videos, AND the (possibly newly modified)
-        # acceptance plan doc — without requiring a local re-run to
-        # diagnose. GitHub Actions runners are ephemeral, so the artifact
-        # upload is the only persistent record of what the test saw AND
-        # what the appender wrote to the plan doc (the plan doc change
-        # would otherwise disappear with the runner's filesystem).
-        #
-        # Upload `test-results/` (Playwright JSON + traces) and
-        # `docs/specs/067-role-nav-acceptance-plan.md` (the per-run
-        # '## Executed results' block the appender appended). We do not
-        # upload `.auth/` — that path is outside both these globs by
-        # filesystem location, so the decoded secret material never
-        # leaves the ephemeral runner.
+      - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -148,10 +67,3 @@ jobs:
             docs/specs/067-role-nav-acceptance-plan.md
           if-no-files-found: ignore
           retention-days: 14
-
-      # No explicit `.auth/*.storage.json` cleanup step is required: GitHub
-      # Actions runners are ephemeral and destroyed at job end, so the
-      # decoded secret material does not persist beyond this run. The
-      # artifact upload above only captures `test-results/` — the `.auth/`
-      # directory is *outside* that path by filesystem location (not by any
-      # glob boundary here), so the secret material is never uploaded.

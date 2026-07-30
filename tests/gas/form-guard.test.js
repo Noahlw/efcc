@@ -40,6 +40,19 @@ const [, FORM_GUARD_SOURCE] = FORM_GUARD_MATCH;
 // Minimal fake DOM
 // ---------------------------------------------------------------------------
 
+function focusAutofocus(node) {
+  if (node.hasAttribute && node.hasAttribute("autofocus")) {
+    node.focus();
+    return true;
+  }
+  if (node._children) {
+    for (const child of node._children) {
+      if (focusAutofocus(child)) {return true;}
+    }
+  }
+  return false;
+}
+
 function createElement(tag) {
   const el = {
     tag,
@@ -52,6 +65,8 @@ function createElement(tag) {
     childNodes: [],
     _clickHandlers: [],
     _keydownHandlers: [],
+    _closeHandlers: [],
+    open: false,
     get className() {
       return this._className;
     },
@@ -66,6 +81,9 @@ function createElement(tag) {
     },
     removeAttribute(name) {
       Reflect.deleteProperty(this._attributes, name);
+    },
+    hasAttribute(name) {
+      return name in this._attributes;
     },
     appendChild(child) {
       if (typeof child === "object" && child !== null) {
@@ -93,6 +111,9 @@ function createElement(tag) {
       if (type === "keydown") {
         this._keydownHandlers.push(fn);
       }
+      if (type === "close") {
+        this._closeHandlers.push(fn);
+      }
     },
     removeEventListener(type, fn) {
       if (type === "click") {
@@ -100,6 +121,9 @@ function createElement(tag) {
       }
       if (type === "keydown") {
         this._keydownHandlers = this._keydownHandlers.filter((h) => h !== fn);
+      }
+      if (type === "close") {
+        this._closeHandlers = this._closeHandlers.filter((h) => h !== fn);
       }
     },
     focus() {},
@@ -117,6 +141,22 @@ function createElement(tag) {
       }
     },
   };
+
+  // Native <dialog> support
+  if (tag === "dialog") {
+    el.showModal = function  showModal() {
+      el.open = true;
+      // Simulate browser focusing the autofocus element
+      focusAutofocus(el);
+    };
+    el.close = function  close() {
+      el.open = false;
+      for (const handler of el._closeHandlers) {
+        handler();
+      }
+    };
+  }
+
   Object.defineProperty(el, "id", {
     get() {
       return el._attributes.id || "";
@@ -505,29 +545,37 @@ describe("form-guard.js.html — issue #70", () => {
   });
 
   describe("confirmDiscard()", () => {
-    test("renders overlay with heading, message, and two buttons", () => {
+    test("renders a native <dialog> with accessible name and two buttons", () => {
       const g = bootFormGuard();
       g.guard.confirmDiscard({
         message: "系統將捨棄尚未儲存的變更",
         onConfirm() {},
         restoreFocusTo: null,
       });
-      const bodyChildren = g.doc.body._children;
-      assert.ok(bodyChildren.length > 0);
-      const [overlay] = bodyChildren;
-      assert.strictEqual(overlay.className, "discard-overlay");
-      const [dialog] = overlay._children;
-      assert.strictEqual(dialog.getAttribute("role"), "dialog");
-      assert.strictEqual(dialog.getAttribute("aria-modal"), "true");
+      const [dialog] = g.doc.body._children;
+      assert.strictEqual(dialog.tag, "dialog");
+      assert.ok(
+        dialog.getAttribute("aria-labelledby").startsWith("discard-title-"),
+        "aria-labelledby should start with discard-title-"
+      );
       const [heading, msg, btnRow] = dialog._children;
+      assert.strictEqual(heading.tag, "h2");
+      assert.ok(
+        heading.id.startsWith("discard-title-"),
+        "heading id should be prefixed"
+      );
       assert.strictEqual(heading.textContent, "確認離開");
       assert.ok(msg.textContent.includes("系統將捨棄尚未儲存的變更"));
       assert.strictEqual(btnRow._children.length, 2);
       assert.strictEqual(btnRow._children[0].textContent, "捨棄變更");
       assert.strictEqual(btnRow._children[1].textContent, "繼續編輯");
+      assert.strictEqual(
+        btnRow._children[1].getAttribute("autofocus"),
+        "autofocus"
+      );
     });
 
-    test("confirm button click calls onConfirm and removes overlay", () => {
+    test("confirm button click calls onConfirm and removes dialog", () => {
       const g = bootFormGuard();
       let confirmed = false;
       g.guard.confirmDiscard({
@@ -535,8 +583,7 @@ describe("form-guard.js.html — issue #70", () => {
           confirmed = true;
         },
       });
-      const [overlay] = g.doc.body._children;
-      const [dialog] = overlay._children;
+      const [dialog] = g.doc.body._children;
       const btnRow = dialog._children.at(2);
       const [confirmBtn] = btnRow._children;
       confirmBtn.click();
@@ -544,7 +591,7 @@ describe("form-guard.js.html — issue #70", () => {
       assert.strictEqual(g.doc.body._children.length, 0);
     });
 
-    test("cancel button click does NOT call onConfirm, removes overlay, restores focus", () => {
+    test("cancel button click does NOT call onConfirm, removes dialog, restores focus", () => {
       const g = bootFormGuard();
       let confirmed = false;
       let focused = false;
@@ -559,8 +606,7 @@ describe("form-guard.js.html — issue #70", () => {
         },
         restoreFocusTo,
       });
-      const [overlay] = g.doc.body._children;
-      const [dialog] = overlay._children;
+      const [dialog] = g.doc.body._children;
       const btnRow = dialog._children.at(2);
       const [, cancelBtn] = btnRow._children;
       cancelBtn.click();
@@ -569,7 +615,7 @@ describe("form-guard.js.html — issue #70", () => {
       assert.strictEqual(focused, true);
     });
 
-    test("Escape key does NOT call onConfirm, removes overlay, restores focus", () => {
+    test("dialog close event (Escape) does NOT call onConfirm, removes dialog, restores focus", () => {
       const g = bootFormGuard();
       let confirmed = false;
       let focused = false;
@@ -584,14 +630,15 @@ describe("form-guard.js.html — issue #70", () => {
         },
         restoreFocusTo,
       });
-      assert.strictEqual(g.doc.body._children.length, 1);
-      g.doc.dispatchKeydown("Escape");
+      const [dialog] = g.doc.body._children;
+      assert.strictEqual(dialog.open, true);
+      dialog.close();
       assert.strictEqual(confirmed, false);
       assert.strictEqual(g.doc.body._children.length, 0);
       assert.strictEqual(focused, true);
     });
 
-    test("a non-Escape key does nothing", () => {
+    test("a non-Escape key leaves the dialog open", () => {
       const g = bootFormGuard();
       let confirmed = false;
       g.guard.confirmDiscard({
@@ -602,6 +649,8 @@ describe("form-guard.js.html — issue #70", () => {
       g.doc.dispatchKeydown("Enter");
       assert.strictEqual(confirmed, false);
       assert.strictEqual(g.doc.body._children.length, 1);
+      const [dialog] = g.doc.body._children;
+      assert.strictEqual(dialog.open, true);
     });
   });
 });

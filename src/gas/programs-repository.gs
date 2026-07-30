@@ -24,9 +24,7 @@
  * rather than throwing, per the official CacheService contract:
  * "You must be prepared to get back null from all reads."
  *
- * Apps Script APIs used (per AGENTS.md docs-backed method rule):
- *   - SpreadsheetApp.getActiveSpreadsheet():
- *     https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet-app#getActiveSpreadsheet()
+ * Sheet access is centralized in efccSpreadsheet_().
  *   - Sheet.getDataRange().getValues():
  *     https://developers.google.com/apps-script/reference/spreadsheet/sheet#getDataRange()
  *   - CacheService.getScriptCache():
@@ -91,7 +89,7 @@ function programsResolveColumns_(header) {
  * @returns {Array<{id: string, name: string, type: string, description: string}>}
  */
 function programsReadAndParse_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = efccSpreadsheet_();
   var sheet = ss.getSheetByName(PROGRAMS_SHEET_NAME);
   if (!sheet) return [];
   var rows = sheet.getDataRange().getValues();

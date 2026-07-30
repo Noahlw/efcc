@@ -35,6 +35,8 @@
     //   - This means a retry after a failed submission uses the same
     //     requestKey for idempotency, while a fresh edit cycle gets a new key.
 
+    var discardDialogCounter_ = 0;
+
     var STATE = Object.freeze({
       PRISTINE: "PRISTINE",
       DIRTY: "DIRTY",
@@ -157,104 +159,107 @@
       var onConfirm = (opts && opts.onConfirm) || function () {};
       var restoreFocusTo = (opts && opts.restoreFocusTo) || null;
 
-      // Overlay
-      var overlay = document.createElement("div");
-      overlay.className = "discard-overlay";
-      overlay.style.cssText =
-        "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);" +
-        "display:flex;align-items:center;justify-content:center;z-index:9999;";
+      // Native <dialog> element (MDN: baseline widely available since March 2022).
+      // showModal() provides: inert background, implicit aria-modal, Escape-to-close,
+      // and focus management. Fallback: if showModal is not a function, fall back
+      // to custom div overlay with manual Escape handling.
+      var dialog = document.createElement("dialog");
 
-      // Dialog
-      var dialog = document.createElement("div");
-      dialog.setAttribute("role", "dialog");
-      dialog.setAttribute("aria-modal", "true");
-      dialog.style.cssText =
-        "background:#fff;border-radius:8px;padding:24px;max-width:360px;" +
-        "width:90%;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
-
-      // Heading
-      var heading = document.createElement("h3");
-      heading.style.cssText = "margin:0 0 12px 0;font-size:16px;";
+      // Heading with ID for aria-labelledby (accessible name).
+      // Suffixed with a counter so repeated creates never produce duplicate IDs.
+      var headingId = "discard-title-" + ++discardDialogCounter_;
+      var heading = document.createElement("h2");
+      heading.id = headingId;
       heading.textContent = "確認離開";
       dialog.appendChild(heading);
+      dialog.setAttribute("aria-labelledby", headingId);
 
       // Message body
       var msgP = document.createElement("p");
-      msgP.style.cssText = "margin:0 0 20px 0;font-size:14px;color:#555;";
       msgP.textContent = message;
       dialog.appendChild(msgP);
 
       // Buttons container
       var btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
 
       // Confirm button: "捨棄變更" (discard changes)
       var confirmBtn = document.createElement("button");
       confirmBtn.className = "btn btn-danger";
       confirmBtn.type = "button";
-      confirmBtn.style.cssText =
-        "padding:8px 16px;border:none;border-radius:4px;cursor:pointer;" +
-        "background:#d32f2f;color:#fff;font-size:14px;";
       confirmBtn.textContent = "捨棄變更";
 
-      // Cancel button: "繼續編輯" (continue editing) — safer default (focus first)
+      // Cancel button: "繼續編輯" (continue editing) - safer default (autofocus)
       var cancelBtn = document.createElement("button");
       cancelBtn.className = "btn btn-secondary";
       cancelBtn.type = "button";
-      cancelBtn.style.cssText =
-        "padding:8px 16px;border:1px solid #ccc;border-radius:4px;cursor:pointer;" +
-        "background:#fff;color:#333;font-size:14px;";
+      cancelBtn.setAttribute("autofocus", "autofocus");
       cancelBtn.textContent = "繼續編輯";
 
       btnRow.appendChild(confirmBtn);
       btnRow.appendChild(cancelBtn);
       dialog.appendChild(btnRow);
-      overlay.appendChild(dialog);
-      document.body.appendChild(overlay);
+      document.body.appendChild(dialog);
 
-      // Escape keydown handler (shared cleanup)
-      var escHandler;
+      var closedByButton = false;
 
-      function removeOverlay() {
-        if (escHandler) {
-          document.removeEventListener("keydown", escHandler);
-        }
-        if (overlay.parentNode) {
-          overlay.parentNode.removeChild(overlay);
+      function closeDialog() {
+        if (dialog.parentNode) {
+          dialog.parentNode.removeChild(dialog);
         }
       }
 
-      // Cancel button click: remove overlay, restore focus, do NOTHING else.
-      cancelBtn.addEventListener("click", function () {
-        removeOverlay();
+      function restoreFocus() {
         if (restoreFocusTo && typeof restoreFocusTo.focus === "function") {
           restoreFocusTo.focus();
         }
+      }
+
+      // Cancel button click: close, restore focus, do NOT call onConfirm.
+      cancelBtn.addEventListener("click", function () {
+        closedByButton = true;
+        dialog.close();
+        closeDialog();
+        restoreFocus();
       });
 
-      // Confirm button click: remove overlay, THEN call onConfirm.
+      // Confirm button click: close, THEN call onConfirm.
       confirmBtn.addEventListener("click", function () {
-        removeOverlay();
+        closedByButton = true;
+        dialog.close();
+        closeDialog();
         onConfirm();
       });
 
-      // Escape key: same as Cancel.
-      escHandler = function (e) {
-        if (e.key === "Escape") {
-          removeOverlay();
-          if (restoreFocusTo && typeof restoreFocusTo.focus === "function") {
-            restoreFocusTo.focus();
-          }
+      // Close event fires on Escape (browser default for showModal) and on
+      // dialog.close(). If closed via Escape (not button), restore focus.
+      dialog.addEventListener("close", function () {
+        if (!closedByButton) {
+          closeDialog();
+          restoreFocus();
         }
-      };
-      document.addEventListener("keydown", escHandler);
+      });
 
-      // Focus the cancel button (safer default) after attaching handlers.
-      setTimeout(function () {
-        cancelBtn.focus();
-      }, 0);
+      // Show the dialog. showModal() makes background inert, sets up
+      // Escape-to-close, and focuses the autofocus element.
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      } else {
+        // Fallback: manual Escape handling and focus management.
+        dialog.open = true;
+        var escHandler = function (e) {
+          if (e.key === "Escape") {
+            closeDialog();
+            restoreFocus();
+            document.removeEventListener("keydown", escHandler);
+          }
+        };
+        document.addEventListener("keydown", escHandler);
+        setTimeout(function () {
+          cancelBtn.focus();
+        }, 0);
+      }
 
-      return overlay;
+      return dialog;
     }
 
     window.EfccFormGuard = {

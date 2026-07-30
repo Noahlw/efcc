@@ -27,3 +27,7 @@ npm-debug.log*
 .env
 !.auth/.example/
 !.auth/.example/**
+
+# Local OAuth client credentials must never enter Git.
+client_secret*.json
+docs/client_secret*.json

@@ -528,6 +528,72 @@
       }
       navigateToImpl_(sectionKey);
     }
+    function beginServerAuth_(section) {
+      var sectionKey = section.key;
+      navGeneration_ += 1;
+      var authGeneration = navGeneration_;
+      currentSection_ = sectionKey;
+      updateActiveNav_();
+      hideMoreMenu_();
+      renderSectionLoadingCard_(sectionKey);
+      callServer_(
+        "section-auth:" + sectionKey,
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_authorizedNavigate(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken,
+              sectionKey
+            );
+        },
+        function (envelope) {
+          if (authGeneration !== navGeneration_) return; // superseded
+          if (!envelope || typeof envelope !== "object") {
+            renderSectionErrorCard_(sectionKey, "MALFORMED");
+            return;
+          }
+          if (envelope.success === true) {
+            renderSection_(sectionKey);
+            return;
+          }
+          var code =
+            (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
+          if (code === "AUTH_REQUIRED") {
+            var message =
+              (envelope.error && envelope.error.message) ||
+              "工作階段已過期，請重新登入";
+            clearAuthenticatedClientState_();
+            setAppState(STATE.SIGNED_OUT);
+            renderLogin_();
+            setStatus("");
+            showLoginError_(message);
+            return;
+          }
+          if (code === "FORBIDDEN") {
+            navigateToNearestPermitted_();
+            return;
+          }
+          renderSectionErrorCard_(sectionKey, "GENERIC");
+        },
+        function (err) {
+          if (authGeneration !== navGeneration_) return; // superseded
+          renderSectionErrorCard_(sectionKey, "TRANSPORT");
+        }
+      );
+    }
+
+    function findSectionByKey_(sectionKey) {
+      for (var i = 0; i < sections_.length; i++) {
+        if (sections_[i].key === sectionKey) {
+          return sections_[i];
+        }
+      }
+      return null;
+    }
+
     function navigateToImpl_(sectionKey) {
       // If a nested task is open, any root nav click closes it first.
       if (activeTask_ !== null) {
@@ -541,18 +607,21 @@
       } else if (sectionKey === currentSection_) {
         return; // True no-op: at this root with no task open.
       }
-      // Check authorization: server-authorized sections only.
-      var authorized = false;
-      for (var i = 0; i < sections_.length; i++) {
-        if (sections_[i].key === sectionKey) {
-          authorized = true;
-          break;
-        }
-      }
-      if (!authorized) {
+      // Check authorization: client-side membership in bootstrap list.
+      var section = findSectionByKey_(sectionKey);
+      if (!section) {
         renderForbidden_(sectionKey);
         return;
       }
+
+      // Server-authorized sections require an explicit RPC before rendering
+      // (tiered auth model: issue #69 AC #7).
+      if (section.requiresServerAuth === true) {
+        beginServerAuth_(section);
+        return;
+      }
+
+      // Member-accessible sections render directly after client-side check.
       currentSection_ = sectionKey;
       updateActiveNav_();
       hideMoreMenu_();
@@ -1061,6 +1130,13 @@
         }
         sectionStates_[sectionKey] = { state: SECTION_STATE.IDLE };
         loadProgramsSection_();
+        return;
+      }
+      // Server-authorized Sections need a fresh auth RPC on retry,
+      // not just a re-render (issue #69 AC #7).
+      var section = findSectionByKey_(sectionKey);
+      if (section && section.requiresServerAuth === true) {
+        beginServerAuth_(section);
         return;
       }
       // Generic render-error retry (issue #69 AC #9): re-attempt

@@ -111,6 +111,10 @@ async function resolveAppFrame(
   page: Page,
   timeoutMs = APP_READY_TIMEOUT_MS
 ): Promise<Frame> {
+  await page.goto("", {
+    waitUntil: "domcontentloaded",
+    timeout: timeoutMs,
+  });
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const frame of page.frames()) {
