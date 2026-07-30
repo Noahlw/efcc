@@ -50,10 +50,13 @@ function include(filename) {
  *   Per #73 the session has no expiryTimestamp — sessions are
  *   non-expiring until revoked. The browser stores sessionId +
  *   sessionToken; the server stores sessionId -> {userId, issuedAt}.
- * @property {Array<{key: string, label: string, capability: string}>} sections
+ * @property {Array<{key: string, label: string, capability: string,
+ *            requiresServerAuth: boolean}>} sections
  *   Server-authorized Sections the client may render. The first entry
  *   is the initial route (Profile for every authenticated role in
- *   Day 1 per ADR-0010 / spec 009).
+ *   Day 1 per ADR-0010 / spec 009). requiresServerAuth is true for
+ *   guarded sections (scanner, care, permissions) - the client must
+ *   call api_authorizedNavigate before rendering those.
  * @property {{userId: string, name: string, username: string,
  *           phone: string, role: string, status: string,
  *           qrCodeString: string}} profile
@@ -97,12 +100,13 @@ var SECTION_KEYS = Object.freeze({
  */
 function bootstrapSectionsForRole_(role, userId) {
   var sections = [
-    { key: SECTION_KEYS.PROFILE, label: "個人資料", capability: "READ" },
+    { key: SECTION_KEYS.PROFILE, label: "個人資料", capability: "READ", requiresServerAuth: false },
   ];
   sections.push({
     key: SECTION_KEYS.PROGRAMS,
     label: "課程",
     capability: "READ",
+    requiresServerAuth: false,
   });
 
   var isProgramLeader = programLeadersHasActiveAssignment_(userId);
@@ -117,6 +121,7 @@ function bootstrapSectionsForRole_(role, userId) {
       key: SECTION_KEYS.SCANNER,
       label: "掃描",
       capability: "USE",
+      requiresServerAuth: true,
     });
   }
 
@@ -124,6 +129,7 @@ function bootstrapSectionsForRole_(role, userId) {
     key: SECTION_KEYS.EVENTS,
     label: "聚會",
     capability: "READ",
+    requiresServerAuth: false,
   });
 
   if (!isStaffOrAbove && isProgramLeader) {
@@ -131,6 +137,7 @@ function bootstrapSectionsForRole_(role, userId) {
       key: SECTION_KEYS.SCANNER,
       label: "掃描",
       capability: "USE",
+      requiresServerAuth: true,
     });
   }
 
@@ -139,11 +146,13 @@ function bootstrapSectionsForRole_(role, userId) {
       key: SECTION_KEYS.CARE,
       label: "關懷",
       capability: "READ",
+      requiresServerAuth: true,
     });
     sections.push({
       key: SECTION_KEYS.PERMISSIONS,
       label: "權限管理",
       capability: "USE",
+      requiresServerAuth: true,
     });
   }
 
@@ -469,6 +478,85 @@ function api_getPrograms(userId, sessionId, sessionToken) {
     var programs = programsList_();
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, programs);
+  } catch (e) {
+    rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
+    return rpcFailure_(
+      requestId,
+      RPC_CODES.INTERNAL_ERROR,
+      "系統發生錯誤，請稍後再試。"
+    );
+  }
+}
+
+/**
+ * api_authorizedNavigate - server-authorized Section-entry RPC (issue #69 AC #7).
+ *
+ * Verifies the session and checks whether the user is authorized to
+ * access the requested section. Returns FORBIDDEN for unauthorized
+ * sections, enabling real deployed forbidden-recovery testing.
+ *
+ * Tiered auth model (CEO review): this RPC is called by the client
+ * ONLY for security-guarded sections (scanner, care, permissions)
+ * where requiresServerAuth === true. Member-accessible sections
+ * (profile, programs, events) use client-side check only.
+ *
+ * @param {string} userId
+ * @param {string} sessionId
+ * @param {string} sessionToken
+ * @param {string} sectionKey
+ * @returns {RpcSuccess<{authorized: boolean}>|RpcFailure}
+ */
+function api_authorizedNavigate(userId, sessionId, sessionToken, sectionKey) {
+  var op = "api_authorizedNavigate";
+  var requestId = rpcRequestId_();
+  var t0 = Date.now();
+  try {
+    var verification = sessionVerify_(sessionId, sessionToken);
+    if (!verification.ok) {
+      rpcLog_(op, requestId, verification.reason || "AUTH_REQUIRED", Date.now() - t0);
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    if (verification.userId !== userId) {
+      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    var user = usersFindById_(verification.userId);
+    if (!user || user.status !== "Active") {
+      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
+      sessionRevoke_(sessionId);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.AUTH_REQUIRED,
+        "工作階段已過期，請重新登入"
+      );
+    }
+    var sections = bootstrapSectionsForRole_(user.role, userId);
+    var authorized = false;
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].key === sectionKey) {
+        authorized = true;
+        break;
+      }
+    }
+    if (!authorized) {
+      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
+      return rpcFailure_(
+        requestId,
+        RPC_CODES.FORBIDDEN,
+        "你沒有權限使用此功能（" + sectionKey + "）"
+      );
+    }
+    rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
+    return rpcSuccess_(requestId, { authorized: true });
   } catch (e) {
     rpcLog_(op, requestId, "INTERNAL_ERROR", Date.now() - t0);
     return rpcFailure_(
