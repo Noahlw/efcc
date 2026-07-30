@@ -47,8 +47,16 @@ function buildContext() {
     sheets,
     console: { log: () => {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({
+      openById: () => ({
         getSheetByName: (name) => sheets[name] || null,
+      }),
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) =>
+          k === "EFCC_SPREADSHEET_ID"
+            ? "1bkRPQTCrNKu4MNDTRn-vkTTRMKgV6MEBNfierKDng3o"
+            : null,
       }),
     },
     CacheService: {
@@ -89,6 +97,7 @@ describe("programs-repository.gs — issue #69 prerequisite slice of #53", () =>
     const env = buildContext();
     ctx = env.context;
     ({ sheets, cacheStore, cachePutCalls } = env);
+    loadGasModule(ctx, "spreadsheet-access.gs");
     loadGasModule(ctx, "programs-repository.gs");
     // Reset the in-memory cache guard the repository keeps to avoid
     // cross-test leakage of the CacheService.getScriptCache() read-through.

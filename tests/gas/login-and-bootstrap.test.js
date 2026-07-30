@@ -37,11 +37,13 @@ function buildContext({ salt = "test-salt", setSalt = true } = {}) {
   const scriptProps = {};
   if (setSalt) {
     scriptProps["EFCC_SESSION_SALT"] = salt;
+    scriptProps["EFCC_SPREADSHEET_ID"] =
+      "1bkRPQTCrNKu4MNDTRn-vkTTRMKgV6MEBNfierKDng3o";
   }
   const context = {
     console: { log: () => {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({
+      openById: () => ({
         getSheetByName: (name) => sheets[name] || null,
       }),
     },
@@ -99,6 +101,7 @@ function loadGasModule(context, filename) {
 
 function loadAllGas(context) {
   for (const name of [
+    "spreadsheet-access.gs",
     "rpc-envelope.gs",
     "users-repository.gs",
     "session.js.gs",
