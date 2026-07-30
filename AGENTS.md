@@ -90,4 +90,17 @@ When an implementation requires a schema change (new sheet tab, new column, seed
 
 This rule applies to every phase: implementation, testing, deployment, and debugging. The only permitted sheet interaction is reading the exported `.xlsx` snapshot for structural reference.
 
+### Narrow E2E fixture exception (authorized 2026-07-31)
+
+The DEV spreadsheet (`EFCC_SPREADSHEET_ID`) may be seeded/reset by CI for E2E acceptance runs, BUT ONLY under these conditions:
+
+1. Through the **Google Sheets API** (never through Apps Script, Sheets UI automation, or clasp).
+2. For rows whose first-column value starts with **`E2E_`** (in the Programs and Program_Leaders tabs only).
+3. After **snapshotting** those rows via `values.batchGet` and before **restoring** them via `values.batchUpdate` with `valueInputOption: "RAW"`.
+4. If the expected `E2E_` fixture IDs are **missing or duplicated**, the run MUST fail closed (no write).
+5. A standalone **`fixture-reset.ts`** script writes known-good baseline values as a crash-recovery fallback.
+6. The **Users tab is never mutated** by CI. Tests log in as real DEV users (alice/bob/noah).
+
+Production and operational DEV Sheets (non-`E2E_` rows) remain strictly read-only under the original rule above.
+
 The authoritative sheet structure is documented in [ADR-0013: Google Sheets Database Structure](docs/adr/0013-google-sheets-database-structure.md). CONTEXT.md § Data Store is a summary; ADR-0013 is the canonical record. Always refer to ADR-0013 for the current schema before writing or debugging sheet-dependent code.
