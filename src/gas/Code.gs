@@ -667,11 +667,15 @@ function api_submitDemoTaskForm(
     }
 
     // Authoritative path: LockService + Script Properties.
+    // Doc evidence: Context7 /websites/developers_google_apps-script:
+    //   LockService.getScriptLock().waitLock(30000) acquires a script lock;
+    //   PropertiesService.getScriptProperties() provides persistent key/value storage;
+    //   CacheService cached data is not guaranteed to remain until expiration.
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
       var sp = PropertiesService.getScriptProperties();
-      var existing = sp.getProperty(spKey);
+      var existing = sp.getProperty(cacheKey);
       if (existing) {
         try {
           var existingData = JSON.parse(existing);
@@ -699,7 +703,7 @@ function api_submitDemoTaskForm(
 
       // Store in Script Properties (authoritative).
       try {
-        sp.setProperty(spKey, JSON.stringify(data));
+        sp.setProperty(cacheKey, JSON.stringify(data));
       } catch (e) {
         // Property store failure is non-fatal.
       }
