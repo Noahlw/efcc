@@ -11,9 +11,7 @@
  * user has no active leadership assignments). This allows the app to
  * function before STAFF/ADMIN create the first assignment.
  *
- * Apps Script APIs used (per AGENTS.md docs-backed method rule):
- *   - SpreadsheetApp.getActiveSpreadsheet():
- *     https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet-app#getActiveSpreadsheet()
+ * Sheet access is centralized in efccSpreadsheet_().
  *   - Sheet.getDataRange().getValues():
  *     https://developers.google.com/apps-script/reference/spreadsheet/sheet#getDataRange()
  */
@@ -22,6 +20,7 @@ var PROGRAM_LEADERS_SHEET_NAME = "Program_Leaders";
 
 var PROGRAM_LEADERS_COL_ = null;
 var PROGRAM_LEADERS_CACHE_ = null;
+var PROGRAM_LEADERS_LOADED_ = false;
 
 /**
  * Candidate header names per logical field, tried in order,
@@ -76,19 +75,30 @@ function programLeadersResolveColumns_(headerRow) {
  * @returns {Array<Array<string>>} 2D array, row 0 = header.
  */
 function programLeadersReadAll_() {
-  if (PROGRAM_LEADERS_CACHE_) return PROGRAM_LEADERS_CACHE_;
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (PROGRAM_LEADERS_LOADED_) return PROGRAM_LEADERS_CACHE_;
+  var ss = efccSpreadsheet_();
   var sheet = ss.getSheetByName(PROGRAM_LEADERS_SHEET_NAME);
   if (!sheet) {
-    // Sheet doesn't exist yet — no assignments. Return a minimal
-    // header row so callers always get a valid 2D array.
-    PROGRAM_LEADERS_COL_ = programLeadersResolveColumns_([["Assignment_ID","Program_ID","User_ID","Assigned_By","Assigned_Date","Status"]][0]);
-    PROGRAM_LEADERS_CACHE_ = null; // let fall-through below populate
-    return []; // no assignments yet
+    PROGRAM_LEADERS_COL_ = programLeadersResolveColumns_(
+      [
+        [
+          "Assignment_ID",
+          "Program_ID",
+          "User_ID",
+          "Assigned_By",
+          "Assigned_Date",
+          "Status",
+        ],
+      ][0]
+    );
+    PROGRAM_LEADERS_CACHE_ = [];
+    PROGRAM_LEADERS_LOADED_ = true;
+    return [];
   }
   var rows = sheet.getDataRange().getValues();
   PROGRAM_LEADERS_COL_ = programLeadersResolveColumns_(rows[0]);
   PROGRAM_LEADERS_CACHE_ = rows;
+  PROGRAM_LEADERS_LOADED_ = true;
   return rows;
 }
 
@@ -98,6 +108,7 @@ function programLeadersReadAll_() {
 function programLeadersSetRowsForTesting_(rows) {
   PROGRAM_LEADERS_CACHE_ = rows;
   PROGRAM_LEADERS_COL_ = rows ? programLeadersResolveColumns_(rows[0]) : null;
+  PROGRAM_LEADERS_LOADED_ = rows != null;
 }
 
 /**
