@@ -230,3 +230,66 @@ function sessionVerify_(sessionId, sessionToken) {
 
   return { ok: true, userId: userId, issuedAt: issuedAt };
 }
+
+/**
+ * Auth boundary used by every RPC that needs an active session
+ * (api_restoreApp, api_getPrograms, api_authorizedNavigate,
+ * api_submitDemoTaskForm). Centralises the verify -> userId-mismatch
+ * -> active-user guard so the per-RPC bodies stay focused on their
+ * business logic.
+ *
+ * @param {string} op RPC operation name (for logging).
+ * @param {string} requestId Request id (for log correlation).
+ * @param {number} t0 Epoch ms when the RPC started.
+ * @param {string} userId The claimed userId from the caller.
+ * @param {string} sessionId
+ * @param {string} sessionToken
+ * @param {{ revokeOnUserIdMismatch: boolean }} opts
+ *   `revokeOnUserIdMismatch: true` only for api_restoreApp (the
+ *   session-restoring RPC). The other 3 callers keep `false` per
+ *   the SECURITY NOTE in Code.gs: revoking on a userId mismatch
+ *   would let an observer of a sessionId force-logout a legitimate
+ *   session that happens to have a different sessionId.
+ *
+ * @returns {
+ *   { ok: true, user: Object } |
+ *   { ok: false, failure: RpcFailure }
+ * }
+ *   All three failure branches return the SAME RpcFailure shape
+ *   (AUTH_REQUIRED + "工作階段已過期，請重新登入") so the caller
+ *   can `return guard.failure;` directly.
+ *
+ * Does NOT try/catch — exceptions (e.g. sessionSalt_ missing) propagate
+ * to the caller's existing catch block, preserving per-RPC catch codes.
+ */
+function requireActiveSession_(op, requestId, t0, userId, sessionId, sessionToken, opts) {
+  var verification = sessionVerify_(sessionId, sessionToken);
+  if (!verification.ok) {
+    rpcLog_(op, requestId, verification.reason || "AUTH_REQUIRED", Date.now() - t0);
+    sessionRevoke_(sessionId);
+    return {
+      ok: false,
+      failure: rpcFailure_(requestId, RPC_CODES.AUTH_REQUIRED, "工作階段已過期，請重新登入"),
+    };
+  }
+  if (verification.userId !== userId) {
+    rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
+    if (opts && opts.revokeOnUserIdMismatch) {
+      sessionRevoke_(sessionId);
+    }
+    return {
+      ok: false,
+      failure: rpcFailure_(requestId, RPC_CODES.AUTH_REQUIRED, "工作階段已過期，請重新登入"),
+    };
+  }
+  var user = usersFindById_(verification.userId);
+  if (!user || user.status !== "Active") {
+    rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
+    sessionRevoke_(sessionId);
+    return {
+      ok: false,
+      failure: rpcFailure_(requestId, RPC_CODES.AUTH_REQUIRED, "工作階段已過期，請重新登入"),
+    };
+  }
+  return { ok: true, user: user };
+}

@@ -293,44 +293,15 @@ function api_restoreApp(userId, sessionId, sessionToken) {
   var requestId = rpcRequestId_();
   var t0 = Date.now();
   try {
-    var verification = sessionVerify_(sessionId, sessionToken);
-    if (!verification.ok) {
-      rpcLog_(
-        op,
-        requestId,
-        verification.reason || "AUTH_REQUIRED",
-        Date.now() - t0
-      );
-      // Clear the now-stale session entry so subsequent restores do
-      // not keep retrying a dead session.
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    if (verification.userId !== userId) {
-      // Mismatched userId on a valid signature — treat as auth
-      // failure rather than authority confusion.
-      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    var user = usersFindById_(verification.userId);
-    if (!user || user.status !== "Active") {
-      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
+    // api_restoreApp is the only guarded RPC that revokes on userId
+    // mismatch — its job is to detect a stale session entry and clear
+    // it. The other guarded RPCs keep `revokeOnUserIdMismatch: false`
+    // per the SECURITY NOTE in Code.gs.
+    var guard = requireActiveSession_(op, requestId, t0, userId, sessionId, sessionToken, {
+      revokeOnUserIdMismatch: true,
+    });
+    if (!guard.ok) return guard.failure;
+    var user = guard.user;
     // Re-verify passed; return the existing session in the DTO so
     // the caller keeps a still-valid token. The user may have
     // multiple concurrent sessions, so do NOT revoke this one.
@@ -438,43 +409,12 @@ function api_getPrograms(userId, sessionId, sessionToken) {
   var requestId = rpcRequestId_();
   var t0 = Date.now();
   try {
-    var verification = sessionVerify_(sessionId, sessionToken);
-    if (!verification.ok) {
-      rpcLog_(
-        op,
-        requestId,
-        verification.reason || "AUTH_REQUIRED",
-        Date.now() - t0
-      );
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    if (verification.userId !== userId) {
-      // Mismatched userId parameter on an otherwise-VALID session —
-      // fail the request WITHOUT revoking the session (see the
-      // SECURITY NOTE above). This deliberately does not match
-      // api_restoreApp's current revoke-on-mismatch behavior.
-      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    var user = usersFindById_(verification.userId);
-    if (!user || user.status !== "Active") {
-      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
+    // Mismatched userId on an otherwise-VALID session fails WITHOUT
+    // revoking the session (see SECURITY NOTE above) — `revokeOnUserIdMismatch: false`.
+    var guard = requireActiveSession_(op, requestId, t0, userId, sessionId, sessionToken, {
+      revokeOnUserIdMismatch: false,
+    });
+    if (!guard.ok) return guard.failure;
     var programs = programsList_();
     rpcLog_(op, requestId, "SUCCESS", Date.now() - t0);
     return rpcSuccess_(requestId, programs);
@@ -512,34 +452,11 @@ function api_authorizedNavigate(userId, sessionId, sessionToken, sectionKey) {
   var requestId = rpcRequestId_();
   var t0 = Date.now();
   try {
-    var verification = sessionVerify_(sessionId, sessionToken);
-    if (!verification.ok) {
-      rpcLog_(op, requestId, verification.reason || "AUTH_REQUIRED", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    if (verification.userId !== userId) {
-      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    var user = usersFindById_(verification.userId);
-    if (!user || user.status !== "Active") {
-      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
+    var guard = requireActiveSession_(op, requestId, t0, userId, sessionId, sessionToken, {
+      revokeOnUserIdMismatch: false,
+    });
+    if (!guard.ok) return guard.failure;
+    var user = guard.user;
     var sections = bootstrapSectionsForRole_(user.role, userId);
     var authorized = false;
     for (var i = 0; i < sections.length; i++) {
@@ -602,42 +519,10 @@ function api_submitDemoTaskForm(
   var requestId = rpcRequestId_();
   var t0 = Date.now();
   try {
-    var verification = sessionVerify_(sessionId, sessionToken);
-    if (!verification.ok) {
-      rpcLog_(
-        op,
-        requestId,
-        verification.reason || "AUTH_REQUIRED",
-        Date.now() - t0
-      );
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    if (verification.userId !== userId) {
-      // Mismatched userId parameter on an otherwise-VALID session —
-      // fail the request WITHOUT revoking the session (matching
-      // api_getPrograms's SECURITY NOTE pattern).
-      rpcLog_(op, requestId, "AUTH_REQUIRED", Date.now() - t0);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
-    var user = usersFindById_(verification.userId);
-    if (!user || user.status !== "Active") {
-      rpcLog_(op, requestId, "FORBIDDEN", Date.now() - t0);
-      sessionRevoke_(sessionId);
-      return rpcFailure_(
-        requestId,
-        RPC_CODES.AUTH_REQUIRED,
-        "工作階段已過期，請重新登入"
-      );
-    }
+    var guard = requireActiveSession_(op, requestId, t0, userId, sessionId, sessionToken, {
+      revokeOnUserIdMismatch: false,
+    });
+    if (!guard.ok) return guard.failure;
     // Validation — runs after auth boundary per the contract (auth
     // failures take precedence).
     var trimmed = String(fieldValue || "").trim();
