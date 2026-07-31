@@ -265,3 +265,53 @@ These properties persist across deployments — they only need to be set once pe
 5. Open the URL. The login form must render with username and PIN fields.
 6. Submit valid credentials — you must reach the Profile section.
 7. Update `E2E_TARGET_URL` with the new URL per [Deployment](#deployment).
+
+## Troubleshooting
+
+### Login returns "系統暫時無法處理請求，請稍後再試。"
+
+This generic error is returned by the `catch` block in `api_loginUser` (`Code.gs`) when any exception occurs during the login server-side flow. The catch block logs the real exception via `console.error(e)` before returning the generic message, so the actual error is visible in **Executions** > select the failing `api_loginUser` run > **Stackdriver logs**.
+
+#### Bug history: unauthorized `spreadsheets` OAuth scope (resolved @11, 2026-07-31)
+
+**Symptom:** Valid credentials returned "系統暫時無法處理請求" on the new standalone Apps Script project. The login form rendered correctly (HTML loaded, `google.script.run` transport worked), but every login attempt failed server-side.
+
+**Initial (incorrect) hypothesis:** The [`docs/research/2026-07-30-login-failure-diagnosis.md`](docs/research/2026-07-30-login-failure-diagnosis.md) research note correctly identified that the failure began at `efccSpreadsheet_().getSheetByName("Users")` inside `usersFindByUsername_()`, but hypothesized the root cause was a missing `EFCC_SPREADSHEET_ID` Script Property. Script Properties were later confirmed set ("already set (skipped)"), ruling this out.
+
+**Actual root cause:** The `spreadsheets` OAuth scope was never authorized on the new standalone project.
+
+The trigger was commit `b489a89` ("feat: native <dialog> discard confirm + tiered auth client wiring (#69, #70, #71)"), which did two things in one commit:
+
+1. **Rotated `.clasp.json`** from the old container-bound script (`13Wdum...`) to the new standalone script (`1NvyYC...`).
+2. **Added `"oauthScopes": ["https://www.googleapis.com/auth/spreadsheets"]`** to `appsscript.json`. Before this, no explicit `oauthScopes` was declared and Apps Script auto-detected scopes at runtime.
+
+The new standalone project had never had its `spreadsheets` scope consented. Three factors made this hard to diagnose:
+
+- **`clasp deploy` does not trigger the OAuth consent dialog.** It creates a versioned deployment using whatever authorization the deploying user already has. If the scope was never consented, the deployment is created but fails at runtime.
+- **`doGet` does not use `SpreadsheetApp`.** It only calls `HtmlService.createTemplateFromFile`, which does not require the `spreadsheets` scope. The original deployment checklist said to run `doGet` from the editor to authorize OAuth scopes, but this only consented the `script.projects` / `script.deployments` scopes that clasp itself uses, not the runtime `spreadsheets` scope.
+- **`diagSetupScriptProperties` does not use `SpreadsheetApp` either.** It only calls `PropertiesService`, which requires no OAuth scope. So running it from the editor (the only setup function the operator had run) did not trigger the consent dialog.
+- **The catch block swallowed the real error.** `api_loginUser`'s `catch (e)` returned a generic "系統暫時無法處理請求" message, hiding the authorization exception from the user-facing UI.
+
+**Diagnosis method:** Systematic debugging via git archaeology. `git show b489a89 -- .clasp.json appsscript.json` revealed the script ID rotation and the `oauthScopes` addition in the same commit. The `console.error(e)` instrumentation (commit `c8aadee`) was deployed as @10 to surface the real exception in Stackdriver, but the root cause was found before the logs were needed by tracing the data flow: `api_loginUser` -> `usersFindByUsername_` -> `efccSpreadsheet_()` -> `SpreadsheetApp.openById()` requires the `spreadsheets` scope, which was declared in the manifest but never consented.
+
+**Fix:** Added `diagRunSheetStructure()` - a public wrapper function (functions ending with `_` are hidden from the Apps Script editor dropdown). It calls `diagSheetStructure_()`, which exercises the exact `SpreadsheetApp.openById()` code path that login uses. Running it from the editor triggered the OAuth consent dialog for the `spreadsheets` scope. After the operator accepted, the existing deployment immediately accepted logins.
+
+**Commits:**
+
+- `c8aadee` - `console.error(e)` in all 6 RPC catch blocks (instrumentation)
+- `0a8c928` - `diagSetupScriptProperties()` + external resource IDs in README
+- `ab4fea1` - revert `doGet()` to clean state, deployment checklist, diagnostic utilities
+- `58dd92f` - `diagRunSheetStructure()` wrapper, corrected checklist OAuth step
+
+**Prevention:** The [First-time deployment checklist](#first-time-deployment-checklist) step 1 now says to run `diagRunSheetStructure` (not `doGet`) to authorize the `spreadsheets` scope. The checklist explicitly documents that `doGet` alone is NOT enough because it only uses `HtmlService`.
+
+**Related docs:**
+
+- [`docs/research/2026-07-30-login-failure-diagnosis.md`](docs/research/2026-07-30-login-failure-diagnosis.md) - initial diagnosis (identified the failure boundary correctly but hypothesized the wrong leaf cause)
+- [ADR-0015: Standalone script for public deployment](docs/adr/0015-standalone-script-for-public-deployment.md) - the standalone migration decision
+
+#### If login still fails after the checklist
+
+1. Check **Executions** in the Apps Script editor for the failing `api_loginUser` run. The `console.error(e)` output shows the actual exception.
+2. Run `diagRunSheetStructure` from the editor - if it succeeds, spreadsheet access works and the problem is elsewhere (session salt, user lookup, PIN comparison).
+3. If `diagRunSheetStructure` throws, the error message identifies the specific failure (authorization, wrong spreadsheet ID, missing sheet, etc.).
