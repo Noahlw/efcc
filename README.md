@@ -230,13 +230,13 @@ Before the login gate accepts logins on a new standalone Apps Script project, co
 
 ### 1. Authorize OAuth scopes
 
-`clasp deploy` cannot trigger the OAuth consent dialog — it must be done from the Apps Script editor.
+`clasp deploy` cannot trigger the OAuth consent dialog. The `spreadsheets` scope (declared in `appsscript.json`) is only consented when a function that calls `SpreadsheetApp` runs from the editor. `doGet` alone is NOT enough - it only uses `HtmlService`.
 
 1. Open the [Apps Script editor](https://script.google.com/home/projects/1NvyYCSXEl3dBZzmEPOQNfwJbHm49WFxFFb3OHzENBP45H-myiU0FQppX/edit).
-2. From the function dropdown, select `doGet`.
+2. From the function dropdown, select `diagRunSheetStructure`.
 3. Click **Run** (▶). A dialog prompts for the `spreadsheets` scope.
 4. Click **Review permissions**, select your account, and click **Allow**.
-5. Verify the Executions log shows a successful run (the `doGet` call itself will return HTML — this is expected).
+5. Verify the Executions log shows the sheet structure JSON (sheet names + row counts). This confirms `SpreadsheetApp.openById` works end-to-end.
 
 See [Google's authorization documentation](https://developers.google.com/apps-script/guides/services/authorization) for the official OAuth flow reference.
 

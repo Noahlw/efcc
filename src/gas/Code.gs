@@ -805,6 +805,11 @@ function diagSetupScriptProperties() {
  * Apps Script APIs used:
  *   - SpreadsheetApp.openById / Sheet.getSheetName / getDataRange / getValues
  */
+function diagRunSheetStructure() {
+  var result = diagSheetStructure_();
+  console.log(JSON.stringify(result, null, 2));
+}
+
 function diagSheetStructure_() {
   var ss = efccSpreadsheet_();
   var sheets = ss.getSheets();
