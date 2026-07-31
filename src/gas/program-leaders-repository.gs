@@ -43,29 +43,7 @@ var PROGRAM_LEADERS_COL_CANDIDATES_ = {
  * @returns {Object<string, number>}
  */
 function programLeadersResolveColumns_(headerRow) {
-  var normalized = [];
-  for (var hi = 0; hi < headerRow.length; hi++) {
-    normalized.push(String(headerRow[hi]).trim().toLowerCase());
-  }
-  var col = {};
-  var keys = Object.keys(PROGRAM_LEADERS_COL_CANDIDATES_);
-  for (var k = 0; k < keys.length; k++) {
-    var key = keys[k];
-    var candidates = PROGRAM_LEADERS_COL_CANDIDATES_[key];
-    var idx = -1;
-    for (var c = 0; c < candidates.length; c++) {
-      idx = normalized.indexOf(candidates[c].toLowerCase());
-      if (idx !== -1) break;
-    }
-    if (idx === -1) {
-      throw new Error(
-        "Program_Leaders sheet is missing a required column. Expected one of: " +
-          candidates.join(" / ")
-      );
-    }
-    col[key] = idx;
-  }
-  return col;
+  return resolveColumnsByCandidates_(headerRow, PROGRAM_LEADERS_COL_CANDIDATES_);
 }
 /**
  * Read the Program_Leaders sheet. Returns an empty 2D array (header

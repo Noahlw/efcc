@@ -63,3 +63,52 @@ describe("spreadsheet-access.gs", () => {
     assert.throws(() => context.efccSpreadsheet_(), /EFCC_SPREADSHEET_ID/u);
   });
 });
+
+describe("resolveColumnsByCandidates_", () => {
+  function loadFresh(spreadsheetId = DEV_SPREADSHEET_ID) {
+    const { context } = makeMockContext(spreadsheetId);
+    loadGasFile(context, "spreadsheet-access.gs");
+    return context;
+  }
+
+  test("matches header exactly and returns {key: index} map", () => {
+    const context = loadFresh();
+    const result = context.resolveColumnsByCandidates_(
+      ["User_ID", "Name"],
+      { ID: ["User_ID"], NAME: ["Name"] }
+    );
+    assert.equal(result.ID, 0);
+    assert.equal(result.NAME, 1);
+  });
+
+  test("matches case-insensitively and accepts the first matching candidate", () => {
+    const context = loadFresh();
+    const result = context.resolveColumnsByCandidates_(
+      ["user_id"],
+      { ID: ["User_ID", "UserID"] }
+    );
+    assert.equal(result.ID, 0);
+  });
+
+  test("throws with a message listing candidates when a key has no match", () => {
+    const context = loadFresh();
+    assert.throws(
+      () =>
+        context.resolveColumnsByCandidates_(
+          ["x"],
+          { ID: ["User_ID", "UserID"] }
+        ),
+      /Expected one of: User_ID \/ UserID/u
+    );
+  });
+
+  test("returns a plain object (not array)", () => {
+    const context = loadFresh();
+    const result = context.resolveColumnsByCandidates_(
+      ["A"],
+      { K: ["A"] }
+    );
+    assert.equal(Array.isArray(result), false);
+    assert.equal(typeof result, "object");
+  });
+});

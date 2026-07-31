@@ -56,28 +56,7 @@ var USERS_COL_CANDIDATES_ = {
  * @returns {Object<string, number>}
  */
 function usersResolveColumns_(headerRow) {
-  var normalized = headerRow.map(function (h) {
-    return String(h).trim().toLowerCase();
-  });
-  var col = {};
-  var keys = Object.keys(USERS_COL_CANDIDATES_);
-  for (var k = 0; k < keys.length; k++) {
-    var key = keys[k];
-    var candidates = USERS_COL_CANDIDATES_[key];
-    var idx = -1;
-    for (var c = 0; c < candidates.length; c++) {
-      idx = normalized.indexOf(candidates[c].toLowerCase());
-      if (idx !== -1) break;
-    }
-    if (idx === -1) {
-      throw new Error(
-        "Users sheet is missing a required column. Expected one of: " +
-          candidates.join(" / ")
-      );
-    }
-    col[key] = idx;
-  }
-  return col;
+  return resolveColumnsByCandidates_(headerRow, USERS_COL_CANDIDATES_);
 }
 
 var USERS_ROW_CACHE_ = null;

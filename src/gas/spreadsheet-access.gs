@@ -46,3 +46,45 @@ function efccSpreadsheetId_() {
 function efccSpreadsheet_() {
   return SpreadsheetApp.openById(efccSpreadsheetId_());
 }
+
+/**
+ * Resolve column indexes by header name from an actual sheet header
+ * row. Shared by users-repository.gs and program-leaders-repository.gs
+ * (programs-repository has a distinct return shape and is not
+ * covered by this helper).
+ *
+ * Case-insensitive: header cells are trimmed+lowercased, candidates
+ * are lowercased on compare. If a logical key has no matching header,
+ * the helper throws with the candidate list so the operator can
+ * diagnose a missing or renamed column.
+ *
+ * @param {Array<string>} headerRow
+ * @param {Object<string, Array<string>>} candidatesMap
+ *   Map of LOGICAL_KEY -> array of acceptable header strings.
+ * @returns {Object<string, number>} Map of LOGICAL_KEY -> column index.
+ */
+function resolveColumnsByCandidates_(headerRow, candidatesMap) {
+  var normalized = [];
+  for (var h = 0; h < headerRow.length; h++) {
+    normalized.push(String(headerRow[h]).trim().toLowerCase());
+  }
+  var col = {};
+  var keys = Object.keys(candidatesMap);
+  for (var k = 0; k < keys.length; k++) {
+    var key = keys[k];
+    var candidates = candidatesMap[key];
+    var idx = -1;
+    for (var c = 0; c < candidates.length; c++) {
+      idx = normalized.indexOf(candidates[c].toLowerCase());
+      if (idx !== -1) break;
+    }
+    if (idx === -1) {
+      throw new Error(
+        "Sheet is missing a required column. Expected one of: " +
+          candidates.join(" / ")
+      );
+    }
+    col[key] = idx;
+  }
+  return col;
+}
