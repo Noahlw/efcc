@@ -48,7 +48,7 @@ A single Google Spreadsheet with these named sheets:
 | `Events` | Scheduled instances | Event_ID, Program_ID, Event_Date, Time_Slot, Event_Name |
 | `Attendance` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By |
 | `Program_Leaders` | Per-program leader assignments (ADR-0006) | Assignment_ID, Program_ID, User_ID, Assigned_By, Assigned_Date, Status |
-| `Audit_Log` | Admin action audit trail (ADR-0006) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Old_Value, New_Value, Reason |
+| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0015, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
 
 ### Users sheet
 
@@ -127,12 +127,13 @@ reconstruct by reading every file's header comment.
 | 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Accepted |
 | 0007 | Vanilla Multi-Page HTML Service Architecture  | Accepted |
 | 0008 | Schema-Driven Restart from GAS Template (Grills 1.1–1.5 locked) | Accepted |
-| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Accepted |
+| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded (Proposed) by 0015 — write-pattern shape and schema; non-repudiation principle carried forward |
 | 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
 | 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
 | 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
 | 0013 | Google Sheets Database Structure | Accepted |
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
+| 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
 
 ---
 
