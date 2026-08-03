@@ -107,7 +107,7 @@ function doPost(e) {
       code: "INTERNAL_ERROR",
       title: "Internal Server Error",
       detail: "伺服器處理時發生錯誤。",
-      requestId: reqId || ("req-" + Date.now()),
+      requestId: "req-" + Date.now(),
     };
   }
 
