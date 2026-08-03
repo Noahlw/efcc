@@ -1,17 +1,21 @@
 "use client";
 
-// ponytail: minimal states for #143 (BOOTING→SIGNED_OUT→AUTHENTICATING→READY).
-// Add RESTORING, RECOVERABLE_ERROR when #144 (reload restoration) or #146
-// (error recovery) land.
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useCallback, useEffect, useState } from "react";
-
-import { loginUser, RpcError } from "@/lib/api";
+import { loginUser, logoutUser, restoreApp, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
 
-function ProfileView({ bootstrap }: { bootstrap: Bootstrap }) {
+function ProfileView({
+  bootstrap,
+  onLogout,
+  loggingOut,
+}: {
+  bootstrap: Bootstrap;
+  onLogout: () => void;
+  loggingOut: boolean;
+}) {
   const p = bootstrap.profile;
   return (
     <main
@@ -51,12 +55,21 @@ function ProfileView({ bootstrap }: { bootstrap: Bootstrap }) {
           {p.qrCodeString}
         </dd>
       </dl>
+      <button
+        type="button"
+        onClick={onLogout}
+        disabled={loggingOut}
+        style={{ padding: "0.75rem", minHeight: 44, fontSize: "1rem" }}
+      >
+        {loggingOut ? COPY.login.submitting : COPY.logout.submit}
+      </button>
     </main>
   );
 }
 
 type View =
   | { kind: "SIGNED_OUT" }
+  | { kind: "RESTORING" }
   | { kind: "AUTHENTICATING" }
   | { kind: "READY"; bootstrap: Bootstrap }
   | { kind: "ERROR"; error: string };
@@ -65,19 +78,84 @@ export default function App() {
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // On mount, check for stored session (restoreApp will be implemented in #144).
+  /** Centralised expiry path: clear session, abort in-flight RPCs, return to Login. */
+  const handleExpiry = useCallback((message: string) => {
+    clearSession();
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setNotice(message);
+    setView({ kind: "SIGNED_OUT" });
+  }, []);
+
+  // On mount, restore any stored session.
   useEffect(() => {
     const stored = loadSession();
-    if (stored) {
-      // ponytail: restoreApp not yet called; #144 adds the restore RPC.
-      // For now, any stored session just goes to READY.
-      // The server will reject stale sessions on the first real RPC.
+    if (!stored) {
+      clearSession();
+      return;
     }
+
+    setView({ kind: "RESTORING" });
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    restoreApp(stored, { signal: controller.signal })
+      .then((bootstrap) => {
+        if (controller.signal.aborted) return;
+        setView({ kind: "READY", bootstrap });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+          handleExpiry(COPY.restore.expired);
+        } else {
+          clearSession();
+          setView({ kind: "SIGNED_OUT" });
+        }
+      });
+
+    return () => {
+      controller.abort();
+      abortRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleExpiry is stable; effect runs once on mount
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    const stored = loadSession();
+    if (!stored) {
+      clearSession();
+      setView({ kind: "SIGNED_OUT" });
+      return;
+    }
+
+    setLoggingOut(true);
+
+    let failed = false;
+    try {
+      await logoutUser(stored);
+    } catch {
+      failed = true;
+    }
+
+    clearSession();
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoggingOut(false);
+    if (failed) {
+      setNotice(COPY.logout.error);
+    }
+    setView({ kind: "SIGNED_OUT" });
   }, []);
 
   const handleLogin = useCallback(async () => {
     setView({ kind: "AUTHENTICATING" });
+    setNotice(null);
     try {
       const bootstrap = await loginUser(username, pin);
       saveSession({
@@ -96,8 +174,30 @@ export default function App() {
     }
   }, [username, pin]);
 
+  if (view.kind === "RESTORING") {
+    return (
+      <main
+        style={{
+          maxWidth: 400,
+          margin: "4rem auto",
+          padding: "0 1rem",
+          fontFamily: "sans-serif",
+          textAlign: "center",
+        }}
+      >
+        <p>{COPY.restore.loading}</p>
+      </main>
+    );
+  }
+
   if (view.kind === "READY") {
-    return <ProfileView bootstrap={view.bootstrap} />;
+    return (
+      <ProfileView
+        bootstrap={view.bootstrap}
+        onLogout={handleLogout}
+        loggingOut={loggingOut}
+      />
+    );
   }
 
   const busy = view.kind === "AUTHENTICATING";
@@ -112,6 +212,11 @@ export default function App() {
       }}
     >
       <h1 style={{ marginBottom: "1.5rem" }}>{COPY.login.title}</h1>
+      {notice && (
+        <p role="alert" style={{ color: "#b00020", marginBottom: "1rem" }}>
+          {notice}
+        </p>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -276,7 +276,7 @@ export async function callRpc<T>(
   action: string,
   params: Record<string, unknown>,
   session?: Session,
-  options?: { idempotencyKey?: string }
+  options?: { idempotencyKey?: string; signal?: AbortSignal }
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -297,6 +297,9 @@ export async function callRpc<T>(
     let res: Response;
     try {
       // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
+      const signals: AbortSignal[] = [AbortSignal.timeout(30_000)];
+      if (options?.signal) signals.push(options.signal);
+      // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
       res = await fetch("/api/v1/rpc", {
         method: "POST",
         headers,
@@ -304,7 +307,8 @@ export async function callRpc<T>(
         // Bounded timeout per AGENTS.md Production Resilience. 30s matches
         // Apps Script's 6-min limit with comfortable headroom for the
         // proxy hop; the client should never hang longer than this.
-        signal: AbortSignal.timeout(30_000),
+        // Combined with optional external signal for cancellation.
+        signal: AbortSignal.any(signals),
       });
     } catch {
       // Network failure / timeout / abort - retryable if the action is safe.
@@ -377,8 +381,11 @@ export function loginUser(username: string, pin: string): Promise<Bootstrap> {
   return callRpc<Bootstrap>("loginUser", { username, pin });
 }
 
-export function restoreApp(session: Session): Promise<Bootstrap> {
-  return callRpc<Bootstrap>("restoreApp", sessionParams(session), session);
+export function restoreApp(
+  session: Session,
+  options?: { signal?: AbortSignal }
+): Promise<Bootstrap> {
+  return callRpc<Bootstrap>("restoreApp", sessionParams(session), session, options);
 }
 
 export function logoutUser(session: Session): Promise<void> {

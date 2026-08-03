@@ -1,20 +1,32 @@
-// ponytail: AppState and RESTORING/RECOVERABLE_ERROR states deferred to #144/#146.
-// The page.tsx component defines its own View type for the states #143 implements.
-// ponytail: minimal localStorage persistence; no session expiry, no encryption.
-// Add session expiry checks when #144 (reload restoration) land.
+import type { Session } from "@/lib/api";
 
 const STORAGE_KEY = "efcc_session";
 
-export function loadSession(): unknown {
+function isValidSession(raw: unknown): raw is Session {
+  if (typeof raw !== "object" || raw === null) return false;
+  const s = raw as Record<string, unknown>;
+  return (
+    typeof s.userId === "string" &&
+    typeof s.sessionId === "string" &&
+    typeof s.sessionToken === "string" &&
+    s.userId !== "" &&
+    s.sessionId !== "" &&
+    s.sessionToken !== ""
+  );
+}
+
+export function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return isValidSession(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export function saveSession(data: unknown): void {
+export function saveSession(data: Session): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {

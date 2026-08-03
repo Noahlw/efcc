@@ -20,8 +20,12 @@ export const COPY = {
     status: "狀態",
     qrCode: "QR Code",
   },
-  status: {
-    loading: "載入中…",
-    error: "發生錯誤",
+  restore: {
+    loading: "正在還原工作階段…",
+    expired: "工作階段已過期，請重新登入。",
+  },
+  logout: {
+    submit: "登出",
+    error: "登出時發生錯誤，但已安全終止工作階段。",
   },
 } as const;
