@@ -191,11 +191,22 @@ interface RpcSuccess<T> {
   data: T;
 }
 
-function sleep(ms: number): Promise<void> {
-  // eslint-disable-next-line no-promise-executor-return, promise/avoid-new -- standard sleep pattern; no existing promise to return
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  if (signal?.aborted) {
+    reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    return promise;
+  }
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    },
+    { once: true }
+  );
+  return promise;
 }
 
 /**
@@ -206,7 +217,10 @@ function sleep(ms: number): Promise<void> {
  */
 function isAbort(error: unknown, externalSignal?: AbortSignal): boolean {
   if (externalSignal?.aborted) {return true;}
-  return error instanceof Error && error.name === "AbortError";
+  if (error !== null && typeof error === "object" && "name" in error) {
+    return error.name === "AbortError";
+  }
+  return false;
 }
 
 async function parseSuccess<T>(res: Response): Promise<T> {
@@ -322,7 +336,9 @@ export async function callRpc<T>(
     try {
       // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
       const signals: AbortSignal[] = [AbortSignal.timeout(30_000)];
-      if (options?.signal) {signals.push(options.signal);}
+      if (options?.signal) {
+        signals.push(options.signal);
+      }
       // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
       res = await fetch("/api/v1/rpc", {
         method: "POST",
@@ -351,7 +367,7 @@ export async function callRpc<T>(
       });
       if (canRetry && attempt < MAX_RETRIES) {
         // eslint-disable-next-line no-await-in-loop -- sequential backoff is intentional; retries must not race
-        await sleep(backoffMs(attempt));
+        await sleep(backoffMs(attempt), options?.signal);
         continue;
       }
       throw lastError;
@@ -376,7 +392,7 @@ export async function callRpc<T>(
     const retriable = isRetryableStatus(res.status);
     if (canRetry && retriable && attempt < MAX_RETRIES) {
       // eslint-disable-next-line no-await-in-loop -- sequential backoff is intentional
-      await sleep(backoffMs(attempt, retryAfterMs));
+      await sleep(backoffMs(attempt, retryAfterMs), options?.signal);
       continue;
     }
     throw lastError;

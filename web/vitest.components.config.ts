@@ -8,7 +8,7 @@ export default defineProject({
   },
   test: {
     environment: "jsdom",
-    include: ["lib/app.test.tsx", "lib/sections.test.ts"],
+    include: ["lib/app.test.tsx", "lib/sections.test.ts", "lib/api.test.ts"],
     setupFiles: ["./lib/test-setup.ts"],
     server: {
       deps: { inline: ["@testing-library/user-event"] },
