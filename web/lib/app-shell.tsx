@@ -121,6 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (code === "AUTH_REQUIRED") {
           clearSession();
           sessionStorage.setItem(DEEP_LINK_KEY, pathname);
+          sessionStorage.setItem("efcc_session_expired", "1");
           router.replace("/");
           return;
         }

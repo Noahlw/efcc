@@ -100,6 +100,10 @@ export default function LoginPage() {
 
   // On mount, surface any flash notice from a prior logout (Task 4).
   useEffect(() => {
+    if (sessionStorage.getItem("efcc_session_expired") === "1") {
+      setNotice(COPY.restore.expired);
+      sessionStorage.removeItem("efcc_session_expired");
+    }
     if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
       setNotice(COPY.logout.failedNotice);
       sessionStorage.removeItem(LOGOUT_FAILED_KEY);
