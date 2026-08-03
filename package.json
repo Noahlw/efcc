@@ -13,6 +13,7 @@
     "test:prototype": "vitest run tests/prototype",
     "e2e:auth": "tsx tests/e2e/auth.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
+    "test:shell-responsive": "playwright test --config=tests/e2e/responsive.config.ts",
     "posttest:e2e": "tsx tests/e2e/plan-doc-appender.ts",
     "build": "echo No build step; see src/gas/",
     "check": "ultracite check",
