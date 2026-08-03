@@ -59,3 +59,77 @@ a {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Phone nav: fixed bottom bar */
+.nav-phone {
+  display: flex;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--background);
+  border-top: 1px solid #ccc;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 100;
+}
+
+.nav-desktop {
+  display: none;
+}
+
+/* Desktop nav: side rail */
+@media (min-width: 768px) {
+  .nav-phone {
+    display: none;
+  }
+
+  .nav-desktop {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 200px;
+    background: var(--background);
+    border-right: 1px solid #ccc;
+    padding: 1rem;
+    z-index: 100;
+  }
+
+  .shell-content {
+    margin-left: 200px;
+  }
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  text-decoration: none;
+  color: var(--foreground);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.nav-item[aria-current="page"] {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.shell {
+  min-height: 100vh;
+  padding-bottom: 60px;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding-bottom: 0;
+  }
+}

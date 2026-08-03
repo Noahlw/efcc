@@ -28,4 +28,11 @@ export const COPY = {
     submit: "登出",
     error: "登出時發生錯誤，但已安全終止工作階段。",
   },
+  nav: {
+    backToHome: "返回首頁",
+    loading: "載入中…",
+    unauthorized: "您沒有權限存取此頁面。",
+    unknownRoute: "找不到此頁面。",
+    label: "主要導航",
+  },
 } as const;

@@ -1,88 +1,30 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { loginUser, logoutUser, restoreApp, RpcError } from "@/lib/api";
+import { loginUser, restoreApp, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY } from "@/lib/copy";
+import { firstSection } from "@/lib/sections";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
 
-function ProfileView({
-  bootstrap,
-  onLogout,
-  loggingOut,
-}: {
-  bootstrap: Bootstrap;
-  onLogout: () => void;
-  loggingOut: boolean;
-}) {
-  const p = bootstrap.profile;
-  return (
-    <main
-      style={{
-        maxWidth: 600,
-        margin: "2rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-      }}
-    >
-      <h1 style={{ marginBottom: "1.5rem" }}>{COPY.profile.title}</h1>
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "0.75rem 1rem",
-        }}
-      >
-        <dt>{COPY.profile.name}</dt>
-        <dd>{p.name}</dd>
-        <dt>{COPY.profile.username}</dt>
-        <dd>{p.username}</dd>
-        <dt>{COPY.profile.phone}</dt>
-        <dd>{p.phone}</dd>
-        <dt>{COPY.profile.role}</dt>
-        <dd>{p.role}</dd>
-        <dt>{COPY.profile.status}</dt>
-        <dd>{p.status}</dd>
-        <dt>{COPY.profile.qrCode}</dt>
-        <dd
-          style={{
-            fontFamily: "monospace",
-            fontSize: "0.8rem",
-            wordBreak: "break-all",
-          }}
-        >
-          {p.qrCodeString}
-        </dd>
-      </dl>
-      <button
-        type="button"
-        onClick={onLogout}
-        disabled={loggingOut}
-        style={{ padding: "0.75rem", minHeight: 44, fontSize: "1rem" }}
-      >
-        {loggingOut ? COPY.login.submitting : COPY.logout.submit}
-      </button>
-    </main>
-  );
-}
+const DEEP_LINK_KEY = "efcc_deep_link";
 
 type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
   | { kind: "AUTHENTICATING" }
-  | { kind: "READY"; bootstrap: Bootstrap }
   | { kind: "ERROR"; error: string };
 
-export default function App() {
+export default function LoginPage() {
+  const router = useRouter();
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
-  const [loggingOut, setLoggingOut] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  /** Centralised expiry path: clear session, abort in-flight RPCs, return to Login. */
   const handleExpiry = useCallback((message: string) => {
     clearSession();
     abortRef.current?.abort();
@@ -91,8 +33,18 @@ export default function App() {
     setView({ kind: "SIGNED_OUT" });
   }, []);
 
+  const navigateAfterLogin = useCallback(
+    (bootstrap: Bootstrap) => {
+      const deepLink = sessionStorage.getItem(DEEP_LINK_KEY);
+      sessionStorage.removeItem(DEEP_LINK_KEY);
+      router.replace(deepLink || `/${firstSection(bootstrap.sections)}`);
+    },
+    [router]
+  );
+
   // On mount, restore any stored session.
   useEffect(() => {
+    let cancelled = false;
     const stored = loadSession();
     if (!stored) {
       clearSession();
@@ -104,53 +56,33 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    restoreApp(stored, { signal: controller.signal })
-      .then((bootstrap) => {
-        if (controller.signal.aborted) return;
-        setView({ kind: "READY", bootstrap });
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+    (async () => {
+      try {
+        const bootstrap = await restoreApp(stored, {
+          signal: controller.signal,
+        });
+        if (cancelled) {return;}
+        navigateAfterLogin(bootstrap);
+      } catch (error) {
+        if (cancelled) {return;}
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
           handleExpiry(COPY.restore.expired);
         } else {
           clearSession();
           setView({ kind: "SIGNED_OUT" });
         }
-      });
+      }
+    })();
 
     return () => {
+      cancelled = true;
       controller.abort();
       abortRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleExpiry is stable; effect runs once on mount
-  }, []);
-
-  const handleLogout = useCallback(async () => {
-    const stored = loadSession();
-    if (!stored) {
-      clearSession();
-      setView({ kind: "SIGNED_OUT" });
-      return;
-    }
-
-    setLoggingOut(true);
-
-    let failed = false;
-    try {
-      await logoutUser(stored);
-    } catch {
-      failed = true;
-    }
-
-    clearSession();
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setLoggingOut(false);
-    if (failed) {
-      setNotice(COPY.logout.error);
-    }
-    setView({ kind: "SIGNED_OUT" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleExpiry/navigateAfterLogin are stable
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -163,7 +95,7 @@ export default function App() {
         sessionId: bootstrap.session.sessionId,
         sessionToken: bootstrap.session.sessionToken,
       });
-      setView({ kind: "READY", bootstrap });
+      navigateAfterLogin(bootstrap);
     } catch (error) {
       const msg =
         error instanceof RpcError
@@ -172,7 +104,7 @@ export default function App() {
       setView({ kind: "ERROR", error: msg });
       clearSession();
     }
-  }, [username, pin]);
+  }, [username, pin, navigateAfterLogin]);
 
   if (view.kind === "RESTORING") {
     return (
@@ -187,16 +119,6 @@ export default function App() {
       >
         <p>{COPY.restore.loading}</p>
       </main>
-    );
-  }
-
-  if (view.kind === "READY") {
-    return (
-      <ProfileView
-        bootstrap={view.bootstrap}
-        onLogout={handleLogout}
-        loggingOut={loggingOut}
-      />
     );
   }
 
