@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>EFCC 掃描器開啟者（測試 harness）</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+          sans-serif;
+        margin: 0;
+        padding: 16px;
+        background: #0b0b0f;
+        color: #f4f4f5;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 4px;
+      }
+      p.note {
+        font-size: 0.8rem;
+        color: #a1a1aa;
+        margin: 0 0 16px;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        margin: 12px 0 4px;
+        color: #d4d4d8;
+      }
+      input[type="url"] {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #3f3f46;
+        background: #18181b;
+        color: #f4f4f5;
+        font-size: 0.9rem;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin: 16px 0;
+        flex-wrap: wrap;
+      }
+      button {
+        appearance: none;
+        border: 1px solid #3f3f46;
+        background: #27272a;
+        color: #f4f4f5;
+        font-size: 0.95rem;
+        font-weight: 600;
+        padding: 12px 20px;
+        border-radius: 10px;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #2563eb;
+        border-color: #2563eb;
+      }
+      .result {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 10px;
+        background: #1f1f23;
+        border: 1px solid #3f3f46;
+        min-height: 3em;
+        font-size: 0.9rem;
+      }
+      .result b {
+        color: #4ade80;
+      }
+      .log {
+        margin-top: 12px;
+        max-height: 200px;
+        overflow: auto;
+        font-size: 0.75rem;
+        font-family: ui-monospace, monospace;
+        background: #18181b;
+        border: 1px solid #3f3f46;
+        border-radius: 8px;
+        padding: 8px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>EFCC 掃描器開啟者（測試 harness）</h1>
+    <p class="note">
+      模擬 Apps Script App
+      Document：以使用者手勢開啟外部掃描器頁、發送握手、接收
+      <code>postMessage</code> 掃描結果。真實 bridge 為 #103。
+    </p>
+
+    <label for="scannerUrl">掃描器頁面 URL（外部 origin）</label>
+    <input id="scannerUrl" type="url" value="./index.html" />
+
+    <div class="actions">
+      <button class="primary" id="open" type="button">開啟掃描器</button>
+      <button id="close" type="button">關閉掃描器</button>
+    </div>
+
+    <div class="result" id="result" role="status" aria-live="polite">
+      尚未收到掃描結果。
+    </div>
+    <div class="log" id="log"></div>
+
+    <script>
+      // Harness: simulates the App Document side of the bridge (#103). The
+      // single message listener is added ONCE and reused across open/close
+      // cycles so listeners never accumulate (acceptance criterion #100).
+      const SCAN_MESSAGE_TYPE = "EFCC_QR_SCAN";
+      const HANDSHAKE_TYPE = "EFCC_QR_HANDSHAKE";
+
+      const openBtn = document.getElementById("open");
+      const closeBtn = document.getElementById("close");
+      const urlInput = document.getElementById("scannerUrl");
+      const resultEl = document.getElementById("result");
+      const logEl = document.getElementById("log");
+      let popup = null;
+      let scanCount = 0;
+
+      function appendLog(line) {
+        const ts = new Date().toISOString().slice(11, 19);
+        logEl.textContent += `[${ts}] ${line}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function scannerOriginFor(url) {
+        try {
+          return new URL(url, location.href).origin;
+        } catch {
+          return null;
+        }
+      }
+
+      // Allowlist of scanner origins we accept scans from. Defaults to the
+      // origin of whatever URL is in the input (fail-closed otherwise).
+      function allowedScannerOrigins() {
+        const origin = scannerOriginFor(urlInput.value);
+        return origin ? new Set([origin]) : new Set();
+      }
+
+      function maskCode(code) {
+        return code.length <= 4
+          ? "••"
+          : `${code.slice(0, 2)}…${code.slice(-2)}`;
+      }
+
+      // ONE persistent listener - never re-added per open/close cycle.
+      window.addEventListener("message", (event) => {
+        const allow = allowedScannerOrigins();
+        if (!allow.has(event.origin)) {
+          appendLog(`ignored message from origin: ${event.origin}`);
+          return;
+        }
+        const data = event.data;
+        if (!data || data.type !== SCAN_MESSAGE_TYPE) {
+          return;
+        }
+        scanCount += 1;
+        // Operator-facing result masks the code (spec #93: never echo
+        // scannedCode in operator copy). The full value is kept only in the
+        // textContent debug log below for prototype verification. Built with
+        // textContent (never innerHTML) so a crafted QR cannot inject markup.
+        resultEl.replaceChildren();
+        const strong = document.createElement("b");
+        strong.textContent = maskCode(data.scannedCode);
+        resultEl.append(`已收到掃描 #${scanCount}：`, strong);
+        const span = document.createElement("span");
+        span.style.color = "#a1a1aa";
+        span.textContent = `（origin ${event.origin}）`;
+        resultEl.append(" ", span);
+        appendLog(`scan received: "${data.scannedCode}" from ${event.origin}`);
+      });
+
+      openBtn.addEventListener("click", () => {
+        const url = urlInput.value;
+        const origin = scannerOriginFor(url);
+        if (!origin) {
+          appendLog("invalid scanner URL");
+          return;
+        }
+        popup = window.open(url, "efccScanner", "noopener=false");
+        if (!popup) {
+          resultEl.textContent = "彈出視窗被封鎖。請允許彈出視窗後再試。";
+          appendLog("popup blocked");
+          return;
+        }
+        appendLog(`opened scanner: ${url}`);
+        // Send the handshake so the scanner learns our exact origin. The
+        // handshake carries no sensitive data; target the scanner origin
+        // exactly (never "*") per MDN. Retry a few times so a slow page load
+        // (cross-origin, cold cache) does not drop the handshake.
+        let attempts = 0;
+        const handshakeTimer = setInterval(() => {
+          attempts += 1;
+          if (!popup || popup.closed || attempts > 6) {
+            clearInterval(handshakeTimer);
+            return;
+          }
+          try {
+            popup.postMessage({ type: HANDSHAKE_TYPE }, origin);
+            appendLog(`handshake #${attempts} sent to ${origin}`);
+          } catch (err) {
+            appendLog(`handshake #${attempts} failed: ${err.message}`);
+          }
+        }, 350);
+      });
+
+      closeBtn.addEventListener("click", () => {
+        if (popup && !popup.closed) {
+          popup.close();
+          appendLog("scanner window closed by opener");
+        }
+        popup = null;
+      });
+
+      appendLog("harness ready");
+    </script>
+  </body>
+</html>

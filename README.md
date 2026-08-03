@@ -71,6 +71,17 @@ clasp deploy
 
 Do not run deployment commands until the relevant checks and the [AGENTS.md browser gate](AGENTS.md#implementation-verification-workflow--headless-browser-gate) are understood.
 
+### One-time Attendances sheet setup
+
+The QR check-in RPC uses the operational `Attendances` schema. The setup is manual and deliberately does not delete or overwrite data:
+
+1. In the DEV spreadsheet, rename the legacy `Attendances` tab to a dated archive such as `Attendances_Legacy_20260801`.
+2. Run `clasp push` so `src/gas/attendance-setup.gs` is available in the Apps Script project.
+3. In the Apps Script editor, run `setupAttendancesSheet_` once. It uses the configured `EFCC_SPREADSHEET_ID` and creates the new `Attendances` tab.
+4. Confirm the header row is exactly: `Attendance_ID | Event_ID | User_ID | CheckIn_Time | CheckIn_Method | CheckIn_By | Status`
+
+Do not run the function while an `Attendances` tab still exists. It fails closed if the target name is present.
+
 ## Where things live
 
 | Path | What belongs there | Read next |

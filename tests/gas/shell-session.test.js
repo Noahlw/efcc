@@ -470,6 +470,8 @@ function createGoogleRun(queuedHandlers) {
       "api_restoreApp",
       "api_logoutUser",
       "api_authorizedNavigate",
+      "api_getScannerEvents",
+      "api_qrCheckIn",
     ]) {
       builder[name] = (...args) => {
         calls.push({
@@ -539,6 +541,23 @@ function bootShellSession({ storedSession = null, queuedHandlers = [] } = {}) {
     window: {},
     google: { script: googleRun },
   };
+  const windowListeners = new Map();
+  context.window.addEventListener = (type, listener) => {
+    if (!windowListeners.has(type)) {
+      windowListeners.set(type, []);
+    }
+    windowListeners.get(type).push(listener);
+  };
+  context.window.removeEventListener = (type, listener) => {
+    const listeners = windowListeners.get(type) ?? [];
+    const index = listeners.indexOf(listener);
+    if (index !== -1) {
+      listeners.splice(index, 1);
+    }
+  };
+  context.window.setInterval = setInterval;
+  context.window.clearInterval = clearInterval;
+  context.window.location = { origin: "https://app.example" };
   context.window.document = dom.document;
   context.window.localStorage = localStorage;
   context.window.google = context.google;
@@ -569,7 +588,7 @@ function bootShellSession({ storedSession = null, queuedHandlers = [] } = {}) {
     fn(ready);
   }
 
-  return { dom, localStorage, googleRun, context };
+  return { dom, localStorage, googleRun, context, windowListeners };
 }
 
 // ---------------------------------------------------------------------------
@@ -582,6 +601,25 @@ function successEnvelope(data, requestId = "req-test") {
 
 function failureEnvelope(code, message, requestId = "req-test") {
   return { success: false, requestId, error: { code, message } };
+}
+
+function scannerEvents() {
+  return [
+    {
+      eventId: "EVT-1",
+      eventName: "青崇",
+      programId: "P-1",
+      programName: "青崇",
+      eventDate: "2026-08-01",
+      timeSlot: "15:00",
+    },
+  ];
+}
+
+function navSectionKeys(navEl) {
+  return (navEl.children || [])
+    .map((c) => c.attributes && c.attributes["data-section"])
+    .filter(Boolean);
 }
 
 function profileDto(overrides = {}) {
@@ -636,7 +674,9 @@ function findRetryButton(root) {
       return c;
     }
     const inner = findRetryButton(c);
-    if (inner) {return inner;}
+    if (inner) {
+      return inner;
+    }
   }
   return null;
 }
@@ -998,6 +1038,19 @@ describe("shell-session.js.html — issue #66 client controller", () => {
             value: successEnvelope(dtoWithGuardedSection("STAFF")),
           },
           { kind: "success", value: successEnvelope({ authorized: true }) },
+          {
+            kind: "success",
+            value: successEnvelope([
+              {
+                eventId: "EVT-1",
+                eventName: "青崇",
+                programId: "P-1",
+                programName: "青崇",
+                eventDate: "2026-08-01",
+                timeSlot: "15:00",
+              },
+            ]),
+          },
         ],
       });
       await flushMicrotasks();
@@ -1021,7 +1074,7 @@ describe("shell-session.js.html — issue #66 client controller", () => {
       assert.ok(authCalls[0].hasFailure, "failure handler must be registered");
       assert.ok(
         env.dom.index["app-content"].textContent.includes("掃描"),
-        "scanner placeholder must render after successful auth"
+        "scanner Section must render after successful auth + events load"
       );
     });
 
@@ -1168,6 +1221,19 @@ describe("shell-session.js.html — issue #66 client controller", () => {
             value: { status: "ERROR", message: "network down" },
           },
           { kind: "success", value: successEnvelope({ authorized: true }) },
+          {
+            kind: "success",
+            value: successEnvelope([
+              {
+                eventId: "EVT-1",
+                eventName: "青崇",
+                programId: "P-1",
+                programName: "青崇",
+                eventDate: "2026-08-01",
+                timeSlot: "15:00",
+              },
+            ]),
+          },
         ],
       });
       await flushMicrotasks();
@@ -1198,6 +1264,256 @@ describe("shell-session.js.html — issue #66 client controller", () => {
       assert.ok(
         env.dom.index["app-content"].textContent.includes("掃描"),
         "scanner must render after retry succeeds"
+      );
+    });
+
+    // -----------------------------------------------------------------
+    // Scanner check-in flow via the __e2e hook (spec #93 Seam 2). The
+    // real camera (capture) path is the Seam 4 phone probe; these drive
+    // the check-in wiring without a camera.
+    // -----------------------------------------------------------------
+
+    async function bootScanner(queued) {
+      const env = bootShellSession({
+        storedSession: {
+          userId: "U001",
+          sessionId: "sid-stored",
+          sessionToken: "tok-stored",
+        },
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          { kind: "success", value: successEnvelope({ authorized: true }) },
+          { kind: "success", value: successEnvelope(scannerEvents()) },
+          ...queued,
+        ],
+      });
+      await flushMicrotasks();
+      env.context.window.__EFCC_E2E = true;
+      env.context.window.__test__.navigateToImpl_("scanner");
+      await flushMicrotasks();
+      return env;
+    }
+
+    test("__e2e scan -> created:true -> success result (sent to scanner) with server-derived memberName", async () => {
+      const env = await bootScanner([
+        {
+          kind: "success",
+          value: successEnvelope({
+            created: true,
+            attendanceId: "ATT-1",
+            memberName: "張三",
+          }),
+        },
+      ]);
+      const hook = env.context.window.__EFCC_E2E_SCANNER;
+      assert.ok(hook, "__e2e scanner hook must be attached");
+      hook.scan("GC-MEM-0001");
+      await flushMicrotasks();
+      const result = hook.lastResult();
+      assert.ok(result, "a result must be produced for the scanner overlay");
+      assert.equal(result.tone, "success");
+      assert.ok(
+        result.message.includes("簽到成功"),
+        "success message for a first create"
+      );
+      assert.ok(
+        result.message.includes("張三"),
+        "server-derived memberName is in the result"
+      );
+      assert.ok(
+        !result.message.includes("GC-MEM-0001"),
+        "must not echo scannedCode in the result"
+      );
+      assert.equal(result.action, "auto");
+      assert.equal(
+        env.dom.index["scanner-log"],
+        undefined,
+        "App Document must not duplicate the Scanner Window result log"
+      );
+    });
+
+    test("__e2e scan -> created:false -> neutral duplicate result without an App log", async () => {
+      const env = await bootScanner([
+        {
+          kind: "success",
+          value: successEnvelope({
+            created: false,
+            attendanceId: "ATT-1",
+            memberName: "張三",
+          }),
+        },
+      ]);
+      const hook = env.context.window.__EFCC_E2E_SCANNER;
+      hook.scan("GC-MEM-0001");
+      await flushMicrotasks();
+      const result = hook.lastResult();
+      assert.equal(result.tone, "info");
+      assert.equal(result.action, "auto");
+      assert.ok(result.message.includes("已簽到"));
+      assert.equal(env.dom.index["scanner-log"], undefined);
+    });
+
+    test("__e2e scan -> typed error (MEMBER_NOT_FOUND) -> error result, no code echo", async () => {
+      const env = await bootScanner([
+        {
+          kind: "success",
+          value: failureEnvelope("MEMBER_NOT_FOUND", "找不到此會員"),
+        },
+      ]);
+      env.context.window.__EFCC_E2E_SCANNER.scan("GC-NOPE-0001");
+      await flushMicrotasks();
+      const result = env.context.window.__EFCC_E2E_SCANNER.lastResult();
+      assert.equal(result.tone, "error");
+      assert.equal(result.action, "resume");
+      assert.ok(
+        result.message.includes("找不到此會員"),
+        "typed error message is in the result"
+      );
+      assert.ok(
+        !result.message.includes("GC-NOPE-0001"),
+        "must not echo scannedCode on a typed failure"
+      );
+    });
+
+    test("__e2e scan -> transport failure -> generic Traditional Chinese copy, no raw err.message leak", async () => {
+      const env = await bootScanner([
+        { kind: "failure", value: { message: "Network Error ENGLISH" } },
+      ]);
+      env.context.window.__EFCC_E2E_SCANNER.scan("GC-MEM-0001");
+      await flushMicrotasks();
+      const result = env.context.window.__EFCC_E2E_SCANNER.lastResult();
+      assert.equal(result.tone, "error");
+      assert.equal(result.action, "retry");
+      assert.ok(
+        result.message.includes("網絡連線不穩定"),
+        "generic Traditional Chinese transport copy"
+      );
+      assert.ok(
+        !result.message.includes("Network Error ENGLISH"),
+        "raw google.script.run error message must not leak to the scanner overlay"
+      );
+    });
+
+    test("leaving Scanner closes the external window and removes its message listener", async () => {
+      const popup = {
+        closed: false,
+        messages: [],
+        close() {
+          this.closed = true;
+        },
+        postMessage(payload, targetOrigin) {
+          this.messages.push({ payload, targetOrigin });
+        },
+      };
+      const env = await bootScanner([]);
+      env.context.window.open = () => popup;
+      const scanButton = env.dom.index["scanner-scan"];
+      assert.ok(scanButton, "Scanner launch button must render");
+      scanButton.dispatchEvent(makeEvent("click"));
+      await flushMicrotasks();
+      assert.equal(env.windowListeners.get("message")?.length, 1);
+      assert.ok(popup.messages.length > 0, "handshake must be sent");
+
+      env.context.window.__test__.navigateToImpl_("profile");
+
+      assert.equal(popup.closed, true, "leaving Scanner must close the popup");
+      assert.equal(
+        env.windowListeners.get("message")?.length ?? 0,
+        0,
+        "leaving Scanner must remove the bridge listener"
+      );
+    });
+
+    test("external Scanner Window scan message reaches api_qrCheckIn and receives a result", async () => {
+      const popup = {
+        closed: false,
+        messages: [],
+        close() {
+          this.closed = true;
+        },
+        postMessage(payload, targetOrigin) {
+          this.messages.push({ payload, targetOrigin });
+        },
+      };
+      const env = await bootScanner([
+        {
+          kind: "success",
+          value: successEnvelope({
+            created: true,
+            attendanceId: "ATT-1",
+            memberName: "張三",
+          }),
+        },
+      ]);
+      env.context.window.open = () => popup;
+      env.dom.index["scanner-scan"].dispatchEvent(makeEvent("click"));
+      await flushMicrotasks();
+
+      const listener = env.windowListeners.get("message")?.[0];
+      assert.ok(listener, "Scanner bridge listener must be installed");
+      listener({
+        origin: "https://noahwong-hue.github.io",
+        source: popup,
+        data: { type: "EFCC_QR_SCAN", scannedCode: "GC-MEM-0001" },
+      });
+      await flushMicrotasks();
+
+      const checkinCall = env.googleRun.calls.find(
+        (call) => call.method === "api_qrCheckIn"
+      );
+      assert.ok(checkinCall, "a trusted scan must invoke api_qrCheckIn");
+      assert.equal(checkinCall.args[3], "EVT-1");
+      assert.equal(checkinCall.args[4], "GC-MEM-0001");
+      const resultMessage = popup.messages.find(
+        (message) => message.payload.type === "EFCC_QR_RESULT"
+      );
+      assert.ok(
+        resultMessage,
+        "the result must be posted back to the Scanner Window"
+      );
+      assert.equal(resultMessage.payload.action, "auto");
+    });
+
+    // -----------------------------------------------------------------
+    // Scanner nav visibility: phone-only (rear-camera capture is
+    // meaningless on desktop). Regression for the desktop-hide change.
+    // -----------------------------------------------------------------
+
+    test("Scanner nav item is phone-only: present in phone nav, absent from desktop nav", async () => {
+      const env = bootShellSession({
+        storedSession: {
+          userId: "U001",
+          sessionId: "sid-stored",
+          sessionToken: "tok-stored",
+        },
+        queuedHandlers: [
+          {
+            kind: "success",
+            value: successEnvelope(dtoWithGuardedSection("STAFF")),
+          },
+          { kind: "success", value: successEnvelope({ authorized: true }) },
+        ],
+      });
+      await flushMicrotasks();
+
+      const phoneKeys = navSectionKeys(env.dom.index["app-nav-phone"]);
+      const desktopKeys = navSectionKeys(env.dom.index["app-nav-desktop"]);
+
+      assert.ok(
+        phoneKeys.includes("scanner"),
+        "phone nav must include the Scanner (rear-camera capture)"
+      );
+      assert.ok(
+        !desktopKeys.includes("scanner"),
+        "desktop nav must NOT include the Scanner (no camera on desktop)"
+      );
+      // Sanity: desktop nav still renders the non-camera sections.
+      assert.ok(
+        desktopKeys.includes("profile"),
+        "desktop nav must still include other sections (profile)"
       );
     });
   });

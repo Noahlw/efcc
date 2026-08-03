@@ -123,6 +123,29 @@ repository returns empty results when the sheet is missing.
 
 ---
 
+## Sheet (proposed): Audit_Log
+
+**Note:** This sheet does NOT exist in the production xlsx. It is additive. Schema
+settled by ADR-0015, reconciling drift across ADR-0006, ADR-0009, and spec #63 —
+see ADR-0015 for full rationale per column.
+
+| # | Header | Type | Required | Description |
+|---|--------|------|----------|-------------|
+| 1 | Log_ID | string | Yes | `Utilities.getUuid()`, row PK |
+| 2 | Timestamp | date | Yes | `new Date()`, sheet-native |
+| 3 | Actor_User_ID | string | Yes | Authenticated EFCC session's `User_ID` |
+| 4 | Action_Type | string | Yes | `PROGRAM_LEADER_GRANT`, `PROGRAM_LEADER_REVOKE`, `ENROLLMENT_ASSISTED_ADD`, `ENROLLMENT_ASSISTED_CANCEL`, `EVENT_CREATE`, `EVENT_CANCEL`, `EVENT_EDIT`, `ATTENDANCE_CHECKIN`, `ATTENDANCE_VOID`, `ROLE_CHANGE` (defined, currently unreachable — role changes are spreadsheet-only per spec #63) |
+| 5 | Target_User_ID | string | No | Member acted upon |
+| 6 | Target_Program_ID | string | No | Blank when not applicable |
+| 7 | Target_Event_ID | string | No | Blank when not applicable |
+| 8 | Old_Value | string | No | — |
+| 9 | New_Value | string | No | — |
+| 10 | Reason | string | No | Optional |
+| 11 | Outcome | string | Yes | `SUCCESS`\|`DUPLICATE`\|`CONFLICT`\|`DENIED`\|`FAILED` — see ADR-0015 §3 |
+| 12 | Correlation_ID | string | Yes | The RPC's own `requestId` from `rpcRequestId_()` (`rpc-envelope.gs`) — joins to `rpcLog_` Cloud Logging diagnostics |
+
+---
+
 ## Code-to-DB coupling map
 
 | Code File | Sheet(s) | Column Access Method | Hardcoded Indexes? |

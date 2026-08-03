@@ -23,6 +23,9 @@
 | QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
 | PIN | PIN 碼 | 4-digit numeric credential used with username for member login. |
 | Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, and Care. Use **Section** instead of the ambiguous product terms “page” or “screen”; implementation files may still use `.html` fragment names. |
+| Scanner Section | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
+| Scanner Window | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
+| scannedCode | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
 | Section Link | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
 | Session | 登入工作階段 | A server-validated authenticated period for one Member. Whether a Member may hold one or multiple concurrent Sessions is intentionally deferred to a separate authentication-hardening decision. |
 | Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
@@ -46,9 +49,9 @@ A single Google Spreadsheet with these named sheets:
 | `Programs` | Program catalog | Program_ID, Program_Name, Type, Description |
 | `Enrollments` | Program membership | Enrollment_ID, User_ID, Program_ID, Timestamp, Status |
 | `Events` | Scheduled instances | Event_ID, Program_ID, Event_Date, Time_Slot, Event_Name |
-| `Attendance` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By |
+| `Attendances` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By, Status |
 | `Program_Leaders` | Per-program leader assignments (ADR-0006) | Assignment_ID, Program_ID, User_ID, Assigned_By, Assigned_Date, Status |
-| `Audit_Log` | Admin action audit trail (ADR-0006) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Old_Value, New_Value, Reason |
+| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0015, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
 
 ### Users sheet
 
@@ -127,12 +130,13 @@ reconstruct by reading every file's header comment.
 | 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Accepted |
 | 0007 | Vanilla Multi-Page HTML Service Architecture  | Accepted |
 | 0008 | Schema-Driven Restart from GAS Template (Grills 1.1–1.5 locked) | Accepted |
-| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Accepted |
+| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded (Proposed) by 0015 — write-pattern shape and schema; non-repudiation principle carried forward |
 | 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
 | 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
 | 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
 | 0013 | Google Sheets Database Structure | Accepted |
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
+| 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
 
 ---
 

@@ -115,6 +115,36 @@
     });
     var sectionStates_ = {};
 
+    // Scanner Section runtime state (F5, external-origin Option A). The
+    // events list lives in sectionStates_[SCANNER] (LOADING/READY/ERROR);
+    // this object holds the open Scanner Window, bridge lifecycle, in-flight
+    // check-in, and same-code cooldown so a continuous camera stream does not
+    // double-submit (spec #93 US 12-14).
+    var SCANNER_SUPPRESS_MS_ = 2500;
+    // External-origin scanner page (ADR-0015 Option A). Hosted on GitHub Pages
+    // because getUserMedia is blocked in the /exec IFRAME (research
+    // 2026-07-30/#87 + 2026-08-01 best-method note). The App Document opens
+    // this page, bridges an opaque scannedCode via postMessage, runs
+    // api_qrCheckIn, and posts the result back for inline display.
+    var SCANNER_PAGE_URL_ =
+      "https://noahwong-hue.github.io/efcc-scanner/index.html";
+    var SCANNER_ORIGIN_ = "https://noahwong-hue.github.io";
+    var SCANNER_MSG_HANDSHAKE_ = "EFCC_QR_HANDSHAKE";
+    var SCANNER_MSG_SCAN_ = "EFCC_QR_SCAN";
+    var SCANNER_MSG_RESULT_ = "EFCC_QR_RESULT";
+    var scannerRuntime_ = {
+      selectedEventId: null,
+      selectedEventName: "",
+      scannerWindow: null, // window.open reference to the external scanner page
+      listenerInstalled: false,
+      messageListener: null,
+      handshakeTimer: null,
+      inFlight: false, // one pending check-in at a time (spec #93 US 12)
+      lastCode: null, // set only on a SETTLED success (US 25)
+      lastCodeAt: 0,
+      lastResult: null, // __e2e observability: last result sent to the scanner
+    };
+
     // -----------------------------------------------------------------
     // Tiny DOM helpers
     // -----------------------------------------------------------------
@@ -363,6 +393,9 @@
       nav.removeAttribute("hidden");
 
       for (var i = 0; i < sections_.length; i++) {
+        // Scanner is phone-only: it drives the rear camera via
+        // <input capture=environment>, which is meaningless on desktop.
+        if (sections_[i].key === SECTION_KEYS.SCANNER) continue;
         nav.appendChild(buildNavItem_(sections_[i], false));
       }
     }
@@ -606,6 +639,12 @@
         // Different root — close task and fall through to navigate.
       } else if (sectionKey === currentSection_) {
         return; // True no-op: at this root with no task open.
+      }
+      if (
+        currentSection_ === SECTION_KEYS.SCANNER &&
+        sectionKey !== SECTION_KEYS.SCANNER
+      ) {
+        teardownScannerRuntime_();
       }
       // Check authorization: client-side membership in bootstrap list.
       var section = findSectionByKey_(sectionKey);
@@ -1229,11 +1268,22 @@
             buildSectionCard_(sectionKey, "聚會", "聚會管理將於後續版本提供。")
           );
           break;
-        case SECTION_KEYS.SCANNER:
-          content.appendChild(
-            buildSectionCard_(sectionKey, "掃描", "出席掃描將於後續版本提供。")
-          );
+        case SECTION_KEYS.SCANNER: {
+          // F5 external-origin QR Scanner (Option A: external camera page +
+          // postMessage bridge). Load active events (capability-filtered)
+          // once, then render the Event picker + open-scanner flow. Re-entry
+          // reuses cached events.
+          var scanState = sectionStates_[SECTION_KEYS.SCANNER];
+          var scanStateName = scanState ? scanState.state : SECTION_STATE.IDLE;
+          if (scanStateName === SECTION_STATE.READY) {
+            renderScannerContent_(scanState.data);
+          } else if (scanStateName === SECTION_STATE.ERROR) {
+            renderSectionErrorCard_(SECTION_KEYS.SCANNER, scanState.errorCode);
+          } else {
+            loadScannerSection_();
+          }
           break;
+        }
         case SECTION_KEYS.CARE:
           content.appendChild(
             buildSectionCard_(
@@ -1260,6 +1310,452 @@
         sectionViewCache_[sectionKey].stale = false;
       }
       content.scrollTop = cached && !cached.stale ? cached.scrollTop || 0 : 0;
+    }
+
+    // -----------------------------------------------------------------
+    // Scanner Section (F5, external-origin Option A per ADR-0015).
+    // Camera capture + decode live on an external HTTPS origin
+    // (SCANNER_PAGE_URL_) because getUserMedia is blocked in the /exec IFRAME
+    // (research 2026-07-30/#87 + 2026-08-01 best-method note). This Section
+    // opens the external scanner page (window.open), receives an opaque
+    // scannedCode via postMessage, runs api_qrCheckIn, and posts the result
+    // back for inline ✓/✗ on the scanner page. The check-in authority stays
+    // server-side: api_qrCheckIn re-verifies session, capability, Event,
+    // Member, and Enrollment; the client only sends an opaque scannedCode.
+    // -----------------------------------------------------------------
+    function loadScannerSection_() {
+      sectionStates_[SECTION_KEYS.SCANNER] = { state: SECTION_STATE.LOADING };
+      renderSectionLoadingCard_(SECTION_KEYS.SCANNER);
+      // Capture (do not increment) - renderSection_ already bumped
+      // navGeneration_ for this entry (same convention as loadProgramsSection_).
+      var gen = navGeneration_;
+      callServer_(
+        "section:scanner-events",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_getScannerEvents(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken
+            );
+        },
+        function (envelope) {
+          if (gen !== navGeneration_) return; // superseded
+          if (!envelope || typeof envelope !== "object") {
+            sectionStates_[SECTION_KEYS.SCANNER] = {
+              state: SECTION_STATE.ERROR,
+              errorCode: "MALFORMED",
+            };
+            renderSectionErrorCard_(SECTION_KEYS.SCANNER, "MALFORMED");
+            return;
+          }
+          if (envelope.success === true) {
+            sectionStates_[SECTION_KEYS.SCANNER] = {
+              state: SECTION_STATE.READY,
+              data: envelope.data || [],
+            };
+            renderSection_(SECTION_KEYS.SCANNER);
+            return;
+          }
+          var code =
+            (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
+          if (code === "AUTH_REQUIRED") {
+            var message =
+              (envelope.error && envelope.error.message) ||
+              "工作階段已過期，請重新登入";
+            clearAuthenticatedClientState_();
+            setAppState(STATE.SIGNED_OUT);
+            renderLogin_();
+            setStatus("");
+            showLoginError_(message);
+            return;
+          }
+          if (code === "FORBIDDEN") {
+            navigateToNearestPermitted_();
+            return;
+          }
+          sectionStates_[SECTION_KEYS.SCANNER] = {
+            state: SECTION_STATE.ERROR,
+            errorCode: "GENERIC",
+          };
+          renderSectionErrorCard_(SECTION_KEYS.SCANNER, "GENERIC");
+        },
+        function () {
+          if (gen !== navGeneration_) return;
+          sectionStates_[SECTION_KEYS.SCANNER] = {
+            state: SECTION_STATE.ERROR,
+            errorCode: "TRANSPORT",
+          };
+          renderSectionErrorCard_(SECTION_KEYS.SCANNER, "TRANSPORT");
+        }
+      );
+    }
+
+    function renderScannerContent_(events) {
+      var content = $("app-content");
+      if (!content) return;
+      clearChildren(content);
+      if (!events || events.length === 0) {
+        content.appendChild(
+          buildSectionCard_(
+            SECTION_KEYS.SCANNER,
+            "掃描",
+            "目前沒有可掃描的活躍聚會。"
+          )
+        );
+        return;
+      }
+      // Fresh entry resets in-flight + cooldown.
+      scannerRuntime_.selectedEventId = events[0].eventId;
+      scannerRuntime_.selectedEventName = events[0].eventName;
+      scannerRuntime_.inFlight = false;
+      scannerRuntime_.lastCode = null;
+      scannerRuntime_.lastCodeAt = 0;
+      scannerRuntime_.lastResult = null;
+
+      var card = el("div", { class: "login-card" }, [
+        el("h2", { text: "出席掃描" }),
+        el("p", {
+          class: "muted",
+          text: "選擇聚會後，點按「掃描 QR Code」開啟相機掃描會員 QR Code。",
+        }),
+      ]);
+
+      var select = el("select", {
+        id: "scanner-event",
+        class: "input",
+      });
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        select.appendChild(
+          el("option", {
+            value: ev.eventId,
+            text: ev.eventName + "（" + ev.programName + "）",
+          })
+        );
+      }
+      select.addEventListener("change", function () {
+        scannerRuntime_.selectedEventId = select.value;
+        var picked = events.filter(function (e) {
+          return e.eventId === select.value;
+        })[0];
+        scannerRuntime_.selectedEventName = picked
+          ? picked.eventName
+          : select.value;
+      });
+      card.appendChild(el("label", { for: "scanner-event", text: "聚會" }));
+      card.appendChild(select);
+
+      var scanBtn = el("button", {
+        id: "scanner-scan",
+        class: "btn btn-primary btn-full",
+        type: "button",
+        text: "掃描 QR Code",
+      });
+      scanBtn.addEventListener("click", openScanner_);
+      card.appendChild(scanBtn);
+
+      // Keep only a compact recoverable error surface here. The Scanner Window
+      // owns camera/loading/check-in/result feedback so the operator does not
+      // see two competing result surfaces.
+      var status = el("p", {
+        id: "scanner-status",
+        class: "scanner-status scanner-status--info",
+        role: "status",
+        "aria-live": "polite",
+        text: "",
+      });
+      status.setAttribute("hidden", "hidden");
+      card.appendChild(status);
+
+      content.appendChild(
+        el("section", { class: "page view-scanner" }, [card])
+      );
+
+      // __e2e hook (spec #93 Seam 2): inject a scannedCode without a real
+      // camera/external window so Playwright can drive auto check-in, suppress,
+      // and typed-error paths. Does NOT grant auth or write Sheets - the RPC
+      // re-checks authority server-side. lastResult exposes the result message
+      // that would be posted to the external scanner window.
+      if (window.__EFCC_E2E) {
+        window.__EFCC_E2E_SCANNER = {
+          scan: handleScannerScan_,
+          setEvent: function (id, name) {
+            scannerRuntime_.selectedEventId = id;
+            scannerRuntime_.selectedEventName = name || "";
+          },
+          events: events,
+          lastResult: function () {
+            return scannerRuntime_.lastResult;
+          },
+        };
+      }
+    }
+
+    function scannerSetStatus_(text, tone) {
+      var node = $("scanner-status");
+      if (!node) return;
+      node.textContent = text || "";
+      node.className = "scanner-status scanner-status--" + (tone || "info");
+      if (text) node.removeAttribute("hidden");
+      else node.setAttribute("hidden", "hidden");
+    }
+
+    // -----------------------------------------------------------------
+    // External-origin bridge (ADR-0015 Option A). The App Document opens the
+    // scanner page (window.open), the scanner decodes + posts an opaque
+    // scannedCode back, the App Document runs api_qrCheckIn and posts the
+    // result back so the scanner shows inline ✓/✗. The message listener is
+    // registered ONCE and reused across open/close cycles.
+    // -----------------------------------------------------------------
+    function ensureScannerMessageListener_() {
+      if (scannerRuntime_.listenerInstalled) return;
+      scannerRuntime_.listenerInstalled = true;
+      scannerRuntime_.messageListener = function (event) {
+        // Fail closed: only accept scans from the configured scanner origin.
+        if (event.origin !== SCANNER_ORIGIN_) return;
+        if (
+          scannerRuntime_.scannerWindow &&
+          event.source !== scannerRuntime_.scannerWindow
+        ) {
+          return;
+        }
+        var data = event.data;
+        if (!data || data.type !== SCANNER_MSG_SCAN_) return;
+        handleScannerScan_(data.scannedCode);
+      };
+      window.addEventListener("message", scannerRuntime_.messageListener);
+    }
+
+    function teardownScannerRuntime_() {
+      if (scannerRuntime_.handshakeTimer) {
+        window.clearInterval(scannerRuntime_.handshakeTimer);
+        scannerRuntime_.handshakeTimer = null;
+      }
+      var popup = scannerRuntime_.scannerWindow;
+      if (popup && !popup.closed) {
+        try {
+          popup.close();
+        } catch (e) {
+          // best-effort: the external page still tears down its camera on close
+        }
+      }
+      scannerRuntime_.scannerWindow = null;
+      if (scannerRuntime_.messageListener) {
+        window.removeEventListener("message", scannerRuntime_.messageListener);
+      }
+      scannerRuntime_.messageListener = null;
+      scannerRuntime_.listenerInstalled = false;
+      scannerRuntime_.inFlight = false;
+      scannerRuntime_.lastCode = null;
+      scannerRuntime_.lastCodeAt = 0;
+      scannerRuntime_.lastResult = null;
+    }
+
+    function sendScannerHandshake_(popup) {
+      try {
+        popup.postMessage(
+          {
+            type: SCANNER_MSG_HANDSHAKE_,
+            eventName: scannerRuntime_.selectedEventName,
+          },
+          SCANNER_ORIGIN_
+        );
+      } catch (e) {
+        // best-effort: the interval retries while the external page loads
+      }
+    }
+
+    function openScanner_() {
+      var eventId = scannerRuntime_.selectedEventId;
+      if (!eventId) {
+        scannerSetStatus_("請先選擇聚會。", "error");
+        return;
+      }
+      ensureScannerMessageListener_();
+      if (scannerRuntime_.handshakeTimer) {
+        window.clearInterval(scannerRuntime_.handshakeTimer);
+        scannerRuntime_.handshakeTimer = null;
+      }
+      if (scannerRuntime_.scannerWindow && !scannerRuntime_.scannerWindow.closed) {
+        try {
+          scannerRuntime_.scannerWindow.close();
+        } catch (e) {
+          // best-effort: replace the reference with a fresh window below
+        }
+      }
+      // window.open from a user gesture; the popup escapes the sandbox via
+      // allow-popups-to-escape-sandbox (research 2026-07-30/#87).
+      var scannerUrl = SCANNER_PAGE_URL_;
+      var query = [];
+      if (window.location && window.location.origin) {
+        query.push("opener=" + encodeURIComponent(window.location.origin));
+      }
+      if (scannerRuntime_.selectedEventName) {
+        query.push(
+          "eventName=" + encodeURIComponent(scannerRuntime_.selectedEventName)
+        );
+      }
+      if (query.length > 0) scannerUrl += "?" + query.join("&");
+      var popup = window.open(scannerUrl, "efccScanner");
+      if (!popup) {
+        scannerSetStatus_(
+          "彈出視窗被封鎖。請允許此網站的彈出視窗後再試。",
+          "error"
+        );
+        return;
+      }
+      scannerRuntime_.scannerWindow = popup;
+      scannerSetStatus_("");
+      // Send the handshake so the scanner learns our origin + the Event name
+      // for its top bar. Retry a few times for a slow cross-origin page load.
+      var attempts = 0;
+      sendScannerHandshake_(popup);
+      scannerRuntime_.handshakeTimer = window.setInterval(function () {
+        attempts += 1;
+        if (!popup || popup.closed || attempts > 6) {
+          window.clearInterval(scannerRuntime_.handshakeTimer);
+          scannerRuntime_.handshakeTimer = null;
+          return;
+        }
+        sendScannerHandshake_(popup);
+      }, 350);
+    }
+
+    function handleScannerScan_(rawCode) {
+      var code = String(rawCode || "").trim();
+      if (code === "") return; // the scanner normalizes; ignore empty
+      var eventId = scannerRuntime_.selectedEventId;
+      if (!eventId) {
+        sendScannerResult_("error", "請先選擇聚會。");
+        return;
+      }
+      var now = Date.now();
+      // Same-code cooldown: a continuous camera stream fires many frames;
+      // suppress repeats of the last settled code briefly (spec #93 US 13-14).
+      if (
+        code === scannerRuntime_.lastCode &&
+        now - scannerRuntime_.lastCodeAt < SCANNER_SUPPRESS_MS_
+      ) {
+        return;
+      }
+      if (scannerRuntime_.inFlight) {
+        return; // one pending check-in at a time (spec #93 US 12)
+      }
+      scannerRuntime_.inFlight = true;
+      callServer_(
+        "scanner:checkin",
+        function (onSuccess, onFailure) {
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onFailure)
+            .api_qrCheckIn(
+              session_.userId,
+              session_.sessionId,
+              session_.sessionToken,
+              eventId,
+              code,
+              "QR_SCAN"
+            );
+        },
+        function (envelope) {
+          scannerRuntime_.inFlight = false;
+          var result = buildCheckinResultMessage_(envelope);
+          sendScannerResult_(result.tone, result.message, result.action);
+          // Settled success: suppress the same code briefly (US 13-14).
+          if (result.settled) {
+            scannerRuntime_.lastCode = code;
+            scannerRuntime_.lastCodeAt = Date.now();
+          }
+          if (result.authRequired) {
+            clearAuthenticatedClientState_();
+            setAppState(STATE.SIGNED_OUT);
+            renderLogin_();
+            setStatus("");
+            showLoginError_(result.authMessage);
+          }
+        },
+        function () {
+          scannerRuntime_.inFlight = false;
+          // Transport failure: generic Traditional Chinese copy only (never
+          // echo the raw google.script.run error). lastCode is NOT set, so a
+          // retry of the same code is not blocked (spec #93 US 25).
+          var msg = "網絡連線不穩定，請重新掃描。";
+          sendScannerResult_("error", msg, "retry");
+        }
+      );
+    }
+
+    // Build the inline result message (tone + text) from the api_qrCheckIn
+    // envelope. Reuses the shared copy contract: created/duplicate success,
+    // server-supplied Traditional-Chinese error messages, never echoes the code.
+    function buildCheckinResultMessage_(envelope) {
+      if (!envelope || typeof envelope !== "object") {
+        return { tone: "error", message: "系統回應異常，請重試。" };
+      }
+      if (envelope.success === true) {
+        var d = envelope.data || {};
+        // created:true = new Attendance; created:false = quiet duplicate
+        // (no alarm, no second row - spec #93 US 15-17).
+        return {
+          tone: d.created ? "success" : "info",
+          action: "auto",
+          settled: true,
+          message:
+            (d.created ? "簽到成功：" : "已簽到：") + (d.memberName || ""),
+        };
+      }
+      var errCode = (envelope.error && envelope.error.code) || "INTERNAL_ERROR";
+      if (errCode === "AUTH_REQUIRED") {
+        return {
+          tone: "error",
+          action: "resume",
+          settled: false,
+          authRequired: true,
+          authMessage:
+            (envelope.error && envelope.error.message) ||
+            "工作階段已過期，請重新登入",
+          message:
+            (envelope.error && envelope.error.message) ||
+            "工作階段已過期，請重新登入",
+        };
+      }
+      // Typed failures (FORBIDDEN/NOT_ENROLLED/MEMBER_NOT_FOUND/etc.) - the
+      // server message is Traditional Chinese and never echoes the code.
+      return {
+        tone: "error",
+        action: "resume",
+        settled: false,
+        message:
+          (envelope.error && envelope.error.message) || "簽到失敗，請重試。",
+      };
+    }
+
+    // Post the check-in result back to the external scanner window so it can
+    // show inline ✓/✗. Also records lastResult for __e2e observability.
+    function sendScannerResult_(tone, message, action) {
+      scannerRuntime_.lastResult = {
+        tone: tone,
+        message: message,
+        action: action || "resume",
+      };
+      var popup = scannerRuntime_.scannerWindow;
+      if (!popup || popup.closed) return;
+      try {
+        popup.postMessage(
+          {
+            type: SCANNER_MSG_RESULT_,
+            tone: tone,
+            message: message,
+            action: action || "resume",
+          },
+          SCANNER_ORIGIN_
+        );
+      } catch (e) {
+        // best-effort: the scanner keeps its last visible state
+      }
     }
 
     function renderProfileContent_(sessionData) {
@@ -2045,6 +2541,7 @@
     }
 
     function clearAuthenticatedClientState_() {
+      teardownScannerRuntime_();
       session_ = null;
       sections_ = [];
       currentSection_ = null;

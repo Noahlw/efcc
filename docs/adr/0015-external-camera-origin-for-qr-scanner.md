@@ -1,82 +1,77 @@
-# ADR-0015 — External Camera Origin for QR Scanner
+# ADR-0015 - QR Scanner Camera Capture (External Origin)
 
-- **Status**: Proposed — official restriction deployment-verified (2026-07-30 `/exec` probe, #87); external-origin replacement pending the shared Prototype (#98/#100) and the deployed F5 gate (#104)
-- **Deciders**: Noah Wong, OMP planner (F5 QR Scanner implementation, #97)
-- **Date**: 2026-07-31
-- **Related**: `docs/adr/0010-stable-app-document-and-expandable-sections.md`, `docs/specs/006-attendance-tracking.md` §3.1, `docs/specs/009-phone-first-shell-navigation.md`, issues [#87](https://github.com/Noahlw/efcc/issues/87), [#88](https://github.com/Noahlw/efcc/issues/88), [#93](https://github.com/Noahlw/efcc/issues/93), [#96](https://github.com/Noahlw/efcc/issues/96); research note [`docs/research/2026-07-30-f5-tickets-87-88-89.md`](../research/2026-07-30-f5-tickets-87-88-89.md)
+- **Status**: Proposed - **reverted to Option A (external HTTPS origin + `getUserMedia` + `html5-qrcode` + `postMessage` bridge)** as the primary method (2026-08-01). Option B (in-App-Document `<input type=file capture>` + jsQR) was tried in production and failed: iOS Safari does not honor `capture` to force the camera (caniuse), producing a slow multi-step chooser UX, and single-photo jsQR decode was too slow/unreliable. Option A's external camera page was validated on a real phone (continuous auto-scan works, `html5-qrcode` is fast). Stays Proposed until a full-flow phone test passes: App Document (`/exec`) -> `window.open` -> scanner page -> `postMessage` scan -> `api_qrCheckIn` -> result back, proving the popup escapes the Apps Script sandbox (`allow-popups-to-escape-sandbox`) end-to-end (AGENTS.md evidence gate).
+- **Deciders**: Noah Wong (F5 QR Scanner, #83/#100); reverted per the 2026-08-01 best-method research + Option B production failure.
+- **Date**: 2026-07-31 (revised 2026-08-01 Option B; reverted 2026-08-01 Option A)
+- **Related**: `docs/adr/0010-stable-app-document-and-expandable-sections.md`, `docs/specs/006-attendance-tracking.md` §3.1, `docs/specs/009-phone-first-shell-navigation.md`, issues [#87](https://github.com/Noahlw/efcc/issues/87), [#88](https://github.com/Noahlw/efcc/issues/88), [#93](https://github.com/Noahlw/efcc/issues/93), [#99](https://github.com/Noahlw/efcc/issues/99), [#100](https://github.com/Noahlw/efcc/issues/100), [#101](https://github.com/Noahlw/efcc/issues/101); research notes [`2026-07-30-f5-tickets-87-88-89.md`](../research/2026-07-30-f5-tickets-87-88-89.md), [`2026-08-01-f5-qr-scanner-best-method.md`](../research/2026-08-01-f5-qr-scanner-best-method.md).
+
+## Revision history (2026-08-01)
+
+1. **Option A (original, 2026-07-31):** external HTTPS origin + `getUserMedia` + pinned `html5-qrcode`, opened via `window.open` + `postMessage`. Prototype shipped under `prototype/scanner/` (#100).
+2. **Option B (pivot, 2026-08-01, #99):** in-App-Document `<input type=file accept=image/* capture=environment>` + self-hosted jsQR. Rationale: the IFRAME Permissions-Policy `camera` directive governs only `getUserMedia()`, not HTML Media Capture, so a file-input might work inside the sandbox (no external host, no bridge). **Production result:** failed. iOS Safari does not honor `capture` to force the camera (caniuse `html-media-capture` note #1) -> the operator gets a multi-step chooser (Take Photo / Photo Library) instead of a direct rear-camera launch; single-photo jsQR decode was too slow and unreliable. The Events-sheet column mismatch compounded the failure (separate fix in `events-repository.gs`).
+3. **Revert to Option A (2026-08-01):** the external camera page was validated on a real phone (camera opens, continuous auto-scan, `html5-qrcode` fast, `postMessage` back). The 2026-08-01 best-method research confirms Option A is the only officially documented method and the method practitioners use. The App Document now wires the bridge (open + listener + `api_qrCheckIn` + result-back) so the operator sees inline ✓/✗ on the camera page without looking away.
 
 ## Context
 
-EFCC's QR Attendance Scanner (F5, feature #83) must capture camera frames and decode member QR codes on phones. Historical architecture assumed this happened **inside the stable Apps Script HTML Service App Document**:
+EFCC's QR Attendance Scanner (F5, feature #83) must capture a member QR code on a phone and decode it. The camera cannot live in the stable Apps Script HTML Service App Document:
 
-- ADR-0010: "Large optional dependencies, including the QR scanner library, use a shared on-demand asset loader that resolves at most once per App Document."
-- Spec 006 §3.1: "App opens HTML5 camera video stream via `html5-qrcode` scanner library."
-- Spec 009: the Scanner fragment "Load `html5-qrcode` once over HTTPS before initialization."
-
-Research #87 falsified that assumption. Official Apps Script documentation documents a **Permissions policy violation** when HtmlService content calls `navigator.mediaDevices.getUserMedia()`, and a 2026-07-30 cold-start probe of the deployed `/exec` IFRAME confirmed it structurally: Google's outer `#sandboxFrame` `allow` list contains no `camera`/`microphone` grant, `featurePolicy.allowsFeature("camera") === false` inside the user document, and the console reports `Permissions policy violation: camera is not allowed in this document.` No code inside `doGet()` output can change the Google-controlled embed's `allow` list.
-
-Because the camera cannot live in the App Document, the decoder cannot either (#88): loading `html5-qrcode` (or any camera-bound library) into the App Document would call the blocked API and re-create ADR-0007's project-size pressure to no effect. The App Document instead keeps a narrow role: opening/closing an external camera window, verifying its origin, and accepting an opaque `scannedCode`.
+- **#87 (research + live `/exec` probe):** `navigator.mediaDevices.getUserMedia()` is blocked by Permissions Policy inside HtmlService. Google's outer `#sandboxFrame` `allow` list contains no `camera`/`microphone` grant; `featurePolicy.allowsFeature("camera") === false`; console reports `Permissions policy violation: camera is not allowed in this document.` No code inside `doGet()` output can change Google's embed.
+- **#88 (research):** decode must therefore happen on the external camera host; `html5-qrcode@2.3.8` (primary, wraps camera+decode, optional `BarcodeDetector`) or `getUserMedia`+`jsQR` (escape hatch). `BarcodeDetector`-only rejected (no usable Safari/iOS).
+- **2026-08-01 best-method research:** Google's official Troubleshooting page documents the block AND prescribes the exact external-domain + `window.open` + `postMessage` + `event.origin`-check remedy (with a reference `Index.html`). It is the only officially documented method; every practitioner who solved the Apps Script camera problem moved the camera off-Apps-Script (e.g. Netlify-hosted scanner -> Apps Script). Option B's iOS failure is a platform limitation (caniuse), not an implementation slip.
 
 ## Decision
 
-For F5 (QR Attendance Scanner), camera capture and QR decode live on an **EFCC-controlled external HTTPS origin**, not inside the HtmlService App Document:
+For F5, camera capture and QR decode live on an **external HTTPS origin**, bridged to the App Document via `postMessage`:
 
-1. **No `getUserMedia` inside the App Document.** The App Document never requests camera/microphone access. The Google sandbox does not grant it, and product code cannot change that.
-2. **External origin + user-gesture `window.open` + `postMessage` bridge.** The operator taps a Scanner action; the App Document opens the external camera page in a new window/tab from that user gesture (satisfying popup-blocker rules); the external page runs `getUserMedia`, decodes QR frames, and posts an opaque `scannedCode` back via `postMessage` (per Google's documented external-domain workaround and its `window.opener.postMessage` example).
-3. **App Document ownership.** The App Document owns: the origin **allowlist** (every `message` event's `event.origin` is checked before acceptance), acceptance of the **opaque `scannedCode`** only (never a Member DTO, never client-supplied `userId`), and the **check-in RPC** against the shared Attendance authority (#51). It also closes the external window and drops the `message` listener on Section unmount/logout (F5 teardown contract).
-4. **Decoder placement.** The external origin prefers pinned, self-hosted **`html5-qrcode@2.3.8`** (historical pin from spec 009; may use native `BarcodeDetector` internally when present). The credible escape hatch is a thin `getUserMedia` + **`jsQR`** implementation on the same external page. In-document decoder loads are rejected; `BarcodeDetector`-only designs are rejected (no usable Safari/iOS path).
-5. **ADR-0010 narrowing.** ADR-0010's "once per App Document" on-demand asset loader remains valid for App Document assets (including a tiny bridge module), but its scanner-library assumption is **superseded for F5**: the scanner library is not an App Document asset at all. Section mount/unmount lifecycle ownership stays as ADR-0010/spec 009 defined; only the camera/decode placement moves off-document.
+1. **External scanner page** (`https://noahwong-hue.github.io/efcc-scanner/`, source in `prototype/scanner/`). Opened via `window.open` from a user-gesture tap. Runs `getUserMedia({ video: { facingMode: "environment" } })` + **`html5-qrcode@2.3.8`** (default, fast, validated on phone) or `jsQR@1.4.0` (escape hatch via `?decoder=jsqr`). A **custom reticle** overlays the camera; `html5-qrcode`'s own UI is hidden via CSS. On each decode it posts `{ type: "EFCC_QR_SCAN", scannedCode }` to the opener with the opener's exact origin as `targetOrigin` (never `*`).
+2. **App Document Scanner Section** (`shell-session.js.html`) owns the Event picker (capability-filtered active Events via `api_getScannerEvents`), opens the scanner page, sends an `EFCC_QR_HANDSHAKE` (with the Event name for the scanner's top bar), and registers ONE persistent `message` listener (reused across open/close cycles). On `EFCC_QR_SCAN` it runs `google.script.run.api_qrCheckIn(...)` (#101) and posts `{ type: "EFCC_QR_RESULT", tone, message }` back so the scanner shows inline ✓/✗. The App Document verifies `event.origin === "https://noahwong-hue.github.io"` before reading any scan.
+3. **Inline feedback for a check-in line:** the Scanner Window stays open and is the single visual owner of camera/bridge loading, per-scan processing, result, and recovery feedback. The camera remains visible while the Attendance RPC is in flight. Success and duplicate results return automatically to ready-to-scan; typed business failures require an explicit return-to-scanning action. The App Document does not mirror a per-scan result log.
+4. **Server authority unchanged.** `api_qrCheckIn` independently re-verifies session, capability, Event state, Member, and Enrollment; the client (scanner page) only supplies an opaque `scannedCode`. One in-flight check-in + same-code cooldown live in the scanner page (waiting-state machine) and the App Document (`scannerRuntime_`).
+5. **Scanner is phone-only in the nav** (the rear-camera flow is meaningless on desktop): `renderNavDesktop_` skips `SECTION_KEYS.SCANNER`.
+6. **Loading and recovery states stay in the Scanner Window:** use indeterminate stage animation rather than a false percentage; retry camera, bridge, and transport failures in place; keep the App Document limited to Event selection and compact launch/session errors.
 
-## Official evidence
+## Official evidence (per AGENTS.md docs-backed method rule)
 
-Per the repo's docs-backed method rule, the two Google citations below are the primary evidence for the restriction and the workaround. Quoted passages retrieved 2026-07-31 from the official pages (Context7 `/websites/developers_google_apps-script` library + direct `developers.google.com` fetch).
+**1. Apps Script Troubleshooting - "Permissions policy violation"** ([URL](https://developers.google.com/apps-script/guides/support/troubleshooting), fetched 2026-08-01):
 
-**1. Apps Script Troubleshooting — "Permissions policy violation"** ([URL](https://developers.google.com/apps-script/guides/support/troubleshooting)):
+> "This error occurs when an application using HTMLService attempts to execute Web APIs that require sensitive permissions, such as `navigator.mediaDevices.getUserMedia()` for camera or microphone access. ... Host the functionality that requires these permissions on a separate domain (outside of Apps Script) and open it in a new window or tab. You can then post the captured data or responses back to your Apps Script application as shown in this example."
 
-> "This error occurs when an application using HTMLService attempts to execute Web APIs that require sensitive permissions, such as `navigator.mediaDevices.getUserMedia()` for camera or microphone access. The Apps Script sandboxed environment restricts these features to protect user security. Host the functionality that requires these permissions on a separate domain (outside of Apps Script) and open it in a new window or tab. You can then post the captured data or responses back to your Apps Script application as shown in this example."
+**2. HTML Service: Restrictions** ([URL](https://developers.google.com/apps-script/guides/html/restrictions)) - sandbox keywords include `allow-popups` and `allow-popups-to-escape-sandbox` (so the external window escapes the sandbox and can request camera as a normal top-level context), with no `camera` grant.
 
-The page's example implements exactly the pattern adopted here: `window.open(externalUrl, 'cameraWindow', ...)` from a click handler, the external page using `getUserMedia` and `window.opener.postMessage(...)`, and the Apps Script document filtering with `if (event.origin !== 'https://your-external-domain.com') { return; }` before `google.script.run` processing.
+**3. iOS `capture` caveat (Option B failure root cause):** Can I Use `html-media-capture` (fetched 2026-08-01) - iOS Safari note #1: "Does not support the capture attribute used to force capture straight from the device's camera or microphone." This is the structural reason Option B produced a slow multi-step chooser.
 
-**2. HTML Service: Restrictions** ([URL](https://developers.google.com/apps-script/guides/html/restrictions)):
-
-> "The `IFRAME` sandbox mode is based on the iframe sandboxing feature in HTML5, using the following keywords: `allow-same-origin`, `allow-forms`, `allow-scripts`, `allow-popups`, `allow-downloads`, `allow-modals`, `allow-popups-to-escape-sandbox`, `allow-top-navigation-by-user-activation`"
-
-The documented sandbox keyword list contains **no camera or microphone grant** — there is no documented `allow="camera"` equivalent for HtmlService — while `allow-popups` and `allow-popups-to-escape-sandbox` support Google's external-window workaround. The same page requires active content (scripts, external stylesheets, XHR) to be HTTPS, which the self-hosted pinned decoder satisfies:
-
-> "'Active' content like scripts, external stylesheets, and XmlHttpRequests must be loaded over HTTPS, not HTTP."
-
-Supplementary (not primary evidence): the 2026-07-30 deployed `/exec` probe recorded in #87 (missing `camera` in the outer sandbox `allow` list, `allowsFeature("camera") === false`, console Permissions-policy error) and MDN documentation of `getUserMedia` secure-context/Permissions-Policy requirements, `facingMode`, and `MediaStreamTrack.stop()` (cited in the research note).
+Supplementary: the 2026-07-30 deployed `/exec` probe (#87), MDN `getUserMedia`/`postMessage` docs, and the 2026-08-01 best-method research note (community practice).
 
 ## Consequences
 
 **Positive:**
-
-- F5 gets a documented, supported path to camera capture that cannot be revoked by an Apps Script sandbox change: the only moving parts on Google's side are `allow-popups`/`allow-popups-to-escape-sandbox`, which are documented sandbox keywords.
-- The App Document stays free of camera code and multi-hundred-KB decoder bundles (ADR-0007 size lesson).
-- The trust boundary sharpens: the bridge carries an opaque code, identity resolution stays server-side under #51, and the origin allowlist makes forged `postMessage` messages fail closed.
-- Scanner teardown becomes testable without a camera: closing the window and dropping the listener are DOM/RPC observables (#102–#106).
+- **Continuous auto-scan** (live stream + decode) - the right UX for a check-in line, vs Option B's photo-per-scan. Validated fast on a real phone with `html5-qrcode`.
+- **Officially documented + community-validated** method - not a creative workaround.
+- The trust boundary stays simple: the scanner page decodes an opaque string; the App Document runs the RPC; identity stays server-side under #51/#101.
 
 **Negative / risks:**
-
-- F5 now depends on a second origin: an EFCC-controlled HTTPS host must be provisioned, allowlisted, and kept available (operator decision #99; hosting is **out of scope** for this ADR).
-- Popup blockers and camera-permission flows add recoverable failure states the Scanner must handle with sticky copy + user-gesture retry (spec #93 user stories 7–8).
-- `html5-qrcode` is unmaintained since 2023-04-15; mitigation is pinning + self-hosting + the `jsQR` escape hatch.
-- Deployed proof of the external path is still pending: the shared Prototype (#98/#100) on real phones and the F5 Playwright gate (#104). Until then this decision stays **Proposed** per the repo's evidence gate (AGENTS.md, spec 009 decision-evidence standard).
+- **A second origin to provision and keep available** (`noahwong-hue.github.io/efcc-scanner`). The App Document allowlists exactly `https://noahwong-hue.github.io`; a different scanner host requires updating `SCANNER_ORIGIN_`/`SCANNER_PAGE_URL_` in `shell-session.js.html`.
+- **Popup blocker / sandbox-escape unproven end-to-end.** The standalone prototype validated camera+decode+`postMessage`, but the popup escaping the Apps Script sandbox (`allow-popups-to-escape-sandbox`) is only verifiable in the full deployed flow. The decision stays **Proposed** until that phone test passes (AGENTS.md).
+- **`html5-qrcode` is unmaintained since 2023-04-15.** Mitigation: exact pin + self-host (`vendor/`) + the `jsQR` escape hatch.
+- **Bidirectional `postMessage`** (scan -> App Document -> result -> scanner) is slightly more complex than one-way, but the contract is small and unit-tested (`scanner-core.js`).
 
 **Supersession scope (explicit):**
-
-- Superseded for **F5 only**: ADR-0010's in-document "once-per-App-Document scanner library" assumption (scanner library placement), spec 006 §3.1's "App opens HTML5 camera video stream via `html5-qrcode`", and spec 009's Scanner-fragment `html5-qrcode` load requirement. Where those documents define Section lifecycle, asset-loading discipline, or the RPC envelope, they remain in force.
-- **F6 manual check-in is unaffected**: no camera, no external origin; shared Attendance authority (#51) still owns eligibility, lock, quiet duplicate, and `NOT_ENROLLED` for both paths.
-- Trust and payload decisions are not reopened: opaque `scannedCode`, server-side resolution, and Day 1 `QR_Code_String` stability come from #90/#93 and stay as recorded.
+- ADR-0010's in-document "scanner library" assumption is **obsolete for camera**: the camera/decode library now lives on the external origin, not in the App Document. The App Document owns only the bridge (window + listener).
+- Spec 006 §3.1 ("HTML5 camera video stream via `html5-qrcode`") and spec 009's in-document `html5-qrcode` load are superseded for F5 by the external-origin flow.
+- Option B artifacts (`jsqr.js.html`, the file-input scanner code) are **removed**. The Events-sheet column fix (`events-repository.gs`) is **retained** - `api_getScannerEvents` still feeds the Event picker.
+- Trust and payload decisions are not reopened: opaque `scannedCode`, server-side resolution, and Day-1 `QR_Code_String` stability come from #90/#93 and stay as recorded.
 
 ## Cross-references
 
 | Reference | Relationship |
 | --- | --- |
-| ADR-0010 | Scanner-library placement assumption superseded for F5; lifecycle/asset-loader discipline retained |
-| Spec 006 §3.1 | In-document `html5-qrcode` camera flow superseded for F5; RPC/duplicate semantics retained (and refined by #93) |
-| Spec 009 | Scanner-fragment `html5-qrcode` load requirement superseded for F5; fragment lifecycle/teardown contracts retained |
-| #87 | Research: camera restriction + external-window workaround (deployed `/exec` probe) |
-| #88 | Research: decoder placement on external origin, `html5-qrcode@2.3.8` pin + `jsQR` escape hatch |
-| #93 | Focused QR Scanner spec; Implementation Decision "Record a durable ADR when Implementation starts" (this ADR) |
-| #96 | F5 entry point; dependency graph (#97 → #98/#100/#101 → … → #104) |
+| ADR-0010 | In-document scanner-library assumption obsolete for camera; library moved to the external origin |
+| Spec 006 §3.1 | In-document `html5-qrcode` live-stream superseded for F5 by the external-origin flow; RPC/duplicate semantics retained |
+| Spec 009 | Scanner-fragment `html5-qrcode` load superseded for F5 by the external scanner page; fragment lifecycle retained |
+| #87 | Research: `getUserMedia` restriction (the reason camera leaves the App Document) |
+| #88 | Research: decoder placement on the external host |
+| #93 | Focused QR Scanner spec; Seam 4 device probe now validates the external-origin flow |
+| #99 | Decision ticket: Option B chosen (now superseded by this revert) |
+| #100 | External-origin prototype (now the production scanner page, hosted on GitHub Pages) |
+| #101 | `api_qrCheckIn` shared Attendance RPC - the App Document runs it; the scanner page never calls Apps Script directly |
+| 2026-08-01 best-method research | Confirms Option A is the only officially documented + community-validated method |
