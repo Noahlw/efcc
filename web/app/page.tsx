@@ -111,7 +111,7 @@ export default function LoginPage() {
     } catch (error) {
       const msg =
         error instanceof RpcError
-          ? error.problem.detail || COPY.login.error
+          ? errorCopyFor(error.problem.code)
           : COPY.login.networkError;
       setView({ kind: "ERROR", error: msg });
       clearSession();

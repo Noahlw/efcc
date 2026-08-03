@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
+import { COPY } from "@/lib/copy";
 import { GuardedSection } from "@/lib/guarded-section";
 
 export default function PermissionsPage() {
@@ -15,7 +16,10 @@ export default function PermissionsPage() {
             fontFamily: "sans-serif",
           }}
         >
-          <p>權限管理 (placeholder)</p>
+          <h1 style={{ marginBottom: "1.5rem" }}>
+            {COPY.sections.permissions}
+          </h1>
+          <p>內容建置中。</p>
         </main>
       </GuardedSection>
     </AppShell>

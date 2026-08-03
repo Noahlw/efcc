@@ -13,9 +13,14 @@ import {
   vi,
 } from "vitest";
 
+import CarePage from "@/app/care/page";
+import EventsPage from "@/app/events/page";
 import NotFound from "@/app/not-found";
 import LoginPage from "@/app/page";
+import PermissionsPage from "@/app/permissions/page";
 import ProfilePage from "@/app/profile/page";
+import ProgramsPage from "@/app/programs/page";
+import ScannerPage from "@/app/scanner/page";
 import type { Bootstrap, Session } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -38,9 +43,9 @@ const mocks = vi.hoisted(() => {
   return { replaceMock, pathnameMock, mockRouter };
 });
 
-const {replaceMock} = mocks;
-const {pathnameMock} = mocks;
-const {mockRouter} = mocks;
+const { replaceMock } = mocks;
+const { pathnameMock } = mocks;
+const { mockRouter } = mocks;
 
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
@@ -236,9 +241,7 @@ describe("Shell", () => {
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
 
       await waitFor(() => {
-        expect(
-          screen.getByText("用戶名稱或 PIN 碼不正確。")
-        ).toBeInTheDocument();
+        expect(screen.getByText(COPY.restore.expired)).toBeInTheDocument();
       });
       expect(
         screen.getByLabelText(COPY.login.usernameLabel)
@@ -304,6 +307,54 @@ describe("Shell", () => {
         screen.getByRole("heading", { name: COPY.login.title })
       ).toBeInTheDocument();
       expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    test("login error response renders Traditional Chinese copy from COPY, never raw detail", async () => {
+      // The server returns an unknown problem code with a raw detail string.
+      // The login view must map the error through errorCopyFor so the user
+      // sees COPY.error.unknown, not the wire detail.
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "loginUser") {
+            return HttpResponse.json(
+              {
+                type: "tag:efcc.app,2026:error:WEIRD_THING",
+                status: 418,
+                code: "WEIRD_THING",
+                title: "Weird",
+                detail: "sensitive detail from server",
+                requestId: "r-418",
+              },
+              {
+                status: 418,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "bad");
+      await user.type(screen.getByLabelText(COPY.login.pinLabel), "0000");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.unknown)).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByText("sensitive detail from server")
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -897,6 +948,90 @@ describe("Shell", () => {
     });
   });
 
+  describe("Section page titles from COPY.sections", () => {
+    function withStaffBootstrap() {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            return HttpResponse.json({
+              success: true,
+              requestId: "r-restore",
+              data: { ...BOOTSTRAP, sections: STAFF_SECTIONS },
+            });
+          }
+          if (body.action === "authorizedNavigate") {
+            return HttpResponse.json({
+              success: true,
+              requestId: "r-auth",
+              data: { authorized: true },
+            });
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+    }
+
+    test("programs page renders COPY.sections.programs title", async () => {
+      saveSession(VALID_SESSION);
+      render(<ProgramsPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.programs })
+        ).toBeInTheDocument();
+      });
+    });
+
+    test("events page renders COPY.sections.events title", async () => {
+      saveSession(VALID_SESSION);
+      render(<EventsPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.events })
+        ).toBeInTheDocument();
+      });
+    });
+
+    test("scanner page renders COPY.sections.scanner title", async () => {
+      withStaffBootstrap();
+      saveSession(VALID_SESSION);
+      render(<ScannerPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.scanner })
+        ).toBeInTheDocument();
+      });
+    });
+
+    test("care page renders COPY.sections.care title", async () => {
+      withStaffBootstrap();
+      saveSession(VALID_SESSION);
+      render(<CarePage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.care })
+        ).toBeInTheDocument();
+      });
+    });
+
+    test("permissions page renders COPY.sections.permissions title", async () => {
+      withStaffBootstrap();
+      saveSession(VALID_SESSION);
+      render(<PermissionsPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.permissions })
+        ).toBeInTheDocument();
+      });
+    });
+  });
+
   describe(errorCopyFor, () => {
     test("NETWORK_ERROR maps to networkError", () => {
       expect(errorCopyFor("NETWORK_ERROR")).toBe(COPY.error.networkError);
@@ -940,15 +1075,27 @@ describe("Shell", () => {
       expect(errorCopyFor("MALFORMED_REQUEST")).toBe(COPY.error.malformed);
     });
 
-    test("unknown code falls back to detail then unknown", () => {
+    test("unknown code falls back to unknown (never raw detail)", () => {
       expect(errorCopyFor("UNKNOWN_CODE", "custom detail")).toBe(
-        "custom detail"
+        COPY.error.unknown
       );
       expect(errorCopyFor("UNKNOWN_CODE")).toBe(COPY.error.unknown);
     });
 
     test("undefined code falls back to unknown", () => {
       expect(errorCopyFor()).toBe(COPY.error.unknown);
+    });
+
+    test("unknown code never returns raw detail fallback", () => {
+      // Spec 074: centralized copy is the single source of user-facing text.
+      // errorCopyFor must NOT return arbitrary detail strings from the wire.
+      expect(errorCopyFor("UNKNOWN_CODE", "raw detail text")).toBe(
+        COPY.error.unknown
+      );
+      expect(errorCopyFor("SOMETHING_NEW", "sensitive leak")).toBe(
+        COPY.error.unknown
+      );
+      expect(errorCopyFor(undefined, "another leak")).toBe(COPY.error.unknown);
     });
   });
 });

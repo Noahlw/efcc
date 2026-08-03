@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
+import { COPY } from "@/lib/copy";
 
 export default function EventsPage() {
   return (
@@ -13,7 +14,8 @@ export default function EventsPage() {
           fontFamily: "sans-serif",
         }}
       >
-        <p>聚會 (placeholder)</p>
+        <h1 style={{ marginBottom: "1.5rem" }}>{COPY.sections.events}</h1>
+        <p>內容建置中。</p>
       </main>
     </AppShell>
   );

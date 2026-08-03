@@ -27,6 +27,15 @@ export const COPY = {
   logout: {
     submit: "登出",
     error: "登出時發生錯誤，但已安全終止工作階段。",
+    failedNotice: "登出請求失敗，但本機工作階段已清除。",
+  },
+  sections: {
+    profile: "個人檔案",
+    programs: "課程與活動",
+    events: "聚會管理",
+    scanner: "掃描簽到",
+    care: "關懷儀表板",
+    permissions: "權限管理",
   },
   nav: {
     backToHome: "返回首頁",
@@ -51,18 +60,35 @@ export const COPY = {
 
 export function errorCopyFor(
   code: string | undefined,
-  detail?: string
+  // _detail reserved for future fallback; centralized copy is the sole user-facing source.
+  _detail?: string
 ): string {
-  if (code === "NETWORK_ERROR") {return COPY.error.networkError;}
-  if (code === "AUTH_REQUIRED") {return COPY.restore.expired;}
-  if (code === "FORBIDDEN") {return COPY.error.forbidden;}
-  if (code === "VALIDATION") {return COPY.error.validation;}
-  if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND")))
-    {return COPY.error.notFound;}
-  if (code === "CONFLICT") {return COPY.error.conflict;}
-  if (code === "UNAVAILABLE") {return COPY.error.unavailable;}
-  if (code === "INTERNAL_ERROR") {return COPY.error.serverError;}
-  if (code === "MALFORMED_RESPONSE" || code === "MALFORMED_REQUEST")
-    {return COPY.error.malformed;}
-  return detail || COPY.error.unknown;
+  if (code === "NETWORK_ERROR") {
+    return COPY.error.networkError;
+  }
+  if (code === "AUTH_REQUIRED") {
+    return COPY.restore.expired;
+  }
+  if (code === "FORBIDDEN") {
+    return COPY.error.forbidden;
+  }
+  if (code === "VALIDATION") {
+    return COPY.error.validation;
+  }
+  if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND"))) {
+    return COPY.error.notFound;
+  }
+  if (code === "CONFLICT") {
+    return COPY.error.conflict;
+  }
+  if (code === "UNAVAILABLE") {
+    return COPY.error.unavailable;
+  }
+  if (code === "INTERNAL_ERROR") {
+    return COPY.error.serverError;
+  }
+  if (code === "MALFORMED_RESPONSE" || code === "MALFORMED_REQUEST") {
+    return COPY.error.malformed;
+  }
+  return COPY.error.unknown;
 }

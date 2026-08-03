@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
+import { COPY } from "@/lib/copy";
 import { GuardedSection } from "@/lib/guarded-section";
 
 export default function CarePage() {
@@ -15,7 +16,8 @@ export default function CarePage() {
             fontFamily: "sans-serif",
           }}
         >
-          <p>關懷 (placeholder)</p>
+          <h1 style={{ marginBottom: "1.5rem" }}>{COPY.sections.care}</h1>
+          <p>內容建置中。</p>
         </main>
       </GuardedSection>
     </AppShell>

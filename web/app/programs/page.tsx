@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
+import { COPY } from "@/lib/copy";
 
 export default function ProgramsPage() {
   return (
@@ -13,7 +14,8 @@ export default function ProgramsPage() {
           fontFamily: "sans-serif",
         }}
       >
-        <p>課程 (placeholder)</p>
+        <h1 style={{ marginBottom: "1.5rem" }}>{COPY.sections.programs}</h1>
+        <p>內容建置中。</p>
       </main>
     </AppShell>
   );
