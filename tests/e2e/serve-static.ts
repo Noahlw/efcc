@@ -26,9 +26,18 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 function safeResolveAsset(pathname: string): string | null {
-  const decoded = decodeURIComponent(pathname);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    // Malformed percent-encoding: treat as not found.
+    return null;
+  }
   const candidate = path.normalize(`${ROOT}${decoded}`);
-  if (!candidate.startsWith(`${ROOT}/`) && candidate !== ROOT) {
+  const rel = path.relative(ROOT, candidate);
+  // Platform-neutral containment: reject anything escaping the root.
+  // path.relative handles both / and \ separators.
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
     return null;
   }
 

@@ -244,3 +244,33 @@ Do NOT use `--no-verify`. If the pre-commit hook rejects something (e.g. formatt
 2. Run `pnpm exec ultracite check` and `pnpm exec oxfmt --check` on the branch-touched files only (4 pre-existing base failures remain out of scope); format branch files if needed via `pnpm exec ultracite fix` / `pnpm exec oxfmt` and amend a style commit (never `--no-verify`).
 3. Dispatch the OMP `code-review` skill: two `reviewer` agents in one batch on `62ffcc1...HEAD` (Standards axis + Spec axis vs issue #147 criteria 1, 2, 3, 4, 5, 6, 7). Acceptance: both READY; BLOCKED findings become follow-up commits in the same plan.
 4. Push `feat/qr-scan` and report the per-finding resolution to the user.
+
+---
+
+## Follow-up: first final review (BLOCKED → fixed, re-review pending)
+
+Both reviewers returned BLOCKED; all findings fixed as follow-up commits (see below). Re-review on `62ffcc1...HEAD` (now includes the follow-ups) is dispatched at the end of this plan.
+
+### Standards axis (final-standards) — 2 findings, both fixed
+
+- [x] **P2 — Unique op token for pending cleanup** (`web/lib/navigation-controller.ts`): `cancelPending(key)` + immediate `run` at the same generation let the cancelled op's `finally` delete the replacement entry, so a later duplicate would start an extra request. Fixed: per-run `op` counter in the pending map; cleanup compares `pending.get(key)?.op === op`. Regression test: "late-settling cancelled op never evicts the newer pending op" (`navigation-controller.test.ts`).
+- [x] **P2 — Platform-neutral root containment** (`tests/e2e/serve-static.ts`): `${ROOT}/` prefix check breaks on Windows separators. Fixed: `path.relative(ROOT, candidate)` containment + `decodeURIComponent` guarded with try/catch.
+
+### Spec axis (final-spec) — 2 findings, both fixed
+
+- [x] **P2 — Criterion 4 partial: outlet reserves fixed 60px, not nav height + inset** (`web/app/globals.css`): `.shell` padding-bottom is now `calc(60px + env(safe-area-inset-bottom, 0))`; e2e "bottom nav and page outlet reserve safe-area inset" asserts the outlet rule as well as the nav rule.
+- [x] **P1 — Criterion 5 partial: login form targets unverified / below 44px** (`web/app/page.tsx`): both username and PIN inputs now have `min-height: 44px`. e2e additions: "login form controls are at least 44x44" (AUTH_REQUIRED stub → login route, measures username/PIN/submit) and "recovery retry control is at least 44x44" (503 stub → RecoveryView retry).
+
+### Verification after follow-ups
+
+- [x] `pnpm --dir web build` ✓
+- [x] `pnpm --dir web exec vitest run --config vitest.components.config.ts` → 103/103
+- [x] `pnpm test:shell-responsive` → 18/18 (14 original + 2 new tests × 2 viewports)
+- [x] `pnpm typecheck` (root incl. `tests/e2e/tsconfig.json`) ✓
+- [x] `pnpm --dir web exec tsc --noEmit -p tsconfig.json` ✓
+- [x] `pnpm test:gas` → 240/240
+- [x] `pnpm exec ultracite check` on the 8 changed files ✓
+
+### Re-review
+
+- [ ] Dispatch both reviewers on `62ffcc1...HEAD` and record verdicts here.

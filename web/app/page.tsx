@@ -200,6 +200,7 @@ export default function LoginPage() {
               display: "block",
               width: "100%",
               marginTop: 4,
+              minHeight: 44,
               padding: "0.5rem",
             }}
             autoComplete="username"
@@ -217,6 +218,7 @@ export default function LoginPage() {
               display: "block",
               width: "100%",
               marginTop: 4,
+              minHeight: 44,
               padding: "0.5rem",
             }}
             autoComplete="current-password"

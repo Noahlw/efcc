@@ -178,10 +178,10 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
   }
 });
 
-test("bottom nav reserves safe-area inset", async ({ page }) => {
+test("bottom nav and page outlet reserve safe-area inset", async ({ page }) => {
   await page.goto("/care.html");
 
-  const hasSafeArea = await page.evaluate(() => {
+  const css = await page.evaluate(() => {
     const sheets = [...document.styleSheets];
     const collected: string[] = [];
     for (const sheet of sheets) {
@@ -205,10 +205,19 @@ test("bottom nav reserves safe-area inset", async ({ page }) => {
       };
       walk(rules);
     }
-    return collected.some((t) => t.includes("safe-area-inset-bottom"));
+    return {
+      navRule: collected.some((t) => t.includes("safe-area-inset-bottom")),
+      outletRule: collected.some((t) =>
+        t.includes("calc(60px + env(safe-area-inset-bottom")
+      ),
+    };
   });
 
-  expect(hasSafeArea).toBeTruthy();
+  expect(css.navRule, "bottom nav must pad safe-area inset").toBeTruthy();
+  expect(
+    css.outletRule,
+    "page outlet must reserve the nav height plus safe-area inset"
+  ).toBeTruthy();
 });
 
 test("nav targets are at least 44x44 and keyboard reachable with a visible focus cue", async ({
@@ -320,6 +329,69 @@ test("primary controls are at least 44x44", async ({ page }) => {
   await expect(signOut).toBeVisible();
   const box = await signOut.boundingBox();
   expect(box, "Sign Out bounding box").not.toBeNull();
+  const { width, height } = requireBox(box);
+  expect(width).toBeGreaterThanOrEqual(44);
+  expect(height).toBeGreaterThanOrEqual(44);
+});
+
+test("login form controls are at least 44x44", async ({ page }) => {
+  // Force the login route: an AUTH_REQUIRED restore response makes the
+  // shell clear the stored session and redirect to /.
+  await page.unroute("**/api/v1/rpc");
+  await page.route("**/api/v1/rpc", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        status: 401,
+        code: "AUTH_REQUIRED",
+        title: "Session expired",
+      }),
+    })
+  );
+  await page.goto("/care");
+
+  const username = page.locator('input[autocomplete="username"]');
+  const pin = page.locator('input[autocomplete="current-password"]');
+  const submit = page.getByRole("button", { name: COPY.login.submit });
+  await expect(username).toBeVisible();
+  await expect(pin).toBeVisible();
+  await expect(submit).toBeVisible();
+
+  for (const [label, control] of [
+    ["username", username],
+    ["PIN", pin],
+    ["submit", submit],
+  ] as const) {
+    const box = await control.boundingBox();
+    expect(box, `${label} bounding box`).not.toBeNull();
+    const { width, height } = requireBox(box);
+    expect(width, `${label} width`).toBeGreaterThanOrEqual(44);
+    expect(height, `${label} height`).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("recovery retry control is at least 44x44", async ({ page }) => {
+  // A 503 restore failure renders the RecoveryView with a retry control.
+  await page.unroute("**/api/v1/rpc");
+  await page.route("**/api/v1/rpc", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        status: 503,
+        code: "UNAVAILABLE",
+        title: "Service unavailable",
+        detail: COPY.error.unavailable,
+      }),
+    })
+  );
+  await page.goto("/care");
+
+  const retry = page.getByRole("button", { name: COPY.error.retry });
+  await expect(retry).toBeVisible();
+  const box = await retry.boundingBox();
+  expect(box, "retry bounding box").not.toBeNull();
   const { width, height } = requireBox(box);
   expect(width).toBeGreaterThanOrEqual(44);
   expect(height).toBeGreaterThanOrEqual(44);

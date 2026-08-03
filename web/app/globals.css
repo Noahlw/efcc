@@ -138,7 +138,8 @@ input:focus-visible {
 
 .shell {
   min-height: 100vh;
-  padding-bottom: 60px;
+  /* Reserve the fixed bottom nav (44px min nav items) plus the notch inset. */
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0));
 }
 
 @media (min-width: 768px) {

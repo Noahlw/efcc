@@ -14,7 +14,8 @@ export interface NavigationController {
 
 export function createNavigationController(): NavigationController {
   let generation = 0;
-  const pending = new Map<string, { promise: Promise<unknown>; gen: number }>();
+  let opCounter = 0;
+  const pending = new Map<string, { promise: Promise<unknown>; op: number }>();
 
   function nextGeneration(): number {
     generation += 1;
@@ -36,18 +37,22 @@ export function createNavigationController(): NavigationController {
     }
 
     const gen = generation;
+    opCounter += 1;
+    const op = opCounter;
     const promise = (async () => {
       try {
         return await fn();
       } finally {
-        // Drop the entry only if it still belongs to this run (a newer run
-        // may have replaced it after cancelPending + re-run).
-        if (pending.get(key)?.gen === gen) {
+        // Drop the entry only if it still belongs to THIS op. A newer run
+        // (even at the same generation, after cancelPending + re-run) gets
+        // a distinct op id, so a late-settling old promise can never evict
+        // a fresh pending entry.
+        if (pending.get(key)?.op === op) {
           pending.delete(key);
         }
       }
     })();
-    pending.set(key, { promise, gen });
+    pending.set(key, { promise, op });
     return { generation: gen, promise };
   }
 

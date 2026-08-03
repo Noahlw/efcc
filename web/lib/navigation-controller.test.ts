@@ -39,6 +39,22 @@ describe(createNavigationController, () => {
     expect(r2.promise).not.toBe(r1.promise);
   });
 
+  test("late-settling cancelled op never evicts the newer pending op", async () => {
+    const ctrl = createNavigationController();
+    const old = Promise.withResolvers<string>();
+    const fresh = Promise.withResolvers<string>();
+    const r1 = ctrl.run("nav", () => old.promise);
+    ctrl.cancelPending("nav");
+    const r2 = ctrl.run("nav", () => fresh.promise);
+    // r2 runs at the same generation as r1.
+    old.resolve("late");
+    // The cancelled op settles after the replacement started.
+    await r1.promise;
+    const r3 = ctrl.run("nav", () => Promise.resolve("third"));
+    // r2 is still pending, so r3 must coalesce onto it, not start fresh.
+    expect(r3.promise).toBe(r2.promise);
+  });
+
   test("after a completed op, a new run with same key creates fresh promise", async () => {
     const ctrl = createNavigationController();
     const r1 = ctrl.run("nav", () => Promise.resolve("done"));
