@@ -103,11 +103,11 @@ function doPost(e) {
     Logger.log("prototype-129 doPost error: " + (err && err.stack ? err.stack : err));
     status = 500;
     responseBody = {
-      success: false,
-      error: {
-        code: "INTERNAL_ERROR",
-        message: "伺服器處理時發生錯誤。",
-      },
+      status: 500,
+      code: "INTERNAL_ERROR",
+      title: "Internal Server Error",
+      detail: "伺服器處理時發生錯誤。",
+      requestId: reqId || ("req-" + Date.now()),
     };
   }
 
