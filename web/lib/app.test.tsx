@@ -15,6 +15,7 @@ import {
 
 import CarePage from "@/app/care/page";
 import EventsPage from "@/app/events/page";
+import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
 import LoginPage from "@/app/page";
 import PermissionsPage from "@/app/permissions/page";
@@ -195,6 +196,20 @@ describe("Shell", () => {
   });
 
   afterAll(() => server.close());
+
+  describe(RootLayout, () => {
+    test("renders polite screen reader live region", () => {
+      const { container } = render(
+        <RootLayout>
+          <div>test</div>
+        </RootLayout>
+      );
+      const liveRegion = container.querySelector(
+        'output[role="status"][aria-live="polite"].sr-only'
+      );
+      expect(liveRegion).not.toBeNull();
+    });
+  });
 
   describe(LoginPage, () => {
     test("renders Login view, makes no restore RPC", () => {

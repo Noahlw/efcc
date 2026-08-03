@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant">
       <body>
-        <output className="sr-only" />
+        <output role="status" aria-live="polite" className="sr-only" />
         {children}
       </body>
     </html>
