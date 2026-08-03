@@ -19,7 +19,7 @@ export default function PermissionsPage() {
           <h1 style={{ marginBottom: "1.5rem" }}>
             {COPY.sections.permissions}
           </h1>
-          <p>內容建置中。</p>
+          <p>{COPY.sections.placeholder}</p>
         </main>
       </GuardedSection>
     </AppShell>

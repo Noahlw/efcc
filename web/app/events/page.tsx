@@ -15,7 +15,7 @@ export default function EventsPage() {
         }}
       >
         <h1 style={{ marginBottom: "1.5rem" }}>{COPY.sections.events}</h1>
-        <p>內容建置中。</p>
+        <p>{COPY.sections.placeholder}</p>
       </main>
     </AppShell>
   );

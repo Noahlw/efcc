@@ -36,6 +36,7 @@ export const COPY = {
     scanner: "掃描簽到",
     care: "關懷儀表板",
     permissions: "權限管理",
+    placeholder: "內容建置中。",
   },
   nav: {
     backToHome: "返回首頁",
