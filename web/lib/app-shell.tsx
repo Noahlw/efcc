@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 import { restoreApp, logoutUser, RpcError } from "@/lib/api";
 import type { Bootstrap, Session } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
-import { COPY } from "@/lib/copy";
+import { COPY, errorCopyFor } from "@/lib/copy";
 import { NavBar } from "@/lib/nav-bar";
+import { RecoveryView } from "@/lib/recovery-view";
 import { loadSession, clearSession } from "@/lib/session";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
@@ -64,38 +65,25 @@ function LoadingShell() {
   );
 }
 
-function ErrorShell({ message }: { message: string }) {
-  return (
-    <main
-      style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-        textAlign: "center",
-      }}
-    >
-      <p role="alert" style={{ color: "#b00020", marginBottom: "1rem" }}>
-        {message}
-      </p>
-      <a href="/" style={{ color: "#1565c0", textDecoration: "underline" }}>
-        {COPY.login.title}
-      </a>
-    </main>
-  );
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "ready"; bootstrap: Bootstrap; session: Session }
-    | { kind: "error"; message: string }
+    | { kind: "error"; message: string; code?: string }
   >({ kind: "loading" });
+  const mountRef = useRef(true);
+  const [tick, setTick] = useState(0);
+
+  useEffect(
+    () => () => {
+      mountRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
-    let cancelled = false;
     const stored = loadSession();
     if (!stored) {
       clearSession();
@@ -111,31 +99,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const bootstrap = await restoreApp(stored, {
           signal: controller.signal,
         });
-        if (cancelled) {return;}
+        if (!mountRef.current) {
+          return;
+        }
         setState({ kind: "ready", bootstrap, session: stored });
       } catch (error) {
-        if (cancelled) {return;}
+        if (!mountRef.current) {
+          return;
+        }
         clearSession();
         sessionStorage.setItem(DEEP_LINK_KEY, pathname);
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
-          setState({ kind: "error", message: COPY.restore.expired });
-        } else {
-          router.replace("/");
-        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const msg =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        setState({ kind: "error", message: msg, code });
       }
     })();
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [router, pathname]);
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- router/pathname are stable; tick triggers retry
+  }, [router, pathname, tick]);
 
-  if (state.kind === "loading") {return <LoadingShell />;}
-  if (state.kind === "error") {return <ErrorShell message={state.message} />;}
+  if (state.kind === "loading") {
+    return <LoadingShell />;
+  }
+  if (state.kind === "error") {
+    const isExpired = state.code === "AUTH_REQUIRED";
+    return (
+      <RecoveryView
+        message={state.message}
+        safeHref="/"
+        onRetry={isExpired ? undefined : () => setTick((t) => t + 1)}
+      />
+    );
+  }
 
   return (
     <ShellFrame bootstrap={state.bootstrap} session={state.session}>

@@ -35,4 +35,34 @@ export const COPY = {
     unknownRoute: "找不到此頁面。",
     label: "主要導航",
   },
+  error: {
+    networkError: "無法連接伺服器，請檢查網路後再試。",
+    unavailable: "系統暫時無法使用，請稍後再試。",
+    serverError: "伺服器發生錯誤，請稍後再試。",
+    forbidden: "您沒有權限執行此操作。",
+    validation: "輸入資料無效，請檢查後再試。",
+    notFound: "找不到請求的資料。",
+    conflict: "資料衝突，請重新整理後再試。",
+    malformed: "伺服器回應格式錯誤。",
+    unknown: "發生未知錯誤。",
+    retry: "重試",
+  },
 } as const;
+
+export function errorCopyFor(
+  code: string | undefined,
+  detail?: string
+): string {
+  if (code === "NETWORK_ERROR") {return COPY.error.networkError;}
+  if (code === "AUTH_REQUIRED") {return COPY.restore.expired;}
+  if (code === "FORBIDDEN") {return COPY.error.forbidden;}
+  if (code === "VALIDATION") {return COPY.error.validation;}
+  if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND")))
+    {return COPY.error.notFound;}
+  if (code === "CONFLICT") {return COPY.error.conflict;}
+  if (code === "UNAVAILABLE") {return COPY.error.unavailable;}
+  if (code === "INTERNAL_ERROR") {return COPY.error.serverError;}
+  if (code === "MALFORMED_RESPONSE" || code === "MALFORMED_REQUEST")
+    {return COPY.error.malformed;}
+  return detail || COPY.error.unknown;
+}

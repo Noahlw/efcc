@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { loginUser, restoreApp, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
-import { COPY } from "@/lib/copy";
+import { COPY, errorCopyFor } from "@/lib/copy";
+import { RecoveryView } from "@/lib/recovery-view";
 import { firstSection } from "@/lib/sections";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
 
@@ -15,7 +16,8 @@ type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
   | { kind: "AUTHENTICATING" }
-  | { kind: "ERROR"; error: string };
+  | { kind: "ERROR"; error: string }
+  | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,6 +26,14 @@ export default function LoginPage() {
   const [pin, setPin] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const mountRef = useRef(true);
+
+  useEffect(
+    () => () => {
+      mountRef.current = false;
+    },
+    []
+  );
 
   const handleExpiry = useCallback((message: string) => {
     clearSession();
@@ -42,12 +52,11 @@ export default function LoginPage() {
     [router]
   );
 
-  // On mount, restore any stored session.
-  useEffect(() => {
-    let cancelled = false;
+  const doRestore = useCallback(async () => {
     const stored = loadSession();
     if (!stored) {
       clearSession();
+      setView({ kind: "SIGNED_OUT" });
       return;
     }
 
@@ -56,33 +65,36 @@ export default function LoginPage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    (async () => {
-      try {
-        const bootstrap = await restoreApp(stored, {
-          signal: controller.signal,
-        });
-        if (cancelled) {return;}
-        navigateAfterLogin(bootstrap);
-      } catch (error) {
-        if (cancelled) {return;}
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
-          handleExpiry(COPY.restore.expired);
-        } else {
-          clearSession();
-          setView({ kind: "SIGNED_OUT" });
-        }
+    try {
+      const bootstrap = await restoreApp(stored, {
+        signal: controller.signal,
+      });
+      if (!mountRef.current) {
+        return;
       }
-    })();
+      navigateAfterLogin(bootstrap);
+    } catch (error) {
+      if (!mountRef.current) {
+        return;
+      }
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        handleExpiry(COPY.restore.expired);
+      } else {
+        const msg =
+          error instanceof RpcError
+            ? errorCopyFor(error.problem.code, error.problem.detail)
+            : COPY.error.networkError;
+        setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: doRestore });
+      }
+    }
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-      abortRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleExpiry/navigateAfterLogin are stable
+    abortRef.current = null;
+  }, [navigateAfterLogin, handleExpiry]);
+
+  // On mount, restore any stored session.
+  useEffect(() => {
+    doRestore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doRestore/navigateAfterLogin are stable
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -119,6 +131,13 @@ export default function LoginPage() {
       >
         <p>{COPY.restore.loading}</p>
       </main>
+    );
+  }
+
+  if (view.kind === "RECOVERABLE_ERROR") {
+    const handleRetry = view.retry;
+    return (
+      <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
     );
   }
 

@@ -18,17 +18,32 @@ import LoginPage from "@/app/page";
 import ProfilePage from "@/app/profile/page";
 import type { Bootstrap, Session } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
-import { COPY } from "@/lib/copy";
+import { COPY, errorCopyFor } from "@/lib/copy";
 import { GuardedSection } from "@/lib/guarded-section";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { saveSession } from "@/lib/session";
 
-const replaceMock = vi.fn<(_path: string) => void>();
-const pathnameMock = vi.fn<() => string>();
+const mocks = vi.hoisted(() => {
+  const replaceMock = vi.fn<(path: string) => void>();
+  const pathnameMock = vi.fn<() => string>();
+  const mockRouter = {
+    replace: replaceMock,
+    back: vi.fn<() => void>(),
+    forward: vi.fn<() => void>(),
+    refresh: vi.fn<() => void>(),
+    push: vi.fn<(path: string) => void>(),
+    prefetch: vi.fn<(path: string) => void>(),
+  };
+  return { replaceMock, pathnameMock, mockRouter };
+});
 
-vi.mock(import('next/navigation'), () => ({
-  useRouter: () => ({ replace: replaceMock }),
+const {replaceMock} = mocks;
+const {pathnameMock} = mocks;
+const {mockRouter} = mocks;
+
+vi.mock(import("next/navigation"), () => ({
+  useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
 }));
 
@@ -97,57 +112,57 @@ const VALID_SESSION: Session = {
   sessionToken: "token-placeholder",
 };
 
-const server = setupServer(
-  http.post("/api/v1/rpc", async ({ request }) => {
-    const body = (await request.json()) as {
-      action?: string;
-      params?: Record<string, unknown>;
-    };
-    const action = body.action ?? "";
+const DEFAULT_HANDLER = http.post("/api/v1/rpc", async ({ request }) => {
+  const body = (await request.json()) as {
+    action?: string;
+    params?: Record<string, unknown>;
+  };
+  const action = body.action ?? "";
 
-    if (action === "loginUser") {
-      if (body.params?.username === "test" && body.params?.pin === "0000") {
-        return HttpResponse.json({
-          success: true,
-          requestId: "r-1",
-          data: BOOTSTRAP,
-        });
-      }
-      return HttpResponse.json(
-        {
-          type: "tag:efcc.app,2026:error:AUTH_REQUIRED",
-          status: 401,
-          code: "AUTH_REQUIRED",
-          title: "Authentication failed",
-          detail: "用戶名稱或 PIN 碼不正確。",
-          requestId: "r-401",
-        },
-        { status: 401, headers: { "Content-Type": "application/problem+json" } }
-      );
-    }
-
-    if (action === "restoreApp") {
+  if (action === "loginUser") {
+    if (body.params?.username === "test" && body.params?.pin === "0000") {
       return HttpResponse.json({
         success: true,
-        requestId: "r-restore",
+        requestId: "r-1",
         data: BOOTSTRAP,
       });
     }
-
-    if (action === "authorizedNavigate") {
-      return HttpResponse.json({
-        success: true,
-        requestId: "r-auth",
-        data: { authorized: false },
-      });
-    }
-
     return HttpResponse.json(
-      { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
-      { status: 400, headers: { "Content-Type": "application/problem+json" } }
+      {
+        type: "tag:efcc.app,2026:error:AUTH_REQUIRED",
+        status: 401,
+        code: "AUTH_REQUIRED",
+        title: "Authentication failed",
+        detail: "用戶名稱或 PIN 碼不正確。",
+        requestId: "r-401",
+      },
+      { status: 401, headers: { "Content-Type": "application/problem+json" } }
     );
-  })
-);
+  }
+
+  if (action === "restoreApp") {
+    return HttpResponse.json({
+      success: true,
+      requestId: "r-restore",
+      data: BOOTSTRAP,
+    });
+  }
+
+  if (action === "authorizedNavigate") {
+    return HttpResponse.json({
+      success: true,
+      requestId: "r-auth",
+      data: { authorized: false },
+    });
+  }
+
+  return HttpResponse.json(
+    { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+    { status: 400, headers: { "Content-Type": "application/problem+json" } }
+  );
+});
+
+const server = setupServer(DEFAULT_HANDLER);
 
 describe("Shell", () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -204,7 +219,7 @@ describe("Shell", () => {
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
 
       await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith();
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
       });
 
       const stored = JSON.parse(localStorage.getItem("efcc_session") ?? "null");
@@ -427,6 +442,427 @@ describe("Shell", () => {
       });
       expect(screen.queryByText("care content")).not.toBeInTheDocument();
     });
+
+    test("authorizedNavigate UNAVAILABLE shows error with retry", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "系統暫時無法使用",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.unavailable)).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+      expect(screen.queryByText("care content")).not.toBeInTheDocument();
+    });
+
+    test("authorizedNavigate AUTH_REQUIRED triggers signOut", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            return HttpResponse.json(
+              {
+                status: 401,
+                code: "AUTH_REQUIRED",
+                title: "Auth required",
+                detail: "請重新登入",
+              },
+              {
+                status: 401,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const signOutMock = vi.fn<() => void>();
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={signOutMock}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(signOutMock).toHaveBeenCalledWith();
+      });
+    });
+
+    test("authorizedNavigate FORBIDDEN shows error, no retry button", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            return HttpResponse.json(
+              {
+                status: 403,
+                code: "FORBIDDEN",
+                title: "Forbidden",
+                detail: "禁止存取",
+              },
+              {
+                status: 403,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      });
+      // FORBIDDEN has no retry - safe route back only
+      expect(screen.queryByText(COPY.error.retry)).not.toBeInTheDocument();
+      expect(screen.getByText(COPY.nav.backToHome)).toBeInTheDocument();
+    });
+
+    test("authorizedNavigate INTERNAL_ERROR shows server error with retry", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            return HttpResponse.json(
+              {
+                status: 500,
+                code: "INTERNAL_ERROR",
+                title: "Server error",
+                detail: "伺服器錯誤",
+              },
+              {
+                status: 500,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.serverError)).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+    });
+
+    test("retry click on INTERNAL_ERROR repeats the authorize RPC and succeeds", async () => {
+      let attempts = 0;
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            attempts += 1;
+            if (attempts === 1) {
+              return HttpResponse.json(
+                {
+                  status: 500,
+                  code: "INTERNAL_ERROR",
+                  title: "Server error",
+                  detail: "伺服器錯誤",
+                },
+                {
+                  status: 500,
+                  headers: { "Content-Type": "application/problem+json" },
+                }
+              );
+            }
+            return HttpResponse.json({
+              success: true,
+              requestId: "r-auth",
+              data: { authorized: true },
+            });
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.serverError)).toBeInTheDocument();
+      });
+
+      const retryButton = screen.getByText(COPY.error.retry);
+      await userEvent.setup().click(retryButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("care content")).toBeInTheDocument();
+      });
+      expect(attempts).toBe(2);
+    });
+  });
+
+  describe("LoginPage error families", () => {
+    test("restore UNAVAILABLE shows RECOVERABLE_ERROR with retry", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "暫時無法使用",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      render(<LoginPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.unavailable)).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    test("restore FORBIDDEN shows RECOVERABLE_ERROR with retry", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            return HttpResponse.json(
+              {
+                status: 403,
+                code: "FORBIDDEN",
+                title: "Forbidden",
+                detail: "禁止存取",
+              },
+              {
+                status: 403,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      render(<LoginPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+    });
+
+    test("restore INTERNAL_ERROR shows RECOVERABLE_ERROR with retry", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            return HttpResponse.json(
+              {
+                status: 500,
+                code: "INTERNAL_ERROR",
+                title: "Server error",
+                detail: "伺服器錯誤",
+              },
+              {
+                status: 500,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      render(<LoginPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.serverError)).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+    });
+
+    test("retry clicks repeat the failed restore RPC and succeed on second attempt", async () => {
+      let attempts = 0;
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            attempts += 1;
+            if (attempts === 1) {
+              return HttpResponse.json(
+                {
+                  status: 500,
+                  code: "INTERNAL_ERROR",
+                  title: "Server error",
+                  detail: "伺服器錯誤",
+                },
+                {
+                  status: 500,
+                  headers: { "Content-Type": "application/problem+json" },
+                }
+              );
+            }
+            return HttpResponse.json({
+              success: true,
+              requestId: "r-restore",
+              data: BOOTSTRAP,
+            });
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      render(<LoginPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.serverError)).toBeInTheDocument();
+      });
+
+      const retryButton = screen.getByText(COPY.error.retry);
+      await userEvent.setup().click(retryButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(attempts).toBe(2);
+    });
   });
 
   describe(RecoveryView, () => {
@@ -435,6 +871,22 @@ describe("Shell", () => {
       expect(screen.getByText("test error")).toBeInTheDocument();
       expect(screen.getByText(COPY.nav.backToHome)).toBeInTheDocument();
     });
+
+    test("renders retry button when onRetry provided", () => {
+      render(
+        <RecoveryView
+          message="test error"
+          safeHref="/profile"
+          onRetry={() => {}}
+        />
+      );
+      expect(screen.getByText(COPY.error.retry)).toBeInTheDocument();
+    });
+
+    test("does not render retry button when onRetry omitted", () => {
+      render(<RecoveryView message="test error" safeHref="/profile" />);
+      expect(screen.queryByText(COPY.error.retry)).not.toBeInTheDocument();
+    });
   });
 
   describe(NotFound, () => {
@@ -442,6 +894,61 @@ describe("Shell", () => {
       render(<NotFound />);
       expect(screen.getByText(COPY.nav.unknownRoute)).toBeInTheDocument();
       expect(screen.getByText(COPY.nav.backToHome)).toBeInTheDocument();
+    });
+  });
+
+  describe(errorCopyFor, () => {
+    test("NETWORK_ERROR maps to networkError", () => {
+      expect(errorCopyFor("NETWORK_ERROR")).toBe(COPY.error.networkError);
+    });
+
+    test("AUTH_REQUIRED maps to expired", () => {
+      expect(errorCopyFor("AUTH_REQUIRED")).toBe(COPY.restore.expired);
+    });
+
+    test("FORBIDDEN maps to forbidden", () => {
+      expect(errorCopyFor("FORBIDDEN")).toBe(COPY.error.forbidden);
+    });
+
+    test("VALIDATION maps to validation", () => {
+      expect(errorCopyFor("VALIDATION")).toBe(COPY.error.validation);
+    });
+
+    test("NOT_FOUND maps to notFound", () => {
+      expect(errorCopyFor("NOT_FOUND")).toBe(COPY.error.notFound);
+    });
+
+    test("suffixed _NOT_FOUND codes map to notFound", () => {
+      expect(errorCopyFor("MEMBER_NOT_FOUND")).toBe(COPY.error.notFound);
+      expect(errorCopyFor("EVENT_NOT_FOUND")).toBe(COPY.error.notFound);
+    });
+
+    test("CONFLICT maps to conflict", () => {
+      expect(errorCopyFor("CONFLICT")).toBe(COPY.error.conflict);
+    });
+
+    test("UNAVAILABLE maps to unavailable", () => {
+      expect(errorCopyFor("UNAVAILABLE")).toBe(COPY.error.unavailable);
+    });
+
+    test("INTERNAL_ERROR maps to serverError", () => {
+      expect(errorCopyFor("INTERNAL_ERROR")).toBe(COPY.error.serverError);
+    });
+
+    test("MALFORMED_RESPONSE and MALFORMED_REQUEST map to malformed", () => {
+      expect(errorCopyFor("MALFORMED_RESPONSE")).toBe(COPY.error.malformed);
+      expect(errorCopyFor("MALFORMED_REQUEST")).toBe(COPY.error.malformed);
+    });
+
+    test("unknown code falls back to detail then unknown", () => {
+      expect(errorCopyFor("UNKNOWN_CODE", "custom detail")).toBe(
+        "custom detail"
+      );
+      expect(errorCopyFor("UNKNOWN_CODE")).toBe(COPY.error.unknown);
+    });
+
+    test("undefined code falls back to unknown", () => {
+      expect(errorCopyFor()).toBe(COPY.error.unknown);
     });
   });
 });
