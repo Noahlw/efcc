@@ -1,6 +1,6 @@
 # Fix CF0 Code Review Findings Implementation Plan (TDD-Enforced)
 
-> **For OMP workers:** Steps use checkbox (`- [ ]`) syntax for tracking. Dispatch each task as a fresh `task` subagent; gate between tasks with the OMP `reviewer` agent (the `code-review` skill's spec axis).
+> **For OMP workers:** Steps use checkbox (`- [x]`) syntax for tracking. Dispatch each task as a fresh `task` subagent; gate between tasks with the OMP `reviewer` agent (the `code-review` skill's spec axis).
 
 **Goal:** Resolve all 11 Standards-axis and 8 Spec-axis code review findings across CF0-01 through CF0-05 (#142–#146), ensuring complete security, route authorization, session lifecycle, error recovery, and copy compliance.
 
@@ -117,28 +117,28 @@ Sequential execution by task slice within the current worktree to ensure clean v
 - Consumes: `RpcSuccess<T>`, `Response`, `AbortSignal`
 - Produces: Sanitized `callRpc<T>`, `sessionParams` without `sessionToken`
 
-- [ ] **Step 1: Write failing tests for envelope validation, body security, and abort signals (RED)**
+- [x] **Step 1: Write failing tests for envelope validation, body security, and abort signals (RED)**
 Location: `web/lib/api.test.ts`
 Test intent:
 1. Verify `callRpc` throws `MALFORMED_RESPONSE` when `{success: true}` lacks `data` or `requestId`.
 2. Verify `sessionParams` does not include `sessionToken`.
 3. Verify an aborted `signal` causes `callRpc` to fail fast with `AbortError` without retrying.
 
-- [ ] **Step 2: Run test to verify it fails (VERIFY RED)**
+- [x] **Step 2: Run test to verify it fails (VERIFY RED)**
 Run: `pnpm --dir web test web/lib/api.test.ts`
 Expected: FAIL on envelope validation, body parameter security, and abort signal assertions.
 
-- [ ] **Step 3: Implement minimal code to pass tests (GREEN)**
+- [x] **Step 3: Implement minimal code to pass tests (GREEN)**
 Location: `web/lib/api.ts`
 1. Update `sessionParams(session: Session)` to return `{ userId: session.userId, sessionId: session.sessionId }` (strip `sessionToken`).
 2. Update `parseSuccess<T>(res)`: check `typeof env.requestId === "string"` and `env.data !== undefined`. Throw `MALFORMED_RESPONSE` `RpcError` if missing.
 3. In `callRpc` `catch` block: check if `options?.signal?.aborted` or `error.name === "AbortError"`. If aborted, rethrow immediately without retrying.
 
-- [ ] **Step 4: Run test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test web/lib/api.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "fix(api): validate RPC envelopes, strip token from params, and halt retries on abort"
 
 ---
@@ -154,23 +154,23 @@ Commit message: "fix(api): validate RPC envelopes, strip token from params, and 
 - Consumes: `Env.RPC_RATE_LIMITER`, Apps Script `doPost` exception handling
 - Produces: Fail-closed rate limiter 503 response and sanitized GAS error responses
 
-- [ ] **Step 1: Write failing worker test for missing rate-limiter binding in production (RED)**
+- [x] **Step 1: Write failing worker test for missing rate-limiter binding in production (RED)**
 Location: `web/worker.test.ts`
 Test intent: verify worker returns 503 `UNAVAILABLE` Problem Details when `RPC_RATE_LIMITER` is undefined or throws an error.
 
-- [ ] **Step 2: Run worker test to verify failure (VERIFY RED)**
+- [x] **Step 2: Run worker test to verify failure (VERIFY RED)**
 Run: `pnpm --dir web test web/worker.test.ts`
 Expected: FAIL on missing rate-limiter 503 test.
 
-- [ ] **Step 3: Implement minimal code to pass test (GREEN)**
+- [x] **Step 3: Implement minimal code to pass test (GREEN)**
 1. In `web/worker.ts`: update rate-limit check. If `rateLimitKey` is present but `env.RPC_RATE_LIMITER` is missing/throws, return `problemResponse(503, "UNAVAILABLE", "Service unavailable", origin, "系統暫時無法處理請求，請稍後再試。")`.
 2. In `src/gas/prototype-129-http-dispatch.gs`: in top-level `catch (err)` of `doPost`, log `err` to Apps Script console, but return `{ success: false, error: { code: "INTERNAL_ERROR", message: "伺服器處理時發生錯誤。" } }` without exposing `err.message` or `err.stack`.
 
-- [ ] **Step 4: Run worker test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run worker test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test web/worker.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "fix(worker): fail closed on missing rate limiter and sanitize dispatcher error details"
 
 ---
@@ -191,15 +191,15 @@ Commit message: "fix(worker): fail closed on missing rate limiter and sanitize d
 - Consumes: `COPY` object in `web/lib/copy.ts`
 - Produces: Typed centralized Traditional Chinese copy for all sections, login errors, and logout notices
 
-- [ ] **Step 1: Write failing test for copy compliance and error detail fallback (RED)**
+- [x] **Step 1: Write failing test for copy compliance and error detail fallback (RED)**
 Location: `web/lib/app.test.tsx`
 Test intent: verify `errorCopyFor` never returns arbitrary detail string for unknown code, and verify login view maps error codes via `COPY`.
 
-- [ ] **Step 2: Run test to verify failure (VERIFY RED)**
+- [x] **Step 2: Run test to verify failure (VERIFY RED)**
 Run: `pnpm --dir web test:components`
 Expected: FAIL on fallback detail assertion.
 
-- [ ] **Step 3: Implement minimal code to pass test (GREEN)**
+- [x] **Step 3: Implement minimal code to pass test (GREEN)**
 1. In `web/lib/copy.ts`:
    - Update `COPY`: add `logout.failedNotice: "登出請求失敗，但本機工作階段已清除。"`
    - Add `sections`: `{ profile: "個人檔案", programs: "課程與活動", events: "聚會管理", scanner: "掃描簽到", care: "關懷儀表板", permissions: "權限管理" }`.
@@ -207,11 +207,11 @@ Expected: FAIL on fallback detail assertion.
 2. In `web/app/page.tsx`: replace `errorCopyFor(undefined, error.problem.detail)` with `errorCopyFor(error.problem.code)`.
 3. In `web/app/{programs,events,care,scanner,permissions}/page.tsx`: import `COPY` and use `COPY.sections.<key>` instead of inline literals.
 
-- [ ] **Step 4: Run test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test:components`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "fix(copy): enforce centralized Traditional Chinese copy and eliminate raw detail fallbacks"
 
 ---
@@ -227,15 +227,15 @@ Commit message: "fix(copy): enforce centralized Traditional Chinese copy and eli
 - Consumes: `useApp().signOut`, `COPY.logout`
 - Produces: Rendered Profile Sign Out button and safe logout error recovery on Login
 
-- [ ] **Step 1: Write failing component test for Profile logout control & transport failure (RED)**
+- [x] **Step 1: Write failing component test for Profile logout control & transport failure (RED)**
 Location: `web/lib/app.test.tsx`
 Test intent: verify Profile renders a Sign Out button, clicking it calls `signOut`, and if `logoutUser` RPC fails, local session is cleared, user is redirected to `/`, and a notice is displayed.
 
-- [ ] **Step 2: Run test to verify failure (VERIFY RED)**
+- [x] **Step 2: Run test to verify failure (VERIFY RED)**
 Run: `pnpm --dir web test:components`
 Expected: FAIL (no sign out button on Profile).
 
-- [ ] **Step 3: Implement minimal code to pass test (GREEN)**
+- [x] **Step 3: Implement minimal code to pass test (GREEN)**
 1. In `web/app/profile/page.tsx`: add a Sign Out button below the `<dl>`:
    ```tsx
    <button
@@ -248,11 +248,11 @@ Expected: FAIL (no sign out button on Profile).
    ```
 2. In `web/lib/app-shell.tsx`: update `handleSignOut`. On `logoutUser` catch, set a temporary notice state or URL parameter so Login view displays `COPY.logout.failedNotice`. In both success and catch branches: call `clearSession()`, `sessionStorage.removeItem(DEEP_LINK_KEY)`, and `router.replace('/')`.
 
-- [ ] **Step 4: Run test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test:components`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "feat(profile): add Sign Out control and surface non-sensitive logout transport notice"
 
 ---
@@ -268,18 +268,18 @@ Commit message: "feat(profile): add Sign Out control and surface non-sensitive l
 - Consumes: `bootstrap.sections`, `restoreApp`
 - Produces: Session-preserving restore retry for 503/network error, immediate Login redirect on `AUTH_REQUIRED`, and route allowlist checking in `GuardedSection`
 
-- [ ] **Step 1: Write failing component tests for restore retry & unpermitted deep links (RED)**
+- [x] **Step 1: Write failing component tests for restore retry & unpermitted deep links (RED)**
 Location: `web/lib/app.test.tsx`
 Test intent:
 1. Verify restore 503 error keeps stored session in `localStorage` and clicking retry re-executes `restoreApp`.
 2. Verify restore `AUTH_REQUIRED` clears session and performs `router.replace('/')`.
 3. Verify deep-linking to an unpermitted route renders `RecoveryView` with route to first permitted section.
 
-- [ ] **Step 2: Run test to verify failure (VERIFY RED)**
+- [x] **Step 2: Run test to verify failure (VERIFY RED)**
 Run: `pnpm --dir web test:components`
 Expected: FAIL on restore session wipe and unpermitted route rendering.
 
-- [ ] **Step 3: Implement minimal code to pass test (GREEN)**
+- [x] **Step 3: Implement minimal code to pass test (GREEN)**
 1. In `web/lib/app-shell.tsx`:
    - In `restoreApp` catch block: check `error instanceof RpcError && error.problem.code === "AUTH_REQUIRED"`.
    - If `AUTH_REQUIRED`: call `clearSession()`, `sessionStorage.setItem(DEEP_LINK_KEY, pathname)`, and `router.replace('/')`.
@@ -288,11 +288,11 @@ Expected: FAIL on restore session wipe and unpermitted route rendering.
    - Before authorization, check if `sectionKey` is present in `bootstrap.sections`.
    - If `sectionKey` is missing from `bootstrap.sections` or forbidden by server, render `RecoveryView` with `message={COPY.error.forbidden}` and `safeHref={`/${bootstrap.sections[0]?.key || "profile"}`}`.
 
-- [ ] **Step 4: Run test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test:components`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "fix(shell): preserve session on restore 503, route AUTH_REQUIRED to login, and enforce section allowlist"
 
 ---
@@ -307,25 +307,25 @@ Commit message: "fix(shell): preserve session on restore 503, route AUTH_REQUIRE
 - Consumes: React layout children
 - Produces: Accessible live region `<output role="status" aria-live="polite" className="sr-only">`
 
-- [ ] **Step 1: Write failing component test for politeness live region (RED)**
+- [x] **Step 1: Write failing component test for politeness live region (RED)**
 Location: `web/lib/app.test.tsx`
 Test intent: verify document contains `<output role="status" aria-live="polite">` element for screen reader announcements.
 
-- [ ] **Step 2: Run test to verify failure (VERIFY RED)**
+- [x] **Step 2: Run test to verify failure (VERIFY RED)**
 Run: `pnpm --dir web test:components`
 Expected: FAIL on live region attributes.
 
-- [ ] **Step 3: Implement minimal code to pass test (GREEN)**
+- [x] **Step 3: Implement minimal code to pass test (GREEN)**
 Update `RootLayout`:
 ```tsx
 <output role="status" aria-live="polite" className="sr-only" />
 ```
 
-- [ ] **Step 4: Run test to verify it passes (VERIFY GREEN)**
+- [x] **Step 4: Run test to verify it passes (VERIFY GREEN)**
 Run: `pnpm --dir web test:components`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: "fix(accessibility): add role=status and aria-live=polite to layout live region"
 
 ---
@@ -335,21 +335,21 @@ Commit message: "fix(accessibility): add role=status and aria-live=polite to lay
 **Files:**
 - Modify/Verify: All workspace files touched
 
-- [ ] **Step 1: Run typecheck**
+- [x] **Step 1: Run typecheck**
 Run: `pnpm typecheck`
 Expected: PASS with zero errors.
 
-- [ ] **Step 2: Run frontend component tests**
+- [x] **Step 2: Run frontend component tests**
 Run: `pnpm --dir web test:components`
 Expected: PASS with 100% test success.
 
-- [ ] **Step 3: Run GAS unit tests**
+- [x] **Step 3: Run GAS unit tests**
 Run: `pnpm test:gas`
 Expected: PASS with 240/240 tests passing.
 
-- [ ] **Step 4: Run oxfmt formatting check**
+- [x] **Step 4: Run oxfmt formatting check**
 Run: `pnpm exec oxfmt --check`
 Expected: All files correctly formatted.
 
-- [ ] **Step 5: Final commit if formatting changes were required**
+- [x] **Step 5: Final commit if formatting changes were required**
 Commit message: "style: format code review fixes"
