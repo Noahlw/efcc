@@ -97,6 +97,13 @@ The following checklist is handed to the CF2 specification and implementation ti
 6. Two active assignments for one member across two Programs authorize exactly those Programs; an unrelated Program remains forbidden, and one assignment applies to all Events in its Program.
 7. Grant/revoke natural-key duplicates create no second active relationship, competing revokes return `CONFLICT`, no automatic mutation replay occurs, and every authorized outcome whose audit append succeeds has exactly one matching audit row with `Correlation_ID = requestId`; append failure follows ADR-0015's `FAILED`/`INTERNAL_ERROR` plus Cloud Logging breadcrumb path without automatic retry.
 8. No production or operational Google Sheet is mutated by the agent; any required schema/fixture change follows the Sheet-Immutable rules in `AGENTS.md`.
+9. Protected request secrets follow ADR-0018's header-only transport: `sessionToken` never appears in URLs or action parameters. Any interim dispatcher compatibility may carry only non-secret lookup fields and must not treat them as authority assertions.
+
+CF0 transport behavior is deliberately outside this decision's acceptance. In
+particular, the current `web/lib/api.ts` `sessionParams` bearer-in-params defect,
+malformed-upstream fallback, and redaction of upstream exception details remain
+separate production-blocking transport checks; this ADR neither claims those
+checks pass nor moves them into CF2.
 
 ## Considered options
 
