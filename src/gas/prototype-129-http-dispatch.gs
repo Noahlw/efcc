@@ -95,12 +95,19 @@ function doPost(e) {
       }
     }
   } catch (err) {
-    status = 400;
+    // ADR-0018-style fail-closed: log the raw error for operators but
+    // never expose err.message or stack to the client. The shape below
+    // is the throwaway's success/failure envelope (`success`/`error`)
+    // so the prototype client can parse it like any other handler
+    // failure; the Worker proxy already maps this to outer HTTP 500.
+    Logger.log("prototype-129 doPost error: " + (err && err.stack ? err.stack : err));
+    status = 500;
     responseBody = {
-      status: status,
-      code: "MALFORMED_REQUEST",
-      title: "MALFORMED_REQUEST",
-      detail: String(err && err.message ? err.message : err),
+      success: false,
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "伺服器處理時發生錯誤。",
+      },
     };
   }
 

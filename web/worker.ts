@@ -136,13 +136,34 @@ export default {
       );
     }
 
-    // Rate limit (ADR-0018 §9) - session-keyed, never IP. Best-effort:
-    // a missing binding skips limiting rather than blocking traffic.
+    // Rate limit (ADR-0018 §9) - session-keyed, never IP. Fail closed:
+    // when an identity is present, a missing/throws binding drops the
+    // request with 503 rather than silently skipping the limit (which
+    // would let unauthenticated traffic reach the upstream unchecked).
     const rateLimitKey = await rateLimitKeyFor(request);
-    if (env.RPC_RATE_LIMITER && rateLimitKey) {
-      const { success } = await env.RPC_RATE_LIMITER.limit({
-        key: rateLimitKey,
-      });
+    if (rateLimitKey) {
+      if (!env.RPC_RATE_LIMITER) {
+        return problemResponse(
+          503,
+          "UNAVAILABLE",
+          "Service unavailable",
+          origin,
+          "系統暫時無法處理請求，請稍後再試。"
+        );
+      }
+      let limitResult: { success: boolean };
+      try {
+        limitResult = await env.RPC_RATE_LIMITER.limit({ key: rateLimitKey });
+      } catch {
+        return problemResponse(
+          503,
+          "UNAVAILABLE",
+          "Service unavailable",
+          origin,
+          "系統暫時無法處理請求，請稍後再試。"
+        );
+      }
+      const { success } = limitResult;
       if (!success) {
         return problemResponse(
           429,

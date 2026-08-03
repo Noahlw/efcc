@@ -352,3 +352,45 @@ describe("Worker: upstream failure mapping", () => {
     assert.equal(body.code, "PROXY_MISCONFIGURED");
   });
 });
+
+describe("Worker: fail-closed rate limiter (ADR-0018 §9)", () => {
+  test("missing RPC_RATE_LIMITER binding with session identity returns 503 UNAVAILABLE", async () => {
+    // rateLimitKey is derived from X-Efcc-Session-Id; the binding is
+    // explicitly absent in production-mimicking configuration. The
+    // Worker must fail closed rather than silently skip rate limiting.
+    const res = await worker.fetch(
+      makeRequest("/api/v1/rpc", {
+        headers: { "X-Efcc-Session-Id": "sess-fail-closed" },
+        body: { action: "restoreApp", params: {} },
+      }),
+      testEnv({ RPC_RATE_LIMITER: undefined })
+    );
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get("Content-Type"), "application/problem+json");
+    const body = await json<{ code: string; detail: string }>(res);
+    assert.equal(body.code, "UNAVAILABLE");
+    assert.equal(body.detail, "系統暫時無法處理請求，請稍後再試。");
+  });
+
+  test("RPC_RATE_LIMITER.limit() throw with session identity returns 503 UNAVAILABLE", async () => {
+    // The binding is present but `limit()` throws - the Worker must
+    // fail closed rather than forwarding unauthenticated traffic.
+    const throwingLimiter = {
+      limit: () => {
+        throw new Error("ratelimit backend down");
+      },
+    } as unknown as Env["RPC_RATE_LIMITER"];
+    const res = await worker.fetch(
+      makeRequest("/api/v1/rpc", {
+        headers: { "X-Efcc-Session-Id": "sess-throwing" },
+        body: { action: "restoreApp", params: {} },
+      }),
+      testEnv({ RPC_RATE_LIMITER: throwingLimiter })
+    );
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get("Content-Type"), "application/problem+json");
+    const body = await json<{ code: string; detail: string }>(res);
+    assert.equal(body.code, "UNAVAILABLE");
+    assert.equal(body.detail, "系統暫時無法處理請求，請稍後再試。");
+  });
+});
