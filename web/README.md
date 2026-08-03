@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EFCC Web Frontend
 
-## Getting Started
+Next.js static export hosted on Cloudflare Workers with Apps Script `/api/*` RPC proxy (ADR-0017 / ADR-0018).
 
-First, run the development server:
+## Local Development & Testing
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Because `/api/v1/rpc` requests are proxied by the Cloudflare Worker (`worker.ts`) to the Apps Script `/exec` backend, run the local Worker preview server for full interactive testing:
+
+### 1. Configure Local Secret (`.dev.vars`)
+
+Create `web/.dev.vars` (gitignored) and set your target Apps Script `/exec` URL:
+
+```ini
+APPS_SCRIPT_EXEC_URL="https://script.google.com/macros/s/<YOUR_DEPLOYMENT_ID>/exec"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Build Static Export & Run Wrangler Local Dev
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cd web
+pnpm build
+npx wrangler dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open `http://127.0.0.1:8787` in your browser.
 
-## Learn More
+## Component Tests
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd web
+pnpm test:components
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Runs Vitest component tests in `jsdom` with MSW mocking `/api/v1/rpc`.
