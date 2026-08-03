@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { authorizedNavigate, RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { createNavigationController } from "@/lib/navigation-controller";
 import { RecoveryView } from "@/lib/recovery-view";
 import { getSection, recoverySection } from "@/lib/sections";
 import { clearSession } from "@/lib/session";
@@ -26,6 +27,7 @@ export function GuardedSection({
   const { bootstrap, session, signOut } = useApp();
   const [state, setState] = useState<GuardState>({ kind: "loading" });
   const mountedRef = useRef(true);
+  const ctrlRef = useRef(createNavigationController());
 
   useEffect(
     () => () => {
@@ -42,16 +44,20 @@ export function GuardedSection({
     }
 
     if (section.requiresServerAuth) {
+      const gen = ctrlRef.current.nextGeneration();
       setState({ kind: "authorizing" });
       (async () => {
         try {
-          const result = await authorizedNavigate(session, sectionKey);
-          if (!mountedRef.current) {
+          const { promise } = ctrlRef.current.run(sectionKey, () =>
+            authorizedNavigate(session, sectionKey)
+          );
+          const result = await promise;
+          if (!mountedRef.current || !ctrlRef.current.isCurrent(gen)) {
             return;
           }
           setState({ kind: result.authorized ? "ready" : "forbidden" });
         } catch (error) {
-          if (!mountedRef.current) {
+          if (!mountedRef.current || !ctrlRef.current.isCurrent(gen)) {
             return;
           }
           if (
@@ -81,8 +87,9 @@ export function GuardedSection({
   }, [authorize]);
 
   const handleRetry = useCallback(() => {
+    ctrlRef.current.cancelPending(sectionKey);
     authorize();
-  }, [authorize]);
+  }, [authorize, sectionKey]);
 
   if (state.kind === "loading" || state.kind === "authorizing") {
     return (

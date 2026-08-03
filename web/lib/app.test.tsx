@@ -1361,4 +1361,125 @@ describe("Shell", () => {
       expect(link).toHaveAttribute("href", "/profile");
     });
   });
+
+  describe("CF0-06: stale-response discard and coalescing", () => {
+    test("stale authorizedNavigate response is discarded (generation mismatch)", async () => {
+      const deferred1 = Promise.withResolvers<{ authorized: boolean }>();
+      const deferred2 = Promise.withResolvers<{ authorized: boolean }>();
+      let callCount = 0;
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            callCount += 1;
+            if (callCount === 1)
+              {return deferred1.promise.then((d) =>
+                HttpResponse.json({ success: true, requestId: "r-1", data: d })
+              );}
+            return deferred2.promise.then((d) =>
+              HttpResponse.json({ success: true, requestId: "r-2", data: d })
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      const { rerender } = render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      expect(screen.getByText(COPY.nav.loading)).toBeInTheDocument();
+
+      rerender(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="scanner">
+            <p>scanner content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      deferred1.resolve({ authorized: true });
+      await vi.waitFor(() => {
+        expect(screen.queryByText("care content")).not.toBeInTheDocument();
+      });
+
+      deferred2.resolve({ authorized: true });
+      await vi.waitFor(() => {
+        expect(screen.getByText("scanner content")).toBeInTheDocument();
+      });
+    });
+
+    test("duplicate rapid authorizations for same section coalesce to one RPC", async () => {
+      let callCount = 0;
+      const deferred = Promise.withResolvers<{ authorized: boolean }>();
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            callCount += 1;
+            return deferred.promise.then((d) =>
+              HttpResponse.json({ success: true, requestId: "r-1", data: d })
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      const { rerender } = render(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      rerender(
+        <AppProvider
+          bootstrap={staffBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      deferred.resolve({ authorized: true });
+      await vi.waitFor(() => {
+        expect(screen.getByText("care content")).toBeInTheDocument();
+      });
+      expect(callCount).toBe(1);
+    });
+  });
 });
