@@ -3,12 +3,12 @@
 **Feature:** [CF0 — Cloudflare Frontend, HTTP API & UX Foundation](https://github.com/Noahlw/efcc/issues/118)
 **Map:** [Map: EFCC Cloudflare React/Next.js Frontend Migration](https://github.com/Noahlw/efcc/issues/117)
 **Authority consumed:** [ADR-0017](../adr/0017-frontend-repo-rendering-and-cloudflare-deployment-boundary.md) (repo/rendering/deploy topology), [ADR-0018](../adr/0018-frontend-http-boundary-auth-and-api-contract.md) (HTTP contract), [Spec 073](073-htmlservice-spec-reconciliation-matrix.md) (which prior clauses PRESERVE/AMEND/SUPERSEDE)
-**Proven by:** [Prototype #129](https://github.com/Noahlw/efcc/issues/129) — live round trip on real infrastructure
+**Prototype evidence (not acceptance):** [Prototype #129](https://github.com/Noahlw/efcc/issues/129) — a narrow live round trip on real infrastructure; it does not prove this shell specification's state machine, routes, accessibility, retries, or deployment gates.
 **Date:** 2026-08-03
 
 ## Problem Statement
 
-ADR-0017 and ADR-0018 decided *where* the frontend lives and *how* it talks to Apps Script, and Prototype #129 proved that boundary works end-to-end on real infrastructure. But nothing yet describes **the shell to actually build**: the authenticated application frame that every later Feature (CF2–CF7) mounts its Sections into.
+ADR-0017 and ADR-0018 decided *where* the frontend lives and *how* it talks to Apps Script, and Prototype #129 supplied narrow transport round-trip evidence on real infrastructure. It did not accept this shell contract. Nothing yet describes **the shell to actually build**: the authenticated application frame that every later Feature (CF2–CF7) mounts its Sections into.
 
 The existing shell contract lives in [Spec #50](https://github.com/Noahlw/efcc/issues/50) and [`docs/specs/009-phone-first-shell-navigation.md`](009-phone-first-shell-navigation.md), both written for the HtmlService App Document. Spec 073 classified their clauses: the UX, state-machine, routing, security, and accessibility requirements are **PRESERVE**; only the HtmlService/iframe/`google.script.run` mechanisms are **SUPERSEDE**. Nobody has yet restated the preserved half as an implementable contract for the React/Cloudflare stack.
 
@@ -120,11 +120,11 @@ One canonical `localStorage` key holding `{userId, sessionId, sessionToken}`. Th
 
 ### Worker (`web/worker.ts`)
 
-Extends the prototype's proven implementation to ADR-0018's full contract:
+Defines the shell's production integration against ADR-0018's full contract; Prototype #129 supplies only narrow transport evidence:
 - Static assets via the `ASSETS` binding; `run_worker_first: ["/api/*"]` so page navigation never invokes the Worker script (keeps traffic in the free static pool).
 - `OPTIONS` preflight handling (required: `Authorization` is a non-simple header).
 - **Status remap** — reads the JSON body's `status` and sets the outer HTTP status. Required because `ContentService.TextOutput` cannot set status codes; see ADR-0018's revision note. This is load-bearing correctness, not a nicety.
-- Passthrough of `Authorization`, `X-Efcc-Session-Id`, `Idempotency-Key`; surfacing of `X-Request-Id`.
+- **Browser-boundary termination** — the Worker reads `Authorization`, `X-Efcc-Session-Id`, and `Idempotency-Key` at the same-origin edge, then applies the locked #131 service-authenticated upstream transport; those browser headers are not forwarded as raw Apps Script headers. It surfaces `X-Request-Id`.
 - Rate Limiting binding keyed on session identity (never IP, per Cloudflare's own guidance).
 
 ### Responsive and accessibility baseline
@@ -169,7 +169,7 @@ Reserved for logic that cannot be reliably driven through rendered UI: spec 069'
 
 ## Further Notes
 
-**Interim backend dependency.** CF0's shell needs a `doPost` endpoint before CF1 (#131) ships the production dispatcher. Per the Map, CF1 depends on CF0's decisions, not the reverse — so CF0 proceeds in parallel against an interim throwaway dispatcher following `src/gas/prototype-129-http-dispatch.gs`'s pattern, swapped out when #131 lands. Both sides implement the same ADR-0018 contract, so the swap is a backend-only change.
+**Interim backend dependency.** CF0's shell needs a `doPost` endpoint before CF1 (#131) ships the production dispatcher. Per the Map, CF1 depends on CF0's decisions, not the reverse, so CF0 may proceed in parallel against the throwaway dispatcher for a narrow non-production smoke path. That dispatcher is explicitly interim and non-conforming for the final session transport: it carries compatibility fields in `body.params`, while #131 supplies the service-authenticated Worker-to-Apps-Script transport. Replacing it is a backend and transport integration change, and the prototype run is not acceptance evidence for ADR-0018 or this spec.
 
 **Glossary.** Uses `CONTEXT.md` vocabulary throughout: Member, Role, Section, Session, Program, Event, Attendance, Church Time. "Section" remains the canonical term for a navigable capability — not "page" or "screen" — even though Sections are now real Next.js routes.
 

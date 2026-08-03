@@ -23,7 +23,7 @@ set, not from a local file read.
 
 Inherited sources inventoried in the repository on the `feat/qr-scan` branch:
 
-- `docs/adr/0001` … `docs/adr/0016`, `docs/adr/0019` — 18 ADRs.
+- `docs/adr/0001` … `docs/adr/0016` — 17 ADR entries (the two ADR-0015 files are separate records).
 - `docs/specs/000` … `docs/specs/009` — 10 domain specs.
 - `docs/specs/067` … `docs/specs/072` — 8 acceptance-plan files (the `067`
   and `071` numbers each have two files: `067-follow-up-section-rpcs.md`,
@@ -37,10 +37,12 @@ Inherited sources inventoried in the repository on the `feat/qr-scan` branch:
   ADR-0015 (`spec #93`), spec 070 (`#53`, `#43`), and the issue #130
   resolved comment (which lists `#93` as one of the two GitHub-issue specs).
 
-The matrix excludes ADR-0017/ADR-0018 themselves because they are the
-successor authority documents, and includes ADR-0019 as part of the inherited
-set. It excludes any ADR/spec file that does not exist in `docs/adr/` or
-`docs/specs/`, except for the explicitly identified issue-only sources.
+The matrix excludes ADR-0017/ADR-0018 because they are successor authority
+documents, and excludes ADR-0019 because it is the downstream CF2 decision
+produced after this matrix. ADR-0019 may consume this matrix, but this matrix
+does not classify or validate it. Any other ADR/spec file that does not exist
+in `docs/adr/` or `docs/specs/` is excluded except for the explicitly
+identified issue-only sources.
 
 ---
 
@@ -81,7 +83,6 @@ domain substrate is intact.
 | ADR-0015 (camera) | `docs/adr/0015-external-camera-origin-for-qr-scanner.md` | **SUPERSEDE-flagged pending #136** | The external-HTTPS-origin + `getUserMedia` + `postMessage` mechanism exists solely because HtmlService's IFRAME blocks `getUserMedia()`. A Cloudflare-hosted page has no such restriction. The trust-boundary clauses — opaque `scannedCode`, server-side resolution in `api_qrCheckIn`, `event.origin === "https://noahwong-hue.github.io"` allowlist — carry forward regardless of #136's outcome. The mechanism itself (popup+postMessage bridge) is **flagged for replacement** by issue [#136](https://github.com/Noahlw/efcc/issues/136); this matrix does not decide #136. |
 | ADR-0015 (lock) | `docs/adr/0015-single-lock-mutation-and-audit-contract.md` | **PRESERVE** | `withScriptLock_`, the five-value `Outcome` vocabulary (`SUCCESS`/`DUPLICATE`/`CONFLICT`/`DENIED`/`FAILED`), the natural-key idempotency rule, the partial-failure posture (Cloud Logging breadcrumb before `Audit_Log.appendRow`), and the final `Audit_Log` schema are backend authority. ADR-0019 carries these into CF2 verbatim. Status: `Proposed` until deployed `/exec` proof, unchanged by the React migration. |
 | ADR-0016 | `docs/adr/0016-operational-attendances-sheet-migration.md` | **PRESERVE** | The manual archive + `setupAttendancesSheet_` procedure and the seven operational column headers (`Attendance_ID`/`Event_ID`/`User_ID`/`CheckIn_Time`/`CheckIn_Method`/`CheckIn_By`/`Status`) are backend authority. The application reads only the new tab. |
-| ADR-0019 | `docs/adr/0019-permissions-and-program-leadership-http-contract.md` | **PRESERVE** | The CF2 HTTP contract for permissions and Program Leader mutations, the natural-key `(targetUserId, programId)` recheck, the "no client-supplied `Idempotency-Key`" deliberate exception, and the audit semantics all carry forward into the React/Cloudflare era. ADR-0019 explicitly inherits ADR-0015-lock's contract; it is downstream of this matrix's headline findings, not overridden by them. |
 
 ### ADRs — carry-forward clauses (high-confidence domain substrate)
 
@@ -143,7 +144,7 @@ These clauses are explicitly preserved regardless of any UI/transport change:
 | Spec 067 (role nav) | `docs/specs/067-role-nav-acceptance-plan.md` | **AMEND** | The role matrix, viewport traces (375×812 phone, 1280×800 desktop), forbidden-route trace, recovery trace, and the 13 AC disposition are UX contracts and **carry forward**. The documented blocker — "`google.script.run` callbacks fail with TRANSPORT in the headless browser because the iframe routes RPC calls through a sign-in wall" — **does not exist** under ADR-0018. The `/exec` URL target becomes the Cloudflare-hosted Next.js deployment URL. The login-gated Playwright storage-state pipeline (ADR-0012) remains useful for any browser-driven smoke flow requiring a Google account; the unblocking is in the headless-client-with-headers path, not in the storage-state path. |
 | Spec 068 | `docs/specs/068-nested-task-navigation-acceptance-plan.md` | **AMEND** | The navigation model (root Section + optional nested task, active parent, loading/error state, recoverable per-Section view context, demo detail + demo edit tasks) and the role matrix are **carry-forward**. The "client-only extension of `shell-session.js.html`" framing is replaced by spec 074's React/Next.js section model. The Playwright acceptance run is structurally unblocked (headless client sets auth headers). |
 | Spec 069 | `docs/specs/069-async-recovery-acceptance-plan.md` | **AMEND** | The READ-ONLY Programs list, the `programs-repository.gs` header-name resolution, the `navGeneration_` monotonic counter, and the recovery flows (forbidden / session-expired) are **carry-forward** UX contracts. The "`google.script.run` transport" trigger is replaced by ADR-0018's HTTP envelope. The 108/108 unit-test pass + `pnpm check` clean + `pnpm typecheck` clean baseline carries forward to the React-era equivalents. |
-| Spec 070 | `docs/specs/070-form-protection-acceptance-plan.md` | **AMEND** (with explicit idempotency precedent) | The form state machine (`PRISTINE` → `DIRTY` → `SUBMITTING` → `SUCCEEDED` / `FAILED`), `confirmDiscard` modal semantics, dirty-form guard in `navigateTo_` / `closeTask_` / `handleLogoutClick_`, and `renderMultilineText` / `buildSafeLink` safe-rendering utilities are **carry-forward** UX contracts. **Idempotency precedent (explicit):** the demo form's `requestKey` + `CacheService.getScriptCache()` + 60-second TTL pattern (`api_submitDemoTaskForm`) is the **direct precedent** ADR-0018 generalized into the `Idempotency-Key` HTTP header (IETF draft, MDN-documented). The mechanism shape (key derivation, server-side dedup envelope, `idempotent: true` on repeat) survives verbatim; the wire format moves from an Apps Script function argument to a header. The `RPC_CODES.VALIDATION` and `RPC_CODES.INTERNAL_ERROR` carry forward verbatim. The "Cloudflare Workers can set HTTP response headers, unlike Apps Script" implication (open thread #3 below) does not affect this matrix's classification. |
+| Spec 070 | `docs/specs/070-form-protection-acceptance-plan.md` | **AMEND** (with explicit idempotency precedent) | The form state machine (`PRISTINE` → `DIRTY` → `SUBMITTING` → `SUCCEEDED` / `FAILED`), `confirmDiscard` modal semantics, dirty-form guard in `navigateTo_` / `closeTask_` / `handleLogoutClick_`, and `renderMultilineText` / `buildSafeLink` safe-rendering utilities are **carry-forward** UX contracts. **Idempotency precedent (explicit):** the demo form's `requestKey` + `CacheService.getScriptCache()` + 60-second TTL pattern (`api_submitDemoTaskForm`) is the **direct precedent** ADR-0018 generalized into the project-defined `Idempotency-Key` HTTP header; no external standards semantics are implied. The mechanism shape (key derivation, server-side dedup envelope, `idempotent: true` on repeat) survives verbatim; the wire format moves from an Apps Script function argument to a header. The `RPC_CODES.VALIDATION` and `RPC_CODES.INTERNAL_ERROR` carry forward verbatim. The "Cloudflare Workers can set HTTP response headers, unlike Apps Script" implication (open thread #3 below) does not affect this matrix's classification. |
 | Spec 072 | `docs/specs/072-scanner-acceptance-plan.md` | **SUPERSEDE-flagged pending #136** | The runtime ownership split (Scanner Section in App Document + Scanner Window on external origin), the role matrix, the recovery paths, and the trust-boundary rules (server-authoritative `api_qrCheckIn`, opaque `scannedCode`) are **carry-forward**. The external-origin mechanism itself is **flagged for replacement** by issue [#136](https://github.com/Noahlw/efcc/issues/136): under ADR-0017 a Cloudflare-hosted page has no IFRAME restriction on `getUserMedia`, so the popup+postMessage bridge may not be required. This matrix does not decide #136. The verification boundary (unit tests + deployed phone run) and the `Attendances` operational header set (ADR-0016) carry forward regardless. |
 
 ### Acceptance-plan specs — carry-forward clauses
@@ -222,9 +223,9 @@ Spec 070's `api_submitDemoTaskForm` introduced the `requestKey` +
 4. Cache TTL bounds the dedup window (60 seconds in spec 070).
 
 Issue #130 identifies this as the precedent that ADR-0018 generalized into the
-`Idempotency-Key` HTTP header (IETF draft, MDN-documented). The precedent does
-not mandate that the React/Apps Script implementation retain Spec 070's exact
-cache or envelope mechanism:
+project-defined `Idempotency-Key` HTTP header. The precedent does not mandate
+that the React/Apps Script implementation retain Spec 070's exact cache or
+envelope mechanism:
 
 - **Wire format:** HTTP header instead of an Apps Script function argument.
 - **Scope:** applies to mutation actions that opt in (ADR-0019 deliberately

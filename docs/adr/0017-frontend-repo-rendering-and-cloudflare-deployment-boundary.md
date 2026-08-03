@@ -101,7 +101,7 @@ The following checklist is handed to the CF0 implementation tickets graduating f
 5. Cloudflare's instant rollback restores the previous deployment in one operation and the rolled-back URL is reachable.
 6. Passive dashboard check confirms the deployed Worker is comfortably under the free-tier ceiling on the worst-modeled traffic day.
 
-Only when all six steps pass against real infrastructure does this ADR move from `Proposed` to `Accepted`, with the deployment URL, version, date, and observed result appended here. Until then, the ADR remains `Proposed` per the repository's deployed-proof policy.
+Only after the official platform claims used by this ADR are verified, a minimal implementation test passes, a headless acceptance trace passes, and a fresh deployed `/exec` IFRAME or Cloudflare preview smoke test passes may the six infrastructure steps move this ADR from `Proposed` to `Accepted`. The deployment URL, version, date, test evidence, headless trace, and observed result must be appended here. Until every gate passes against real infrastructure, the ADR remains `Proposed` per the repository's deployed-proof policy.
 
 ## Considered options (informational)
 

@@ -27,14 +27,14 @@ CF2 must add a browser boundary without making the browser an authority source. 
 1. `loginUser` and `restoreApp` keep returning the existing `AuthenticatedBootstrap` shape. The browser receives the server-computed `sections[]` snapshot and effective role/profile data, but no `programIds[]`, `legacyRole`, or client-generated capability map.
 2. `sections[]` controls visibility only. It is never proof of authority. Every protected read and mutation resolves the authenticated user from the session and rechecks the current global role and active `Program_Leaders` rows on the server.
 3. Program/Event RPC parameters carry resource identifiers and query values only. The client never supplies a role, capability, Program Leader claim, or target actor identity as an authority assertion. Returned Program/Event data is filtered by the server before it crosses the boundary.
-4. When a protected RPC returns `FORBIDDEN`, the client may call `restoreApp` **at most once for that user action** to refresh `sections[]` and reroute. The original failing RPC is never automatically replayed. If the refreshed state remains forbidden, or refresh returns `AUTH_REQUIRED`, the client surfaces the error or returns to Login. A later, independent user action gets its own one-refresh allowance.
+4. When a protected RPC returns `FORBIDDEN`, the client may call `restoreApp` **at most once for that user action** to refresh `sections[]` and reroute. The original failing RPC is never automatically replayed. If the refreshed state remains forbidden, the client surfaces that error; if refresh returns `AUTH_REQUIRED`, it clears the local session and visibly returns to Login. A later, independent user action gets its own one-refresh allowance.
 
 ### 2. Permissions reads are narrow and query-driven
 
 The Permissions Section uses separate HTTP actions rather than an uncontrolled dashboard snapshot:
 
 - `permissionsSearchMembers({query})` requires a non-empty trimmed query and matches it case-insensitively against Member ID or display name. It returns active members only and exposes only the approved minimal lookup fields: Member ID, display name, masked phone digits, and active status.
-- `permissionsListPrograms()` is a separate read for the Programs that may be selected for assignment.
+- `permissionsListPrograms()` accepts no parameters and returns the selectable Programs catalog projected to only `{id, name}` from rows with a non-empty `Program_ID`; it does not return `type`, `description`, extra columns, assignments, or member data. The Programs sheet has no status predicate in the inherited schema, so this action does not invent one; it is still restricted to the Permissions capability.
 - `permissionsGetAssignments({userId?, programId?})` requires exactly one non-empty selector: `userId` for one selected member or `programId` for one selected Program. Missing, empty, both, or unknown selectors are validation failures. It returns only matching relationship rows and the six existing fields (`Assignment_ID`, `Program_ID`, `User_ID`, `Assigned_By`, `Assigned_Date`, `Status`); it is never an all-assignments read.
 
 All three reads require the current Permissions capability (STAFF/ADMIN) at the server boundary. No read returns an uncontrolled all-members/all-leaders snapshot. There is no artificial product-level ten-result cap; a later server-pagination refinement must preserve the action contract and must not become a hidden authorization rule.
@@ -53,7 +53,7 @@ The relationship keeps exactly the six columns in ADR-0013; it adds no `Revoked_
 Each mutation performs its final authorization and natural-key recheck inside the single caller-owned mutation lock required by ADR-0015. The natural key is `(targetUserId, programId)`:
 
 - A grant creates one active relationship when no active row exists.
-- A repeated grant by the same actor is a `DUPLICATE` quiet success and creates no second active relationship.
+- A grant against an already-active natural key is a `DUPLICATE` quiet success for any authorized actor and creates no second active relationship; grant classification does not depend on which actor established the existing row.
 - A revoke changes the active relationship to the existing revoked state without deleting history.
 - A repeated revoke by the same actor is a `DUPLICATE` quiet success.
 - A revoke that races with a different actor is a `CONFLICT`; it does not silently retry past the competing change.
@@ -91,13 +91,14 @@ The following checklist is handed to the CF2 specification and implementation ti
 
 1. Raw `Users` Sheet role cells are byte-identical before and after the tested flows; no HTTP path writes them.
 2. For raw `EVENT_LEADER`, both `loginUser` and `restoreApp` return effective `MEMBER` and never emit the literal `EVENT_LEADER` in the DTO.
-3. A protected `FORBIDDEN` causes no more than one `restoreApp` for that user action and never replays the original RPC.
-4. Member search requires a Member ID/name query, excludes inactive/pending users, exposes only minimal fields, and has no product-level ten-result cap.
-5. STAFF/ADMIN reads succeed; MEMBER and Program Leader calls to Permissions reads and mutations return `FORBIDDEN` without business audit rows.
-6. Two active assignments for one member across two Programs authorize exactly those Programs; an unrelated Program remains forbidden, and one assignment applies to all Events in its Program.
-7. Grant/revoke natural-key duplicates create no second active relationship, competing revokes return `CONFLICT`, no automatic mutation replay occurs, and every authorized outcome whose audit append succeeds has exactly one matching audit row with `Correlation_ID = requestId`; append failure follows ADR-0015's `FAILED`/`INTERNAL_ERROR` plus Cloud Logging breadcrumb path without automatic retry.
-8. No production or operational Google Sheet is mutated by the agent; any required schema/fixture change follows the Sheet-Immutable rules in `AGENTS.md`.
-9. Protected request secrets follow ADR-0018's header-only transport: `sessionToken` never appears in URLs or action parameters. Any interim dispatcher compatibility may carry only non-secret lookup fields and must not treat them as authority assertions.
+3. A protected `FORBIDDEN` causes no more than one `restoreApp` for that user action and never replays the original RPC; if refresh returns `AUTH_REQUIRED` the client visibly returns to Login, and a later independent action receives its own one-refresh allowance.
+4. Member search requires a Member ID/name query, excludes inactive/pending users, exposes only minimal fields, and has no product-level ten-result cap; `permissionsListPrograms` returns only `{id, name}` catalog projections.
+5. `permissionsGetAssignments` rejects missing/empty, both, and unknown selectors with `VALIDATION`; a `userId` selector returns only that member's rows and a `programId` selector only that Program's rows, never an all-assignments snapshot.
+6. STAFF/ADMIN reads succeed; MEMBER and Program Leader calls to all Permissions reads and mutations return `FORBIDDEN` without business audit rows.
+7. Two active assignments for one member across two Programs authorize exactly those Programs; an unrelated Program remains forbidden, and one assignment applies to all Events in its Program.
+8. Grant/revoke natural-key duplicates create no second active relationship, competing revokes return `CONFLICT`, no automatic mutation replay occurs, and every authorized outcome whose audit append succeeds has exactly one matching audit row with `Correlation_ID = requestId`; append failure follows ADR-0015's `FAILED`/`INTERNAL_ERROR` plus Cloud Logging breadcrumb path without automatic retry.
+9. No production or operational Google Sheet is mutated by the agent; any required schema/fixture change follows the Sheet-Immutable rules in `AGENTS.md`.
+10. Protected request secrets follow ADR-0018's header-only transport: `sessionToken` never appears in URLs or action parameters. Any interim dispatcher compatibility may carry only non-secret lookup fields and must not treat them as authority assertions.
 
 CF0 transport behavior is deliberately outside this decision's acceptance. In
 particular, the current `web/lib/api.ts` `sessionParams` bearer-in-params defect,
