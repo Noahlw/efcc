@@ -153,6 +153,14 @@ const DEFAULT_HANDLER = http.post("/api/v1/rpc", async ({ request }) => {
     });
   }
 
+  if (action === "logoutUser") {
+    return HttpResponse.json({
+      success: true,
+      requestId: "r-logout",
+      data: null,
+    });
+  }
+
   if (action === "authorizedNavigate") {
     return HttpResponse.json({
       success: true,
@@ -369,6 +377,94 @@ describe("Shell", () => {
       await waitFor(() => {
         expect(replaceMock).toHaveBeenCalledWith("/");
       });
+    });
+
+    test("renders Sign Out button accessible by name", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      saveSession(VALID_SESSION);
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      expect(signOutButton).toBeInTheDocument();
+    });
+
+    test("clicking Sign Out calls logoutUser RPC and replaces to /", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      saveSession(VALID_SESSION);
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(localStorage.getItem("efcc_session")).toBeNull();
+      expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
+    });
+
+    test("logoutUser RPC failure clears session, replaces to /, and surfaces failedNotice on Login", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      saveSession(VALID_SESSION);
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "logoutUser") {
+            return HttpResponse.json(
+              {
+                type: "tag:efcc.app,2026:error:INTERNAL_ERROR",
+                status: 500,
+                code: "INTERNAL_ERROR",
+                title: "Server error",
+                detail: "boom",
+                requestId: "r-logout-fail",
+              },
+              {
+                status: 500,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          if (body.action === "restoreApp") {
+            return HttpResponse.json({
+              success: true,
+              requestId: "r-restore",
+              data: BOOTSTRAP,
+            });
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(localStorage.getItem("efcc_session")).toBeNull();
+      expect(sessionStorage.getItem("efcc_logout_failed")).toBe("1");
+
+      cleanup();
+      render(<LoginPage />);
+      expect(screen.getByText(COPY.logout.failedNotice)).toBeInTheDocument();
+      expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
     });
   });
 

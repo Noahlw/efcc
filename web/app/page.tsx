@@ -11,6 +11,7 @@ import { firstSection } from "@/lib/sections";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
+const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 
 type View =
   | { kind: "SIGNED_OUT" }
@@ -95,6 +96,14 @@ export default function LoginPage() {
   useEffect(() => {
     doRestore();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- doRestore/navigateAfterLogin are stable
+  }, []);
+
+  // On mount, surface any flash notice from a prior logout (Task 4).
+  useEffect(() => {
+    if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
+      setNotice(COPY.logout.failedNotice);
+      sessionStorage.removeItem(LOGOUT_FAILED_KEY);
+    }
   }, []);
 
   const handleLogin = useCallback(async () => {

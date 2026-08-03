@@ -12,6 +12,7 @@ import { RecoveryView } from "@/lib/recovery-view";
 import { loadSession, clearSession } from "@/lib/session";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
+const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 
 function ShellFrame({
   bootstrap,
@@ -25,13 +26,17 @@ function ShellFrame({
   const router = useRouter();
 
   const handleSignOut = useCallback(async () => {
+    let rpcFailed = false;
     try {
       await logoutUser(session);
     } catch {
-      // Best-effort server-side revocation.
+      rpcFailed = true;
     }
     clearSession();
     sessionStorage.removeItem(DEEP_LINK_KEY);
+    if (rpcFailed) {
+      sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
+    }
     router.replace("/");
   }, [router, session]);
 

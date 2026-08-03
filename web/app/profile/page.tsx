@@ -5,7 +5,7 @@ import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 
 function ProfileContent() {
-  const { bootstrap } = useApp();
+  const { bootstrap, signOut } = useApp();
   const p = bootstrap.profile;
   return (
     <div style={{ maxWidth: 600, margin: "2rem auto", padding: "0 1rem" }}>
@@ -38,6 +38,18 @@ function ProfileContent() {
           {p.qrCodeString}
         </dd>
       </dl>
+      <button
+        type="button"
+        onClick={signOut}
+        style={{
+          marginTop: "1.5rem",
+          minWidth: 44,
+          minHeight: 44,
+          padding: "0.5rem 1rem",
+        }}
+      >
+        {COPY.logout.submit}
+      </button>
     </div>
   );
 }
