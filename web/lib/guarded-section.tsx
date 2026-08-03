@@ -102,8 +102,8 @@ export function GuardedSection({
   if (state.kind === "forbidden") {
     return (
       <RecoveryView
-        message={COPY.nav.unauthorized}
-        safeHref={`/${recoverySection(bootstrap.sections)}`}
+        message={COPY.error.forbidden}
+        safeHref={`/${bootstrap.sections[0]?.key ?? "profile"}`}
       />
     );
   }

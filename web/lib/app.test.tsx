@@ -23,6 +23,7 @@ import ProgramsPage from "@/app/programs/page";
 import ScannerPage from "@/app/scanner/page";
 import type { Bootstrap, Session } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
+import { AppShell } from "@/lib/app-shell";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { GuardedSection } from "@/lib/guarded-section";
 import { NavBar } from "@/lib/nav-bar";
@@ -585,7 +586,7 @@ describe("Shell", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText(COPY.nav.unauthorized)).toBeInTheDocument();
+        expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
       });
       expect(screen.queryByText("care content")).not.toBeInTheDocument();
     });
@@ -1192,6 +1193,140 @@ describe("Shell", () => {
         COPY.error.unknown
       );
       expect(errorCopyFor(undefined, "another leak")).toBe(COPY.error.unknown);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Task 5: Restore failure lifecycle, route authorization & expiry handling.
+  // ---------------------------------------------------------------------------
+  describe("AppShell restore failure lifecycle", () => {
+    test("restoreApp 503 keeps stored session and retry re-executes restoreApp", async () => {
+      let restoreAttempts = 0;
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            restoreAttempts += 1;
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "系統暫時無法使用",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      pathnameMock.mockReturnValue("/profile");
+      render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.unavailable)).toBeInTheDocument();
+      });
+      const retryButton = screen.getByText(COPY.error.retry);
+      expect(localStorage.getItem("efcc_session")).not.toBeNull();
+
+      // restoreApp retries internally (MAX_RETRIES) on 503, so the first
+      // logical call produces multiple fetch attempts. Capture that
+      // baseline so we can prove a subsequent retry triggers more fetches.
+      const attemptsAfterFirst = restoreAttempts;
+      expect(attemptsAfterFirst).toBeGreaterThanOrEqual(1);
+      expect(replaceMock).not.toHaveBeenCalled();
+
+      await userEvent.setup().click(retryButton);
+
+      await waitFor(() => {
+        expect(restoreAttempts).toBeGreaterThan(attemptsAfterFirst);
+      });
+      expect(localStorage.getItem("efcc_session")).not.toBeNull();
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    test("restoreApp AUTH_REQUIRED clears session and calls router.replace('/')", async () => {
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "restoreApp") {
+            return HttpResponse.json(
+              {
+                type: "tag:efcc.app,2026:error:AUTH_REQUIRED",
+                status: 401,
+                code: "AUTH_REQUIRED",
+                title: "Session expired",
+                detail: "工作階段已過期。",
+                requestId: "r-401",
+              },
+              {
+                status: 401,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      saveSession(VALID_SESSION);
+      pathnameMock.mockReturnValue("/profile");
+      render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(localStorage.getItem("efcc_session")).toBeNull();
+      expect(sessionStorage.getItem("efcc_deep_link")).toBe("/profile");
+    });
+  });
+
+  describe("GuardedSection unpermitted deep link", () => {
+    test("sectionKey missing from bootstrap.sections renders RecoveryView with first permitted section", async () => {
+      const memberBootstrap = { ...BOOTSTRAP, sections: MEMBER_SECTIONS };
+      render(
+        <AppProvider
+          bootstrap={memberBootstrap}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      });
+      expect(screen.queryByText("care content")).not.toBeInTheDocument();
+      const link = screen.getByText(COPY.nav.backToHome).closest("a");
+      expect(link).toHaveAttribute("href", "/profile");
     });
   });
 });

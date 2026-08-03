@@ -112,9 +112,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (!mountRef.current) {
           return;
         }
-        clearSession();
-        sessionStorage.setItem(DEEP_LINK_KEY, pathname);
+        // AUTH_REQUIRED means the stored session is dead; clear it and send
+        // the user back to login so the deep link can be honored after a
+        // fresh login. Any other failure (network, 5xx) is recoverable —
+        // keep the stored session and offer retry so the user doesn't lose
+        // an otherwise-valid session to a transient blip.
         const code = error instanceof RpcError ? error.problem.code : undefined;
+        if (code === "AUTH_REQUIRED") {
+          clearSession();
+          sessionStorage.setItem(DEEP_LINK_KEY, pathname);
+          router.replace("/");
+          return;
+        }
         const msg =
           error instanceof RpcError
             ? errorCopyFor(code, error.problem.detail)
@@ -131,12 +140,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <LoadingShell />;
   }
   if (state.kind === "error") {
-    const isExpired = state.code === "AUTH_REQUIRED";
+    // AUTH_REQUIRED is handled inline (clears session + redirects); any
+    // error reaching this branch is transient (network / 5xx), so retry
+    // is always appropriate. Bumping `tick` re-runs the restore effect.
     return (
       <RecoveryView
         message={state.message}
         safeHref="/"
-        onRetry={isExpired ? undefined : () => setTick((t) => t + 1)}
+        onRetry={() => setTick((t) => t + 1)}
       />
     );
   }
