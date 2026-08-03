@@ -1372,10 +1372,11 @@ describe("Shell", () => {
           const body = (await request.json()) as { action?: string };
           if (body.action === "authorizedNavigate") {
             callCount += 1;
-            if (callCount === 1)
-              {return deferred1.promise.then((d) =>
+            if (callCount === 1) {
+              return deferred1.promise.then((d) =>
                 HttpResponse.json({ success: true, requestId: "r-1", data: d })
-              );}
+              );
+            }
             return deferred2.promise.then((d) =>
               HttpResponse.json({ success: true, requestId: "r-2", data: d })
             );
@@ -1421,6 +1422,8 @@ describe("Shell", () => {
       await vi.waitFor(() => {
         expect(screen.queryByText("care content")).not.toBeInTheDocument();
       });
+      expect(screen.getByText(COPY.nav.loading)).toBeInTheDocument();
+      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
 
       deferred2.resolve({ authorized: true });
       await vi.waitFor(() => {
@@ -1463,7 +1466,56 @@ describe("Shell", () => {
         </AppProvider>
       );
 
+      // new sections identity forces authorize() to re-run while the first request is pending
       rerender(
+        <AppProvider
+          bootstrap={{ ...staffBootstrap, sections: [...STAFF_SECTIONS] }}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      expect(screen.getByText(COPY.nav.loading)).toBeInTheDocument();
+
+      deferred.resolve({ authorized: true });
+      await vi.waitFor(() => {
+        expect(screen.getByText("care content")).toBeInTheDocument();
+      });
+      expect(callCount).toBe(1);
+    });
+
+    test("revoked permission discards an in-flight authorization response", async () => {
+      const deferred = Promise.withResolvers<{ authorized: boolean }>();
+      let calls = 0;
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            calls += 1;
+            return deferred.promise.then((d) =>
+              HttpResponse.json({ success: true, requestId: "r-1", data: d })
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      const staffBootstrapWithoutCare = {
+        ...BOOTSTRAP,
+        sections: STAFF_SECTIONS.filter((s) => s.key !== "care"),
+      };
+      const { rerender } = render(
         <AppProvider
           bootstrap={staffBootstrap}
           session={VALID_SESSION}
@@ -1475,11 +1527,73 @@ describe("Shell", () => {
         </AppProvider>
       );
 
+      expect(screen.getByText(COPY.nav.loading)).toBeInTheDocument();
+
+      rerender(
+        <AppProvider
+          bootstrap={staffBootstrapWithoutCare}
+          session={VALID_SESSION}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="care">
+            <p>care content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+
+      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+
       deferred.resolve({ authorized: true });
+      // Allow the in-flight IIFE to resume and React to commit its setState
+      // before the assertion polls the DOM.
+      await act(async () => {});
       await vi.waitFor(() => {
-        expect(screen.getByText("care content")).toBeInTheDocument();
+        expect(screen.queryByText("care content")).not.toBeInTheDocument();
       });
-      expect(callCount).toBe(1);
+
+      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      expect(calls).toBe(1);
+    });
+
+    test("section authorization loading is announced through the live region", async () => {
+      const deferred = Promise.withResolvers<{ authorized: boolean }>();
+      server.use(
+        http.post("/api/v1/rpc", async ({ request }) => {
+          const body = (await request.json()) as { action?: string };
+          if (body.action === "authorizedNavigate") {
+            return deferred.promise.then((d) =>
+              HttpResponse.json({ success: true, requestId: "r-1", data: d })
+            );
+          }
+          return HttpResponse.json(
+            { status: 400, code: "MALFORMED_REQUEST", title: "Bad request" },
+            {
+              status: 400,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          );
+        })
+      );
+
+      const staffBootstrap = { ...BOOTSTRAP, sections: STAFF_SECTIONS };
+      const { container } = render(
+        <RootLayout>
+          <AppProvider
+            bootstrap={staffBootstrap}
+            session={VALID_SESSION}
+            onSignOut={() => {}}
+          >
+            <GuardedSection sectionKey="care">
+              <p>care content</p>
+            </GuardedSection>
+          </AppProvider>
+        </RootLayout>
+      );
+
+      await waitFor(() => {
+        const liveRegion = container.querySelector('output[role="status"]');
+        expect(liveRegion).toHaveTextContent(COPY.nav.loading);
+      });
     });
   });
 });

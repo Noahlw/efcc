@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { authorizedNavigate, RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import { createNavigationController } from "@/lib/navigation-controller";
 import { RecoveryView } from "@/lib/recovery-view";
 import { getSection, recoverySection } from "@/lib/sections";
@@ -37,6 +38,11 @@ export function GuardedSection({
   );
 
   const authorize = useCallback(() => {
+    // Bump generation on every invocation so the forbidden branch (no
+    // matching section) also invalidates in-flight authorizations from a
+    // prior render. Without this, a stale response can resurrect a
+    // section whose permission was revoked while the RPC was pending.
+    const gen = ctrlRef.current.nextGeneration();
     const section = getSection(bootstrap.sections, sectionKey);
     if (!section) {
       setState({ kind: "forbidden" });
@@ -44,8 +50,8 @@ export function GuardedSection({
     }
 
     if (section.requiresServerAuth) {
-      const gen = ctrlRef.current.nextGeneration();
       setState({ kind: "authorizing" });
+      announce(COPY.nav.loading);
       (async () => {
         try {
           const { promise } = ctrlRef.current.run(sectionKey, () =>
