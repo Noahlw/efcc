@@ -266,9 +266,12 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
 test("active section exposes aria-current and the nav has an accessible label", async ({
   page,
 }, testInfo) => {
-  await page.goto("/care.html");
+  // Clean URL — the production worker serves /care; the static test server
+  // maps extensionless paths to *.html. The app derives the active section
+  // from the pathname, so a .html suffix would break aria-current detection.
+  await page.goto("/care");
 
-  const nav = page.locator(`nav[aria-label="${COPY.nav.label}"]`).first();
+  const nav = page.locator(`nav[aria-label="${COPY.nav.label}"]:visible`);
   await expect(nav).toBeVisible();
 
   const activeCount = await nav.locator('[aria-current="page"]').count();
