@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useEffect } from "react";
 
 import { COPY } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 
 export function RecoveryView({
   message,
@@ -18,6 +19,7 @@ export function RecoveryView({
 
   useEffect(() => {
     liveRef.current?.focus();
+    announce(message);
   }, [message]);
 
   return (

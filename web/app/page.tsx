@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { loginUser, restoreApp, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import { RecoveryView } from "@/lib/recovery-view";
 import { firstSection } from "@/lib/sections";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
@@ -40,6 +41,7 @@ export default function LoginPage() {
     clearSession();
     abortRef.current?.abort();
     abortRef.current = null;
+    announce(message);
     setNotice(message);
     setView({ kind: "SIGNED_OUT" });
   }, []);
@@ -62,6 +64,7 @@ export default function LoginPage() {
     }
 
     setView({ kind: "RESTORING" });
+    announce(COPY.restore.loading);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -86,6 +89,7 @@ export default function LoginPage() {
             ? errorCopyFor(error.problem.code, error.problem.detail)
             : COPY.error.networkError;
         setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: doRestore });
+        announce(msg);
       }
     }
 
@@ -101,10 +105,12 @@ export default function LoginPage() {
   // On mount, surface any flash notice from a prior logout (Task 4).
   useEffect(() => {
     if (sessionStorage.getItem("efcc_session_expired") === "1") {
+      announce(COPY.restore.expired);
       setNotice(COPY.restore.expired);
       sessionStorage.removeItem("efcc_session_expired");
     }
     if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
+      announce(COPY.logout.failedNotice);
       setNotice(COPY.logout.failedNotice);
       sessionStorage.removeItem(LOGOUT_FAILED_KEY);
     }
@@ -112,6 +118,7 @@ export default function LoginPage() {
 
   const handleLogin = useCallback(async () => {
     setView({ kind: "AUTHENTICATING" });
+    announce(COPY.login.submitting);
     setNotice(null);
     try {
       const bootstrap = await loginUser(username, pin);
@@ -127,6 +134,7 @@ export default function LoginPage() {
           ? errorCopyFor(error.problem.code)
           : COPY.login.networkError;
       setView({ kind: "ERROR", error: msg });
+      announce(msg);
       clearSession();
     }
   }, [username, pin, navigateAfterLogin]);

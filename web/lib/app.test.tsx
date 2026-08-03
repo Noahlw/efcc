@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import { act } from "react";
 import {
   describe,
   test,
@@ -27,6 +28,7 @@ import { AppProvider } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { GuardedSection } from "@/lib/guarded-section";
+import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { saveSession } from "@/lib/session";
@@ -208,6 +210,21 @@ describe("Shell", () => {
         'output[role="status"][aria-live="polite"].sr-only'
       );
       expect(liveRegion).not.toBeNull();
+    });
+
+    test("announces async status text into the polite live region", () => {
+      const { container } = render(
+        <RootLayout>
+          <div>test</div>
+        </RootLayout>
+      );
+      act(() => {
+        announce("測試通知");
+      });
+      const liveRegion = container.querySelector(
+        'output[role="status"][aria-live="polite"].sr-only'
+      );
+      expect(liveRegion?.textContent).toBe("測試通知");
     });
   });
 

@@ -109,7 +109,7 @@ function doPost(e) {
       code: "INTERNAL_ERROR",
       title: "Internal Server Error",
       detail: "伺服器處理時發生錯誤。",
-      requestId: "req-" + Date.now(),
+      requestId: Utilities.getUuid(),
     };
   }
 

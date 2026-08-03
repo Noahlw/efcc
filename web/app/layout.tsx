@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type React from "react";
 
+import { LiveRegion } from "@/lib/live-region";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant">
       <body>
-        <output role="status" aria-live="polite" className="sr-only" />
+        <LiveRegion />
         {children}
       </body>
     </html>

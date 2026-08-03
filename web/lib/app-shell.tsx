@@ -7,6 +7,7 @@ import { restoreApp, logoutUser, RpcError } from "@/lib/api";
 import type { Bootstrap, Session } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { loadSession, clearSession } from "@/lib/session";
@@ -55,6 +56,10 @@ function ShellFrame({
 }
 
 function LoadingShell() {
+  useEffect(() => {
+    announce(COPY.restore.loading);
+  }, []);
+
   return (
     <main
       style={{
