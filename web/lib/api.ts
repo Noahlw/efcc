@@ -198,6 +198,17 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+/**
+ * True when the caller cancelled via options.signal, or the underlying
+ * fetch failure was an AbortError (timeout or external signal). Both
+ * cases must bypass retries - returning undefined-network-error
+ * would lie about why the request stopped.
+ */
+function isAbort(error: unknown, externalSignal?: AbortSignal): boolean {
+  if (externalSignal?.aborted) {return true;}
+  return error instanceof Error && error.name === "AbortError";
+}
+
 async function parseSuccess<T>(res: Response): Promise<T> {
   let parsed: unknown;
   try {
@@ -222,8 +233,20 @@ async function parseSuccess<T>(res: Response): Promise<T> {
       detail: "伺服器回應格式錯誤。",
     });
   }
-  const env = parsed as RpcSuccess<T>;
-  return env.data;
+  // ADR-0018 §3: the success envelope MUST carry both `requestId` and
+  // `data`. Without them the client cannot correlate across dashboards
+  // nor trust the payload - reject as a malformed response so callers
+  // see a recoverable error instead of a silent undefined.data.
+  const env = parsed as Partial<RpcSuccess<T>>;
+  if (typeof env.requestId !== "string" || env.data === undefined) {
+    throw new RpcError({
+      status: res.status,
+      code: "MALFORMED_RESPONSE",
+      title: "Malformed success envelope",
+      detail: "伺服器回應格式錯誤。",
+    });
+  }
+  return env.data as T;
 }
 
 async function parseProblemDetails(
@@ -272,6 +295,7 @@ async function parseProblemDetails(
  * delegate here; tests drive it directly via a stubbed `fetch` to assert
  * the exact request shape (headers, body, retries) leaving the browser.
  */
+// eslint-disable-next-line complexity -- retry+envelope+signal orchestration is intentionally linear here; splitting would scatter a contract whose atomicity is the point
 export async function callRpc<T>(
   action: string,
   params: Record<string, unknown>,
@@ -298,7 +322,7 @@ export async function callRpc<T>(
     try {
       // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
       const signals: AbortSignal[] = [AbortSignal.timeout(30_000)];
-      if (options?.signal) signals.push(options.signal);
+      if (options?.signal) {signals.push(options.signal);}
       // eslint-disable-next-line no-await-in-loop -- sequential retry; each attempt depends on the prior response
       res = await fetch("/api/v1/rpc", {
         method: "POST",
@@ -310,8 +334,15 @@ export async function callRpc<T>(
         // Combined with optional external signal for cancellation.
         signal: AbortSignal.any(signals),
       });
-    } catch {
-      // Network failure / timeout / abort - retryable if the action is safe.
+    } catch (error) {
+      // Honor caller cancellation immediately: never retry an aborted
+      // request, regardless of action idempotency. AbortError may arrive
+      // either from the explicit options.signal or from the bundled
+      // 30s timeout signal, so check both.
+      if (isAbort(error, options?.signal)) {
+        throw error;
+      }
+      // Network failure / timeout (non-abort) - retryable if the action is safe.
       lastError = new RpcError({
         status: 0,
         code: "NETWORK_ERROR",
@@ -373,7 +404,10 @@ function sessionParams(session: Session): Record<string, unknown> {
   return {
     userId: session.userId,
     sessionId: session.sessionId,
-    sessionToken: session.sessionToken,
+    // sessionToken intentionally omitted: it travels in the
+    // Authorization Bearer header (ADR-0018 §2), never in the body.
+    // Body params exist only for the #129 dispatcher workaround until
+    // #131 routes identity from the header-borne sessionId.
   };
 }
 
@@ -385,7 +419,12 @@ export function restoreApp(
   session: Session,
   options?: { signal?: AbortSignal }
 ): Promise<Bootstrap> {
-  return callRpc<Bootstrap>("restoreApp", sessionParams(session), session, options);
+  return callRpc<Bootstrap>(
+    "restoreApp",
+    sessionParams(session),
+    session,
+    options
+  );
 }
 
 export function logoutUser(session: Session): Promise<void> {

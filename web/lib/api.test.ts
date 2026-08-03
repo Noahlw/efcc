@@ -502,3 +502,151 @@ describe("api.ts: callRpc direct", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// CF0 Task 1: envelope validation, token-in-body scrubbing, abort signal.
+// ---------------------------------------------------------------------------
+
+describe("api.ts: CF0 envelope & signal hardening", () => {
+  test("success envelope missing data throws MALFORMED_RESPONSE", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { success: true, requestId: "r-no-data" })
+    );
+    try {
+      await assert.rejects(
+        () => loginUser("test", "0000"),
+        (err: RpcError) => {
+          assert.equal(err.name, "RpcError");
+          assert.equal(err.problem.code, "MALFORMED_RESPONSE");
+          return true;
+        }
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("success envelope missing requestId throws MALFORMED_RESPONSE", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { success: true, data: { value: 1 } })
+    );
+    try {
+      await assert.rejects(
+        () => loginUser("test", "0000"),
+        (err: RpcError) => {
+          assert.equal(err.name, "RpcError");
+          assert.equal(err.problem.code, "MALFORMED_RESPONSE");
+          return true;
+        }
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("restoreApp body params omit sessionToken", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { success: true, requestId: "r-1", data: BOOTSTRAP })
+    );
+    try {
+      await restoreApp(SESSION);
+      const body = JSON.parse(fetchMock.calls[0].body);
+      const params = body.params as Record<string, unknown>;
+      assert.ok(
+        !("sessionToken" in params),
+        "sessionToken must not appear in body params"
+      );
+      assert.equal(params.userId, "U-test");
+      assert.equal(params.sessionId, "sess-id-placeholder");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("logoutUser body params omit sessionToken", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { success: true, requestId: "r-1", data: {} })
+    );
+    try {
+      await logoutUser(SESSION);
+      const body = JSON.parse(fetchMock.calls[0].body);
+      const params = body.params as Record<string, unknown>;
+      assert.ok(
+        !("sessionToken" in params),
+        "sessionToken must not appear in body params"
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("authorizedNavigate body params omit sessionToken", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, {
+        success: true,
+        requestId: "r-1",
+        data: { authorized: true },
+      })
+    );
+    try {
+      await authorizedNavigate(SESSION, "scanner");
+      const body = JSON.parse(fetchMock.calls[0].body);
+      const params = body.params as Record<string, unknown>;
+      assert.ok(
+        !("sessionToken" in params),
+        "sessionToken must not appear in body params"
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("callRpc rethrows AbortError without retrying", async () => {
+    let attempts = 0;
+    const fetchMock = installFetch(() => {
+      attempts += 1;
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      throw err;
+    });
+    try {
+      await assert.rejects(
+        () =>
+          callRpc("someRead", {}, undefined, {
+            signal: AbortSignal.abort(),
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.equal(err.name, "AbortError");
+          return true;
+        }
+      );
+      assert.equal(attempts, 1, "must not retry on AbortError");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("restoreApp rethrows AbortError without retrying", async () => {
+    let attempts = 0;
+    const fetchMock = installFetch(() => {
+      attempts += 1;
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      throw err;
+    });
+    try {
+      await assert.rejects(
+        () => restoreApp(SESSION, { signal: AbortSignal.abort() }),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.equal(err.name, "AbortError");
+          return true;
+        }
+      );
+      assert.equal(attempts, 1, "must not retry on AbortError");
+    } finally {
+      fetchMock.restore();
+    }
+  });
+});
