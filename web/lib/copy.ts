@@ -60,7 +60,7 @@ export const COPY = {
 } as const;
 
 export function errorCopyFor(
-  code: string | undefined,
+  code?: string,
   // _detail reserved for future fallback; centralized copy is the sole user-facing source.
   _detail?: string
 ): string {
