@@ -200,7 +200,7 @@ describe("Shell", () => {
   afterAll(() => server.close());
 
   describe(RootLayout, () => {
-    test("renders polite screen reader live region", () => {
+    test("renders polite screen reader live region with explicit role", () => {
       const { container } = render(
         <RootLayout>
           <div>test</div>

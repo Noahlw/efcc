@@ -35,6 +35,7 @@ function ShellFrame({
     }
     clearSession();
     sessionStorage.removeItem(DEEP_LINK_KEY);
+    announce(rpcFailed ? COPY.logout.failedNotice : COPY.logout.success);
     if (rpcFailed) {
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
     }
@@ -112,6 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (!mountRef.current) {
           return;
         }
+        announce(COPY.restore.restored);
         setState({ kind: "ready", bootstrap, session: stored });
       } catch (error) {
         if (!mountRef.current) {

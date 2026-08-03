@@ -28,7 +28,10 @@ export function LiveRegion() {
   }, []);
 
   return (
-    <output  aria-live="polite" className="sr-only">
+    // Spec 074 mandates the explicit role on the single polite live
+    // region; jsx-a11y considers it redundant on <output>.
+    // eslint-disable-next-line jsx-a11y/no-redundant-roles
+    <output role="status" aria-live="polite" className="sr-only">
       {message}
     </output>
   );

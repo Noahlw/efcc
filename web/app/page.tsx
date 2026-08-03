@@ -76,6 +76,7 @@ export default function LoginPage() {
       if (!mountRef.current) {
         return;
       }
+      announce(COPY.restore.restored);
       navigateAfterLogin(bootstrap);
     } catch (error) {
       if (!mountRef.current) {
@@ -127,6 +128,7 @@ export default function LoginPage() {
         sessionId: bootstrap.session.sessionId,
         sessionToken: bootstrap.session.sessionToken,
       });
+      announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
       const msg =

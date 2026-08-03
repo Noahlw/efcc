@@ -10,6 +10,7 @@ export const COPY = {
     submitting: "登入中…",
     error: "用戶名稱或 PIN 碼不正確。",
     networkError: "無法連接伺服器，請檢查網路後再試。",
+    success: "登入成功。",
   },
   profile: {
     title: "個人資料",
@@ -22,12 +23,14 @@ export const COPY = {
   },
   restore: {
     loading: "正在還原工作階段…",
+    restored: "工作階段已還原。",
     expired: "工作階段已過期，請重新登入。",
   },
   logout: {
     submit: "登出",
     error: "登出時發生錯誤，但已安全終止工作階段。",
     failedNotice: "登出請求失敗，但本機工作階段已清除。",
+    success: "已登出。",
   },
   sections: {
     profile: "個人檔案",
