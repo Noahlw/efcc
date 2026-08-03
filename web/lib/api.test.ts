@@ -546,7 +546,11 @@ describe("api.ts: CF0 envelope & signal hardening", () => {
 
   test("success envelope with non-string requestId throws MALFORMED_RESPONSE", async () => {
     const fetchMock = installFetch(() =>
-      makeResponse(200, { success: true, requestId: 12_345, data: { value: 1 } })
+      makeResponse(200, {
+        success: true,
+        requestId: 12_345,
+        data: { value: 1 },
+      })
     );
     try {
       await assert.rejects(

@@ -216,7 +216,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * would lie about why the request stopped.
  */
 function isAbort(error: unknown, externalSignal?: AbortSignal): boolean {
-  if (externalSignal?.aborted) {return true;}
+  if (externalSignal?.aborted) {
+    return true;
+  }
   if (error !== null && typeof error === "object" && "name" in error) {
     return error.name === "AbortError";
   }

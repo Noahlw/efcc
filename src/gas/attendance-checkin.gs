@@ -355,7 +355,9 @@ function scannerEventsForUser_(user) {
   var role = String(user.role || "").toUpperCase();
   var events = eventsListActive_();
   var isStaffOrAbove = role === "STAFF" || role === "ADMIN";
-  var ledIds = isStaffOrAbove ? [] : programLeadersActiveProgramIds_(user.userId);
+  var ledIds = isStaffOrAbove
+    ? []
+    : programLeadersActiveProgramIds_(user.userId);
   var ledSet = {};
   for (var li = 0; li < ledIds.length; li++) {
     ledSet[ledIds[li]] = true;

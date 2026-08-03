@@ -100,7 +100,9 @@ function doPost(e) {
     // is the throwaway's success/failure envelope (`success`/`error`)
     // so the prototype client can parse it like any other handler
     // failure; the Worker proxy already maps this to outer HTTP 500.
-    Logger.log("prototype-129 doPost error: " + (err && err.stack ? err.stack : err));
+    Logger.log(
+      "prototype-129 doPost error: " + (err && err.stack ? err.stack : err)
+    );
     status = 500;
     responseBody = {
       status: 500,

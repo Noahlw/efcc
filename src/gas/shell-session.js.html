@@ -1579,7 +1579,10 @@
         window.clearInterval(scannerRuntime_.handshakeTimer);
         scannerRuntime_.handshakeTimer = null;
       }
-      if (scannerRuntime_.scannerWindow && !scannerRuntime_.scannerWindow.closed) {
+      if (
+        scannerRuntime_.scannerWindow &&
+        !scannerRuntime_.scannerWindow.closed
+      ) {
         try {
           scannerRuntime_.scannerWindow.close();
         } catch (e) {
