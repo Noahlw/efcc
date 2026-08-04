@@ -33,6 +33,13 @@ var RPC_CODES = Object.freeze({
   CONFLICT: "CONFLICT",
   UNAVAILABLE: "UNAVAILABLE",
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  // Check-in business outcomes (issue #101). English code keys only; all
+  // operator-visible copy stays Traditional Chinese per spec #93 US 50.
+  NOT_ENROLLED: "NOT_ENROLLED",
+  MEMBER_NOT_FOUND: "MEMBER_NOT_FOUND",
+  MEMBER_INACTIVE: "MEMBER_INACTIVE",
+  EVENT_NOT_FOUND: "EVENT_NOT_FOUND",
+  EVENT_NOT_ACTIVE: "EVENT_NOT_ACTIVE",
 });
 
 /**

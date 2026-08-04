@@ -169,6 +169,39 @@ function usersFindById_(userId) {
 }
 
 /**
+ * Resolve a member by the raw trimmed `scannedCode` on the QR check-in
+ * path (issue #101 / spec #93 US 34). The client never supplies Member
+ * identity; the server resolves it from `scannedCode` only:
+ *
+ *   1. exact match on `QR_Code_String === scanned`, OR
+ *   2. legacy fallback: `QR_Code_String` is empty AND `User_ID === scanned`.
+ *
+ * The QR match is preferred so a non-empty QR_Code_String always wins over
+ * a coincidental User_ID collision. Returns the member DTO or null.
+ *
+ * @param {string} scanned Already-trimmed, non-empty scanned code.
+ * @returns {Object|null}
+ */
+function usersFindByScannedCode_(scanned) {
+  if (!scanned) return null;
+  var rows = usersReadAll_();
+  // First pass: exact QR_Code_String match.
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][USERS_COL.QR_CODE_STRING] || "") === scanned) {
+      return usersRowToDto_(rows[i], i + 1);
+    }
+  }
+  // Second pass: empty QR_Code_String + User_ID match (legacy rows).
+  for (var j = 1; j < rows.length; j++) {
+    var qr = String(rows[j][USERS_COL.QR_CODE_STRING] || "");
+    if (qr === "" && String(rows[j][USERS_COL.USER_ID]) === scanned) {
+      return usersRowToDto_(rows[j], j + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Return just the current normalized PIN for a user, or "" if the
  * user does not exist. Used by sessionVerify_ to recompute the
  * signature on every protected RPC.

@@ -40,3 +40,13 @@ Only implemented scenarios may run as passing acceptance coverage. Unfinished ac
 ## Expired sessions
 
 CI fails loudly when a stored Google session expires. Recapture only the affected role with `pnpm e2e:auth -- --role=<alice|bob|noah>`, validate locally, base64-encode the replacement, and update that GitHub secret. No expiry classification or silent skip is used.
+
+## Local shell responsive suite
+
+A separate Playwright suite (`tests/e2e/responsive.config.ts`) covers the responsive and accessibility invariants of the local production shell (CF0-06 criteria 4–7). Run it with:
+
+```sh
+pnpm test:shell-responsive
+```
+
+The suite builds the Next.js static export (`pnpm --dir web build`) and serves it locally on port 4173 via the zero-dependency static server in `tests/e2e/serve-static.ts`. Two viewport projects run the same seven checks: `mobile-375x812` and `desktop-1280x800`. The `POST /api/v1/rpc` endpoint is stubbed in-browser through Playwright's `page.route` interceptor — `restoreApp` returns a full `Bootstrap` fixture and `authorizedNavigate` returns `{ authorized: true }`, so no `E2E_TARGET_URL`, no Google session state, and no HtmlService dependency is required to exercise the production route components. The `web/out` directory and the built assets are produced by the test run itself and remain ephemeral.

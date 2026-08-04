@@ -31,3 +31,6 @@ npm-debug.log*
 # Local OAuth client credentials must never enter Git.
 client_secret*.json
 docs/client_secret*.json
+
+# Local HTTPS self-signed cert for the scanner prototype server (serve.mjs)
+prototype/scanner/.cert/

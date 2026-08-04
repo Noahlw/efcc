@@ -12,6 +12,7 @@ export default defineConfig({
     "index.html",
     "程式碼.js",
     "src/gas/template-reference/**",
+    "prototype/scanner/vendor/**",
   ],
   rules: {
     // Scoped via overrides below where possible; only truly global suppressions here

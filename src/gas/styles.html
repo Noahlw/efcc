@@ -595,4 +595,44 @@
   dialog::backdrop {
     background: rgba(0, 0, 0, 0.4);
   }
+
+  /* -----------------------------------------------------------------
+   * Scanner Section (F5, external-origin Option A - ADR-0015)
+   * ----------------------------------------------------------------- */
+
+  .scanner-status {
+    min-height: 1.5em;
+    margin: var(--space-3) 0 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    font-size: 0.95rem;
+    text-align: center;
+  }
+
+  .scanner-status[hidden] {
+    display: none;
+  }
+
+  /* Non-color mark via leading glyph so meaning does not depend on color
+   * alone (spec #93 accessibility). */
+  .scanner-status::before {
+    margin-right: 6px;
+    font-weight: 700;
+  }
+  .scanner-status--info::before {
+    content: "ℹ";
+  }
+  .scanner-status--success::before {
+    content: "✓";
+  }
+  .scanner-status--error::before {
+    content: "✗";
+  }
+  .scanner-status--success {
+    border-color: #22c55e;
+  }
+  .scanner-status--error {
+    border-color: #ef4444;
+  }
 </style>

@@ -1,0 +1,341 @@
+/* EFCC QR Scanner - external camera page (production, F5 / ADR-0015 Option A).
+   Phone-first full-screen viewfinder with a custom reticle. html5-qrcode's own
+   UI is hidden; only its video stream is shown, with our reticle overlaid. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0b0b0f;
+  color: #f4f4f5;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+    "Microsoft JhengHei", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+.scan {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+}
+
+/* ---- Top bar ---------------------------------------------------------- */
+.scan__top {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+}
+
+.scan__close {
+  appearance: none;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #f4f4f5;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.scan__event {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.scan__spacer {
+  width: 38px;
+}
+
+/* ---- Viewfinder + camera --------------------------------------------- */
+.scan__view {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: #000;
+}
+
+.scan__reader,
+.scan__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.scan__reader video,
+.scan__video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  border-radius: 0 !important;
+}
+
+/* Hide html5-qrcode's own chrome (pinned 2.3.8 DOM): keep only its video. */
+#qr-reader__dashboard,
+#qr-reader__scan_region img,
+#qr-reader__shimmer,
+#qr-reader__header_message,
+#qr-reader__filescan_input {
+  display: none !important;
+}
+
+#qr-reader__scan_region {
+  background: transparent !important;
+  border: none !important;
+}
+
+.scan__video--hidden,
+.scan__canvas--hidden {
+  display: none;
+}
+
+/* ---- Reticle ---------------------------------------------------------- */
+.reticle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.reticle__box {
+  position: relative;
+  width: min(68vw, 280px);
+  height: min(68vw, 280px);
+  border-radius: 20px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); /* dim outside the aim box */
+}
+
+.reticle__corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border: 4px solid #f4f4f5;
+}
+
+.reticle__corner--tl {
+  top: -2px;
+  left: -2px;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 18px;
+}
+
+.reticle__corner--tr {
+  top: -2px;
+  right: -2px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 18px;
+}
+
+.reticle__corner--bl {
+  bottom: -2px;
+  left: -2px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 18px;
+}
+
+.reticle__corner--br {
+  bottom: -2px;
+  right: -2px;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 18px;
+}
+
+.reticle__line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #4ade80, transparent);
+  animation: reticle-sweep 2.4s ease-in-out infinite;
+}
+
+@keyframes reticle-sweep {
+  0%,
+  100% {
+    transform: translateY(-38%);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(38%);
+    opacity: 1;
+  }
+}
+
+.reticle__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #e4e4e7;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* ---- Result overlay (bottom) ----------------------------------------- */
+.result {
+  position: relative;
+  z-index: 3;
+  margin: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.result__glyph {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.result__text {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Non-color mark: every tone carries a glyph so meaning does not depend on
+   color alone (spec #93 accessibility). */
+.result[data-tone="info"] .result__glyph {
+  background: #3b82f6;
+}
+.result[data-tone="info"] .result__glyph::before {
+  content: "…";
+}
+
+.result[data-loading="true"] .result__glyph {
+  background: transparent;
+  border: 3px solid rgba(244, 244, 245, 0.28);
+  border-top-color: #4ade80;
+  animation: result-spin 0.9s linear infinite;
+}
+
+.result[data-loading="true"] .result__glyph::before {
+  content: "";
+}
+.result[data-tone="success"] .result__glyph {
+  background: #22c55e;
+}
+.result[data-tone="success"] .result__glyph::before {
+  content: "✓";
+}
+.result[data-tone="warn"] .result__glyph {
+  background: #eab308;
+  color: #1a1a1a;
+}
+.result[data-tone="warn"] .result__glyph::before {
+  content: "!";
+}
+.result[data-tone="error"] .result__glyph {
+  background: #ef4444;
+}
+.result[data-tone="error"] .result__glyph::before {
+  content: "✗";
+}
+
+.result--flash {
+  animation: result-flash 0.35s ease;
+}
+
+@keyframes result-flash {
+  0% {
+    transform: scale(0.96);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes result-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Retry button ----------------------------------------------------- */
+.btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #27272a;
+  color: #f4f4f5;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 12px 20px;
+  border-radius: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.btn--retry {
+  margin: 0;
+}
+
+.scan__actions {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 12px 12px;
+}
+
+.btn--resume {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result[data-loading="true"] .result__glyph,
+  .reticle__line,
+  .result--flash {
+    animation: none;
+  }
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
