@@ -37,6 +37,8 @@ interface RpcEntry {
   durationMs: number;
   requestBody: string | null;
   responseBodyPreview: string;
+  cfRay: string;
+  xRequestId: string;
 }
 
 interface RpcCapture {
@@ -66,6 +68,13 @@ function captureRpcTraffic(page: Page): RpcCapture {
     const entry = pending.get(req);
     if (!entry) return;
     pending.delete(req);
+    const cfRay = res.headers()["cf-ray"] ?? "";
+    const xRequestId = res.headers()["x-request-id"] ?? "";
+    // Redact any 64-character hex token (envelope signature) before persisting.
+    const redactedRequestBody = entry.body
+      ? entry.body.replace(/[A-Fa-f0-9]{64}/g, "<sig-redacted>")
+      : entry.body;
+    const redactedXRequestId = xRequestId.replace(/[A-Fa-f0-9]{64}/g, "<sig-redacted>");
     const done = (async () => {
       let responseBody = "";
       try {
@@ -73,13 +82,16 @@ function captureRpcTraffic(page: Page): RpcCapture {
       } catch {
         responseBody = "(failed to read body)";
       }
+      const redactedResponseBody = responseBody.replace(/[A-Fa-f0-9]{64}/g, "<sig-redacted>");
       log.push({
         method: req.method(),
         status: res.status(),
         contentType: res.headers()["content-type"] ?? "",
         durationMs: Date.now() - entry.start,
-        requestBody: entry.body,
-        responseBodyPreview: responseBody.substring(0, 1000),
+        requestBody: redactedRequestBody,
+        responseBodyPreview: redactedResponseBody.substring(0, 1000),
+        cfRay,
+        xRequestId: redactedXRequestId,
       });
     })();
     inflightResponses.add(done);
