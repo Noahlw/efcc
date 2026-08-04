@@ -417,10 +417,11 @@ describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
     }
   });
 
-  test("non-JSON upstream response falls through with upstream status (safe)", async () => {
+  test("non-JSON upstream response becomes 502 UPSTREAM_BAD_RESPONSE problem (ADR-0018 §7)", async () => {
     const upstream = captureUpstream(() => ({
-      status: 200,
-      body: "<html>not json</html>",
+      status: 404,
+      body: "<html><title>page not found</title></html>",
+      headers: { "Content-Type": "text/html" },
     }));
     try {
       const res = await worker.fetch(
@@ -429,7 +430,17 @@ describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
         }),
         testEnv()
       );
-      assert.equal(res.status, 200);
+      assert.equal(res.status, 502);
+      assert.equal(
+        res.headers.get("Content-Type"),
+        "application/problem+json"
+      );
+      const body = await json<{ code: string; status: number; detail: string }>(
+        res
+      );
+      assert.equal(body.code, "UPSTREAM_BAD_RESPONSE");
+      assert.equal(body.status, 502);
+      assert.ok(body.detail.length > 0);
     } finally {
       upstream.restore();
     }

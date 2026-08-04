@@ -23,7 +23,10 @@ if (!isWorkerUrl && !isAppsScriptUrl) {
 export default defineConfig({
   testDir: ".",
   testMatch: "worker-transport.test.ts",
-  timeout: 30_000,
+  // 60s: the client retries 502/503 (ADR-0018 §6, up to 3 attempts with
+  // exponential backoff) when the upstream intermittently returns a
+  // non-JSON response; the retry-heavy login/restore path needs headroom.
+  timeout: 60_000,
   retries: 1,
   fullyParallel: false,
   workers: 1,

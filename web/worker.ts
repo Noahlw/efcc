@@ -219,7 +219,22 @@ async function forwardToAppsScript(
       upstreamRequestId = parsed.requestId;
     }
   } catch {
-    // Not JSON (or malformed) - fall through with upstream.status.
+    // Not JSON (or malformed) - ADR-0018 §7: never pass a raw
+    // non-JSON upstream body through labeled application/json; the
+    // client would fail to parse it and surface a confusing
+    // MALFORMED_RESPONSE. Convert to a structured Problem Details
+    // response (502 UPSTREAM_BAD_RESPONSE) so the client sees a
+    // recoverable, correlatable error instead of an HTML blob.
+    return problemResponse(
+      502,
+      "UPSTREAM_BAD_RESPONSE",
+      "Upstream returned a non-JSON response",
+      origin,
+      "上流服務回應格式異常。",
+      {
+        retryAfter: upstream.headers.get("Retry-After") ?? undefined,
+      }
+    );
   }
 
   // Correlation (ADR-0018 §8): prefer the upstream's requestId, fall

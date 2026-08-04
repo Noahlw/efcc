@@ -214,6 +214,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * fetch failure was an AbortError (timeout or external signal). Both
  * cases must bypass retries - returning undefined-network-error
  * would lie about why the request stopped.
+ *
+ * NOTE: only a caller-initiated abort (options.signal) or an AbortError
+ * is terminal here. The bundled per-attempt AbortSignal.timeout()
+ * rejects with TimeoutError, which ADR-0018 §7 classifies as a
+ * retryable network error for retry-safe actions - so TimeoutError is
+ * deliberately NOT treated as abort here; it flows to the
+ * NETWORK_ERROR retry path.
  */
 function isAbort(error: unknown, externalSignal?: AbortSignal): boolean {
   if (externalSignal?.aborted) {
