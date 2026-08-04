@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 
-// Worker tests for CF0-01 (issue #142). Run inside the real `workerd`
-// runtime via @cloudflare/vitest-pool-workers so the status-remap logic
-// (ADR-0018's load-bearing correctness fix) is exercised against the
-// actual Response/Request implementations, not a Node polyfill.
+// Worker tests for CF0-01 (issue #142) + CF1-01 (issue #151).
+// Run inside the real `workerd` runtime via @cloudflare/vitest-pool-workers.
 //
-// Pattern (per Cloudflare's "write your first test" guide): import the
-// Worker's default export directly and call worker.fetch(request, env, ctx).
-// `env` comes from `cloudflare:workers` so the test sees the real bindings
-// (ASSETS, RateLimit) declared in wrangler.jsonc. Outbound `fetch` from
-// the Worker is mocked by replacing globalThis.fetch directly (vitest-4
-// migration guide).
+// Pattern: import the Worker's default export directly and call
+// worker.fetch(request, env, ctx). `env` comes from `cloudflare:workers`.
+// Outbound `fetch` from the Worker is mocked by replacing globalThis.fetch.
+//
+// CF1-01 (#151): the Worker no longer forwards raw browser headers.
+// Instead it constructs a signed service envelope with HMAC-SHA-256.
+// Tests assert the envelope shape and that browser headers are NOT
+// forwarded as raw upstream headers.
 //
 // No PINs, session tokens, or QR values appear in any assertion or
 // fixture here - the verification requirement in #142.
@@ -22,14 +22,14 @@ import type { Env } from "./worker";
 
 const UPSTREAM_URL = "https://script.google.com/macros/s/fake/exec";
 const ORIGIN = "https://efcc.example";
+const SERVICE_SECRET = "efcc-test-secret-2026";
 
 /** Build a test Env with the upstream URL set; ASSETS comes from `env`. */
 function testEnv(overrides: Partial<Env> = {}): Env {
-  // `env` is typed as Cloudflare.Env (a loose record); at runtime the
-  // bindings declared in wrangler.jsonc are present. Cast to our Env.
   return {
     ...(env as unknown as Env),
     APPS_SCRIPT_EXEC_URL: UPSTREAM_URL,
+    EFCC_SERVICE_SECRET: SERVICE_SECRET,
     ...overrides,
   };
 }
@@ -78,8 +78,6 @@ function captureUpstream(
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const body = init?.body ? String(init.body) : "";
-    // Preserve original header case: the Worker passes a plain Record,
-    // and the contract asserts on exact names (Authorization, etc.).
     const reqHeaders: Record<string, string> = {};
     if (init?.headers) {
       if (init.headers instanceof Headers) {
@@ -120,8 +118,6 @@ describe("Worker: non-/api paths", () => {
       makeRequest("/some-page", { method: "GET" }),
       testEnv()
     );
-    // ASSETS binding in test returns whatever the static-asset fetcher does;
-    // we only assert the Worker did not 500 and delegated (no /api prefix).
     assert.ok(res.status !== 500, "non-/api path must not 500");
   });
 });
@@ -166,8 +162,8 @@ describe("Worker: method handling", () => {
   });
 });
 
-describe("Worker: header forwarding", () => {
-  test("forwards Authorization, X-Efcc-Session-Id, and Idempotency-Key to upstream; drops Origin", async () => {
+describe("Worker: CF1-01 signed service envelope", () => {
+  test("upstream receives a signed envelope, not raw browser headers", async () => {
     const upstream = captureUpstream(() => ({
       status: 200,
       body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
@@ -180,20 +176,111 @@ describe("Worker: header forwarding", () => {
             "X-Efcc-Session-Id": "sess-123",
             "Idempotency-Key": "idem-456",
           },
-          body: { action: "loginUser", params: {} },
+          body: { action: "restoreApp", params: { userId: "U-1" } },
         }),
         testEnv()
       );
       assert.equal(upstream.calls.length, 1, "one upstream call");
       const fwd = upstream.calls[0].headers;
-      assert.equal(fwd.Authorization, "Bearer token-xyz");
-      assert.equal(fwd["X-Efcc-Session-Id"], "sess-123");
-      assert.equal(fwd["Idempotency-Key"], "idem-456");
+      // Only Content-Type is forwarded; no raw browser headers.
+      assert.equal(fwd["Content-Type"], "application/json");
+      assert.equal(
+        fwd.Authorization,
+        undefined,
+        "Authorization must NOT be forwarded as raw header"
+      );
+      assert.equal(
+        fwd["X-Efcc-Session-Id"],
+        undefined,
+        "X-Efcc-Session-Id must NOT be forwarded as raw header"
+      );
+      assert.equal(
+        fwd["Idempotency-Key"],
+        undefined,
+        "Idempotency-Key must NOT be forwarded as raw header"
+      );
       assert.equal(
         fwd.Origin,
         undefined,
         "browser Origin must NOT be forwarded"
       );
+      // The body is a signed envelope.
+      const envelope = JSON.parse(upstream.calls[0].body);
+      assert.equal(envelope.version, 1);
+      assert.equal(envelope.keyId, "k1");
+      assert.equal(typeof envelope.signature, "string");
+      assert.equal(envelope.signature.length, 64);
+      assert.equal(envelope.request.action, "restoreApp");
+      assert.equal(envelope.request.params.userId, "U-1");
+      assert.equal(envelope.request.sessionId, "sess-123");
+      assert.equal(envelope.request.authorization, "Bearer token-xyz");
+      assert.equal(
+        envelope.request.idempotencyKey,
+        "idem-456",
+        "Idempotency-Key must be carried through the envelope (ADR-0018 §8)"
+      );
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("missing EFCC_SERVICE_SECRET returns 503 PROXY_MISCONFIGURED", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv({ EFCC_SERVICE_SECRET: undefined })
+      );
+      assert.equal(res.status, 503);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "PROXY_MISCONFIGURED");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("malformed JSON body returns 400 VALIDATION", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        new Request("https://efcc.example/api/v1/rpc", {
+          method: "POST",
+          headers: { Origin: ORIGIN, "Content-Type": "application/json" },
+          body: "not json",
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "VALIDATION");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("missing action field returns 400 VALIDATION", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "VALIDATION");
     } finally {
       upstream.restore();
     }
@@ -203,7 +290,6 @@ describe("Worker: header forwarding", () => {
 describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
   test("remaps body status 401 onto outer HTTP 401 and sets application/problem+json", async () => {
     const upstream = captureUpstream(() => ({
-      // Apps Script TextOutput is always transport-200.
       status: 200,
       body: JSON.stringify({
         status: 401,
@@ -265,8 +351,6 @@ describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
         }),
         testEnv()
       );
-      // No numeric status in body -> keeps upstream.status (200). The body
-      // is passed through; the client's parseProblemDetails handles it.
       assert.equal(res.status, 200);
     } finally {
       upstream.restore();
@@ -300,7 +384,6 @@ describe("Worker: correlation (ADR-0018 §8)", () => {
   test("generates an X-Request-Id when upstream body has none", async () => {
     const upstream = captureUpstream(() => ({
       status: 200,
-      // No requestId in the body.
       body: JSON.stringify({ success: true, data: {} }),
     }));
     try {
@@ -355,9 +438,6 @@ describe("Worker: upstream failure mapping", () => {
 
 describe("Worker: fail-closed rate limiter (ADR-0018 §9)", () => {
   test("missing RPC_RATE_LIMITER binding with session identity returns 503 UNAVAILABLE", async () => {
-    // rateLimitKey is derived from X-Efcc-Session-Id; the binding is
-    // explicitly absent in production-mimicking configuration. The
-    // Worker must fail closed rather than silently skip rate limiting.
     const res = await worker.fetch(
       makeRequest("/api/v1/rpc", {
         headers: { "X-Efcc-Session-Id": "sess-fail-closed" },
@@ -373,8 +453,6 @@ describe("Worker: fail-closed rate limiter (ADR-0018 §9)", () => {
   });
 
   test("RPC_RATE_LIMITER.limit() throw with session identity returns 503 UNAVAILABLE", async () => {
-    // The binding is present but `limit()` throws - the Worker must
-    // fail closed rather than forwarding unauthenticated traffic.
     const throwingLimiter = {
       limit: () => {
         throw new Error("ratelimit backend down");
