@@ -29,6 +29,7 @@ export function GuardedSection({
   const [state, setState] = useState<GuardState>({ kind: "loading" });
   const mountedRef = useRef(true);
   const ctrlRef = useRef(createNavigationController());
+  const authFingerprintRef = useRef<string | null>(null);
 
   useEffect(
     () => () => {
@@ -38,12 +39,30 @@ export function GuardedSection({
   );
 
   const authorize = useCallback(() => {
+    const section = getSection(bootstrap.sections, sectionKey);
+    const fingerprint = section
+      ? `${sectionKey}:${session.sessionToken}:${section.requiresServerAuth}:${section.capability}`
+      : null;
+    if (
+      fingerprint !== null &&
+      fingerprint === authFingerprintRef.current &&
+      ctrlRef.current.hasPending(sectionKey)
+    ) {
+      // Same-intent duplicate (StrictMode double effect, or a re-render
+      // whose section auth fields are unchanged while the first request is
+      // still in flight): keep the in-flight request and its generation —
+      // do not bump, do not start a second RPC.
+      // session.sessionToken is part of the fingerprint so a session
+      // refresh while pending still restarts with the new identity.
+      return;
+    }
+    authFingerprintRef.current = fingerprint;
+
     // Bump generation on every invocation so the forbidden branch (no
     // matching section) also invalidates in-flight authorizations from a
     // prior render. Without this, a stale response can resurrect a
     // section whose permission was revoked while the RPC was pending.
     const gen = ctrlRef.current.nextGeneration();
-    const section = getSection(bootstrap.sections, sectionKey);
     if (!section) {
       setState({ kind: "forbidden" });
       return;

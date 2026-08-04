@@ -274,3 +274,27 @@ Both reviewers returned BLOCKED; all findings fixed as follow-up commits (see be
 ### Re-review
 
 - [ ] Dispatch both reviewers on `62ffcc1...HEAD` and record verdicts here.
+
+---
+
+## Follow-up 2: re-review round (BLOCKED → fixed, final re-review pending)
+
+### Standards axis (final-standards-2) — 3 findings, all fixed
+
+- [x] **P2 — zh-Hant fixture literal** (`tests/e2e/responsive.test.ts`): fixture name `測試用` → ASCII `Test User` (reviewer-accepted alternative to COPY pollution).
+- [x] **P2 — safe-area test was a cssText scan** (`tests/e2e/responsive.test.ts`): replaced with rendered-element assertions — CDP `Emulation.setSafeAreaInsetsOverride` (34px inset) + `getComputedStyle` on `.nav-phone` (34px) and `.shell` (94px mobile / 0px desktop ≥768px side-rail layout). Requires `viewport-fit=cover`, added to `web/app/layout.tsx` (also fixes env() being a no-op on real notched devices — the nav's inset padding previously never resolved).
+- [x] **P2 — console.log with lint suppression** (`tests/e2e/serve-static.ts`): banner now `process.stdout.write`.
+
+### Spec axis (final-spec-2) — 1 finding, fixed
+
+- [x] **P2 — C1: coalescing relabels an older-generation promise as current** (`web/lib/navigation-controller.ts`): coalesce now only within the same generation (`existing.gen === generation`); a pending op from an older generation is restarted under the current generation (per reviewer's suggested remedy). Cleanup stays op-identity-based. GuardedSection additionally skips same-intent duplicates via an auth fingerprint (`sectionKey + session.sessionToken + requiresServerAuth + capability`) when an op is pending — preserves 1-RPC coalescing for StrictMode/identity churn while restarting on genuine changes (revocation, session refresh). Controller regression: "a pending op from an older generation is restarted, not coalesced". NOTE: a rendered regression for the session-refresh branch was attempted but dropped — the first authorize's RPC never reached the test's MSW handler in that test (fetch called, no handler ran, no error), despite identical setup to the passing coalescing test; the coalescing rendered test (same fingerprint → skip → 1 RPC) and the controller unit test cover the mechanism.
+
+### Verification after follow-up 2
+
+- [x] `pnpm --dir web build` ✓ · `pnpm --dir web exec vitest run --config vitest.components.config.ts` → 104/104 ✓
+- [x] `pnpm test:shell-responsive` → 18/18 ✓ (rendered safe-area assertions)
+- [x] `pnpm typecheck` + web tsc ✓ · `pnpm test:gas` → 240/240 ✓ · ultracite check on 9 changed files ✓
+
+### Final re-review
+
+- [ ] Dispatch both reviewers on `62ffcc1...HEAD` and record verdicts here.

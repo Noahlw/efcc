@@ -5,6 +5,7 @@
 export interface NavigationController {
   nextGeneration: () => number;
   isCurrent: (gen: number) => boolean;
+  hasPending: (key: string) => boolean;
   run: <T>(
     key: string,
     fn: () => Promise<T>
@@ -15,7 +16,10 @@ export interface NavigationController {
 export function createNavigationController(): NavigationController {
   let generation = 0;
   let opCounter = 0;
-  const pending = new Map<string, { promise: Promise<unknown>; op: number }>();
+  const pending = new Map<
+    string,
+    { promise: Promise<unknown>; op: number; gen: number }
+  >();
 
   function nextGeneration(): number {
     generation += 1;
@@ -26,15 +30,25 @@ export function createNavigationController(): NavigationController {
     return gen === generation;
   }
 
+  function hasPending(key: string): boolean {
+    return pending.has(key);
+  }
+
   function run<T>(
     key: string,
     fn: () => Promise<T>
   ): { generation: number; promise: Promise<T> } {
     const existing = pending.get(key);
-    if (existing) {
-      // Ponytail: coalesce — duplicate nav for the same key returns the same promise
+    if (existing && existing.gen === generation) {
+      // Ponytail: coalesce — a duplicate run within the same navigation
+      // generation returns the same promise.
       return { generation, promise: existing.promise as Promise<T> };
     }
+    // A pending op from an earlier navigation generation (or no pending op
+    // at all) falls through: its result would be rejected by isCurrent, and
+    // discarding it would leave the caller stuck in authorizing. Restart
+    // under the current generation; the old op's cleanup cannot evict the
+    // new entry because op ids differ.
 
     const gen = generation;
     opCounter += 1;
@@ -52,7 +66,7 @@ export function createNavigationController(): NavigationController {
         }
       }
     })();
-    pending.set(key, { promise, op });
+    pending.set(key, { promise, op, gen });
     return { generation: gen, promise };
   }
 
@@ -60,5 +74,5 @@ export function createNavigationController(): NavigationController {
     pending.delete(key);
   }
 
-  return { nextGeneration, isCurrent, run, cancelPending };
+  return { nextGeneration, isCurrent, hasPending, run, cancelPending };
 }

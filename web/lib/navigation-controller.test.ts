@@ -55,6 +55,26 @@ describe(createNavigationController, () => {
     expect(r3.promise).toBe(r2.promise);
   });
 
+  test("a pending op from an older generation is restarted, not coalesced", async () => {
+    const ctrl = createNavigationController();
+    const d1 = Promise.withResolvers<string>();
+    const r1 = ctrl.run("nav", () => d1.promise);
+    ctrl.nextGeneration();
+    const d2 = Promise.withResolvers<string>();
+    const r2 = ctrl.run("nav", () => d2.promise);
+    expect(r2.promise).not.toBe(r1.promise);
+    // The older op settles while the replacement is still pending.
+    d1.resolve("late");
+    await r1.promise;
+    const d3 = Promise.withResolvers<string>();
+    const r3 = ctrl.run("nav", () => d3.promise);
+    // r2 is still pending, so r3 must coalesce onto it — proving r1's
+    // late cleanup did not evict r2's entry.
+    expect(r3.promise).toBe(r2.promise);
+    d2.resolve("fresh");
+    await expect(r2.promise).resolves.toBe("fresh");
+  });
+
   test("after a completed op, a new run with same key creates fresh promise", async () => {
     const ctrl = createNavigationController();
     const r1 = ctrl.run("nav", () => Promise.resolve("done"));

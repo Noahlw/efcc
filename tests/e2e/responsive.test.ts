@@ -58,7 +58,7 @@ const SESSION = {
 const BOOTSTRAP: Bootstrap = {
   session: {
     userId: "u1",
-    name: "測試用",
+    name: "Test User",
     role: "staff",
     qrCodeString: "qr:u1",
     sessionId: "s1",
@@ -86,7 +86,7 @@ const BOOTSTRAP: Bootstrap = {
   ],
   profile: {
     userId: "u1",
-    name: "測試用",
+    name: "Test User",
     username: "tester",
     phone: "0900000000",
     role: "staff",
@@ -178,46 +178,38 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
   }
 });
 
-test("bottom nav and page outlet reserve safe-area inset", async ({ page }) => {
+test("bottom nav and page outlet reserve safe-area inset", async ({
+  page,
+}, testInfo) => {
   await page.goto("/care.html");
 
-  const css = await page.evaluate(() => {
-    const sheets = [...document.styleSheets];
-    const collected: string[] = [];
-    for (const sheet of sheets) {
-      let rules: CSSRuleList | null = null;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        continue;
-      }
-      const walk = (rs: CSSRuleList | null) => {
-        if (!rs) {
-          return;
-        }
-        for (const rule of rs) {
-          collected.push(rule.cssText);
-          // CSSGroupingRule exposes cssRules; narrow with instanceof.
-          if (rule instanceof CSSGroupingRule) {
-            walk(rule.cssRules);
-          }
-        }
-      };
-      walk(rules);
-    }
+  // Emulate a notched device so env(safe-area-inset-bottom) resolves to a
+  // non-zero value (viewport-fit=cover is set in web/app/layout.tsx).
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setSafeAreaInsetsOverride", {
+    insets: { top: 0, left: 0, right: 0, bottom: 34 },
+  });
+
+  const paddings = await page.evaluate(() => {
+    const nav = document.querySelector<HTMLElement>(".nav-phone");
+    const shell = document.querySelector<HTMLElement>(".shell");
     return {
-      navRule: collected.some((t) => t.includes("safe-area-inset-bottom")),
-      outletRule: collected.some((t) =>
-        t.includes("calc(60px + env(safe-area-inset-bottom")
-      ),
+      navBottom: nav ? getComputedStyle(nav).paddingBottom : null,
+      shellBottom: shell ? getComputedStyle(shell).paddingBottom : null,
     };
   });
 
-  expect(css.navRule, "bottom nav must pad safe-area inset").toBeTruthy();
+  // At/above 768px the side rail replaces the fixed bottom nav, so the
+  // outlet intentionally reserves nothing (padding-bottom: 0).
+  const expectedShell = isMobile(testInfo.project.name) ? "94px" : "0px";
+
+  expect(paddings.navBottom, "bottom nav must pad the safe-area inset").toBe(
+    "34px"
+  );
   expect(
-    css.outletRule,
+    paddings.shellBottom,
     "page outlet must reserve the nav height plus safe-area inset"
-  ).toBeTruthy();
+  ).toBe(expectedShell);
 });
 
 test("nav targets are at least 44x44 and keyboard reachable with a visible focus cue", async ({
