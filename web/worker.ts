@@ -236,6 +236,89 @@ async function forwardToAppsScript(
   });
 }
 
+/**
+ * Parse the browser request body, reject structured and credential-bearing
+ * shapes, and return either a structured Problem details response or the
+ * validated action/params projection. Called by the Worker fetch handler
+ * to enforce the CF1-01 boundary invariant: a browser cannot smuggle
+ * `sessionToken` through `params` and a JSON null body short-circuits to
+ * VALIDATION before any upstream fetch.
+ */
+async function parseAndValidateBody(
+  request: Request,
+  origin: string
+): Promise<
+  | {response: Response}
+  | {action: string; params: Record<string, unknown>}
+> {
+  const bodyText = await request.text();
+
+  let bodyParsed: unknown;
+  try {
+    bodyParsed = JSON.parse(bodyText);
+  } catch {
+    return {
+      response: problemResponse(
+        400,
+        "VALIDATION",
+        "Bad Request",
+        origin,
+        "Invalid JSON body"
+      ),
+    };
+  }
+
+  if (
+    bodyParsed === null ||
+    typeof bodyParsed !== "object" ||
+    Array.isArray(bodyParsed)
+  ) {
+    return {
+      response: problemResponse(
+        400,
+        "VALIDATION",
+        "Bad Request",
+        origin,
+        "Invalid JSON body"
+      ),
+    };
+  }
+
+  const body = bodyParsed as Record<string, unknown>;
+  const {action} = body;
+  if (!action || typeof action !== "string") {
+    return {
+      response: problemResponse(
+        400,
+        "VALIDATION",
+        "Bad Request",
+        origin,
+        "Missing action field"
+      ),
+    };
+  }
+
+  const params = (body.params ?? {}) as Record<string, unknown>;
+  if (
+    params === null ||
+    typeof params !== "object" ||
+    Array.isArray(params) ||
+    Object.hasOwn(params, "sessionToken")
+  ) {
+    return {
+      response: problemResponse(
+        400,
+        "VALIDATION",
+        "Bad Request",
+        origin,
+        "Invalid params field"
+      ),
+    };
+  }
+
+  return {action, params};
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -290,34 +373,11 @@ export default {
     const auth = request.headers.get("Authorization");
     const sessionId = request.headers.get("X-Efcc-Session-Id");
     const idempotencyKey = request.headers.get("Idempotency-Key");
-    const bodyText = await request.text();
-
-    let bodyParsed: { action?: string; params?: Record<string, unknown> };
-    try {
-      bodyParsed = JSON.parse(bodyText) as {
-        action?: string;
-        params?: Record<string, unknown>;
-      };
-    } catch {
-      return problemResponse(
-        400,
-        "VALIDATION",
-        "Bad Request",
-        origin,
-        "Invalid JSON body"
-      );
+    const validated = await parseAndValidateBody(request, origin);
+    if ("response" in validated) {
+      return validated.response;
     }
-
-    const {action} = bodyParsed;
-    if (!action || typeof action !== "string") {
-      return problemResponse(
-        400,
-        "VALIDATION",
-        "Bad Request",
-        origin,
-        "Missing action field"
-      );
-    }
+    const {action, params} = validated;
 
     if (!env.EFCC_SERVICE_SECRET) {
       return problemResponse(
@@ -331,7 +391,7 @@ export default {
 
     const envelope = await signServiceEnvelope(env.EFCC_SERVICE_SECRET, {
       action,
-      params: bodyParsed.params ?? {},
+      params,
       sessionId: sessionId ?? undefined,
       authorization: auth ?? undefined,
       idempotencyKey: idempotencyKey ?? undefined,

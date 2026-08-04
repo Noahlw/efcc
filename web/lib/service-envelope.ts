@@ -147,7 +147,8 @@ export async function verifyServiceEnvelope(
   // eslint-disable-next-line no-plusplus, no-bitwise -- timing-safe HMAC compare requires bitwise ops.
   for (let i = 0; i < expected.length; i++) {
     // eslint-disable-next-line no-bitwise
-    mismatch |= expected.codePointAt(i) ^ envelope.signature.codePointAt(i);
+    // eslint-disable-next-line no-bitwise, unicorn/prefer-code-point -- timing-safe compare over ASCII hex; charCodeAt suffices.
+    mismatch |= expected.charCodeAt(i) ^ envelope.signature.charCodeAt(i);
   }
   return mismatch === 0;
 }

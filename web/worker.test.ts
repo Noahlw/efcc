@@ -266,6 +266,54 @@ describe("Worker: CF1-01 signed service envelope", () => {
     }
   });
 
+  test("JSON null body returns structured 400 VALIDATION", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", { body: null }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      assert.equal(res.headers.get("Content-Type"), "application/problem+json");
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "VALIDATION");
+      assert.equal(upstream.calls.length, 0, "invalid body must not reach upstream");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("rejects browser-supplied sessionToken in action params", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          headers: {
+            Authorization: "Bearer header-authority",
+            "X-Efcc-Session-Id": "sess-header-authority",
+          },
+          body: {
+            action: "restoreApp",
+            params: { userId: "U-1", sessionToken: "body-credential" },
+          },
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "VALIDATION");
+      assert.equal(upstream.calls.length, 0, "credential-bearing params must not be signed");
+    } finally {
+      upstream.restore();
+    }
+  });
+
   test("missing action field returns 400 VALIDATION", async () => {
     const upstream = captureUpstream(() => ({
       status: 200,

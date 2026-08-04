@@ -14,6 +14,8 @@ import vm from "node:vm";
 
 import { describe, test, beforeEach } from "vitest";
 
+import { signServiceEnvelope } from "../../web/lib/service-envelope.ts";
+
 const GAS_DIR = path.join(import.meta.dirname, "..", "..", "src", "gas");
 
 const TEST_SECRET = "efcc-test-secret-2026";
@@ -225,6 +227,36 @@ describe("service-envelope.gs: verify envelope", () => {
 
   test("rejects missing signature", () => {
     const envelope = buildEnvelope({}, "");
+    assert.equal(env.context.serviceVerifyEnvelope_(envelope), null);
+  });
+
+  test.each([
+    ["keyId", undefined],
+    ["timestamp", "1755000000000"],
+    ["nonce", ""],
+    ["attemptGroup", null],
+    ["attemptId", 0],
+    ["request", null],
+    ["metadata", []],
+  ])("rejects a signed envelope with malformed required %s", (field, value) => {
+    const envelope = buildEnvelope({ [field]: value });
+    assert.equal(env.context.serviceVerifyEnvelope_(envelope), null);
+  });
+
+  test.each([
+    ["action", ""],
+    ["params", null],
+    ["sessionId", 123],
+    ["authorization", false],
+    ["idempotencyKey", {}],
+  ])("rejects a signed envelope with malformed request.%s", (field, value) => {
+    const envelope = buildEnvelope({
+      request: {
+        action: "restoreApp",
+        params: { userId: "U-1" },
+        [field]: value,
+      },
+    });
     assert.equal(env.context.serviceVerifyEnvelope_(envelope), null);
   });
 
@@ -460,18 +492,25 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
     return JSON.parse(output.getContent());
   }
 
-  test("a valid signed restoreApp envelope round-trips through doPost to a bootstrap", () => {
+  test("an actual Worker-signed Unicode restoreApp envelope reaches the GAS dispatcher", async () => {
     // 1. Issue a session via the existing api_loginUser (unchanged logic).
     const login = env.context.api_loginUser("alice", "1234");
     assert.equal(login.success, true, "login must succeed");
     const { sessionId, sessionToken, userId } = login.data.session;
 
-    // 2. The Worker signs an envelope carrying the session identity.
-    const envelope = signEnvelope({
+    // 2. Exercise the production Worker signer rather than the GAS
+    // verifier's canonicalizer/signer helpers.
+    const envelope = await signServiceEnvelope(TEST_SECRET, {
       action: "restoreApp",
-      params: { userId },
+      params: {
+        userId,
+        compatibility: { nested: ["教會", { greeting: "平安 👋" }] },
+      },
       sessionId,
       authorization: `Bearer ${sessionToken}`,
+    }, {
+      nonce: "worker-cross-runtime-nonce",
+      attemptGroup: "worker-cross-runtime-attempt",
     });
 
     // 3. doPost verifies the envelope and dispatches restoreApp.
@@ -511,6 +550,24 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
     const response = driveDoPost({ action: "restoreApp", params: {} });
     assert.equal(response.status, 403, "missing envelope must fail closed");
     assert.equal(response.code, "FORBIDDEN");
+  });
+
+  test("a signed structurally incomplete envelope is rejected before action dispatch", () => {
+    let dispatches = 0;
+    env.context.PROTOTYPE_129_ACTIONS_.restoreApp = () => {
+      dispatches += 1;
+      return { success: true, data: {} };
+    };
+    const envelope = signEnvelope({
+      action: "restoreApp",
+      params: {},
+    }, { nonce: undefined });
+
+    const response = driveDoPost(envelope);
+
+    assert.equal(response.status, 403);
+    assert.equal(response.code, "FORBIDDEN");
+    assert.equal(dispatches, 0, "api action must not run");
   });
 
   test("a valid envelope for a different action dispatches that action, not restoreApp", () => {
