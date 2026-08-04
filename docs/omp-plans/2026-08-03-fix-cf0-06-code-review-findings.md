@@ -297,4 +297,21 @@ Both reviewers returned BLOCKED; all findings fixed as follow-up commits (see be
 
 ### Final re-review
 
-- [ ] Dispatch both reviewers on `62ffcc1...HEAD` and record verdicts here.
+- [x] Dispatch both reviewers on `62ffcc1...HEAD` and record verdicts here.
+
+#### Final standards verdict (final-standards-3, READY)
+- Overall `correct` (confidence 0.94). 14 files, +1315/-7. No new provable P1/P2 defect patch-anchored: controller gen/op cleanup and fingerprint semantics hold; viewport-fit/safe-area rendered assertions, login targets, static path hardening/stdout all correct. Non-blocking nit: README says seven checks while code has nine (not merge-blocking).
+
+#### Final spec verdict (final-spec-3, READY)
+- Overall `correct` (confidence 0.94). All 8 issue #147 criteria met in the final tree:
+  - C1 stale-discard: controller generation guards + GuardedSection is/mounted checks; rendered stale/revocation tests.
+  - C2 coalescing: same-generation + same-fingerprint calls coalesce; retry cancels/restarts.
+  - C3 tests: deferred controller unit tests + rendered stale/coalescing tests.
+  - C4 safe-area: CSS + viewport-fit=cover + CDP rendered nav/shell assertions at both projects.
+  - C5 44px: nav + login + Recovery controls; focus/keyboard tests.
+  - C6 a11y: aria-current, labeled nav, single polite live region, loading announce, non-color cues.
+  - C7 zh-Hant: shell copy via COPY; metadata English non-shell; ASCII fixture.
+  - C8 e2e: separate Playwright config builds static Next export, local server, 375×812 + 1280×800, no GAS helpers.
+- Dropped session-refresh rendered regression explicitly documented; not flagged as blocking.
+
+CF0-06 (issue #147) is now READY on both axes. HEAD = origin/feat/qr-scan = 610051b.
