@@ -298,11 +298,15 @@ async function parseAndValidateBody(
     };
   }
 
-  const params = (body.params ?? {}) as Record<string, unknown>;
+  const rawParams = body.params;
+  if (rawParams === undefined) {
+    return {action, params: {}};
+  }
+  const params = rawParams as Record<string, unknown>;
   if (
-    params === null ||
-    typeof params !== "object" ||
-    Array.isArray(params) ||
+    rawParams === null ||
+    typeof rawParams !== "object" ||
+    Array.isArray(rawParams) ||
     Object.hasOwn(params, "sessionToken")
   ) {
     return {
@@ -315,7 +319,6 @@ async function parseAndValidateBody(
       ),
     };
   }
-
   return {action, params};
 }
 

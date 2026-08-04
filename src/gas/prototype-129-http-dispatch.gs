@@ -104,6 +104,7 @@ function doPost(e) {
         code: "FORBIDDEN",
         title: "FORBIDDEN",
         detail: "無效的服務請求。",
+        requestId: Utilities.getUuid(),
       };
       return ContentService.createTextOutput(
         JSON.stringify(responseBody)

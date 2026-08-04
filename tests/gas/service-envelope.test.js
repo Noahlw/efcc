@@ -552,6 +552,16 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
     assert.equal(response.code, "FORBIDDEN");
   });
 
+  test("FORBIDDEN response includes an opaque requestId for log correlation", () => {
+    const response = driveDoPost({ action: "restoreApp", params: {} });
+    assert.equal(response.status, 403);
+    assert.equal(response.code, "FORBIDDEN");
+    assert.ok(
+      typeof response.requestId === "string" && response.requestId.length > 0,
+      "FORBIDDEN body must include a non-empty requestId"
+    );
+  });
+
   test("a signed structurally incomplete envelope is rejected before action dispatch", () => {
     let dispatches = 0;
     env.context.PROTOTYPE_129_ACTIONS_.restoreApp = () => {

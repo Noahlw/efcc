@@ -333,6 +333,28 @@ describe("Worker: CF1-01 signed service envelope", () => {
       upstream.restore();
     }
   });
+
+  test("explicit params:null is rejected with 400 VALIDATION", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-1", data: {} }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: null },
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      assert.equal(res.headers.get("Content-Type"), "application/problem+json");
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "VALIDATION");
+      assert.equal(upstream.calls.length, 0, "null params must not be signed");
+    } finally {
+      upstream.restore();
+    }
+  });
 });
 
 describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
