@@ -174,7 +174,19 @@ test.describe("CF1-01 Worker transport (#151)", () => {
       await expect(page.locator("h1")).toContainText("個人資料", {
         timeout: APP_READY_TIMEOUT,
       });
-      expect(await page.locator("dd").count()).toBeGreaterThanOrEqual(4);
+
+      // Profile fields must carry the real user data from the signed RPC
+      // (seed values in the DEV Users sheet), not placeholders.
+      const profileText = await page.locator("main").innerText();
+      for (const expected of [
+        "Alice",
+        "52205922",
+        "MEMBER",
+        "Active",
+        "GC-C88C-85E1",
+      ]) {
+        expect(profileText).toContain(expected);
+      }
 
       const secondNav = navItems.nth(1);
       expect(await secondNav.getAttribute("href")).toBeTruthy();
