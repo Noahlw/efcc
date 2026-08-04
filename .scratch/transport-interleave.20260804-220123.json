@@ -1,0 +1,300 @@
+{
+  "n": 10,
+  "summary": {
+    "directOk": 9,
+    "directFail": 1,
+    "workerOk": 8,
+    "workerFail": 2,
+    "bothFail": 0,
+    "onlyWorkerFail": 2,
+    "onlyDirectFail": 1
+  },
+  "classified": [
+    {
+      "i": 0,
+      "dClass": "ok",
+      "wClass": "timeout/error",
+      "directMs": 3293,
+      "workerMs": 25003,
+      "roundMs": 28500
+    },
+    {
+      "i": 1,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 2563,
+      "workerMs": 2522,
+      "roundMs": 5288
+    },
+    {
+      "i": 2,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 3134,
+      "workerMs": 2214,
+      "roundMs": 5550
+    },
+    {
+      "i": 3,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 2475,
+      "workerMs": 2466,
+      "roundMs": 5144
+    },
+    {
+      "i": 4,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 2680,
+      "workerMs": 6990,
+      "roundMs": 9896
+    },
+    {
+      "i": 5,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 10508,
+      "workerMs": 17182,
+      "roundMs": 27893
+    },
+    {
+      "i": 6,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 24540,
+      "workerMs": 1853,
+      "roundMs": 26709
+    },
+    {
+      "i": 7,
+      "dClass": "ok",
+      "wClass": "timeout/error",
+      "directMs": 7515,
+      "workerMs": 25002,
+      "roundMs": 32720
+    },
+    {
+      "i": 8,
+      "dClass": "ok",
+      "wClass": "ok-401-no-session",
+      "directMs": 2929,
+      "workerMs": 14761,
+      "roundMs": 17908
+    },
+    {
+      "i": 9,
+      "dClass": "timeout/error",
+      "wClass": "ok-401-no-session",
+      "directMs": 24993,
+      "workerMs": 14184,
+      "roundMs": 39379
+    }
+  ],
+  "rounds": [
+    {
+      "i": 0,
+      "direct": {
+        "status": 200,
+        "ms": 3293,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 3296,
+      "worker": {
+        "status": 0,
+        "ms": 25003,
+        "errorName": "TimeoutError",
+        "errorMessage": "The operation was aborted due to timeout"
+      },
+      "roundMs": 28500
+    },
+    {
+      "i": 1,
+      "direct": {
+        "status": 200,
+        "ms": 2563,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 2564,
+      "worker": {
+        "status": 401,
+        "ms": 2522,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e18ed2b2dd4d8-NRT",
+        "xRequestId": "b3a028f6-e5c0-4a41-ba80-aa28d23fa0d4"
+      },
+      "roundMs": 5288
+    },
+    {
+      "i": 2,
+      "direct": {
+        "status": 200,
+        "ms": 3134,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 3135,
+      "worker": {
+        "status": 401,
+        "ms": 2214,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e191ea9f2d520-NRT",
+        "xRequestId": "58b53512-9ebd-4a73-a6a1-a71426e354aa"
+      },
+      "roundMs": 5550
+    },
+    {
+      "i": 3,
+      "direct": {
+        "status": 200,
+        "ms": 2475,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 2477,
+      "worker": {
+        "status": 401,
+        "ms": 2466,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e19493d3fc0c6-NRT",
+        "xRequestId": "d0e3c58b-bcef-4a75-8d47-5c470cfbb7da"
+      },
+      "roundMs": 5144
+    },
+    {
+      "i": 4,
+      "direct": {
+        "status": 200,
+        "ms": 2680,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 2703,
+      "worker": {
+        "status": 401,
+        "ms": 6990,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e19773c93781c-NRT",
+        "xRequestId": "e1c99561-0f8c-42a3-8bb5-5d67461e6309"
+      },
+      "roundMs": 9896
+    },
+    {
+      "i": 5,
+      "direct": {
+        "status": 200,
+        "ms": 10508,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 10510,
+      "worker": {
+        "status": 401,
+        "ms": 17182,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e19f29b00b63d-NRT",
+        "xRequestId": "d178bdaf-64a6-4f7f-bbc9-d603b684aee8"
+      },
+      "roundMs": 27893
+    },
+    {
+      "i": 6,
+      "direct": {
+        "status": 200,
+        "ms": 24540,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 24654,
+      "worker": {
+        "status": 401,
+        "ms": 1853,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e1b05fb2dacf2-NRT",
+        "xRequestId": "daec511f-8f1d-4758-889c-92f9341f41a8"
+      },
+      "roundMs": 26709
+    },
+    {
+      "i": 7,
+      "direct": {
+        "status": 200,
+        "ms": 7515,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 7516,
+      "worker": {
+        "status": 0,
+        "ms": 25002,
+        "errorName": "TimeoutError",
+        "errorMessage": "The operation was aborted due to timeout"
+      },
+      "roundMs": 32720
+    },
+    {
+      "i": 8,
+      "direct": {
+        "status": 200,
+        "ms": 2929,
+        "contentType": "application/json; charset=utf-8",
+        "finalHostname": "script.googleusercontent.com",
+        "cfRay": "",
+        "xRequestId": ""
+      },
+      "directDone": 2946,
+      "worker": {
+        "status": 401,
+        "ms": 14761,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e1c0abb563c02-NRT",
+        "xRequestId": "ba00c7b6-6cca-4caa-8942-bcbaf7b3c815"
+      },
+      "roundMs": 17908
+    },
+    {
+      "i": 9,
+      "direct": {
+        "status": 0,
+        "ms": 24993,
+        "errorName": "TimeoutError",
+        "errorMessage": "The operation was aborted due to timeout"
+      },
+      "directDone": 24993,
+      "worker": {
+        "status": 401,
+        "ms": 14184,
+        "contentType": "application/problem+json",
+        "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+        "cfRay": "a25e1d10dabfe35e-NRT",
+        "xRequestId": "974b5d4d-01a7-43c6-a4b4-1f6797e5ea61"
+      },
+      "roundMs": 39379
+    }
+  ]
+}

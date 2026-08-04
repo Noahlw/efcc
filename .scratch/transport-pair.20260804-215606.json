@@ -1,0 +1,168 @@
+{
+  "pairs": 8,
+  "gapMs": 1500,
+  "direct": [
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 3771,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 2611,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1765,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1777,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1440,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1809,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1650,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    },
+    {
+      "probe": "direct",
+      "status": 200,
+      "ms": 1697,
+      "contentType": "application/json; charset=utf-8",
+      "redirected": true,
+      "finalHostname": "script.googleusercontent.com",
+      "cfRay": "",
+      "xRequestId": ""
+    }
+  ],
+  "worker": [
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 919,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e10e2ecd70644-NRT",
+      "xRequestId": "e1bb9f92-80bd-415d-b7aa-4900875a7e62"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 857,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e11021b993f16-NRT",
+      "xRequestId": "8fc069db-68df-40e8-afd6-ac86cecbfb42"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 272,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e1118ef3a3f16-NRT",
+      "xRequestId": "2f7d2945-e4ee-4dab-bcee-4d8554b57eb6"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 284,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e112f1ad93f16-NRT",
+      "xRequestId": "e444194e-7421-4bf8-9dfb-3df3f760c42b"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 260,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e11434bdc3f16-NRT",
+      "xRequestId": "828d7c0e-636d-4ad8-b678-a480208036a9"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 276,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e115988913f16-NRT",
+      "xRequestId": "6eaccff6-d3e1-48c7-b0be-ad9759998b72"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 283,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e116f0de93f16-NRT",
+      "xRequestId": "ac76d3f8-c74f-48d8-a2b7-343db13656b7"
+    },
+    {
+      "probe": "worker",
+      "status": 400,
+      "ms": 275,
+      "contentType": "application/problem+json",
+      "redirected": false,
+      "finalHostname": "efcc-prototype-129.efcc-ggc.workers.dev",
+      "cfRay": "a25e1184c9b63f16-NRT",
+      "xRequestId": "2cef05da-65b7-4e86-8273-9aadf121b9ac"
+    }
+  ]
+}
