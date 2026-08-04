@@ -431,16 +431,147 @@ describe("Worker: status remap (ADR-0018 §5 load-bearing)", () => {
         testEnv()
       );
       assert.equal(res.status, 502);
-      assert.equal(
-        res.headers.get("Content-Type"),
-        "application/problem+json"
-      );
+      assert.equal(res.headers.get("Content-Type"), "application/problem+json");
       const body = await json<{ code: string; status: number; detail: string }>(
         res
       );
       assert.equal(body.code, "UPSTREAM_BAD_RESPONSE");
       assert.equal(body.status, 502);
       assert.ok(body.detail.length > 0);
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("transient non-JSON upstream is retried once and succeeds (egress blip absorbed)", async () => {
+    let calls = 0;
+    const upstream = captureUpstream(() => {
+      calls += 1;
+      if (calls === 1) {
+        // First attempt: Google edge returns an HTML error page.
+        return {
+          status: 404,
+          body: "<html><title>page not found</title></html>",
+          headers: { "Content-Type": "text/html" },
+        };
+      }
+      // Second attempt: healthy JSON response.
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          requestId: "r-retry-ok",
+          data: { authorized: true },
+        }),
+      };
+    });
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(calls, 2, "must retry the failed attempt once");
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get("Content-Type"), "application/json");
+      const body = await json<{ success: boolean; requestId: string }>(res);
+      assert.equal(body.success, true);
+      assert.equal(body.requestId, "r-retry-ok");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("fetch error is retried once and succeeds", async () => {
+    let calls = 0;
+    const upstream = captureUpstream(() => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error("socket hang up");
+        throw err;
+      }
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          requestId: "r-fetch-retry-ok",
+          data: {},
+        }),
+      };
+    });
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(calls, 2, "must retry a failed fetch once");
+      assert.equal(res.status, 200);
+      const body = await json<{ requestId: string }>(res);
+      assert.equal(body.requestId, "r-fetch-retry-ok");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("valid JSON problem response is NOT retried (passes through unchanged)", async () => {
+    let calls = 0;
+    const upstream = captureUpstream(() => {
+      calls += 1;
+      return {
+        status: 200,
+        body: JSON.stringify({
+          status: 401,
+          code: "AUTH_REQUIRED",
+          title: "AUTH_REQUIRED",
+          detail: "工作階段已過期",
+          requestId: "r-401-no-retry",
+        }),
+      };
+    });
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(calls, 1, "a valid JSON response must not be retried");
+      assert.equal(res.status, 401);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "AUTH_REQUIRED");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("unknown action with non-JSON upstream is NOT retried (allowlist gate)", async () => {
+    let calls = 0;
+    const upstream = captureUpstream(() => {
+      calls += 1;
+      return {
+        status: 404,
+        body: "<html><title>page not found</title></html>",
+        headers: { "Content-Type": "text/html" },
+      };
+    });
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "grantProgramLeader", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(
+        calls,
+        1,
+        "non-allowlisted action must get one attempt only"
+      );
+      assert.equal(res.status, 502);
+      const body = await json<{ code: string }>(res);
+      assert.equal(body.code, "UPSTREAM_BAD_RESPONSE");
     } finally {
       upstream.restore();
     }

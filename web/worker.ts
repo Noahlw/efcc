@@ -180,77 +180,124 @@ async function forwardToAppsScript(
   origin: string,
   envelope: ServiceEnvelope
 ): Promise<Response> {
-  let upstream: Response;
-  try {
-    // Bounded timeout per AGENTS.md Production Resilience. 30s gives
-    // Apps Script headroom under its 6-min limit while preventing the
-    // Worker from hanging on a dead upstream.
-    upstream = await fetch(env.APPS_SCRIPT_EXEC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(envelope),
-      redirect: "follow",
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch (error) {
-    return problemResponse(
-      502,
-      "UPSTREAM_UNREACHABLE",
-      "Upstream unreachable",
-      origin,
-      error instanceof Error ? error.message : String(error)
-    );
-  }
+  // The Cloudflare egress path to Apps Script is intermittently lossy
+  // (observed: 20-30s hangs and HTML error pages served to datacenter
+  // IPs). The browser client already retries 502/503 per ADR-0018 §7,
+  // but a single hung upstream attempt can eat the client's whole retry
+  // budget. Absorb one transient hop failure here: retry only when the
+  // upstream produced NO valid JSON (fetch error, timeout, or non-JSON
+  // body) - a valid JSON problem response (401/403/etc.) always passes
+  // through unchanged. The signed envelope is re-sent as-is, and only
+  // for actions in the retrySafe allowlist below.
+  const MAX_UPSTREAM_ATTEMPTS = 2;
+  const UPSTREAM_TIMEOUT_MS = 12_000;
+  const RETRY_DELAY_MS = 250;
 
-  const upstreamBody = await upstream.text();
-  let remappedStatus = upstream.status;
-  let isProblem = false;
-  let upstreamRequestId: string | undefined;
-  try {
-    const parsed = JSON.parse(upstreamBody) as {
-      status?: unknown;
-      requestId?: unknown;
-    };
-    if (typeof parsed.status === "number") {
-      remappedStatus = parsed.status;
-      isProblem = remappedStatus >= 400;
-    }
-    if (typeof parsed.requestId === "string") {
-      upstreamRequestId = parsed.requestId;
-    }
-  } catch {
-    // Not JSON (or malformed) - ADR-0018 §7: never pass a raw
-    // non-JSON upstream body through labeled application/json; the
-    // client would fail to parse it and surface a confusing
-    // MALFORMED_RESPONSE. Convert to a structured Problem Details
-    // response (502 UPSTREAM_BAD_RESPONSE) so the client sees a
-    // recoverable, correlatable error instead of an HTML blob.
-    return problemResponse(
-      502,
-      "UPSTREAM_BAD_RESPONSE",
-      "Upstream returned a non-JSON response",
-      origin,
-      "上流服務回應格式異常。",
-      {
-        retryAfter: upstream.headers.get("Retry-After") ?? undefined,
+  // Only replay the envelope for actions proven safe to retry (ADR-0018
+  // §8): loginUser/logoutUser are server-idempotent with one
+  // Idempotency-Key per call; restoreApp/authorizedNavigate are reads.
+  // Anything else (e.g. ADR-0019 §3's non-replayable grant/revoke) gets
+  // a single attempt - never auto-replayed on an ambiguous result.
+  const retrySafe = new Set([
+    "loginUser",
+    "logoutUser",
+    "restoreApp",
+    "authorizedNavigate",
+  ]).has(envelope.request.action);
+
+  let lastError: unknown;
+  let lastNonJsonResponse: Response | undefined;
+  for (let attempt = 1; attempt <= MAX_UPSTREAM_ATTEMPTS; attempt += 1) {
+    let upstream: Response;
+    try {
+      // 12s per attempt: short enough that a hung Google edge fails fast
+      // and the retry fires within the client's retry window, long enough
+      // for a healthy Apps Script response.
+      upstream = await fetch(env.APPS_SCRIPT_EXEC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(envelope),
+        redirect: "follow",
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+    } catch (error) {
+      lastError = error;
+      if (retrySafe && attempt < MAX_UPSTREAM_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
       }
-    );
+      return problemResponse(
+        502,
+        "UPSTREAM_UNREACHABLE",
+        "Upstream unreachable",
+        origin,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+
+    const upstreamBody = await upstream.text();
+    let remappedStatus = upstream.status;
+    let isProblem = false;
+    let upstreamRequestId: string | undefined;
+    try {
+      const parsed = JSON.parse(upstreamBody) as {
+        status?: unknown;
+        requestId?: unknown;
+      };
+      if (typeof parsed.status === "number") {
+        remappedStatus = parsed.status;
+        isProblem = remappedStatus >= 400;
+      }
+      if (typeof parsed.requestId === "string") {
+        upstreamRequestId = parsed.requestId;
+      }
+    } catch {
+      lastNonJsonResponse = upstream;
+      if (retrySafe && attempt < MAX_UPSTREAM_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      // ADR-0018 §7: never pass a raw non-JSON upstream body through
+      // labeled application/json; the client would fail to parse it and
+      // surface a confusing MALFORMED_RESPONSE. Convert to a structured
+      // Problem Details response so the client sees a recoverable,
+      // correlatable error instead of an HTML blob.
+      return problemResponse(
+        502,
+        "UPSTREAM_BAD_RESPONSE",
+        "Upstream returned a non-JSON response",
+        origin,
+        "上流服務回應格式異常。",
+        {
+          retryAfter:
+            lastNonJsonResponse.headers.get("Retry-After") ?? undefined,
+        }
+      );
+    }
+
+    // Valid JSON (success or problem): pass through with the remapped
+    // status. Never retry a response the upstream actually produced.
+    const requestId = upstreamRequestId ?? crypto.randomUUID();
+    return new Response(upstreamBody, {
+      status: remappedStatus,
+      headers: {
+        "Content-Type": isProblem
+          ? "application/problem+json"
+          : "application/json",
+        "Access-Control-Allow-Origin": origin,
+        "X-Request-Id": requestId,
+      },
+    });
   }
 
-  // Correlation (ADR-0018 §8): prefer the upstream's requestId, fall
-  // back to a fresh UUID so every response carries one for log search.
-  const requestId = upstreamRequestId ?? crypto.randomUUID();
-
-  return new Response(upstreamBody, {
-    status: remappedStatus,
-    headers: {
-      "Content-Type": isProblem
-        ? "application/problem+json"
-        : "application/json",
-      "Access-Control-Allow-Origin": origin,
-      "X-Request-Id": requestId,
-    },
-  });
+  // Unreachable: the loop returns on every path.
+  return problemResponse(
+    502,
+    "UPSTREAM_UNREACHABLE",
+    "Upstream unreachable",
+    origin,
+    lastError instanceof Error ? lastError.message : String(lastError)
+  );
 }
 
 /**
