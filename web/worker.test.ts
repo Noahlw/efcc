@@ -44,6 +44,7 @@ interface FetchCall {
   method: string;
   headers: Record<string, string>;
   body: string;
+  cache?: string;
 }
 
 function makeRequest(
@@ -78,6 +79,7 @@ function captureUpstream(
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const body = init?.body ? String(init.body) : "";
+    const cache = init?.cache;
     const reqHeaders: Record<string, string> = {};
     if (init?.headers) {
       if (init.headers instanceof Headers) {
@@ -99,6 +101,7 @@ function captureUpstream(
       method: req.method,
       headers: reqHeaders,
       body,
+      cache,
     };
     calls.push(call);
     const { status, body: respBody, headers } = respond(call);
@@ -690,5 +693,128 @@ describe("Worker: fail-closed rate limiter (ADR-0018 §9)", () => {
     const body = await json<{ code: string; detail: string }>(res);
     assert.equal(body.code, "UNAVAILABLE");
     assert.equal(body.detail, "系統暫時無法處理請求，請稍後再試。");
+  });
+});
+
+describe("Worker: upstream fetch cache + per-attempt metadata logging", () => {
+  // Helper: capture every console.log call into an array of parsed
+  // JSON payloads. Returns a restore function.
+  function captureConsole() {
+    const events: Array<Record<string, unknown>> = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      for (const a of args) {
+        if (typeof a !== "string") continue;
+        try {
+          const obj = JSON.parse(a) as Record<string, unknown>;
+          if (obj && obj.event === "apps_script_attempt") {
+            events.push(obj);
+          }
+        } catch {
+          // ignore non-JSON console output
+        }
+      }
+    };
+    return {
+      events,
+      restore: () => {
+        console.log = original;
+      },
+    };
+  }
+
+  test("upstream fetch uses cache: 'no-store'", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-cache", data: {} }),
+    }));
+    try {
+      await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(upstream.calls.length, 1);
+      assert.equal(
+        upstream.calls[0].cache,
+        "no-store",
+        "upstream fetch must set cache: 'no-store' to bypass any stale intermediary caching"
+      );
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("emits one metadata log per attempt on transient non-JSON success", async () => {
+    let calls = 0;
+    const upstream = captureUpstream(() => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          status: 404,
+          body: "<html><title>page not found</title></html>",
+          headers: { "Content-Type": "text/html" },
+        };
+      }
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          requestId: "r-meta-ok",
+          data: {},
+        }),
+      };
+    });
+    const log = captureConsole();
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 200);
+      assert.equal(log.events.length, 2, "must log once per attempt");
+      for (const e of log.events) {
+        assert.equal(e.event, "apps_script_attempt");
+        assert.equal(typeof e.attempt, "number");
+        assert.equal(typeof e.elapsedMs, "number");
+      }
+      assert.equal(log.events[0].attempt, 1);
+      assert.equal(log.events[1].attempt, 2);
+      // Final attempt succeeded -> status/contentType/redirected/finalHostname present.
+      assert.equal(log.events[1].status, 200);
+      assert.equal(typeof log.events[1].contentType, "string");
+    } finally {
+      log.restore();
+      upstream.restore();
+    }
+  });
+
+  test("emits no metadata log when validation rejects the request before fetch", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({ success: true, requestId: "r-no-log", data: {} }),
+    }));
+    const log = captureConsole();
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { params: {} }, // missing action
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 400);
+      assert.equal(upstream.calls.length, 0, "validation must not reach fetch");
+      assert.equal(
+        log.events.length,
+        0,
+        "no metadata log when fetch is never called"
+      );
+    } finally {
+      log.restore();
+      upstream.restore();
+    }
   });
 });

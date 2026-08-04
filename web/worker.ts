@@ -208,6 +208,8 @@ async function forwardToAppsScript(
   let lastError: unknown;
   let lastNonJsonResponse: Response | undefined;
   for (let attempt = 1; attempt <= MAX_UPSTREAM_ATTEMPTS; attempt += 1) {
+    const t0 = Date.now();
+    const attemptNumber = attempt;
     let upstream: Response;
     try {
       // 12s per attempt: short enough that a hung Google edge fails fast
@@ -218,10 +220,37 @@ async function forwardToAppsScript(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(envelope),
         redirect: "follow",
+        cache: "no-store",
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
+      console.log(
+        JSON.stringify({
+          event: "apps_script_attempt",
+          attempt: attemptNumber,
+          elapsedMs: Date.now() - t0,
+          status: upstream.status,
+          contentType: upstream.headers.get("content-type") ?? "",
+          redirected: upstream.redirected,
+          finalHostname: (() => {
+            try {
+              return new URL(upstream.url).hostname;
+            } catch {
+              return "";
+            }
+          })(),
+        })
+      );
     } catch (error) {
       lastError = error;
+      console.log(
+        JSON.stringify({
+          event: "apps_script_attempt",
+          attempt: attemptNumber,
+          elapsedMs: Date.now() - t0,
+          errorName: error instanceof Error ? error.name : "",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+      );
       if (retrySafe && attempt < MAX_UPSTREAM_ATTEMPTS) {
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
         continue;
