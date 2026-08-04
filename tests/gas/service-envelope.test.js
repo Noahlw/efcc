@@ -617,6 +617,21 @@ describe("service-envelope.gs: full doPost round trip (#151)", () => {
     // Critically, restoreApp is NOT invoked.
     assert.equal(response.success, true, "logoutUser must succeed");
   });
+
+  test.each(["constructor", "toString"])(
+    "inherited action name %s is rejected as UNKNOWN_ACTION",
+    (action) => {
+      const response = driveDoPost(
+        signEnvelope({
+          action,
+          params: {},
+        })
+      );
+
+      assert.equal(response.status, 404);
+      assert.equal(response.code, "UNKNOWN_ACTION");
+    }
+  );
 });
 
 // ---------------------------------------------------------------------------

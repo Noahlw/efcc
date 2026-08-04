@@ -119,7 +119,12 @@ function doPost(e) {
     var sessionId = verified.sessionId;
     var authorization = verified.authorization;
 
-    var handler = PROTOTYPE_129_ACTIONS_[action];
+    var handler = Object.prototype.hasOwnProperty.call(
+      PROTOTYPE_129_ACTIONS_,
+      action
+    )
+      ? PROTOTYPE_129_ACTIONS_[action]
+      : null;
 
     if (!handler) {
       status = 404;
