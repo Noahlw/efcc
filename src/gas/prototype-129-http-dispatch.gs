@@ -74,7 +74,10 @@ var PROTOTYPE_129_ACTIONS_ = {
  * @returns {string}
  */
 function prototype129Bearer_(authorization) {
-  if (typeof authorization === "string" && authorization.indexOf("Bearer ") === 0) {
+  if (
+    typeof authorization === "string" &&
+    authorization.indexOf("Bearer ") === 0
+  ) {
     return authorization.slice("Bearer ".length);
   }
   return "";

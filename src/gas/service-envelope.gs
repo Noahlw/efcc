@@ -75,9 +75,11 @@ function serviceCanonicalJson_(obj) {
  * @returns {string}
  */
 function serviceCanonicalJsonExcept_(obj, excludeKey) {
-  var keys = Object.keys(obj).filter(function (k) {
-    return k !== excludeKey;
-  }).sort();
+  var keys = Object.keys(obj)
+    .filter(function (k) {
+      return k !== excludeKey;
+    })
+    .sort();
   var pairs = [];
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
@@ -130,53 +132,67 @@ function serviceStringEquals_(a, b) {
  * @returns {{action: string, params: Object, sessionId: string|null, authorization: string|null, idempotencyKey: string|null}|null}
  */
 function serviceVerifyEnvelope_(envelope) {
-  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return null;
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope))
+    return null;
   if (envelope.version !== 1) return null;
-  if (typeof envelope.keyId !== "string" || envelope.keyId.length === 0) return null;
-  if (typeof envelope.timestamp !== "number" || !isFinite(envelope.timestamp)) return null;
-  if (typeof envelope.nonce !== "string" || envelope.nonce.length === 0) return null;
+  if (typeof envelope.keyId !== "string" || envelope.keyId.length === 0)
+    return null;
+  if (typeof envelope.timestamp !== "number" || !isFinite(envelope.timestamp))
+    return null;
+  if (typeof envelope.nonce !== "string" || envelope.nonce.length === 0)
+    return null;
   if (
     typeof envelope.attemptGroup !== "string" ||
     envelope.attemptGroup.length === 0
-  ) return null;
+  )
+    return null;
   if (
     typeof envelope.attemptId !== "number" ||
     !isFinite(envelope.attemptId) ||
     envelope.attemptId < 1 ||
     Math.floor(envelope.attemptId) !== envelope.attemptId
-  ) return null;
+  )
+    return null;
   if (
     !envelope.request ||
     typeof envelope.request !== "object" ||
     Array.isArray(envelope.request)
-  ) return null;
+  )
+    return null;
   if (
     typeof envelope.request.action !== "string" ||
     envelope.request.action.length === 0
-  ) return null;
+  )
+    return null;
   if (
     !envelope.request.params ||
     typeof envelope.request.params !== "object" ||
     Array.isArray(envelope.request.params)
-  ) return null;
+  )
+    return null;
   if (
     envelope.request.sessionId !== undefined &&
     typeof envelope.request.sessionId !== "string"
-  ) return null;
+  )
+    return null;
   if (
     envelope.request.authorization !== undefined &&
     typeof envelope.request.authorization !== "string"
-  ) return null;
+  )
+    return null;
   if (
     envelope.request.idempotencyKey !== undefined &&
     typeof envelope.request.idempotencyKey !== "string"
-  ) return null;
+  )
+    return null;
   if (
     !envelope.metadata ||
     typeof envelope.metadata !== "object" ||
     Array.isArray(envelope.metadata)
-  ) return null;
-  if (typeof envelope.signature !== "string" || envelope.signature.length === 0) return null;
+  )
+    return null;
+  if (typeof envelope.signature !== "string" || envelope.signature.length === 0)
+    return null;
 
   var secret;
   try {
@@ -196,7 +212,9 @@ function serviceVerifyEnvelope_(envelope) {
     action: req.action,
     params: req.params,
     sessionId: typeof req.sessionId === "string" ? req.sessionId : null,
-    authorization: typeof req.authorization === "string" ? req.authorization : null,
-    idempotencyKey: typeof req.idempotencyKey === "string" ? req.idempotencyKey : null,
+    authorization:
+      typeof req.authorization === "string" ? req.authorization : null,
+    idempotencyKey:
+      typeof req.idempotencyKey === "string" ? req.idempotencyKey : null,
   };
 }

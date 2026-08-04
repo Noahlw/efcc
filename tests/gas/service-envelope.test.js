@@ -1,10 +1,11 @@
 /**
  * Tests for service-envelope.gs — canonical serialization, HMAC signing,
- * verification, and strict action projection (CF1-01 / #151).
+ * verification, and strict action projection (#151).
  *
- * Uses the same deterministic vectors as web/lib/service-envelope.test.ts
- * so both sides agree on the canonical form. The Worker signs; Apps Script
- * verifies — these tests assert the verify side matches.
+ * Pure Apps Script VM harness — no Worker/TypeScript imports. The GAS
+ * verifier is what this PR lands; the Worker's same-shape signer is a
+ * downstream CF1 implementation ticket (not in this PR) and will pin the
+ * same canonical payload / signature vectors when both sides exist.
  */
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -13,8 +14,6 @@ import path from "node:path";
 import vm from "node:vm";
 
 import { describe, test, beforeEach } from "vitest";
-
-import { signServiceEnvelope } from "../../web/lib/service-envelope.ts";
 
 const GAS_DIR = path.join(import.meta.dirname, "..", "..", "src", "gas");
 
@@ -351,18 +350,23 @@ describe("service-envelope.gs: verified action projection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Deterministic cross-runtime compatibility
+// Deterministic GAS vectors
+//
+// These pin the canonical payload and HMAC hex that the GAS verifier
+// produces for a fixed envelope + shared secret. The future Worker
+// implementation ticket will pin the same vectors from its signer so
+// both sides agree byte-for-byte; cross-runtime parity is owned by
+// that downstream CF1 work, not by this PR.
 // ---------------------------------------------------------------------------
 
-describe("service-envelope.gs: cross-runtime compatibility", () => {
+describe("service-envelope.gs: deterministic GAS vectors", () => {
   let env;
   beforeEach(() => {
     env = buildContext();
     loadModule(env.context, "service-envelope.gs");
   });
 
-  test("canonical JSON matches Worker's output for the same object", () => {
-    // This is the same object the Worker-side test serializes.
+  test("canonical JSON sorts keys recursively with no whitespace", () => {
     const obj = {
       version: 1,
       keyId: "k1",
@@ -383,17 +387,17 @@ describe("service-envelope.gs: cross-runtime compatibility", () => {
     const parsed = JSON.parse(result);
     assert.equal(parsed.version, 1);
     assert.equal(parsed.request.action, "restoreApp");
-    // The JSON should be compact (no whitespace or newlines).
-    // GAS V8's JSON.stringify produces compact JSON, and our serializer
-    // should match. Check that the result has no spaces outside strings.
+    // The JSON should be compact (no whitespace or newlines). GAS V8's
+    // JSON.stringify produces compact JSON, and our serializer must
+    // match so the future Worker's signer sees identical bytes.
     assert.ok(!result.includes("\n"), "canonical JSON must have no newlines");
   });
 
-  test("pinned gold canonical vector (shared with Worker) — exact byte match", () => {
+  test("pinned canonical vector — exact byte match (GAS side)", () => {
     // This exact string is the canonical serialization of a fixed
-    // envelope. BOTH the Worker and the GAS verifier must produce it
-    // byte-for-byte, or the HMAC will not agree across runtimes. Pinning
-    // it here couples the two suites to the same deterministic vector.
+    // envelope. The future Worker signer (CF1 implementation) must
+    // produce it byte-for-byte, or the HMAC will not agree across
+    // runtimes. Pinning it here freezes the GAS side of that contract.
     const envelope = {
       version: 1,
       keyId: "k1",
@@ -414,11 +418,10 @@ describe("service-envelope.gs: cross-runtime compatibility", () => {
     assert.equal(env.context.serviceCanonicalJson_(envelope), expected);
   });
 
-  test("pinned gold signature vector (shared with Worker) — exact HMAC hex", () => {
+  test("pinned signature vector — exact HMAC hex (GAS side)", () => {
     // The HMAC-SHA256 over the pinned canonical payload above, computed
-    // with the shared TEST_SECRET. Both the Worker (Web Crypto) and the
-    // GAS verifier (Utilities.computeHmacSha256Signature) must produce
-    // this exact hex, proving the cross-runtime signature agrees.
+    // with the shared TEST_SECRET. The future Worker signer (CF1) must
+    // produce the same hex; this is the GAS-side pin of the contract.
     const envelope = {
       version: 1,
       keyId: "k1",
@@ -436,8 +439,9 @@ describe("service-envelope.gs: cross-runtime compatibility", () => {
     };
     const payload = env.context.serviceCanonicalJson_(envelope);
     const signature = env.context.serviceHmacHex_(TEST_SECRET, payload);
-    // This value is pinned from the deterministic HMAC over the same
-    // canonical payload using TEST_SECRET; see the Worker-side test.
+    // Pinned from the deterministic HMAC over the same canonical payload
+    // using TEST_SECRET. The future Worker-side test will pin the same
+    // hex independently.
     const expected =
       "fd52c782ee8ed39101f50bdb59dd4925238165aab41d15f33ec3bc1e3a192765";
     assert.equal(signature, expected);
@@ -446,10 +450,16 @@ describe("service-envelope.gs: cross-runtime compatibility", () => {
 
 // ---------------------------------------------------------------------------
 // Full round trip: doPost with a signed restoreApp envelope → verify →
-// api_restoreApp → bootstrap success (CF1-01 #151 acceptance criterion #6).
+// api_restoreApp → bootstrap success (#151 Apps Script verifier slice).
+//
+// The envelope is built by the same GAS-harness canonicalizer+HMAC that
+// the verifier uses; the future Worker signer (CF1 implementation) is
+// expected to produce byte-identical output for the same inputs, but
+// Worker parity is NOT exercised here — that belongs to the Worker
+// implementation ticket, not this PR.
 // ---------------------------------------------------------------------------
 
-describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
+describe("service-envelope.gs: full doPost round trip (#151)", () => {
   let env;
 
   beforeEach(() => {
@@ -462,7 +472,9 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
     loadAllGas(env.context);
   });
 
-  /** Sign an envelope exactly as the Worker would (deterministic fields). */
+  /** Sign an envelope with the same GAS-harness canonicalizer+HMAC
+   *  the verifier uses. The future Worker signer (CF1) is expected to
+   *  produce byte-identical output for the same inputs. */
   function signEnvelope(request, overrides = {}) {
     const envelope = {
       version: 1,
@@ -492,26 +504,31 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
     return JSON.parse(output.getContent());
   }
 
-  test("an actual Worker-signed Unicode restoreApp envelope reaches the GAS dispatcher", async () => {
+  test("a signed restoreApp envelope with nested Unicode round-trips through doPost", () => {
     // 1. Issue a session via the existing api_loginUser (unchanged logic).
     const login = env.context.api_loginUser("alice", "1234");
     assert.equal(login.success, true, "login must succeed");
     const { sessionId, sessionToken, userId } = login.data.session;
 
-    // 2. Exercise the production Worker signer rather than the GAS
-    // verifier's canonicalizer/signer helpers.
-    const envelope = await signServiceEnvelope(TEST_SECRET, {
-      action: "restoreApp",
-      params: {
-        userId,
-        compatibility: { nested: ["教會", { greeting: "平安 👋" }] },
+    // 2. Build a valid signed envelope using the GAS-harness canonicalizer
+    // and HMAC. The future Worker signer (CF1) will produce the same bytes
+    // for the same inputs; the GAS verifier is the only contract checked
+    // here.
+    const envelope = signEnvelope(
+      {
+        action: "restoreApp",
+        params: {
+          userId,
+          compatibility: { nested: ["教會", { greeting: "平安 👋" }] },
+        },
+        sessionId,
+        authorization: `Bearer ${sessionToken}`,
       },
-      sessionId,
-      authorization: `Bearer ${sessionToken}`,
-    }, {
-      nonce: "worker-cross-runtime-nonce",
-      attemptGroup: "worker-cross-runtime-attempt",
-    });
+      {
+        nonce: "gas-vm-harness-nonce",
+        attemptGroup: "gas-vm-harness-attempt",
+      }
+    );
 
     // 3. doPost verifies the envelope and dispatches restoreApp.
     const response = driveDoPost(envelope);
@@ -568,10 +585,13 @@ describe("service-envelope.gs: full doPost round trip (CF1-01 #151)", () => {
       dispatches += 1;
       return { success: true, data: {} };
     };
-    const envelope = signEnvelope({
-      action: "restoreApp",
-      params: {},
-    }, { nonce: undefined });
+    const envelope = signEnvelope(
+      {
+        action: "restoreApp",
+        params: {},
+      },
+      { nonce: undefined }
+    );
 
     const response = driveDoPost(envelope);
 
