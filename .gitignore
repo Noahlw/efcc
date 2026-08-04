@@ -24,8 +24,6 @@ npm-debug.log*
 
 # E2E auth (Playwright storage state — session cookies, never commit)
 .auth/*
-# Local staging files for provisioning shared secrets (never commit)
-.tmp_efcc_service_secret
 .env
 !.auth/.example/
 !.auth/.example/**
