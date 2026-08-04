@@ -599,6 +599,36 @@ describe("Worker: correlation (ADR-0018 §8)", () => {
         testEnv()
       );
       assert.equal(res.headers.get("X-Request-Id"), "upstream-req-1");
+      const body = await json<{ requestId: string }>(res);
+      assert.equal(body.requestId, "upstream-req-1");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("does not replay loginUser after a non-JSON upstream response", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 404,
+      body: "<html><title>page not found</title></html>",
+      headers: { "Content-Type": "text/html" },
+    }));
+    const allowingLimiter = {
+      limit: async () => ({ success: true }),
+    } as unknown as Env["RPC_RATE_LIMITER"];
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: {
+            action: "loginUser",
+            params: { username: "opaque-user", pin: "opaque-pin" },
+          },
+        }),
+        testEnv({ RPC_RATE_LIMITER: allowingLimiter })
+      );
+      assert.equal(upstream.calls.length, 1, "login must not be replayed");
+      assert.equal(res.status, 502);
+      const body = await json<{ requestId: string }>(res);
+      assert.equal(body.requestId, res.headers.get("X-Request-Id"));
     } finally {
       upstream.restore();
     }
@@ -618,6 +648,42 @@ describe("Worker: correlation (ADR-0018 §8)", () => {
       );
       const rid = res.headers.get("X-Request-Id");
       assert.ok(rid && rid.length > 0, "must generate a fallback X-Request-Id");
+    } finally {
+      upstream.restore();
+    }
+  });
+
+  test("UNKNOWN_ACTION body requestId equals X-Request-Id header", async () => {
+    const upstream = captureUpstream(() => ({
+      status: 200,
+      body: JSON.stringify({
+        status: 404,
+        code: "UNKNOWN_ACTION",
+        title: "UNKNOWN_ACTION",
+        detail: "No such action: bogusAction",
+        requestId: "unknown-action-req-1",
+      }),
+    }));
+    try {
+      const res = await worker.fetch(
+        makeRequest("/api/v1/rpc", {
+          body: { action: "restoreApp", params: {} },
+        }),
+        testEnv()
+      );
+      assert.equal(res.status, 404);
+      assert.equal(
+        res.headers.get("X-Request-Id"),
+        "unknown-action-req-1",
+        "Worker must pass through the dispatcher's requestId unchanged"
+      );
+      const body = await json<{ code: string; requestId: string }>(res);
+      assert.equal(body.code, "UNKNOWN_ACTION");
+      assert.equal(
+        body.requestId,
+        res.headers.get("X-Request-Id"),
+        "body requestId must equal the X-Request-Id header"
+      );
     } finally {
       upstream.restore();
     }

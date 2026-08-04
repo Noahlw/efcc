@@ -496,12 +496,17 @@ describe("service-envelope.gs: full doPost round trip (#151)", () => {
     return envelope;
   }
 
+  /** Drive doPost with a raw event and return the parsed response. */
+  function driveRawDoPost(event) {
+    const output = env.context.doPost(event);
+    return JSON.parse(output.getContent());
+  }
+
   /** Drive doPost with a JSON body and return the parsed response. */
   function driveDoPost(body) {
-    const output = env.context.doPost({
+    return driveRawDoPost({
       postData: { contents: JSON.stringify(body) },
     });
-    return JSON.parse(output.getContent());
   }
 
   test("a signed restoreApp envelope with nested Unicode round-trips through doPost", () => {
@@ -569,6 +574,55 @@ describe("service-envelope.gs: full doPost round trip (#151)", () => {
     assert.equal(response.code, "FORBIDDEN");
   });
 
+  test.each([
+    ["missing event", undefined],
+    ["null event", null],
+    ["missing postData", {}],
+    ["null postData", { postData: null }],
+    ["missing contents", { postData: {} }],
+    ["undefined contents", { postData: { contents: undefined } }],
+    ["empty contents", { postData: { contents: "" } }],
+    ["non-string contents", { postData: { contents: 42 } }],
+    ["malformed JSON", { postData: { contents: "{" } }],
+    ["JSON null", { postData: { contents: "null" } }],
+    ["JSON array", { postData: { contents: "[]" } }],
+    ["JSON string", { postData: { contents: '"text"' } }],
+    ["JSON number", { postData: { contents: "42" } }],
+    ["JSON boolean", { postData: { contents: "true" } }],
+  ])("rejects %s before action dispatch", (_label, event) => {
+    let dispatches = 0;
+    env.context.PROTOTYPE_129_ACTIONS_.restoreApp = () => {
+      dispatches += 1;
+      return { success: true, data: {} };
+    };
+
+    const response = driveRawDoPost(event);
+
+    assert.equal(response.status, 403);
+    assert.equal(response.code, "FORBIDDEN");
+    assert.equal(response.title, "FORBIDDEN");
+    assert.ok(
+      typeof response.requestId === "string" && response.requestId.length > 0
+    );
+    assert.equal(response.success, undefined);
+    assert.equal(response.data, undefined);
+    assert.equal(dispatches, 0);
+    assert.equal(
+      JSON.stringify(response).includes("Unexpected"),
+      false,
+      "parser detail must not leak"
+    );
+  });
+
+  test("malformed inputs receive fresh correlation IDs", () => {
+    const first = driveRawDoPost({ postData: { contents: "{" } });
+    const second = driveRawDoPost({ postData: { contents: "{" } });
+
+    assert.equal(first.status, 403);
+    assert.equal(second.status, 403);
+    assert.notEqual(first.requestId, second.requestId);
+  });
+
   test("FORBIDDEN response includes an opaque requestId for log correlation", () => {
     const response = driveDoPost({ action: "restoreApp", params: {} });
     assert.equal(response.status, 403);
@@ -618,7 +672,7 @@ describe("service-envelope.gs: full doPost round trip (#151)", () => {
     assert.equal(response.success, true, "logoutUser must succeed");
   });
 
-  test.each(["constructor", "toString"])(
+  test.each(["__proto__", "constructor", "toString"])(
     "inherited action name %s is rejected as UNKNOWN_ACTION",
     (action) => {
       const response = driveDoPost(
@@ -630,6 +684,10 @@ describe("service-envelope.gs: full doPost round trip (#151)", () => {
 
       assert.equal(response.status, 404);
       assert.equal(response.code, "UNKNOWN_ACTION");
+      assert.equal(response.title, "UNKNOWN_ACTION");
+      assert.ok(
+        typeof response.requestId === "string" && response.requestId.length > 0
+      );
     }
   );
 });

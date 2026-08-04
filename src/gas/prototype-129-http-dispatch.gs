@@ -83,42 +83,85 @@ function prototype129Bearer_(authorization) {
   return "";
 }
 
+function prototype129Json_(body) {
+  return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+
+function prototype129Problem_(status, code, detail) {
+  return {
+    status: status,
+    code: code,
+    title: code,
+    detail: detail,
+    requestId: Utilities.getUuid(),
+  };
+}
+
+/**
+ * Parse only the object shape accepted by the signed service-envelope
+ * verifier. Missing event data, invalid JSON, and non-object JSON all
+ * return null so doPost can reject them with the same opaque FORBIDDEN
+ * problem instead of leaking parser details or entering unsigned dispatch.
+ *
+ * @param {GoogleAppsScript.Events.DoPost} e
+ * @returns {Object|null}
+ */
+function prototype129ParseBody_(e) {
+  if (
+    !e ||
+    !e.postData ||
+    typeof e.postData.contents !== "string" ||
+    e.postData.contents.trim() === ""
+  ) {
+    return null;
+  }
+
+  try {
+    var body = JSON.parse(e.postData.contents);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return null;
+    }
+    return body;
+  } catch (err) {
+    return null;
+  }
+}
+
 /**
  * @param {GoogleAppsScript.Events.DoPost} e
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
 function doPost(e) {
-  var status = 200;
-  var responseBody;
+  // CF1-01 (#151): reject malformed or unsigned input before any action
+  // dispatch. There is no fallback to the unsigned pre-CF1 body.params path.
+  var body = prototype129ParseBody_(e);
+  if (!body) {
+    return prototype129Json_(
+      prototype129Problem_(403, "FORBIDDEN", "無效的服務請求。")
+    );
+  }
+
+  // A verifier exception is treated exactly like a failed verification:
+  // malformed envelopes never become a generic 500 or reach an api_* action.
+  var verified = null;
+  try {
+    verified = serviceVerifyEnvelope_(body);
+  } catch (err) {
+    verified = null;
+  }
+  if (!verified) {
+    return prototype129Json_(
+      prototype129Problem_(403, "FORBIDDEN", "無效的服務請求。")
+    );
+  }
 
   try {
-    var body = JSON.parse(e.postData.contents);
-
-    // CF1-01 (#151): the Worker sends a signed service envelope. The
-    // dispatcher verifies it and dispatches strictly on the verified
-    // action. Fail closed: an invalid or missing envelope is rejected
-    // with FORBIDDEN — there is no fallback to the unsigned pre-CF1
-    // body.params path, lest a forged request bypass the signature gate.
-    var verified = serviceVerifyEnvelope_(body);
-    if (!verified) {
-      status = 403;
-      responseBody = {
-        status: status,
-        code: "FORBIDDEN",
-        title: "FORBIDDEN",
-        detail: "無效的服務請求。",
-        requestId: Utilities.getUuid(),
-      };
-      return ContentService.createTextOutput(
-        JSON.stringify(responseBody)
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
     var action = verified.action;
     var params = verified.params || {};
     var sessionId = verified.sessionId;
     var authorization = verified.authorization;
-
     var handler = Object.prototype.hasOwnProperty.call(
       PROTOTYPE_129_ACTIONS_,
       action
@@ -127,60 +170,37 @@ function doPost(e) {
       : null;
 
     if (!handler) {
-      status = 404;
-      responseBody = {
-        status: status,
+      return prototype129Json_({
+        status: 404,
         code: "UNKNOWN_ACTION",
         title: "UNKNOWN_ACTION",
         detail: "No such action: " + action,
-      };
-    } else {
-      var envelope = handler(params, sessionId, authorization);
-      if (envelope.success) {
-        responseBody = envelope;
-      } else {
-        status = prototype129StatusForCode_(envelope.error.code);
-        responseBody = {
-          status: status,
-          code: envelope.error.code,
-          title: envelope.error.code,
-          detail: envelope.error.message,
-          requestId: envelope.requestId,
-        };
-      }
+        requestId: Utilities.getUuid(),
+      });
     }
+
+    var envelope = handler(params, sessionId, authorization);
+    if (envelope.success) {
+      return prototype129Json_(envelope);
+    }
+
+    var status = prototype129StatusForCode_(envelope.error.code);
+    return prototype129Json_({
+      status: status,
+      code: envelope.error.code,
+      title: envelope.error.code,
+      detail: envelope.error.message,
+      requestId: envelope.requestId,
+    });
   } catch (err) {
-    // ADR-0018-style fail-closed: log the raw error for operators but
-    // never expose err.message or stack to the client. The shape below
-    // is the throwaway's success/failure envelope (`success`/`error`)
-    // so the prototype client can parse it like any other handler
-    // failure; the Worker proxy already maps this to outer HTTP 500.
+    // Never expose an exception or stack to the client.
     Logger.log(
       "prototype-129 doPost error: " + (err && err.stack ? err.stack : err)
     );
-    status = 500;
-    responseBody = {
-      status: 500,
-      code: "INTERNAL_ERROR",
-      title: "Internal Server Error",
-      detail: "伺服器處理時發生錯誤。",
-      requestId: Utilities.getUuid(),
-    };
+    return prototype129Json_(
+      prototype129Problem_(500, "INTERNAL_ERROR", "伺服器處理時發生錯誤。")
+    );
   }
-
-  // Apps Script's TextOutput has no setStatusCode API - the HTTP status
-  // for a doPost web-app response is always 200 at the transport level;
-  // the real status lives in the JSON body's `status` field. The
-  // Worker proxy in this prototype passes the Apps Script response
-  // straight through (it does not currently re-map this to an HTTP
-  // status), so the Next.js client checks `body.status`/`body.code`,
-  // not `response.status`, for this throwaway. #131/#128 must decide
-  // how the real proxy performs this status remap (likely: proxy reads
-  // the JSON body and sets the outer HTTP status itself before
-  // returning to the browser).
-  return ContentService.createTextOutput(
-    JSON.stringify(responseBody)
-  ).setMimeType(ContentService.MimeType.JSON);
 }
 
 /**

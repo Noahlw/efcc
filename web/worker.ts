@@ -194,12 +194,12 @@ async function forwardToAppsScript(
   const RETRY_DELAY_MS = 250;
 
   // Only replay the envelope for actions proven safe to retry (ADR-0018
-  // §8): loginUser/logoutUser are server-idempotent with one
-  // Idempotency-Key per call; restoreApp/authorizedNavigate are reads.
+  // §8): logoutUser is server-idempotent with one Idempotency-Key per call;
+  // restoreApp/authorizedNavigate are reads. loginUser is intentionally
+  // excluded until Apps Script deduplicates it by Idempotency-Key.
   // Anything else (e.g. ADR-0019 §3's non-replayable grant/revoke) gets
   // a single attempt - never auto-replayed on an ambiguous result.
   const retrySafe = new Set([
-    "loginUser",
     "logoutUser",
     "restoreApp",
     "authorizedNavigate",

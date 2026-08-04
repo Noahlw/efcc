@@ -1,6 +1,7 @@
-import { defineConfig, devices } from "@playwright/test";
 import { Resolver } from "node:dns";
 import { isIP } from "node:net";
+
+import { defineConfig, devices } from "@playwright/test";
 
 const targetUrl = process.env.E2E_TARGET_URL;
 
@@ -8,17 +9,18 @@ if (!targetUrl) {
   throw new Error("E2E_TARGET_URL is required");
 }
 
-// Accept any http(s) URL (Cloudflare Worker, Apps Script /exec, or a
-// future backend) — the same trace runs against whichever origin serves
-// the Next.js app + /api/v1/rpc.
+// HTTPS-only: this suite carries credentials across the signed-envelope
+// boundary, so a plaintext http target is rejected at config load. Any
+// origin that serves the Next.js app + /api/v1/rpc over TLS qualifies
+// (Cloudflare Worker, Apps Script /exec, or a future HTTPS backend).
 let parsedUrl: URL;
 try {
   parsedUrl = new URL(targetUrl);
 } catch {
-  throw new Error("E2E_TARGET_URL must be a valid http(s) URL");
+  throw new Error("E2E_TARGET_URL must be a valid https URL");
 }
-if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
-  throw new Error("E2E_TARGET_URL must be an http(s) URL");
+if (parsedUrl.protocol !== "https:") {
+  throw new Error("E2E_TARGET_URL must be an https URL");
 }
 
 const targetHost = parsedUrl.hostname;
@@ -89,7 +91,9 @@ async function buildConfig() {
     // exponential backoff) when the upstream intermittently returns a
     // non-JSON response; the retry-heavy login/restore path needs headroom.
     timeout: 60_000,
-    retries: 1,
+    // Strict run must not mask intermittent failures. The authorized run
+    // command is `playwright test ... --retries=0` (see plan §3).
+    retries: 0,
     fullyParallel: false,
     workers: 1,
     reporter: [
@@ -98,7 +102,10 @@ async function buildConfig() {
     ],
     use: {
       baseURL: targetUrl,
-      trace: "retain-on-failure",
+      // Credential-bearing transport suite: traces and screenshots stay
+      // disabled so failures cannot persist session-bearing browser data.
+      trace: "off",
+      screenshot: "off",
       // Auto-pins the Worker hostname to its real public IP when the local
       // resolver blocks/poisons *.workers.dev; unpinned otherwise.
       ...(hostResolverRules

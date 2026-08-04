@@ -102,10 +102,11 @@ export interface Bootstrap {
 
 /**
  * Actions that change server state and thus get an `Idempotency-Key`.
- * Every action here is also retry-safe (idempotent server-side) unless
- * listed in NON_IDEMPOTENT_MUTATIONS below.
+ * Every action here gets an Idempotency-Key. Retry safety is classified
+ * separately below because a key alone does not make replay safe.
  *
- * - loginUser: re-issues a fresh session harmlessly (ADR-0018 §6).
+ * - loginUser: keyed for future server deduplication, but not auto-retried
+ *   while Apps Script issues a fresh session on every successful call.
  * - logoutUser: "logging out an already-revoked session returns a success
  *   envelope" (api_logoutUser docstring in Code.gs) - idempotent.
  * - restoreApp / authorizedNavigate: reads, not listed here.
@@ -115,13 +116,12 @@ export interface Bootstrap {
 const MUTATING_ACTIONS = new Set<string>(["loginUser", "logoutUser"]);
 
 /**
- * Mutations that are NOT safe to auto-retry (would duplicate a
- * non-idempotent side effect). Today empty - every mutating action in
- * the set above is idempotent-by-design per ADR-0018 §6. When CF2+ adds
- * a genuinely non-idempotent mutation, add it here so it gets an
- * Idempotency-Key but does NOT auto-retry.
+ * Mutations that are NOT safe to auto-retry (would duplicate a side
+ * effect). loginUser stays here until the server deduplicates its key.
+ * When CF2+ adds another non-idempotent mutation, add it here so it gets
+ * an Idempotency-Key but does NOT auto-retry.
  */
-const NON_IDEMPOTENT_MUTATIONS = new Set<string>();
+const NON_IDEMPOTENT_MUTATIONS = new Set<string>(["loginUser"]);
 
 /** Max retries on network/502/503/504 (ADR-0018 §6). */
 const MAX_RETRIES = 2;
@@ -133,9 +133,17 @@ function isMutating(action: string): boolean {
   return MUTATING_ACTIONS.has(action);
 }
 
-/** Reads + already-idempotent actions retry; genuinely mutating ones don't. */
+/** Only actions with a reviewed replay contract are automatically retried. */
+const RETRY_SAFE_ACTIONS = new Set<string>([
+  "logoutUser",
+  "restoreApp",
+  "authorizedNavigate",
+]);
+
 function isRetrySafe(action: string): boolean {
-  return !NON_IDEMPOTENT_MUTATIONS.has(action);
+  return (
+    RETRY_SAFE_ACTIONS.has(action) && !NON_IDEMPOTENT_MUTATIONS.has(action)
+  );
 }
 
 /** 502/503/504 are gateway/availability blips; 500 is a server bug, never retried. */

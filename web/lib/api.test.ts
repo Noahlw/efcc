@@ -374,6 +374,34 @@ describe("api.ts: headers", () => {
 // ---------------------------------------------------------------------------
 
 describe("api.ts: retry policy", () => {
+  test("does not replay loginUser on a retryable response", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(503, { status: 503, code: "UNAVAILABLE" })
+    );
+    try {
+      await assert.rejects(() => loginUser("test", "0000"));
+      assert.equal(fetchMock.calls.length, 1, "login must not be replayed");
+      assert.ok(
+        fetchMock.calls[0].headers["Idempotency-Key"],
+        "login keeps its idempotency key even when non-retryable"
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("does not retry an unclassified action", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(503, { status: 503, code: "UNAVAILABLE" })
+    );
+    try {
+      await assert.rejects(() => callRpc("futureMutation", {}));
+      assert.equal(fetchMock.calls.length, 1);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
   test("retries on 503 up to 2 times, then succeeds", async () => {
     const fetchMock = installFetch((_call, attempt) => {
       if (attempt < 3) {

@@ -137,13 +137,13 @@ The HTTP client (`web/lib/api.ts`) retries only on:
 - Network error (fetch threw — DNS, TCP, TLS, abort, timeout) when the action is retry-safe (see below).
 - HTTP `502 Bad Gateway`, `503 Service Unavailable`, `504 Gateway Timeout` when the action is retry-safe.
 
-Retry-safe = reads + actions that are already idempotent on the server (i.e., not in `NON_IDEMPOTENT_MUTATIONS`). In the current CF0 client, that set is empty: `loginUser` and `logoutUser` are server-idempotent, carry an `Idempotency-Key`, and may use the same key across the bounded retry attempts for one call. When [#131](https://github.com/Noahlw/efcc/issues/131) classifies more actions as mutating-but-idempotent server-side, those may enter the retry-safe set; genuinely non-idempotent mutations must remain outside it.
+Retry-safe = reads + actions that are already idempotent on the server (i.e., not in `NON_IDEMPOTENT_MUTATIONS`). `logoutUser` is server-idempotent and carries an `Idempotency-Key`; `loginUser` also carries that key, but is an interim non-retryable exception because the current Apps Script path issues a new session on every successful call and does not deduplicate by key. Login may enter the retry-safe set only after server-side deduplication is implemented and verified. When [#131](https://github.com/Noahlw/efcc/issues/131) classifies more actions as mutating-but-idempotent server-side, those may enter the retry-safe set; genuinely non-idempotent mutations must remain outside it.
 
 Retries never fire on:
 
 - Any `4xx`. A `4xx` is the server telling the client "your request is wrong; do not send it again." That includes `429 Too Many Requests` — the `Retry-After` header is parsed and surfaced on the thrown `RpcError` for the UI to honor, but the client does not auto-retry.
 - `500 Internal Server Error`. A `500` is a server bug, not a transport blip; replaying it does not help and can mask the bug from monitoring.
-- Any non-idempotent mutation. ADR-0015's "no replay on ambiguous network result" rule applies; an `Idempotency-Key` does not make an unsafe mutation replay-safe. The CF2 Program Leader grant/revoke actions are the explicit no-replay exception described in §8 and ADR-0019. Idempotent mutations such as the current `loginUser` and `logoutUser` may retry only under the network/502/503/504 rules above.
+- Any non-idempotent mutation. ADR-0015's "no replay on ambiguous network result" rule applies; an `Idempotency-Key` does not make an unsafe mutation replay-safe. The CF2 Program Leader grant/revoke actions are the explicit no-replay exception described in §8 and ADR-0019. `logoutUser` may retry under the network/502/503/504 rules above; `loginUser` is intentionally excluded until server-side deduplication exists.
 
 Bounded retry parameters (current values, exported as `MAX_RETRIES` and `BASE_BACKOFF_MS` in `web/lib/api.ts`):
 
@@ -155,7 +155,7 @@ Bounded retry parameters (current values, exported as `MAX_RETRIES` and `BASE_BA
 
 The project-defined `Idempotency-Key` header (a request-key transport, not a claim of standards interoperability) is generalized from the existing bespoke `requestKey` field. The client attaches it automatically for any action in the `MUTATING_ACTIONS` set (`web/lib/api.ts`):
 
-- `loginUser` — one key is generated per call and reused across that call's bounded retry attempts. A caller may provide an explicit key to intentionally reuse it across separate calls; the client does not derive a key from username/timestamp or promise automatic cross-call double-submit deduplication.
+- `loginUser` — one key is generated per call and sent to the Worker, but the call is not automatically retried because Apps Script currently creates a fresh session per successful invocation. A caller may provide an explicit key to intentionally reuse it across separate calls; the client does not derive a key from username/timestamp or promise automatic cross-call double-submit deduplication. This key remains a transport contract and future deduplication hook, not proof that login replay is safe today.
 - `logoutUser` — one key is generated per call and reused across its bounded retries; the server treats logging out an already-revoked session as a no-op.
 
 Reads do not send an `Idempotency-Key` (they have no effect to dedup).
