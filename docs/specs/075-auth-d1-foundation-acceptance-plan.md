@@ -179,6 +179,14 @@ mirror) is a JSON web-app whose ADR-0021 contract allows fixture/mocked tests
 only — a real deployed smoke would write the real Google Sheet, which is
 forbidden. So no legitimate IFRAME smoke exists to run.
 
+The pipeline rework (2026-08-05, this branch) makes this explicit in CI:
+`.github/workflows/e2e.yml` is a deploy-closed acceptance gate that fails red
+(never green) when `E2E_TARGET_URL` or the ALICE/BOB/NOAH storage-state secrets
+are missing, and `.github/workflows/precheck.yml` is the deterministic PR gate
+(typecheck + unit/component tests) that needs no deployment. The deterministic
+precheck is green on this branch; the deployed acceptance gate is red/blocked
+until the environment below is provisioned.
+
 Required to unblock: operator supplies `E2E_TARGET_URL` pointing at a fresh
 versioned `/exec` deployment, authenticates `clasp` (or provides a CLASPRC),
 provisions the Cloudflare D1 database + API token, and (for the mirror) a

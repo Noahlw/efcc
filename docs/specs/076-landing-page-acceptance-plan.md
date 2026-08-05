@@ -89,9 +89,13 @@ empty session).
 ### Type + detector
 
 Web `tsc --noEmit` reports no diagnostics in the changed files (page.tsx,
-copy.ts); the only web diagnostics are pre-existing Cloudflare worker/auth
-type declarations (worker.ts, lib/auth, lib/mirror, service-envelope.ts) that
-resolve in the workerd vitest pool, not plain tsc. Impeccable mechanical
+copy.ts). The pipeline rework (2026-08-05, this branch) tightened the web
+typecheck split: `web/tsconfig.json` now excludes the workerd-pool files
+(worker.ts, worker.test.ts, worker.auth.test.ts, lib/auth, lib/mirror, and the
+#151 lib/service-envelope*) which resolve in the workerd vitest pool, not plain
+`tsc`, and `web/tsconfig.worker.json` typechecks them with
+`@cloudflare/workers-types` + `@cloudflare/vitest-pool-workers/types`. After that
+change, `pnpm --dir web typecheck` passes cleanly (0 diagnostics). Impeccable mechanical
 detector (`detect.mjs --json`) over the three changed targets: zero findings.
 The pre-commit hook (lint-staged + `pnpm typecheck`) passed on commit.
 

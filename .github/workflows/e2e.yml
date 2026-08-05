@@ -1,23 +1,54 @@
-name: E2E (Playwright)
+# GitHub Actions: Deployed /exec acceptance gate.
+#
+# This is the DEPLOYED acceptance gate from AGENTS.md "Headless-Gate" and
+# ADR-0012/ADR-0014. It is NOT a deterministic PR check — those live in
+# precheck.yml. It drives real Playwright against a *deployed* Google Apps
+# Script /exec URL using three base64-encoded Google session states.
+#
+# FAIL-CLOSED BY DESIGN. This job is intentionally a required acceptance gate:
+# if any prerequisite is missing (E2E_TARGET_URL unset/invalid, or any role
+# storage-state secret empty) the job FAILS with an explicit, actionable
+# message. It never degrades to green, and it never decodes empty secrets or
+# runs Playwright against an empty URL. A missing deployment proof must never
+# look like a pass.
+#
+# FRESH-DEPLOYMENT CAVEAT. This workflow does NOT create a deployment. It
+# exercises whichever /exec URL is pinned in the `E2E_TARGET_URL` repository
+# variable (validated against the approved deployment ID in
+# tests/e2e/playwright.config.ts), i.e. the most recently versioned DEV
+# deployment. A *fresh* deployed /exec smoke (AGENTS.md) additionally requires
+# the operator to push + version + redeploy and to update the pinned ID and
+# E2E_TARGET_URL together (see .github/CI-SECRETS.md). Until that rotation is
+# done, this gate reports on the currently-deployed version only and the
+# AUTH-01/02/03 tickets remain not-READY (docs/specs/075-...-acceptance-plan.md).
+#
+# Trigger scope: pushes/PRs to main/master (per ADR-0014) plus an explicit
+# `workflow_dispatch` so an operator can re-run the gate manually right after a
+# fresh deployment. Secrets/requirements: E2E_TARGET_URL (repo variable) and
+# ALICE/BOB/NOAH_STORAGE_STATE (repo secrets) — documented in .github/CI-SECRETS.md.
+
+name: Deployed /exec acceptance gate
 
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  e2e:
-    name: DEV role-navigation acceptance
+  acceptance:
+    name: Deployed role-nav acceptance (fail-closed)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
+      - name: Enable pnpm (corepack)
         run: corepack enable
 
       - name: Setup Node
@@ -32,25 +63,55 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      # Fail closed BEFORE any secret is decoded or any test runs against a
+      # blank URL. Missing prerequisites -> explicit red, never a silent pass.
+      - name: Validate deployment prerequisites (fail-closed)
+        env:
+          E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
+          ALICE_STORAGE_STATE: ${{ secrets.ALICE_STORAGE_STATE }}
+          BOB_STORAGE_STATE: ${{ secrets.BOB_STORAGE_STATE }}
+          NOAH_STORAGE_STATE: ${{ secrets.NOAH_STORAGE_STATE }}
+        run: |
+          set -u
+          missing=""
+          [ -n "$ALICE_STORAGE_STATE" ] || missing="$missing ALICE_STORAGE_STATE"
+          [ -n "$BOB_STORAGE_STATE" ] || missing="$missing BOB_STORAGE_STATE"
+          [ -n "$NOAH_STORAGE_STATE" ] || missing="$missing NOAH_STORAGE_STATE"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "Configure the base64 storage-state secrets (see .github/CI-SECRETS.md)."
+            exit 1
+          fi
+          if [ -z "$E2E_TARGET_URL" ]; then
+            echo "::error::E2E_TARGET_URL repository variable is not configured."
+            echo "Point it at the approved /exec URL (see .github/CI-SECRETS.md)."
+            exit 1
+          fi
+          if ! printf '%s' "$E2E_TARGET_URL" | grep -Eq '^https://script\.google\.com/macros/s/AK[a-zA-Z0-9_-]+/exec$'; then
+            echo "::error::E2E_TARGET_URL is not a valid Apps Script /exec URL: $E2E_TARGET_URL"
+            exit 1
+          fi
+          echo "Deployment prerequisites OK."
+
       - name: Decode Google storage states
         env:
           ALICE_STORAGE_STATE: ${{ secrets.ALICE_STORAGE_STATE }}
           BOB_STORAGE_STATE: ${{ secrets.BOB_STORAGE_STATE }}
           NOAH_STORAGE_STATE: ${{ secrets.NOAH_STORAGE_STATE }}
         run: |
-          test -n "$ALICE_STORAGE_STATE"
-          test -n "$BOB_STORAGE_STATE"
-          test -n "$NOAH_STORAGE_STATE"
           mkdir -p .auth
           echo "$ALICE_STORAGE_STATE" | base64 --decode > .auth/alice.storage.json
           echo "$BOB_STORAGE_STATE" | base64 --decode > .auth/bob.storage.json
           echo "$NOAH_STORAGE_STATE" | base64 --decode > .auth/noah.storage.json
 
-      - name: Run Playwright E2E against approved DEV deployment
+      - name: Run Playwright role-nav acceptance against deployed URL
         env:
           E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
         run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
 
+      # Records PASS/FAIL rows into the acceptance plan (never claims success
+      # for a run that did not happen). Runs even on test failure so failures
+      # are captured; skipped when no JSON reporter artifact exists.
       - name: Append executed results to acceptance plan
         if: always() && hashFiles('test-results/e2e-results.json') != ''
         env:

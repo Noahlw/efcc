@@ -19,15 +19,46 @@ Prior to this decision:
    - If type errors exist, `tsc` exits non-zero and the git commit is rejected.
 
 2. **Sequential Multi-Config Type Checking**:
-   - `package.json` `"typecheck"` script is standardized to: `tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/e2e/tsconfig.json`.
-   - Ensures both root-level tooling/configs and E2E test files are strictly validated.
+
+   - Root `package.json` `"typecheck"` stays `tsc --noEmit -p tsconfig.json
+     && tsc --noEmit -p tests/e2e/tsconfig.json` (root tooling + E2E TS).
+   - `web/package.json` `"typecheck"` validates the Next app tsconfig and the
+     worker/auth tsconfig (`tsconfig.json` + `tsconfig.worker.json`).
+   - The web app tsconfig excludes the workerd-pool files (`worker.ts`,
+     `worker.test.ts`, `worker.auth.test.ts`, `lib/auth`, `lib/mirror`, and the
+     #151 `lib/service-envelope*`) — those resolve in the workerd vitest pool,
+     not plain `tsc`; `tsconfig.worker.json` typechecks them with
+     `@cloudflare/workers-types` plus `@cloudflare/vitest-pool-workers/types`.
 
 3. **Separated CI Workflows (`precheck.yml` + `e2e.yml`)**:
-   - **`precheck.yml`**: A fast pre-merge pipeline running on both `push` and `pull_request` events to `main`/`master` (and feature branches). Runs Node 22, `pnpm install`, `pnpm typecheck`, and `pnpm test:gas` (unit tests).
-   - **`e2e.yml`**: Updated to trigger on both `push` and `pull_request` events so full Playwright E2E role-navigation acceptance checks run against the deployed WebApp on PRs before merge.
+
+   - **`precheck.yml`** — the deterministic PR gate. Runs on both `push` and
+     `pull_request` to `main`/`master`. Two jobs own the two separate pnpm
+     workspaces (root and `web/`), each installing only its own lockfile so
+     nothing is installed twice:
+
+       - `root-precheck`: `pnpm typecheck` (root tooling + `tests/e2e` TS) and
+         `pnpm test` (`tests/gas` vm-harness incl. the GAS identity-mirror suite,
+         plus `tests/prototype`).
+       - `web-precheck`: `pnpm --dir web typecheck` (Next app + worker/auth
+         tsconfigs), `pnpm --dir web test` (workerd pool: worker, worker.auth,
+         `lib/auth`, `lib/mirror`, client contract), and
+         `pnpm --dir web test:components` (jsdom, incl. the landing-page
+         `lib/app.test.tsx` contract).
+
+   - **`e2e.yml`** — the deployed `/exec` acceptance gate. It is **fail-closed**:
+     it validates `E2E_TARGET_URL` (`vars`) and the three storage-state secrets
+     before running, decodes them only after validation, and fails with an
+     explicit message — never a green result — when any prerequisite is missing.
+     It does not deploy; a fresh deployed `/exec` smoke (AGENTS.md Headless-Gate)
+     requires an operator to rotate a new versioned deployment and update the
+     pinned ID + `E2E_TARGET_URL` together (see `.github/CI-SECRETS.md`).
 
 ## Consequences
 
 - Commit attempts with broken TypeScript code fail fast locally.
 - Pull Requests are gated by both fast unit/type checks (`precheck.yml`) and end-to-end acceptance tests (`e2e.yml`).
 - PRs can be safely configured with required status checks in GitHub branch protection.
+- The `e2e.yml` deployed acceptance gate is red (fail-closed) until the operator
+  provisions `E2E_TARGET_URL` and the storage-state secrets and rotates a fresh
+  deployment; a missing deployment proof is never reported as a green check.

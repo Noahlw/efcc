@@ -31,7 +31,11 @@ The capture commands create `.auth/alice.storage.json`, `.auth/bob.storage.json`
 
 ## CI
 
-`.github/workflows/e2e.yml` runs on pushes and pull requests targeting `main` or `master`. It restores the three base64-encoded role states from GitHub secrets, reads `E2E_TARGET_URL` from the repository variable, and runs Playwright directly. The workflow then appends the generated JSON results to the acceptance plan and uploads `test-results/` plus the plan document as short-lived evidence. It never creates or deletes an Apps Script deployment.
+`.github/workflows/e2e.yml` is the deployed `/exec` acceptance gate. It runs on pushes and pull requests targeting `main` or `master`, plus `workflow_dispatch` (so an operator can re-run it right after a fresh deployment). It is **fail-closed**: before decoding anything it validates `E2E_TARGET_URL` (repo `vars`) and the three storage-state secrets (`ALICE`/`BOB`/`NOAH_STORAGE_STATE`), and fails with an explicit message — never a green result — if any is missing, empty, or not a valid `/exec` URL. Only then does it decode the states to `.auth/*.storage.json` and run Playwright against the deployed URL. The workflow then appends the generated JSON results to the acceptance plan (`docs/specs/067-role-nav-acceptance-plan.md`) and uploads `test-results/` plus the plan document as short-lived evidence.
+
+It never creates or deletes an Apps Script deployment, so it exercises whichever `/exec` URL is pinned in `E2E_TARGET_URL`. A **fresh** deployed `/exec` smoke (AGENTS.md Headless-Gate) additionally requires an operator to rotate a new versioned deployment and update the pinned ID + variable together (see `.github/CI-SECRETS.md`); until then the gate reports the currently-deployed version only and the AUTH-01/02/03 tickets stay not-READY.
+
+The deterministic PR checks (typecheck + unit/component tests) live in `.github/workflows/precheck.yml` and need no secrets or deployment.
 
 ## Implemented-scope rule
 

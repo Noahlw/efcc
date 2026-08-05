@@ -1,11 +1,34 @@
-# GitHub Actions: Fast merge precheck workflow.
+# GitHub Actions: Deterministic PR gate (precheck).
 #
-# Per ADR-0014 (docs/adr/0014-precheck-and-precommit-workflow.md), this workflow
-# runs typecheck and unit tests on every push and pull_request to gate PR merges.
+# Required merge gate per ADR-0014 (docs/adr/0014-precheck-and-precommit-workflow.md).
+# Runs on every push/PR to main/master. It exercises ONLY deterministic,
+# self-contained checks against the code on the branch: no deployment, no
+# network-harnessed Apps Script, no Google session state, no E2E_TARGET_URL.
+#
+# The root and `web/` trees are SEPARATE pnpm workspaces with their own
+# lockfiles, so the gate splits into two jobs and each installs only its own
+# dependency set — nothing is installed twice.
+#
+# Coverage map (ownership explicit per tree):
+#   root-precheck
+#     pnpm typecheck                 root tooling + tests/e2e TS
+#     pnpm test                      tests/gas vm-harness (incl. identity-mirror
+#                                    16 GAS mirror tests) + tests/prototype
+#   web-precheck
+#     pnpm --dir web typecheck       Next app tsconfig + worker/auth tsconfig
+#     pnpm --dir web test            workerd pool: worker, worker.auth, lib/auth,
+#                                    lib/mirror, client contract
+#     pnpm --dir web test:components jsdom components incl. landing-page
+#                                    contract (lib/app.test.tsx)
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`.
+#
+# NOTE: untracked #151 service-envelope files (tests/gas/service-envelope.test.js,
+# src/gas/service-envelope.gs, web/lib/service-envelope.ts, web/lib/service-envelope.test.ts)
+# are not part of this branch's PR surface and are absent from CI checkouts, so
+# they never run here. They are exercised by ticket #151's own work.
 
-name: Precheck (Typecheck & Unit)
+name: Precheck (Deterministic PR gate)
 
 on:
   push:
@@ -14,28 +37,61 @@ on:
     branches: [main, master]
 
 jobs:
-  precheck:
-    name: Typecheck & Unit Tests
+  root-precheck:
+    name: Root typecheck & unit (gas + prototype)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
+      - name: Enable pnpm (corepack)
         run: corepack enable
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "pnpm"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install dependencies
+      - name: Install root dependencies
+        # Root precheck needs no Playwright browser (typecheck/vitest only);
+        # skip the ~150MB Chromium download the root postinstall would trigger.
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: pnpm install --frozen-lockfile
 
-      - name: Run typecheck
+      - name: Typecheck (root tooling + tests/e2e)
         run: pnpm typecheck
 
-      - name: Run unit tests (Vitest)
-        run: pnpm test:gas
+      - name: Unit tests (GAS vm-harness + prototype)
+        run: pnpm test
+
+  web-precheck:
+    name: Web typecheck & tests (workerd + components)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Typecheck (Next app + worker/auth)
+        run: pnpm --dir web typecheck
+
+      - name: Workerd pool tests (worker/auth/mirror + client contract)
+        run: pnpm --dir web test
+
+      - name: Component tests (incl. landing-page contract)
+        run: pnpm --dir web test:components
