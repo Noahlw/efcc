@@ -18,10 +18,7 @@
  * and return a Response. They are tested directly via the workerd runtime.
  */
 
-import {
-  normalizeUsername,
-  verifyCredential,
-} from "./credentials";
+import { verifyCredential } from "./credentials";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_COOKIE_MAX_AGE_SEC,
@@ -228,7 +225,7 @@ export async function handleLogin(
 /**
  * POST /api/auth/upgrade
  *
- * Body: { userId, legacyPin, newCredential }
+ * Body: { username, legacyPin, newCredential }
  * On success: sets the two auth cookies, returns the public user.
  */
 export async function handleUpgrade(
@@ -242,7 +239,7 @@ export async function handleUpgrade(
       detail: "Authorization header is not supported on this transport.",
     });
   }
-  let body: { userId?: unknown; legacyPin?: unknown; newCredential?: unknown };
+  let body: { username?: unknown; legacyPin?: unknown; newCredential?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -252,21 +249,24 @@ export async function handleUpgrade(
       detail: "Body must be JSON.",
     });
   }
-  const userId = typeof body.userId === "string" ? body.userId : "";
+  const username = typeof body.username === "string" ? body.username : "";
   const legacyPin = typeof body.legacyPin === "string" ? body.legacyPin : "";
   const newCredential =
     typeof body.newCredential === "string" ? body.newCredential : "";
-  if (!userId || !legacyPin || !newCredential) {
+  if (!username || !legacyPin || !newCredential) {
     return jsonResponse(400, {
       code: "VALIDATION",
       title: "VALIDATION",
-      detail: "userId, legacyPin, newCredential are required.",
+      detail: "username, legacyPin, newCredential are required.",
     });
   }
 
+  // Resolve the immutable account key server-side. The browser never needs
+  // to know or submit User_ID to begin the forced-upgrade flow.
+  const account = await findAccountByUsername(env.DB, username);
   try {
     await completeCredentialUpgrade(env.DB, {
-      userId,
+      userId: account?.user_id ?? "",
       legacyPin,
       newCredential,
     });
@@ -310,8 +310,10 @@ export async function handleUpgrade(
   }
 
   // Upgrade succeeded: issue a fresh session for the new credential.
-  const account = await findAccountByUserId(env.DB, userId);
-  if (!account) {
+  const upgradedAccount = account
+    ? await findAccountByUserId(env.DB, account.user_id)
+    : null;
+  if (!upgradedAccount) {
     return jsonResponse(401, {
       code: "AUTH_REQUIRED",
       title: "AUTH_REQUIRED",
@@ -319,12 +321,12 @@ export async function handleUpgrade(
     });
   }
   const bundle = await issueSession(env.DB, {
-    userId: account.user_id,
+    userId: upgradedAccount.user_id,
     accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
   });
   return authCookieJsonResponse(
     200,
-    { user: secretFreeUser(account) },
+    { user: secretFreeUser(upgradedAccount) },
     accessCookieHeader(bundle.accessToken),
     refreshCookieHeader(bundle.sessionId)
   );

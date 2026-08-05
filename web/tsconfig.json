@@ -36,7 +36,6 @@
     "worker.test.ts",
     "worker.auth.test.ts",
     "lib/auth",
-    "lib/mirror",
     "lib/service-envelope.ts",
     "lib/service-envelope.test.ts"
   ]

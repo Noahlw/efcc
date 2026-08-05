@@ -18,7 +18,6 @@
   "include": [
     "worker.ts",
     "worker.test.ts",
-    "lib/auth/**/*.ts",
-    "lib/mirror/**/*.ts"
+    "lib/auth/**/*.ts"
   ]
 }

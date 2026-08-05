@@ -293,7 +293,7 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
     const res = await worker.fetch(
       authRequest("/api/auth/upgrade", {
         headers: { Origin: HOST, "Content-Type": "application/json" },
-        body: { userId: "U003", legacyPin: "0000", newCredential: "carol-new-secret" },
+        body: { username: "carol", legacyPin: "0000", newCredential: "carol-new-secret" },
       }),
       testEnv()
     );

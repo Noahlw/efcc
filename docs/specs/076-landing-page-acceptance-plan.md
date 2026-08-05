@@ -91,7 +91,7 @@ empty session).
 Web `tsc --noEmit` reports no diagnostics in the changed files (page.tsx,
 copy.ts). The pipeline rework (2026-08-05, this branch) tightened the web
 typecheck split: `web/tsconfig.json` now excludes the workerd-pool files
-(worker.ts, worker.test.ts, worker.auth.test.ts, lib/auth, lib/mirror, and the
+(worker.ts, worker.test.ts, worker.auth.test.ts, lib/auth, and the
 #151 lib/service-envelope*) which resolve in the workerd vitest pool, not plain
 `tsc`, and `web/tsconfig.worker.json` typechecks them with
 `@cloudflare/workers-types` + `@cloudflare/vitest-pool-workers/types`. After that

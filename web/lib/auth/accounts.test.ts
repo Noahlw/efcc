@@ -7,8 +7,9 @@
  *   - User_ID is immutable at the schema level; username uniqueness is
  *     enforced transactionally on the normalized form.
  *   - Legacy import is read-only against the (fixture) sheet, deterministic,
- *     and idempotent (re-run does not duplicate); duplicate / malformed rows
- *     fail closed with a diagnostic and no partial write.
+ *     and idempotent (re-run does not duplicate); duplicate / malformed
+ *     non-empty PIN rows fail closed, while complete rows without a PIN are
+ *     skipped as non-legacy and do not block valid imports.
  *   - No cleartext PIN or password is logged, returned, or persisted.
  *   - Every migrated account requires a forced credential upgrade before any
  *     session is issued (enforced by the legacy_pin marker).
@@ -104,6 +105,33 @@ describe("AUTH-01: schema", () => {
         .run()
     ).rejects.toThrow(/UNIQUE constraint failed/);
   });
+
+  test("new password accounts do not require a legacy PIN", async () => {
+    await testDb()
+      .prepare(
+        `INSERT INTO accounts (
+           user_id, name, username, username_normalized, credential_hash,
+           credential_kind, credential_version, account_status, role,
+           requires_upgrade, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 'password', 2, 'Active', 'Member', 0, ?, ?)`
+      )
+      .bind(
+        "U102",
+        "New Member",
+        "new102",
+        "new102",
+        "pbkdf2:placeholder",
+        Date.now(),
+        Date.now()
+      )
+      .run();
+
+    const account = await findAccountByUserId(testDb(), "U102");
+    expect(account).not.toBeNull();
+    expect(account!.credential_kind).toBe("password");
+    expect(account!.legacy_pin_hash).toBeNull();
+    expect(account!.requires_upgrade).toBe(0);
+  });
 });
 
 describe("AUTH-01: legacy import", () => {
@@ -160,15 +188,31 @@ describe("AUTH-01: legacy import", () => {
     expect(await countAccounts()).toBe(before); // nothing written
   });
 
-  test("malformed row (missing PIN) fails closed with a clear diagnostic", async () => {
+  test("row without a PIN is skipped without blocking valid legacy rows", async () => {
     const before = await countAccounts();
-    const badRows = [
+    const rows = [
       HEADER,
       ["U230", "Eve", "eve230", "", "Member", "Active"],
       ["U231", "Frank", "frank231", "9999", "Member", "Active"],
     ];
+    const result = await importLegacyUsers(testDb(), rows);
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.skippedNoLegacyPin).toBe(1);
+    expect(await countAccounts()).toBe(before + 1);
+    expect(await findAccountByUserId(testDb(), "U230")).toBeNull();
+    expect(await findAccountByUserId(testDb(), "U231")).not.toBeNull();
+  });
+
+  test("malformed legacy PIN format fails closed before hashing or writing", async () => {
+    const before = await countAccounts();
+    const badRows = [
+      HEADER,
+      ["U232", "Eve", "eve232", "12A4", "Member", "Active"],
+      ["U233", "Frank", "frank233", "12345", "Member", "Active"],
+    ];
     await expect(importLegacyUsers(testDb(), badRows)).rejects.toThrow(
-      /missing PIN_Code/
+      /PIN_Code must be exactly 4 ASCII digits/
     );
     expect(await countAccounts()).toBe(before); // nothing written
   });

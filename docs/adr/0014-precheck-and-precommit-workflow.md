@@ -25,7 +25,7 @@ Prior to this decision:
    - `web/package.json` `"typecheck"` validates the Next app tsconfig and the
      worker/auth tsconfig (`tsconfig.json` + `tsconfig.worker.json`).
    - The web app tsconfig excludes the workerd-pool files (`worker.ts`,
-     `worker.test.ts`, `worker.auth.test.ts`, `lib/auth`, `lib/mirror`, and the
+     worker.test.ts, worker.auth.test.ts, `lib/auth`, and the
      #151 `lib/service-envelope*`) — those resolve in the workerd vitest pool,
      not plain `tsc`; `tsconfig.worker.json` typechecks them with
      `@cloudflare/workers-types` plus `@cloudflare/vitest-pool-workers/types`.
@@ -38,11 +38,10 @@ Prior to this decision:
      nothing is installed twice:
 
        - `root-precheck`: `pnpm typecheck` (root tooling + `tests/e2e` TS) and
-         `pnpm test` (`tests/gas` vm-harness incl. the GAS identity-mirror suite,
-         plus `tests/prototype`).
+         `pnpm test` (`tests/gas` vm-harness plus `tests/prototype`).
        - `web-precheck`: `pnpm --dir web typecheck` (Next app + worker/auth
          tsconfigs), `pnpm --dir web test` (workerd pool: worker, worker.auth,
-         `lib/auth`, `lib/mirror`, client contract), and
+         `lib/auth`, client contract), and
          `pnpm --dir web test:components` (jsdom, incl. the landing-page
          `lib/app.test.tsx` contract).
        - `shell-responsive`: `pnpm test:shell-responsive` — the local

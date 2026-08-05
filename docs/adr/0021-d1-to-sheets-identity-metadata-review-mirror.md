@@ -1,15 +1,16 @@
 # ADR-0021 — D1 → Sheets Identity-Metadata Review Mirror (AUTH-03)
 
-- **Status**: Proposed — decision locked via the operator's authorization of the original request; implementation evidence in AUTH-03 (#161). Flips to Accepted on deployed proof of a verified Cloudflare Cron Trigger run.
+- **Status**: Deferred — optional and not authorized for the current PR. Re-open only after a separate operator decision; deployed proof is not applicable while deferred.
 - **Deciders**: Noah Wong, OMP planner
 - **Date**: 2026-08-05
+- **Current scope decision (2026-08-05)**: AUTH-03 is deferred from the AUTH-01/AUTH-02 change. No scheduled mirror, Apps Script mirror endpoint, or review-sheet write is authorized until the operator separately confirms the need.
 - **Related**: [AUTH-03 #161](https://github.com/Noahlw/efcc/issues/161), [Map #158 — EFCC Cloudflare D1 Identity, Login & Registration Foundation](https://github.com/Noahlw/efcc/issues/158), [ADR-0020](0020-cloudflare-d1-identity-session-and-auth-boundary.md) (D1 identity boundary), [ADR-0018](0018-frontend-http-boundary-auth-and-api-contract.md), [AGENTS.md](../../AGENTS.md) (Sheet-Immutable rule).
 
 ## Context
 
-AUTH-01/AUTH-02 (ADO-0020) move identity into Cloudflare D1 as the sole system of record. Operators still need a human-readable, at-a-glance review of identity metadata (who is Active/Suspended, what Role each member holds, who is still awaiting the forced credential upgrade, whether any account is mid-lockout). The cost model and the shared Apps Script ceiling do not apply to a low-frequency (once daily) review read.
+AUTH-01/AUTH-02 (ADR-0020) move identity into Cloudflare D1 as the sole system of record. Issue #161 leaves a human-readable identity-metadata review mirror optional and not-yet-specified. It is deferred here because the operator has not authorized adding a scheduled Sheet writer to the current identity/authentication change.
 
-The operator authorized an **optional** mirror: a scheduled, one-directional push of D1 identity **metadata** into a Google Sheet for human read-only review. The parent user explicitly confirmed this scope; no relevant decisions changed.
+If the operator later authorizes it, this ADR retains the candidate design for a separate change: a scheduled, one-directional push of D1 identity **metadata** into a Google Sheet for human read-only review.
 
 ## Decision
 

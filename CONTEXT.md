@@ -22,12 +22,13 @@
 | Care Dashboard | 關懷儀表板 | A church-wide STAFF/ADMIN-only view of member inactivity, contact details, program participation, attendance-derived activity, and pastoral follow-up context. Program Leader grants do not provide access. |
 | QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
 | PIN | PIN 碼 | 4-digit numeric credential used with username for member login. |
+| Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Teacher unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
 | Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, and Care. Use **Section** instead of the ambiguous product terms “page” or “screen”; implementation files may still use `.html` fragment names. |
 | Scanner Section | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
 | Scanner Window | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
 | scannedCode | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
 | Section Link | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
-| Session | 登入工作階段 | A server-validated authenticated period for one Member. Whether a Member may hold one or multiple concurrent Sessions is intentionally deferred to a separate authentication-hardening decision. |
+| Session | 登入工作階段 | A server-validated authenticated period for one Member. A Member may hold multiple independent Sessions across devices; revoking one Session does not revoke the others. |
 | Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
 | Storage State | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
@@ -139,7 +140,7 @@ reconstruct by reading every file's header comment.
 | 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
 | 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
-| 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Proposed — locked via operator authorization; deployed proof pending |
+| 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |
 
 ---
 

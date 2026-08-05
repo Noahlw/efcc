@@ -49,6 +49,10 @@ The migration key question (this ADR's open question, carried into AUTH-01) was:
 
 The user selected Shape 1. It honors "no cleartext PIN ever" while giving each legacy member a self-service, identity-proven upgrade on first login, then permanently discards the legacy secret.
 
+The first-login browser contract is `POST /api/auth/upgrade` with `{ username, legacyPin, newCredential }`. The Worker resolves the account by username, verifies the one-time legacy PIN, clears the legacy proof and requires the new credential before issuing either auth cookie; the client does not provide a `userId` to begin this flow. The replacement credential is password-style, accepts Unicode input, and requires at least 8 characters; it is stored as `credential_kind = 'password'`.
+
+The migration boundary accepts only a trimmed, non-empty source `PIN_Code` containing exactly four ASCII digits. A complete identity row with no `PIN_Code` is skipped and reported as non-legacy so it cannot block valid legacy rows; the row is never created without a credential. Non-digit, overlong, and underlong non-empty values fail closed before hashing or writing. The older Apps Script interactive-login normalization is not used to sanitize migration rows. This validation is scoped to the one-time legacy import: new registration requests and password accounts do not require `PIN_Code`.
+
 ### 4.1 Legacy-PIN brute-force lockout (escalating ladder)
 
 The one-time legacy-PIN hash is a **throwaway identity gate**, not a standalone
@@ -71,8 +75,9 @@ since the last reset; `failed_attempts` resets to 0 when a stage is entered.
 While a time-lock (stage 1/2) is active, the gate rejects the verification
 before the PIN is ever checked; stage 3 rejects until an Admin/Teacher clears
 it. A successful upgrade clears the whole lockout state. The threshold (5) is
-the ticket's proposed value confirmed by the operator; the stage durations
-(5/15 minutes) follow the operator's 2026-08-05 decision. The exact numeric
+the ticket's proposed value confirmed by the operator during the 2026-08-05
+grilling: 5 failures, then 5 additional failures, then the next failure requires
+unlock. The stage durations (5/15 minutes) follow the same decision. The exact numeric
 threshold/durations are constants in `web/lib/auth/lockout.ts`, intentionally
 configurable before deploy.
 
@@ -80,7 +85,7 @@ configurable before deploy.
 
 - Identity, credentials, sessions, and registration are read from D1, removing every auth read from the shared Apps Script ceiling (cost model).
 - The existing Apps Script PIN/session path (ADR-0002, issue #73) is superseded for the webapp; domain RPCs stay Sheets-authoritative and unchanged.
-- A one-time, deterministic, idempotent, fail-closed import stands between the legacy sheet and D1; duplicate/malformed rows abort the whole import with a diagnostic and no partial write.
+- A one-time, deterministic, idempotent import stands between the legacy sheet and D1; duplicate/malformed non-empty-PIN rows abort the whole import with a diagnostic and no partial write, while complete rows without a legacy PIN are reported as skipped and never inserted without a credential.
 - This ADR stays `Proposed` until the deployed D1 login path (AUTH-04 + CF0-08) proves the boundary against a fresh isolated deployment; AUTH-01/AUTH-02 provide the local/preview D1 evidence.
 
 ## Considered options

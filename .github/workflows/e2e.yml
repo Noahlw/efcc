@@ -20,7 +20,7 @@
 # the operator to push + version + redeploy and to update the pinned ID and
 # E2E_TARGET_URL together (see .github/CI-SECRETS.md). Until that rotation is
 # done, this gate reports on the currently-deployed version only and the
-# AUTH-01/02/03 tickets remain not-READY (docs/specs/075-...-acceptance-plan.md).
+# AUTH-01/02 tickets remain not-READY (docs/specs/075-...-acceptance-plan.md).
 #
 # Trigger scope: pushes/PRs to main/master (per ADR-0014) plus an explicit
 # `workflow_dispatch` so an operator can re-run the gate manually right after a

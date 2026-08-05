@@ -8,17 +8,22 @@
  * columns resolved by header name, tolerant of extra/reordered columns), and
  * never writes the sheet. Re-running the import is idempotent: accounts
  * already present under the same immutable User_ID are skipped, never
- * duplicated. Duplicate usernames and malformed rows fail closed with a clear
- * diagnostic before any row is written (no partial migration).
+ * duplicated. Duplicate usernames and malformed non-empty PIN rows fail
+ * closed with a clear diagnostic before any row is written (no partial
+ * migration); complete rows without a PIN are counted and skipped.
  *
  * The user-selected legacy migration path (ADR-0020 §4) is the one-time
  * legacy-PIN-hash: each imported account stores only a salted PBKDF2 hash of
  * the normalized legacy PIN in `legacy_pin_hash`, marks `requires_upgrade=1`,
  * and is forced through a credential upgrade before any session is issued.
+ * The strict four-digit source check below applies only to eligible rows in
+ * this one-time legacy import. Complete rows without a PIN_Code are skipped
+ * as non-legacy; new password accounts and registration requests do not pass
+ * through the Users-sheet importer and have no PIN_Code requirement.
  * No cleartext PIN is ever persisted, logged, or returned.
  */
 
-import { normalizePin, normalizeUsername, hashCredential } from "./credentials";
+import { normalizeUsername, hashCredential } from "./credentials";
 
 export const ACCOUNT_STATUS = {
   PENDING: "Pending",
@@ -110,6 +115,7 @@ interface ParsedRow {
 export interface LegacyImportResult {
   imported: number;
   skipped: number;
+  skippedNoLegacyPin: number;
 }
 
 /**
@@ -119,6 +125,9 @@ export interface LegacyImportResult {
  *
  * Atomicity contract (#159): no partial write under any failure mode.
  *   * Duplicate / malformed source rows fail closed BEFORE the DB is touched.
+ *   * A row with complete identity fields but no PIN_Code is treated as a
+ *     non-legacy/new-user row, skipped, and counted instead of blocking valid
+ *     legacy rows. It is not created without a credential.
  *   * An incoming row whose `user_id` or `username_normalized` collides with
  *     an existing D1 account under a DIFFERENT user_id is detected by a
  *     preflight and fails closed; only a re-import of the same `user_id` is
@@ -144,6 +153,7 @@ export async function importLegacyUsers(
   const seenUserId = new Set<string>();
   const parsed: ParsedRow[] = [];
   const diagnostics: string[] = [];
+  let skippedNoLegacyPin = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
@@ -151,7 +161,7 @@ export async function importLegacyUsers(
     const userId = String(row[col.USER_ID] ?? "").trim();
     const name = String(row[col.NAME] ?? "").trim();
     const username = String(row[col.USERNAME] ?? "").trim();
-    const pinRaw = String(row[col.PIN_CODE] ?? "");
+    const pinNormalized = String(row[col.PIN_CODE] ?? "").trim();
     const roleRaw = String(row[col.ROLE] ?? "").trim().toUpperCase();
     const status = String(row[col.STATUS] ?? "").trim();
 
@@ -159,7 +169,18 @@ export async function importLegacyUsers(
     if (!userId) problems.push("missing User_ID");
     if (!name) problems.push("missing Name");
     if (!username) problems.push("missing Username");
-    if (!pinRaw) problems.push("missing PIN_Code");
+    if (!pinNormalized) {
+      if (userId && name && username) {
+        // A complete identity row with no legacy PIN is not eligible for the
+        // one-time import. Skip it so a new/non-migrated user cannot block
+        // valid legacy accounts, but never create a credential-less account.
+        skippedNoLegacyPin += 1;
+        continue;
+      }
+      problems.push("missing PIN_Code");
+    } else if (!/^[0-9]{4}$/u.test(pinNormalized)) {
+      problems.push("PIN_Code must be exactly 4 ASCII digits");
+    }
 
     const usernameNormalized = normalizeUsername(username);
     if (problems.length === 0) {
@@ -196,7 +217,7 @@ export async function importLegacyUsers(
       username_normalized: usernameNormalized,
       role,
       status: status || ACCOUNT_STATUS.ACTIVE,
-      legacyPinNormalized: normalizePin(pinRaw),
+      legacyPinNormalized: pinNormalized,
     });
   }
 
@@ -264,7 +285,11 @@ export async function importLegacyUsers(
   }
 
   if (toInsert.length === 0) {
-    return { imported: 0, skipped: parsed.length };
+    return {
+      imported: 0,
+      skipped: parsed.length + skippedNoLegacyPin,
+      skippedNoLegacyPin,
+    };
   }
 
   // Atomic write: a single db.batch() call runs every INSERT in one SQLite
@@ -303,7 +328,8 @@ export async function importLegacyUsers(
 
   return {
     imported: toInsert.length,
-    skipped: parsed.length - toInsert.length,
+    skipped: parsed.length - toInsert.length + skippedNoLegacyPin,
+    skippedNoLegacyPin,
   };
 }
 

@@ -4,9 +4,9 @@ The deployed acceptance gate (`.github/workflows/e2e.yml`) runs Playwright again
 
 ## How the gate behaves
 
-- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets and no deployment: root typecheck + GAS/prototype unit tests, web typecheck, web workerd/auth/mirror tests, web component (incl. landing-page contract) tests, and the local static-shell responsive suite (`pnpm test:shell-responsive`, built from the Next static export, no `E2E_TARGET_URL`/storage/Sheet). These are the mergeable status checks.
+- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets and no deployment: root typecheck + GAS/prototype unit tests, web typecheck, web Worker/auth tests, web component (incl. landing-page contract) tests, and the local static-shell responsive suite (`pnpm test:shell-responsive`, built from the Next static export, no `E2E_TARGET_URL`/storage/Sheet). These are the mergeable status checks.
 - **The deployed `/exec` acceptance gate** (`e2e.yml`) is **fail-closed**: if any prerequisite below is missing it fails with an explicit message — it never decodes empty secrets, never runs against an empty URL, and never degrades to a green result. A missing deployment proof must never look like a pass.
-- The gate does **not** deploy. It exercises whichever `/exec` URL is pinned in `E2E_TARGET_URL`. A **fresh** deployed `/exec` smoke (AGENTS.md Headless-Gate) additionally requires the operator to push + version + redeploy and rotate the pinned ID and `E2E_TARGET_URL` together (below). Until that rotation, the gate reports the currently-deployed version only, and the AUTH-01/02/03 tickets stay not-READY (see `docs/specs/075-auth-d1-foundation-acceptance-plan.md`).
+- The gate does **not** deploy. It exercises whichever `/exec` URL is pinned in `E2E_TARGET_URL`. A **fresh** deployed `/exec` smoke (AGENTS.md Headless-Gate) additionally requires the operator to push + version + redeploy and rotate the pinned ID and `E2E_TARGET_URL` together (below). Until that rotation, the gate reports the currently-deployed version only, and the AUTH-01/02 tickets stay not-READY (see `docs/specs/075-auth-d1-foundation-acceptance-plan.md`).
 
 ## Repository secrets
 
