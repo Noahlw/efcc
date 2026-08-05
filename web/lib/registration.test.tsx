@@ -49,11 +49,17 @@ describe("RegistrationForm", () => {
     await user.click(screen.getByRole("button", { name: REGISTRATION_COPY.submit }));
 
     expect(await screen.findByText(REGISTRATION_COPY.doneTitle)).toBeInTheDocument();
-    expect(captured?.method).toBe("POST");
-    expect(captured?.body.username).toBe("dave");
-    expect(captured?.body.password).toBe("dave-password-1");
-    expect(captured?.body.name).toBe("Dave Ng");
-    expect(captured?.headers["idempotency-key"]).toBeTruthy();
+    expect(captured).not.toBeNull();
+    const request = captured as unknown as {
+      method: string;
+      headers: Record<string, string>;
+      body: Record<string, unknown>;
+    };
+    expect(request.method).toBe("POST");
+    expect(request.body.username).toBe("dave");
+    expect(request.body.password).toBe("dave-password-1");
+    expect(request.body.name).toBe("Dave Ng");
+    expect(request.headers["idempotency-key"]).toBeTruthy();
   });
 
   test("shows a deterministic conflict message for a duplicate username", async () => {

@@ -553,6 +553,19 @@ export function authLogin(
   });
 }
 
+/** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
+export function authUpgrade(
+  username: string,
+  legacyPin: string,
+  newCredential: string
+): Promise<{ user: PublicUser }> {
+  return authFetch<{ user: PublicUser }>("/api/v1/auth/upgrade", "POST", {
+    username,
+    legacyPin,
+    newCredential,
+  });
+}
+
 /** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
 export function authRefresh(): Promise<void> {
   return authFetch<void>("/api/v1/auth/refresh", "POST");

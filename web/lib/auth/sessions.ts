@@ -252,36 +252,43 @@ export async function refreshSession(
     await findAccountByUserId(db, session.user_id)
   );
 
-  // Rotate: mint a fresh session row, then invalidate the presented value in
-  // the same transaction. The old value can never be renewed afterwards.
+  // Consume the presented value before minting its successor. Both statements
+  // run in one D1 batch transaction; SQLite's changes() function makes the
+  // INSERT conditional on this invocation winning the compare-and-set update.
+  // A concurrent refresh therefore gets no successor row and cannot mint a
+  // second live session from the same opaque value.
   const newSessionId = crypto.randomUUID();
   const expiresAt = now + REFRESH_IDLE_TTL_MS;
-  await db
-    .batch([
-      db
-        .prepare(
-          `INSERT INTO sessions (
-             session_id, user_id, issued_at, last_seen_at, expires_at,
-             revoked_at, device_fingerprint, created_at
-           ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
-        )
-        .bind(
-          newSessionId,
-          account.user_id,
-          now,
-          now,
-          expiresAt,
-          options.deviceFingerprint ?? null,
-          now
-        ),
-      db
-        .prepare(
-          `UPDATE sessions
-              SET revoked_at = ?
-            WHERE session_id = ? AND revoked_at IS NULL`
-        )
-        .bind(now, session.session_id),
-    ]);
+  const [consumed] = await db.batch([
+    db
+      .prepare(
+        `UPDATE sessions
+            SET revoked_at = ?
+          WHERE session_id = ? AND revoked_at IS NULL`
+      )
+      .bind(now, session.session_id),
+    db
+      .prepare(
+        `INSERT INTO sessions (
+           session_id, user_id, issued_at, last_seen_at, expires_at,
+           revoked_at, device_fingerprint, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, NULL, ?, ?
+          WHERE changes() = 1`
+      )
+      .bind(
+        newSessionId,
+        account.user_id,
+        now,
+        now,
+        expiresAt,
+        options.deviceFingerprint ?? null,
+        now
+      ),
+  ]);
+  if ((consumed?.meta.changes ?? 0) !== 1) {
+    throw new AuthError("AUTH_REQUIRED", "Session already consumed.");
+  }
 
   const accessToken = await signAccessToken(options.accessTokenSecret, {
     sid: newSessionId,

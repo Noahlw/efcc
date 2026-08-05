@@ -136,24 +136,52 @@ export async function createRegistrationRequest(
   }
 
   const requestId = crypto.randomUUID();
-  await db
-    .prepare(
-      `INSERT INTO registration_requests (
-         request_id, user_id, username, username_normalized, name, phone,
-         credential_hash, credential_kind, account_status, role, submitted_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?)`
-    )
-    .bind(
-      requestId,
-      options.userId,
-      options.username,
-      normalized,
-      options.name,
-      options.phone ?? null,
-      options.credentialHash,
-      now
-    )
-    .run();
+  let result: D1Result<unknown>;
+  try {
+    result = await db
+      .prepare(
+        `INSERT INTO registration_requests (
+           request_id, user_id, username, username_normalized, name, phone,
+           credential_hash, credential_kind, account_status, role, submitted_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM accounts WHERE username_normalized = ?
+          )
+            AND NOT EXISTS (
+              SELECT 1 FROM registration_requests
+               WHERE username_normalized = ?
+            )`
+      )
+      .bind(
+        requestId,
+        options.userId,
+        options.username,
+        normalized,
+        options.name,
+        options.phone ?? null,
+        options.credentialHash,
+        now,
+        normalized,
+        normalized
+      )
+      .run();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /unique|constraint/i.test(error.message)
+    ) {
+      throw new RegistrationConflictError(
+        "A registration request for that username already exists."
+      );
+    }
+    throw error;
+  }
+  if ((result.meta?.changes ?? 0) !== 1) {
+    throw new RegistrationConflictError(
+      "A registration request for that username already exists."
+    );
+  }
 
   return {
     request_id: requestId,
@@ -218,38 +246,59 @@ export async function approveRegistration(
     );
   }
 
-  // Approve in one transaction: promote the request to Active and create the
-  // Active account, so the gate cannot be bypassed by a partial write.
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO accounts (
-           user_id, name, username, username_normalized,
-           credential_hash, credential_kind, credential_version,
-           account_status, role, phone, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 1, 'Active', ?, ?, ?, ?)`
-      )
-      .bind(
-        request.user_id,
-        request.name,
-        request.username,
-        normalized,
-        request.credential_hash,
-        request.credential_kind,
-        request.role,
-        request.phone,
-        now,
-        now
-      ),
-    db
-      .prepare(
-        `UPDATE registration_requests
-            SET account_status = 'Active', reviewed_by = ?, reviewed_at = ?,
-                review_decision = 'Approved'
-          WHERE request_id = ?`
-      )
-      .bind(options.reviewerId, now, request.request_id),
-  ]);
+  // Approve in one transaction. The account INSERT is conditional on the
+  // request still being Pending, then the compare-and-set state transition is
+  // the transaction's final statement. A concurrent reject/approve therefore
+  // either wins the Pending transition or produces no account at all.
+  let results: D1Result<unknown>[];
+  try {
+    results = await db.batch([
+      db
+        .prepare(
+          `INSERT INTO accounts (
+             user_id, name, username, username_normalized,
+             credential_hash, credential_kind, credential_version,
+             account_status, role, phone, created_at, updated_at
+           )
+           SELECT user_id, name, username, username_normalized,
+                  credential_hash, credential_kind, 1, 'Active', role,
+                  phone, ?, ?
+             FROM registration_requests
+            WHERE request_id = ? AND account_status = 'Pending'`
+        )
+        .bind(now, now, request.request_id),
+      db
+        .prepare(
+          `UPDATE registration_requests
+              SET account_status = 'Active', reviewed_by = ?, reviewed_at = ?,
+                  review_decision = 'Approved'
+            WHERE request_id = ? AND account_status = 'Pending'`
+        )
+        .bind(options.reviewerId, now, request.request_id),
+    ]);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /unique|constraint/i.test(error.message)
+    ) {
+      throw new RegistrationConflictError(
+        "An account with that username already exists."
+      );
+    }
+    throw error;
+  }
+  if ((results[1]?.meta?.changes ?? 0) !== 1) {
+    const current = await requireRequest(db, request.request_id);
+    if (current.account_status === "Active") return "active";
+    if (current.account_status === "Rejected") {
+      throw new RegistrationConflictError(
+        "Cannot approve a registration that was already rejected."
+      );
+    }
+    throw new RegistrationConflictError(
+      "Registration approval could not be completed."
+    );
+  }
 
   return "active";
 }
@@ -275,15 +324,28 @@ export async function rejectRegistration(
     );
   }
 
-  await db
+  const result = await db
     .prepare(
       `UPDATE registration_requests
           SET account_status = 'Rejected', reviewed_by = ?, reviewed_at = ?,
               review_decision = 'Rejected'
-        WHERE request_id = ?`
+        WHERE request_id = ? AND account_status = 'Pending'`
     )
     .bind(options.reviewerId, now, request.request_id)
     .run();
+
+  if ((result.meta?.changes ?? 0) !== 1) {
+    const current = await requireRequest(db, request.request_id);
+    if (current.account_status === "Rejected") return "rejected";
+    if (current.account_status === "Active") {
+      throw new RegistrationConflictError(
+        "Cannot reject a registration that was already approved."
+      );
+    }
+    throw new RegistrationConflictError(
+      "Registration rejection could not be completed."
+    );
+  }
 
   return "rejected";
 }

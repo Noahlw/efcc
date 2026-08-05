@@ -170,7 +170,18 @@ async function assertCorrelated(res: Response): Promise<unknown> {
 type ProblemBody = { code: string; status: number; requestId: string };
 
 async function problemOf(res: Response): Promise<ProblemBody> {
-  return (await res.json()) as ProblemBody;
+  assert.strictEqual(
+    res.headers.get("Content-Type"),
+    "application/problem+json"
+  );
+  const body = (await res.json()) as ProblemBody;
+  assert.ok(body.requestId, "problem response must carry requestId");
+  assert.strictEqual(
+    body.requestId,
+    res.headers.get("X-Request-Id"),
+    "problem requestId must match X-Request-Id"
+  );
+  return body;
 }
 
 /** Look up the registration request_id for a username (approval discovery). */
@@ -363,6 +374,44 @@ describe("AUTH-06: register", () => {
     const body = await problemOf(res);
     assert.strictEqual(body.code, "CONFLICT");
   });
+
+  test("concurrent registrations for one username create one request", async () => {
+    const responses = await Promise.all([
+      worker.fetch(
+        authRequest("/api/v1/auth/register", {
+          headers: { Origin: HOST, "Idempotency-Key": "idem-race-a" },
+          body: {
+            username: "race-user",
+            password: "race-password-1",
+            name: "Race User",
+          },
+        }),
+        testEnv()
+      ),
+      worker.fetch(
+        authRequest("/api/v1/auth/register", {
+          headers: { Origin: HOST, "Idempotency-Key": "idem-race-b" },
+          body: {
+            username: "race-user",
+            password: "race-password-2",
+            name: "Race User",
+          },
+        }),
+        testEnv()
+      ),
+    ]);
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [200, 409]
+    );
+    const row = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM registration_requests WHERE username_normalized = ?"
+      )
+      .bind("race-user")
+      .first<{ n: number }>();
+    assert.strictEqual(Number(row?.n ?? 0), 1);
+  });
 });
 
 describe("AUTH-06: login", () => {
@@ -392,6 +441,31 @@ describe("AUTH-06: login", () => {
     const { access, refresh } = readAuthCookiesFromResponse(res);
     assertLockedCookie(access, ACCESS_COOKIE_NAME);
     assertLockedCookie(refresh, REFRESH_COOKIE_NAME);
+  });
+
+  test("/me returns the complete public profile DTO", async () => {
+    const access = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      authRequest("/api/v1/auth/me", {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `${ACCESS_COOKIE_NAME}=${access}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { user: Record<string, unknown> };
+    };
+    assert.deepStrictEqual(body.data.user, {
+      userId: "U001",
+      name: "Alice Chan",
+      username: "alice",
+      phone: "",
+      role: "Admin",
+      status: "Active",
+      qrCodeString: "",
+    });
+    assertBodyHasNoTokenKeys(body);
   });
 
   test("a repeated successful login issues a fresh refresh session (not idempotent)", async () => {
@@ -656,6 +730,54 @@ describe("AUTH-06: registrations approve/reject", () => {
     assert.strictEqual(res.status, 200);
     const body = (await res.json()) as { data: { accountStatus: string } };
     assert.strictEqual(body.data.accountStatus, "active");
+  });
+
+  test("concurrent approval creates one account", async () => {
+    const reg = await worker.fetch(
+      authRequest("/api/v1/auth/register", {
+        headers: { Origin: HOST, "Idempotency-Key": "idem-approve-race" },
+        body: {
+          username: "approve-race",
+          password: "approve-race-password",
+          name: "Approve Race",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+    const requestId = await registrationIdFor("approve-race");
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const responses = await Promise.all([
+      worker.fetch(
+        authRequest(`/api/v1/auth/registrations/${requestId}/approve`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${adminAccess}`,
+            "Idempotency-Key": "idem-approve-race-a",
+          },
+        }),
+        testEnv()
+      ),
+      worker.fetch(
+        authRequest(`/api/v1/auth/registrations/${requestId}/approve`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${adminAccess}`,
+            "Idempotency-Key": "idem-approve-race-b",
+          },
+        }),
+        testEnv()
+      ),
+    ]);
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [200, 200]
+    );
+    const row = await testDb()
+      .prepare("SELECT COUNT(*) AS n FROM accounts WHERE username_normalized = ?")
+      .bind("approve-race")
+      .first<{ n: number }>();
+    assert.strictEqual(Number(row?.n ?? 0), 1);
   });
 
   test("reject marks a Pending registration as rejected without an account", async () => {

@@ -64,9 +64,10 @@ export interface PublicUser {
   userId: string;
   name: string;
   username: string;
+  phone: string;
   role: string;
-  accountStatus: string;
-  requiresUpgrade: boolean;
+  status: string;
+  qrCodeString: string;
 }
 
 function secretFreeUser(account: {
@@ -75,15 +76,17 @@ function secretFreeUser(account: {
   username: string;
   role: string;
   account_status: string;
-  requires_upgrade: number;
+  phone: string | null;
+  qr_code_string: string | null;
 }): PublicUser {
   return {
     userId: account.user_id,
     name: account.name,
     username: account.username,
+    phone: account.phone ?? "",
     role: account.role,
-    accountStatus: account.account_status,
-    requiresUpgrade: account.requires_upgrade === 1,
+    status: account.account_status,
+    qrCodeString: account.qr_code_string ?? "",
   };
 }
 
@@ -624,7 +627,13 @@ export async function handleLogout(
     try {
       await revokeSession(env.DB, refresh);
     } catch {
-      // best-effort — logout still clears the cookies
+      return problem(
+        503,
+        "UNAVAILABLE",
+        "Service unavailable",
+        "Unable to revoke the refresh session.",
+        requestId
+      );
     }
   }
   const cleared = clearAuthCookieHeaders();

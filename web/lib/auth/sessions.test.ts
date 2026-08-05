@@ -248,6 +248,37 @@ describe("AUTH-02: refresh idle expiry", () => {
     expect(second.sessionId).not.toBe(first.sessionId);
     expect(await sessionRevoked(first.sessionId)).toBe(true);
   });
+
+  test("concurrent refreshes consume one opaque value only once", async () => {
+    const now = 9_000_000;
+    const bundle = await issueSession(testDb(), {
+      userId: "U002",
+      accessTokenSecret: SECRET,
+      now,
+    });
+    const attempts = await Promise.allSettled([
+      refreshSession(testDb(), {
+        sessionId: bundle.sessionId,
+        accessTokenSecret: SECRET,
+        now,
+      }),
+      refreshSession(testDb(), {
+        sessionId: bundle.sessionId,
+        accessTokenSecret: SECRET,
+        now,
+      }),
+    ]);
+
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const row = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND issued_at = ? AND session_id != ?"
+      )
+      .bind("U002", now, bundle.sessionId)
+      .first<{ n: number }>();
+    expect(Number(row?.n ?? 0)).toBe(1);
+  });
 });
 
 describe("AUTH-02: revocation", () => {

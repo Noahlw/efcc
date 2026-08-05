@@ -294,7 +294,7 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
-    test("forced-upgrade response (mustSetNewCredential) preserves the gate: notice, no session, stays on login", async () => {
+    test("forced-upgrade response requires a new credential before issuing a session", async () => {
       server.use(
         http.post("/api/v1/auth/login", () =>
           HttpResponse.json({
@@ -313,7 +313,24 @@ describe("Shell", () => {
             requestId: "r-me",
             data: { user: PUBLIC_USER },
           })
-        )
+        ),
+        http.post("/api/v1/auth/upgrade", async ({ request }) => {
+          authCalls.push("/api/v1/auth/upgrade");
+          const body = (await request.json()) as {
+            username?: string;
+            legacyPin?: string;
+            newCredential?: string;
+          };
+          expect(body).toEqual({
+            username: "legacy",
+            legacyPin: "pin",
+            newCredential: "new-password",
+          });
+          return HttpResponse.json({
+            requestId: "r-upgraded",
+            data: { user: PUBLIC_USER },
+          });
+        })
       );
       const user = userEvent.setup();
       render(<LoginPage />);
@@ -333,6 +350,26 @@ describe("Shell", () => {
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
       expect(replaceMock).not.toHaveBeenCalled();
       expect(authCalls).not.toContain("/api/v1/auth/me");
+
+      expect(
+        screen.getByRole("heading", { name: COPY.login.upgradeTitle })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(COPY.login.legacyPasswordLabel)
+      ).toHaveValue("pin");
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(authCalls).toContain("/api/v1/auth/upgrade");
+      expect(authCalls).toContain("/api/v1/auth/me");
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
     });
 
     test("stored access session silently restores and redirects on reload", async () => {

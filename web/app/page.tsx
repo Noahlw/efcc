@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { authLogin, authMe, RpcError } from "@/lib/api";
+import { authLogin, authMe, authUpgrade, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { RecoveryView } from "@/lib/recovery-view";
+import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { firstSection } from "@/lib/sections";
 import {
   buildBootstrap,
@@ -70,6 +71,8 @@ type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
   | { kind: "AUTHENTICATING" }
+  | { kind: "UPGRADE" }
+  | { kind: "UPGRADING" }
   | { kind: "ERROR"; error: string }
   | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
 
@@ -78,6 +81,8 @@ export default function LoginPage() {
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [legacyPin, setLegacyPin] = useState("");
+  const [newCredential, setNewCredential] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const mountRef = useRef(true);
 
@@ -169,8 +174,12 @@ export default function LoginPage() {
       if (result.mustSetNewCredential) {
         // Legacy forced-upgrade gate (AUTH-01 #159 / ADR-0020 §4): identity
         // proven but NO session is issued until a new credential is set.
-        // Preserve that response state — do not silently mint a session.
-        setView({ kind: "SIGNED_OUT" });
+        // Preserve the verified legacy credential in a dedicated upgrade form;
+        // the upgrade endpoint is the only path that can issue the session.
+        setLegacyPin(password);
+        setPassword("");
+        setNewCredential("");
+        setView({ kind: "UPGRADE" });
         setNotice(COPY.login.upgradeRequired);
         announce(COPY.login.upgradeRequired);
         return;
@@ -198,6 +207,29 @@ export default function LoginPage() {
     }
   }, [username, password, navigateAfterLogin]);
 
+  const handleUpgrade = useCallback(async () => {
+    setView({ kind: "UPGRADING" });
+    announce(COPY.login.upgrading);
+    setNotice(null);
+    try {
+      await authUpgrade(username, legacyPin, newCredential);
+      setAuthHint();
+      const user = await authMe();
+      const bootstrap = buildBootstrap(user);
+      announce(COPY.login.success);
+      navigateAfterLogin(bootstrap);
+    } catch (error) {
+      const msg =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.login.networkError;
+      setView({ kind: "UPGRADE" });
+      setNotice(msg);
+      announce(msg);
+      clearAuthHint();
+    }
+  }, [legacyPin, newCredential, username, navigateAfterLogin]);
+
   if (view.kind === "RESTORING") {
     return (
       <main className={styles.restoring}>
@@ -213,7 +245,8 @@ export default function LoginPage() {
     );
   }
 
-  const busy = view.kind === "AUTHENTICATING";
+  const upgradeMode = view.kind === "UPGRADE" || view.kind === "UPGRADING";
+  const busy = view.kind === "AUTHENTICATING" || view.kind === "UPGRADING";
 
   return (
     <div className={styles.page}>
@@ -294,7 +327,7 @@ export default function LoginPage() {
               <div className={styles.loginTitleWrap}>
                 <SealMark size={22} />
                 <h2 id="login-title" className={styles.loginTitle}>
-                  {COPY.login.title}
+                  {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
                 </h2>
               </div>
               <p className={styles.loginLead}>{LANDING.loginPanelLead}</p>
@@ -308,7 +341,11 @@ export default function LoginPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!busy) {
-                    handleLogin();
+                    if (upgradeMode) {
+                      handleUpgrade();
+                    } else {
+                      handleLogin();
+                    }
                   }
                 }}
               >
@@ -320,27 +357,67 @@ export default function LoginPage() {
                     className={styles.input}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    disabled={busy}
+                    disabled={busy || upgradeMode}
                     autoComplete="username"
                   />
                 </label>
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
-                    {COPY.login.passwordLabel}
-                  </span>
-                  <input
-                    className={styles.input}
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={busy}
-                    autoComplete="current-password"
-                  />
-                </label>
+                {upgradeMode ? (
+                  <>
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        {COPY.login.legacyPasswordLabel}
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="password"
+                        value={legacyPin}
+                        onChange={(e) => setLegacyPin(e.target.value)}
+                        disabled={busy}
+                        autoComplete="current-password"
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        {COPY.login.newPasswordLabel}
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="password"
+                        value={newCredential}
+                        onChange={(e) => setNewCredential(e.target.value)}
+                        disabled={busy}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      {COPY.login.passwordLabel}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      disabled={busy}
+                      autoComplete="current-password"
+                    />
+                  </label>
+                )}
                 <button className={styles.submit} type="submit" disabled={busy}>
-                  {busy ? COPY.login.submitting : COPY.login.submit}
+                  {busy
+                    ? upgradeMode
+                      ? COPY.login.upgrading
+                      : COPY.login.submitting
+                    : upgradeMode
+                      ? COPY.login.upgradeSubmit
+                      : COPY.login.submit}
                 </button>
-                <p className={styles.loginNote}>{LANDING.loginAfterNote}</p>
+                <p className={styles.loginNote}>
+                  {LANDING.loginAfterNote}{" "}
+                  <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
+                </p>
               </form>
               {view.kind === "ERROR" && (
                 <p role="alert" className={styles.notice}>

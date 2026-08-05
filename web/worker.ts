@@ -148,39 +148,45 @@ async function authTransportGuard(request: Request): Promise<Response | null> {
     try {
       reqOriginHost = new URL(reqOrigin).host;
     } catch {
-      return jsonResponse(403, {
-        code: "CROSS_ORIGIN_FORBIDDEN",
-        title: "CROSS_ORIGIN_FORBIDDEN",
-        detail: "Cross-origin requests are not supported on this transport.",
-      });
+      return authProblemResponse(
+        403,
+        "CROSS_ORIGIN_FORBIDDEN",
+        "Forbidden",
+        "Cross-origin requests are not supported on this transport."
+      );
     }
     if (reqOriginHost !== url.host) {
-      return jsonResponse(403, {
-        code: "CROSS_ORIGIN_FORBIDDEN",
-        title: "CROSS_ORIGIN_FORBIDDEN",
-        detail: "Cross-origin requests are not supported on this transport.",
-      });
+      return authProblemResponse(
+        403,
+        "CROSS_ORIGIN_FORBIDDEN",
+        "Forbidden",
+        "Cross-origin requests are not supported on this transport."
+      );
     }
   }
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 405,
-      headers: { "Content-Type": "text/plain" },
-    });
+    return authProblemResponse(
+      405,
+      "METHOD_NOT_ALLOWED",
+      "Method Not Allowed",
+      "CORS preflight is not supported on this transport."
+    );
   }
   if (request.headers.get("Authorization") !== null) {
-    return jsonResponse(403, {
-      code: "TRANSPORT_FORBIDDEN",
-      title: "TRANSPORT_FORBIDDEN",
-      detail: "Authorization header is not supported on this transport.",
-    });
+    return authProblemResponse(
+      403,
+      "TRANSPORT_FORBIDDEN",
+      "Forbidden",
+      "Authorization header is not supported on this transport."
+    );
   }
   if (request.headers.get("X-Efcc-Session-Id") !== null) {
-    return jsonResponse(403, {
-      code: "TRANSPORT_FORBIDDEN",
-      title: "TRANSPORT_FORBIDDEN",
-      detail: "X-Efcc-Session-Id header is not supported on this transport.",
-    });
+    return authProblemResponse(
+      403,
+      "TRANSPORT_FORBIDDEN",
+      "Forbidden",
+      "X-Efcc-Session-Id header is not supported on this transport."
+    );
   }
   return null;
 }
@@ -200,6 +206,32 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function authProblemResponse(
+  status: number,
+  code: string,
+  title: string,
+  detail: string
+): Response {
+  const requestId = crypto.randomUUID();
+  return new Response(
+    JSON.stringify({
+      type: `tag:apps-script/efcc/errors#${code}`,
+      title,
+      status,
+      detail,
+      code,
+      requestId,
+    }),
+    {
+      status,
+      headers: {
+        "Content-Type": "application/problem+json",
+        "X-Request-Id": requestId,
+      },
+    }
+  );
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -209,12 +241,12 @@ export default {
       const guard = await authTransportGuard(request);
       if (guard) return guard;
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return jsonResponse(503, {
-          code: "AUTH_NOT_CONFIGURED",
-          title: "AUTH_NOT_CONFIGURED",
-          detail: "Auth signing secret is not configured.",
-          requestId: crypto.randomUUID(),
-        });
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
       }
       const authEnv = {
         DB: env.DB,
@@ -274,12 +306,12 @@ export default {
       if (reject && request.method === "POST") {
         return handleReject(request, authEnv, reject[1]);
       }
-      return jsonResponse(404, {
-        code: "NOT_FOUND",
-        title: "NOT_FOUND",
-        detail: "Unknown auth route.",
-        requestId: crypto.randomUUID(),
-      });
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown auth route."
+      );
     }
 
     // ---- Static assets fallthrough -------------------------------------
