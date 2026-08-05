@@ -79,15 +79,15 @@ async function rateLimitKeyFor(request: Request): Promise<string | null> {
       "action" in peek &&
       "params" in peek
     ) {
-      const action = peek.action; // unknown - narrowed below
-      const params = peek.params; // unknown
+      const { action } = peek;
+      const { params } = peek;
       if (
         action === "loginUser" &&
         typeof params === "object" &&
         params !== null &&
         "username" in params
       ) {
-        const username = params.username; // unknown
+        const { username } = params;
         if (typeof username === "string") {
           return `login:${username}`;
         }
@@ -108,23 +108,52 @@ function problemResponse(
   detail?: string,
   extra?: { retryAfter?: string }
 ): Response {
-  const body = JSON.stringify({
+  const requestId = crypto.randomUUID();
+  const body: Record<string, unknown> = {
     type: `https://efcc.dev/problems/${code.toLowerCase()}`,
     status,
     code,
     title,
-    ...(detail !== undefined ? { detail } : {}),
-    requestId: crypto.randomUUID(),
-  });
+    requestId,
+  };
+  if (detail !== undefined) {
+    body.detail = detail;
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/problem+json",
     "Access-Control-Allow-Origin": origin,
-    "X-Request-Id": crypto.randomUUID(),
+    "X-Request-Id": requestId,
   };
   if (extra?.retryAfter) {
     headers["Retry-After"] = extra.retryAfter;
   }
-  return new Response(body, { status, headers });
+  return Response.json(body, { status, headers });
+}
+
+function authProblemResponse(
+  status: number,
+  code: string,
+  title: string,
+  detail: string
+): Response {
+  const requestId = crypto.randomUUID();
+  return Response.json(
+    {
+      type: `tag:apps-script/efcc/errors#${code}`,
+      title,
+      status,
+      detail,
+      code,
+      requestId,
+    },
+    {
+      status,
+      headers: {
+        "Content-Type": "application/problem+json",
+        "X-Request-Id": requestId,
+      },
+    }
+  );
 }
 
 /**
@@ -138,7 +167,7 @@ function problemResponse(
  * Returns null on a clean cookie-only same-origin request, or a 403/405
  * Response otherwise.
  */
-async function authTransportGuard(request: Request): Promise<Response | null> {
+function authTransportGuard(request: Request): Response | null {
   const url = new URL(request.url);
   const reqOrigin = request.headers.get("Origin");
   // Same-origin when no Origin is sent (same-host navigation) or when the
@@ -191,55 +220,18 @@ async function authTransportGuard(request: Request): Promise<Response | null> {
   return null;
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-  let requestId = crypto.randomUUID();
-  if (body && typeof body === "object" && "requestId" in body) {
-    const rid = body.requestId;
-    if (typeof rid === "string") requestId = rid;
-  }
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Request-Id": requestId,
-    },
-  });
-}
-
-function authProblemResponse(
-  status: number,
-  code: string,
-  title: string,
-  detail: string
-): Response {
-  const requestId = crypto.randomUUID();
-  return new Response(
-    JSON.stringify({
-      type: `tag:apps-script/efcc/errors#${code}`,
-      title,
-      status,
-      detail,
-      code,
-      requestId,
-    }),
-    {
-      status,
-      headers: {
-        "Content-Type": "application/problem+json",
-        "X-Request-Id": requestId,
-      },
-    }
-  );
-}
-
 export default {
+  // The explicit route matrix is the locked auth contract; complexity is intentional.
+  // oxlint-disable-next-line eslint/complexity
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     // ---- Auth surface: cookie-only transport, no CORS ------------------
     if (url.pathname.startsWith("/api/v1/auth/")) {
-      const guard = await authTransportGuard(request);
-      if (guard) return guard;
+      const guard = authTransportGuard(request);
+      if (guard) {
+        return guard;
+      }
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
         return authProblemResponse(
           503,
@@ -264,16 +256,25 @@ export default {
         handleReject,
         handleListRegistrations,
       } = await import("./lib/auth/handlers");
-      if (url.pathname === "/api/v1/auth/register" && request.method === "POST") {
+      if (
+        url.pathname === "/api/v1/auth/register" &&
+        request.method === "POST"
+      ) {
         return handleRegister(request, authEnv);
       }
       if (url.pathname === "/api/v1/auth/login" && request.method === "POST") {
         return handleLogin(request, authEnv);
       }
-      if (url.pathname === "/api/v1/auth/upgrade" && request.method === "POST") {
+      if (
+        url.pathname === "/api/v1/auth/upgrade" &&
+        request.method === "POST"
+      ) {
         return handleUpgrade(request, authEnv);
       }
-      if (url.pathname === "/api/v1/auth/refresh" && request.method === "POST") {
+      if (
+        url.pathname === "/api/v1/auth/refresh" &&
+        request.method === "POST"
+      ) {
         return handleRefresh(request, authEnv);
       }
       if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
@@ -295,16 +296,16 @@ export default {
         return handleAdminUnlock(request, authEnv);
       }
       const approve = url.pathname.match(
-        /^\/api\/v1\/auth\/registrations\/([^/]+)\/approve$/
+        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/approve$/u
       );
       if (approve && request.method === "POST") {
-        return handleApprove(request, authEnv, approve[1]);
+        return handleApprove(request, authEnv, approve.groups?.id ?? "");
       }
       const reject = url.pathname.match(
-        /^\/api\/v1\/auth\/registrations\/([^/]+)\/reject$/
+        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/reject$/u
       );
       if (reject && request.method === "POST") {
-        return handleReject(request, authEnv, reject[1]);
+        return handleReject(request, authEnv, reject.groups?.id ?? "");
       }
       return authProblemResponse(
         404,

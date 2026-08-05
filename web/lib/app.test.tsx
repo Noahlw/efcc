@@ -294,6 +294,7 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
+    /* oxlint-disable vitest/max-expects -- covers the full gated flow. */
     test("forced-upgrade response requires a new credential before issuing a session", async () => {
       server.use(
         http.post("/api/v1/auth/login", () =>
@@ -321,7 +322,7 @@ describe("Shell", () => {
             legacyPin?: string;
             newCredential?: string;
           };
-          expect(body).toEqual({
+          expect(body).toStrictEqual({
             username: "legacy",
             legacyPin: "pin",
             newCredential: "new-password",
@@ -354,9 +355,9 @@ describe("Shell", () => {
       expect(
         screen.getByRole("heading", { name: COPY.login.upgradeTitle })
       ).toBeInTheDocument();
-      expect(
-        screen.getByLabelText(COPY.login.legacyPasswordLabel)
-      ).toHaveValue("pin");
+      expect(screen.getByLabelText(COPY.login.legacyPasswordLabel)).toHaveValue(
+        "pin"
+      );
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
         "new-password"
@@ -371,6 +372,7 @@ describe("Shell", () => {
       expect(authCalls).toContain("/api/v1/auth/me");
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
     });
+    /* oxlint-enable vitest/max-expects */
 
     test("stored access session silently restores and redirects on reload", async () => {
       setAuthHint();

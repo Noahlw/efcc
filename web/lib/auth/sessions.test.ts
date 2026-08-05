@@ -17,11 +17,11 @@
  *     requires full re-login; an actively used session never forces re-entry.
  *   - No credential, token, or raw session value appears in test output.
  */
+/* oxlint-disable vitest/require-top-level-describe -- one shared D1 fixture spans the suites. */
 import { describe, test, expect, beforeAll } from "vitest";
 
-import { applyMigrations, testDb } from "./test-bootstrap";
 import { importLegacyUsers } from "./accounts";
-import { completeCredentialUpgrade } from "./upgrade";
+import { ACCESS_TOKEN_TTL_MS, REFRESH_IDLE_TTL_MS } from "./credentials";
 import {
   issueSession,
   refreshSession,
@@ -29,13 +29,18 @@ import {
   revokeAllUserSessions,
   verifyAccessToken,
 } from "./sessions";
-import {
-  ACCESS_TOKEN_TTL_MS,
-  REFRESH_IDLE_TTL_MS,
-} from "./credentials";
+import { applyMigrations, testDb } from "./test-bootstrap";
+import { completeCredentialUpgrade } from "./upgrade";
 
 const SECRET = "test-access-token-secret";
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"];
+const HEADER = [
+  "User_ID",
+  "Name",
+  "Username",
+  "PIN_Code",
+  "System_Role",
+  "Status",
+];
 
 /** Upgrade a legacy account so sessions can be issued. */
 async function upgrade(userId: string, pin: string, newCred: string) {
@@ -54,7 +59,9 @@ async function activeSessionCount(userId: string): Promise<number> {
     )
     .bind(userId)
     .first();
-  if (row && typeof row === "object" && "n" in row) return Number(row.n);
+  if (row && typeof row === "object" && "n" in row) {
+    return Number(row.n);
+  }
   return 0;
 }
 
@@ -66,7 +73,8 @@ async function sessionRevoked(sessionId: string): Promise<boolean> {
   if (row && typeof row === "object" && "revoked_at" in row) {
     return row.revoked_at !== null;
   }
-  return true; // unknown/missing session is treated as revoked
+  // Unknown or missing sessions are treated as revoked.
+  return true;
 }
 
 beforeAll(async () => {
@@ -90,7 +98,7 @@ describe("AUTH-02: issue", () => {
       accessTokenSecret: SECRET,
       deviceFingerprint: "device-a",
     });
-    expect(await activeSessionCount("U001")).toBe(before + 1);
+    await expect(activeSessionCount("U001")).resolves.toBe(before + 1);
     expect(bundle.sessionId).toBeTruthy();
     expect(bundle.accessToken).toBeTruthy();
     expect(bundle.expiresAt - bundle.issuedAt).toBe(REFRESH_IDLE_TTL_MS);
@@ -108,11 +116,11 @@ describe("AUTH-02: issue", () => {
       deviceFingerprint: "tablet",
     });
     expect(a.sessionId).not.toBe(b.sessionId);
-    expect(await activeSessionCount("U001")).toBeGreaterThanOrEqual(2);
+    await expect(activeSessionCount("U001")).resolves.toBeGreaterThanOrEqual(2);
     // Revoking one device leaves the other valid.
     await revokeSession(testDb(), a.sessionId);
-    expect(await sessionRevoked(a.sessionId)).toBe(true);
-    expect(await sessionRevoked(b.sessionId)).toBe(false);
+    await expect(sessionRevoked(a.sessionId)).resolves.toBeTruthy();
+    await expect(sessionRevoked(b.sessionId)).resolves.toBeFalsy();
     const bRefresh = await refreshSession(testDb(), {
       sessionId: b.sessionId,
       accessTokenSecret: SECRET,
@@ -127,14 +135,25 @@ describe("AUTH-02: stateless access-token verification", () => {
       userId: "U002",
       accessTokenSecret: SECRET,
     });
-    const nearIssue = await verifyAccessToken(SECRET, bundle.accessToken, bundle.issuedAt);
+    const nearIssue = await verifyAccessToken(
+      SECRET,
+      bundle.accessToken,
+      bundle.issuedAt
+    );
     expect(nearIssue).not.toBeNull();
-    expect(nearIssue!.uid).toBe("U002");
-    expect(nearIssue!.sid).toBe(bundle.sessionId);
+    if (nearIssue === null) {
+      return;
+    }
+    expect(nearIssue.uid).toBe("U002");
+    expect(nearIssue.sid).toBe(bundle.sessionId);
 
     // Just before expiry is still valid (no hard logout).
     const ttl = bundle.issuedAt + ACCESS_TOKEN_TTL_MS;
-    const beforeExpiry = await verifyAccessToken(SECRET, bundle.accessToken, ttl - 1);
+    const beforeExpiry = await verifyAccessToken(
+      SECRET,
+      bundle.accessToken,
+      ttl - 1
+    );
     expect(beforeExpiry).not.toBeNull();
   });
 
@@ -165,8 +184,8 @@ describe("AUTH-02: stateless access-token verification", () => {
       userId: "U002",
       accessTokenSecret: SECRET,
     });
-    const tampered = bundle.accessToken.slice(0, -1) + "a";
-    expect(await verifyAccessToken(SECRET, tampered)).toBeNull();
+    const tampered = `${bundle.accessToken.slice(0, -1)}a`;
+    await expect(verifyAccessToken(SECRET, tampered)).resolves.toBeNull();
   });
 
   test("token from a different secret is rejected", async () => {
@@ -174,7 +193,9 @@ describe("AUTH-02: stateless access-token verification", () => {
       userId: "U002",
       accessTokenSecret: SECRET,
     });
-    expect(await verifyAccessToken("other-secret", bundle.accessToken)).toBeNull();
+    await expect(
+      verifyAccessToken("other-secret", bundle.accessToken)
+    ).resolves.toBeNull();
   });
 });
 
@@ -229,10 +250,8 @@ describe("AUTH-02: refresh idle expiry", () => {
       sessionId: bundle.sessionId,
       accessTokenSecret: SECRET,
     });
-    expect(first.sessionId).not.toBe(bundle.sessionId);
     const firstClaims = await verifyAccessToken(SECRET, first.accessToken);
-    expect(firstClaims?.sid).toBe(first.sessionId);
-    expect(await sessionRevoked(bundle.sessionId)).toBe(true);
+    const oldRevoked = await sessionRevoked(bundle.sessionId);
     // The old value can never be renewed again.
     await expect(
       refreshSession(testDb(), {
@@ -245,8 +264,20 @@ describe("AUTH-02: refresh idle expiry", () => {
       sessionId: first.sessionId,
       accessTokenSecret: SECRET,
     });
-    expect(second.sessionId).not.toBe(first.sessionId);
-    expect(await sessionRevoked(first.sessionId)).toBe(true);
+    const firstRevoked = await sessionRevoked(first.sessionId);
+    expect({
+      firstRotated: first.sessionId !== bundle.sessionId,
+      firstTokenBound: firstClaims?.sid === first.sessionId,
+      oldRevoked,
+      secondRotated: second.sessionId !== first.sessionId,
+      firstRevoked,
+    }).toStrictEqual({
+      firstRotated: true,
+      firstTokenBound: true,
+      oldRevoked: true,
+      secondRotated: true,
+      firstRevoked: true,
+    });
   });
 
   test("concurrent refreshes consume one opaque value only once", async () => {
@@ -269,8 +300,12 @@ describe("AUTH-02: refresh idle expiry", () => {
       }),
     ]);
 
-    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(attempts.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(
+      attempts.filter((result) => result.status === "fulfilled")
+    ).toHaveLength(1);
+    expect(
+      attempts.filter((result) => result.status === "rejected")
+    ).toHaveLength(1);
     const row = await testDb()
       .prepare(
         "SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND issued_at = ? AND session_id != ?"
@@ -288,7 +323,7 @@ describe("AUTH-02: revocation", () => {
       accessTokenSecret: SECRET,
     });
     await revokeSession(testDb(), bundle.sessionId);
-    expect(await sessionRevoked(bundle.sessionId)).toBe(true);
+    await expect(sessionRevoked(bundle.sessionId)).resolves.toBeTruthy();
     await expect(
       refreshSession(testDb(), {
         sessionId: bundle.sessionId,
@@ -314,15 +349,15 @@ describe("AUTH-02: revocation", () => {
     // credential and calls revokeAllUserSessions for the user. Verify the
     // revoke primitive here.
     await revokeAllUserSessions(testDb(), "U002");
-    expect(await sessionRevoked(a.sessionId)).toBe(true);
-    expect(await sessionRevoked(b.sessionId)).toBe(true);
-    expect(await sessionRevoked(c.sessionId)).toBe(true);
+    await expect(sessionRevoked(a.sessionId)).resolves.toBeTruthy();
+    await expect(sessionRevoked(b.sessionId)).resolves.toBeTruthy();
+    await expect(sessionRevoked(c.sessionId)).resolves.toBeTruthy();
     // Multi-device independence: U001's sessions are untouched.
     const u1 = await issueSession(testDb(), {
       userId: "U001",
       accessTokenSecret: SECRET,
     });
-    expect(await sessionRevoked(u1.sessionId)).toBe(false);
+    await expect(sessionRevoked(u1.sessionId)).resolves.toBeFalsy();
   });
 
   test("admin suspend revokes all active sessions", async () => {
@@ -337,12 +372,14 @@ describe("AUTH-02: revocation", () => {
     // Admin marks U003 (dedicated to this test) Suspended -> revoke all
     // sessions. U002 stays Active so later tests remain order-independent.
     await testDb()
-      .prepare("UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?")
+      .prepare(
+        "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+      )
       .bind("U003")
       .run();
     await revokeAllUserSessions(testDb(), "U003");
-    expect(await sessionRevoked(a.sessionId)).toBe(true);
-    expect(await sessionRevoked(b.sessionId)).toBe(true);
+    await expect(sessionRevoked(a.sessionId)).resolves.toBeTruthy();
+    await expect(sessionRevoked(b.sessionId)).resolves.toBeTruthy();
     // Suspended account cannot refresh nor issue.
     await expect(
       refreshSession(testDb(), {
@@ -363,16 +400,16 @@ describe("AUTH-02: revocation", () => {
     });
     await revokeSession(testDb(), bundle.sessionId);
     // Still valid within its lifetime (stateless), then expires.
-    expect(
-      await verifyAccessToken(SECRET, bundle.accessToken, 5_000_000)
-    ).not.toBeNull();
-    expect(
-      await verifyAccessToken(
+    await expect(
+      verifyAccessToken(SECRET, bundle.accessToken, 5_000_000)
+    ).resolves.not.toBeNull();
+    await expect(
+      verifyAccessToken(
         SECRET,
         bundle.accessToken,
         5_000_000 + ACCESS_TOKEN_TTL_MS
       )
-    ).toBeNull();
+    ).resolves.toBeNull();
     // And can never be renewed.
     await expect(
       refreshSession(testDb(), {

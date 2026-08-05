@@ -24,7 +24,8 @@
  * and return a Response. They are tested directly via the workerd runtime.
  */
 
-import { verifyCredential, hashCredential } from "./credentials";
+import { findAccountByUserId, findAccountByUsername } from "./accounts";
+import type { AccountRow } from "./accounts";
 import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
@@ -33,18 +34,8 @@ import {
   refreshCookieHeader,
   setAuthCookieHeaders,
 } from "./cookies";
-import { findAccountByUserId, findAccountByUsername } from "./accounts";
-import type { AccountRow } from "./accounts";
-import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
+import { verifyCredential, hashCredential } from "./credentials";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
-import {
-  AuthError,
-  issueSession,
-  refreshSession,
-  revokeAllUserSessions,
-  revokeSession,
-  verifyAccessToken,
-} from "./sessions";
 import {
   approveRegistration,
   listPendingRegistrations,
@@ -53,6 +44,15 @@ import {
   RegistrationConflictError,
   RegistrationNotFoundError,
 } from "./registrations";
+import {
+  AuthError,
+  issueSession,
+  refreshSession,
+  revokeAllUserSessions,
+  revokeSession,
+  verifyAccessToken,
+} from "./sessions";
+import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -102,19 +102,21 @@ function problem(
   detail: string | undefined,
   requestId: string
 ): Response {
-  const body = {
+  const body: Record<string, unknown> = {
     type: `tag:apps-script/efcc/errors#${code}`,
     title,
     status,
-    ...(detail !== undefined ? { detail } : {}),
     code,
     requestId,
   };
+  if (detail !== undefined) {
+    body.detail = detail;
+  }
   const headers = new Headers({
     "Content-Type": "application/problem+json",
     "X-Request-Id": requestId,
   });
-  return new Response(JSON.stringify(body), { status, headers });
+  return Response.json(body, { status, headers });
 }
 
 /** Success envelope with X-Request-Id correlation. */
@@ -123,7 +125,7 @@ function jsonResponse(
   body: unknown,
   requestId: string
 ): Response {
-  return new Response(JSON.stringify(body), {
+  return Response.json(body, {
     status,
     headers: {
       "Content-Type": "application/json",
@@ -147,21 +149,14 @@ function authCookieJsonResponse(
   const headers = setAuthCookieHeaders(accessValue, refreshValue);
   headers.set("Content-Type", "application/json");
   headers.set("X-Request-Id", requestId);
-  return new Response(JSON.stringify(body), { status, headers });
+  return Response.json(body, { status, headers });
 }
 
 /** Map a session-layer AuthError onto its Problem Details response. */
-function authErrorToProblem(
-  err: Error,
-  requestId: string
-): Response {
+function authErrorToProblem(err: Error, requestId: string): Response {
   if (err instanceof AuthError) {
     const status =
-      err.code === "AUTH_REQUIRED"
-        ? 401
-        : err.code === "FORBIDDEN"
-          ? 403
-          : 409; // UPGRADE_REQUIRED
+      err.code === "AUTH_REQUIRED" ? 401 : err.code === "FORBIDDEN" ? 403 : 409;
     return problem(status, err.code, err.code, err.message, requestId);
   }
   return problem(
@@ -176,12 +171,18 @@ function authErrorToProblem(
 /** Read a named cookie value from the request's Cookie header. */
 function readCookie(headers: Headers, name: string): string | null {
   const raw = headers.get("Cookie");
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   for (const pair of raw.split(";")) {
     const eq = pair.indexOf("=");
-    if (eq === -1) continue;
+    if (eq === -1) {
+      continue;
+    }
     const k = pair.slice(0, eq).trim();
-    if (k === name) return pair.slice(eq + 1).trim();
+    if (k === name) {
+      return pair.slice(eq + 1).trim();
+    }
   }
   return null;
 }
@@ -206,10 +207,7 @@ async function requireAdminOrTeacher(
       requestId
     );
   }
-  const claims = await verifyAccessToken(
-    env.EFCC_ACCESS_TOKEN_SECRET,
-    access
-  );
+  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
   if (!claims) {
     return problem(
       401,
@@ -263,7 +261,12 @@ export async function handleRegister(
       requestId
     );
   }
-  let body: { username?: unknown; password?: unknown; name?: unknown; phone?: unknown };
+  let body: {
+    username?: unknown;
+    password?: unknown;
+    name?: unknown;
+    phone?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -307,11 +310,11 @@ export async function handleRegister(
       phone,
       credentialHash,
     });
-  } catch (err) {
-    if (err instanceof RegistrationConflictError) {
-      return problem(409, "CONFLICT", "Conflict", err.message, requestId);
+  } catch (error) {
+    if (error instanceof RegistrationConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
-    throw err;
+    throw error;
   }
   return jsonResponse(
     200,
@@ -467,7 +470,11 @@ export async function handleUpgrade(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  let body: { username?: unknown; legacyPin?: unknown; newCredential?: unknown };
+  let body: {
+    username?: unknown;
+    legacyPin?: unknown;
+    newCredential?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -509,11 +516,11 @@ export async function handleUpgrade(
       legacyPin,
       newCredential,
     });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return authErrorToProblem(err, requestId);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return authErrorToProblem(error, requestId);
     }
-    if (err instanceof LegacyUpgradeLockedError) {
+    if (error instanceof LegacyUpgradeLockedError) {
       return problem(
         423,
         "UPGRADE_LOCKED",
@@ -522,8 +529,11 @@ export async function handleUpgrade(
         requestId
       );
     }
-    const message = err instanceof Error ? err.message : "Upgrade failed.";
-    if (/invalid username or pin/i.test(message) || /unknown account/i.test(message)) {
+    const message = error instanceof Error ? error.message : "Upgrade failed.";
+    if (
+      /invalid username or pin/iu.test(message) ||
+      /unknown account/iu.test(message)
+    ) {
       return problem(
         401,
         "AUTH_REQUIRED",
@@ -532,7 +542,7 @@ export async function handleUpgrade(
         requestId
       );
     }
-    if (/not awaiting credential upgrade/i.test(message)) {
+    if (/not awaiting credential upgrade/iu.test(message)) {
       return problem(409, "UPGRADE_REQUIRED", "Conflict", message, requestId);
     }
     return problem(
@@ -603,9 +613,9 @@ export async function handleRefresh(
       refreshCookieHeader(bundle.sessionId),
       requestId
     );
-  } catch (err) {
+  } catch (error) {
     return authErrorToProblem(
-      err instanceof Error ? err : new Error("Refresh failed."),
+      error instanceof Error ? error : new Error("Refresh failed."),
       requestId
     );
   }
@@ -662,10 +672,7 @@ export async function handleMe(
       requestId
     );
   }
-  const claims = await verifyAccessToken(
-    env.EFCC_ACCESS_TOKEN_SECRET,
-    access
-  );
+  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
   if (!claims) {
     return problem(
       401,
@@ -714,7 +721,9 @@ export async function handleAdminUnlock(
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
   const auth = await requireAdminOrTeacher(request, env, requestId);
-  if (auth instanceof Response) return auth;
+  if (auth instanceof Response) {
+    return auth;
+  }
 
   let body: { userId?: unknown };
   try {
@@ -781,7 +790,9 @@ export async function handleApprove(
     );
   }
   const auth = await requireAdminOrTeacher(request, env, requestId);
-  if (auth instanceof Response) return auth;
+  if (auth instanceof Response) {
+    return auth;
+  }
 
   let accountStatus: string;
   try {
@@ -789,8 +800,8 @@ export async function handleApprove(
       requestId: registrationId,
       reviewerId: auth.caller.user_id,
     });
-  } catch (err) {
-    if (err instanceof RegistrationNotFoundError) {
+  } catch (error) {
+    if (error instanceof RegistrationNotFoundError) {
       return problem(
         404,
         "NOT_FOUND",
@@ -799,16 +810,12 @@ export async function handleApprove(
         requestId
       );
     }
-    if (err instanceof RegistrationConflictError) {
-      return problem(409, "CONFLICT", "Conflict", err.message, requestId);
+    if (error instanceof RegistrationConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
-    throw err;
+    throw error;
   }
-  return jsonResponse(
-    200,
-    { requestId, data: { accountStatus } },
-    requestId
-  );
+  return jsonResponse(200, { requestId, data: { accountStatus } }, requestId);
 }
 
 /**
@@ -834,7 +841,9 @@ export async function handleReject(
     );
   }
   const auth = await requireAdminOrTeacher(request, env, requestId);
-  if (auth instanceof Response) return auth;
+  if (auth instanceof Response) {
+    return auth;
+  }
 
   let accountStatus: string;
   try {
@@ -842,8 +851,8 @@ export async function handleReject(
       requestId: registrationId,
       reviewerId: auth.caller.user_id,
     });
-  } catch (err) {
-    if (err instanceof RegistrationNotFoundError) {
+  } catch (error) {
+    if (error instanceof RegistrationNotFoundError) {
       return problem(
         404,
         "NOT_FOUND",
@@ -852,16 +861,12 @@ export async function handleReject(
         requestId
       );
     }
-    if (err instanceof RegistrationConflictError) {
-      return problem(409, "CONFLICT", "Conflict", err.message, requestId);
+    if (error instanceof RegistrationConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
-    throw err;
+    throw error;
   }
-  return jsonResponse(
-    200,
-    { requestId, data: { accountStatus } },
-    requestId
-  );
+  return jsonResponse(200, { requestId, data: { accountStatus } }, requestId);
 }
 
 /**
@@ -878,7 +883,9 @@ export async function handleListRegistrations(
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
   const auth = await requireAdminOrTeacher(request, env, requestId);
-  if (auth instanceof Response) return auth;
+  if (auth instanceof Response) {
+    return auth;
+  }
 
   const rows = await listPendingRegistrations(env.DB);
   const registrations = rows.map((r) => ({
@@ -890,9 +897,5 @@ export async function handleListRegistrations(
     accountStatus: r.account_status,
     role: r.role,
   }));
-  return jsonResponse(
-    200,
-    { requestId, data: { registrations } },
-    requestId
-  );
+  return jsonResponse(200, { requestId, data: { registrations } }, requestId);
 }

@@ -20,34 +20,42 @@
  * session identity.
  */
 
+import type { AccountRow } from "./accounts";
+import { findAccountByUserId } from "./accounts";
 import {
   ACCESS_TOKEN_TTL_MS,
   REFRESH_IDLE_TTL_MS,
   constantTimeEqual,
 } from "./credentials";
-import type { AccountRow } from "./accounts";
-import { findAccountByUserId } from "./accounts";
 
 const textEncoder = new TextEncoder();
 
 export interface AccessTokenClaims {
-  sid: string; // session id
-  uid: string; // user id
-  iat: number; // issued-at epoch millis
-  exp: number; // expiry epoch millis
+  /** Session id. */
+  sid: string;
+  /** User id. */
+  uid: string;
+  /** Issued-at epoch millis. */
+  iat: number;
+  /** Expiry epoch millis. */
+  exp: number;
 }
 
 export interface SessionBundle {
   sessionId: string;
   accessToken: string;
   issuedAt: number;
-  expiresAt: number; // refresh-session idle expiry (last_seen + 90d)
+  /** Refresh-session idle expiry (last_seen + 90d). */
+  expiresAt: number;
 }
 
 export type AuthErrorCode =
-  | "AUTH_REQUIRED" // no/expired/revoked session, unknown account
-  | "FORBIDDEN" // account not Active (suspended/deactivated/pending)
-  | "UPGRADE_REQUIRED"; // legacy account must complete forced credential upgrade
+  /** No/expired/revoked session, unknown account. */
+  | "AUTH_REQUIRED"
+  /** Account not Active (suspended/deactivated/pending). */
+  | "FORBIDDEN"
+  /** Legacy account must complete forced credential upgrade. */
+  | "UPGRADE_REQUIRED";
 
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
@@ -60,16 +68,23 @@ export class AuthError extends Error {
 
 function b64urlEncode(bytes: Uint8Array): string {
   let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  for (const b of bytes) {
+    bin += String.fromCodePoint(b);
+  }
+  return btoa(bin)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
 }
 
 function b64urlDecode(s: string): Uint8Array {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const b64 = s.replaceAll("-", "+").replaceAll("_", "/");
   const pad = "=".repeat((4 - (b64.length % 4)) % 4);
   const bin = atob(b64 + pad);
   const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  for (let i = 0; i < bin.length; i += 1) {
+    bytes[i] = bin.codePointAt(i) ?? 0;
+  }
   return bytes;
 }
 
@@ -81,11 +96,7 @@ async function hmacSha256(secret: string, data: string): Promise<Uint8Array> {
     false,
     ["sign"]
   );
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    textEncoder.encode(data)
-  );
+  const sig = await crypto.subtle.sign("HMAC", key, textEncoder.encode(data));
   return new Uint8Array(sig);
 }
 
@@ -116,13 +127,17 @@ export async function verifyAccessToken(
   now: number = Date.now()
 ): Promise<AccessTokenClaims | null> {
   const dot = token.lastIndexOf(".");
-  if (dot <= 0 || dot === token.length - 1) return null;
+  if (dot <= 0 || dot === token.length - 1) {
+    return null;
+  }
   const payload = token.slice(0, dot);
   const signature = token.slice(dot + 1);
 
   const sig = await hmacSha256(secret, payload);
   const expected = b64urlEncode(sig);
-  if (!constantTimeEqual(expected, signature)) return null;
+  if (!constantTimeEqual(expected, signature)) {
+    return null;
+  }
 
   let claims: AccessTokenClaims;
   try {
@@ -140,13 +155,17 @@ export async function verifyAccessToken(
   ) {
     return null;
   }
-  if (now >= claims.exp) return null;
+  if (now >= claims.exp) {
+    return null;
+  }
   return claims;
 }
 
 /** Assert an account may hold a session: Active and not awaiting upgrade. */
 function assertActiveForSession(account: AccountRow | null): AccountRow {
-  if (!account) throw new AuthError("AUTH_REQUIRED", "Unknown account.");
+  if (!account) {
+    throw new AuthError("AUTH_REQUIRED", "Unknown account.");
+  }
   if (account.requires_upgrade === 1) {
     throw new AuthError("UPGRADE_REQUIRED", "Credential upgrade required.");
   }
@@ -177,8 +196,7 @@ export async function issueSession(
   );
 
   const sessionId = crypto.randomUUID();
-  const expiresAt =
-    options.expiresAt ?? now + REFRESH_IDLE_TTL_MS;
+  const expiresAt = options.expiresAt ?? now + REFRESH_IDLE_TTL_MS;
 
   await db
     .prepare(
@@ -238,7 +256,9 @@ export async function refreshSession(
       revoked_at: number | null;
     }>();
 
-  if (!session) throw new AuthError("AUTH_REQUIRED", "Unknown session.");
+  if (!session) {
+    throw new AuthError("AUTH_REQUIRED", "Unknown session.");
+  }
   if (session.revoked_at !== null) {
     throw new AuthError("AUTH_REQUIRED", "Session revoked.");
   }

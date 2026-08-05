@@ -28,22 +28,27 @@
  *     headers (the two surfaces have different transport contracts).
  */
 import assert from "node:assert/strict";
-import { beforeAll, describe, test } from "vitest";
 
 import { env } from "cloudflare:workers";
+import { beforeAll, describe, test } from "vitest";
+/* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans all contract suites. */
 
+import { importLegacyUsers } from "./lib/auth/accounts";
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./lib/auth/cookies";
+import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
+import { completeCredentialUpgrade } from "./lib/auth/upgrade";
 import worker from "./worker";
 import type { Env } from "./worker";
-import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
-import { importLegacyUsers } from "./lib/auth/accounts";
-import { completeCredentialUpgrade } from "./lib/auth/upgrade";
-import {
-  ACCESS_COOKIE_NAME,
-  REFRESH_COOKIE_NAME,
-} from "./lib/auth/cookies";
 
 const SECRET = "test-access-token-secret";
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"];
+const HEADER = [
+  "User_ID",
+  "Name",
+  "Username",
+  "PIN_Code",
+  "System_Role",
+  "Status",
+];
 const HOST = "https://efcc.example";
 
 function testEnv(overrides: Partial<Env> = {}): Env {
@@ -94,15 +99,19 @@ function assertNoCors(res: Response): void {
 /** Assert a cookie value carries the locked attributes. */
 function assertLockedCookie(raw: string | null, name: string): void {
   assert.ok(raw, `${name} cookie must be set`);
-  assert.ok(raw!.startsWith(`${name}=`), `${name} cookie named correctly`);
-  assert.match(raw!, /; HttpOnly/i, `${name} must be httpOnly`);
-  assert.match(raw!, /; Secure/i, `${name} must be Secure`);
-  assert.match(raw!, /; SameSite=Strict/i, `${name} must be SameSite=Strict`);
+  if (raw === null) {
+    return;
+  }
+  assert.ok(raw.startsWith(`${name}=`), `${name} cookie named correctly`);
+  assert.match(raw, /; HttpOnly/iu, `${name} must be httpOnly`);
+  assert.match(raw, /; Secure/iu, `${name} must be Secure`);
+  assert.match(raw, /; SameSite=Strict/iu, `${name} must be SameSite=Strict`);
 }
 
-function readAuthCookiesFromResponse(
-  res: Response
-): { access: string; refresh: string } {
+function readAuthCookiesFromResponse(res: Response): {
+  access: string;
+  refresh: string;
+} {
   const setCookies = res.headers.getSetCookie();
   assert.ok(
     setCookies.length >= 2,
@@ -116,7 +125,10 @@ function readAuthCookiesFromResponse(
   }
   assert.ok(found[ACCESS_COOKIE_NAME], "access cookie must be present");
   assert.ok(found[REFRESH_COOKIE_NAME], "refresh cookie must be present");
-  return { access: found[ACCESS_COOKIE_NAME], refresh: found[REFRESH_COOKIE_NAME] };
+  return {
+    access: found[ACCESS_COOKIE_NAME],
+    refresh: found[REFRESH_COOKIE_NAME],
+  };
 }
 
 function cookieValueFrom(raw: string): string {
@@ -128,27 +140,33 @@ function cookieValueFrom(raw: string): string {
  * session/token material AND that its `requestId` equals the X-Request-Id
  * header (ADR-0018 §8 / AUTH-04 correlation).
  */
+function assertNoTokenKeysWalk(v: unknown): void {
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      assertNoTokenKeysWalk(item);
+    }
+    return;
+  }
+  if (v && typeof v === "object") {
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      assert.ok(
+        !/session|token/iu.test(k),
+        `auth response body must not contain a '${k}' key`
+      );
+      assertNoTokenKeysWalk(val);
+    }
+  }
+}
+
 function assertBodyHasNoTokenKeys(body: unknown): void {
   const text = JSON.stringify(body);
   assert.ok(
-    !/sessionId|accessToken|refreshToken|sessionToken|session_id|access_token|refresh_token/i.test(
+    !/sessionId|accessToken|refreshToken|sessionToken|session_id|access_token|refresh_token/iu.test(
       text
     ),
     `auth response body must not expose token/session keys, got: ${text}`
   );
-  const walk = (v: unknown): void => {
-    if (Array.isArray(v)) return v.forEach(walk);
-    if (v && typeof v === "object") {
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        assert.ok(
-          !/session|token/i.test(k),
-          `auth response body must not contain a '${k}' key`
-        );
-        walk(val);
-      }
-    }
-  };
-  walk(body);
+  assertNoTokenKeysWalk(body);
 }
 
 /** Assert the response body's requestId matches the X-Request-Id header. */
@@ -167,7 +185,11 @@ async function assertCorrelated(res: Response): Promise<unknown> {
 }
 
 /** Body echoed by Problem Details errors, for error assertions. */
-type ProblemBody = { code: string; status: number; requestId: string };
+interface ProblemBody {
+  code: string;
+  status: number;
+  requestId: string;
+}
 
 async function problemOf(res: Response): Promise<ProblemBody> {
   assert.strictEqual(
@@ -193,11 +215,17 @@ async function registrationIdFor(username: string): Promise<string> {
     .bind(username.trim().toLowerCase())
     .first<{ request_id: string }>();
   assert.ok(row, `no registration request for ${username}`);
-  return row!.request_id;
+  if (!row) {
+    throw new Error(`no registration request for ${username}`);
+  }
+  return row.request_id;
 }
 
 /** Log in as an upgraded account and return the raw access cookie value. */
-async function accessCookieFor(username: string, password: string): Promise<string> {
+async function accessCookieFor(
+  username: string,
+  password: string
+): Promise<string> {
   const res = await worker.fetch(
     authRequest("/api/v1/auth/login", {
       headers: { Origin: HOST, "Content-Type": "application/json" },
@@ -310,7 +338,11 @@ describe("AUTH-06: register", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-reg-1" },
-        body: { username: "dave", password: "dave-password-1", name: "Dave Ng" },
+        body: {
+          username: "dave",
+          password: "dave-password-1",
+          name: "Dave Ng",
+        },
       }),
       testEnv()
     );
@@ -327,7 +359,11 @@ describe("AUTH-06: register", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST },
-        body: { username: "erin", password: "erin-password-1", name: "Erin Ho" },
+        body: {
+          username: "erin",
+          password: "erin-password-1",
+          name: "Erin Ho",
+        },
       }),
       testEnv()
     );
@@ -366,7 +402,11 @@ describe("AUTH-06: register", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-reg-dup" },
-        body: { username: "dave", password: "dave-password-2", name: "Dave Again" },
+        body: {
+          username: "dave",
+          password: "dave-password-2",
+          name: "Dave Again",
+        },
       }),
       testEnv()
     );
@@ -487,7 +527,11 @@ describe("AUTH-06: login", () => {
     assert.strictEqual(two.status, 200);
     const r1 = cookieValueFrom(readAuthCookiesFromResponse(one).refresh);
     const r2 = cookieValueFrom(readAuthCookiesFromResponse(two).refresh);
-    assert.notStrictEqual(r1, r2, "each login must mint a distinct refresh session");
+    assert.notStrictEqual(
+      r1,
+      r2,
+      "each login must mint a distinct refresh session"
+    );
   });
 
   test("legacy account login verifies the legacy PIN and returns mustSetNewCredential with NO session", async () => {
@@ -505,7 +549,11 @@ describe("AUTH-06: login", () => {
     assert.strictEqual(body.data.userId, "U003");
     assert.strictEqual(body.data.mustSetNewCredential, true);
     // No session is issued before the credential is set.
-    assert.strictEqual(res.headers.getSetCookie().length, 0, "no cookies before upgrade");
+    assert.strictEqual(
+      res.headers.getSetCookie().length,
+      0,
+      "no cookies before upgrade"
+    );
     assertBodyHasNoTokenKeys(body);
   });
 
@@ -586,7 +634,11 @@ describe("AUTH-06: refresh rotation", () => {
     assertLockedCookie(refreshed.refresh, REFRESH_COOKIE_NAME);
     assertBodyHasNoTokenKeys(await assertCorrelated(res));
     const newRefresh = cookieValueFrom(refreshed.refresh);
-    assert.notStrictEqual(newRefresh, oldRefresh, "refresh must rotate the opaque value");
+    assert.notStrictEqual(
+      newRefresh,
+      oldRefresh,
+      "refresh must rotate the opaque value"
+    );
 
     // The OLD refresh value is invalidated immediately and can never renew.
     const reuse = await worker.fetch(
@@ -630,14 +682,17 @@ describe("AUTH-06: logout", () => {
       testEnv()
     );
     assert.strictEqual(res.status, 204);
-    assert.ok(res.headers.get("X-Request-Id"), "logout must carry X-Request-Id");
+    assert.ok(
+      res.headers.get("X-Request-Id"),
+      "logout must carry X-Request-Id"
+    );
     const cleared = readAuthCookiesFromResponse(res);
     for (const [name, raw] of [
       [ACCESS_COOKIE_NAME, cleared.access],
       [REFRESH_COOKIE_NAME, cleared.refresh],
     ] as const) {
       assert.ok(raw.startsWith(`${name}=`));
-      assert.match(raw, /Max-Age=0|Expires=/i);
+      assert.match(raw, /Max-Age=0|Expires=/iu);
     }
     // The revoked refresh session can never be renewed.
     const reuse = await worker.fetch(
@@ -678,7 +733,11 @@ describe("AUTH-06: registrations approve/reject", () => {
     const reg = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-approve-1" },
-        body: { username: "hugo", password: "hugo-password-1", name: "Hugo Ma" },
+        body: {
+          username: "hugo",
+          password: "hugo-password-1",
+          name: "Hugo Ma",
+        },
       }),
       testEnv()
     );
@@ -774,7 +833,9 @@ describe("AUTH-06: registrations approve/reject", () => {
       [200, 200]
     );
     const row = await testDb()
-      .prepare("SELECT COUNT(*) AS n FROM accounts WHERE username_normalized = ?")
+      .prepare(
+        "SELECT COUNT(*) AS n FROM accounts WHERE username_normalized = ?"
+      )
       .bind("approve-race")
       .first<{ n: number }>();
     assert.strictEqual(Number(row?.n ?? 0), 1);
@@ -784,7 +845,11 @@ describe("AUTH-06: registrations approve/reject", () => {
     const reg = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-reject-1" },
-        body: { username: "iris", password: "iris-password-1", name: "Iris Lam" },
+        body: {
+          username: "iris",
+          password: "iris-password-1",
+          name: "Iris Lam",
+        },
       }),
       testEnv()
     );
@@ -858,13 +923,16 @@ describe("AUTH-06: registrations approve/reject", () => {
   test("approve an unknown registration id is a 404", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const res = await worker.fetch(
-      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve", {
-        headers: {
-          Origin: HOST,
-          Cookie: `efcc_access=${adminAccess}`,
-          "Idempotency-Key": "idem-missing-1",
-        },
-      }),
+      authRequest(
+        "/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve",
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${adminAccess}`,
+            "Idempotency-Key": "idem-missing-1",
+          },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 404);
@@ -875,9 +943,12 @@ describe("AUTH-06: registrations approve/reject", () => {
   test("approve without an Idempotency-Key is rejected (422)", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const res = await worker.fetch(
-      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve", {
-        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
-      }),
+      authRequest(
+        "/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve",
+        {
+          headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 422);
@@ -887,9 +958,12 @@ describe("AUTH-06: registrations approve/reject", () => {
 
   test("approve without an access cookie is rejected (401)", async () => {
     const res = await worker.fetch(
-      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve", {
-        headers: { Origin: HOST, "Idempotency-Key": "idem-noauth-1" },
-      }),
+      authRequest(
+        "/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve",
+        {
+          headers: { Origin: HOST, "Idempotency-Key": "idem-noauth-1" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 401);
@@ -901,13 +975,16 @@ describe("AUTH-06: registrations approve/reject", () => {
     // bob is a Member — not allowed to approve.
     const memberAccess = await accessCookieFor("bob", "bob-secret");
     const res = await worker.fetch(
-      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve", {
-        headers: {
-          Origin: HOST,
-          Cookie: `efcc_access=${memberAccess}`,
-          "Idempotency-Key": "idem-forbidden-1",
-        },
-      }),
+      authRequest(
+        "/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000/approve",
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${memberAccess}`,
+            "Idempotency-Key": "idem-forbidden-1",
+          },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 403);
@@ -922,7 +999,12 @@ describe("AUTH-05: registration queue listing", () => {
     const reg = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-queue-1" },
-        body: { username: "kevin", password: "kevin-password-1", name: "Kevin Yu", phone: "9999-8888" },
+        body: {
+          username: "kevin",
+          password: "kevin-password-1",
+          name: "Kevin Yu",
+          phone: "9999-8888",
+        },
       }),
       testEnv()
     );
@@ -938,12 +1020,13 @@ describe("AUTH-05: registration queue listing", () => {
     );
     assert.strictEqual(res.status, 200);
     const body = (await assertCorrelated(res)) as {
-      data: { registrations: Array<Record<string, unknown>> };
+      data: { registrations: Record<string, unknown>[] };
     };
-    assert.ok(Array.isArray(body.data.registrations), "registrations must be an array");
-    const kevin = body.data.registrations.find(
-      (r) => r.username === "kevin"
+    assert.ok(
+      Array.isArray(body.data.registrations),
+      "registrations must be an array"
     );
+    const kevin = body.data.registrations.find((r) => r.username === "kevin");
     assert.ok(kevin, "kevin's Pending request must be listed");
     assert.strictEqual(kevin.accountStatus, "Pending");
     assert.strictEqual(kevin.name, "Kevin Yu");
@@ -954,7 +1037,7 @@ describe("AUTH-05: registration queue listing", () => {
     assertBodyHasNoTokenKeys(body);
     const text = JSON.stringify(body);
     assert.ok(
-      !/credential|password|pin|user_id|requires_upgrade/i.test(text),
+      !/credential|password|pin|user_id|requires_upgrade/iu.test(text),
       `queue listing must not expose credential/identity material, got: ${text}`
     );
     assertNoCors(res);
@@ -1013,6 +1096,8 @@ describe("AUTH-06: preserved /api/v1/rpc proxy still has CORS (regression)", () 
     );
     assert.strictEqual(res.status, 204);
     assert.ok(res.headers.get("Access-Control-Allow-Origin"));
-    assert.ok(res.headers.get("Access-Control-Allow-Methods")!.includes("POST"));
+    const methods = res.headers.get("Access-Control-Allow-Methods");
+    assert.ok(methods);
+    assert.ok(methods.includes("POST"));
   });
 });

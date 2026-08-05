@@ -20,8 +20,8 @@
  * returned.
  */
 
-import { normalizeUsername } from "./credentials";
 import { findAccountByUserId, findAccountByUsername } from "./accounts";
+import { normalizeUsername } from "./credentials";
 
 export const REGISTRATION_STATUS = {
   PENDING: "Pending",
@@ -55,6 +55,7 @@ export class RegistrationNotFoundError extends Error {
 }
 
 /** Raise when the requested state transition is impossible (→ 409). */
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class RegistrationConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -71,7 +72,9 @@ export async function findRegistrationById(
   db: D1Database,
   requestId: string
 ): Promise<RegistrationRequestRow | null> {
-  if (!requestId) return null;
+  if (!requestId) {
+    return null;
+  }
   return (
     (await db
       .prepare(
@@ -88,7 +91,9 @@ export async function findRegistrationByUsername(
   username: string
 ): Promise<RegistrationRequestRow | null> {
   const normalized = normalizeUsername(username);
-  if (!normalized) return null;
+  if (!normalized) {
+    return null;
+  }
   return (
     (await db
       .prepare(
@@ -128,7 +133,10 @@ export async function createRegistrationRequest(
       "An account with that username already exists."
     );
   }
-  const existingRequest = await findRegistrationByUsername(db, options.username);
+  const existingRequest = await findRegistrationByUsername(
+    db,
+    options.username
+  );
   if (existingRequest) {
     throw new RegistrationConflictError(
       "A registration request for that username already exists."
@@ -167,10 +175,7 @@ export async function createRegistrationRequest(
       )
       .run();
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /unique|constraint/i.test(error.message)
-    ) {
+    if (error instanceof Error && /unique|constraint/iu.test(error.message)) {
       throw new RegistrationConflictError(
         "A registration request for that username already exists."
       );
@@ -206,7 +211,9 @@ async function requireRequest(
   requestId: string
 ): Promise<RegistrationRequestRow> {
   const request = await findRegistrationById(db, requestId);
-  if (!request) throw new RegistrationNotFoundError(requestId);
+  if (!request) {
+    throw new RegistrationNotFoundError(requestId);
+  }
   return request;
 }
 
@@ -224,7 +231,7 @@ export async function approveRegistration(
   const request = await requireRequest(db, options.requestId);
 
   if (request.account_status === "Active") {
-    return "active"; // idempotent replay
+    return "active";
   }
   if (request.account_status === "Rejected") {
     throw new RegistrationConflictError(
@@ -234,7 +241,6 @@ export async function approveRegistration(
 
   // Guard against a username/user_id collision that slipped past register
   // (e.g. an account created out-of-band for the same identity).
-  const normalized = request.username_normalized;
   if (await findAccountByUsername(db, request.username)) {
     throw new RegistrationConflictError(
       "An account with that username already exists."
@@ -277,10 +283,7 @@ export async function approveRegistration(
         .bind(options.reviewerId, now, request.request_id),
     ]);
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /unique|constraint/i.test(error.message)
-    ) {
+    if (error instanceof Error && /unique|constraint/iu.test(error.message)) {
       throw new RegistrationConflictError(
         "An account with that username already exists."
       );
@@ -289,7 +292,9 @@ export async function approveRegistration(
   }
   if ((results[1]?.meta?.changes ?? 0) !== 1) {
     const current = await requireRequest(db, request.request_id);
-    if (current.account_status === "Active") return "active";
+    if (current.account_status === "Active") {
+      return "active";
+    }
     if (current.account_status === "Rejected") {
       throw new RegistrationConflictError(
         "Cannot approve a registration that was already rejected."
@@ -316,7 +321,7 @@ export async function rejectRegistration(
   const request = await requireRequest(db, options.requestId);
 
   if (request.account_status === "Rejected") {
-    return "rejected"; // idempotent replay
+    return "rejected";
   }
   if (request.account_status === "Active") {
     throw new RegistrationConflictError(
@@ -336,7 +341,9 @@ export async function rejectRegistration(
 
   if ((result.meta?.changes ?? 0) !== 1) {
     const current = await requireRequest(db, request.request_id);
-    if (current.account_status === "Rejected") return "rejected";
+    if (current.account_status === "Rejected") {
+      return "rejected";
+    }
     if (current.account_status === "Active") {
       throw new RegistrationConflictError(
         "Cannot reject a registration that was already approved."
@@ -380,13 +387,12 @@ export interface QueueRegistrationRow {
 export async function listPendingRegistrations(
   db: D1Database
 ): Promise<QueueRegistrationRow[]> {
-  return (
-    await db
-      .prepare(
-        `SELECT ${QUEUE_COLUMNS} FROM registration_requests
-          WHERE account_status = 'Pending'
-          ORDER BY submitted_at ASC`
-      )
-      .all<QueueRegistrationRow>()
-  ).results ?? [];
+  const result = await db
+    .prepare(
+      `SELECT ${QUEUE_COLUMNS} FROM registration_requests
+        WHERE account_status = 'Pending'
+        ORDER BY submitted_at ASC`
+    )
+    .all<QueueRegistrationRow>();
+  return result.results ?? [];
 }
