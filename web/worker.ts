@@ -1,15 +1,22 @@
 /**
- * EFCC same-origin RPC proxy Worker (ADR-0017 / ADR-0018).
+ * EFCC Cloudflare Worker (ADR-0017 / ADR-0018 / ADR-0020 / ADR-0021).
  *
- * Transport-only: serves the Next.js static export via the `ASSETS` binding
- * for every path except `/api/*` (routed here via `run_worker_first` in
- * wrangler.jsonc), which is proxied to the Apps Script `/exec` endpoint.
- * Owns CORS/preflight, header forwarding, the Apps Script body-status
- * remap (load-bearing - ContentService.TextOutput cannot set HTTP status),
- * request correlation, and session-keyed rate limiting. Owns NO business
- * authorization - that stays server-enforced in Apps Script.
+ * Two routes, two transport contracts:
  *
- * Pointer: https://github.com/Noahlw/efcc/issues/142 (CF0-01)
+ *   * `/api/auth/*` — cookie-only auth surface (AUTH-02 #160). No CORS,
+ *     no OPTIONS, no Authorization header, no X-Efcc-Session-Id header.
+ *     Token material travels only in two httpOnly Secure SameSite=Strict
+ *     cookies. The transport guard rejects forbidden headers before any
+ *     handler runs.
+ *
+ *   * `/api/v1/rpc` — same-origin RPC proxy for the legacy domain RPCs
+ *     (ADR-0018). The legacy proxy contract is preserved unchanged: it
+ *     forwards Authorization / X-Efcc-Session-Id / Idempotency-Key, emits
+ *     CORS preflight, and remaps the Apps Script body status onto the
+ *     outer HTTP response. No business authorization is owned here.
+ *
+ * Non-/api paths fall through to the ASSETS binding (static export).
+ * AUTH-03 (#161) adds a `scheduled` handler for the D1→Sheets review mirror.
  */
 
 export interface Env {
@@ -74,12 +81,24 @@ async function rateLimitKeyFor(request: Request): Promise<string | null> {
   // so the body remains readable for the upstream forward below.
   try {
     const peek = await request.clone().json();
-    if (typeof peek === "object" && peek !== null) {
-      const { action } = peek as { action?: unknown };
-      const username = (peek as { params?: { username?: unknown } }).params
-        ?.username;
-      if (action === "loginUser" && typeof username === "string") {
-        return `login:${username}`;
+    if (
+      typeof peek === "object" &&
+      peek !== null &&
+      "action" in peek &&
+      "params" in peek
+    ) {
+      const action = peek.action; // unknown - narrowed below
+      const params = peek.params; // unknown
+      if (
+        action === "loginUser" &&
+        typeof params === "object" &&
+        params !== null &&
+        "username" in params
+      ) {
+        const username = params.username; // unknown
+        if (typeof username === "string") {
+          return `login:${username}`;
+        }
       }
     }
   } catch {
@@ -88,7 +107,7 @@ async function rateLimitKeyFor(request: Request): Promise<string | null> {
   return null;
 }
 
-/** Build a minimal RFC 9457 Problem Details response. */
+/** Build a minimal RFC 9457 Problem Details response (proxy path only). */
 function problemResponse(
   status: number,
   code: string,
@@ -97,22 +116,18 @@ function problemResponse(
   detail?: string,
   extra?: { retryAfter?: string }
 ): Response {
-  // One correlation ID threads through both the body and the header
-  // (ADR-0018 §8: "The same requestId value threads through... both
-  // response envelopes").
-  const requestId = crypto.randomUUID();
   const body = JSON.stringify({
-    type: `tag:efcc.app,2026:error:${code}`,
+    type: `https://efcc.dev/problems/${code.toLowerCase()}`,
     status,
     code,
     title,
-    detail,
-    requestId,
+    ...(detail !== undefined ? { detail } : {}),
+    requestId: crypto.randomUUID(),
   });
   const headers: Record<string, string> = {
     "Content-Type": "application/problem+json",
     "Access-Control-Allow-Origin": origin,
-    "X-Request-Id": requestId,
+    "X-Request-Id": crypto.randomUUID(),
   };
   if (extra?.retryAfter) {
     headers["Retry-After"] = extra.retryAfter;
@@ -120,16 +135,134 @@ function problemResponse(
   return new Response(body, { status, headers });
 }
 
+/**
+ * Cookie-only transport guard for the `/api/auth/*` surface (AUTH-02 #160).
+ * Rejects:
+ *   * OPTIONS / non-POST/GET methods (no CORS preflight support).
+ *   * Authorization header (every flavor is forbidden on this surface).
+ *   * X-Efcc-Session-Id header (the legacy session id travels only via the
+ *     opaque refresh cookie).
+ *   * Cross-origin requests (no CORS = no cross-origin).
+ * Returns null on a clean cookie-only same-origin request, or a 403/405
+ * Response otherwise.
+ */
+async function authTransportGuard(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const reqOrigin = request.headers.get("Origin");
+  // Same-origin when no Origin is sent (same-host navigation) or when the
+  // Origin matches the Worker's own host.
+  if (reqOrigin) {
+    let reqOriginHost: string;
+    try {
+      reqOriginHost = new URL(reqOrigin).host;
+    } catch {
+      return jsonResponse(403, {
+        code: "CROSS_ORIGIN_FORBIDDEN",
+        title: "CROSS_ORIGIN_FORBIDDEN",
+        detail: "Cross-origin requests are not supported on this transport.",
+      });
+    }
+    if (reqOriginHost !== url.host) {
+      return jsonResponse(403, {
+        code: "CROSS_ORIGIN_FORBIDDEN",
+        title: "CROSS_ORIGIN_FORBIDDEN",
+        detail: "Cross-origin requests are not supported on this transport.",
+      });
+    }
+  }
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 405,
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
+  if (request.headers.get("Authorization") !== null) {
+    return jsonResponse(403, {
+      code: "TRANSPORT_FORBIDDEN",
+      title: "TRANSPORT_FORBIDDEN",
+      detail: "Authorization header is not supported on this transport.",
+    });
+  }
+  if (request.headers.get("X-Efcc-Session-Id") !== null) {
+    return jsonResponse(403, {
+      code: "TRANSPORT_FORBIDDEN",
+      title: "TRANSPORT_FORBIDDEN",
+      detail: "X-Efcc-Session-Id header is not supported on this transport.",
+    });
+  }
+  return null;
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // ---- Auth surface: cookie-only transport, no CORS ------------------
+    if (url.pathname.startsWith("/api/auth/")) {
+      const guard = await authTransportGuard(request);
+      if (guard) return guard;
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return jsonResponse(503, {
+          code: "AUTH_NOT_CONFIGURED",
+          title: "AUTH_NOT_CONFIGURED",
+          detail: "Auth signing secret is not configured.",
+        });
+      }
+      const authEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const {
+        handleLogin,
+        handleUpgrade,
+        handleRefresh,
+        handleLogout,
+        handleMe,
+        handleAdminUnlock,
+      } = await import("./lib/auth/handlers");
+      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+        return handleLogin(request, authEnv);
+      }
+      if (url.pathname === "/api/auth/upgrade" && request.method === "POST") {
+        return handleUpgrade(request, authEnv);
+      }
+      if (url.pathname === "/api/auth/refresh" && request.method === "POST") {
+        return handleRefresh(request, authEnv);
+      }
+      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        return handleLogout(request, authEnv);
+      }
+      if (url.pathname === "/api/auth/me" && request.method === "GET") {
+        return handleMe(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/auth/admin-unlock" &&
+        request.method === "POST"
+      ) {
+        return handleAdminUnlock(request, authEnv);
+      }
+      return jsonResponse(404, {
+        code: "NOT_FOUND",
+        title: "NOT_FOUND",
+        detail: "Unknown auth route.",
+      });
+    }
+
+    // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {
       // Should not normally be reached (run_worker_first scopes this
       // Worker to /api/* only), but fall back to assets defensively.
       return env.ASSETS.fetch(request);
     }
 
+    // ---- Domain RPC proxy: preserves legacy CF1 transport -------------
     const origin = request.headers.get("Origin") ?? "*";
 
     if (request.method === "OPTIONS") {

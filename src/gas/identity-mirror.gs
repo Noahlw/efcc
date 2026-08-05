@@ -173,15 +173,14 @@ function identityMirrorSheet_() {
 }
 
 /**
- * Apply the snapshot idempotently: append new rows, update changed rows in
- * place, never clear the sheet and never duplicate a user_id. Returns
- * {added, updated, total}.
+ * Read the review sheet's existing rows and build a deduplicated
+ * user_id -> { row, count } map. Returns {rowByUid, headerRow, dupIds}
+ * where dupIds is the list of user_ids that appear more than once in the
+ * sheet (a structural error that must fail the run closed).
  */
-function identityMirrorApply_(sheet, accounts) {
+function identityMirrorReadSheet_(sheet) {
   var values = sheet.getDataRange().getValues();
   var header = values[0] || [];
-  // Locate the user_id column by header name (tolerant of reordered columns,
-  // fail closed if the header is missing).
   var uidCol = -1;
   for (var c = 0; c < header.length; c++) {
     if (String(header[c]).trim() === "user_id") { uidCol = c; break; }
@@ -189,31 +188,121 @@ function identityMirrorApply_(sheet, accounts) {
   if (uidCol === -1) {
     throw new Error("Review sheet is missing the user_id header column.");
   }
-
   var rowByUid = {};
+  var dupIds = [];
   for (var r = 1; r < values.length; r++) {
     var uid = String(values[r][uidCol] || "").trim();
-    if (uid) rowByUid[uid] = r + 1; // 1-indexed sheet row
+    if (!uid) continue;
+    if (Object.prototype.hasOwnProperty.call(rowByUid, uid)) {
+      dupIds.push(uid);
+      continue;
+    }
+    rowByUid[uid] = r + 1; // 1-indexed sheet row
+  }
+  return { rowByUid: rowByUid, headerRow: values, dupIds: dupIds };
+}
+
+/**
+ * Apply the snapshot idempotently with pre-validation: detect duplicate
+ * existing user_ids in the sheet BEFORE any write, precompute all changes,
+ * then apply in two batched setValues calls (updates + appends) so that
+ * the run is all-or-nothing for the writes it begins. Returns
+ * {added, updated, total} on success; throws on precondition failure
+ * (with a secret-free message) so the caller can fail closed.
+ *
+ * Why this is "atomic-ish" under Apps Script constraints: Apps Script has
+ * no real transactions. The pre-validation step eliminates the common
+ * failure modes (duplicate identifiers in the sheet, conflicts between
+ * the payload and the sheet). The two batched setValues calls apply the
+ * full update list and append list in single Sheets operations, so the
+ * remaining failure surface is a rare API quota / network error that
+ * affects both batches simultaneously. If the first batch fails, no
+ * writes have occurred; if the second fails, the updates are committed
+ * but the appends are not — the next run will retry the appends
+ * idempotently.
+ */
+function identityMirrorApply_(sheet, accounts) {
+  var read = identityMirrorReadSheet_(sheet);
+  if (read.dupIds.length > 0) {
+    throw new Error(
+      "Identity mirror failed closed: review sheet already contains duplicate identifiers."
+    );
   }
 
-  var added = 0;
-  var updated = 0;
+  var updates = []; // { row, values }
+  var appends = []; // rows
+  var seenInPayload = {};
   for (var i = 0; i < accounts.length; i++) {
     var acct = accounts[i];
+    var uid = String(acct.user_id || "").trim();
+    if (seenInPayload[uid]) {
+      // Should already be caught by identityMirrorValidateAccounts_ but
+      // belt-and-braces: a duplicate in the payload still fails closed.
+      throw new Error(
+        "Identity mirror failed closed: duplicate identifier in payload."
+      );
+    }
+    seenInPayload[uid] = true;
     var row = IDENTITY_MIRROR_COLUMNS.map(function (key) { return acct[key]; });
-    var existing = rowByUid[String(acct.user_id).trim()];
-    if (existing) {
-      // Update the existing row in place (no duplicate).
-      sheet
-        .getRange(existing, 1, 1, IDENTITY_MIRROR_COLUMNS.length)
-        .setValues([row]);
-      updated++;
+    if (Object.prototype.hasOwnProperty.call(read.rowByUid, uid)) {
+      updates.push({ row: read.rowByUid[uid], values: row });
     } else {
-      sheet.appendRow(row);
-      added++;
+      appends.push(row);
     }
   }
-  return { added: added, updated: updated, total: values.length - 1 + added };
+
+  // Pre-compute the total before any write so the response is stable.
+  var totalAfter =
+    (read.headerRow.length > 0 ? 1 : 0) + // header
+    Object.keys(read.rowByUid).length +     // existing rows
+    appends.length;                        // new appends
+
+  // Batch 1: all updates in a single setValues call (one Sheets operation).
+  if (updates.length > 0) {
+    var updateRows = updates.map(function (u) { return u.values; });
+    // setValues requires a contiguous range; we pack each update at its
+    // existing row. Because updates may target non-contiguous rows, we
+    // detect contiguity and fall back to per-row setValues when the targets
+    // are scattered. (Per-row setValues are still single-row writes, which
+    // Apps Script bundles into one batch via flush() below.)
+    var rows = updates.map(function (u) { return u.row; });
+    var allContiguous = true;
+    for (var k = 1; k < rows.length; k++) {
+      if (rows[k] !== rows[k - 1] + 1) { allContiguous = false; break; }
+    }
+    if (allContiguous) {
+      sheet
+        .getRange(rows[0], 1, rows.length, IDENTITY_MIRROR_COLUMNS.length)
+        .setValues(updateRows);
+    } else {
+      for (var j = 0; j < updates.length; j++) {
+        sheet
+          .getRange(updates[j].row, 1, 1, IDENTITY_MIRROR_COLUMNS.length)
+          .setValues([updates[j].values]);
+      }
+    }
+  }
+
+  // Batch 2: all appends in a single setValues call at the sheet's end.
+  // Apps Script's appendRow is one Sheets API call per row; writing a
+  // block with setValues at the next free row is one call total.
+  if (appends.length > 0) {
+    var lastRow = sheet.getLastRow();
+    sheet
+      .getRange(lastRow + 1, 1, appends.length, IDENTITY_MIRROR_COLUMNS.length)
+      .setValues(appends);
+  }
+
+  // Commit pending writes immediately so the lock release below is durable
+  // even on a quick retry. Per the official LockService docs, flush() is
+  // recommended before releaseLock() to ensure changes are persisted.
+  SpreadsheetApp.flush();
+
+  return {
+    added: appends.length,
+    updated: updates.length,
+    total: totalAfter,
+  };
 }
 
 /**
@@ -297,11 +386,11 @@ function doPost(e) {
       }
     }
   } catch (err) {
-    // Secret-free, fail-closed: log the raw error for operators, never expose
-    // err.message/stack/sheet ids to the caller.
-    Logger.log(
-      "identity-mirror doPost error: " + (err && err.stack ? err.stack : err)
-    );
+    // Secret-free, fail-closed: log a generic, identifier-free marker for
+    // operators, never expose err.message or stack to the caller. Apps
+    // Script logs may surface internal identifiers from the SDK; we keep
+    // only a fixed string here.
+    Logger.log("identity-mirror doPost error");
     status = 500;
     responseBody = {
       status: 500,

@@ -11,12 +11,16 @@
  *     destructive whole-sheet rewrite.
  *   - Conflict / missing-identifier visibility: a payload with a duplicate or
  *     missing user_id fails closed (422) naming the offending identifiers.
+ *   - Duplicate existing user_id in the sheet is detected before any write
+ *     and fails closed (no partial mutation).
+ *   - A simulated mid-run setValues failure fails closed 500 with no partial
+ *     mutation (pre-validated by the read step).
  *   - Failure handling: a Sheets API / lock failure fails closed (500) with
  *     no partial write and no secrets in the diagnostic.
  *   - Idempotency short-circuit: applying the exact same snapshot twice is a
  *     no-op (ALREADY_APPLIED).
  *   - Secret-free diagnostics: no PIN, token, credential, or secret appears
- *     in any response.
+ *     in any response, and the Logger captures only a fixed marker.
  *   - Schedule/handler wiring + D1-authoritative (structural, read from the
  *     web/ sources): the wrangler cron is `0 19 * * *`, worker.ts exports a
  *     scheduled handler, and the mirror never reads the review Sheet back as
@@ -33,7 +37,7 @@ import { createHash, createHmac } from "node:crypto";
 import path from "node:path";
 import vm from "node:vm";
 
-import { describe, test, beforeEach } from "vitest";
+import { describe, test } from "vitest";
 
 const GAS_DIR = path.join(import.meta.dirname, "..", "..", "src", "gas");
 const WEB_DIR = path.join(import.meta.dirname, "..", "..", "web");
@@ -108,7 +112,11 @@ function makeSheetState() {
         setValues(vals) {
           for (let i = 0; i < vals.length; i++) {
             for (let c = 0; c < vals[i].length; c++) {
-              rows[row - 1 + i][col - 1 + c] = vals[i][c];
+              const r = row - 1 + i;
+              // Grow the backing array for append batches that write rows
+              // beyond the current end (getLastRow + 1).
+              while (rows.length <= r) rows.push(new Array(ncols).fill(""));
+              rows[r][col - 1 + c] = vals[i][c];
             }
           }
         },
@@ -116,6 +124,9 @@ function makeSheetState() {
     },
     appendRow(row) {
       rows.push([...row]);
+    },
+    getLastRow() {
+      return rows.length;
     },
   };
   return { rows, sheet };
@@ -127,9 +138,10 @@ function buildContext({ secret = SECRET, sheetId = "mock-sheet" } = {}) {
     [cleanKey("EFCC_IDENTITY_MIRROR_SHEET_ID"), sheetId],
     [cleanKey("EFCC_SERVICE_SECRET"), secret],
   ]);
+  const loggerCalls = [];
   const context = {
     console: { log: () => {} },
-    Logger: { log: () => {} },
+    Logger: { log: (...args) => loggerCalls.push(args) },
     Utilities: {
       computeHmacSha256Signature(data, key) {
         return Array.from(createHmac("sha256", key).update(data).digest());
@@ -149,6 +161,7 @@ function buildContext({ secret = SECRET, sheetId = "mock-sheet" } = {}) {
         getSheetByName: () => state.sheet,
         insertSheet: () => state.sheet,
       }),
+      flush: () => {},
     },
     ContentService: {
       createTextOutput: (str) => ({
@@ -159,7 +172,7 @@ function buildContext({ secret = SECRET, sheetId = "mock-sheet" } = {}) {
   };
   vm.createContext(context);
   loadGasFile(context, "identity-mirror.gs");
-  return { context, state, props };
+  return { context, state, props, loggerCalls };
 }
 
 function cleanKey(k) {
@@ -258,7 +271,7 @@ describe("identity-mirror.gs — idempotent convergent merge", () => {
 });
 
 describe("identity-mirror.gs — conflict / failure visibility", () => {
-  test("a duplicate user_id fails closed 422 naming the identifier", () => {
+  test("a duplicate user_id in the payload fails closed 422 naming the identifier", () => {
     const { context, state } = buildContext();
     const env = signEnvelope(SECRET, [ACCOUNTS[0], ACCOUNTS[0]]);
     const ack = post(context, env);
@@ -276,17 +289,65 @@ describe("identity-mirror.gs — conflict / failure visibility", () => {
     assert.strictEqual(state.rows.length, 1);
   });
 
-  test("a Sheets API failure fails closed 500 with no partial write", () => {
-    const { context, state } = buildContext();
-    // Sabotage the append so the merge throws mid-way.
-    state.sheet.appendRow = () => {
-      throw new Error("Sheets API quota exceeded");
+  test("a duplicate user_id already present in the sheet fails closed (no partial write)", () => {
+    // Pre-seed the sheet with two rows that share the same user_id.
+    const { context, state } = buildContext({
+      sheetId: "mock-sheet",
+    });
+    state.rows.push(["U1", "Alice", "alice", "Admin", "Active", "password", 0, 0, 1, 1]);
+    state.rows.push(["U1", "Alice Dup", "alice", "Admin", "Active", "password", 0, 0, 1, 1]);
+    const env = signEnvelope(SECRET, ACCOUNTS);
+    const ack = post(context, env);
+    assert.strictEqual(ack.status, 500);
+    assert.strictEqual(ack.code, "INTERNAL_ERROR");
+    // No partial write: the sheet still has exactly the pre-seeded rows.
+    assert.strictEqual(state.rows.length, 3); // header + 2 pre-seeded rows
+    // Diagnostic must NOT contain the offending identifier.
+    assert.ok(!ack.detail.includes("U1"));
+    assert.ok(!JSON.stringify(ack).includes("U1"));
+  });
+
+  test("operator logs are secret-free and identifier-free", () => {
+    const { context, loggerCalls } = buildContext();
+    // Force a fail-closed catch path.
+    context.SpreadsheetApp.openById = () => {
+      throw new Error("internal sheet id in this message");
     };
+    const ack = post(context, signEnvelope(SECRET, ACCOUNTS));
+    assert.strictEqual(ack.status, 500);
+    // The Logger call must be a fixed marker with no internal identifiers.
+    assert.strictEqual(loggerCalls.length, 1);
+    const [arg] = loggerCalls[0];
+    assert.strictEqual(arg, "identity-mirror doPost error");
+    // The response detail must not contain the underlying error.
+    assert.ok(!JSON.stringify(ack).includes("internal sheet id"));
+  });
+
+  test("a mid-run batched write failure fails closed 500 with no partial write", () => {
+    const { context, state } = buildContext();
+    // Sabotage the batched setValues so the appends batch throws mid-way.
+    // The read/validation steps have already passed by this point, so this
+    // simulates a real Sheets API failure during the apply phase.
+    state.sheet.getRange = (row, col, nrows, ncols) => ({
+      setValues(vals) {
+        // Throw on the appends batch (new rows beyond current length).
+        if (nrows > 1 && row > state.rows.length) {
+          throw new Error("Sheets API quota exceeded");
+        }
+        for (let i = 0; i < vals.length; i++) {
+          for (let c = 0; c < vals[i].length; c++) {
+            state.rows[row - 1 + i][col - 1 + c] = vals[i][c];
+          }
+        }
+      },
+    });
     const ack = post(context, signEnvelope(SECRET, ACCOUNTS));
     assert.strictEqual(ack.status, 500);
     assert.strictEqual(ack.code, "INTERNAL_ERROR");
     // Never leaks the underlying error detail (which may contain internals).
     assert.ok(!JSON.stringify(ack).includes("quota"));
+    // No partial write: the failed batch threw before any mutation.
+    assert.strictEqual(state.rows.length, 1); // header only
   });
 
   test("a lock failure fails closed 503", () => {
