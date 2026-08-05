@@ -3,11 +3,14 @@
  *
  * Two routes, two transport contracts:
  *
- *   * `/api/auth/*` — cookie-only auth surface (AUTH-02 #160). No CORS,
- *     no OPTIONS, no Authorization header, no X-Efcc-Session-Id header.
- *     Token material travels only in two httpOnly Secure SameSite=Strict
- *     cookies. The transport guard rejects forbidden headers before any
- *     handler runs.
+ *   * `/api/v1/auth/*` — cookie-only auth surface (AUTH-04 #162 / AUTH-06
+ *     #165). Six locked actions — register, login, refresh, logout,
+ *     registrations/:id/approve, registrations/:id/reject — plus the
+ *     preserved legacy forced-upgrade helpers (upgrade, me, admin-unlock).
+ *     No CORS, no OPTIONS, no Authorization header, no X-Efcc-Session-Id
+ *     header. Token material travels only in two httpOnly Secure
+ *     SameSite=Strict cookies. The transport guard rejects forbidden
+ *     headers before any handler runs.
  *
  *   * `/api/v1/rpc` — same-origin RPC proxy for the legacy domain RPCs
  *     (ADR-0018). The legacy proxy contract is preserved unchanged: it
@@ -16,8 +19,8 @@
  *     outer HTTP response. No business authorization is owned here.
  *
  * Non-/api paths fall through to the ASSETS binding (static export).
- * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority and
- * expose the cookie-only auth boundary.
+ * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
+ * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
  */
 
 export interface Env {
@@ -125,7 +128,7 @@ function problemResponse(
 }
 
 /**
- * Cookie-only transport guard for the `/api/auth/*` surface (AUTH-02 #160).
+ * Cookie-only transport guard for the `/api/v1/auth/*` surface (AUTH-04 #162).
  * Rejects:
  *   * OPTIONS / non-POST/GET methods (no CORS preflight support).
  *   * Authorization header (every flavor is forbidden on this surface).
@@ -183,9 +186,17 @@ async function authTransportGuard(request: Request): Promise<Response | null> {
 }
 
 function jsonResponse(status: number, body: unknown): Response {
+  let requestId = crypto.randomUUID();
+  if (body && typeof body === "object" && "requestId" in body) {
+    const rid = body.requestId;
+    if (typeof rid === "string") requestId = rid;
+  }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
   });
 }
 
@@ -194,7 +205,7 @@ export default {
     const url = new URL(request.url);
 
     // ---- Auth surface: cookie-only transport, no CORS ------------------
-    if (url.pathname.startsWith("/api/auth/")) {
+    if (url.pathname.startsWith("/api/v1/auth/")) {
       const guard = await authTransportGuard(request);
       if (guard) return guard;
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
@@ -202,6 +213,7 @@ export default {
           code: "AUTH_NOT_CONFIGURED",
           title: "AUTH_NOT_CONFIGURED",
           detail: "Auth signing secret is not configured.",
+          requestId: crypto.randomUUID(),
         });
       }
       const authEnv = {
@@ -209,38 +221,57 @@ export default {
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
       const {
+        handleRegister,
         handleLogin,
         handleUpgrade,
         handleRefresh,
         handleLogout,
         handleMe,
         handleAdminUnlock,
+        handleApprove,
+        handleReject,
       } = await import("./lib/auth/handlers");
-      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+      if (url.pathname === "/api/v1/auth/register" && request.method === "POST") {
+        return handleRegister(request, authEnv);
+      }
+      if (url.pathname === "/api/v1/auth/login" && request.method === "POST") {
         return handleLogin(request, authEnv);
       }
-      if (url.pathname === "/api/auth/upgrade" && request.method === "POST") {
+      if (url.pathname === "/api/v1/auth/upgrade" && request.method === "POST") {
         return handleUpgrade(request, authEnv);
       }
-      if (url.pathname === "/api/auth/refresh" && request.method === "POST") {
+      if (url.pathname === "/api/v1/auth/refresh" && request.method === "POST") {
         return handleRefresh(request, authEnv);
       }
-      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+      if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
         return handleLogout(request, authEnv);
       }
-      if (url.pathname === "/api/auth/me" && request.method === "GET") {
+      if (url.pathname === "/api/v1/auth/me" && request.method === "GET") {
         return handleMe(request, authEnv);
       }
       if (
-        url.pathname === "/api/auth/admin-unlock" &&
+        url.pathname === "/api/v1/auth/admin-unlock" &&
         request.method === "POST"
       ) {
         return handleAdminUnlock(request, authEnv);
+      }
+      const approve = url.pathname.match(
+        /^\/api\/v1\/auth\/registrations\/([^/]+)\/approve$/
+      );
+      if (approve && request.method === "POST") {
+        return handleApprove(request, authEnv, approve[1]);
+      }
+      const reject = url.pathname.match(
+        /^\/api\/v1\/auth\/registrations\/([^/]+)\/reject$/
+      );
+      if (reject && request.method === "POST") {
+        return handleReject(request, authEnv, reject[1]);
       }
       return jsonResponse(404, {
         code: "NOT_FOUND",
         title: "NOT_FOUND",
         detail: "Unknown auth route.",
+        requestId: crypto.randomUUID(),
       });
     }
 

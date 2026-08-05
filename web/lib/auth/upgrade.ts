@@ -32,9 +32,58 @@ import {
   assertNotLocked,
   recordLegacyPinFailure,
 } from "./lockout";
+import { LegacyUpgradeLockedError } from "./lockout";
 
 export interface UpgradeResult {
   ok: true;
+}
+
+/** Outcome of a legacy-PIN identity check performed at login (AUTH-04). */
+export interface LegacyPinLoginCheck {
+  /** True when the submitted PIN matched the one-time legacy-PIN hash. */
+  ok: boolean;
+  /** True when the account is currently locked out (stage 1/2/3). */
+  locked: boolean;
+}
+
+/**
+ * Verify the legacy PIN presented at LOGIN for a still-unupgraded account,
+ * applying the same brute-force lockout ladder as the upgrade itself
+ * (ADR-0020 §4). Returns the match outcome; a failed verification records the
+ * failure and escalates the lockout before returning. A locked account is
+ * reported via `locked: true` without ever verifying the PIN.
+ *
+ * This is the login-route half of AUTH-04's legacy handling: a successful
+ * match makes `login` return `mustSetNewCredential: true` (no session issued);
+ * the actual credential change still goes through completeCredentialUpgrade.
+ */
+export async function verifyLegacyPinForLogin(
+  db: D1Database,
+  options: { userId: string; legacyPin: string; now?: number }
+): Promise<LegacyPinLoginCheck> {
+  const now = options.now ?? Date.now();
+  const account = await findAccountByUserId(db, options.userId);
+  if (!account || account.requires_upgrade !== 1 || !account.legacy_pin_hash) {
+    // Not a legacy account (or already upgraded) — the caller routes away.
+    return { ok: false, locked: false };
+  }
+  try {
+    assertNotLocked(account, now);
+  } catch (err) {
+    if (err instanceof LegacyUpgradeLockedError) {
+      return { ok: false, locked: true };
+    }
+    throw err;
+  }
+  const proven = await verifyCredential(
+    normalizeLegacyPin(options.legacyPin),
+    account.legacy_pin_hash
+  );
+  if (!proven) {
+    await recordLegacyPinFailure(db, options.userId, account, now);
+    return { ok: false, locked: false };
+  }
+  return { ok: true, locked: false };
 }
 
 /**

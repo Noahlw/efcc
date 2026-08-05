@@ -208,9 +208,13 @@ export async function issueSession(
 }
 
 /**
- * Exchange a valid refresh session for a fresh access token (restore-on-load).
- * Touches last_seen_at / extends idle expiry. Reads D1 only on this path.
- * Throws AuthError for unknown, revoked, or idle-expired sessions.
+ * Exchange a valid refresh session for a fresh access token (restore-on-load)
+ * and ROTATE the opaque refresh value per RFC 9700 §4.14.2 + AUTH-04 (#162):
+ * every successful refresh mints a brand-new session id, invalidating the
+ * presented value immediately, so a stolen refresh cookie is useless after
+ * the first use. The new session row re-anchors the 90-day idle expiry and
+ * the fresh access token binds to the new session. Reads/writes D1 only on
+ * this path. Throws AuthError for unknown, revoked, or idle-expired sessions.
  */
 export async function refreshSession(
   db: D1Database,
@@ -248,24 +252,45 @@ export async function refreshSession(
     await findAccountByUserId(db, session.user_id)
   );
 
+  // Rotate: mint a fresh session row, then invalidate the presented value in
+  // the same transaction. The old value can never be renewed afterwards.
+  const newSessionId = crypto.randomUUID();
   const expiresAt = now + REFRESH_IDLE_TTL_MS;
   await db
-    .prepare(
-      `UPDATE sessions
-         SET last_seen_at = ?, expires_at = ?, device_fingerprint = ?
-       WHERE session_id = ?`
-    )
-    .bind(now, expiresAt, options.deviceFingerprint ?? null, session.session_id)
-    .run();
+    .batch([
+      db
+        .prepare(
+          `INSERT INTO sessions (
+             session_id, user_id, issued_at, last_seen_at, expires_at,
+             revoked_at, device_fingerprint, created_at
+           ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`
+        )
+        .bind(
+          newSessionId,
+          account.user_id,
+          now,
+          now,
+          expiresAt,
+          options.deviceFingerprint ?? null,
+          now
+        ),
+      db
+        .prepare(
+          `UPDATE sessions
+              SET revoked_at = ?
+            WHERE session_id = ? AND revoked_at IS NULL`
+        )
+        .bind(now, session.session_id),
+    ]);
 
   const accessToken = await signAccessToken(options.accessTokenSecret, {
-    sid: session.session_id,
+    sid: newSessionId,
     uid: account.user_id,
     iat: now,
   });
 
   return {
-    sessionId: session.session_id,
+    sessionId: newSessionId,
     accessToken,
     issuedAt: session.issued_at,
     expiresAt,

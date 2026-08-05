@@ -76,11 +76,11 @@ test.describe("D1 cookie-only login gate", () => {
     baseURL,
   }) => {
     const origin = originFor(baseURL);
-    const login = await request.post("/api/auth/login", {
+    const login = await request.post("/api/v1/auth/login", {
       headers: { Origin: origin },
       data: {
         username: TEST_USERNAME,
-        credential: TEST_CREDENTIAL,
+        password: TEST_CREDENTIAL,
       },
     });
 
@@ -88,7 +88,7 @@ test.describe("D1 cookie-only login gate", () => {
     assertLockedCookies(setCookieHeaders(login));
     assertNoTokenMaterial(await login.json());
 
-    const logout = await request.post("/api/auth/logout", {
+    const logout = await request.post("/api/v1/auth/logout", {
       headers: { Origin: origin },
     });
     expect(logout.status()).toBe(204);
@@ -100,7 +100,7 @@ test.describe("D1 cookie-only login gate", () => {
     baseURL,
   }) => {
     const origin = originFor(baseURL);
-    const upgrade = await request.post("/api/auth/upgrade", {
+    const upgrade = await request.post("/api/v1/auth/upgrade", {
       headers: { Origin: origin },
       data: {
         username: LEGACY_USERNAME,
@@ -113,7 +113,7 @@ test.describe("D1 cookie-only login gate", () => {
     assertLockedCookies(setCookieHeaders(upgrade));
     assertNoTokenMaterial(await upgrade.json());
 
-    const logout = await request.post("/api/auth/logout", {
+    const logout = await request.post("/api/v1/auth/logout", {
       headers: { Origin: origin },
     });
     expect(logout.status()).toBe(204);

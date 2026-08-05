@@ -209,13 +209,44 @@ describe("AUTH-02: refresh idle expiry", () => {
       now: day80,
     });
     expect(refreshed.accessToken).toBeTruthy();
-    // Day 100 -> still valid because the touch re-anchored expiry.
+    // Day 100 -> still valid because the touch re-anchored expiry. The refresh
+    // ROTATED the opaque value, so the next call uses the value returned by
+    // the previous refresh (RFC 9700 §4.14.2).
     const after = await refreshSession(testDb(), {
-      sessionId: bundle.sessionId,
+      sessionId: refreshed.sessionId,
       accessTokenSecret: SECRET,
       now: day80 + 20 * 24 * 60 * 60 * 1000,
     });
     expect(after.accessToken).toBeTruthy();
+  });
+
+  test("refresh rotates the opaque value; the old value is invalidated immediately", async () => {
+    const bundle = await issueSession(testDb(), {
+      userId: "U002",
+      accessTokenSecret: SECRET,
+    });
+    const first = await refreshSession(testDb(), {
+      sessionId: bundle.sessionId,
+      accessTokenSecret: SECRET,
+    });
+    expect(first.sessionId).not.toBe(bundle.sessionId);
+    const firstClaims = await verifyAccessToken(SECRET, first.accessToken);
+    expect(firstClaims?.sid).toBe(first.sessionId);
+    expect(await sessionRevoked(bundle.sessionId)).toBe(true);
+    // The old value can never be renewed again.
+    await expect(
+      refreshSession(testDb(), {
+        sessionId: bundle.sessionId,
+        accessTokenSecret: SECRET,
+      })
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+    // A second refresh on the rotated value issues yet another new value.
+    const second = await refreshSession(testDb(), {
+      sessionId: first.sessionId,
+      accessTokenSecret: SECRET,
+    });
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(await sessionRevoked(first.sessionId)).toBe(true);
   });
 });
 
