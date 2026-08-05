@@ -193,13 +193,17 @@ export async function recordLegacyPinFailure(
  * Admin/Teacher intervention: clear a stage-3 (or any) upgrade lockout so the
  * member can attempt the forced upgrade again. Does NOT clear requires_upgrade
  * or the legacy-pin hash — the upgrade itself must still be completed.
+ *
+ * Returns `true` when the user existed (and the lockout state was reset);
+ * `false` when the user_id is unknown so the caller can surface a precise
+ * 404 instead of falsely reporting `unlocked: true`.
  */
 export async function adminUnlockLegacyUpgrade(
   db: D1Database,
   userId: string,
   now: number = Date.now()
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const result = await db
     .prepare(
       `UPDATE accounts
          SET lock_level = 0, failed_attempts = 0, locked_until = NULL,
@@ -208,4 +212,6 @@ export async function adminUnlockLegacyUpgrade(
     )
     .bind(now, userId)
     .run();
+  // meta.changes === 0 when the user_id did not match any row.
+  return (result.meta?.changes ?? 0) > 0;
 }

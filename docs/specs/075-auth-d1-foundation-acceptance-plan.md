@@ -105,6 +105,10 @@ $ npx vitest run lib/auth lib/mirror
 Test Files  5 passed (5)
 Tests       55 passed (55)
 
+$ npx vitest run lib/auth/accounts.test.ts lib/auth/lockout.test.ts
+Test Files  2 passed (2)
+Tests       22 passed (22)   # incl. 2 collision-class no-partial-write regressions + 1 adminUnlock-false-for-nonexistent-user
+
 $ npx tsc --noEmit -p tsconfig.worker.json
 # only the two pre-existing cloudflare:test diagnostics in test-bootstrap.ts
 ```
@@ -134,6 +138,20 @@ setAuthCookieHeaders` builds the pair; `worker.auth.test.ts ›
 readAuthCookiesFromResponse` reads both real `Set-Cookie` values via
 `Headers.getSetCookie()` and asserts each carries httpOnly Secure
 SameSite=Strict. Re-ran: full web suite 144 passed, identity-mirror 16 passed.
+
+Atomicity final pass (2026-08-05): `importLegacyUsers` no longer inserts
+rows one-by-one. It preflights the entire source + existing D1 (single
+query for `user_id` and `username_normalized` collision) and then writes
+every new row in a SINGLE `db.batch(...)` call (one SQLite transaction;
+all-or-nothing per the official D1 batch API). Both collision classes now
+fail closed BEFORE any DB write, with the DB byte-for-byte unchanged:
+(a) incoming `username_normalized` colliding with an existing D1 account,
+(b) two incoming rows colliding after normalization. `adminUnlockLegacyUpgrade`
+now returns `boolean` (true when a row matched; false for an unknown
+user_id); the handler reports 404 NOT_FOUND instead of falsely
+`unlocked: true`. Re-ran: accounts+lockout 22 passed (was 19, +3 new
+regression tests), full web suite 147 passed (was 144, +3), identity-mirror
+16 passed.
 
 ### Deployed `/exec` IFRAME smoke — BLOCKED (environment)
 

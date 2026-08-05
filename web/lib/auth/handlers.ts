@@ -519,6 +519,17 @@ export async function handleAdminUnlock(
     });
   }
   await adminUnlockLegacyUpgrade(env.DB, userId);
+  const unlocked = await adminUnlockLegacyUpgrade(env.DB, userId);
+  if (!unlocked) {
+    // The lockout primitive returns false when no row matched — i.e. the
+    // user_id does not exist. Surface a precise 404 instead of falsely
+    // reporting `unlocked: true`.
+    return jsonResponse(404, {
+      code: "NOT_FOUND",
+      title: "NOT_FOUND",
+      detail: "No account with that userId.",
+    });
+  }
   // Operator convention: revoke every outstanding session for the unlocked
   // account so the member re-authenticates with the new credential.
   await revokeAllUserSessions(env.DB, userId);

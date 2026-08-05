@@ -117,6 +117,15 @@ export interface LegacyImportResult {
  * `usersReadAll_` (row 0 = header). Deterministic and idempotent; duplicate
  * usernames and malformed rows fail closed with a diagnostic before any write.
  *
+ * Atomicity contract (#159): no partial write under any failure mode.
+ *   * Duplicate / malformed source rows fail closed BEFORE the DB is touched.
+ *   * An incoming row whose `user_id` or `username_normalized` collides with
+ *     an existing D1 account under a DIFFERENT user_id is detected by a
+ *     preflight and fails closed; only a re-import of the same `user_id` is
+ *     treated as idempotent (skipped).
+ *   * The actual write is a single D1 `db.batch(...)` call, which is a single
+ *     SQLite transaction (all-or-nothing per the official D1 batch API).
+ *
  * @param db D1 binding.
  * @param rows 2D Users-sheet rows.
  * @param now Epoch millis (injectable for tests).
@@ -197,47 +206,105 @@ export async function importLegacyUsers(
     throw new Error(`Legacy import failed closed:\n  ${diagnostics.join("\n  ")}`);
   }
 
-  let imported = 0;
-  let skipped = 0;
-
-  for (const row of parsed) {
-    // Idempotency: skip accounts already imported under the same immutable
-    // User_ID. Re-running never duplicates.
+  // Preflight against the existing D1 accounts table: any incoming row whose
+  // `user_id` or `username_normalized` collides with an existing row under a
+  // DIFFERENT `user_id` is a fail-closed condition. The re-import of the same
+  // `user_id` is the only idempotent skip (re-running the same import never
+  // duplicates, per the ADR-0020 migration contract).
+  const existingUserIds = new Set<string>();
+  const existingUsernames = new Set<string>();
+  if (parsed.length > 0) {
+    // Single query for both user_id and username_normalized sets; load any
+    // existing row that could collide on either field.
+    const placeholders = parsed.map(() => "?").join(",");
     const existing = await db
-      .prepare("SELECT user_id FROM accounts WHERE user_id = ?")
-      .bind(row.user_id)
-      .first<{ user_id: string }>();
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
-    const legacyPinHash = await hashCredential(row.legacyPinNormalized);
-    await db
       .prepare(
-        `INSERT INTO accounts (
-           user_id, name, username, username_normalized,
-           credential_hash, credential_kind, credential_version,
-           account_status, role, phone, qr_code_string,
-           legacy_pin_hash, requires_upgrade, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, NULL, 'legacy_pin', 1, ?, ?, NULL, NULL, ?, 1, ?, ?)`
+        `SELECT user_id, username_normalized
+           FROM accounts
+          WHERE user_id IN (${placeholders})
+             OR username_normalized IN (${placeholders})`
       )
       .bind(
-        row.user_id,
-        row.name,
-        row.username,
-        row.username_normalized,
-        row.status || ACCOUNT_STATUS.ACTIVE,
-        row.role,
-        legacyPinHash,
-        now,
-        now
+        ...parsed.map((r) => r.user_id),
+        ...parsed.map((r) => r.username_normalized)
       )
-      .run();
-    imported++;
+      .all<{ user_id: string; username_normalized: string }>();
+    for (const row of existing.results ?? []) {
+      existingUserIds.add(row.user_id);
+      existingUsernames.add(row.username_normalized);
+    }
   }
 
-  return { imported, skipped };
+  const toInsert: ParsedRow[] = [];
+  const preflightProblems: string[] = [];
+  for (const row of parsed) {
+    if (existingUserIds.has(row.user_id)) {
+      // Idempotent re-import of the same immutable User_ID: skip, do not
+      // re-insert. The same user_id always maps to the same row in D1, so
+      // a re-import cannot change the stored username either.
+      continue;
+    }
+    if (existingUsernames.has(row.username_normalized)) {
+      // A different account already owns this username after normalization;
+      // fail closed (no partial write). The diagnostic names the offending
+      // identifier and the source row so operators can fix the sheet.
+      preflightProblems.push(
+        `row ${row.sheetRow}: username '${row.username}' (normalized '${row.username_normalized}') collides with an existing D1 account`
+      );
+      continue;
+    }
+    toInsert.push(row);
+  }
+
+  if (preflightProblems.length > 0) {
+    // Fail closed: NO DB write was issued. The DB is byte-for-byte unchanged.
+    throw new Error(
+      `Legacy import failed closed (existing-account collision):\n  ${preflightProblems.join("\n  ")}`
+    );
+  }
+
+  if (toInsert.length === 0) {
+    return { imported: 0, skipped: parsed.length };
+  }
+
+  // Atomic write: a single db.batch() call runs every INSERT in one SQLite
+  // transaction. D1's official batch API is all-or-nothing — either every
+  // row commits, or nothing does. This eliminates the "earlier rows commit
+  // then a later UNIQUE collision throws and leaves a partial write" failure
+  // mode the per-row INSERT loop previously had.
+  const insertStmts: D1PreparedStatement[] = [];
+  for (const row of toInsert) {
+    const legacyPinHash = await hashCredential(row.legacyPinNormalized);
+    insertStmts.push(
+      db
+        .prepare(
+          `INSERT INTO accounts (
+             user_id, name, username, username_normalized,
+             credential_hash, credential_kind, credential_version,
+             account_status, role, phone, qr_code_string,
+             legacy_pin_hash, requires_upgrade, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, NULL, 'legacy_pin', 1, ?, ?, NULL, NULL, ?, 1, ?, ?)`
+        )
+        .bind(
+          row.user_id,
+          row.name,
+          row.username,
+          row.username_normalized,
+          row.status || ACCOUNT_STATUS.ACTIVE,
+          row.role,
+          legacyPinHash,
+          now,
+          now
+        )
+    );
+  }
+
+  await db.batch(insertStmts);
+
+  return {
+    imported: toInsert.length,
+    skipped: parsed.length - toInsert.length,
+  };
 }
 
 /** Look up an account by immutable User_ID, or null. */

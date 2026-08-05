@@ -181,6 +181,75 @@ describe("AUTH-01: legacy import", () => {
       ])
     ).rejects.toThrow(/missing a required column/);
   });
+
+  test(
+    "incoming username_normalized collides with an existing D1 account: no partial write (DB byte-for-byte unchanged)",
+    async () => {
+      // Seed an existing D1 account that owns the username "alice-collision".
+      await importLegacyUsers(testDb(), [
+        HEADER,
+        ["U500", "Alice Owner", "alice-collision", "1234", "Member", "Active"],
+      ]);
+      const beforeCount = await countAccounts();
+      const beforeAll = await testDb()
+        .prepare(
+          "SELECT user_id, username, username_normalized FROM accounts ORDER BY user_id"
+        )
+        .all<{ user_id: string; username: string; username_normalized: string }>();
+
+      // Incoming import with a row whose normalized username collides with
+      // the existing account. The preflight must fail closed BEFORE any write.
+      await expect(
+        importLegacyUsers(testDb(), [
+          HEADER,
+          ["U501", "Ben", "ben501", "1111", "Member", "Active"],
+          ["U502", "Clone Alice", "ALICE-COLLISION", "2222", "Member", "Active"],
+        ])
+      ).rejects.toThrow(/collides with an existing D1 account/);
+
+      // The DB is byte-for-byte unchanged: no new accounts were imported.
+      expect(await countAccounts()).toBe(beforeCount);
+      const afterAll = await testDb()
+        .prepare(
+          "SELECT user_id, username, username_normalized FROM accounts ORDER BY user_id"
+        )
+        .all<{ user_id: string; username: string; username_normalized: string }>();
+      expect(afterAll.results).toEqual(beforeAll.results);
+    }
+  );
+
+  test(
+    "two incoming rows collide after normalization: no partial write",
+    async () => {
+      const beforeCount = await countAccounts();
+
+      // Two incoming rows with distinct user_ids but the same normalized
+      // username. The source-duplicate preflight must fail closed BEFORE
+      // any DB write is issued.
+      await expect(
+        importLegacyUsers(testDb(), [
+          HEADER,
+          ["U510", "Dan", "dan510", "3333", "Member", "Active"],
+          ["U511", "Dan Clone", "DAN510", "4444", "Member", "Active"],
+        ])
+      ).rejects.toThrow(/duplicate username/i);
+
+      // The DB is byte-for-byte unchanged: zero new accounts imported.
+      expect(await countAccounts()).toBe(beforeCount);
+      const dan = await findAccountByUsername(testDb(), "dan510");
+      expect(dan).toBeNull();
+    }
+  );
+
+  test("adminUnlock returns false (not true) for a nonexistent user", async () => {
+    const { adminUnlockLegacyUpgrade } = await import("./lockout");
+    const result = await adminUnlockLegacyUpgrade(
+      testDb(),
+      "U-DOES-NOT-EXIST",
+      Date.now()
+    );
+    expect(result).toBe(false);
+  });
 });
 
 describe("AUTH-01: forced credential upgrade gate", () => {
