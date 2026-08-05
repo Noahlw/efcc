@@ -111,10 +111,12 @@ reconstruct by reading every file's header comment.
 
 - `pnpm typecheck` — Runs TypeScript compiler (`tsc --noEmit`) sequentially across root `tsconfig.json` and `tests/e2e/tsconfig.json` (ADR-0014).
 - `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. Fast, deterministic unit layer.
-- `pnpm test:e2e` — Playwright against a **deployed** `/exec` URL using per-role storage states in `.auth/` (ADR-0012). Requires `E2E_TARGET_URL` exported and `.auth/{alice,bob,noah}.storage.json` captured via `pnpm e2e:auth -- --role=<role>`. A passing run auto-appends an "Executed results" table to the relevant ticket's plan doc under `docs/specs/`.
+- `pnpm --dir web test` — Vitest in the real Cloudflare workerd pool for the rebuilt D1 cookie-only Worker/auth boundary, D1 migrations, sessions, lockout, and client contracts.
+- `pnpm test:e2e` — retained/manual Playwright suite against the legacy deployed Apps Script `/exec` URL using per-role storage states in `.auth/` (ADR-0012). It is not the rebuilt D1 login gate.
+- `pnpm exec playwright test --config=tests/e2e/auth-d1.config.ts` — manual Playwright request-context smoke against an isolated deployed D1 Worker; requires `AUTH_TARGET_URL` and five disposable acceptance-account secrets. It never uses Google storage state.
 - `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
-- GitHub Actions (`.github/workflows/`) — `precheck.yml` (typecheck + `test:gas` unit suite) and `e2e.yml` (Playwright E2E suite) run automatically on `push` and `pull_request` events to gate mergeability (ADR-0014).
-- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned deployment; update `E2E_TARGET_URL` afterward. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
+- GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes the deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0014).
+- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned legacy Apps Script deployment; update `E2E_TARGET_URL` only when running the retained `/exec` suite. The rebuilt D1 gate uses `AUTH_TARGET_URL` and a separate Worker deployment. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
 - Full step-by-step workflow: `README.md` § "Push and deploy" and § "Where things live".
 
 ---

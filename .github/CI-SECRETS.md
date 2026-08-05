@@ -1,45 +1,41 @@
-# CI credentials — DEployed /exec acceptance gate
+# CI credentials — D1 auth acceptance gate
 
-The deployed acceptance gate (`.github/workflows/e2e.yml`) runs Playwright against a _deployed_ Apps Script `/exec` URL using three Google session states. It does not create a project, deployment, or spreadsheet, and it does not write business data to the DEV spreadsheet.
+The rebuilt login boundary is the Cloudflare Worker `/api/auth/*` surface backed by D1. The deployed gate (`.github/workflows/e2e.yml`) no longer uses the retired Apps Script `/exec` role-nav suite or Google storage-state cookies.
 
-## How the gate behaves
+## How the checks behave
 
-- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets and no deployment: root typecheck + GAS/prototype unit tests, web typecheck, web Worker/auth tests, web component (incl. landing-page contract) tests, and the local static-shell responsive suite (`pnpm test:shell-responsive`, built from the Next static export, no `E2E_TARGET_URL`/storage/Sheet). These are the mergeable status checks.
-- **The deployed `/exec` acceptance gate** (`e2e.yml`) is **fail-closed**: if any prerequisite below is missing it fails with an explicit message — it never decodes empty secrets, never runs against an empty URL, and never degrades to a green result. A missing deployment proof must never look like a pass.
-- The gate does **not** deploy. It exercises whichever `/exec` URL is pinned in `E2E_TARGET_URL`. A **fresh** deployed `/exec` smoke (AGENTS.md Headless-Gate) additionally requires the operator to push + version + redeploy and rotate the pinned ID and `E2E_TARGET_URL` together (below). Until that rotation, the gate reports the currently-deployed version only, and the AUTH-01/02 tickets stay not-READY (see `docs/specs/075-auth-d1-foundation-acceptance-plan.md`).
+- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root GAS/prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
+- **D1 auth contract check** (`e2e.yml`, `auth-contract` job) also needs no secrets or deployment. It runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool and covers the cookie-only transport, legacy-PIN upgrade, session lifecycle, and forbidden header/CORS paths.
+- **Deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is not a deployment and never writes to a production database.
 
-## Repository secrets
-
-Configure these three secrets under GitHub Settings → Secrets and variables → Actions:
-
-- `ALICE_STORAGE_STATE`
-- `BOB_STORAGE_STATE`
-- `NOAH_STORAGE_STATE`
-
-Each value is the base64 encoding of the complete local storage-state file:
-
-```sh
-base64 < .auth/alice.storage.json | tr -d '\n'
-```
-
-The files contain live Google session cookies. Never print, commit, upload, or paste decoded storage-state JSON into issues, pull requests, or chat. If any secret is missing when the gate runs, the gate fails closed with a message naming the missing secret.
+The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` path; it is not presented as the rebuilt D1 login. The deployed smoke therefore targets `/api/auth/*` directly with Playwright's request context until the browser client is rewired in the follow-up login/UI work.
 
 ## Repository variable
 
-Configure `E2E_TARGET_URL` as the approved DEV URL:
+Configure `AUTH_TARGET_URL` under GitHub Settings → Secrets and variables → Actions → Variables. It must be an HTTPS URL for an isolated, versioned Worker deployment backed by a disposable/acceptance D1 database. Do not point it at production or a shared developer database. The workflow rejects URLs containing embedded credentials.
 
-```text
-https://script.google.com/macros/s/AKfycbz1aLqfh-DoDqky-KYeLL-mx1uyVDzHXykzyyA8kWmHzXYY7FZDmt5nsKdMM-lhMdHL/exec
-```
+Rotate the target whenever the auth contract or D1 migration changes:
 
-`tests/e2e/playwright.config.ts` checks this exact deployment ID before Playwright starts. A different URL fails closed.
+1. Deploy the branch's Worker code to the isolated target.
+2. Apply the branch's D1 migrations to the isolated acceptance database.
+3. Seed one active password account and one legacy-PIN account used only by this gate.
+4. Update `AUTH_TARGET_URL` to the new deployment URL.
+5. Run `D1 auth acceptance gate` with `workflow_dispatch` and retain the Playwright artifact.
 
-## Fresh deployment rotation
+The deployed result is evidence for the fresh deployment only. A missing manual run must never be described as a passing production smoke.
 
-The AGENTS.md Headless-Gate requires a **fresh** deployed `/exec` smoke before a login-scoped ticket is READY. `e2e.yml` cannot create a deployment, so the operator must do the rotation and then re-run the gate:
+## Repository secrets
 
-1. `clasp push --force` + `clasp version <sha>` + `clasp redeploy <deploymentId> <version> …` to rotate the DEV deployment to the new commit.
-2. Update the pinned deployment ID in `tests/e2e/playwright.config.ts` **and** `E2E_TARGET_URL` together.
-3. Re-run the deployed acceptance gate (push to the branch or `workflow_dispatch`).
+Configure these under GitHub Settings → Secrets and variables → Actions → Secrets:
 
-Until steps 1–3 complete, the deployed acceptance gate reflects the **previous** deployment, and the fresh-smoke acceptance criterion is **blocked** — it must not be reported as passed.
+- `AUTH_TEST_USERNAME` — active account used for password login/logout.
+- `AUTH_TEST_CREDENTIAL` — credential for that acceptance account.
+- `AUTH_LEGACY_USERNAME` — imported account with `requires_upgrade = 1`.
+- `AUTH_LEGACY_PIN` — one-time legacy PIN for that account.
+- `AUTH_NEW_CREDENTIAL` — replacement credential used by the upgrade smoke.
+
+These values are sent only to the deployed Playwright process. Never print them, include them in test names, commit them, or paste them into issues/PRs. The test asserts cookie names and security attributes without printing cookie values or response bodies.
+
+## Legacy Apps Script gate
+
+The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.

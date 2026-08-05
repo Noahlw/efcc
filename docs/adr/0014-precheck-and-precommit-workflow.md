@@ -12,6 +12,11 @@ Prior to this decision:
 2. **Typecheck scope fragmentation**: `package.json` defined `"typecheck": "tsc --noEmit --project tests/e2e/tsconfig.json"`. This ignored root TypeScript configurations (`tsconfig.json`), leaving root scripts/tools unchecked.
 3. **CI gate gaps**: GitHub Actions contained only `.github/workflows/e2e.yml`, which ran solely on `push` events. PRs had no required automated precheck gating mergeability (type checking, Vitest unit tests, and Playwright E2E acceptance tests).
 
+The original deployed gate also targeted the retired Apps Script role-navigation
+surface. The rebuilt login boundary is a Cloudflare Worker `/api/auth/*`
+surface backed by D1, so Google iframe storage state is not evidence for this
+auth contract.
+
 ## Decision
 
 1. **Full Pre-commit Typecheck & Hygiene**:
@@ -52,19 +57,25 @@ Prior to this decision:
          access. This job installs the root deps + Playwright Chromium and the
          web deps needed for the static build.
 
-   - **`e2e.yml`** — the deployed `/exec` acceptance gate. It is **fail-closed**:
-     it validates `E2E_TARGET_URL` (`vars`) and the three storage-state secrets
-     before running, decodes them only after validation, and fails with an
-     explicit message — never a green result — when any prerequisite is missing.
-     It does not deploy; a fresh deployed `/exec` smoke (AGENTS.md Headless-Gate)
-     requires an operator to rotate a new versioned deployment and update the
-     pinned ID + `E2E_TARGET_URL` together (see `.github/CI-SECRETS.md`).
+   - **`e2e.yml`** — the rebuilt D1 auth acceptance gate. Its `auth-contract`
+     job runs on every PR/push with the real workerd + D1 boundary and no
+     secrets. Its `deployed-auth` job runs only by `workflow_dispatch` after an
+     operator provisions an isolated Worker/D1 target and seeded acceptance
+     accounts. That job is **fail-closed**: it validates `AUTH_TARGET_URL` and
+     all five acceptance-account secrets before Playwright starts, and fails
+     with an explicit message when any prerequisite is missing. It never
+     deploys or mutates a production database. The retained Apps Script
+     `/exec` suite is legacy/manual and is not this branch's login gate.
 
 ## Consequences
 
 - Commit attempts with broken TypeScript code fail fast locally.
-- Pull Requests are gated by both fast unit/type checks (`precheck.yml`) and end-to-end acceptance tests (`e2e.yml`).
-- PRs can be safely configured with required status checks in GitHub branch protection.
-- The `e2e.yml` deployed acceptance gate is red (fail-closed) until the operator
-  provisions `E2E_TARGET_URL` and the storage-state secrets and rotates a fresh
-  deployment; a missing deployment proof is never reported as a green check.
+- Pull Requests are gated by deterministic type/unit/component/shell checks
+  (`precheck.yml`) plus the rebuilt D1 auth contract (`e2e.yml`'s
+  `auth-contract` job).
+- PRs can be safely configured with those deterministic status checks in GitHub
+  branch protection.
+- A fresh deployed D1 auth proof remains a separate manual gate. It is red
+  (fail-closed) until the operator provisions `AUTH_TARGET_URL`, acceptance
+  accounts, and an isolated D1 database; a missing deployment proof is never
+  reported as a green deployed result.

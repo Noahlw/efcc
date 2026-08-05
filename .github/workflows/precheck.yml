@@ -1,4 +1,4 @@
-# GitHub Actions: Deterministic PR gate (precheck).
+# GitHub Actions: Deterministic PR gate for the rebuilt auth boundary.
 #
 # Required merge gate per ADR-0014 (docs/adr/0014-precheck-and-precommit-workflow.md).
 # Runs on every push/PR to main/master. It exercises ONLY deterministic,
@@ -15,8 +15,8 @@
 #     pnpm test                      tests/gas vm-harness + tests/prototype
 #   web-precheck
 #     pnpm --dir web typecheck       Next app tsconfig + worker/auth tsconfig
-#     pnpm --dir web test            workerd pool: worker, worker.auth, lib/auth,
-#                                    client contract
+#     pnpm --dir web test            workerd pool: rebuilt cookie-only D1 auth,
+#                                    Worker route boundary, lib/auth, client contract
 #     pnpm --dir web test:components jsdom components incl. landing-page
 #                                    contract (lib/app.test.tsx)
 #   shell-responsive
