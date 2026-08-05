@@ -31,6 +31,7 @@ import {
   clearAuthCookieHeaders,
   hasAuthorizationHeader,
   refreshCookieHeader,
+  setAuthCookieHeaders,
 } from "./cookies";
 import { findAccountByUsername, findAccountByUserId } from "./accounts";
 import { completeCredentialUpgrade } from "./upgrade";
@@ -90,6 +91,22 @@ function jsonResponse(
     },
   });
 }
+
+/**
+ * JSON response carrying BOTH auth cookies as two real `Set-Cookie` headers
+ * (access first, refresh second) via `Headers.append`. Token material is
+ * emitted only here — never in the response body.
+ */
+function authCookieJsonResponse(
+   status: number,
+   body: unknown,
+   accessValue: string,
+   refreshValue: string
+ ): Response {
+   const headers = setAuthCookieHeaders(accessValue, refreshValue);
+   headers.set("Content-Type", "application/json");
+   return new Response(JSON.stringify(body), { status, headers });
+ }
 
 function authErrorResponse(err: AuthError | Error): Response {
   if (err instanceof AuthError) {
@@ -200,13 +217,11 @@ export async function handleLogin(
     userId: account.user_id,
     accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
   });
-  return jsonResponse(
+  return authCookieJsonResponse(
     200,
     { user: secretFreeUser(account) },
-    {
-      "Set-Cookie": accessCookieHeader(bundle.accessToken),
-      "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),
-    }
+    accessCookieHeader(bundle.accessToken),
+    refreshCookieHeader(bundle.sessionId)
   );
 }
 
@@ -307,13 +322,11 @@ export async function handleUpgrade(
     userId: account.user_id,
     accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
   });
-  return jsonResponse(
+  return authCookieJsonResponse(
     200,
     { user: secretFreeUser(account) },
-    {
-      "Set-Cookie": accessCookieHeader(bundle.accessToken),
-      "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),
-    }
+    accessCookieHeader(bundle.accessToken),
+    refreshCookieHeader(bundle.sessionId)
   );
 }
 
@@ -346,13 +359,11 @@ export async function handleRefresh(
       sessionId: refresh,
       accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
     });
-    return jsonResponse(
+    return authCookieJsonResponse(
       200,
       {},
-      {
-        "Set-Cookie": accessCookieHeader(bundle.accessToken),
-        "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),
-      }
+      accessCookieHeader(bundle.accessToken),
+      refreshCookieHeader(bundle.sessionId)
     );
   } catch (err) {
     return authErrorResponse(err instanceof Error ? err : new Error("Refresh failed"));
@@ -372,10 +383,7 @@ export async function handleLogout(
     const cleared = clearAuthCookieHeaders();
     return new Response(null, {
       status: 204,
-      headers: {
-        "Set-Cookie": cleared[0],
-        "Set-Cookie-2": cleared[1],
-      },
+      headers: setAuthCookieHeaders(cleared[0], cleared[1]),
     });
   }
   const refresh = readCookie(request.headers, REFRESH_COOKIE_NAME);
@@ -389,10 +397,7 @@ export async function handleLogout(
   const cleared = clearAuthCookieHeaders();
   return new Response(null, {
     status: 204,
-    headers: {
-      "Set-Cookie": cleared[0],
-      "Set-Cookie-2": cleared[1],
-    },
+    headers: setAuthCookieHeaders(cleared[0], cleared[1]),
   });
 }
 

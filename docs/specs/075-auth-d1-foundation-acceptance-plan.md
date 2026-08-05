@@ -127,6 +127,14 @@ sheet byte-for-byte unchanged). Final pass also asserts auth response bodies
 nested token/session keys — the opaque refresh key and access token travel only
 inside the two httpOnly cookies (`worker.auth.test.ts › assertBodyHasNoTokenKeys`).
 
+Transport final pass (2026-08-05): both cookies now arrive as TWO real
+`Set-Cookie` headers (`Headers.append`; the obsolete `Set-Cookie-2` header is
+gone from all auth success/logout paths and tests). `cookies.ts ›
+setAuthCookieHeaders` builds the pair; `worker.auth.test.ts ›
+readAuthCookiesFromResponse` reads both real `Set-Cookie` values via
+`Headers.getSetCookie()` and asserts each carries httpOnly Secure
+SameSite=Strict. Re-ran: full web suite 144 passed, identity-mirror 16 passed.
+
 ### Deployed `/exec` IFRAME smoke — BLOCKED (environment)
 
 The AGENTS.md Headless-Gate requires a fresh deployed `/exec` IFRAME smoke test

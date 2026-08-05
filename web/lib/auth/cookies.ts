@@ -93,6 +93,23 @@ export function clearAuthCookieHeaders(): string[] {
 }
 
 /**
+ * Build a `Headers` instance carrying BOTH auth cookies as two real
+ * `Set-Cookie` headers (access first, refresh second). `Headers.append`
+ * keeps duplicate names, so a browser receives and stores both cookies.
+ * There is deliberately no `Set-Cookie-2` fallback: that header is an
+ * obsolete Netscape-era invention browsers ignore.
+ */
+export function setAuthCookieHeaders(
+  accessValue: string,
+  refreshValue: string
+): Headers {
+  const headers = new Headers();
+  headers.append("Set-Cookie", accessValue);
+  headers.append("Set-Cookie", refreshValue);
+  return headers;
+}
+
+/**
  * True when the request carries an Authorization header. This transport
  * rejects it — token material must only ever travel via the httpOnly cookies.
  */

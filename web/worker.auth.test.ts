@@ -11,8 +11,7 @@
  *   - Cross-origin requests are rejected (no CORS = no cross-origin).
  *   - A same-origin cookie-only login succeeds and emits the two locked
  *     cookies (httpOnly, Secure, SameSite=Strict) via Set-Cookie / a
- *     second Set-Cookie-2 header (Headers forbids duplicate Set-Cookie
- *     names in one object).
+ *     second real Set-Cookie header (Headers.append keeps duplicates).
  *   - The preserved `/api/v1/rpc` proxy still answers OPTIONS with CORS
  *     headers (the two surfaces have different transport contracts).
  *   - No token/session values appear in test output (assertions only
@@ -89,6 +88,34 @@ function assertLockedCookie(raw: string | null, name: string): void {
   assert.match(raw!, /; HttpOnly/i, `${name} must be httpOnly`);
   assert.match(raw!, /; Secure/i, `${name} must be Secure`);
   assert.match(raw!, /; SameSite=Strict/i, `${name} must be SameSite=Strict`);
+}
+
+/**
+ * Both auth cookies arrive as two real `Set-Cookie` headers (access first,
+ * refresh second). Returns the raw header strings keyed by cookie name.
+ */
+function readAuthCookiesFromResponse(
+  res: Response
+): { access: string; refresh: string } {
+  const setCookies = res.headers.getSetCookie();
+  assert.ok(
+    setCookies.length >= 2,
+    `expected at least 2 Set-Cookie headers, got ${setCookies.length}`
+  );
+  const found: Record<string, string> = {};
+  for (const raw of setCookies) {
+    const name = raw.split(";")[0].split("=")[0].trim();
+    assert.ok(!(name in found), `duplicate ${name} Set-Cookie header`);
+    found[name] = raw;
+  }
+  assert.ok(found[ACCESS_COOKIE_NAME], "access cookie must be present");
+  assert.ok(found[REFRESH_COOKIE_NAME], "refresh cookie must be present");
+  return { access: found[ACCESS_COOKIE_NAME], refresh: found[REFRESH_COOKIE_NAME] };
+}
+
+/** Parse the value out of a raw Set-Cookie header (for the refresh round-trip). */
+function cookieValueFrom(raw: string): string {
+  return raw.split(";")[0].split("=").slice(1).join("=");
 }
 
 /**
@@ -227,14 +254,9 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
     );
     assert.strictEqual(res.status, 200);
     // Two separate cookies (access + refresh), each with locked attributes.
-    assertLockedCookie(
-      res.headers.get("Set-Cookie"),
-      ACCESS_COOKIE_NAME
-    );
-    assertLockedCookie(
-      res.headers.get("Set-Cookie-2"),
-      REFRESH_COOKIE_NAME
-    );
+    const { access, refresh } = readAuthCookiesFromResponse(res);
+    assertLockedCookie(access, ACCESS_COOKIE_NAME);
+    assertLockedCookie(refresh, REFRESH_COOKIE_NAME);
     // The response body must not expose the refresh key or access token.
     assertBodyHasNoTokenKeys(await res.json());
   });
@@ -248,9 +270,8 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
       testEnv()
     );
     assert.strictEqual(login.status, 200);
-    const refreshRaw = login.headers.get("Set-Cookie-2");
-    assert.ok(refreshRaw);
-    const refreshValue = refreshRaw!.split(";")[0].split("=").slice(1).join("=");
+    const loginCookies = readAuthCookiesFromResponse(login);
+    const refreshValue = cookieValueFrom(loginCookies.refresh);
 
     const res = await worker.fetch(
       authRequest("/api/auth/refresh", {
@@ -259,7 +280,9 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
       testEnv()
     );
     assert.strictEqual(res.status, 200);
-    assertLockedCookie(res.headers.get("Set-Cookie"), ACCESS_COOKIE_NAME);
+    const refreshed = readAuthCookiesFromResponse(res);
+    assertLockedCookie(refreshed.access, ACCESS_COOKIE_NAME);
+    assertLockedCookie(refreshed.refresh, REFRESH_COOKIE_NAME);
     assertBodyHasNoTokenKeys(await res.json());
   });
 
@@ -275,8 +298,9 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
       testEnv()
     );
     assert.strictEqual(res.status, 200);
-    assertLockedCookie(res.headers.get("Set-Cookie"), ACCESS_COOKIE_NAME);
-    assertLockedCookie(res.headers.get("Set-Cookie-2"), REFRESH_COOKIE_NAME);
+    const { access, refresh } = readAuthCookiesFromResponse(res);
+    assertLockedCookie(access, ACCESS_COOKIE_NAME);
+    assertLockedCookie(refresh, REFRESH_COOKIE_NAME);
     assertBodyHasNoTokenKeys(await res.json());
   });
 
@@ -288,9 +312,8 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
       }),
       testEnv()
     );
-    const refreshRaw = login.headers.get("Set-Cookie-2");
-    assert.ok(refreshRaw);
-    const refreshValue = refreshRaw!.split(";")[0].split("=").slice(1).join("=");
+    const loginCookies = readAuthCookiesFromResponse(login);
+    const refreshValue = cookieValueFrom(loginCookies.refresh);
 
     const res = await worker.fetch(
       authRequest("/api/auth/logout", {
@@ -300,12 +323,13 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
     );
     assert.strictEqual(res.status, 204); // no content on logout
     // Both cookies cleared (empty value + Expires/Max-Age=0).
-    for (const name of [ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME]) {
-      const cleared = res.headers.get(
-        name === ACCESS_COOKIE_NAME ? "Set-Cookie" : "Set-Cookie-2"
-      );
-      assert.ok(cleared && cleared.startsWith(`${name}=`));
-      assert.match(cleared!, /Max-Age=0|Expires=/i);
+    const cleared = readAuthCookiesFromResponse(res);
+    for (const [name, raw] of [
+      [ACCESS_COOKIE_NAME, cleared.access],
+      [REFRESH_COOKIE_NAME, cleared.refresh],
+    ] as const) {
+      assert.ok(raw.startsWith(`${name}=`));
+      assert.match(raw, /Max-Age=0|Expires=/i);
     }
   });
 });
