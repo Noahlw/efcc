@@ -2,6 +2,20 @@
 
 The E2E suite is GitHub-tracked developer code under `tests/e2e/`, separate from the mocked Apps Script tests under `tests/gas/`. It is outside the `src/gas/` clasp root and is explicitly ignored by `.claspignore`; it is never uploaded as production Apps Script source.
 
+## Test ownership (deployed vs local)
+
+There are two independent Playwright configurations plus a Vitest unit suite under this directory. They share a tree but must NEVER cross loaders, so the rules below are explicit:
+
+| File / config | Loader | Owned by | What it runs |
+| --- | --- | --- | --- |
+| `tests/e2e/playwright.config.ts` (`pnpm test:e2e`) | Playwright | CI `.github/workflows/e2e.yml` (deployed `/exec` gate) | Browser specs against the deployed GAS `/exec` URL using three storage-state projects (`alice` / `bob` / `noah`). Only `role-matrix.test.ts`, `form-protection.test.ts`, and `nested-task-navigation.test.ts` run here. |
+| `tests/e2e/responsive.config.ts` (`pnpm test:shell-responsive`) | Playwright | CI `precheck.yml` `shell-responsive` job (deterministic) | `responsive.test.ts` only — local production-shell static export served by `tests/e2e/serve-static.ts` on `127.0.0.1:4173`, in two viewport projects (`mobile-375x812`, `desktop-1280x800`). No `E2E_TARGET_URL`, no storage state, no HtmlService. |
+| `tests/e2e/lib/deploy-acceptance.test.ts` | Vitest | Unit checks (`pnpm exec vitest run tests/e2e/lib/deploy-acceptance.test.ts`) | Vitest unit tests for the deploy CLI helper (`buildDeployPlan` / `buildExecUrl` / `validateExecUrl`). MUST NOT be loaded by Playwright — `import { describe, test } from "vitest"` outside the vitest runtime crashes with `Vitest failed to access its internal state` (verified on PR #166 run #30987198373). |
+
+The deployed config enforces this with `testIgnore: ["**/lib/**", "**/responsive.test.ts"]` so its `testDir: "."` never picks up the Vitest helper or the local-only static-shell spec. The responsive config keeps its positive `testMatch: /responsive\.test\.ts$/u` filter and never sees the deployed specs. The Vitest helper file is intentionally absent from both Playwright configs.
+
+When adding a new test file under `tests/e2e/`, place it in exactly one of the three rows above. If you need a new Playwright file in the deployed suite, append it to the deployed specs list above AND confirm `pnpm exec playwright test --list --config=tests/e2e/playwright.config.ts` lists it (currently 54 entries = 18 tests × 3 storage-state projects; new specs multiply the same way). For a new local static-shell spec, append it to `responsive.config.ts` only.
+
 ## Target and data boundary
 
 E2E runs against the existing DEV Apps Script deployment and the existing DEV spreadsheet. The Playwright configuration rejects any `/exec` URL other than the approved DEV deployment ID. Current scenarios are read-only with respect to spreadsheet business data; the demo form scenario uses its existing client-side test path. Do not add a backend-writing scenario without a new approved isolation decision.
