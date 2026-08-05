@@ -5,14 +5,61 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { loginUser, restoreApp, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { RecoveryView } from "@/lib/recovery-view";
 import { firstSection } from "@/lib/sections";
 import { clearSession, loadSession, saveSession } from "@/lib/session";
 
+import styles from "./page.module.css";
+
 const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
+
+/* The four capacities the system actually ships (Spec 000 / Spec 074). */
+const REGISTER_FEATURES = [
+  { name: LANDING.featurePrograms, desc: LANDING.featureProgramsDesc },
+  { name: LANDING.featureEvents, desc: LANDING.featureEventsDesc },
+  { name: LANDING.featureScanner, desc: LANDING.featureScannerDesc },
+  { name: LANDING.featureCare, desc: LANDING.featureCareDesc },
+] as const;
+
+/** Squar-cut seal mark (恩) — the brand's carved-stamp identity. */
+function SealMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      role="img"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="1" y="1" width="30" height="30" rx="6" fill="var(--seal)" />
+      <rect
+        x="1"
+        y="1"
+        width="30"
+        height="30"
+        rx="6"
+        fill="none"
+        stroke="#fff"
+        strokeOpacity="0.18"
+      />
+      <text
+        x="16"
+        y="22.6"
+        textAnchor="middle"
+        fontSize="17"
+        fontWeight="800"
+        fill="#fff"
+        fontFamily="inherit"
+      >
+        恩
+      </text>
+    </svg>
+  );
+}
 
 type View =
   | { kind: "SIGNED_OUT" }
@@ -143,15 +190,7 @@ export default function LoginPage() {
 
   if (view.kind === "RESTORING") {
     return (
-      <main
-        style={{
-          maxWidth: 400,
-          margin: "4rem auto",
-          padding: "0 1rem",
-          fontFamily: "sans-serif",
-          textAlign: "center",
-        }}
-      >
+      <main className={styles.restoring}>
         <p>{COPY.restore.loading}</p>
       </main>
     );
@@ -159,84 +198,144 @@ export default function LoginPage() {
 
   if (view.kind === "RECOVERABLE_ERROR") {
     const handleRetry = view.retry;
-    return (
-      <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
-    );
+    return <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />;
   }
 
   const busy = view.kind === "AUTHENTICATING";
 
   return (
-    <main
-      style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-      }}
-    >
-      <h1 style={{ marginBottom: "1.5rem" }}>{COPY.login.title}</h1>
-      {notice && (
-        <p role="alert" style={{ color: "#b00020", marginBottom: "1rem" }}>
-          {notice}
-        </p>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!busy) {
-            handleLogin();
-          }
-        }}
-        style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-      >
-        <label>
-          {COPY.login.usernameLabel}
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={busy}
-            style={{
-              display: "block",
-              width: "100%",
-              marginTop: 4,
-              minHeight: 44,
-              padding: "0.5rem",
-            }}
-            autoComplete="username"
-          />
-        </label>
-        <label>
-          {COPY.login.pinLabel}
-          <input
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            disabled={busy}
-            style={{
-              display: "block",
-              width: "100%",
-              marginTop: 4,
-              minHeight: 44,
-              padding: "0.5rem",
-            }}
-            autoComplete="current-password"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          style={{ padding: "0.75rem", minHeight: 44, fontSize: "1rem" }}
-        >
-          {busy ? COPY.login.submitting : COPY.login.submit}
-        </button>
-      </form>
-      {view.kind === "ERROR" && (
-        <p role="alert" style={{ color: "#b00020", marginTop: "1rem" }}>
-          {view.error}
-        </p>
-      )}
-    </main>
+    <div className={styles.page}>
+      <a className={styles.skipLink} href="#login">
+        {LANDING.skipToLogin}
+      </a>
+
+      <header className={styles.header}>
+        <a className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
+          <SealMark />
+          <span>
+            {LANDING.brand}
+            <span className={styles.brandSuffix}>{LANDING.brandSystem}</span>
+          </span>
+        </a>
+        <nav className={styles.nav} aria-label={LANDING.navLabel}>
+          <a className={styles.navLink} href="#features">
+            {LANDING.featuresNav}
+          </a>
+          <a className={`${styles.navLink} ${styles.navCta}`} href="#login">
+            {LANDING.loginNav}
+          </a>
+        </nav>
+      </header>
+
+      <main className={styles.main}>
+        <section className={`${styles.section} ${styles.hero}`} aria-labelledby="hero-title">
+          <div className={styles.heroInner}>
+            <h1 id="hero-title" className={styles.heroTitle}>
+              {LANDING.heroTitle}
+            </h1>
+            <p className={styles.heroSub}>{LANDING.heroSub}</p>
+            <div className={styles.heroActions}>
+              <a className={styles.primaryAction} href="#login">
+                {LANDING.primaryCta}
+              </a>
+              <a className={styles.secondaryAction} href="#features">
+                {LANDING.secondaryCta}
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className={styles.section} aria-labelledby="register-title">
+          <div className={styles.split}>
+            <div className={styles.register}>
+              <div className={styles.registerHead}>
+                <h2 id="register-title" className={styles.registerTitle}>
+                  {LANDING.registerTitle}
+                </h2>
+                <p className={styles.registerLead}>{LANDING.registerLead}</p>
+              </div>
+              <div className={styles.registerRows}>
+                {REGISTER_FEATURES.map((feature) => (
+                  <div className={styles.registerRow} key={feature.name}>
+                    <span className={styles.rowMark} aria-hidden="true" />
+                    <div>
+                      <span className={styles.rowName}>{feature.name}</span>
+                      <span className={styles.rowDesc}>{feature.desc}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <section id="login" className={styles.loginPanel} aria-labelledby="login-title">
+              <div className={styles.loginTitleWrap}>
+                <SealMark size={22} />
+                <h2 id="login-title" className={styles.loginTitle}>
+                  {COPY.login.title}
+                </h2>
+              </div>
+              <p className={styles.loginLead}>{LANDING.loginPanelLead}</p>
+              {notice && (
+                <p role="alert" className={styles.notice}>
+                  {notice}
+                </p>
+              )}
+              <form
+                className={styles.form}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!busy) {
+                    handleLogin();
+                  }
+                }}
+              >
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {COPY.login.usernameLabel}
+                  </span>
+                  <input
+                    className={styles.input}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={busy}
+                    autoComplete="username"
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {COPY.login.pinLabel}
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="password"
+                    inputMode="numeric"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    disabled={busy}
+                    autoComplete="current-password"
+                  />
+                </label>
+                <button className={styles.submit} type="submit" disabled={busy}>
+                  {busy ? COPY.login.submitting : COPY.login.submit}
+                </button>
+                <p className={styles.loginNote}>{LANDING.loginAfterNote}</p>
+              </form>
+              {view.kind === "ERROR" && (
+                <p role="alert" className={styles.notice}>
+                  {view.error}
+                </p>
+              )}
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <footer className={styles.footer}>
+        <div className={styles.footerInner}>
+          <p className={styles.footerMotto}>{LANDING.footerMotto}</p>
+          <p className={styles.footerNote}>{LANDING.footerNote}</p>
+        </div>
+      </footer>
+    </div>
   );
 }
