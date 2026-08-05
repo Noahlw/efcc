@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 
 const TEST_USERNAME = process.env.AUTH_TEST_USERNAME;
@@ -14,7 +15,7 @@ function originFor(baseURL: string | undefined): string {
 }
 
 function setCookieHeaders(response: {
-  headersArray(): Array<{ name: string; value: string }>;
+  headersArray: () => { name: string; value: string }[];
 }): string[] {
   return response
     .headersArray()
@@ -67,6 +68,14 @@ test.beforeAll(() => {
     if (!value) {
       throw new Error(`${name} is required`);
     }
+  }
+  if (
+    typeof LEGACY_USERNAME !== "string" ||
+    !LEGACY_USERNAME.startsWith("E2E_")
+  ) {
+    throw new Error(
+      "AUTH_LEGACY_USERNAME must start with E2E_; destructive upgrades require a disposable fixture"
+    );
   }
 });
 

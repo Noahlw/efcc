@@ -1,328 +1,165 @@
 # EFCC Church Management System
 
-EFCC is the church-management web app for the Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂). It is a phone-first Google Apps Script HTML Service application backed by Google Sheets, with one stable App Document for authenticated Members (會員), staff, and administrators. This README is the starting map for developers; detailed rules, domain language, architecture, and test procedures live in the linked project documents.
+EFCC is the church-management system for the Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂).
 
-## Read these two ground rules first
+The repository is in a **staged migration** from Google Apps Script + Google Sheets to Cloudflare Worker + D1. PR #166 is the starting point for the new platform: Cloudflare owns identity and authentication first; Apps Script remains the transitional domain backend until each domain capability has a replacement and fresh acceptance proof.
 
-> **Never let an agent modify the backend Google Sheet.** The user must add or change sheets, columns, rows, and seed data manually. Read [AGENTS.md — Google Sheet database: no automatic mutation](AGENTS.md#google-sheet-database--no-automatic-mutation) before doing backend work.
+## Current architecture
 
-> **Back every Apps Script API call with official documentation.** This includes server and browser APIs, manifest fields, clasp commands, and deployment behavior. Read [AGENTS.md — Apps Script docs-backed method rule](AGENTS.md#apps-script-docs-backed-method-rule) before proposing or implementing a platform-facing change.
+| Boundary | Current owner | Responsibility |
+| --- | --- | --- |
+| Identity Authority | Cloudflare Worker + D1 | Accounts, credentials, login, refresh, logout, sessions, legacy-PIN upgrade, registration, approval |
+| Domain Backend | Apps Script + Google Sheets | Programs, Events, Attendance, Enrollments, and remaining church-management RPCs during migration |
+| Web application | Next.js static export served by the Worker | Login, registration, approval queue, profile, navigation shell, and current section placeholders |
+| Transitional bridge | Worker `/api/v1/rpc` proxy | Forwards remaining domain RPCs to the Apps Script deployment |
 
-These are repository gates, not optional conventions. [AGENTS.md](AGENTS.md) is authoritative if this overview and the detailed rules ever appear to differ.
+The ownership rule is deliberate:
 
-## Tech stack
+> D1 owns identity and authentication. Apps Script owns domain capabilities until each capability is migrated and accepted. Do not delete the Apps Script domain backend merely because D1 authentication is complete.
 
-Google Apps Script on the V8 runtime, Google Sheets, HTML Service, and clasp power the application. Vitest, oxlint/oxfmt through Ultracite, and Playwright provide the repository's automated checks; the [E2E guide](tests/e2e/README.md) explains the deployed-browser layer.
+Read [`CONTEXT.md`](CONTEXT.md) for the project glossary and [`docs/adr/0022-staged-worker-d1-platform-migration.md`](docs/adr/0022-staged-worker-d1-platform-migration.md) for the boundary decision.
+
+## Feature roadmap
+
+**Feature State** describes what is true today. **Target Owner** describes where the capability should live after migration.
+
+| Feature | Current state | Current surface | Target owner | Next milestone |
+| --- | --- | --- | --- | --- |
+| Identity and accounts | Complete | Worker + D1 | Worker + D1 | Maintain contract and operational tooling |
+| Cookie-only login/session | Complete | `/api/v1/auth/*` | Worker + D1 | Fresh deployment acceptance on every auth change |
+| Legacy-PIN upgrade | Complete | Worker + D1 and login UI | Worker + D1 | Keep destructive tests restricted to `E2E_` fixtures |
+| Self-service registration | Complete | Web registration page + D1 | Worker + D1 | Add deployed acceptance coverage for production-like approval data |
+| Admin/Teacher approval | Complete | Web approval queue + D1 | Worker + D1 | Expand role and rejection-path acceptance coverage |
+| Member profile | Complete | Web profile page + D1 profile DTO | Worker + D1 | Add editable profile requirements when specified |
+| Programs | Transitional | Apps Script RPC; new web page is a placeholder | Worker + D1 | Define Worker/D1 read and mutation contracts |
+| Events | Transitional | Apps Script repositories/RPCs; new web page is a placeholder | Worker + D1 | Define event lifecycle and recurrence migration |
+| Attendance/check-in | Transitional | Apps Script check-in RPC and external scanner | Worker + D1 | Migrate event selection, QR resolution, and audited check-in |
+| Care dashboard | Planned | New web page placeholder; no accepted Worker/D1 capability | Worker + D1 | Define data contract, privacy boundary, and acceptance plan |
+| Permissions/program leadership | Planned | Existing role vocabulary and legacy authorization rules | Worker + D1 | Implement capability matrix and scoped Program Leader permissions |
+| Apps Script domain backend retirement | Planned | Required by the transitional bridge | Not applicable | Retire only after every domain capability has replacement proof |
+
+### Migration phases
+
+1. **Foundation — current PR #166**
+   - Establish D1 as the Identity Authority.
+   - Ship cookie-only authentication and session lifecycle.
+   - Ship legacy credential upgrade, registration, approval, profile, and the authenticated web shell.
+   - Keep the Apps Script domain backend operational.
+
+2. **Capability parity**
+   - Migrate Programs, Events, Attendance, and Enrollments one capability at a time.
+   - Define the Worker/D1 contract before implementation.
+   - Verify each migrated capability against observable acceptance criteria.
+
+3. **Traffic cutover**
+   - Move the web application from the corresponding Apps Script RPC to the Worker/D1 implementation.
+   - Remove the old caller only after the new path is deployed and accepted.
+   - Keep rollback evidence until the cutover is stable.
+
+4. **Retirement**
+   - Remove the legacy `/api/v1/rpc` proxy and Apps Script domain code only after no live caller remains.
+   - Remove obsolete Apps Script deployment configuration and tests in the same capability-specific migration, not in the auth foundation PR.
+
+## Ground rules
+
+- **Google Sheet safety:** agents must not modify the production Google Sheet. The user performs sheet, column, row, and seed-data changes manually. See [`AGENTS.md`](AGENTS.md).
+- **Apps Script evidence:** Apps Script APIs, manifest keys, clasp behavior, and deployments require official documentation evidence before implementation.
+- **Acceptance before implementation:** web changes require a written acceptance trace before code changes. The current migration trace is [`docs/specs/078-staged-platform-migration-acceptance-plan.md`](docs/specs/078-staged-platform-migration-acceptance-plan.md).
+- **Fresh deployment gate:** local tests are necessary but not sufficient. A fresh `/exec` or isolated Worker deployment must pass the relevant browser/API trace before READY.
+- **Secret safety:** never commit credentials, PINs, cookies, tokens, storage states, or deployment secrets.
+- **Disposable E2E data:** destructive upgrade tests must use explicitly marked usernames beginning with `E2E_`; never run them against a real member.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [`web/`](web/) | Next.js static frontend and Cloudflare Worker |
+| [`web/lib/auth/`](web/lib/auth/) | D1 accounts, credentials, sessions, lockout, upgrade, and registration logic |
+| [`web/migrations/`](web/migrations/) | D1 schema and migrations |
+| [`src/gas/`](src/gas/) | Transitional Apps Script domain backend and legacy deployment source |
+| [`tests/gas/`](tests/gas/) | Deterministic Apps Script VM-harness tests |
+| [`tests/prototype/`](tests/prototype/) | Standalone scanner/prototype tests |
+| [`tests/e2e/`](tests/e2e/) | Playwright acceptance and deployment test configuration |
+| [`docs/specs/`](docs/specs/) | Behavioral specifications and acceptance traces |
+| [`docs/adr/`](docs/adr/) | Durable architecture decisions |
+| [`CONTEXT.md`](CONTEXT.md) | Domain glossary, data model, ownership terms, and ADR status |
+| [`AGENTS.md`](AGENTS.md) | Contributor, safety, documentation, and verification rules |
 
 ## Quick start
 
-### Prerequisites
-
-Install:
-
-- Git;
-- Node.js 20+;
-- clasp, authenticated for the Apps Script project.
-
-The repository does not define a local development-server script. Runtime verification happens through unit tests and a deployed Apps Script `/exec` URL.
-
-### Clone and install
+### Install
 
 ```sh
-git clone https://github.com/Noahlw/efcc.git
-cd efcc
 pnpm install
 ```
 
-`pnpm install` installs the exact dependency graph recorded by the lockfile, auto-approves the esbuild build scripts required by vitest and tsx, downloads Chromium for the E2E pipeline, and runs the Husky `prepare` hook. After this single command, the repo is ready to run tests.
+Requirements: Git, Node.js 20+, pnpm 11+, and Chromium for Playwright. Apps Script deployment additionally requires an authenticated `clasp` client.
 
-### Run local checks
-
-Run the Apps Script unit suite:
+### Verify the repository
 
 ```sh
+pnpm typecheck
 pnpm test:gas
-```
-
-Run the complete repository test command:
-
-```sh
-pnpm test
-```
-
-Run the configured static checks:
-
-```sh
+pnpm test:prototype
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web test:components
 pnpm check
 ```
 
-See [Testing](#testing) before running login-gated E2E checks; they require a deployed URL and captured authentication state.
+The root `pnpm test` command covers the tracked GAS and prototype suites. The web suites run separately because they use the Cloudflare workerd and jsdom environments.
 
-### Push and deploy
+### Build and run the web Worker locally
 
-The verified [.clasp.json](.clasp.json) points clasp at `src/gas/` and the EFCC Apps Script project. From the repository root:
+```sh
+cd web
+pnpm build
+npx wrangler dev
+```
+
+The Worker requires a local `web/.dev.vars` with an Apps Script `/exec` target when exercising the transitional RPC proxy. Do not place secrets in tracked files.
+
+### Deploy the isolated Worker
+
+Use the relevant Wrangler configuration under `web/` and deploy only to the isolated test resources intended for acceptance. Record the deployed URL and run the D1 acceptance suite with disposable accounts. Do not point tests at production resources.
+
+### Deploy the transitional Apps Script backend
+
+The clasp root is `src/gas/`:
 
 ```sh
 clasp push
 clasp deploy
 ```
 
-`clasp push` synchronizes the local Apps Script source. `clasp deploy` creates a versioned deployment; record its `/exec` URL and update the E2E target as described in [Deployment](#deployment).
-
-Do not run deployment commands until the relevant checks and the [AGENTS.md browser gate](AGENTS.md#implementation-verification-workflow--headless-browser-gate) are understood.
-
-### One-time Attendances sheet setup
-
-The QR check-in RPC uses the operational `Attendances` schema. The setup is manual and deliberately does not delete or overwrite data:
-
-1. In the DEV spreadsheet, rename the legacy `Attendances` tab to a dated archive such as `Attendances_Legacy_20260801`.
-2. Run `clasp push` so `src/gas/attendance-setup.gs` is available in the Apps Script project.
-3. In the Apps Script editor, run `setupAttendancesSheet_` once. It uses the configured `EFCC_SPREADSHEET_ID` and creates the new `Attendances` tab.
-4. Confirm the header row is exactly: `Attendance_ID | Event_ID | User_ID | CheckIn_Time | CheckIn_Method | CheckIn_By | Status`
-
-Do not run the function while an `Attendances` tab still exists. It fails closed if the target name is present.
-
-## Where things live
-
-| Path | What belongs there | Read next |
-| --- | --- | --- |
-| [`src/gas/`](src/gas/) | Deployable Apps Script source; server code uses `.gs`, while the App Document, client scripts, views, and styles use `.html` | [`src/gas/appsscript.json`](src/gas/appsscript.json) |
-| [`tests/gas/`](tests/gas/) | Vitest tests using a VM harness and mocked Apps Script globals | [`tests/gas/login-and-bootstrap.test.js`](tests/gas/login-and-bootstrap.test.js) |
-| [`tests/e2e/`](tests/e2e/) | Playwright configuration, authentication capture, role-matrix tests, and acceptance-result appending | [`tests/e2e/README.md`](tests/e2e/README.md) |
-| [`docs/specs/`](docs/specs/) | System specifications, architecture contracts, feature plans, and acceptance plans | [`docs/specs/009-phone-first-shell-navigation.md`](docs/specs/009-phone-first-shell-navigation.md) |
-| [`docs/adr/`](docs/adr/) | Architecture Decision Records explaining important choices and their status | [`docs/adr/0012-e2e-testing-strategy.md`](docs/adr/0012-e2e-testing-strategy.md) |
-| [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) | Every-push Playwright workflow and its repository-value contract | [`tests/e2e/README.md#ci-secrets-table`](tests/e2e/README.md#ci-secrets-table) |
-| [`AGENTS.md`](AGENTS.md) | Authoritative contributor, research, verification, deployment, and sheet-safety rules | [`AGENTS.md#apps-script-evidence-gate`](AGENTS.md#apps-script-evidence-gate) |
-| [`CONTEXT.md`](CONTEXT.md) | Domain glossary, data-store overview, ADR status table, and known tooling issues | [`CONTEXT.md#domain-glossary`](CONTEXT.md#domain-glossary) |
-
-The clasp configuration sets `rootDir` to `src/gas`, so files elsewhere in the repository are not application source pushed to Apps Script. The V8 runtime and web-app settings are recorded in [`src/gas/appsscript.json`](src/gas/appsscript.json).
-
-Current test surfaces are intentionally small and explicit:
-
-- [`tests/gas/login-and-bootstrap.test.js`](tests/gas/login-and-bootstrap.test.js), [`tests/gas/role-navigation.test.js`](tests/gas/role-navigation.test.js), [`tests/gas/app-shell.contract.test.js`](tests/gas/app-shell.contract.test.js), and [`tests/gas/shell-session.test.js`](tests/gas/shell-session.test.js);
-- [`tests/e2e/auth.ts`](tests/e2e/auth.ts), [`tests/e2e/playwright.config.ts`](tests/e2e/playwright.config.ts), [`tests/e2e/role-matrix.test.ts`](tests/e2e/role-matrix.test.ts), [`tests/e2e/plan-doc-appender.ts`](tests/e2e/plan-doc-appender.ts), and [`tests/e2e/tsconfig.json`](tests/e2e/tsconfig.json).
-
-## Development workflow
-
-A typical behavioral change follows this sequence:
-
-1. Read [AGENTS.md](AGENTS.md), the governing file in [`docs/specs/`](docs/specs/), and any related decision in [`docs/adr/`](docs/adr/).
-2. Confirm terminology in the [`CONTEXT.md` domain glossary](CONTEXT.md#domain-glossary); use names such as Member (會員), Program (課程 / 事工), and Section (功能區) consistently.
-3. For Apps Script methods or deployment behavior, satisfy the [official-documentation evidence rule](AGENTS.md#apps-script-docs-backed-method-rule).
-4. Write the acceptance plan required by the [headless browser gate](AGENTS.md#implementation-verification-workflow--headless-browser-gate) before implementation.
-5. Edit the relevant server `.gs` and client `.html` files under [`src/gas/`](src/gas/).
-6. Add or update focused VM-harness coverage in [`tests/gas/`](tests/gas/), then run `pnpm test:gas`.
-7. Push to Apps Script and create a fresh versioned deployment with `clasp push` and `clasp deploy`.
-8. Use the Orca `browser` tool for deployed cold-start, signed-out, CSS, layout, and one-off debugging checks.
-9. For any login-gated behavior, add or update the Playwright specification under [`tests/e2e/`](tests/e2e/) and follow its [onboarding guide](tests/e2e/README.md).
-10. Verify observable outcomes against the fresh `/exec` deployment; do not infer success from a click or from unit tests alone.
-11. Push the branch so [GitHub Actions](.github/workflows/e2e.yml) runs the Playwright pipeline on the configured `E2E_TARGET_URL`.
-
-If a change needs a new sheet, column, row, or data correction, stop at the boundary described in [AGENTS.md](AGENTS.md#google-sheet-database--no-automatic-mutation). Describe the exact manual edit and wait for the user to confirm it.
-
-## Testing
-
-EFCC has three complementary verification layers:
-
-### Apps Script unit tests
-
-[`tests/gas/`](tests/gas/) exercises server and shell behavior with Vitest and mocked Apps Script globals. Run it from the repository root:
-
-```sh
-pnpm test:gas
-```
-
-These tests are fast and deterministic, but they cannot prove the deployed HTML Service iframe, `google.script.run`, Google authentication, or a versioned `/exec` deployment works end to end.
-
-### Playwright E2E tests
-
-[`tests/e2e/`](tests/e2e/) covers login-gated behavior against a deployed `/exec` URL using role-specific Playwright Storage State (儲存狀態). Start with the complete [`tests/e2e/README.md`](tests/e2e/README.md), then read [ADR-0012](docs/adr/0012-e2e-testing-strategy.md).
-
-The verified local entry points are:
-
-```sh
-pnpm e2e:auth -- --role=alice
-pnpm e2e:auth -- --role=bob
-pnpm e2e:auth -- --role=noah
-pnpm test:e2e
-```
-
-Before those commands, export the current deployment URL exactly as shown in the [E2E setup guide](tests/e2e/README.md#1-set-the-target-url). Authentication-state files contain live session cookies; follow the guide's security and rotation instructions rather than committing or sharing them.
-
-### Manual deployed-browser checks
-
-Use the Orca `browser` tool for cold-start and no-login assertions such as the `SIGNED_OUT` state, login-form presence, responsive layout, navigation visibility, and scroll locking. It is also suitable for interactive E2E troubleshooting.
-
-Orca is not a substitute for Playwright after crossing the login boundary. The authoritative division of responsibility is in [AGENTS.md](AGENTS.md#how-to-execute) and [ADR-0012](docs/adr/0012-e2e-testing-strategy.md).
-
-## Deployment
-
-The local deployment boundary is [`src/gas/`](src/gas/) because [.clasp.json](.clasp.json) declares it as `rootDir`. The manifest uses the V8 runtime; inspect [`src/gas/appsscript.json`](src/gas/appsscript.json) rather than guessing runtime or access settings.
-
-For a new versioned deployment:
-
-```sh
-clasp push
-clasp deploy
-```
-
-A newly created deployment receives a new deployment ID and therefore a new `/exec` URL. That makes the old `E2E_TARGET_URL` stale. If deliberately redeploying an existing deployment, clasp supports targeting its deployment ID; consult the official clasp documentation first as required by [AGENTS.md](AGENTS.md#apps-script-docs-backed-method-rule).
-
-After deployment:
-
-1. Copy the fresh `/exec` URL.
-2. Export it locally as `E2E_TARGET_URL` using the command in [`tests/e2e/README.md`](tests/e2e/README.md#1-set-the-target-url).
-3. Update the GitHub Actions repository variable `E2E_TARGET_URL`.
-4. Refresh an expired role's Storage State (儲存狀態) and corresponding secret by following the [rotation procedure](tests/e2e/README.md#4-when-a-captured-session-expires).
-5. Run the appropriate cold-start and login-gated acceptance paths.
-
-[`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) runs on every push. It installs Node 20 dependencies and Chromium, restores three role-specific storage states from repository secrets, runs Playwright against `E2E_TARGET_URL`, appends available results to the acceptance plan, and uploads diagnostic artifacts. The exact secret names and encoding contract live in the [E2E CI table](tests/e2e/README.md#ci-secrets-table).
-
-## Architecture and specs
-
-The master architecture document is [`docs/specs/009-phone-first-shell-navigation.md`](docs/specs/009-phone-first-shell-navigation.md). It defines the phone-first shell, stable App Document, Section (功能區) navigation, authorization boundaries, lifecycle, and acceptance expectations.
-
-Use the documentation layers this way:
-
-- [`docs/specs/`](docs/specs/) describes **what** the system should do and how acceptance is demonstrated;
-- [`docs/adr/`](docs/adr/) records **why** durable architecture choices were made and their current status;
-- [`CONTEXT.md`](CONTEXT.md) supplies the shared domain glossary, Google Sheet model, ADR status index, and tooling notes;
-- [`AGENTS.md`](AGENTS.md) defines **how contributors must work** in this repository.
-
-Start feature work from the relevant spec rather than from filenames alone. The system-level overview is [`docs/specs/000-efcc-system-spec.md`](docs/specs/000-efcc-system-spec.md), while the current shell direction is governed by the master architecture spec and its linked ADRs.
-
-## Agent and contributor workflow
-
-[AGENTS.md](AGENTS.md) is the authoritative workflow contract for human and agent contributors. Read it before changing Apps Script, client HTML, navigation, session, RPC, audit, repository, Section content, styles, or deployment configuration.
-
-Its key linked gates include:
-
-- the [Apps Script evidence gate](AGENTS.md#apps-script-evidence-gate);
-- the [docs-backed method rule](AGENTS.md#apps-script-docs-backed-method-rule);
-- the [headless browser gate](AGENTS.md#implementation-verification-workflow--headless-browser-gate);
-- the [no-automatic-sheet-mutation rule](AGENTS.md#google-sheet-database--no-automatic-mutation).
-
-Do not copy those rules into feature plans and let the copies drift. Link back to `AGENTS.md`, and record feature-specific evidence in the governing spec or ADR as directed there.
-
-## ADR index
-
-See [`docs/adr/`](docs/adr/) for the project's 12 Architecture Decision Records. The sequence currently runs from [ADR-0001 — Google Sheets as Database](docs/adr/0001-google-sheets-as-database.md) through [ADR-0012 — E2E Testing Strategy](docs/adr/0012-e2e-testing-strategy.md), including [ADR-0011 — One Active Session per Member](docs/adr/0011-one-active-session-per-member.md).
-
-Use the status table in [`CONTEXT.md`](CONTEXT.md#architecture-decisions) as the concise index; do not maintain a second status table here.
-
-## Quick reference
-
-For the current role-aware navigation acceptance flow, use [`docs/specs/067-role-nav-acceptance-plan.md`](docs/specs/067-role-nav-acceptance-plan.md). It is the E2E acceptance plan and the target for generated executed results.
-
-Keep these entry points close at hand:
-
-- Contributor rules: [`AGENTS.md`](AGENTS.md)
-- Domain and decision context: [`CONTEXT.md`](CONTEXT.md)
-- Master shell architecture: [`docs/specs/009-phone-first-shell-navigation.md`](docs/specs/009-phone-first-shell-navigation.md)
-- E2E onboarding: [`tests/e2e/README.md`](tests/e2e/README.md)
-- E2E decision: [`docs/adr/0012-e2e-testing-strategy.md`](docs/adr/0012-e2e-testing-strategy.md)
-- E2E workflow: [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml)
-- Role-navigation acceptance plan: [`docs/specs/067-role-nav-acceptance-plan.md`](docs/specs/067-role-nav-acceptance-plan.md)
-
-## External resource IDs
-
-These are the canonical IDs for the project's Google resources. They are not hard-coded in application source (the app reads the spreadsheet ID from a Script Property), but operators and CI need them to configure and verify the deployment.
-
-| Resource | ID | Where configured |
-| --- | --- | --- |
-| Apps Script project | `1NvyYCSXEl3dBZzmEPOQNfwJbHm49WFxFFb3OHzENBP45H-myiU0FQppX` | [`.clasp.json`](.clasp.json) (push target) |
-| Google Spreadsheet | `1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw` | Script Property `EFCC_SPREADSHEET_ID` |
-
-These two IDs plus `EFCC_SESSION_SALT` (a random hex string set once in Script Properties) are the only values the standalone Apps Script project must be configured with before a deployment will accept logins. Run `diagSetupScriptProperties` from the Apps Script editor to seed all three. See [Push and deploy](#push-and-deploy) for the push/deploy cycle and the [diagnosis document](docs/research/2026-07-30-login-failure-diagnosis.md) for the rationale.
-
-## First-time deployment checklist
-
-Before the login gate accepts logins on a new standalone Apps Script project, complete these steps once.
-
-### 1. Authorize OAuth scopes
-
-`clasp deploy` cannot trigger the OAuth consent dialog. The `spreadsheets` scope (declared in `appsscript.json`) is only consented when a function that calls `SpreadsheetApp` runs from the editor. `doGet` alone is NOT enough - it only uses `HtmlService`.
-
-1. Open the [Apps Script editor](https://script.google.com/home/projects/1NvyYCSXEl3dBZzmEPOQNfwJbHm49WFxFFb3OHzENBP45H-myiU0FQppX/edit).
-2. From the function dropdown, select `diagRunSheetStructure`.
-3. Click **Run** (▶). A dialog prompts for the `spreadsheets` scope.
-4. Click **Review permissions**, select your account, and click **Allow**.
-5. Verify the Executions log shows the sheet structure JSON (sheet names + row counts). This confirms `SpreadsheetApp.openById` works end-to-end.
-
-See [Google's authorization documentation](https://developers.google.com/apps-script/guides/services/authorization) for the official OAuth flow reference.
-
-### 2. Seed Script Properties
-
-Run `diagSetupScriptProperties` once to set `EFCC_SPREADSHEET_ID` and `EFCC_SESSION_SALT`.
-
-1. From the editor function dropdown, select `diagSetupScriptProperties`.
-2. Click **Run** (▶).
-3. Check **Executions** — you should see `EFCC_SPREADSHEET_ID set.` and `EFCC_SESSION_SALT set.`.
-
-These properties persist across deployments — they only need to be set once per project.
-
-### 3. Verify Script Properties
-
-1. Open **Project Settings** (⚙) > **Script Properties**.
-2. Confirm `EFCC_SPREADSHEET_ID` = `1ISBjcQmsWrvrt93gxbShyvAax2uMgYkrhbNJiYSCHdw`.
-3. Confirm `EFCC_SESSION_SALT` exists and is non-empty.
-
-### 4. Deploy and test
-
-1. Click **Deploy** > **New deployment**, type **Web app**.
-2. Set **Execute as** = "Me (`...@gmail.com`)".
-3. Set **Who has access** = "Anyone".
-4. Click **Deploy**, copy the `/exec` URL.
-5. Open the URL. The login form must render with username and PIN fields.
-6. Submit valid credentials — you must reach the Profile section.
-7. Update `E2E_TARGET_URL` with the new URL per [Deployment](#deployment).
-
-## Troubleshooting
-
-### Login returns "系統暫時無法處理請求，請稍後再試。"
-
-This generic error is returned by the `catch` block in `api_loginUser` (`Code.gs`) when any exception occurs during the login server-side flow. The catch block logs the real exception via `console.error(e)` before returning the generic message, so the actual error is visible in **Executions** > select the failing `api_loginUser` run > **Stackdriver logs**.
-
-#### Bug history: unauthorized `spreadsheets` OAuth scope (resolved @11, 2026-07-31)
-
-**Symptom:** Valid credentials returned "系統暫時無法處理請求" on the new standalone Apps Script project. The login form rendered correctly (HTML loaded, `google.script.run` transport worked), but every login attempt failed server-side.
-
-**Initial (incorrect) hypothesis:** The [`docs/research/2026-07-30-login-failure-diagnosis.md`](docs/research/2026-07-30-login-failure-diagnosis.md) research note correctly identified that the failure began at `efccSpreadsheet_().getSheetByName("Users")` inside `usersFindByUsername_()`, but hypothesized the root cause was a missing `EFCC_SPREADSHEET_ID` Script Property. Script Properties were later confirmed set ("already set (skipped)"), ruling this out.
-
-**Actual root cause:** The `spreadsheets` OAuth scope was never authorized on the new standalone project.
-
-The trigger was commit `b489a89` ("feat: native <dialog> discard confirm + tiered auth client wiring (#69, #70, #71)"), which did two things in one commit:
-
-1. **Rotated `.clasp.json`** from the old container-bound script (`13Wdum...`) to the new standalone script (`1NvyYC...`).
-2. **Added `"oauthScopes": ["https://www.googleapis.com/auth/spreadsheets"]`** to `appsscript.json`. Before this, no explicit `oauthScopes` was declared and Apps Script auto-detected scopes at runtime.
-
-The new standalone project had never had its `spreadsheets` scope consented. Three factors made this hard to diagnose:
-
-- **`clasp deploy` does not trigger the OAuth consent dialog.** It creates a versioned deployment using whatever authorization the deploying user already has. If the scope was never consented, the deployment is created but fails at runtime.
-- **`doGet` does not use `SpreadsheetApp`.** It only calls `HtmlService.createTemplateFromFile`, which does not require the `spreadsheets` scope. The original deployment checklist said to run `doGet` from the editor to authorize OAuth scopes, but this only consented the `script.projects` / `script.deployments` scopes that clasp itself uses, not the runtime `spreadsheets` scope.
-- **`diagSetupScriptProperties` does not use `SpreadsheetApp` either.** It only calls `PropertiesService`, which requires no OAuth scope. So running it from the editor (the only setup function the operator had run) did not trigger the consent dialog.
-- **The catch block swallowed the real error.** `api_loginUser`'s `catch (e)` returned a generic "系統暫時無法處理請求" message, hiding the authorization exception from the user-facing UI.
-
-**Diagnosis method:** Systematic debugging via git archaeology. `git show b489a89 -- .clasp.json appsscript.json` revealed the script ID rotation and the `oauthScopes` addition in the same commit. The `console.error(e)` instrumentation (commit `c8aadee`) was deployed as @10 to surface the real exception in Stackdriver, but the root cause was found before the logs were needed by tracing the data flow: `api_loginUser` -> `usersFindByUsername_` -> `efccSpreadsheet_()` -> `SpreadsheetApp.openById()` requires the `spreadsheets` scope, which was declared in the manifest but never consented.
-
-**Fix:** Added `diagRunSheetStructure()` - a public wrapper function (functions ending with `_` are hidden from the Apps Script editor dropdown). It calls `diagSheetStructure_()`, which exercises the exact `SpreadsheetApp.openById()` code path that login uses. Running it from the editor triggered the OAuth consent dialog for the `spreadsheets` scope. After the operator accepted, the existing deployment immediately accepted logins.
-
-**Commits:**
-
-- `c8aadee` - `console.error(e)` in all 6 RPC catch blocks (instrumentation)
-- `0a8c928` - `diagSetupScriptProperties()` + external resource IDs in README
-- `ab4fea1` - revert `doGet()` to clean state, deployment checklist, diagnostic utilities
-- `58dd92f` - `diagRunSheetStructure()` wrapper, corrected checklist OAuth step
-
-**Prevention:** The [First-time deployment checklist](#first-time-deployment-checklist) step 1 now says to run `diagRunSheetStructure` (not `doGet`) to authorize the `spreadsheets` scope. The checklist explicitly documents that `doGet` alone is NOT enough because it only uses `HtmlService`.
-
-**Related docs:**
-
-- [`docs/research/2026-07-30-login-failure-diagnosis.md`](docs/research/2026-07-30-login-failure-diagnosis.md) - initial diagnosis (identified the failure boundary correctly but hypothesized the wrong leaf cause)
-- [ADR-0015: Standalone script for public deployment](docs/adr/0015-standalone-script-for-public-deployment.md) - the standalone migration decision
-
-#### If login still fails after the checklist
-
-1. Check **Executions** in the Apps Script editor for the failing `api_loginUser` run. The `console.error(e)` output shows the actual exception.
-2. Run `diagRunSheetStructure` from the editor - if it succeeds, spreadsheet access works and the problem is elsewhere (session salt, user lookup, PIN comparison).
-3. If `diagRunSheetStructure` throws, the error message identifies the specific failure (authorization, wrong spreadsheet ID, missing sheet, etc.).
+A fresh Apps Script deployment creates a new `/exec` URL. Follow the Apps Script evidence and fresh-deployment rules in [`AGENTS.md`](AGENTS.md) and the E2E guide before using it.
+
+## Verification layers
+
+- **Worker/auth unit and integration:** `pnpm --dir web test`
+- **Web component behavior:** `pnpm --dir web test:components`
+- **Apps Script VM harness:** `pnpm test:gas`
+- **Prototype tests:** `pnpm test:prototype`
+- **Root and E2E type checks:** `pnpm typecheck`
+- **Static/lint checks:** `pnpm check`
+- **Responsive shell:** `pnpm test:shell-responsive`
+- **Deployed D1 auth acceptance:**
+  ```sh
+  pnpm exec playwright test tests/e2e/auth-d1.test.ts \
+    --config=tests/e2e/auth-d1.config.ts
+  ```
+
+Authenticated acceptance must use Playwright. Unauthenticated or visual checks may use the repository's browser workflow. See [`docs/specs/078-staged-platform-migration-acceptance-plan.md`](docs/specs/078-staged-platform-migration-acceptance-plan.md) for the merge-readiness trace.
+
+## Merge-readiness definition
+
+PR #166 is ready to merge only when:
+
+1. The ownership boundary and roadmap remain accurate.
+2. No unrelated untracked work is included.
+3. The D1 auth, web, GAS, and responsive checks pass.
+4. The E2E upgrade test rejects non-`E2E_` users.
+5. A fresh deployment passes the applicable acceptance trace.
+6. CI is green and the PR body explains that Apps Script remains transitional.
+
+The follow-up developer should begin with the roadmap row marked **In progress**, read its linked spec/ADR, write its acceptance trace, then migrate one domain capability without broad deletion.

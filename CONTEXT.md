@@ -1,6 +1,6 @@
 # 顯恩堂系統 — EFCC Church Management System
 
-**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: Google Apps Script (V8 runtime) + Google Sheets + one stable App Document served via HtmlService, per ADR-0010 (deployed proof pending) **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Google Apps Script (server), Browser (client)
+**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
 
 ---
 
@@ -32,6 +32,11 @@
 | Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
 | Storage State | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
+| Identity Authority | 身份權威 | The system that owns member identity, credentials, sessions, and authentication decisions. During the staged migration, Cloudflare D1 is the Identity Authority. |
+| Domain Backend | 領域後端 | The system that owns church-management records and business operations such as Programs, Events, Attendance, and Enrollments. Apps Script + Google Sheets is the transitional Domain Backend. |
+| Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
+| Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
+| Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
 
 ---
 
@@ -75,7 +80,16 @@ See ADR-0001 for the rationale behind Google Sheets as the database layer.
 
 ---
 
-## Application Architecture (`src/gas/`)
+## Platform Ownership
+
+The staged migration has two concurrent platform boundaries:
+
+- **Cloudflare Worker + D1** is the Identity Authority and the target owner for every migrated capability. PR #166 establishes the identity/auth boundary and the authenticated static web shell.
+- **Apps Script + Google Sheets** is the transitional Domain Backend. Its existing Programs, Events, Attendance, Enrollments, and related RPCs remain operational until each capability has a Worker/D1 replacement and fresh acceptance proof.
+
+The feature roadmap in [`README.md`](README.md#feature-roadmap) records both the current Feature State and the Target Owner. A capability implemented in the legacy backend is not automatically Complete for the new website.
+
+## Transitional Apps Script Architecture (`src/gas/`)
 
 Read this section before opening `src/gas/` source files cold — it is the
 file map and contract cheat sheet a fresh session otherwise has to

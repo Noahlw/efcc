@@ -19,7 +19,7 @@ When adding a new test file under `tests/e2e/`, place it in exactly one of the f
 
 ## Target and data boundary
 
-The rebuilt D1 auth smoke runs only against an isolated, versioned HTTPS Worker deployment backed by a disposable acceptance D1 database. It requires `AUTH_TARGET_URL` plus five acceptance-account secrets and never targets the production database. The login and upgrade requests mutate only those disposable accounts.
+The rebuilt D1 auth smoke runs only against an isolated, versioned HTTPS Worker deployment backed by a disposable acceptance D1 database. It requires `AUTH_TARGET_URL` plus five acceptance-account secrets and never targets the production database. The login and upgrade requests mutate only those disposable accounts. `AUTH_LEGACY_USERNAME` must begin with the literal `E2E_` prefix; the Playwright test fails before sending an upgrade request otherwise.
 
 The retained Apps Script suite has a separate legacy target and Google storage-state boundary. It is not part of the current D1 PR gate and must not be described as D1 auth coverage.
 
@@ -56,7 +56,7 @@ The deterministic PR checks (typecheck + unit/component tests + the shell respon
 
 ## Implemented-scope rule
 
-Only implemented scenarios may run as passing acceptance coverage. The D1 auth smoke covers the implemented Worker `/api/auth/*` surface only; the browser UI still uses the retained legacy `/api/v1/rpc` path and is not claimed as D1 login coverage. Unfinished acceptance criteria remain explicitly skipped and linked to their follow-up spec or ticket.
+Only implemented scenarios may run as passing acceptance coverage. The D1 auth smoke covers the implemented Worker `/api/v1/auth/*` surface; unfinished domain capabilities remain explicitly transitional or planned in the [migration roadmap](../../README.md#feature-roadmap) and linked to their follow-up spec or ticket.
 
 ## Expired sessions
 
