@@ -91,12 +91,43 @@ function assertLockedCookie(raw: string | null, name: string): void {
   assert.match(raw!, /; SameSite=Strict/i, `${name} must be SameSite=Strict`);
 }
 
+/**
+ * Assert a parsed auth response body (and any nested user object) carries no
+ * raw session/token material — the opaque refresh key and access token travel
+ * ONLY inside the two httpOnly cookies (AUTH-02 #160).
+ */
+function assertBodyHasNoTokenKeys(body: unknown): void {
+  const text = JSON.stringify(body);
+  assert.ok(
+    !/sessionId|accessToken|refreshToken|sessionToken|session_id|access_token|refresh_token/i.test(
+      text
+    ),
+    `auth response body must not expose token/session keys, got: ${text}`
+  );
+  // Walk nested objects too (e.g. `user`) so a key is not hidden one level down.
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === "object") {
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        assert.ok(
+          !/session|token/i.test(k),
+          `auth response body must not contain a '${k}' key`
+        );
+        walk(val);
+      }
+    }
+  };
+  walk(body);
+}
+
 beforeAll(async () => {
   await applyMigrations();
   await importLegacyUsers(testDb(), [
     HEADER,
     ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
     ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
+    // U003 stays legacy-imported (requires_upgrade=1) for the upgrade test.
+    ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -204,6 +235,8 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
       res.headers.get("Set-Cookie-2"),
       REFRESH_COOKIE_NAME
     );
+    // The response body must not expose the refresh key or access token.
+    assertBodyHasNoTokenKeys(await res.json());
   });
 
   test("refresh exchanges the refresh cookie for a fresh access cookie", async () => {
@@ -227,6 +260,24 @@ describe("AUTH-02: cookie-only login/refresh/logout over the Worker", () => {
     );
     assert.strictEqual(res.status, 200);
     assertLockedCookie(res.headers.get("Set-Cookie"), ACCESS_COOKIE_NAME);
+    assertBodyHasNoTokenKeys(await res.json());
+  });
+
+  test("upgrade succeeds via cookie-only transport and the body omits token keys", async () => {
+    // U003 (carol) is legacy-imported but NOT upgraded in beforeAll; the forced
+    // upgrade proves the legacy hash (0000), then issues a session. Body must
+    // not carry the refresh key / access token.
+    const res = await worker.fetch(
+      authRequest("/api/auth/upgrade", {
+        headers: { Origin: HOST, "Content-Type": "application/json" },
+        body: { userId: "U003", legacyPin: "0000", newCredential: "carol-new-secret" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    assertLockedCookie(res.headers.get("Set-Cookie"), ACCESS_COOKIE_NAME);
+    assertLockedCookie(res.headers.get("Set-Cookie-2"), REFRESH_COOKIE_NAME);
+    assertBodyHasNoTokenKeys(await res.json());
   });
 
   test("logout clears both cookies and revokes the refresh session", async () => {

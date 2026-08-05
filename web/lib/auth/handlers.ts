@@ -202,7 +202,7 @@ export async function handleLogin(
   });
   return jsonResponse(
     200,
-    { user: secretFreeUser(account), sessionId: bundle.sessionId },
+    { user: secretFreeUser(account) },
     {
       "Set-Cookie": accessCookieHeader(bundle.accessToken),
       "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),
@@ -309,7 +309,7 @@ export async function handleUpgrade(
   });
   return jsonResponse(
     200,
-    { user: secretFreeUser(account), sessionId: bundle.sessionId },
+    { user: secretFreeUser(account) },
     {
       "Set-Cookie": accessCookieHeader(bundle.accessToken),
       "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),
@@ -348,7 +348,7 @@ export async function handleRefresh(
     });
     return jsonResponse(
       200,
-      { sessionId: bundle.sessionId },
+      {},
       {
         "Set-Cookie": accessCookieHeader(bundle.accessToken),
         "Set-Cookie-2": refreshCookieHeader(bundle.sessionId),

@@ -178,8 +178,7 @@ function identityMirrorSheet_() {
  * where dupIds is the list of user_ids that appear more than once in the
  * sheet (a structural error that must fail the run closed).
  */
-function identityMirrorReadSheet_(sheet) {
-  var values = sheet.getDataRange().getValues();
+function identityMirrorReadSheet_(values) {
   var header = values[0] || [];
   var uidCol = -1;
   for (var c = 0; c < header.length; c++) {
@@ -210,19 +209,25 @@ function identityMirrorReadSheet_(sheet) {
  * {added, updated, total} on success; throws on precondition failure
  * (with a secret-free message) so the caller can fail closed.
  *
- * Why this is "atomic-ish" under Apps Script constraints: Apps Script has
- * no real transactions. The pre-validation step eliminates the common
- * failure modes (duplicate identifiers in the sheet, conflicts between
- * the payload and the sheet). The two batched setValues calls apply the
- * full update list and append list in single Sheets operations, so the
- * remaining failure surface is a rare API quota / network error that
- * affects both batches simultaneously. If the first batch fails, no
- * writes have occurred; if the second fails, the updates are committed
- * but the appends are not — the next run will retry the appends
- * idempotently.
+ * Fail-closed/no-partial-write contract: Apps Script / the Sheets API offer
+ * no ACID transaction, so this honors the contract with a snapshot + restore
+ * strategy (the approach ADR-0021 allows). The ENTIRE data range is snapshotted
+ * before any write; if ANY write throws, the snapshot is written back so the
+ * sheet is byte-for-byte unchanged — an already-committed update is reverted
+ * along with any failed append. Pre-validation (duplicate existing identifiers,
+ * duplicate payload identifiers) runs before the snapshot so the common
+ * failure modes never reach the write phase. If even the restore fails, a
+ * fixed secret-free marker is surfaced for operator intervention.
  */
 function identityMirrorApply_(sheet, accounts) {
-  var read = identityMirrorReadSheet_(sheet);
+  // Snapshot the ENTIRE data range before any write. This is the rollback
+  // source: if any write fails, the prior state is restored byte-for-byte.
+  // Apps Script / the Sheets API offer no ACID transaction, so we honor the
+  // fail-closed/no-partial-write contract with a snapshot + restore strategy
+  // (the approach the ADR allows) rather than pretending partial writes are
+  // impossible.
+  var before = sheet.getDataRange().getValues();
+  var read = identityMirrorReadSheet_(before);
   if (read.dupIds.length > 0) {
     throw new Error(
       "Identity mirror failed closed: review sheet already contains duplicate identifiers."
@@ -257,46 +262,64 @@ function identityMirrorApply_(sheet, accounts) {
     Object.keys(read.rowByUid).length +     // existing rows
     appends.length;                        // new appends
 
-  // Batch 1: all updates in a single setValues call (one Sheets operation).
-  if (updates.length > 0) {
-    var updateRows = updates.map(function (u) { return u.values; });
-    // setValues requires a contiguous range; we pack each update at its
-    // existing row. Because updates may target non-contiguous rows, we
-    // detect contiguity and fall back to per-row setValues when the targets
-    // are scattered. (Per-row setValues are still single-row writes, which
-    // Apps Script bundles into one batch via flush() below.)
-    var rows = updates.map(function (u) { return u.row; });
-    var allContiguous = true;
-    for (var k = 1; k < rows.length; k++) {
-      if (rows[k] !== rows[k - 1] + 1) { allContiguous = false; break; }
-    }
-    if (allContiguous) {
-      sheet
-        .getRange(rows[0], 1, rows.length, IDENTITY_MIRROR_COLUMNS.length)
-        .setValues(updateRows);
-    } else {
-      for (var j = 0; j < updates.length; j++) {
+  try {
+    // Apply phase. Updates first, then appends. Each batch is a single
+    // setValues call (one Sheets write). If ANY write throws, the catch
+    // below restores the pre-write snapshot, so the sheet is left exactly
+    // as it was — no partial mutation.
+    if (updates.length > 0) {
+      var updateRows = updates.map(function (u) { return u.values; });
+      // setValues requires a contiguous range; updates may target
+      // non-contiguous rows, so detect contiguity and fall back to per-row
+      // setValues (still single-row writes, flushed together below).
+      var rows = updates.map(function (u) { return u.row; });
+      var allContiguous = true;
+      for (var k = 1; k < rows.length; k++) {
+        if (rows[k] !== rows[k - 1] + 1) { allContiguous = false; break; }
+      }
+      if (allContiguous) {
         sheet
-          .getRange(updates[j].row, 1, 1, IDENTITY_MIRROR_COLUMNS.length)
-          .setValues([updates[j].values]);
+          .getRange(rows[0], 1, rows.length, IDENTITY_MIRROR_COLUMNS.length)
+          .setValues(updateRows);
+      } else {
+        for (var j = 0; j < updates.length; j++) {
+          sheet
+            .getRange(updates[j].row, 1, 1, IDENTITY_MIRROR_COLUMNS.length)
+            .setValues([updates[j].values]);
+        }
       }
     }
-  }
 
-  // Batch 2: all appends in a single setValues call at the sheet's end.
-  // Apps Script's appendRow is one Sheets API call per row; writing a
-  // block with setValues at the next free row is one call total.
-  if (appends.length > 0) {
-    var lastRow = sheet.getLastRow();
-    sheet
-      .getRange(lastRow + 1, 1, appends.length, IDENTITY_MIRROR_COLUMNS.length)
-      .setValues(appends);
-  }
+    if (appends.length > 0) {
+      var lastRow = sheet.getLastRow();
+      sheet
+        .getRange(lastRow + 1, 1, appends.length, IDENTITY_MIRROR_COLUMNS.length)
+        .setValues(appends);
+    }
 
-  // Commit pending writes immediately so the lock release below is durable
-  // even on a quick retry. Per the official LockService docs, flush() is
-  // recommended before releaseLock() to ensure changes are persisted.
-  SpreadsheetApp.flush();
+    // Commit pending writes immediately so the lock release below is durable
+    // even on a quick retry. Per the official LockService docs, flush() is
+    // recommended before releaseLock() to ensure changes are persisted.
+    SpreadsheetApp.flush();
+  } catch (err) {
+    // Fail closed with rollback: restore the pre-write snapshot so the sheet
+    // is byte-for-byte unchanged. Best-effort — if even the restore throws,
+    // surface a fixed secret-free marker (Apps Script / Sheets give us no
+    // stronger guarantee than this staging + restore strategy).
+    try {
+      sheet
+        .getRange(1, 1, before.length, before[0].length)
+        .setValues(before);
+      SpreadsheetApp.flush();
+    } catch (rollbackErr) {
+      throw new Error(
+        "Identity mirror write failed and the snapshot could not be restored; operator intervention required."
+      );
+    }
+    throw new Error(
+      "Identity mirror write failed; the pre-write snapshot was restored."
+    );
+  }
 
   return {
     added: appends.length,

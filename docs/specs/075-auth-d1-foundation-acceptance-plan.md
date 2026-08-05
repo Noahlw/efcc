@@ -65,7 +65,7 @@ The existing `auth-01`/`auth-02`/`auth-03` fixtures under `web/lib/auth/*.test.t
 | 33 | A changed snapshot updates in place and appends only new rows. | `identity-mirror.test.js › idempotent merge` |
 | 34 | Duplicate / missing `user_id` in payload fails closed 422 naming the offending identifiers. | `identity-mirror.test.js › conflict visibility` |
 | 35 | Duplicate `user_id` already PRESENT in the sheet fails closed (no partial write). | `identity-mirror.test.js › duplicate existing` (added) |
-| 36 | A mid-run `SetValues` failure fails closed 500 with no partial mutation (pre-validated). | `identity-mirror.test.js › partial-write failure` (added) |
+| 36 | A mid-run `SetValues` failure after a committed update fails closed 500 AND restores the pre-write snapshot (sheet byte-for-byte unchanged). | `identity-mirror.test.js › partial-write failure` (added, rollback) |
 | 37 | Operator diagnostics never contain secrets, PINs, tokens, or internal identifiers. | `identity-mirror.test.js › secret-free` |
 | 38 | `wrangler.jsonc` configures the `0 19 * * *` cron trigger and `worker.ts` exports a `scheduled` handler. | `identity-mirror.test.js › wiring` |
 
@@ -99,7 +99,7 @@ Appended after the review-fix pass (2026-08-05). All runs are focused; no format
 ```text
 $ npx vitest run worker.auth.test.ts worker.test.ts
 Test Files  2 passed (2)
-Tests       23 passed (23)   # 10 auth-boundary + 13 CF1 proxy regression
+Tests       24 passed (24)   # 11 auth-boundary + 13 CF1 proxy regression
 
 $ npx vitest run lib/auth lib/mirror
 Test Files  5 passed (5)
@@ -121,7 +121,11 @@ Coverage-map rows newly proven in this pass: #21 (auth surface rejects OPTIONS /
 Authorization / X-Efcc-Session-Id with no CORS headers), #22 (cookie-only
 contract enforced on every `/api/auth/*` entry, `/api/v1/rpc` preserved), #35
 (duplicate existing sheet `user_id` fails closed pre-write), #36 (mid-run
-`SetValues` failure fails closed with no partial mutation).
+`SetValues` failure after a committed update restores the pre-write snapshot,
+sheet byte-for-byte unchanged). Final pass also asserts auth response bodies
+(login/upgrade/refresh) omit `sessionId`/`accessToken`/`refreshToken` and any
+nested token/session keys — the opaque refresh key and access token travel only
+inside the two httpOnly cookies (`worker.auth.test.ts › assertBodyHasNoTokenKeys`).
 
 ### Deployed `/exec` IFRAME smoke — BLOCKED (environment)
 

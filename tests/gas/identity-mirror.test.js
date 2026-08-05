@@ -325,29 +325,47 @@ describe("identity-mirror.gs — conflict / failure visibility", () => {
 
   test("a mid-run batched write failure fails closed 500 with no partial write", () => {
     const { context, state } = buildContext();
-    // Sabotage the batched setValues so the appends batch throws mid-way.
-    // The read/validation steps have already passed by this point, so this
-    // simulates a real Sheets API failure during the apply phase.
+    // Pre-seed an existing U1 row so the apply phase makes a real UPDATE
+    // (which succeeds) before the APPEND of U2 fails. This proves the
+    // snapshot+restore rollback reverts an already-committed update: the
+    // sheet must be byte-for-byte unchanged after the failure.
+    const originalU1 = [
+      "U1", "Alice", "alice", "Admin", "Active",
+      "password", 0, 0, 1, 1,
+    ];
+    state.rows.push([...originalU1]);
+    const before = state.rows.map((r) => [...r]);
+
+    // Sabotage the batched setValues so ONLY the appends batch throws. The
+    // updates batch (existing row 2) succeeds; the appends batch (new rows
+    // beyond current length) throws mid-way.
     state.sheet.getRange = (row, col, nrows, ncols) => ({
       setValues(vals) {
-        // Throw on the appends batch (new rows beyond current length).
-        if (nrows > 1 && row > state.rows.length) {
+        if (row > state.rows.length) {
           throw new Error("Sheets API quota exceeded");
         }
         for (let i = 0; i < vals.length; i++) {
           for (let c = 0; c < vals[i].length; c++) {
-            state.rows[row - 1 + i][col - 1 + c] = vals[i][c];
+            const r = row - 1 + i;
+            while (state.rows.length <= r) state.rows.push(new Array(ncols).fill(""));
+            state.rows[r][col - 1 + c] = vals[i][c];
           }
         }
       },
     });
-    const ack = post(context, signEnvelope(SECRET, ACCOUNTS));
+    // U1 name changes (update) + U2 is new (append).
+    const payload = [
+      { ...ACCOUNTS[0], name: "Alice MUTATED" },
+      ACCOUNTS[1],
+    ];
+    const ack = post(context, signEnvelope(SECRET, payload));
     assert.strictEqual(ack.status, 500);
     assert.strictEqual(ack.code, "INTERNAL_ERROR");
     // Never leaks the underlying error detail (which may contain internals).
     assert.ok(!JSON.stringify(ack).includes("quota"));
-    // No partial write: the failed batch threw before any mutation.
-    assert.strictEqual(state.rows.length, 1); // header only
+    // Rollback: the committed U1 update is reverted and U2 was never added —
+    // the sheet is byte-for-byte identical to the pre-write snapshot.
+    assert.deepStrictEqual(state.rows, before);
   });
 
   test("a lock failure fails closed 503", () => {
