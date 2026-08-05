@@ -131,7 +131,7 @@ reconstruct by reading every file's header comment.
 - `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
 - GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes the deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0014).
 - `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned legacy Apps Script deployment; update `E2E_TARGET_URL` only when running the retained `/exec` suite. The rebuilt D1 gate uses `AUTH_TARGET_URL` and a separate Worker deployment. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
-- Full step-by-step workflow: `README.md` § "Push and deploy" and § "Where things live".
+- Full step-by-step workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md) for clone/install/branching, plus `README.md` sections "Build and run the web Worker locally" and "Deploy the transitional Apps Script backend".
 
 ---
 

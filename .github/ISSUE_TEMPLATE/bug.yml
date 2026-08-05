@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible problem. Do not include credentials or Google Sheet data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Fill in every section. **Do not paste credentials, API keys, tokens, or Google Sheet data** — redact anything sensitive.
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Affected boundary
+      description: Which part of the system exhibits the bug?
+      placeholder: e.g. Cloudflare Worker / D1, Google Apps Script (src/gas/), or web frontend (web/)
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps, in order, starting from a known state.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happens. Include exact error messages (redact identifiers/secrets).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Verification evidence
+      description: Logs, screenshots, or a minimal reproduction that confirm the behavior. Do not attach files containing secrets or Google Sheet data.
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node.js version, pnpm version, and browser if relevant.
+      placeholder: e.g. macOS 14, Node 22, pnpm 11.7.0, Chrome 130
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps, e.g. frequency, recent related change, or a linked issue/PR.
+    validations:
+      required: false

@@ -102,6 +102,16 @@ jobs:
             console.error("::error::AUTH_TARGET_URL must be an absolute HTTPS URL without credentials.");
             process.exit(1);
           }
+          if (
+            !/^efcc-auth-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
+              target.hostname
+            )
+          ) {
+            console.error(
+              "::error::AUTH_TARGET_URL must use the isolated efcc-auth-*.efcc-ggc.workers.dev acceptance host."
+            );
+            process.exit(1);
+          }
           NODE
           echo "Deployed D1 auth prerequisites present."
 

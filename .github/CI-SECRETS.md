@@ -12,7 +12,7 @@ The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` pa
 
 ## Repository variable
 
-Configure `AUTH_TARGET_URL` under GitHub Settings → Secrets and variables → Actions → Variables. It must be an HTTPS URL for an isolated, versioned Worker deployment backed by a disposable/acceptance D1 database. Do not point it at production or a shared developer database. The workflow rejects URLs containing embedded credentials.
+Configure `AUTH_TARGET_URL` under GitHub Settings → Secrets and variables → Actions → Variables. It must be an HTTPS URL for an isolated, versioned Worker deployment backed by a disposable/acceptance D1 database, using the repository's reserved `efcc-auth-*.efcc-ggc.workers.dev` acceptance hostname. Do not point it at production or a shared developer database. The workflow rejects embedded credentials and rejects hosts outside the reserved acceptance namespace before Playwright starts.
 
 Rotate the target whenever the auth contract or D1 migration changes:
 
@@ -40,7 +40,4 @@ These values are sent only to the deployed Playwright process. Never print them,
 
 The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.
 
-The AGENTS.md fresh `/exec` headless-gate requirement still applies whenever
-the legacy Apps Script UI/domain flow is in scope. This D1 auth gate is a
-separate Worker boundary proof and must not be used as a substitute for that
-legacy UI smoke.
+The AGENTS.md fresh `/exec` headless-gate requirement still applies whenever the legacy Apps Script UI/domain flow is in scope. This D1 auth gate is a separate Worker boundary proof and must not be used as a substitute for that legacy UI smoke.
