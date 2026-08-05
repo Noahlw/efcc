@@ -287,3 +287,44 @@ export async function rejectRegistration(
 
   return "rejected";
 }
+
+/**
+ * Safe metadata columns for the Teacher/Admin approval queue (AUTH-05
+ * #163). Deliberately excludes `credential_hash`, `credential_kind`, and
+ * `user_id` — the queue must never expose credential material or the
+ * immutable identity key to the browser.
+ */
+const QUEUE_COLUMNS = `request_id, username, name, phone, account_status, role,
+  submitted_at, reviewed_by, reviewed_at, review_decision`;
+
+export interface QueueRegistrationRow {
+  request_id: string;
+  username: string;
+  name: string;
+  phone: string | null;
+  account_status: string;
+  role: string;
+  submitted_at: number;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  review_decision: string | null;
+}
+
+/**
+ * List Pending registration requests for the approval queue, oldest first.
+ * Defaults to Pending only (the queue never re-lists resolved requests);
+ * returns safe metadata rows with no credential or identity-key material.
+ */
+export async function listPendingRegistrations(
+  db: D1Database
+): Promise<QueueRegistrationRow[]> {
+  return (
+    await db
+      .prepare(
+        `SELECT ${QUEUE_COLUMNS} FROM registration_requests
+          WHERE account_status = 'Pending'
+          ORDER BY submitted_at ASC`
+      )
+      .all<QueueRegistrationRow>()
+  ).results ?? [];
+}

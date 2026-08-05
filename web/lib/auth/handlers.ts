@@ -47,6 +47,7 @@ import {
 } from "./sessions";
 import {
   approveRegistration,
+  listPendingRegistrations,
   createRegistrationRequest,
   rejectRegistration,
   RegistrationConflictError,
@@ -850,6 +851,39 @@ export async function handleReject(
   return jsonResponse(
     200,
     { requestId, data: { accountStatus } },
+    requestId
+  );
+}
+
+/**
+ * GET /api/v1/auth/registrations (AUTH-05 #163)
+ *
+ * Teacher/Admin-only approval queue listing. Returns safe metadata only for
+ * Pending requests — no credential hash, no session/token material, no
+ * immutable identity key — correlated via X-Request-Id. 401 when
+ * unauthenticated, 403 for non-Admin/Teacher roles.
+ */
+export async function handleListRegistrations(
+  request: Request,
+  env: AuthEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireAdminOrTeacher(request, env, requestId);
+  if (auth instanceof Response) return auth;
+
+  const rows = await listPendingRegistrations(env.DB);
+  const registrations = rows.map((r) => ({
+    requestId: r.request_id,
+    username: r.username,
+    name: r.name,
+    phone: r.phone,
+    submittedAt: r.submitted_at,
+    accountStatus: r.account_status,
+    role: r.role,
+  }));
+  return jsonResponse(
+    200,
+    { requestId, data: { registrations } },
     requestId
   );
 }

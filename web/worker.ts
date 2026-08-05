@@ -230,6 +230,7 @@ export default {
         handleAdminUnlock,
         handleApprove,
         handleReject,
+        handleListRegistrations,
       } = await import("./lib/auth/handlers");
       if (url.pathname === "/api/v1/auth/register" && request.method === "POST") {
         return handleRegister(request, authEnv);
@@ -248,6 +249,12 @@ export default {
       }
       if (url.pathname === "/api/v1/auth/me" && request.method === "GET") {
         return handleMe(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/registrations" &&
+        request.method === "GET"
+      ) {
+        return handleListRegistrations(request, authEnv);
       }
       if (
         url.pathname === "/api/v1/auth/admin-unlock" &&

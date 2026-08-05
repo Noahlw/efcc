@@ -1,0 +1,67 @@
+// AUTH-05 (#163) — Traditional Chinese copy for self-service registration and
+// the Teacher/Admin approval queue. Centralized here (matching the shell's
+// COPY pattern in lib/copy.ts) so no user-facing string lives in a component.
+// Kept separate from lib/copy.ts to avoid coupling this ticket to the
+// concurrently-in-flight login landing copy (CF0-08).
+
+// Error-code → user message mapping, mirroring `errorCopyFor`'s vocabulary.
+function registrationErrorFor(code: string, detail?: string): string {
+  if (code === "NETWORK_ERROR") return QUEUE_COPY.networkError;
+  if (code === "AUTH_REQUIRED") return QUEUE_COPY.unauthorized;
+  if (code === "FORBIDDEN") return QUEUE_COPY.forbidden;
+  if (code === "VALIDATION") return detail ?? QUEUE_COPY.validation;
+  if (code === "CONFLICT") return QUEUE_COPY.conflict;
+  if (code === "NOT_FOUND" || code.endsWith("_NOT_FOUND")) {
+    return QUEUE_COPY.notFound;
+  }
+  if (code === "UNAVAILABLE") return QUEUE_COPY.unavailable;
+  return QUEUE_COPY.unknownError;
+}
+
+export const REGISTRATION_COPY = {
+  backToLogin: "返回登入",
+  pageTitle: "註冊帳戶",
+  pageLead: "提交後，帳戶將在導師或管理員審批後啟用。",
+  usernameLabel: "用戶名稱",
+  passwordLabel: "密碼",
+  nameLabel: "姓名",
+  phoneLabel: "電話（選填）",
+  submit: "提交註冊",
+  submitting: "提交中…",
+  missingFields: "請填寫用戶名稱、密碼及姓名。",
+  doneTitle: "申請已提交",
+  doneMessage:
+    "你的註冊申請已提交，帳戶尚待導師或管理員審批。審批完成後即可登入。",
+  submittedLive: "註冊申請已提交。",
+} as const;
+
+export const QUEUE_COPY = {
+  backToHome: "返回首頁",
+  pageTitle: "註冊審批",
+  pageLead: "檢視待審批的註冊申請。",
+  loading: "載入中…",
+  empty: "目前沒有待審批的申請。",
+  refresh: "重新整理",
+  approve: "批准",
+  reject: "拒絕",
+  approving: "批准中…",
+  rejecting: "拒絕中…",
+  username: "用戶名稱",
+  name: "姓名",
+  phone: "電話",
+  submittedAt: "提交時間",
+  role: "角色",
+  done: "已更新申請狀態。",
+  networkError: "無法連接伺服器，請檢查網路後再試。",
+  forbidden: "您沒有權限執行此操作。",
+  validation: "輸入資料無效，請檢查後再試。",
+  conflict: "資料衝突，請重新整理後再試。",
+  notFound: "找不到該申請，可能已被處理。",
+  unauthorized: "請先以導師或管理員身分登入。",
+  unavailable: "系統暫時無法使用，請稍後再試。",
+  unknownError: "發生未知錯誤，請稍後再試。",
+} as const;
+
+export function registrationErrorCopy(code: string, detail?: string): string {
+  return registrationErrorFor(code, detail);
+}

@@ -794,6 +794,92 @@ describe("AUTH-06: registrations approve/reject", () => {
   });
 });
 
+describe("AUTH-05: registration queue listing", () => {
+  test("GET /registrations lists Pending requests with safe metadata only", async () => {
+    // A fresh Pending request to list.
+    const reg = await worker.fetch(
+      authRequest("/api/v1/auth/register", {
+        headers: { Origin: HOST, "Idempotency-Key": "idem-queue-1" },
+        body: { username: "kevin", password: "kevin-password-1", name: "Kevin Yu", phone: "9999-8888" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      authRequest("/api/v1/auth/registrations", {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { registrations: Array<Record<string, unknown>> };
+    };
+    assert.ok(Array.isArray(body.data.registrations), "registrations must be an array");
+    const kevin = body.data.registrations.find(
+      (r) => r.username === "kevin"
+    );
+    assert.ok(kevin, "kevin's Pending request must be listed");
+    assert.strictEqual(kevin.accountStatus, "Pending");
+    assert.strictEqual(kevin.name, "Kevin Yu");
+    assert.strictEqual(kevin.phone, "9999-8888");
+    assert.strictEqual(typeof kevin.requestId, "string");
+    assert.strictEqual(typeof kevin.submittedAt, "number");
+    // The queue must never expose credential material or the identity key.
+    assertBodyHasNoTokenKeys(body);
+    const text = JSON.stringify(body);
+    assert.ok(
+      !/credential|password|pin|user_id|requires_upgrade/i.test(text),
+      `queue listing must not expose credential/identity material, got: ${text}`
+    );
+    assertNoCors(res);
+  });
+
+  test("GET /registrations without a session is rejected (401)", async () => {
+    const res = await worker.fetch(
+      authRequest("/api/v1/auth/registrations", {
+        method: "GET",
+        headers: { Origin: HOST },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 401);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "AUTH_REQUIRED");
+  });
+
+  test("a Member caller cannot list the queue (403)", async () => {
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const res = await worker.fetch(
+      authRequest("/api/v1/auth/registrations", {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${memberAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 403);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "FORBIDDEN");
+  });
+
+  test("GET /registrations with POST method is not listed (404)", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      authRequest("/api/v1/auth/registrations", {
+        method: "POST",
+        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 404);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "NOT_FOUND");
+  });
+});
+
 describe("AUTH-06: preserved /api/v1/rpc proxy still has CORS (regression)", () => {
   test("OPTIONS on /api/v1/rpc still returns 204 with CORS headers", async () => {
     const res = await worker.fetch(
