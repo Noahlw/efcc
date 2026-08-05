@@ -49,6 +49,33 @@ The migration key question (this ADR's open question, carried into AUTH-01) was:
 
 The user selected Shape 1. It honors "no cleartext PIN ever" while giving each legacy member a self-service, identity-proven upgrade on first login, then permanently discards the legacy secret.
 
+### 4.1 Legacy-PIN brute-force lockout (escalating ladder)
+
+The one-time legacy-PIN hash is a **throwaway identity gate**, not a standalone
+security boundary: it proves the upgrade on first login and is then cleared
+forever. Because the legacy key space is only 4 numeric digits (10,000
+possibilities), the check is hardened against brute force by a per-account
+escalation ladder persisted on `accounts` as non-secret state only
+(`lock_level`, `failed_attempts`, `locked_until`, `lock_since` — never the PIN
+or any credential):
+
+| Stage | Trigger                        | Duration  | Cleared by |
+| ----- | ------------------------------ | --------- | --------------------------- |
+| 0 — none | fewer than 5 failed verifications | —       | — |
+| 1 — 5-min lock | 5th failed verification | 5 minutes | time expiry |
+| 2 — 15-min lock | fresh round of 5 after stage 1 expires | 15 minutes | time expiry |
+| 3 — admin unlock | fresh round of 5 after stage 2 expires | permanent | Admin/Teacher `adminUnlockLegacyUpgrade` |
+
+Each stage is entered by a fresh round of `LEGACY_FAIL_THRESHOLD` (5) failures
+since the last reset; `failed_attempts` resets to 0 when a stage is entered.
+While a time-lock (stage 1/2) is active, the gate rejects the verification
+before the PIN is ever checked; stage 3 rejects until an Admin/Teacher clears
+it. A successful upgrade clears the whole lockout state. The threshold (5) is
+the ticket's proposed value confirmed by the operator; the stage durations
+(5/15 minutes) follow the operator's 2026-08-05 decision. The exact numeric
+threshold/durations are constants in `web/lib/auth/lockout.ts`, intentionally
+configurable before deploy.
+
 ## Consequences
 
 - Identity, credentials, sessions, and registration are read from D1, removing every auth read from the shared Apps Script ceiling (cost model).

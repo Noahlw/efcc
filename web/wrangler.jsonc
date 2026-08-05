@@ -51,4 +51,11 @@
       },
     },
   ],
+  // AUTH-03 (#161): operator-controlled D1 → Sheets identity-metadata review
+  // mirror. The Cron Trigger fires daily at 19:00 UTC = 03:00 Asia/Hong_Kong
+  // (UTC+8) the following day. The mirror URL and service secret are set with
+  // `wrangler secret put` (never as plaintext vars).
+  "triggers": {
+    "crons": ["0 19 * * *"],
+  },
 }

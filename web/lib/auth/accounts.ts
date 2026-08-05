@@ -51,6 +51,10 @@ export interface AccountRow {
   qr_code_string: string | null;
   legacy_pin_hash: string | null;
   requires_upgrade: number;
+  lock_level: number;
+  failed_attempts: number;
+  locked_until: number | null;
+  lock_since: number | null;
   created_at: number;
   updated_at: number;
 }

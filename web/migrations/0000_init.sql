@@ -30,6 +30,14 @@ CREATE TABLE accounts (
   qr_code_string TEXT,
   legacy_pin_hash TEXT,              -- one-time salted PBKDF2 hash of the legacy PIN (cleared on upgrade)
   requires_upgrade INTEGER NOT NULL DEFAULT 0, -- legacy_pin marker: forces credential upgrade gate
+  -- Legacy-PIN brute-force lockout state (ADR-0020 §4 / AUTH-01 #159). The hash
+  -- is a THROWAWAY identity gate during forced upgrade, not a standalone security
+  -- boundary: only non-secret counters and timestamps are persisted here, never
+  -- the PIN or any credential.
+  lock_level INTEGER NOT NULL DEFAULT 0,      -- 0 none | 1 5-min | 2 15-min | 3 admin-unlock
+  failed_attempts INTEGER NOT NULL DEFAULT 0, -- failed legacy-PIN verifications since last reset
+  locked_until INTEGER,                       -- epoch-ms when a 5/15-min time-lock expires (NULL when none)
+  lock_since INTEGER,                         -- epoch-ms when lock_level was entered
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

@@ -26,6 +26,18 @@ export interface Env {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET?: string;
   /**
+   * AUTH-03 (#161): the Apps Script mirror endpoint the scheduled handler
+   * POSTs the signed identity-metadata snapshot to. Set via
+   * `wrangler secret put EFCC_IDENTITY_MIRROR_URL`. When absent, the mirror
+   * run fails closed.
+   */
+  EFCC_IDENTITY_MIRROR_URL?: string;
+  /**
+   * AUTH-03 (#161): shared secret for the signed Worker → Apps Script mirror
+   * boundary. Set via `wrangler secret put EFCC_SERVICE_SECRET`; never logged.
+   */
+  EFCC_SERVICE_SECRET?: string;
+  /**
    * Rate Limiting binding (ADR-0018 §9). Optional in dev/test - when absent,
    * rate limiting is skipped. Keys on session identity (authenticated) or
    * the login body's username (anonymous), NEVER on client IP per
@@ -270,6 +282,33 @@ export default {
         "Access-Control-Allow-Origin": origin,
         "X-Request-Id": requestId,
       },
+    });
+  },
+  /**
+   * AUTH-03 (#161): operator-controlled D1 → Sheets identity-metadata review
+   * mirror. Fired by the `0 19 * * *` Cron Trigger (19:00 UTC = 03:00
+   * Asia/Hong_Kong next day). Reads non-secret identity metadata from D1,
+   * signs it, and POSTs it to the mirror Apps Script endpoint. D1 stays
+   * authoritative; the Sheet is human read-only review data. Fails closed on
+   * any missing config, D1/API failure, or upstream rejection — throwing lets
+   * Cloudflare retry the scheduled invocation.
+   */
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    const { readIdentityMirrorAccounts, runIdentityMirror } = await import(
+      "./lib/mirror/identity-mirror"
+    );
+
+    if (!env.EFCC_IDENTITY_MIRROR_URL || !env.EFCC_SERVICE_SECRET) {
+      throw new Error(
+        "Identity mirror failed closed: EFCC_IDENTITY_MIRROR_URL / EFCC_SERVICE_SECRET are not configured."
+      );
+    }
+
+    const accounts = await readIdentityMirrorAccounts(env.DB);
+    await runIdentityMirror({
+      secret: env.EFCC_SERVICE_SECRET,
+      accounts,
+      mirrorUrl: env.EFCC_IDENTITY_MIRROR_URL,
     });
   },
 } satisfies ExportedHandler<Env>;

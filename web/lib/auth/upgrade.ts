@@ -11,13 +11,27 @@
  * upgrade completes (enforced by `issueSession`/`refreshSession`'s
  * UPGRADE_REQUIRED gate).
  *
+ * The legacy-PIN hash is a THROWAWAY identity gate, not a standalone security
+ * boundary (see ADR-0020 §4 and web/lib/auth/lockout.ts). Because the legacy
+ * key space is only 4 digits, the check is brute-force hardened by a
+ * per-account escalation ladder: 5 failed verifications enter a 5-minute lock,
+ * a further round enters a 15-minute lock, and a final round locks the path
+ * until an Admin/Teacher unlocks it. Failed attempts are counted and the
+ * lockout state persisted (non-secret counters/timestamps only); the legacy
+ * PIN itself is never stored, logged, or returned.
+ *
  * The upgrade also revokes all outstanding sessions (a credential change), so
- * any pre-existing access token stops being renewable immediately.
+ * any access token issued before the upgrade stops being renewable immediately
+ * and the new credential is the only live one.
  */
 
 import { verifyCredential, hashCredential, normalizePin } from "./credentials";
 import { findAccountByUserId } from "./accounts";
 import { revokeAllUserSessions } from "./sessions";
+import {
+  assertNotLocked,
+  recordLegacyPinFailure,
+} from "./lockout";
 
 export interface UpgradeResult {
   ok: true;
@@ -33,7 +47,8 @@ export interface UpgradeResult {
  * @param now Epoch millis (injectable for tests).
  * @returns {ok: true} on success.
  * @throws AuthError AUTH_REQUIRED if the account is unknown, FORBIDDEN if it
- *   is not awaiting upgrade, or AUTH_REQUIRED if the legacy PIN does not match
+ *   is not awaiting upgrade, LegacyUpgradeLockedError if the account is
+ *   currently locked out, or AUTH_REQUIRED if the legacy PIN does not match
  *   (identity not proven).
  */
 export async function completeCredentialUpgrade(
@@ -54,11 +69,18 @@ export async function completeCredentialUpgrade(
     throw new Error("FORBIDDEN: Account is not awaiting credential upgrade.");
   }
 
+  // Brute-force gate: fail closed while a time-lock is active or the account
+  // is in the admin-unlock stage. Never lets the PIN be verified while locked.
+  assertNotLocked(account, now);
+
   const proven = await verifyCredential(
     normalizeLegacyPin(options.legacyPin),
     account.legacy_pin_hash
   );
   if (!proven) {
+    // Record the failure (and escalate the lockout) BEFORE throwing, so the
+    // account's failed-attempt state is durable even if the request dies.
+    await recordLegacyPinFailure(db, options.userId, account, now);
     // Ambiguous on purpose: never reveal whether the username or the PIN was
     // wrong, and never leak that a legacy account exists.
     throw new Error("AUTH_REQUIRED: Invalid username or PIN.");
@@ -66,12 +88,17 @@ export async function completeCredentialUpgrade(
 
   const newCredentialHash = await hashCredential(options.newCredential);
 
+  // Success: set the new credential and CLEAR both the one-time legacy hash
+  // and the entire lockout state (the legacy key is gone forever).
   await db
     .prepare(
       `UPDATE accounts
          SET credential_hash = ?, credential_kind = 'password',
              credential_version = 2, legacy_pin_hash = NULL,
-             requires_upgrade = 0, updated_at = ?
+             requires_upgrade = 0,
+             lock_level = 0, failed_attempts = 0,
+             locked_until = NULL, lock_since = NULL,
+             updated_at = ?
        WHERE user_id = ?`
     )
     .bind(newCredentialHash, now, options.userId)
