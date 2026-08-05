@@ -1,43 +1,86 @@
-import type { Session } from "@/lib/api";
+/**
+ * Client-side session state for the AUTH-04 cookie-only boundary (ADR-0020).
+ *
+ * Credentials, tokens, and session identifiers never touch browser storage —
+ * they live only in the server-set httpOnly access+refresh cookies. The only
+ * thing persisted here is a non-secret boolean "an authenticated session is
+ * active" hint, which lets cold boot skip a restore call when nothing is
+ * stored (Spec 074: "renders Login, makes no restore call"). The hint is
+ * never treated as proof of identity: every restore re-verifies against the
+ * cookie boundary via /api/v1/auth/refresh + /api/v1/auth/me.
+ */
 
-const STORAGE_KEY = "efcc_session";
+import { authMe, authRefresh, RpcError } from "@/lib/api";
+import type { Bootstrap, PublicUser } from "@/lib/api";
+import { defaultSections } from "@/lib/sections";
 
-function isValidSession(raw: unknown): raw is Session {
-  if (typeof raw !== "object" || raw === null) return false;
-  const s = raw as Record<string, unknown>;
-  return (
-    typeof s.userId === "string" &&
-    typeof s.sessionId === "string" &&
-    typeof s.sessionToken === "string" &&
-    s.userId !== "" &&
-    s.sessionId !== "" &&
-    s.sessionToken !== ""
-  );
-}
+const AUTH_HINT_KEY = "efcc_auth_active";
 
-export function loadSession(): Session | null {
+/** True when a cookie-authenticated session was last known to be active. */
+export function hasAuthHint(): boolean {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return isValidSession(parsed) ? parsed : null;
+    return localStorage.getItem(AUTH_HINT_KEY) === "1";
   } catch {
-    return null;
+    return false;
   }
 }
 
-export function saveSession(data: Session): void {
+/** Record that login/refresh succeeded (a non-secret presence flag). */
+export function setAuthHint(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(AUTH_HINT_KEY, "1");
   } catch {
-    // Storage full or unavailable — non-critical, session can be re-issued.
+    // Storage unavailable — non-critical; cookies remain the source of truth.
   }
 }
 
-export function clearSession(): void {
+/** Clear the presence flag (logout, expiry, or revoked session). */
+export function clearAuthHint(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(AUTH_HINT_KEY);
   } catch {
     // Best-effort.
   }
+}
+
+/**
+ * Assemble the shell's Bootstrap from a cookie-verified public user and the
+ * shell's section baseline. Section authorization is CF0-04's concern; the
+ * client never hardcodes a role→Section map here.
+ */
+export function buildBootstrap(user: PublicUser): Bootstrap {
+  return { profile: user, sections: defaultSections() };
+}
+
+/**
+ * Resolve the current user against the cookie boundary. Prefers a live
+ * access cookie via /api/v1/auth/me; when that 401s (the ~15-min access
+ * token expired), silently refreshes the refresh cookie and retries me.
+ * Throws RpcError otherwise (AUTH_REQUIRED = refresh cookie gone/revoked).
+ */
+async function currentUser(): Promise<PublicUser> {
+  try {
+    return await authMe();
+  } catch (error) {
+    if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+      await authRefresh();
+      return authMe();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Restore the authenticated shell state on load. Returns null when no
+ * session is stored (render Login without any restore call); otherwise
+ * cookie-verifies and returns a ready Bootstrap. Throws RpcError with the
+ * same codes as the auth surface (AUTH_REQUIRED = expired/revoked refresh).
+ */
+export async function restoreBootstrap(): Promise<Bootstrap | null> {
+  if (!hasAuthHint()) {
+    clearAuthHint();
+    return null;
+  }
+  const user = await currentUser();
+  return buildBootstrap(user);
 }

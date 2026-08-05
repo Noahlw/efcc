@@ -27,6 +27,36 @@ export interface Session {
   userId: string;
 }
 
+/**
+ * AUTH-04 login response data (POST /api/v1/auth/login). Identity is
+ * carried server-side in the httpOnly access+refresh cookies; this payload
+ * carries only the public profile fields and the forced-upgrade gate.
+ * `mustSetNewCredential: true` means a legacy account proved its one-time
+ * legacy credential but NO session is issued — the forced-upgrade flow must
+ * run before login can succeed (ADR-0020 §4 / AUTH-01 #159).
+ */
+export interface LoginResult {
+  userId: string;
+  name: string;
+  role: string;
+  status: string;
+  mustSetNewCredential: boolean;
+}
+
+/**
+ * Public user profile returned by GET /api/v1/auth/me from the access
+ * cookie. No credential, token, or session identifier ever appears here.
+ */
+export interface PublicUser {
+  userId: string;
+  name: string;
+  username: string;
+  phone: string;
+  role: string;
+  status: string;
+  qrCodeString: string;
+}
+
 export interface ProblemDetails {
   type?: string;
   title?: string;
@@ -69,24 +99,8 @@ export interface Section {
 }
 
 export interface Bootstrap {
-  session: {
-    userId: string;
-    name: string;
-    role: string;
-    qrCodeString: string;
-    sessionId: string;
-    sessionToken: string;
-  };
   sections: Section[];
-  profile: {
-    userId: string;
-    name: string;
-    username: string;
-    phone: string;
-    role: string;
-    status: string;
-    qrCodeString: string;
-  };
+  profile: PublicUser;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,14 +119,15 @@ export interface Bootstrap {
  * Every action here is also retry-safe (idempotent server-side) unless
  * listed in NON_IDEMPOTENT_MUTATIONS below.
  *
- * - loginUser: re-issues a fresh session harmlessly (ADR-0018 §6).
- * - logoutUser: "logging out an already-revoked session returns a success
- *   envelope" (api_logoutUser docstring in Code.gs) - idempotent.
- * - restoreApp / authorizedNavigate: reads, not listed here.
+ * - authorizedNavigate: a read, not listed here.
  * - submitDemoTaskForm: not yet wired; already has its own CacheService
  *   guard. Add it here when CF2+ wires it.
+ *
+ * The AUTH-04 cookie surface (/api/v1/auth/*) is deliberately NOT routed
+ * through this envelope: login is explicitly not idempotent (AUTH-04
+ * #162) and carries no client session, so it uses authFetch instead.
  */
-const MUTATING_ACTIONS = new Set<string>(["loginUser", "logoutUser"]);
+const MUTATING_ACTIONS = new Set<string>();
 
 /**
  * Mutations that are NOT safe to auto-retry (would duplicate a
@@ -406,8 +421,11 @@ export async function callRpc<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Public RPC actions - the four the shell needs (Spec 074, ticket #142).
-// Each is a thin typed wrapper over callRpc; no business logic lives here.
+// Public RPC actions - the domain RPC layer the shell needs (Spec 074,
+// ticket #142). Each is a thin typed wrapper over callRpc; no business
+// logic lives here. The legacy /api/v1/rpc transport is preserved for
+// Apps Script domain RPCs (e.g. server-authorized section navigation);
+// the AUTH-04 cookie surface lives in the AUTH section below.
 // ---------------------------------------------------------------------------
 
 /**
@@ -429,26 +447,6 @@ function sessionParams(session: Session): Record<string, unknown> {
   };
 }
 
-export function loginUser(username: string, pin: string): Promise<Bootstrap> {
-  return callRpc<Bootstrap>("loginUser", { username, pin });
-}
-
-export function restoreApp(
-  session: Session,
-  options?: { signal?: AbortSignal }
-): Promise<Bootstrap> {
-  return callRpc<Bootstrap>(
-    "restoreApp",
-    sessionParams(session),
-    session,
-    options
-  );
-}
-
-export function logoutUser(session: Session): Promise<void> {
-  return callRpc<void>("logoutUser", sessionParams(session), session);
-}
-
 export function authorizedNavigate(
   session: Session,
   sectionKey: string
@@ -458,4 +456,123 @@ export function authorizedNavigate(
     { ...sessionParams(session), sectionKey },
     session
   );
+}
+
+// ---------------------------------------------------------------------------
+// AUTH-04 cookie surface (ADR-0020 / AUTH-04 #162).
+//
+// The locked /api/v1/auth/* transport is cookie-only: identity travels in
+// two httpOnly Secure SameSite=Strict cookies (access + rotating refresh)
+// set by the server. The client NEVER stores a token, session identifier,
+// or credential, and NEVER constructs an Authorization / X-Efcc-Session-Id
+// header. Requests are same-origin; no CORS, no OPTIONS. `login` is
+// explicitly NOT idempotent (AUTH-04 #162), so this surface never retries
+// on a 4xx and never auto-retries a login — double-submit protection is the
+// caller's job (busy state).
+// ---------------------------------------------------------------------------
+
+/** Envelope shape on the auth surface: `{ requestId, data }` (no success flag). */
+interface AuthSuccess<T> {
+  requestId: string;
+  data: T;
+}
+
+/**
+ * One fetch to the cookie-only auth surface. No auth headers are built and
+ * no Idempotency-Key is attached: identity comes from the server-set
+ * cookies on the request, and login must not be blindly retried. 4xx and
+ * 5xx are never retried; a network failure surfaces as a safe NETWORK_ERROR.
+ */
+async function authFetch<T>(
+  path: string,
+  method: "POST" | "GET",
+  body?: unknown
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      // Bounded timeout per AGENTS.md Production Resilience.
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new RpcError({
+      status: 0,
+      code: "NETWORK_ERROR",
+      title: "Network error",
+      detail: "無法連接伺服器，請檢查網路後再試。",
+    });
+  }
+
+  if (res.ok) {
+    // logout returns a bare 204 with no body.
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch {
+      throw new RpcError({
+        status: res.status,
+        code: "MALFORMED_RESPONSE",
+        title: "Malformed success response",
+        detail: "伺服器回應格式錯誤。",
+      });
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as { data?: unknown }).data === undefined
+    ) {
+      throw new RpcError({
+        status: res.status,
+        code: "MALFORMED_RESPONSE",
+        title: "Malformed success envelope",
+        detail: "伺服器回應格式錯誤。",
+      });
+    }
+    return (parsed as AuthSuccess<T>).data as T;
+  }
+
+  const requestId = res.headers.get("X-Request-Id") ?? undefined;
+  const problem = await parseProblemDetails(res, requestId);
+  throw new RpcError(problem);
+}
+
+/** POST /api/v1/auth/login — sets the httpOnly access+refresh cookies. */
+export function authLogin(
+  username: string,
+  password: string
+): Promise<LoginResult> {
+  return authFetch<LoginResult>("/api/v1/auth/login", "POST", {
+    username,
+    password,
+  });
+}
+
+/** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
+export function authRefresh(): Promise<void> {
+  return authFetch<void>("/api/v1/auth/refresh", "POST");
+}
+
+/**
+ * POST /api/v1/auth/logout — revokes the refresh session and clears both
+ * cookies, returning 204. Naturally idempotent; the caller treats failure
+ * as best-effort (local session is cleared regardless).
+ */
+export function authLogout(): Promise<void> {
+  return authFetch<void>("/api/v1/auth/logout", "POST");
+}
+
+/**
+ * GET /api/v1/auth/me — reads the access cookie, returns the public user.
+ * The endpoint wraps the user under `data.user`; unwrap it here.
+ */
+
+export async function authMe(): Promise<PublicUser> {
+  const data = await authFetch<{ user: PublicUser }>("/api/v1/auth/me", "GET");
+  return data.user;
 }

@@ -2,12 +2,11 @@
 
 import { createContext, useContext, useCallback, useMemo } from "react";
 
-import type { Bootstrap, Session } from "@/lib/api";
-import { clearSession } from "@/lib/session";
+import type { Bootstrap } from "@/lib/api";
+import { clearAuthHint } from "@/lib/session";
 
 interface AppContextValue {
   bootstrap: Bootstrap;
-  session: Session;
   signOut: () => void;
 }
 
@@ -15,26 +14,21 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({
   bootstrap,
-  session,
   onSignOut,
   children,
 }: {
   bootstrap: Bootstrap;
-  session: Session;
   onSignOut: () => void;
   children: React.ReactNode;
 }) {
   const signOut = useCallback(() => {
-    clearSession();
+    clearAuthHint();
     onSignOut();
   }, [onSignOut]);
 
   return (
     <AppContext.Provider
-      value={useMemo(
-        () => ({ bootstrap, session, signOut }),
-        [bootstrap, session, signOut]
-      )}
+      value={useMemo(() => ({ bootstrap, signOut }), [bootstrap, signOut])}
     >
       {children}
     </AppContext.Provider>

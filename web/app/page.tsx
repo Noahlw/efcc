@@ -3,13 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { loginUser, restoreApp, RpcError } from "@/lib/api";
+import { authLogin, authMe, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { RecoveryView } from "@/lib/recovery-view";
 import { firstSection } from "@/lib/sections";
-import { clearSession, loadSession, saveSession } from "@/lib/session";
+import {
+  buildBootstrap,
+  clearAuthHint,
+  hasAuthHint,
+  restoreBootstrap,
+  setAuthHint,
+} from "@/lib/session";
 
 import styles from "./page.module.css";
 
@@ -31,7 +37,6 @@ function SealMark({ size = 28 }: { size?: number }) {
       width={size}
       height={size}
       viewBox="0 0 32 32"
-      role="img"
       aria-hidden="true"
       focusable="false"
     >
@@ -72,9 +77,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
-  const [pin, setPin] = useState("");
+  const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const mountRef = useRef(true);
 
   useEffect(
@@ -85,9 +89,7 @@ export default function LoginPage() {
   );
 
   const handleExpiry = useCallback((message: string) => {
-    clearSession();
-    abortRef.current?.abort();
-    abortRef.current = null;
+    clearAuthHint();
     announce(message);
     setNotice(message);
     setView({ kind: "SIGNED_OUT" });
@@ -103,24 +105,20 @@ export default function LoginPage() {
   );
 
   const doRestore = useCallback(async () => {
-    const stored = loadSession();
-    if (!stored) {
-      clearSession();
-      setView({ kind: "SIGNED_OUT" });
-      return;
+    if (hasAuthHint()) {
+      // Only show the restoring state when a session may actually be stored;
+      // cold boot (no hint) renders Login directly without a restore call.
+      setView({ kind: "RESTORING" });
+      announce(COPY.restore.loading);
     }
-
-    setView({ kind: "RESTORING" });
-    announce(COPY.restore.loading);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     try {
-      const bootstrap = await restoreApp(stored, {
-        signal: controller.signal,
-      });
+      const bootstrap = await restoreBootstrap();
       if (!mountRef.current) {
+        return;
+      }
+      if (bootstrap === null) {
+        // No stored session — cold boot straight to Login, no restore call.
+        setView({ kind: "SIGNED_OUT" });
         return;
       }
       announce(COPY.restore.restored);
@@ -140,17 +138,15 @@ export default function LoginPage() {
         announce(msg);
       }
     }
-
-    abortRef.current = null;
   }, [navigateAfterLogin, handleExpiry]);
 
-  // On mount, restore any stored session.
+  // On mount, restore any stored cookie session (silent, no re-entry).
   useEffect(() => {
     doRestore();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- doRestore/navigateAfterLogin are stable
   }, []);
 
-  // On mount, surface any flash notice from a prior logout (Task 4).
+  // On mount, surface any flash notice from a prior logout / expiry.
   useEffect(() => {
     if (sessionStorage.getItem("efcc_session_expired") === "1") {
       announce(COPY.restore.expired);
@@ -169,24 +165,38 @@ export default function LoginPage() {
     announce(COPY.login.submitting);
     setNotice(null);
     try {
-      const bootstrap = await loginUser(username, pin);
-      saveSession({
-        userId: bootstrap.session.userId,
-        sessionId: bootstrap.session.sessionId,
-        sessionToken: bootstrap.session.sessionToken,
-      });
+      const result = await authLogin(username, password);
+      if (result.mustSetNewCredential) {
+        // Legacy forced-upgrade gate (AUTH-01 #159 / ADR-0020 §4): identity
+        // proven but NO session is issued until a new credential is set.
+        // Preserve that response state — do not silently mint a session.
+        setView({ kind: "SIGNED_OUT" });
+        setNotice(COPY.login.upgradeRequired);
+        announce(COPY.login.upgradeRequired);
+        return;
+      }
+      setAuthHint();
+      // Login sets the cookies; /me resolves the full profile from the
+      // access cookie to assemble the shell bootstrap.
+      const user = await authMe();
+      const bootstrap = buildBootstrap(user);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
-      const msg =
-        error instanceof RpcError
+      // A 401 AUTH_REQUIRED on the login action means invalid credentials —
+      // a distinct message from the generic session-expired case.
+      const isInvalidCredentials =
+        error instanceof RpcError && error.problem.code === "AUTH_REQUIRED";
+      const msg = isInvalidCredentials
+        ? COPY.login.error
+        : error instanceof RpcError
           ? errorCopyFor(error.problem.code)
           : COPY.login.networkError;
       setView({ kind: "ERROR", error: msg });
       announce(msg);
-      clearSession();
+      clearAuthHint();
     }
-  }, [username, pin, navigateAfterLogin]);
+  }, [username, password, navigateAfterLogin]);
 
   if (view.kind === "RESTORING") {
     return (
@@ -198,7 +208,9 @@ export default function LoginPage() {
 
   if (view.kind === "RECOVERABLE_ERROR") {
     const handleRetry = view.retry;
-    return <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />;
+    return (
+      <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
+    );
   }
 
   const busy = view.kind === "AUTHENTICATING";
@@ -228,7 +240,10 @@ export default function LoginPage() {
       </header>
 
       <main className={styles.main}>
-        <section className={`${styles.section} ${styles.hero}`} aria-labelledby="hero-title">
+        <section
+          className={`${styles.section} ${styles.hero}`}
+          aria-labelledby="hero-title"
+        >
           <div className={styles.heroInner}>
             <h1 id="hero-title" className={styles.heroTitle}>
               {LANDING.heroTitle}
@@ -245,7 +260,11 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section id="features" className={styles.section} aria-labelledby="register-title">
+        <section
+          id="features"
+          className={styles.section}
+          aria-labelledby="register-title"
+        >
           <div className={styles.split}>
             <div className={styles.register}>
               <div className={styles.registerHead}>
@@ -267,7 +286,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <section id="login" className={styles.loginPanel} aria-labelledby="login-title">
+            <section
+              id="login"
+              className={styles.loginPanel}
+              aria-labelledby="login-title"
+            >
               <div className={styles.loginTitleWrap}>
                 <SealMark size={22} />
                 <h2 id="login-title" className={styles.loginTitle}>
@@ -303,14 +326,13 @@ export default function LoginPage() {
                 </label>
                 <label className={styles.field}>
                   <span className={styles.fieldLabel}>
-                    {COPY.login.pinLabel}
+                    {COPY.login.passwordLabel}
                   </span>
                   <input
                     className={styles.input}
                     type="password"
-                    inputMode="numeric"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     disabled={busy}
                     autoComplete="current-password"
                   />
