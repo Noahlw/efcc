@@ -469,6 +469,135 @@ describe("Shell", () => {
     });
     /* oxlint-enable vitest/max-expects */
 
+    /* oxlint-disable vitest/max-expects -- covers the ambiguous-network upgrade path. */
+    test("lost upgrade response still navigates when the session was actually issued", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        ),
+        http.get("/api/v1/auth/me", () => {
+          authCalls.push("/api/v1/auth/me");
+          return HttpResponse.json({
+            requestId: "r-me",
+            data: { user: PUBLIC_USER },
+          });
+        }),
+        http.post("/api/v1/auth/upgrade", () => {
+          authCalls.push("/api/v1/auth/upgrade");
+          // Simulate a connection drop after the server committed the upgrade.
+          return HttpResponse.error();
+        })
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(
+        screen.getByLabelText(COPY.login.usernameLabel),
+        "legacy"
+      );
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(
+          screen.getByText(COPY.login.upgradeRequired)
+        ).toBeInTheDocument();
+      });
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+
+      // The probe (authMe) resolves the issued session and navigates instead
+      // of re-mounting the gate — no 409 resubmission of a consumed PIN.
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(authCalls).toContain("/api/v1/auth/me");
+      expect(
+        authCalls.filter((c) => c === "/api/v1/auth/upgrade")
+      ).toHaveLength(1);
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+    });
+    /* oxlint-enable vitest/max-expects */
+
+    /* oxlint-disable vitest/max-expects -- covers the genuinely-uncommitted upgrade path. */
+
+    test("lost upgrade response re-mounts the gate when no session was issued", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        ),
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json(
+            {
+              status: 401,
+              code: "AUTH_REQUIRED",
+              title: "Unauthorized",
+              detail: "Access cookie missing.",
+            },
+            {
+              status: 401,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          )
+        ),
+        http.post("/api/v1/auth/upgrade", () => {
+          authCalls.push("/api/v1/auth/upgrade");
+          return HttpResponse.error();
+        })
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(
+        screen.getByLabelText(COPY.login.usernameLabel),
+        "legacy"
+      );
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(
+          screen.getByText(COPY.login.upgradeRequired)
+        ).toBeInTheDocument();
+      });
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+
+      // No session exists, so the gate re-mounts for a real retry.
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.login.upgradeTitle })
+        ).toBeInTheDocument();
+      });
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+    });
+    /* oxlint-enable vitest/max-expects */
+
     test("stored access session silently restores and redirects on reload", async () => {
       setAuthHint();
       render(<LoginPage />);

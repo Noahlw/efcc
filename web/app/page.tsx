@@ -230,12 +230,31 @@ export default function LoginPage() {
     try {
       await authUpgrade(username, legacyPin, newCredential);
     } catch (error) {
-      // The gate stays mounted: the legacy credential was NOT consumed, so a
-      // retry may re-submit the same PIN.
       const msg =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.login.networkError;
+      const ambiguous =
+        error instanceof RpcError &&
+        (error.problem.code === "NETWORK_ERROR" || error.problem.status === 0);
+      if (ambiguous) {
+        // The request may have committed server-side (legacy hash consumed,
+        // session cookies set) before the response was lost. Probe the issued
+        // session before re-mounting the gate: a retry of a consumed PIN
+        // would 409 and strand the user despite a valid session (Spec 077 U5).
+        try {
+          const user = await authMe();
+          const bootstrap = buildBootstrap(user);
+          setAuthHint();
+          announce(COPY.login.success);
+          navigateAfterLogin(bootstrap);
+          return;
+        } catch {
+          // No session — the upgrade genuinely did not commit.
+        }
+      }
+      // The gate stays mounted: the legacy credential was NOT consumed, so a
+      // retry may re-submit the same PIN.
       setView({ kind: "UPGRADE" });
       setNotice(msg);
       announce(msg);
@@ -248,7 +267,7 @@ export default function LoginPage() {
     // would 409 against the consumed hash).
     setAuthHint();
     await finishUpgrade();
-  }, [legacyPin, newCredential, username, finishUpgrade]);
+  }, [legacyPin, newCredential, username, finishUpgrade, navigateAfterLogin]);
 
   if (view.kind === "RESTORING") {
     return (
