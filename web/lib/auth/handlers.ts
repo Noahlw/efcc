@@ -520,7 +520,6 @@ export async function handleAdminUnlock(
       detail: "userId is required.",
     });
   }
-  await adminUnlockLegacyUpgrade(env.DB, userId);
   const unlocked = await adminUnlockLegacyUpgrade(env.DB, userId);
   if (!unlocked) {
     // The lockout primitive returns false when no row matched — i.e. the
