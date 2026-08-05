@@ -17,7 +17,10 @@
  *   REFRESH_IDLE_TTL_MS  — 90-day idle expiry for the D1 refresh session.
  */
 
-export const PBKDF2_ITERATIONS = 210_000;
+// Cloudflare Workers' SubtleCrypto rejects PBKDF2 iteration counts above
+// 100,000 with NotSupportedError. Node/Bun impose no cap, so this constant
+// is the binding constraint across all environments.
+export const PBKDF2_ITERATIONS = 100_000;
 export const PBKDF2_KEY_LENGTH_BITS = 256;
 export const SALT_BYTES = 16;
 export const CREDENTIAL_PREFIX = "pbkdf2";
