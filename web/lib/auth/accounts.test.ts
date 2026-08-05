@@ -129,7 +129,12 @@ describe("AUTH-01: legacy import", () => {
     expect(alice!.credential_hash).toBeNull();
     // One-time legacy PIN hash is stored, never the cleartext PIN.
     expect(alice!.legacy_pin_hash).toMatch(/^pbkdf2:/);
-    expect(JSON.stringify(alice)).not.toContain("1234");
+    // Scan every field except the wall-clock timestamps, whose digits can
+    // coincidentally contain any 4-digit sequence (e.g. epoch 1785912340xxx).
+    const { created_at, updated_at, ...rest } = alice!;
+    void created_at;
+    void updated_at;
+    expect(JSON.stringify(rest)).not.toContain("1234");
   });
 
   test("re-run is idempotent — no duplicate accounts", async () => {
@@ -207,7 +212,12 @@ describe("AUTH-01: forced credential upgrade gate", () => {
     expect(ivy!.credential_kind).toBe("password");
     expect(ivy!.credential_hash).toMatch(/^pbkdf2:/);
     // Cleartext values never remain in the row.
-    const serialized = JSON.stringify(ivy);
+    // Exclude wall-clock timestamps, whose digits may coincidentally contain
+    // the PIN (e.g. epoch 1785912340xxx contains "1234").
+    const { created_at, updated_at, ...rest } = ivy!;
+    void created_at;
+    void updated_at;
+    const serialized = JSON.stringify(rest);
     expect(serialized).not.toContain("1234");
     expect(serialized).not.toContain("new-secret-pass");
   });

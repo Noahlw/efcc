@@ -102,7 +102,7 @@ Test Files  2 passed (2)
 Tests       23 passed (23)   # 10 auth-boundary + 13 CF1 proxy regression
 
 $ npx vitest run lib/auth lib/mirror
-Test Files  6 passed (6)
+Test Files  5 passed (5)
 Tests       55 passed (55)
 
 $ npx tsc --noEmit -p tsconfig.worker.json
