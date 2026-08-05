@@ -598,6 +598,97 @@ describe("Shell", () => {
     });
     /* oxlint-enable vitest/max-expects */
 
+    /* oxlint-disable vitest/max-expects -- covers the transient-probe recovery path. */
+
+    test("lost upgrade response with a transient probe failure stays recoverable", async () => {
+      let meAttempts = 0;
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        ),
+        http.get("/api/v1/auth/me", () => {
+          authCalls.push("/api/v1/auth/me");
+          meAttempts += 1;
+          if (meAttempts <= 2) {
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "暫時無法使用",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json({
+            requestId: "r-me",
+            data: { user: PUBLIC_USER },
+          });
+        }),
+        http.post("/api/v1/auth/upgrade", () => {
+          authCalls.push("/api/v1/auth/upgrade");
+          return HttpResponse.error();
+        })
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(
+        screen.getByLabelText(COPY.login.usernameLabel),
+        "legacy"
+      );
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(
+          screen.getByText(COPY.login.upgradeRequired)
+        ).toBeInTheDocument();
+      });
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+
+      // The probe failed transiently, so the session is treated as possibly
+      // issued: a recoverable error (not the gate) is shown; the upgrade is
+      // never re-mounted.
+      await waitFor(() => {
+        expect(screen.getByText(COPY.error.unavailable)).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByText(COPY.login.upgradeTitle)
+      ).not.toBeInTheDocument();
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(
+        authCalls.filter((c) => c === "/api/v1/auth/upgrade")
+      ).toHaveLength(1);
+
+      // Retry resolves the profile from the possibly-issued session.
+      await user.click(screen.getByText(COPY.error.retry));
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(
+        authCalls.filter((c) => c === "/api/v1/auth/upgrade")
+      ).toHaveLength(1);
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+    });
+    /* oxlint-enable vitest/max-expects */
+
     test("stored access session silently restores and redirects on reload", async () => {
       setAuthHint();
       render(<LoginPage />);

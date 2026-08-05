@@ -237,29 +237,47 @@ export default function LoginPage() {
       const ambiguous =
         error instanceof RpcError &&
         (error.problem.code === "NETWORK_ERROR" || error.problem.status === 0);
-      if (ambiguous) {
-        // The request may have committed server-side (legacy hash consumed,
-        // session cookies set) before the response was lost. Probe the issued
-        // session before re-mounting the gate: a retry of a consumed PIN
-        // would 409 and strand the user despite a valid session (Spec 077 U5).
-        try {
-          const user = await authMe();
-          const bootstrap = buildBootstrap(user);
-          setAuthHint();
-          announce(COPY.login.success);
-          navigateAfterLogin(bootstrap);
-          return;
-        } catch {
-          // No session — the upgrade genuinely did not commit.
-        }
+      if (!ambiguous) {
+        // Definitive server problem: the upgrade did not commit. The gate
+        // stays mounted so a retry may re-submit the same PIN.
+        setView({ kind: "UPGRADE" });
+        setNotice(msg);
+        announce(msg);
+        clearAuthHint();
+        return;
       }
-      // The gate stays mounted: the legacy credential was NOT consumed, so a
-      // retry may re-submit the same PIN.
-      setView({ kind: "UPGRADE" });
-      setNotice(msg);
-      announce(msg);
-      clearAuthHint();
-      return;
+      // Ambiguous network failure: the request may have committed server-side
+      // (legacy hash consumed, session cookies set) before the response was
+      // lost. Probe the issued session before re-mounting the gate — a retry
+      // of a consumed PIN would 409 and strand the user despite a valid
+      // session (Spec 077 U5).
+      try {
+        const user = await authMe();
+        const bootstrap = buildBootstrap(user);
+        setAuthHint();
+        announce(COPY.login.success);
+        navigateAfterLogin(bootstrap);
+        return;
+      } catch (probeError) {
+        const noSession =
+          probeError instanceof RpcError &&
+          probeError.problem.code === "AUTH_REQUIRED";
+        if (noSession) {
+          // Definitive: the upgrade did not commit. Re-mount the gate.
+          setView({ kind: "UPGRADE" });
+          setNotice(msg);
+          announce(msg);
+          clearAuthHint();
+          return;
+        }
+        // The probe itself failed transiently; the upgrade may still have
+        // committed (consumed PIN, issued session). Keep a recoverable profile
+        // retry — never re-mount the gate for a possibly-issued session (a
+        // retry of a consumed PIN would 409).
+        setAuthHint();
+        await finishUpgrade();
+        return;
+      }
     }
     // The session is issued; only the profile fetch may still fail. The retry
     // must resolve the profile from the issued session — never re-submit the
