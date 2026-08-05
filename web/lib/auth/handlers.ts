@@ -637,13 +637,23 @@ export async function handleLogout(
     try {
       await revokeSession(env.DB, refresh);
     } catch {
-      return problem(
+      // Fail-closed: even though server-side revocation failed, the client
+      // must not keep credentials it can no longer use. Clear both cookies
+      // while still surfacing the 503 so the client can report the partial
+      // failure (Spec 077 keeps the existing logout-notice behavior).
+      const cleared = clearAuthCookieHeaders();
+      const headers = setAuthCookieHeaders(cleared[0], cleared[1]);
+      const res = problem(
         503,
         "UNAVAILABLE",
         "Service unavailable",
         "Unable to revoke the refresh session.",
         requestId
       );
+      for (const [key, value] of headers) {
+        res.headers.append(key, value);
+      }
+      return res;
     }
   }
   const cleared = clearAuthCookieHeaders();

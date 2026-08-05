@@ -207,13 +207,8 @@ export default function LoginPage() {
     }
   }, [username, password, navigateAfterLogin]);
 
-  const handleUpgrade = useCallback(async () => {
-    setView({ kind: "UPGRADING" });
-    announce(COPY.login.upgrading);
-    setNotice(null);
+  const finishUpgrade = useCallback(async () => {
     try {
-      await authUpgrade(username, legacyPin, newCredential);
-      setAuthHint();
       const user = await authMe();
       const bootstrap = buildBootstrap(user);
       announce(COPY.login.success);
@@ -223,12 +218,37 @@ export default function LoginPage() {
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.login.networkError;
+      setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: finishUpgrade });
+      announce(msg);
+    }
+  }, [navigateAfterLogin]);
+
+  const handleUpgrade = useCallback(async () => {
+    setView({ kind: "UPGRADING" });
+    announce(COPY.login.upgrading);
+    setNotice(null);
+    try {
+      await authUpgrade(username, legacyPin, newCredential);
+    } catch (error) {
+      // The gate stays mounted: the legacy credential was NOT consumed, so a
+      // retry may re-submit the same PIN.
+      const msg =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.login.networkError;
       setView({ kind: "UPGRADE" });
       setNotice(msg);
       announce(msg);
       clearAuthHint();
+      return;
     }
-  }, [legacyPin, newCredential, username, navigateAfterLogin]);
+    // The session is issued; only the profile fetch may still fail. The retry
+    // must resolve the profile from the issued session — never re-submit the
+    // upgrade, because the legacy credential is already consumed (a retry
+    // would 409 against the consumed hash).
+    setAuthHint();
+    await finishUpgrade();
+  }, [legacyPin, newCredential, username, finishUpgrade]);
 
   if (view.kind === "RESTORING") {
     return (

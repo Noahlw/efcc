@@ -35,6 +35,7 @@ import { beforeAll, describe, test } from "vitest";
 
 import { importLegacyUsers } from "./lib/auth/accounts";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./lib/auth/cookies";
+import { handleLogout } from "./lib/auth/handlers";
 import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
 import { completeCredentialUpgrade } from "./lib/auth/upgrade";
 import worker from "./worker";
@@ -702,6 +703,41 @@ describe("AUTH-06: logout", () => {
       testEnv()
     );
     assert.strictEqual(reuse.status, 401);
+  });
+
+  test("logout clears both cookies even when server-side revocation fails (503, fail-closed)", async () => {
+    const brokenDb = {
+      prepare: () => ({
+        bind: () => ({
+          run: () => {
+            throw new Error("D1 unavailable");
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+    const res = await handleLogout(
+      new Request(`${HOST}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: { Origin: HOST, Cookie: `efcc_refresh=stale-session` },
+      }),
+      { DB: brokenDb, EFCC_ACCESS_TOKEN_SECRET: SECRET }
+    );
+    assert.strictEqual(res.status, 503);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "UNAVAILABLE");
+    assert.ok(
+      res.headers.get("X-Request-Id"),
+      "logout must carry X-Request-Id even on failure"
+    );
+    // Fail-closed: the browser must not retain credentials it cannot use.
+    const cleared = readAuthCookiesFromResponse(res);
+    for (const [name, raw] of [
+      [ACCESS_COOKIE_NAME, cleared.access],
+      [REFRESH_COOKIE_NAME, cleared.refresh],
+    ] as const) {
+      assert.ok(raw.startsWith(`${name}=`));
+      assert.match(raw, /Max-Age=0|Expires=/iu);
+    }
   });
 });
 
