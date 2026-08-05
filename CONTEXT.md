@@ -138,6 +138,7 @@ reconstruct by reading every file's header comment.
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
 | 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
+| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
 
 ---
 

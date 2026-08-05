@@ -11,5 +11,9 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "include": ["worker.ts", "worker.test.ts"]
+  "include": [
+    "worker.ts",
+    "worker.test.ts",
+    "lib/auth/**/*.ts"
+  ]
 }

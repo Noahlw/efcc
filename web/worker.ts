@@ -16,6 +16,16 @@ export interface Env {
   ASSETS: Fetcher;
   APPS_SCRIPT_EXEC_URL: string;
   /**
+   * D1 identity database (ADR-0020 / AUTH-01 #159). Sole system of record
+   * for accounts, credentials, sessions, and registration requests. The
+   * auth/session lifecycle in web/lib/auth/ reads and writes here.
+   *
+   * Set via `wrangler secret put EFCC_ACCESS_TOKEN_SECRET` before deploy;
+   * the Worker fails closed when it is absent.
+   */
+  DB: D1Database;
+  EFCC_ACCESS_TOKEN_SECRET?: string;
+  /**
    * Rate Limiting binding (ADR-0018 §9). Optional in dev/test - when absent,
    * rate limiting is skipped. Keys on session identity (authenticated) or
    * the login body's username (anonymous), NEVER on client IP per
