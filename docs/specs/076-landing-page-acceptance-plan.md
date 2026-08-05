@@ -56,3 +56,47 @@ Browser verification is desktop + mobile in one batched round (Impeccable ceilin
 ## Executed results
 
 Appended after implementation and browser verification.
+
+### Browser verification (Orca, unauthenticated — desktop + mobile)
+
+All assertions ran against `next dev` at `http://localhost:3111` with a fresh
+profile (no stored session → `SIGNED_OUT`). One batched desktop + mobile round,
+then one confirmation pass.
+
+| # | Criterion | Result |
+|---|---|---|
+| L1 | single `h1` hero headline | PASS — exactly one `h1` (「一堂的相聚，有據可依」) |
+| L2 | product identity | PASS — brand 「顯恩堂系統」 + 恩 seal mark |
+| L3 | labeled login fields | PASS — 用戶名稱 / PIN 碼 inputs + submit 「登入」 |
+| L4 | exactly one heading 「登入」 | PASS — `h2` only |
+| L5 | primary + secondary CTAs | PASS — 立即登入 / 認識功能 |
+| L6 | four real capacities, no inflated claims | PASS — 課程與活動 / 聚會管理 / 掃描簽到 / 關懷儀表板 |
+| L7 | landmark semantics | PASS — header / nav / main / footer; skip link present |
+| L8 | keyboard focus | PASS — global `:focus-visible` outline inherited |
+| L9 | reduced motion | PASS — `prefers-reduced-motion` disables entrance + CTA transitions |
+| L10 | 375px no horizontal overflow | PASS — `scrollWidth <= innerWidth` (375 and 1280) |
+| L11 | targets ≥ 44px | PASS — nav 44, hero CTAs 48, inputs 48, submit 48 |
+| L12 | error/notice surface | PASS — `role="alert"` present; component test asserts expiry copy |
+| L13 | auth contract preserved | PASS — `web/lib/app.test.tsx` Login block 60/60 green |
+
+### Component contract (focused)
+
+`npx vitest run --config vitest.components.config.ts lib/app.test.tsx` → 60/60
+passed (valid login → `replace("/profile")`, session persisted, invalid login
+keeps form + expiry copy, valid stored session restores, RPC-not-called on
+empty session).
+
+### Type + detector
+
+Web `tsc --noEmit` reports no diagnostics in the changed files (page.tsx,
+copy.ts); the only web diagnostics are pre-existing Cloudflare worker/auth
+type declarations (worker.ts, lib/auth, lib/mirror, service-envelope.ts) that
+resolve in the workerd vitest pool, not plain tsc. Impeccable mechanical
+detector (`detect.mjs --json`) over the three changed targets: zero findings.
+The pre-commit hook (lint-staged + `pnpm typecheck`) passed on commit.
+
+### Commit
+
+`89dee1a` — feat(ui): Persuade landing page for the congregation's register
+(4 files: web/app/page.tsx, web/app/page.module.css, web/lib/copy.ts,
+docs/specs/076-landing-page-acceptance-plan.md).
