@@ -20,6 +20,12 @@
 #                                    lib/mirror, client contract
 #     pnpm --dir web test:components jsdom components incl. landing-page
 #                                    contract (lib/app.test.tsx)
+#   shell-responsive
+#     pnpm test:shell-responsive      local static-shell Playwright suite
+#                                    (responsive/accessibility invariants at
+#                                    375px + 1280px; builds the Next static
+#                                    export, serves on 127.0.0.1:4173; no
+#                                    E2E_TARGET_URL, storage states, or Sheet)
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`.
 #
@@ -95,3 +101,36 @@ jobs:
 
       - name: Component tests (incl. landing-page contract)
         run: pnpm --dir web test:components
+
+  shell-responsive:
+    name: Shell responsive (static shell, 375px + 1280px)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        # This job needs the Playwright browser (below), so skip the root
+        # postinstall's Chromium download and install it explicitly with deps.
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium (with system deps)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install web dependencies (for static export build)
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Shell responsive suite (static shell, 375px + 1280px)
+        run: pnpm test:shell-responsive

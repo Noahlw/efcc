@@ -45,6 +45,13 @@ Prior to this decision:
          `lib/auth`, `lib/mirror`, client contract), and
          `pnpm --dir web test:components` (jsdom, incl. the landing-page
          `lib/app.test.tsx` contract).
+       - `shell-responsive`: `pnpm test:shell-responsive` — the local
+         static-shell Playwright suite (`tests/e2e/responsive.config.ts`),
+         which builds the Next static export, serves it on 127.0.0.1:4173, and
+         asserts the responsive/accessibility invariants (CF0-06) at 375px and
+         1280px with no `E2E_TARGET_URL`, no storage states, and no Sheet
+         access. This job installs the root deps + Playwright Chromium and the
+         web deps needed for the static build.
 
    - **`e2e.yml`** — the deployed `/exec` acceptance gate. It is **fail-closed**:
      it validates `E2E_TARGET_URL` (`vars`) and the three storage-state secrets

@@ -35,7 +35,7 @@ The capture commands create `.auth/alice.storage.json`, `.auth/bob.storage.json`
 
 It never creates or deletes an Apps Script deployment, so it exercises whichever `/exec` URL is pinned in `E2E_TARGET_URL`. A **fresh** deployed `/exec` smoke (AGENTS.md Headless-Gate) additionally requires an operator to rotate a new versioned deployment and update the pinned ID + variable together (see `.github/CI-SECRETS.md`); until then the gate reports the currently-deployed version only and the AUTH-01/02/03 tickets stay not-READY.
 
-The deterministic PR checks (typecheck + unit/component tests) live in `.github/workflows/precheck.yml` and need no secrets or deployment.
+The deterministic PR checks (typecheck + unit/component tests + the shell responsive suite below) live in `.github/workflows/precheck.yml` and need no secrets or deployment.
 
 ## Implemented-scope rule
 
@@ -47,7 +47,7 @@ CI fails loudly when a stored Google session expires. Recapture only the affecte
 
 ## Local shell responsive suite
 
-A separate Playwright suite (`tests/e2e/responsive.config.ts`) covers the responsive and accessibility invariants of the local production shell (CF0-06 criteria 4–7). Run it with:
+A separate Playwright suite (`tests/e2e/responsive.config.ts`) covers the responsive and accessibility invariants of the local production shell (CF0-06 criteria 4–7). It is a deterministic PR check (the `shell-responsive` job in `precheck.yml`). Run it locally with:
 
 ```sh
 pnpm test:shell-responsive

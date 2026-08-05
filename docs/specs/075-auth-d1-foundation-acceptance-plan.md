@@ -183,7 +183,8 @@ The pipeline rework (2026-08-05, this branch) makes this explicit in CI:
 `.github/workflows/e2e.yml` is a deploy-closed acceptance gate that fails red
 (never green) when `E2E_TARGET_URL` or the ALICE/BOB/NOAH storage-state secrets
 are missing, and `.github/workflows/precheck.yml` is the deterministic PR gate
-(typecheck + unit/component tests) that needs no deployment. The deterministic
+(typecheck + unit/component + static-shell responsive tests) that needs no
+deployment. The deterministic
 precheck is green on this branch; the deployed acceptance gate is red/blocked
 until the environment below is provisioned.
 
