@@ -309,12 +309,13 @@ describe("Shell", () => {
             },
           })
         ),
-        http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
+        http.get("/api/v1/auth/me", () => {
+          authCalls.push("/api/v1/auth/me");
+          return HttpResponse.json({
             requestId: "r-me",
             data: { user: PUBLIC_USER },
-          })
-        ),
+          });
+        }),
         http.post("/api/v1/auth/upgrade", async ({ request }) => {
           authCalls.push("/api/v1/auth/upgrade");
           const body = (await request.json()) as {
