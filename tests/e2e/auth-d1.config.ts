@@ -33,6 +33,7 @@ export default defineConfig({
   ],
   use: {
     baseURL: targetUrl,
-    trace: "retain-on-failure",
+    // API request traces would capture credential/PIN request bodies.
+    trace: "off",
   },
 });

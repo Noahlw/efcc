@@ -39,3 +39,8 @@ These values are sent only to the deployed Playwright process. Never print them,
 ## Legacy Apps Script gate
 
 The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.
+
+The AGENTS.md fresh `/exec` headless-gate requirement still applies whenever
+the legacy Apps Script UI/domain flow is in scope. This D1 auth gate is a
+separate Worker boundary proof and must not be used as a substitute for that
+legacy UI smoke.

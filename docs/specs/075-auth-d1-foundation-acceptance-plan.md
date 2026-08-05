@@ -172,9 +172,14 @@ disposable accounts. This session cannot satisfy the gate:
 - The five acceptance secrets (`AUTH_TEST_USERNAME`,
   `AUTH_TEST_CREDENTIAL`, `AUTH_LEGACY_USERNAME`, `AUTH_LEGACY_PIN`, and
   `AUTH_NEW_CREDENTIAL`) are not available in this environment.
-- The old Apps Script `/exec` URL and Google role storage states are not valid
+
+The old Apps Script `/exec` URL and Google role storage states are not valid
   evidence for the rebuilt cookie-only D1 auth boundary and are no longer read
   by `.github/workflows/e2e.yml`.
+
+The AGENTS.md fresh `/exec` headless-gate remains applicable to any separately
+scoped legacy Apps Script UI/domain acceptance. This D1 auth plan does not
+claim that legacy UI smoke and does not substitute Worker evidence for it.
 
 The pipeline rework makes the boundary explicit: `e2e.yml` runs the
 deterministic `auth-contract` workerd job on PRs and keeps the deployed
