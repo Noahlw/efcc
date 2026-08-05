@@ -83,9 +83,12 @@ async function stubAuth(route: Route) {
 
 test.beforeEach(async ({ page }: { page: Page }) => {
   // Presence hint (non-secret) so the shell attempts a cookie restore.
-  await page.addInitScript((serialized: string) => {
-    localStorage.setItem(AUTH_HINT_KEY, serialized);
-  }, "1");
+  await page.addInitScript(
+    ({ key, value }: { key: string; value: string }) => {
+      localStorage.setItem(key, value);
+    },
+    { key: AUTH_HINT_KEY, value: "1" }
+  );
 
   await page.route("**/api/v1/auth/me", stubAuth);
   await page.route("**/api/v1/auth/refresh", stubAuth);
