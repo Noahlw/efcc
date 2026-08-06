@@ -79,13 +79,6 @@
   padding: 0.85rem 1rem;
 }
 
-.infoCell label {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--ink-muted, #59636a);
-  margin-bottom: 0.2rem;
-}
-
 .infoCell dt {
   font-size: 0.8rem;
   color: var(--ink-muted, #59636a);
