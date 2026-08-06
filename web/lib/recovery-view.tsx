@@ -17,10 +17,12 @@ export function RecoveryView({
   message,
   safeHref,
   onRetry,
+  safeLabel = COPY.nav.backToHome,
 }: {
   message: string;
   safeHref: string;
   onRetry?: () => void;
+  safeLabel?: string;
 }) {
   const liveRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +42,7 @@ export function RecoveryView({
         </button>
       )}
       <Link className={styles.btnSecondary} href={safeHref}>
-        {COPY.nav.backToHome}
+        {safeLabel}
       </Link>
     </main>
   );

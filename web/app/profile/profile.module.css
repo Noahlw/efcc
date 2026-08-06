@@ -86,7 +86,14 @@
   margin-bottom: 0.2rem;
 }
 
-.infoCell span {
+.infoCell dt {
+  font-size: 0.8rem;
+  color: var(--ink-muted, #59636a);
+  margin-bottom: 0.2rem;
+}
+
+.infoCell dd {
+  margin: 0;
   font-weight: 700;
   color: var(--ink, #171a1d);
   word-break: break-word;

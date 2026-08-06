@@ -13,6 +13,15 @@
   border-bottom: 1px solid var(--line, #d6dcde);
 }
 
+@media (min-width: 800px) {
+  /* The desktop side rail (globals.css .nav-desktop) is fixed at left:0 with
+     width 200px; offset the header beside it so the seal + church title stay
+     visible (review P1). */
+  .header {
+    margin-left: 200px;
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;

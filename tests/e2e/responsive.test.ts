@@ -116,6 +116,39 @@ test("bottom nav below 768px, side rail at or above 768px", async ({
   }
 });
 
+test("shell header brand sits beside the desktop side rail, not under it", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/profile.html");
+
+  const header = page.locator("header");
+  await expect(header).toBeVisible();
+  const headerBox = requireBox(await header.boundingBox());
+
+  if (isMobile(testInfo.project.name)) {
+    // Phone: no fixed rail, the header spans the full width above the bottom nav.
+    expect(headerBox.x).toBe(0);
+    return;
+  }
+
+  // Desktop: the side rail is fixed at left:0 with width 200px. The header
+  // must be offset beside it so the seal + church title are not covered.
+  await expect(page.locator(".nav-desktop")).toBeVisible();
+  expect(headerBox.x).toBeGreaterThanOrEqual(200);
+
+  // The brand (first content in the header) must be fully inside the visible
+  // area right of the rail — elementFromPoint at the rail's right edge inside
+  // the header row must resolve to the header content, not the rail.
+  const topmostAtRailEdge = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return el ? (el.closest(".nav-desktop") !== null ? "rail" : "header") : null;
+  }, {
+    x: 208,
+    y: headerBox.y + headerBox.height / 2,
+  });
+  expect(topmostAtRailEdge).toBe("header");
+});
+
 test("no horizontal overflow at the target viewport", async ({ page }) => {
   for (const path of ["/profile.html", "/care.html"] as const) {
     await page.goto(path);

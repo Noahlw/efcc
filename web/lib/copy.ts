@@ -41,6 +41,7 @@ export const COPY = {
     error: "登出時發生錯誤，但已安全終止工作階段。",
     failedNotice: "登出請求失敗，但本機工作階段已清除。",
     success: "已登出。",
+    forbiddenAction: "登出並返回登入",
   },
   account: {
     updatedNotice: "帳戶資料已更新，請重新登入。",

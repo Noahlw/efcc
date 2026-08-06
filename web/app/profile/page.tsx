@@ -38,14 +38,14 @@ function ProfileContent() {
       </div>
 
       <div className={styles.infoGrid}>
-        <div className={styles.infoCell}>
-          <label>{COPY.profile.phone}</label>
-          <span>{p.phone}</span>
-        </div>
-        <div className={styles.infoCell}>
-          <label>{COPY.profile.status}</label>
-          <span>{p.status}</span>
-        </div>
+        <dl className={styles.infoCell}>
+          <dt>{COPY.profile.phone}</dt>
+          <dd>{p.phone}</dd>
+        </dl>
+        <dl className={styles.infoCell}>
+          <dt>{COPY.profile.status}</dt>
+          <dd>{p.status}</dd>
+        </dl>
       </div>
 
       <div className={styles.qrCenter}>

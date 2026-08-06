@@ -137,7 +137,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // retry. Any other error here is transient (network / 5xx), so retry is
     // appropriate. Bumping `tick` re-runs the restore effect.
     if (state.code === "FORBIDDEN") {
-      return <ForbiddenView safeHref="/profile" />;
+      // An authenticated account whose status is no longer Active (403 from
+      // the auth boundary) cannot recover through the profile link — every
+      // restore re-verifies and fails again. Offer a real exit: clear the
+      // presence hint and return to the signed-out surface (review P1).
+      const handleForbiddenSignOut = async () => {
+        try {
+          await authLogout();
+        } catch {
+          // Best-effort: the boundary already refuses this session.
+        }
+        clearAuthHint();
+        router.replace("/");
+      };
+      return (
+        <ForbiddenView
+          safeHref="/profile"
+          onSignOut={() => void handleForbiddenSignOut()}
+        />
+      );
     }
     return (
       <RecoveryView

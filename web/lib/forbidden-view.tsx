@@ -11,12 +11,23 @@ import styles from "./auth-shell.module.css";
  * `返回個人檔案` routed to a safe section. Used by `GuardedSection` for
  * unauthorized (absent) sections and by the shell for a FORBIDDEN restore.
  */
-export function ForbiddenView({ safeHref }: { safeHref: string }) {
+export function ForbiddenView({
+  safeHref,
+  onSignOut,
+}: {
+  safeHref: string;
+  onSignOut?: () => void;
+}) {
   return (
     <main className={styles.state}>
       <div className={styles.alert} role="alert">
         {COPY.error.forbidden}
       </div>
+      {onSignOut && (
+        <button type="button" className={styles.btnPrimary} onClick={onSignOut}>
+          {COPY.logout.forbiddenAction}
+        </button>
+      )}
       <Link className={styles.btnSecondary} href={safeHref}>
         {COPY.nav.backToProfile}
       </Link>

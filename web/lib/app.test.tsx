@@ -1139,6 +1139,18 @@ describe("Shell", () => {
       const link = screen.getByText(COPY.nav.backToProfile).closest("a");
       expect(link).toHaveAttribute("href", "/programs");
     });
+
+    test("renders a visible sign-out action when onSignOut is provided", async () => {
+      const onSignOut = vi.fn();
+      const user = userEvent.setup();
+      render(<ForbiddenView safeHref="/profile" onSignOut={onSignOut} />);
+      const action = screen.getByRole("button", {
+        name: COPY.logout.forbiddenAction,
+      });
+      expect(action).toBeInTheDocument();
+      await user.click(action);
+      expect(onSignOut).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe(ShellHeader, () => {
@@ -1430,6 +1442,50 @@ describe("Shell", () => {
       });
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
       expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    test("FORBIDDEN restore renders a sign-out action that clears the session and redirects to /", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/profile");
+      let logoutCalls = 0;
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json(
+            {
+              status: 403,
+              code: "FORBIDDEN",
+              title: "Forbidden",
+              detail: "Account is not Active.",
+              requestId: "r-403",
+            },
+            {
+              status: 403,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          )
+        ),
+        http.post("/api/v1/auth/logout", () => {
+          logoutCalls += 1;
+          return new HttpResponse(null, { status: 204 });
+        })
+      );
+      render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+      // The forbidden state must offer a real exit, not a /profile loop.
+      const action = await screen.findByRole("button", {
+        name: COPY.logout.forbiddenAction,
+      });
+      await userEvent.setup().click(action);
+      await waitFor(() => {
+        expect(logoutCalls).toBeGreaterThanOrEqual(1);
+      });
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
     });
   });
 });
