@@ -31,7 +31,7 @@ import type { LoginResult, PublicUser, RpcError } from "./api";
 const LOGIN_RESULT: LoginResult = {
   userId: "U-test",
   name: "測試",
-  role: "MEMBER",
+  role: "Member",
   status: "Active",
   mustSetNewCredential: false,
 };
@@ -39,7 +39,7 @@ const LOGIN_RESULT: LoginResult = {
 const LOGIN_UPGRADE: LoginResult = {
   userId: "U-test",
   name: "測試",
-  role: "MEMBER",
+  role: "Member",
   status: "Active",
   mustSetNewCredential: true,
 };
@@ -49,7 +49,7 @@ const PUBLIC_USER: PublicUser = {
   name: "測試",
   username: "test",
   phone: "00000000",
-  role: "MEMBER",
+  role: "Member",
   status: "Active",
   qrCodeString: "qr-placeholder",
 };

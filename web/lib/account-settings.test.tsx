@@ -14,6 +14,7 @@ import ProfileSettingsPage from "@/app/profile/settings/page";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
+import { COPY } from "@/lib/copy";
 
 const mocks = vi.hoisted(() => {
   const replaceMock = vi.fn<(path: string) => void>();
@@ -354,6 +355,109 @@ describe(AccountSettings, () => {
     ).toBe(true);
 
     expect(fetched).toBe(false);
+  });
+
+  test("AUTH_REQUIRED 401 hands off to the login surface (no inline error)", async () => {
+    server.use(
+      http.post("/api/v1/auth/username", () =>
+        HttpResponse.json(
+          {
+            type: "tag:apps-script/efcc/errors#AUTH_REQUIRED",
+            title: "Authentication required",
+            status: 401,
+            code: "AUTH_REQUIRED",
+            requestId: "req-401",
+            detail: "missing or expired access cookie",
+          },
+          { status: 401 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "alice2");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalled();
+    // No inline error block survives the handoff.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  test("FORBIDDEN 403 renders the S13 block with a 返回個人檔案 exit", async () => {
+    server.use(
+      http.post("/api/v1/auth/password", () =>
+        HttpResponse.json(
+          {
+            type: "tag:apps-script/efcc/errors#FORBIDDEN",
+            title: "Forbidden",
+            status: 403,
+            code: "FORBIDDEN",
+            requestId: "req-403",
+            detail: "Account is not active.",
+          },
+          { status: 403 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillPassword(user, "alice-secret", "alice-new-secret");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+
+    expect(
+      await screen.findByText(COPY.error.forbidden)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.nav.backToProfile })
+    ).toHaveAttribute("href", "/profile");
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  test("UNAVAILABLE 503 is retryable: 系統暫時無法使用 + 重試連接 control", async () => {
+    let attempts = 0;
+    server.use(
+      http.post("/api/v1/auth/username", () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return HttpResponse.json(
+            {
+              type: "tag:apps-script/efcc/errors#UNAVAILABLE",
+              title: "Service Unavailable",
+              status: 503,
+              code: "UNAVAILABLE",
+              requestId: "req-503",
+              detail: "temporarily unavailable",
+            },
+            { status: 503 }
+          );
+        }
+        return HttpResponse.json({
+          requestId: "req-503b",
+          data: { username: "alice2", sessionRevoked: true },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "alice2");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    const retry = await screen.findByRole("button", {
+      name: ACCOUNT_SETTINGS_COPY.retry,
+    });
+    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.unavailable)).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+
+    await user.click(retry);
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+    expect(attempts).toBe(2);
   });
 });
 

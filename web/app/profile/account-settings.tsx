@@ -15,6 +15,7 @@ import {
 } from "@/lib/account-settings-copy";
 import { announce } from "@/lib/live-region";
 import { clearAuthHint } from "@/lib/session";
+import { ForbiddenView } from "@/lib/forbidden-view";
 
 import styles from "./account-settings.module.css";
 
@@ -63,6 +64,7 @@ export function AccountSettings() {
     kind: "idle",
   });
   const [outcome, setOutcome] = useState<{ kind: "done" } | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const usernameFormRef = useRef<HTMLFormElement>(null);
   const passwordFormRef = useRef<HTMLFormElement>(null);
   const usernameRetryRef = useRef<HTMLButtonElement>(null);
@@ -96,6 +98,59 @@ export function AccountSettings() {
     router.replace("/");
   };
 
+  /**
+   * Shared submit-failure handling (review R4):
+   * - AUTH_REQUIRED (401): the cookie session is gone — hand the user back to
+   *   the signing surface; no inline error survives the navigation.
+   * - FORBIDDEN (403): the Active-status gate — inline S13 block routing back
+   *   to a safe section, never retryable.
+   * - NETWORK_ERROR / UNAVAILABLE (503): recovery block with a 重試連接 control.
+   * - everything else: inline per-error copy, not retryable.
+   */
+  const handleSubmitError = (
+    error: unknown,
+    field: "username" | "password",
+    setState: (s: {
+      kind: "error";
+      message: string;
+      retryable: boolean;
+    }) => void
+  ) => {
+    if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+      announce(ACCOUNT_SETTINGS_COPY.sessionExpired);
+      clearAuthHint();
+      router.replace("/");
+      return;
+    }
+    if (error instanceof RpcError && error.problem.code === "FORBIDDEN") {
+      setForbidden(true);
+      return;
+    }
+    const isNetwork =
+      !(error instanceof RpcError) || error.problem.code === "NETWORK_ERROR";
+    const isUnavailable =
+      error instanceof RpcError && error.problem.code === "UNAVAILABLE";
+    if (isNetwork || isUnavailable) {
+      setState({
+        kind: "error",
+        message: isUnavailable
+          ? ACCOUNT_SETTINGS_COPY.unavailable
+          : ACCOUNT_SETTINGS_COPY.networkError,
+        retryable: true,
+      });
+      return;
+    }
+    setState({
+      kind: "error",
+      message: accountSettingsErrorCopy(
+        error.problem.code,
+        error.problem.detail,
+        field
+      ),
+      retryable: false,
+    });
+  };
+
   const submitUsername = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (usernameState.kind === "submitting" || outcome) {
@@ -122,27 +177,7 @@ export function AccountSettings() {
         completeChange(result);
       })
       .catch((err: unknown) => {
-        const isNetwork =
-          !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
-        if (!isNetwork) {
-          setUsernameState({
-            kind: "error",
-            message: accountSettingsErrorCopy(
-              err.problem.code,
-              err.problem.detail,
-              "username"
-            ),
-            retryable: false,
-          });
-          return;
-        }
-        // S14 network matrix: a transport failure gets a recovery block with
-        // a retry control, not a bare error string.
-        setUsernameState({
-          kind: "error",
-          message: ACCOUNT_SETTINGS_COPY.networkError,
-          retryable: true,
-        });
+        handleSubmitError(err, "username", setUsernameState);
       });
   };
 
@@ -173,25 +208,7 @@ export function AccountSettings() {
         completeChange(result);
       })
       .catch((err: unknown) => {
-        const isNetwork =
-          !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
-        if (!isNetwork) {
-          setPasswordState({
-            kind: "error",
-            message: accountSettingsErrorCopy(
-              err.problem.code,
-              err.problem.detail,
-              "password"
-            ),
-            retryable: false,
-          });
-          return;
-        }
-        setPasswordState({
-          kind: "error",
-          message: ACCOUNT_SETTINGS_COPY.networkError,
-          retryable: true,
-        });
+        handleSubmitError(err, "password", setPasswordState);
       });
   };
 
@@ -209,6 +226,12 @@ export function AccountSettings() {
         <p className={styles.successStatus}>{ACCOUNT_SETTINGS_COPY.redirecting}</p>
       </section>
     );
+  }
+
+  if (forbidden) {
+    // S13 (review P1): the batch/resolver surfaced a 403 — Active-status
+    // gate. Render the shared forbidden block; no form survives.
+    return <ForbiddenView safeHref="/profile"></ForbiddenView>;
   }
 
   return (

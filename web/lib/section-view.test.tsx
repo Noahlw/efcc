@@ -23,7 +23,7 @@ function bootstrapWith(...sections: Section[]): Bootstrap {
       name: "測試用",
       username: "test",
       phone: "00000000",
-      role: "STAFF",
+  role: "Staff",
       status: "Active",
       qrCodeString: "qr-placeholder",
     },

@@ -106,17 +106,18 @@ const STAFF_SECTIONS = [
 ];
 
 const PUBLIC_USER: PublicUser = {
-  userId: "U-test",
+  userId: "U001",
   name: "測試用",
   username: "test",
   phone: "00000000",
-  role: "MEMBER",
+  role: "Member",
   status: "Active",
   qrCodeString: "qr-placeholder",
 };
-
-const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "STAFF" };
-const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "ADMIN" };
+// Canonical ADR-0025 role strings — D1 stores and the API expose these
+// title-case values; uppercase spellings fall back to the Member set.
+const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
+const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
 
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
@@ -143,7 +144,7 @@ const DEFAULT_HANDLER = [
         data: {
           userId: "U-test",
           name: "測試用",
-          role: "MEMBER",
+          role: "Member",
           status: "Active",
           mustSetNewCredential: false,
         },
@@ -996,7 +997,7 @@ describe("Shell", () => {
     });
 
     test("Member nav omits events, scanner, care, and permissions (S15)", () => {
-      renderWithProvider(sectionsForRole("MEMBER"), "/profile");
+      renderWithProvider(sectionsForRole("Member"), "/profile");
       expect(screen.getAllByText(COPY.sections.profile).length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText(COPY.sections.programs).length).toBeGreaterThanOrEqual(1);
       expect(screen.queryAllByText(COPY.sections.events)).toHaveLength(0);
@@ -1054,7 +1055,7 @@ describe("Shell", () => {
     test("Member deep-linking to scanner renders forbidden view (S15)", () => {
       render(
         <AppProvider
-          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("MEMBER") }}
+          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
           onSignOut={() => {}}
         >
           <GuardedSection sectionKey="scanner">
