@@ -14,6 +14,20 @@ External-origin camera page + opener harness that proves the phone UX paths Play
 | `vendor/html5-qrcode.min.js` | Pinned `html5-qrcode@2.3.8` (self-hosted; primary decoder). |
 | `vendor/jsQR.js` | Pinned `jsQR@1.4.0` (self-hosted; escape-hatch decoder). |
 
+## Expanded Prototype — New Check-In Flows
+
+These files explore the new member-scans-program-QR model and keep the old external scanner as one of the assisted paths. Start at `prototype-index.html`.
+
+| File | Role |
+| --- | --- |
+| `prototype-index.html` | Landing page linking the three prototype flows. |
+| `civic.css` | Shared Civic Minimal design tokens and components from `DESIGN.md`. |
+| `mock-backend.js` | Simulated backend with programs, events, members, enrollments, and attendance rules. |
+| `check-in-ui.js` | Shared UI helpers and the inline `Html5Qrcode` wrapper. |
+| `check-in.html` | Logged-in member self check-in: scans the Program QR or types the Event Manual Code. |
+| `guest-check-in.html` | Public guest check-in: scan/enter code, then name + phone. No account required. |
+| `event-manage.html` | Leader event page: assisted QR scan, manual member search, attendance roster, and void. |
+
 ## Architecture (one paragraph)
 
 `opener.html` (or the real App Document) opens `index.html` from a **user gesture** (`window.open`). It then sends an `EFCC_QR_HANDSHAKE` message to the popup targeting the scanner's exact origin. The scanner records the opener's origin from `event.origin` (with an exact-origin query fallback for reload recovery) and uses it as the `postMessage` `targetOrigin` (**never `*`**, per MDN / research note 2026-07-31 §Q3). The Window visibly moves through connection, camera-starting, ready, and check-in-processing states. On each decode it normalizes the code (trim, reject empty/over-max), suppresses the same code for ~2.5s while letting a different code fire at once (spec #91), and posts `{ type: "EFCC_QR_SCAN", scannedCode }`. The App Document returns an `EFCC_QR_RESULT` action (`auto`, `resume`, or `retry`). On close/unload it stops all tracks. Backgrounding (`visibilitychange` hidden) **never** stops the stream and **never** re-acquires it on return.

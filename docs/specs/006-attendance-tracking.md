@@ -1,9 +1,11 @@
 # Module Specification: Attendance Tracking System
 
-**Status**: Draft  
+**Status**: Superseded draft — attendance model revision pending  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 / EFCC Church Management System  
 **Parent Wayfinder Ticket**: #5 — Attendance Tracking Sheet Data Model & Scanner Workflow
+
+> **Revision note:** This draft describes the historical staff/leader-scans-member workflow and defers guest attendance. The current domain direction is recorded in `CONTEXT.md` and ADR-0028: Program Check-In QR self check-in, globally unique per-Event manual codes, public Guest Check-In, and Event-page Assisted Check-In. Do not use this draft as the implementation authority until it is rewritten.
 
 ---
 
