@@ -102,7 +102,8 @@
 }
 
 .qrSquare {
-  width: min(220px, 55vw);
+  width: 220px;
+  height: 220px;
   aspect-ratio: 1 / 1;
   background: #ffffff;
   color: var(--ink, #171a1d);
@@ -113,17 +114,6 @@
   justify-content: center;
   padding: 0.75rem;
   overflow: hidden;
-}
-
-.qrText {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.72rem;
-  line-height: 1.4;
-  word-break: break-all;
-  text-align: center;
-  max-height: 100%;
-  overflow-y: auto;
-  color: var(--ink, #171a1d);
 }
 
 /* 帳戶資料 entry — a 44px-tall full-width target linking to /profile/settings. */

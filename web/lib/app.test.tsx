@@ -1,5 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { act } from "react";
@@ -932,7 +934,14 @@ describe("Shell", () => {
       await screen.findByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.qrCodeString)).toBeInTheDocument();
+      // The QR slot is a fixed 220px square — no proportional min() clamp
+      // that would shrink the code below scannable size on narrow phones (S5).
+      const css = readFileSync(
+        resolve(process.cwd(), "app/profile/profile.module.css"),
+        "utf8"
+      );
+      const qrSquare = css.match(/\.qrSquare\s*{[^}]*}/)?.[0] ?? "";
+      expect(qrSquare).not.toContain("min(");
     });
 
     test("renders the phone and status info grid with their values", async () => {

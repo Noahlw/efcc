@@ -17,6 +17,7 @@ export default defineProject({
     "lib/approval-queue.test.tsx",
 "lib/section-view.test.tsx",
     "lib/account-settings.test.tsx",
+    "lib/qr-code.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

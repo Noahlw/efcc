@@ -6,6 +6,7 @@ import { useApp } from "@/lib/app-context";
 import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
 import { COPY } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
+import { QrCode } from "@/lib/qr-code";
 
 import styles from "./profile.module.css";
 
@@ -52,13 +53,11 @@ function ProfileContent() {
 
       <div className={styles.qrCenter}>
         {hasQr ? (
-          <div
+          <QrCode
+            value={p.qrCodeString}
+            label={COPY.profile.qrCode}
             className={styles.qrSquare}
-            role="img"
-            aria-label={COPY.profile.qrCode}
-          >
-            <span className={styles.qrText}>{p.qrCodeString}</span>
-          </div>
+          />
         ) : (
           <EmptyState title={COPY.profile.qrCode} message={COPY.profile.qrEmpty} />
         )}
