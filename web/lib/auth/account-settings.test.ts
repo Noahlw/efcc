@@ -195,6 +195,10 @@ beforeAll(async () => {
     ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
     // U004 stays Suspended: the self-service surface must refuse it (403).
     ["U004", "Dana Fox", "dana", "1111", "Member", "Suspended"],
+    // Dedicated replay fixtures: the retry tests below mutate these users
+    // and must not depend on (or disturb) any test that reuses them.
+    ["U-REPLAY", "Rita Replay", "rita", "2222", "Member", "Active"],
+    ["U-PWREP", "Paul Replay", "paul", "3333", "Member", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -210,6 +214,16 @@ beforeAll(async () => {
     userId: "U003",
     legacyPin: "0000",
     newCredential: "carol-secret",
+  });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U-REPLAY",
+    legacyPin: "2222",
+    newCredential: "rita-secret",
+  });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U-PWREP",
+    legacyPin: "3333",
+    newCredential: "paul-secret",
   });
 });
 
@@ -450,6 +464,50 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 
+  test("username retry after a successful change revokes nothing but clears cookies (replay)", async () => {
+    const { access, refresh } = await sessionFor("U-REPLAY");
+
+    const first = await worker.fetch(
+      authRequest("/api/v1/auth/username", {
+        headers: cookieHeader(access, refresh),
+        body: { username: "rita2" },
+      }),
+      testEnv()
+    );
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as {
+      data: { username: string; sessionRevoked: boolean };
+    };
+    expect(firstBody.data.sessionRevoked).toBe(true);
+    assertCookiesCleared(first);
+    await expect(activeSessionCount("U-REPLAY")).resolves.toBe(0);
+
+    // Same access token (still valid until expiry), same submitted value:
+    // the retry is a no-op, but every session was already revoked by the
+    // first request — the response must tell the client to leave the
+    // signed-out surface and clear auth cookies.
+    const retry = await worker.fetch(
+      authRequest("/api/v1/auth/username", {
+        headers: cookieHeader(access, refresh),
+        body: { username: "rita2" },
+      }),
+      testEnv()
+    );
+    expect(retry.status).toBe(200);
+    const retryBody = (await retry.json()) as {
+      data: { username: string; sessionRevoked: boolean };
+    };
+    expect(retryBody.data.sessionRevoked).toBe(true);
+    assertCookiesCleared(retry);
+
+    // Still exactly one username_changed audit row — the replay wrote nothing.
+    const events = await eventsFor("U-REPLAY");
+    expect(
+      events.filter((e) => e.action === "username_changed")
+    ).toHaveLength(1);
+    await expect(activeSessionCount("U-REPLAY")).resolves.toBe(0);
+  });
+
   test("empty username after trim -> 422 VALIDATION", async () => {
     const { access, refresh } = await sessionFor("U001");
     const res = await worker.fetch(
@@ -672,6 +730,48 @@ describe("UI-04: POST /api/v1/auth/password", () => {
     ).resolves.toBe(false);
   });
 
+  test("password retry with the same body is a value-idempotent replay: no duplicate audit row", async () => {
+    const { access, refresh } = await sessionFor("U-PWREP");
+
+    const first = await worker.fetch(
+      authRequest("/api/v1/auth/password", {
+        headers: cookieHeader(access, refresh),
+        body: {
+          currentPassword: "paul-secret",
+          newPassword: "paul-upgraded-secret",
+        },
+      }),
+      testEnv()
+    );
+    expect(first.status).toBe(200);
+
+    // Replay of the identical request: the stored hash is now the new
+    // credential, so the current-password check would fail — the replay
+    // authority (newPassword verifies against the stored hash) returns ok.
+    const retry = await worker.fetch(
+      authRequest("/api/v1/auth/password", {
+        headers: cookieHeader(access, refresh),
+        body: {
+          currentPassword: "paul-secret",
+          newPassword: "paul-upgraded-secret",
+        },
+      }),
+      testEnv()
+    );
+    expect(retry.status).toBe(200);
+    const body = (await assertCorrelated(retry)) as {
+      data: { sessionRevoked: boolean };
+    };
+    expect(body.data.sessionRevoked).toBe(true);
+
+    // One password_changed row from the FIRST request; the retry added none.
+    const events = await eventsFor("U-PWREP");
+    expect(
+      events.filter((e) => e.action === "password_changed")
+    ).toHaveLength(1);
+    await expect(activeSessionCount("U-PWREP")).resolves.toBe(0);
+  });
+
   test("wrong current password -> 422 VALIDATION, NO audit, NO revocation", async () => {
     const { access, refresh } = await sessionFor("U003");
     const before = await eventsFor("U003");
@@ -792,7 +892,7 @@ describe("UI-04: POST /api/v1/auth/password", () => {
       // guard can stop the commit.
       const spy = vi
         .spyOn(credentials, "verifyCredential")
-        .mockImplementation(async () => {
+        .mockImplementationOnce(async () => {
           await testDb()
             .prepare(
               "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"

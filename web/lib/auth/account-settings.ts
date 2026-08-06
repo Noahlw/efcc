@@ -77,6 +77,12 @@ export interface UsernameChangeResult {
    * username — a value-idempotent no-op (no audit row, no revocation).
    */
   changed: boolean;
+  /**
+   * True when no live refresh session remains. On a no-op replay after an
+   * earlier identical change already revoked everything, the client must
+   * clear its auth cookies (review P1 retry/duplicate audit).
+   */
+  sessionRevoked: boolean;
 }
 
 export interface PasswordChangeResult {
@@ -118,10 +124,21 @@ export async function changeUsername(
   // Value-idempotent no-op: the submitted value already IS the account's
   // username (any casing/whitespace variant of the same normalized form).
   if (normalized === account.username_normalized) {
+    // Distinguish a fresh no-op (sessions stay live) from a replay after an
+    // identical change already revoked everything: count live sessions — 0
+    // means the client should clear its auth cookies.
+    const live = await db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM sessions
+          WHERE user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(account.user_id)
+      .first<{ c: number }>();
     return {
       username: options.username,
       usernameNormalized: normalized,
       changed: false,
+      sessionRevoked: (live?.c ?? 0) === 0,
     };
   }
 
@@ -239,7 +256,12 @@ export async function changeUsername(
     throw error;
   }
 
-  return { username: options.username, usernameNormalized: normalized, changed: true };
+  return {
+    username: options.username,
+    usernameNormalized: normalized,
+    changed: true,
+    sessionRevoked: true,
+  };
 }
 
 /**
@@ -266,6 +288,14 @@ export async function changePassword(
     account.credential_hash
   );
   if (!ok) {
+    // Value-idempotent replay (review P1): an identical prior request may
+    // already have applied this exact change. The stored hash is salted
+    // PBKDF2 that can never be re-derived from the submitted value, so the
+    // replay authority is verifying the submitted NEW password against the
+    // stored hash — true means "the value IS the stored state".
+    if (await verifyCredential(options.newPassword, account.credential_hash)) {
+      return { ok: true };
+    }
     throw new WrongCurrentPasswordError("current password is incorrect");
   }
 
@@ -277,15 +307,6 @@ export async function changePassword(
   const results = await db.batch([
     db
       .prepare(
-        `UPDATE accounts
-            SET credential_hash = ?, credential_kind = 'password',
-                credential_version = 2, updated_at = ?
-          WHERE user_id = ?
-            AND account_status = 'Active'`
-      )
-      .bind(newCredentialHash, now, account.user_id),
-    db
-      .prepare(
         `INSERT INTO account_events (
            event_id, actor_user_id, action,
            old_username_normalized, new_username_normalized,
@@ -294,7 +315,8 @@ export async function changePassword(
           SELECT ?, ?, 'password_changed', NULL, NULL, ?, ?
            WHERE EXISTS (
              SELECT 1 FROM accounts
-              WHERE user_id = ? AND credential_hash = ?)`
+             WHERE user_id = ? AND credential_hash = ?
+               AND account_status = 'Active')`
       )
       .bind(
         eventId,
@@ -302,7 +324,7 @@ export async function changePassword(
         options.requestId,
         now,
         account.user_id,
-        newCredentialHash
+        account.credential_hash
       ),
     db
       .prepare(
@@ -310,17 +332,42 @@ export async function changePassword(
           WHERE user_id = ? AND revoked_at IS NULL
             AND EXISTS (
               SELECT 1 FROM accounts
-               WHERE user_id = ? AND credential_hash = ?)`
+               WHERE user_id = ? AND credential_hash = ?
+                 AND account_status = 'Active')`
       )
-      .bind(now, account.user_id, account.user_id, newCredentialHash),
+      .bind(now, account.user_id, account.user_id, account.credential_hash),
+    db
+      .prepare(
+        `UPDATE accounts
+            SET credential_hash = ?, credential_kind = 'password',
+                credential_version = 2, updated_at = ?
+          WHERE user_id = ?
+            AND account_status = 'Active'
+            AND credential_hash = ?`
+      )
+      .bind(newCredentialHash, now, account.user_id, account.credential_hash),
   ]);
 
-  // 0 rows changed means the account is no longer Active (suspended between
-  // the current-password check and this batch) — fail closed with a 403, and
-  // nothing lands: the guarded audit + revocation no-op together.
-  if ((results[0]?.meta.changes ?? 0) === 0) {
+  // 0 rows changed on the credential UPDATE: either the account stopped
+  // being Active, or a concurrent identical request already applied this
+  // exact change. Re-verify the new
+  // password against the stored hash to distinguish replay (ok) from
+  // suspension (403). Nothing escaped either way — the audit INSERT and the
+  // revocation are guarded by the OLD hash, so a duplicate request can never
+  // emit a second audit row.
+  if ((results[2]?.meta.changes ?? 0) === 0) {
+    const stored = await db
+      .prepare("SELECT credential_hash FROM accounts WHERE user_id = ?")
+      .bind(account.user_id)
+      .first<{ credential_hash: string }>();
+    if (
+      stored &&
+      (await verifyCredential(options.newPassword, stored.credential_hash))
+    ) {
+      return { ok: true };
+    }
     throw new AccountStatusError("Account is not active.");
-}
+  }
 
   return { ok: true };
 }

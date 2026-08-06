@@ -856,8 +856,21 @@ export async function handleChangeUsername(
   }
 
   if (!result.changed) {
-    // Value-idempotent no-op: nothing changed, so no revocation and no
-    // cookie clearing — the session stays live.
+    if (result.sessionRevoked) {
+      // Replay of an identical earlier change that already revoked every
+      // session: this request wrote nothing, but the client must clear its
+      // auth cookies to leave the signed-out surface.
+      return clearedAuthJsonResponse(
+        200,
+        {
+          requestId,
+          data: { username: result.username, sessionRevoked: true },
+        },
+        requestId
+      );
+    }
+    // Fresh value-idempotent no-op: nothing changed, so no revocation and
+    // no cookie clearing — the session stays live.
     return jsonResponse(
       200,
       {
