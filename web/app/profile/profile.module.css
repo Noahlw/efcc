@@ -125,3 +125,24 @@
   overflow-y: auto;
   color: var(--ink, #171a1d);
 }
+
+/* 帳戶資料 entry — a 44px-tall full-width target linking to /profile/settings. */
+.settingsLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  color: var(--ink, #171a1d);
+  background: var(--surface-raised, #ffffff);
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 12px;
+  text-decoration: none;
+}
+
+.settingsLink:focus-visible {
+  outline: 2px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}

@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { AppShell } from "@/lib/app-shell";
 import { useApp } from "@/lib/app-context";
+import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
 import { COPY } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
 
-import { AccountSettings } from "./account-settings";
 import styles from "./profile.module.css";
 
 function ProfileContent() {
@@ -63,7 +64,12 @@ function ProfileContent() {
         )}
       </div>
 
-      <AccountSettings />
+      <Link
+        href="/profile/settings"
+        className={styles.settingsLink}
+      >
+        {ACCOUNT_SETTINGS_COPY.sectionTitle}
+      </Link>
     </div>
   );
 }

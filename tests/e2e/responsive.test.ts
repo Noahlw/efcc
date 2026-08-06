@@ -32,7 +32,7 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "staff",
+  role: "STAFF",
   status: "active",
   qrCodeString: "qr:u1",
 };
@@ -157,6 +157,22 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
     );
     expect(fits, `horizontal overflow on ${path}`).toBeTruthy();
   }
+});
+
+test("profile page fits the shell-content scroll box at 375x812", async ({
+  page,
+}, testInfo) => {
+  test.skip(!isMobile(testInfo.project.name), "mobile-only");
+  await page.goto("/profile.html");
+  await expect(page.locator(".shell-content")).toBeVisible();
+  const fits = await page.evaluate(() => {
+    const el = document.querySelector(".shell-content");
+    if (!el) {
+      return false;
+    }
+    return el.scrollHeight <= el.clientHeight;
+  });
+  expect(fits, "profile overflows the shell-content scroll box").toBeTruthy();
 });
 
 test("bottom nav and page outlet reserve safe-area inset", async ({

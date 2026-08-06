@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vite
 
 import { AccountSettings } from "@/app/profile/account-settings";
 import { ACCOUNT_UPDATED_KEY } from "@/app/profile/account-settings";
+import ProfileSettingsPage from "@/app/profile/settings/page";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
@@ -35,10 +36,16 @@ vi.mock(import("next/navigation"), () => ({
 
 const sessionMocks = vi.hoisted(() => ({
   clearAuthHintMock: vi.fn<() => void>(),
+  setAuthHintMock: vi.fn<() => void>(),
+  hasAuthHintMock: vi.fn<() => boolean>(),
+  restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
 vi.mock(import("@/lib/session"), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
+  setAuthHint: sessionMocks.setAuthHintMock,
+  hasAuthHint: sessionMocks.hasAuthHintMock,
+  restoreBootstrap: sessionMocks.restoreBootstrapMock,
 }));
 
 const PROFILE: PublicUser = {
@@ -345,5 +352,23 @@ describe(AccountSettings, () => {
     ).toBe(true);
 
     expect(fetched).toBe(false);
+  });
+});
+
+describe(ProfileSettingsPage, () => {
+  afterEach(() => {
+    cleanup();
+    sessionMocks.restoreBootstrapMock.mockReset();
+    replaceMock.mockReset();
+  });
+
+  test("renders AccountSettings at /profile/settings", async () => {
+    sessionMocks.restoreBootstrapMock.mockResolvedValue(BOOTSTRAP);
+    render(<ProfileSettingsPage />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })
+      ).toBeInTheDocument();
+    });
   });
 });
