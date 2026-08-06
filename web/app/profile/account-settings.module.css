@@ -11,6 +11,8 @@
   border: 1px solid #aeb8bc;
   border-radius: 12px;
   background: #ffffff;
+  width: 100%;
+  max-width: 600px;
 }
 
 .sectionTitle {
@@ -93,6 +95,33 @@
   color: #8c1d16;
   font-size: 0.9375rem;
   line-height: 1.5;
+}
+
+.errorBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.retry {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid #aeb8bc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #76231f;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.retry:hover {
+  border-color: #76231f;
+}
+
+.retry:focus-visible {
+  outline: 2px solid #176a87;
+  outline-offset: 2px;
 }
 
 .notice {

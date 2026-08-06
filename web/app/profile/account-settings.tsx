@@ -31,13 +31,13 @@ const REDIRECT_DELAY_MS = 900;
 type UsernameState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; retryable: boolean }
   | { kind: "unchanged" };
 
 type PasswordState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; retryable: boolean };
 
 /**
  * 帳戶資料 — the authenticated Profile sub-surface (UI-04 #196 / Spec #191 §6).
@@ -67,6 +67,10 @@ export function AccountSettings() {
   });
   const [outcome, setOutcome] = useState<{ kind: "done" } | null>(null);
   const mountRef = useRef(true);
+  const usernameFormRef = useRef<HTMLFormElement>(null);
+  const passwordFormRef = useRef<HTMLFormElement>(null);
+  const usernameRetryRef = useRef<HTMLButtonElement>(null);
+  const passwordRetryRef = useRef<HTMLButtonElement>(null);
 
   useEffect(
     () => () => {
@@ -74,6 +78,20 @@ export function AccountSettings() {
     },
     []
   );
+
+  // Focus handoff (matrix S14): when a network failure renders the recovery
+  // block, keyboard / screen-reader users land directly on the retry control.
+  useEffect(() => {
+    if (usernameState.kind === "error" && usernameState.retryable) {
+      usernameRetryRef.current?.focus();
+    }
+  }, [usernameState]);
+
+  useEffect(() => {
+    if (passwordState.kind === "error" && passwordState.retryable) {
+      passwordRetryRef.current?.focus();
+    }
+  }, [passwordState]);
 
   const completeChange = () => {
     setOutcome({ kind: "done" });
@@ -97,7 +115,11 @@ export function AccountSettings() {
     }
     const trimmed = username.trim();
     if (!trimmed) {
-      setUsernameState({ kind: "error", message: ACCOUNT_SETTINGS_COPY.missingUsername });
+      setUsernameState({
+        kind: "error",
+        message: ACCOUNT_SETTINGS_COPY.missingUsername,
+        retryable: false,
+      });
       return;
     }
     setUsernameState({ kind: "submitting" });
@@ -118,15 +140,27 @@ export function AccountSettings() {
         if (!mountRef.current) {
           return;
         }
-        const message =
-          err instanceof RpcError
-            ? accountSettingsErrorCopy(
-                err.problem.code,
-                err.problem.detail,
-                "username"
-              )
-            : ACCOUNT_SETTINGS_COPY.networkError;
-        setUsernameState({ kind: "error", message });
+        const isNetwork =
+          !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
+        if (!isNetwork) {
+          setUsernameState({
+            kind: "error",
+            message: accountSettingsErrorCopy(
+              err.problem.code,
+              err.problem.detail,
+              "username"
+            ),
+            retryable: false,
+          });
+          return;
+        }
+        // S14 network matrix: a transport failure gets a recovery block with
+        // a retry control, not a bare error string.
+        setUsernameState({
+          kind: "error",
+          message: ACCOUNT_SETTINGS_COPY.networkError,
+          retryable: true,
+        });
       });
   };
 
@@ -139,6 +173,7 @@ export function AccountSettings() {
       setPasswordState({
         kind: "error",
         message: ACCOUNT_SETTINGS_COPY.missingPasswordFields,
+        retryable: false,
       });
       return;
     }
@@ -146,6 +181,7 @@ export function AccountSettings() {
       setPasswordState({
         kind: "error",
         message: ACCOUNT_SETTINGS_COPY.shortPassword,
+        retryable: false,
       });
       return;
     }
@@ -161,15 +197,25 @@ export function AccountSettings() {
         if (!mountRef.current) {
           return;
         }
-        const message =
-          err instanceof RpcError
-            ? accountSettingsErrorCopy(
-                err.problem.code,
-                err.problem.detail,
-                "password"
-              )
-            : ACCOUNT_SETTINGS_COPY.networkError;
-        setPasswordState({ kind: "error", message });
+        const isNetwork =
+          !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
+        if (!isNetwork) {
+          setPasswordState({
+            kind: "error",
+            message: accountSettingsErrorCopy(
+              err.problem.code,
+              err.problem.detail,
+              "password"
+            ),
+            retryable: false,
+          });
+          return;
+        }
+        setPasswordState({
+          kind: "error",
+          message: ACCOUNT_SETTINGS_COPY.networkError,
+          retryable: true,
+        });
       });
   };
 
@@ -202,6 +248,7 @@ export function AccountSettings() {
       <form
         className={styles.form}
         onSubmit={submitUsername}
+        ref={usernameFormRef}
         noValidate
         aria-labelledby="account-settings-username-title"
       >
@@ -227,9 +274,19 @@ export function AccountSettings() {
           <p className={styles.fieldHint}>{ACCOUNT_SETTINGS_COPY.usernameHint}</p>
         </div>
         {usernameState.kind === "error" && (
-          <p role="alert" className={styles.error}>
-            {usernameState.message}
-          </p>
+          <div role="alert" className={styles.errorBlock}>
+            <p className={styles.error}>{usernameState.message}</p>
+            {usernameState.retryable && (
+              <button
+                type="button"
+                className={styles.retry}
+                ref={usernameRetryRef}
+                onClick={() => usernameFormRef.current?.requestSubmit()}
+              >
+                {ACCOUNT_SETTINGS_COPY.retry}
+              </button>
+            )}
+          </div>
         )}
         {usernameState.kind === "unchanged" && (
           <p role="status" className={styles.notice}>
@@ -250,6 +307,7 @@ export function AccountSettings() {
       <form
         className={styles.form}
         onSubmit={submitPassword}
+        ref={passwordFormRef}
         noValidate
         aria-labelledby="account-settings-password-title"
       >
@@ -294,9 +352,19 @@ export function AccountSettings() {
           <p className={styles.fieldHint}>{ACCOUNT_SETTINGS_COPY.passwordHint}</p>
         </div>
         {passwordState.kind === "error" && (
-          <p role="alert" className={styles.error}>
-            {passwordState.message}
-          </p>
+          <div role="alert" className={styles.errorBlock}>
+            <p className={styles.error}>{passwordState.message}</p>
+            {passwordState.retryable && (
+              <button
+                type="button"
+                className={styles.retry}
+                ref={passwordRetryRef}
+                onClick={() => passwordFormRef.current?.requestSubmit()}
+              >
+                {ACCOUNT_SETTINGS_COPY.retry}
+              </button>
+            )}
+          </div>
         )}
         <button
           type="submit"

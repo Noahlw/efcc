@@ -33,6 +33,7 @@ export const ACCOUNT_SETTINGS_COPY = {
   updatedDetail: "所有登入工作階段已終止，即將返回登入頁面。",
   redirecting: "正在返回登入頁面…",
   networkError: "無法連接伺服器，請檢查網路後再試。",
+  retry: "重試連接",
   unavailable: "系統暫時無法使用，請稍後再試。",
   forbidden: "您沒有權限執行此操作。",
   validationError: "輸入資料無效，請檢查後再試。",

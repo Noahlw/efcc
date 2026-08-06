@@ -835,6 +835,15 @@ export async function handleChangeUsername(
       requestId
     );
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be a JSON object.",
+      requestId
+    );
+  }
   const username = typeof body.username === "string" ? body.username : "";
   if (!username.trim()) {
     return problem(
@@ -921,6 +930,15 @@ export async function handleChangePassword(
       "VALIDATION",
       "Validation failed",
       "Body must be JSON.",
+      requestId
+    );
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be a JSON object.",
       requestId
     );
   }

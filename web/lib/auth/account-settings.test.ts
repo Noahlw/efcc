@@ -23,7 +23,7 @@
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, test, expect } from "vitest";
+import { beforeAll, describe, test, expect, vi } from "vitest";
 
 import { importLegacyUsers } from "./accounts";
 import {
@@ -33,6 +33,7 @@ import {
 } from "./account-settings";
 import { verifyCredential } from "./credentials";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
+import * as registrations from "./registrations";
 import { signAccessToken, issueSession } from "./sessions";
 import { applyMigrations, testDb } from "./test-bootstrap";
 import { completeCredentialUpgrade } from "./upgrade";
@@ -323,6 +324,59 @@ describe("UI-04: POST /api/v1/auth/username", () => {
 
     expect(res.status).toBe(409);
     expect((await problemOf(res)).code).toBe("CONFLICT");
+  });
+
+  test("cross-table race past the pre-flight fails closed at the batch guard (409, zero side effects)", async () => {
+    // A registration request claiming the target username is already committed,
+    // but the pre-flight check is raced past (spy forces a pass). The batch
+    // guard — NOT the pre-flight — is the uniqueness authority across
+    // accounts + registration_requests (review P1 / advisory).
+    await testDb()
+      .prepare(
+        `INSERT INTO registration_requests (
+           request_id, user_id, username, username_normalized, name,
+           credential_hash, credential_kind, account_status, role, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?)`
+      )
+      .bind(
+        "req-race",
+        "req-race-user",
+        "RacerName",
+        "racername",
+        "Racer Person",
+        "pbkdf2:unused",
+        Date.now()
+      )
+      .run();
+
+    const spy = vi
+      .spyOn(registrations, "findRegistrationByUsername")
+      .mockResolvedValue(null);
+    const { access, refresh } = await sessionFor("U002");
+    const before = await eventsFor("U002");
+    try {
+      const res = await worker.fetch(
+        authRequest("/api/v1/auth/username", {
+          headers: cookieHeader(access, refresh),
+          body: { username: "RacerName" },
+        }),
+        testEnv()
+      );
+      expect(res.status).toBe(409);
+      expect((await problemOf(res)).code).toBe("CONFLICT");
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Lost race ⇒ zero side effects: account unchanged, no audit row, and no
+    // session revocation (the guarded statements all no-op together).
+    const account = await testDb()
+      .prepare("SELECT username_normalized FROM accounts WHERE user_id = ?")
+      .bind("U002")
+      .first<{ username_normalized: string }>();
+    expect(account?.username_normalized).toBe("bob");
+    expect(await eventsFor("U002")).toEqual(before);
+    await expect(activeSessionCount("U002")).resolves.toBeGreaterThan(0);
   });
 
   test("concurrent race fails closed: exactly one winner, one 409", async () => {

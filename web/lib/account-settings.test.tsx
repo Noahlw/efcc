@@ -239,12 +239,19 @@ describe(AccountSettings, () => {
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
     expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBe("1");
   });
-
-  test("network error renders the recovery-state message", async () => {
+  test("network error renders the S14 recovery block; 重試連接 refocuses and re-submits", async () => {
+    let attempts = 0;
     server.use(
-      http.post("/api/v1/auth/password", () =>
-        HttpResponse.error()
-      )
+      http.post("/api/v1/auth/password", () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return HttpResponse.error();
+        }
+        return HttpResponse.json({
+          requestId: "req-7",
+          data: { sessionRevoked: true },
+        });
+      })
     );
     const user = userEvent.setup();
     renderSettings();
@@ -253,10 +260,22 @@ describe(AccountSettings, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
     );
 
+    const retry = await screen.findByRole("button", {
+      name: ACCOUNT_SETTINGS_COPY.retry,
+    });
     expect(
-      await screen.findByText(ACCOUNT_SETTINGS_COPY.networkError)
+      screen.getByText(ACCOUNT_SETTINGS_COPY.networkError)
     ).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
+    // Focus handoff: the recovery control receives focus.
+    expect(retry).toHaveFocus();
+
+    await user.click(retry);
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.updated)
+    ).toBeInTheDocument();
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+    expect(attempts).toBe(2);
   });
 
   test("client-side validation: empty fields and short password blocked before fetch", async () => {

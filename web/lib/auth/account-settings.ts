@@ -143,25 +143,52 @@ export async function changeUsername(
   }
 
   // One atomic transaction: the UPDATE plus its audit row plus the revocation.
-  // A concurrent insert that wins the race on the unique
-  // `accounts_username_normalized` index aborts the whole batch → 409.
+  // The batch itself is the uniqueness authority (review P1 / advisory):
+  // statement 1 is a guarded UPDATE that only applies while no OTHER account
+  // or any registration request claims the normalized username. Statements 2
+  // and 3 carry the same guards so a lost race side-effects nothing — the
+  // audit insert emits no row and the revocation targets only the new
+  // username being in effect. A per-table unique index alone cannot arbitrate
+  // across accounts + registration_requests, so we inspect changes() after
+  // the batch: 0 rows updated ⇒ the claim was lost ⇒ 409, nothing written.
   const eventId = crypto.randomUUID();
   try {
-    await db.batch([
+    const results = await db.batch([
       db
         .prepare(
           `UPDATE accounts
               SET username = ?, username_normalized = ?, updated_at = ?
-            WHERE user_id = ?`
+            WHERE user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM accounts
+                 WHERE username_normalized = ? AND user_id <> ?)
+              AND NOT EXISTS (
+                SELECT 1 FROM registration_requests
+                 WHERE username_normalized = ?)`
         )
-        .bind(options.username, normalized, now, account.user_id),
+        .bind(
+          options.username,
+          normalized,
+          now,
+          account.user_id,
+          normalized,
+          account.user_id,
+          normalized
+        ),
       db
         .prepare(
           `INSERT INTO account_events (
              event_id, actor_user_id, action,
              old_username_normalized, new_username_normalized,
              correlation_id, created_at
-           ) VALUES (?, ?, 'username_changed', ?, ?, ?, ?)`
+           )
+           SELECT ?, ?, 'username_changed', ?, ?, ?, ?
+            WHERE NOT EXISTS (
+              SELECT 1 FROM accounts
+               WHERE username_normalized = ? AND user_id <> ?)
+              AND NOT EXISTS (
+                SELECT 1 FROM registration_requests
+                 WHERE username_normalized = ?)`
         )
         .bind(
           eventId,
@@ -169,16 +196,33 @@ export async function changeUsername(
           account.username_normalized,
           normalized,
           options.requestId,
-          now
+          now,
+          normalized,
+          account.user_id,
+          normalized
         ),
       db
         .prepare(
           `UPDATE sessions SET revoked_at = ?
-            WHERE user_id = ? AND revoked_at IS NULL`
+            WHERE user_id = ? AND revoked_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM accounts
+                 WHERE user_id = ? AND username_normalized = ?)`
         )
-        .bind(now, account.user_id),
+        .bind(now, account.user_id, account.user_id, normalized),
     ]);
+
+    // 0 rows changed means the username was claimed between the pre-flight
+    // check and this batch — the guards keep audit + revocation unwritten.
+    if ((results[0]?.meta.changes ?? 0) === 0) {
+      throw new AccountConflictError(
+        "An account with that username already exists."
+      );
+    }
   } catch (error) {
+    if (error instanceof AccountConflictError) {
+      throw error;
+    }
     if (error instanceof Error && /unique|constraint/iu.test(error.message)) {
       throw new AccountConflictError(
         "An account with that username already exists."
