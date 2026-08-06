@@ -1,4 +1,5 @@
 import type { Section } from "@/lib/api";
+import { COPY } from "@/lib/copy";
 
 /**
  * Shell section baseline shown to any authenticated user.
@@ -14,37 +15,37 @@ export function defaultSections(): Section[] {
   return [
     {
       key: "profile",
-      label: "個人資料",
+      label: COPY.sections.profile,
       capability: "READ",
       requiresServerAuth: false,
     },
     {
       key: "programs",
-      label: "課程",
+      label: COPY.sections.programs,
       capability: "READ",
       requiresServerAuth: false,
     },
     {
       key: "events",
-      label: "聚會",
+      label: COPY.sections.events,
       capability: "READ",
       requiresServerAuth: false,
     },
     {
       key: "scanner",
-      label: "掃描",
+      label: COPY.sections.scanner,
       capability: "AUTH",
       requiresServerAuth: false,
     },
     {
       key: "care",
-      label: "關懷",
+      label: COPY.sections.care,
       capability: "AUTH",
       requiresServerAuth: false,
     },
     {
       key: "permissions",
-      label: "權限管理",
+      label: COPY.sections.permissions,
       capability: "AUTH",
       requiresServerAuth: false,
     },

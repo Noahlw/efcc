@@ -1,8 +1,7 @@
 "use client";
 
 import { useApp } from "@/lib/app-context";
-import { COPY } from "@/lib/copy";
-import { RecoveryView } from "@/lib/recovery-view";
+import { ForbiddenView } from "@/lib/forbidden-view";
 import { firstSection, getSection } from "@/lib/sections";
 
 /**
@@ -26,12 +25,7 @@ export function GuardedSection({
   const section = getSection(bootstrap.sections, sectionKey);
 
   if (!section) {
-    return (
-      <RecoveryView
-        message={COPY.error.forbidden}
-        safeHref={`/${firstSection(bootstrap.sections)}`}
-      />
-    );
+    return <ForbiddenView safeHref={`/${firstSection(bootstrap.sections)}`} />;
   }
 
   return children;

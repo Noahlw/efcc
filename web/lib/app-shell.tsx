@@ -7,10 +7,14 @@ import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { clearAuthHint, restoreBootstrap } from "@/lib/session";
+import { ShellHeader } from "@/lib/shell-header";
+
+import styles from "./auth-shell.module.css";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
@@ -43,6 +47,7 @@ function ShellFrame({
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
+        <ShellHeader />
         <NavBar />
         <main className="shell-content">{children}</main>
       </div>
@@ -56,15 +61,8 @@ function LoadingShell() {
   }, []);
 
   return (
-    <main
-      style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-        textAlign: "center",
-      }}
-    >
+    <main className={styles.state}>
+      <span className={styles.spinner} aria-hidden="true" />
       <p>{COPY.restore.loading}</p>
     </main>
   );
@@ -134,9 +132,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <LoadingShell />;
   }
   if (state.kind === "error") {
-    // AUTH_REQUIRED is handled inline (clears hint + redirects); any error
-    // reaching this branch is transient (network / 5xx), so retry is always
+    // AUTH_REQUIRED is handled inline (clears hint + redirects). FORBIDDEN is
+    // a hard authorization failure — render the forbidden state (S13), not a
+    // retry. Any other error here is transient (network / 5xx), so retry is
     // appropriate. Bumping `tick` re-runs the restore effect.
+    if (state.code === "FORBIDDEN") {
+      return <ForbiddenView safeHref="/profile" />;
+    }
     return (
       <RecoveryView
         message={state.message}

@@ -2,6 +2,9 @@
 // Every user-facing string lives here; no hardcoded text in components.
 export const COPY = {
   appName: "顯恩堂系統",
+  // Official full church title used as the primary brand string in headers
+  // (Spec 079 §1: shorter marks are legacy shorthand only).
+  appFullName: "中國基督教播道會顯恩堂",
   login: {
     title: "登入",
     upgradeTitle: "設定新密碼",
@@ -19,13 +22,14 @@ export const COPY = {
     success: "登入成功。",
   },
   profile: {
-    title: "個人資料",
+    title: "個人檔案",
     name: "姓名",
     username: "用戶名稱",
     phone: "電話",
     role: "角色",
     status: "狀態",
     qrCode: "QR Code",
+    qrEmpty: "目前沒有 QR 資料。",
   },
   restore: {
     loading: "正在還原工作階段…",
@@ -52,6 +56,7 @@ export const COPY = {
   },
   nav: {
     backToHome: "返回首頁",
+    backToProfile: "返回個人檔案",
     loading: "載入中…",
     unauthorized: "您沒有權限存取此頁面。",
     unknownRoute: "找不到此頁面。",
@@ -67,7 +72,11 @@ export const COPY = {
     conflict: "資料衝突，請重新整理後再試。",
     malformed: "伺服器回應格式錯誤。",
     unknown: "發生未知錯誤。",
-    retry: "重試",
+    retry: "重試連接",
+  },
+  empty: {
+    courseData: "目前沒有課程資料。",
+    title: "無資料",
   },
 } as const;
 

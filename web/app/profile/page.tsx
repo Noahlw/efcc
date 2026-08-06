@@ -1,55 +1,66 @@
 "use client";
 
-import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
+import { useApp } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
+import { EmptyState } from "@/lib/empty-state";
+
+import styles from "./profile.module.css";
 
 function ProfileContent() {
-  const { bootstrap, signOut } = useApp();
+  const { bootstrap } = useApp();
   const p = bootstrap.profile;
+
+  // Defensive empty guard: a profile with no identity data renders the shared
+  // empty state (S12) instead of a blank surface.
+  if (!p.name && !p.username) {
+    return (
+      <div className={styles.page}>
+        <EmptyState title={COPY.empty.title} message={COPY.profile.qrEmpty} />
+      </div>
+    );
+  }
+
+  const avatarChar = Array.from(p.name || "恩")[0] ?? "恩";
+  const hasQr = Boolean(p.qrCodeString);
+
   return (
-    <div style={{ maxWidth: 600, margin: "2rem auto", padding: "0 1rem" }}>
-      <h1 style={{ marginBottom: "1.5rem" }}>{COPY.profile.title}</h1>
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "0.75rem 1rem",
-        }}
-      >
-        <dt>{COPY.profile.name}</dt>
-        <dd>{p.name}</dd>
-        <dt>{COPY.profile.username}</dt>
-        <dd>{p.username}</dd>
-        <dt>{COPY.profile.phone}</dt>
-        <dd>{p.phone}</dd>
-        <dt>{COPY.profile.role}</dt>
-        <dd>{p.role}</dd>
-        <dt>{COPY.profile.status}</dt>
-        <dd>{p.status}</dd>
-        <dt>{COPY.profile.qrCode}</dt>
-        <dd
-          style={{
-            fontFamily: "monospace",
-            fontSize: "0.8rem",
-            wordBreak: "break-all",
-          }}
-        >
-          {p.qrCodeString}
-        </dd>
-      </dl>
-      <button
-        type="button"
-        onClick={signOut}
-        style={{
-          marginTop: "1.5rem",
-          minWidth: 44,
-          minHeight: 44,
-          padding: "0.5rem 1rem",
-        }}
-      >
-        {COPY.logout.submit}
-      </button>
+    <div className={styles.page}>
+      <div className={styles.profileBar}>
+        <div className={styles.avatar} aria-hidden="true">
+          {avatarChar}
+        </div>
+        <div className={styles.profileMeta}>
+          <span className={styles.profileName}>{p.name}</span>
+          <span className={styles.profileUsername}>{p.username}</span>
+          <span className={styles.roleTag}>{p.role}</span>
+        </div>
+      </div>
+
+      <div className={styles.infoGrid}>
+        <div className={styles.infoCell}>
+          <label>{COPY.profile.phone}</label>
+          <span>{p.phone}</span>
+        </div>
+        <div className={styles.infoCell}>
+          <label>{COPY.profile.status}</label>
+          <span>{p.status}</span>
+        </div>
+      </div>
+
+      <div className={styles.qrCenter}>
+        {hasQr ? (
+          <div
+            className={styles.qrSquare}
+            role="img"
+            aria-label={COPY.profile.qrCode}
+          >
+            <span className={styles.qrText}>{p.qrCodeString}</span>
+          </div>
+        ) : (
+          <EmptyState title={COPY.profile.qrCode} message={COPY.profile.qrEmpty} />
+        )}
+      </div>
     </div>
   );
 }

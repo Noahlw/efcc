@@ -31,6 +31,12 @@ export default defineProject(async () => {
         },
       }),
     ],
+    resolve: {
+      // Node-environment client tests import lib sources via the `@/` alias
+      // (e.g. sections.ts → @/lib/copy); resolve it here for the worker pool
+      // just like vitest.components.config.ts does for the jsdom suite.
+      alias: { "@": import.meta.dirname },
+    },
     test: {
       // Worker tests live next to the worker (`worker.test.ts`) and run
       // in the pool-workers environment declared inline at the top of

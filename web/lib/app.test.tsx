@@ -27,11 +27,14 @@ import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { EmptyState } from "@/lib/empty-state";
+import { ForbiddenView } from "@/lib/forbidden-view";
 import { GuardedSection } from "@/lib/guarded-section";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { setAuthHint } from "@/lib/session";
+import { ShellHeader } from "@/lib/shell-header";
 
 const mocks = vi.hoisted(() => {
   const replaceMock = vi.fn<(path: string) => void>();
@@ -910,6 +913,52 @@ describe("Shell", () => {
     });
   });
 
+  describe(ProfilePage, () => {
+    function renderRestoredProfile() {
+      const user = userEvent.setup();
+      pathnameMock.mockReturnValue("/profile");
+      setAuthHint();
+      const view = render(<ProfilePage />);
+      return { user, view };
+    }
+
+    test("renders the QR identity as an img with a descriptive label and the immutable code", async () => {
+      renderRestoredProfile();
+      // Await the shell so the profile surface is mounted.
+      await screen.findByRole("button", { name: COPY.logout.submit });
+      const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
+      expect(qr).toBeInTheDocument();
+      expect(screen.getByText(PUBLIC_USER.qrCodeString)).toBeInTheDocument();
+    });
+
+    test("renders the phone and status info grid with their values", async () => {
+      renderRestoredProfile();
+      await screen.findByRole("button", { name: COPY.logout.submit });
+      expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
+      expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
+      expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
+      expect(screen.getByText(PUBLIC_USER.status)).toBeInTheDocument();
+    });
+
+    test("renders the empty state when the profile carries no QR data", async () => {
+      server.use(
+        http.post("/api/v1/auth/refresh", () =>
+          HttpResponse.json({ requestId: "r-refresh", data: {} })
+        ),
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me",
+            data: { user: { ...PUBLIC_USER, qrCodeString: "" } },
+          })
+        )
+      );
+      renderRestoredProfile();
+      await screen.findByRole("button", { name: COPY.logout.submit });
+      expect(screen.getByText(COPY.profile.qrEmpty)).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: COPY.profile.qrCode })).toBeNull();
+    });
+  });
+
   describe(NavBar, () => {
     function renderWithProvider(
       sections: Bootstrap["sections"],
@@ -975,7 +1024,7 @@ describe("Shell", () => {
       );
       expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
       expect(screen.queryByText("care content")).not.toBeInTheDocument();
-      const link = screen.getByText(COPY.nav.backToHome).closest("a");
+      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
       expect(link).toHaveAttribute("href", "/profile");
     });
   });
@@ -1071,6 +1120,52 @@ describe("Shell", () => {
     test("does not render retry button when onRetry omitted", () => {
       render(<RecoveryView message="test error" safeHref="/profile" />);
       expect(screen.queryByText(COPY.error.retry)).not.toBeInTheDocument();
+    });
+  });
+
+  describe(EmptyState, () => {
+    test("renders a status region exposing title and message", () => {
+      render(<EmptyState title="無資料" message="目前沒有課程資料。" />);
+      expect(screen.getByRole("status")).toBeInTheDocument();
+      expect(screen.getByText("無資料")).toBeInTheDocument();
+      expect(screen.getByText("目前沒有課程資料。")).toBeInTheDocument();
+    });
+  });
+
+  describe(ForbiddenView, () => {
+    test("renders an alert block with a safe back-to-profile route", () => {
+      render(<ForbiddenView safeHref="/programs" />);
+      expect(screen.getByRole("alert")).toHaveTextContent(COPY.error.forbidden);
+      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
+      expect(link).toHaveAttribute("href", "/programs");
+    });
+  });
+
+  describe(ShellHeader, () => {
+    test("renders the full church title and a sign-out control", () => {
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.appFullName)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: COPY.logout.submit })
+      ).toBeInTheDocument();
+    });
+
+    test("sign-out control invokes the context signOut", async () => {
+      const onSignOut = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={onSignOut}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.logout.submit })
+      );
+      expect(onSignOut).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1217,6 +1312,23 @@ describe("Shell", () => {
   });
 
   describe("AppShell restore lifecycle", () => {
+    test("shows the loading state with a spinner while the session restores", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/profile");
+      const { container } = render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+      // The first frame is the loading shell before the async restore resolves.
+      expect(screen.getByText(COPY.restore.loading)).toBeInTheDocument();
+      expect(container.querySelector("[aria-hidden='true']")).not.toBeNull();
+      // The restore resolves to the authenticated shell.
+      expect(
+        await screen.findByRole("button", { name: COPY.logout.submit })
+      ).toBeInTheDocument();
+    });
+
     test("no session hint redirects to / and records the deep link", async () => {
       pathnameMock.mockReturnValue("/programs");
       render(
