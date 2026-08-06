@@ -373,7 +373,7 @@ function RenderSurface({
                <div className={styles.avatar}>—</div>
              <div className={styles.profileMeta}>
                <span className={`${styles.profileName} ${styles.placeholder}`}>— 姓名 (用戶名稱) —</span>
-                 <span className={styles.roleTag}>Member / Teacher / Admin</span>
+                 <span className={styles.roleTag}>Member / Staff / Admin</span>
                 </div>
              <div className={styles.profileQuickInfo}>
                  <span className={styles.placeholder}>— 電話 —</span>

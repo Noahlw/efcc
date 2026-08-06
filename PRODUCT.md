@@ -33,17 +33,20 @@ An internal system built specifically for this church’s roles, workflows, and 
 - Schedules and user-facing timestamps use Church Time: `Asia/Hong_Kong`, Hong Kong calendar dates, 24-hour clock.
 - Identity and authentication live on Cloudflare Worker + D1; Programs, Events, Attendance, Enrollments and related domain capabilities remain on the transitional Apps Script + Google Sheets backend until each capability is migrated with acceptance proof.
 - Roles in production: Admin, Teacher, Member; Program Leader is a separate per-program grant, not a global role value.
+- Roles in production: Admin, Staff, Member (ADR-0025; Teacher retired); Program Leader is a separate per-program grant, not a global role value.
 - Navigable Sections after auth include Profile, Programs, Events, Scanner, Care, and Permissions (some still transitional or placeholder on the new web shell).
 
 ## Capabilities and Constraints
 
 **Confirmed capabilities (current or transitional):** cookie-only login/session; legacy-PIN upgrade; self-service registration; Admin/Teacher approval queue; member profile; programs, events, attendance/check-in, enrollments (domain still transitional); care dashboard and permissions planned/partial.
+- cookie-only login/session; legacy-PIN upgrade; self-service registration; Admin/Staff approval queue; member profile; programs, events, attendance/check-in, enrollments (domain still transitional); care dashboard and permissions planned/partial.
 
 **Constraints future work must preserve:**
 
 - Internal-only church tool; do not invent public marketing claims, testimonials, or multi-church positioning.
 - Cantonese Chinese is the primary product language.
 - Phone interface is the main surface for Members, Program Leaders, and Teachers; PC is for management.
+- Phone interface is the main surface for Members, Program Leaders, and Staff; PC is for management.
 - Staged ownership: D1 owns identity; do not delete the Apps Script domain backend merely because auth migrated.
 - Production Google Sheet is operator-edited; agents do not mutate it (except documented E2E fixture rules).
 - Disposable destructive auth tests use `E2E_`-prefixed usernames only.

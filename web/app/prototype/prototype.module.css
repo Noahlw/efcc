@@ -355,7 +355,12 @@
 }
 
 .field input:focus {
-  outline: 2px solid var(--focus);
+  outline: none;
+}
+
+.field input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .btnPrimary {

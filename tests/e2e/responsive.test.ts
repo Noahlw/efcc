@@ -12,6 +12,7 @@ import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 import { LANDING } from "../../web/lib/copy";
+import { sectionsForRole } from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -33,7 +34,7 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "STAFF",
+  role: "Staff",
   status: "active",
   qrCodeString: "qr:u1",
 };
@@ -55,7 +56,12 @@ async function stubAuth(route: Route) {
       contentType: "application/json",
       body: JSON.stringify({
         requestId: "r-me",
-        data: { user: PUBLIC_USER },
+        data: {
+          user: PUBLIC_USER,
+          // R1 contract: /auth/me returns role-authorized sections, not a
+          // client-side derivation from the role.
+          sections: sectionsForRole(PUBLIC_USER.role),
+        },
       }),
     });
     return;

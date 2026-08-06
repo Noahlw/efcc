@@ -171,40 +171,6 @@ describe("AUTH-01: legacy import", () => {
     expect(JSON.stringify(rest)).not.toContain("1234");
   });
 
-  test("migration 0002 retires stored Teacher roles to Staff", async () => {
-    // Seed a legacy Teacher row directly (the importer now maps TEACHER ->
-    // STAFF, so raw SQL is the only way to produce the pre-migration value).
-    await testDb()
-      .prepare(
-        'INSERT INTO accounts (' +
-          ' user_id, name, username, username_normalized, role,' +
-          ' account_status, credential_kind, requires_upgrade,' +
-          ' created_at, updated_at' +
-          ' ) VALUES (' +
-          " 'U700', 'Tina Teacher', 'tina700', 'tina700', 'Teacher'," +
-          " 'Active', 'legacy_pin', 1, ?, ?" +
-          ' )'
-      )
-      .bind(Date.now(), Date.now())
-      .run();
-    const seeded = await findAccountByUserId(testDb(), "U700");
-    expect(seeded?.role).toBe("Teacher");
-
-    // Run the actual 0002 migration file (parsed into TEST_MIGRATIONS) so
-    // the test exercises the shipped SQL, not a copy of it.
-    const migrations = (env as unknown as {
-      TEST_MIGRATIONS: { name: string; queries: string[] }[];
-    }).TEST_MIGRATIONS;
-    const retire = migrations.find((m) => m.name.includes("0002"));
-    assert.ok(retire, "0002_retire_teacher.sql must be present");
-    for (const q of retire.queries) {
-      await testDb().prepare(q).run();
-    }
-
-    const retired = await findAccountByUserId(testDb(), "U700");
-    expect(retired?.role).toBe("Staff");
-  });
-
   test("re-run is idempotent — no duplicate accounts", async () => {
     const row = ["U210", "David Tang", "david210", "1111", "Member", "Active"];
     await importLegacyUsers(testDb(), [HEADER, row]);
@@ -213,6 +179,63 @@ describe("AUTH-01: legacy import", () => {
     expect(rerun.imported).toBe(0);
     expect(rerun.skipped).toBe(1);
     expect(await countAccounts()).toBe(first);
+  });
+
+  test("0002 write-time guard: INSERT/UPDATE of a non-canonical role aborts (RAISE ABORT)", async () => {
+    // The migration's data UPDATE retires existing Teacher rows; the guards
+    // below close the write path so the retired spelling can never return.
+    // Canonical: Admin, Staff, Member (ADR-0025).
+
+    // INSERT with the retired spelling fails closed.
+    await expect(
+      testDb()
+        .prepare(
+          'INSERT INTO accounts (' +
+            ' user_id, name, username, username_normalized, role,' +
+            ' account_status, credential_kind, requires_upgrade,' +
+            ' created_at, updated_at' +
+            ' ) VALUES (' +
+            " 'U700', 'Tina Teacher', 'tina700', 'tina700', 'Teacher'," +
+            " 'Active', 'legacy_pin', 1, ?, ?" +
+            ' )'
+        )
+        .bind(Date.now(), Date.now())
+        .run()
+    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+
+    // Canonical INSERT still works.
+    await testDb()
+      .prepare(
+        'INSERT INTO accounts (' +
+          ' user_id, name, username, username_normalized, role,' +
+          ' account_status, credential_kind, requires_upgrade,' +
+          ' created_at, updated_at' +
+          ' ) VALUES (' +
+          " 'U701', 'Uma Staff', 'uma701', 'uma701', 'Staff'," +
+          " 'Active', 'legacy_pin', 1, ?, ?" +
+          ' )'
+      )
+      .bind(Date.now(), Date.now())
+      .run();
+
+    // UPDATE back to the retired spelling is rejected, and the row survives
+    // with its canonical role.
+    await expect(
+      testDb()
+        .prepare("UPDATE accounts SET role = 'Teacher' WHERE user_id = ?")
+        .bind("U701")
+        .run()
+    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+    const after = await findAccountByUserId(testDb(), "U701");
+    expect(after?.role).toBe("Staff");
+
+    // Canonical UPDATE still works.
+    await testDb()
+      .prepare("UPDATE accounts SET role = 'Admin' WHERE user_id = ?")
+      .bind("U701")
+      .run();
+    const promoted = await findAccountByUserId(testDb(), "U701");
+    expect(promoted?.role).toBe("Admin");
   });
 
   test("duplicate username in source fails closed with no partial write", async () => {

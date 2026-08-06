@@ -1024,6 +1024,14 @@ describe("Shell", () => {
       const [inactive] = screen.getAllByText("個人資料");
       expect(inactive).not.toHaveAttribute("aria-current");
     });
+
+    test("/profile/settings highlights the profile section (prefix-aware)", () => {
+      renderWithProvider(MEMBER_SECTIONS, "/profile/settings");
+      const [profile] = screen.getAllByText("個人資料");
+      const [programs] = screen.getAllByText("課程");
+      expect(profile).toHaveAttribute("aria-current", "page");
+      expect(programs).not.toHaveAttribute("aria-current");
+    });
   });
 
   describe(GuardedSection, () => {
@@ -1286,13 +1294,13 @@ describe("Shell", () => {
       });
     });
 
-    test("permissions page renders COPY.sections.permissions title", async () => {
+    test("permissions page renders the S10 permissionsHeading title", async () => {
       withAuthRestore(ADMIN_USER);
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.permissions })
+          screen.getByRole("heading", { name: COPY.sections.permissionsHeading })
         ).toBeInTheDocument();
       });
     });

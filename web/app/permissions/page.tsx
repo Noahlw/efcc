@@ -7,7 +7,10 @@ import { SectionView } from "@/app/_sections/section-view";
 export default function PermissionsPage() {
   return (
     <AppShell>
-      <SectionView sectionKey="permissions" title={COPY.sections.permissions} />
+      <SectionView
+        sectionKey="permissions"
+        title={COPY.sections.permissionsHeading}
+      />
     </AppShell>
   );
 }
