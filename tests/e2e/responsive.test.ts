@@ -13,9 +13,13 @@ import type { Page, Route } from "@playwright/test";
 import { COPY } from "../../web/lib/copy";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
-function requireBox(box: { width: number; height: number } | null): {
+function requireBox(
+  box: { x: number; y: number; width: number; height: number } | null
+): {
   width: number;
   height: number;
+  x: number;
+  y: number;
 } {
   if (!box) {
     throw new Error("bounding box is null");
@@ -136,7 +140,10 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
   const paddings = await page.evaluate(() => {
     const nav = document.querySelector<HTMLElement>(".nav-phone");
-    const shell = document.querySelector<HTMLElement>(".shell");
+    // The shell is a flex column; the scrollable outlet that must reserve the
+    // bottom nav height + safe-area inset is .shell-content (Ui01 shell
+    // contract).
+    const shell = document.querySelector<HTMLElement>(".shell-content");
     return {
       navBottom: nav ? getComputedStyle(nav).paddingBottom : null,
       shellBottom: shell ? getComputedStyle(shell).paddingBottom : null,
