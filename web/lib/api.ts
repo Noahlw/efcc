@@ -143,21 +143,38 @@ interface AuthSuccess<T> {
 }
 
 /**
+ * Per-call options for the cookie-only surface.
+ */
+interface AuthFetchOptions {
+  /**
+   * Mint a fresh Idempotency-Key header for this mutating call (ADR-0018
+   * §8) so the server can dedup a retried mutation. Reads omit it.
+   */
+  mutating?: boolean;
+}
+
+/**
  * One fetch to the cookie-only auth surface. No auth headers are built and
- * no Idempotency-Key is attached: identity comes from the server-set
- * cookies on the request, and login must not be blindly retried. 4xx and
- * 5xx are never retried; a network failure surfaces as a safe NETWORK_ERROR.
+ * identity comes from the server-set cookies on the request. Mutating calls
+ * carry a fresh Idempotency-Key (ADR-0018 §8). 4xx and 5xx are never
+ * retried; a network failure surfaces as a safe NETWORK_ERROR.
  */
 async function authFetch<T>(
   path: string,
   method: "POST" | "GET",
-  body?: unknown
+  body?: unknown,
+  opts: AuthFetchOptions = {}
 ): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(opts.mutating
+          ? { "Idempotency-Key": crypto.randomUUID() }
+          : {}),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       // Bounded timeout per AGENTS.md Production Resilience.
       signal: AbortSignal.timeout(30_000),
@@ -215,7 +232,7 @@ export function authLogin(
   return authFetch<LoginResult>("/api/v1/auth/login", "POST", {
     username,
     password,
-  });
+  }, { mutating: true });
 }
 
 /** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
@@ -228,12 +245,17 @@ export function authUpgrade(
     username,
     legacyPin,
     newCredential,
-  });
+  }, { mutating: true });
 }
 
 /** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
 export function authRefresh(): Promise<void> {
-  return authFetch<void>("/api/v1/auth/refresh", "POST");
+  return authFetch<void>(
+    "/api/v1/auth/refresh",
+    "POST",
+    undefined,
+    { mutating: true }
+  );
 }
 
 /**
@@ -242,7 +264,12 @@ export function authRefresh(): Promise<void> {
  * as best-effort (local session is cleared regardless).
  */
 export function authLogout(): Promise<void> {
-  return authFetch<void>("/api/v1/auth/logout", "POST");
+  return authFetch<void>(
+    "/api/v1/auth/logout",
+    "POST",
+    undefined,
+    { mutating: true }
+  );
 }
 
 /**
@@ -268,7 +295,8 @@ export async function authChangeUsername(
   return authFetch<{ username: string; sessionRevoked: boolean }>(
     "/api/v1/auth/username",
     "POST",
-    { username }
+    { username },
+    { mutating: true }
   );
 }
 
@@ -286,6 +314,7 @@ export async function authChangePassword(
   return authFetch<{ sessionRevoked: boolean }>(
     "/api/v1/auth/password",
     "POST",
-    { currentPassword, newPassword }
+    { currentPassword, newPassword },
+    { mutating: true }
   );
 }

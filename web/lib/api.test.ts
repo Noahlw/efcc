@@ -14,7 +14,14 @@ import assert from "node:assert/strict";
 
 import { describe, test } from "vitest";
 
-import { authLogin, authLogout, authMe, authRefresh } from "./api";
+import {
+  authChangePassword,
+  authChangeUsername,
+  authLogin,
+  authLogout,
+  authMe,
+  authRefresh,
+} from "./api";
 import type { LoginResult, PublicUser, RpcError } from "./api";
 
 // ---------------------------------------------------------------------------
@@ -125,7 +132,7 @@ function installFetch(
 // ---------------------------------------------------------------------------
 
 describe("api.ts: AUTH-04 cookie surface", () => {
-  test("authLogin POSTs {username,password} to /api/v1/auth/login with no auth header and no Idempotency-Key", async () => {
+  test("authLogin POSTs {username,password} to /api/v1/auth/login with no auth header and a fresh Idempotency-Key", async () => {
     const fetchMock = installFetch(() =>
       makeResponse(200, { requestId: "r-1", data: LOGIN_RESULT })
     );
@@ -137,7 +144,10 @@ describe("api.ts: AUTH-04 cookie surface", () => {
       assert.equal(call.url, "/api/v1/auth/login");
       assert.equal(call.headers.Authorization, undefined);
       assert.equal(call.headers["X-Efcc-Session-Id"], undefined);
-      assert.equal(call.headers["Idempotency-Key"], undefined);
+      assert.ok(
+        call.headers["Idempotency-Key"],
+        "login carries an Idempotency-Key"
+      );
       const body = JSON.parse(call.body);
       assert.equal(body.username, "test");
       assert.equal(body.password, "s3cret");
@@ -147,7 +157,6 @@ describe("api.ts: AUTH-04 cookie surface", () => {
       fetchMock.restore();
     }
   });
-
   test("authLogin parses the {requestId,data} auth envelope (no success flag)", async () => {
     const fetchMock = installFetch(() =>
       makeResponse(200, { requestId: "r-1", data: LOGIN_RESULT })
@@ -395,6 +404,80 @@ describe("api.ts: AUTH-04 cookie surface", () => {
           return true;
         }
       );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+});
+
+describe("api.ts: Idempotency-Key on mutating auth calls (ADR-0018 §8)", () => {
+  test("authLogin sends a fresh non-empty Idempotency-Key on every call", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { requestId: "r-1", data: LOGIN_RESULT })
+    );
+    try {
+      await authLogin("test", "s3cret");
+      await authLogin("test", "s3cret");
+      assert.equal(fetchMock.calls.length, 2);
+      const [first, second] = fetchMock.calls;
+      assert.ok(first.headers["Idempotency-Key"], "login sends a key");
+      assert.ok(second.headers["Idempotency-Key"], "login sends a key");
+      assert.notEqual(
+        first.headers["Idempotency-Key"],
+        second.headers["Idempotency-Key"],
+        "each call mints a fresh key"
+      );
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("authLogout sends an Idempotency-Key", async () => {
+    const fetchMock = installFetch(
+      () =>
+        new Response(null, {
+          status: 204,
+          headers: { "X-Request-Id": "r-logout" },
+        })
+    );
+    try {
+      await authLogout();
+      assert.ok(fetchMock.calls[0].headers["Idempotency-Key"]);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("authChangeUsername and authChangePassword send an Idempotency-Key", async () => {
+    const fetchMock = installFetch((call) =>
+      call.url.includes("/password")
+        ? makeResponse(200, {
+            requestId: "r-1",
+            data: { sessionRevoked: true },
+          })
+        : makeResponse(200, {
+            requestId: "r-1",
+            data: { username: "newname", sessionRevoked: true },
+          })
+    );
+    try {
+      await authChangeUsername("newname");
+      await authChangePassword("old-secret", "new-secret-88");
+      assert.equal(fetchMock.calls.length, 2);
+      assert.ok(fetchMock.calls[0].headers["Idempotency-Key"]);
+      assert.ok(fetchMock.calls[1].headers["Idempotency-Key"]);
+    } finally {
+      fetchMock.restore();
+    }
+  });
+
+  test("authMe (read) sends no Idempotency-Key", async () => {
+    const fetchMock = installFetch(() =>
+      makeResponse(200, { requestId: "r-me", data: { user: PUBLIC_USER } })
+    );
+    try {
+      await authMe();
+      assert.equal(fetchMock.calls[0].headers["Idempotency-Key"], undefined);
     } finally {
       fetchMock.restore();
     }
