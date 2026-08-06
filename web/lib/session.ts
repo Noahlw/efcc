@@ -48,7 +48,6 @@ export function clearAuthHint(): void {
  * Assemble the shell's Bootstrap from a cookie-verified public user,
  * authorizing the shell sections by the user's role (S15).
  */
-export function buildBootstrap(user: PublicUser): Bootstrap {
 export function buildBootstrap(
   user: PublicUser,
   serverSections?: Section[]
@@ -69,7 +68,6 @@ export function buildBootstrap(
  * token expired), silently refreshes the refresh cookie and retries me.
  * Throws RpcError otherwise (AUTH_REQUIRED = refresh cookie gone/revoked).
  */
-async function currentUser(): Promise<PublicUser> {
 async function currentUser(): Promise<{
   user: PublicUser;
   sections: Section[];
