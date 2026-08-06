@@ -383,6 +383,15 @@ export default {
         handleGetProgram,
         handleUpdateProgram,
         handleSetModule,
+        handleListScheduleRules,
+        handleCreateScheduleRule,
+        handleUpdateScheduleRule,
+        handleCreateScheduleException,
+        handleDeleteScheduleException,
+        handleGenerateEvents,
+        handleCreateEvent,
+        handleListEvents,
+        handleCancelEvent,
       } = await import("./lib/programs/program-handlers");
 
       if (url.pathname === "/api/v1/programs/departments" && request.method === "POST") {
@@ -429,6 +438,86 @@ export default {
       }
       if (program && request.method === "PATCH") {
         return handleUpdateProgram(request, programEnv, program.groups?.id ?? "");
+      }
+      const scheduleRules = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
+      );
+      if (scheduleRules && request.method === "POST") {
+        return handleCreateScheduleRule(
+          request,
+          programEnv,
+          scheduleRules.groups?.id ?? ""
+        );
+      }
+      if (scheduleRules && request.method === "GET") {
+        return handleListScheduleRules(
+          request,
+          programEnv,
+          scheduleRules.groups?.id ?? ""
+        );
+      }
+      const scheduleRule = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)$/u
+      );
+      if (scheduleRule && request.method === "PATCH") {
+        return handleUpdateScheduleRule(
+          request,
+          programEnv,
+          scheduleRule.groups?.ruleId ?? ""
+        );
+      }
+      const scheduleExceptions = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions$/u
+      );
+      if (scheduleExceptions && request.method === "POST") {
+        return handleCreateScheduleException(
+          request,
+          programEnv,
+          scheduleExceptions.groups?.ruleId ?? ""
+        );
+      }
+      const scheduleException = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions\/(?<exceptionId>[^/]+)$/u
+      );
+      if (scheduleException && request.method === "DELETE") {
+        return handleDeleteScheduleException(
+          request,
+          programEnv,
+          scheduleException.groups?.exceptionId ?? ""
+        );
+      }
+      const programGenerate = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/generate$/u
+      );
+      if (programGenerate && request.method === "POST") {
+        return handleGenerateEvents(
+          request,
+          programEnv,
+          programGenerate.groups?.id ?? ""
+        );
+      }
+      const programEvents = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events$/u
+      );
+      if (programEvents && request.method === "POST") {
+        return handleCreateEvent(
+          request,
+          programEnv,
+          programEvents.groups?.id ?? ""
+        );
+      }
+      if (programEvents && request.method === "GET") {
+        return handleListEvents(
+          request,
+          programEnv,
+          programEvents.groups?.id ?? ""
+        );
+      }
+      const event = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
+      );
+      if (event && request.method === "PATCH") {
+        return handleCancelEvent(request, programEnv, event.groups?.eventId ?? "");
       }
       return authProblemResponse(
         404,

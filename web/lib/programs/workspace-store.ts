@@ -106,6 +106,102 @@ export interface DepartmentModuleRow {
   enabled_at: string;
 }
 
+export type RecurrenceKind = "WEEKLY" | "MONTHLY";
+export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
+export type EventStatus = "Active" | "Cancelled";
+export type EventSource = "SCHEDULE" | "MANUAL";
+
+export interface ScheduleRuleInput {
+  program_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface ScheduleRuleUpdate {
+  recurrence?: RecurrenceKind;
+  day_of_week?: number | null;
+  month_day?: number | null;
+  start_time?: string;
+  end_time?: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface ScheduleRuleRow {
+  rule_id: string;
+  program_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface ScheduleExceptionInput {
+  rule_id: string;
+  override_date: string;
+  action: ScheduleExceptionAction;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ScheduleExceptionRow {
+  exception_id: string;
+  rule_id: string;
+  override_date: string;
+  action: ScheduleExceptionAction;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface EventInput {
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: EventStatus;
+  source: EventSource;
+  cancel_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface EventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: EventStatus;
+  source: EventSource;
+  cancel_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface GenerateResult {
+  created: number;
+  skipped: number;
+  rule_count: number;
+}
+
 export interface AuditInput {
   audit_id: string;
   inserted_at: string;
@@ -159,6 +255,40 @@ export interface WorkspaceStore {
   listDepartmentModules: (
     departmentId: string
   ) => Promise<DepartmentModuleRow[]>;
+
+  createScheduleRule: (input: ScheduleRuleInput) => Promise<ScheduleRuleRow>;
+  updateScheduleRule: (
+    ruleId: string,
+    update: ScheduleRuleUpdate
+  ) => Promise<ScheduleRuleRow>;
+  listScheduleRules: (programId: string) => Promise<ScheduleRuleRow[]>;
+  findScheduleRule: (ruleId: string) => Promise<ScheduleRuleRow | null>;
+
+  createScheduleException: (
+    input: ScheduleExceptionInput
+  ) => Promise<ScheduleExceptionRow>;
+  deleteScheduleException: (exceptionId: string) => Promise<boolean>;
+  findScheduleException: (exceptionId: string) => Promise<ScheduleExceptionRow | null>;
+  listScheduleExceptions: (
+    ruleIds: string[]
+  ) => Promise<ScheduleExceptionRow[]>;
+
+  createEvent: (input: EventInput) => Promise<EventRow>;
+  insertGeneratedEvent: (
+    input: EventInput
+  ) => Promise<boolean>;
+  findEventByStart: (
+    programId: string,
+    startsAt: string
+  ) => Promise<EventRow | null>;
+  findEventById: (id: string) => Promise<EventRow | null>;
+  listEvents: (programId: string) => Promise<EventRow[]>;
+  cancelEvent: (
+    id: string,
+    reason: string,
+    updatedBy: string,
+    updatedAt: string
+  ) => Promise<EventRow | null>;
 
   audit: (input: AuditInput) => Promise<void>;
 }

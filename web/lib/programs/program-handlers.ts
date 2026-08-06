@@ -18,10 +18,21 @@ import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import {
   DepartmentWorkspace,
   DuplicateDepartmentCodeError,
+  DuplicateEventError,
   DuplicateProgramNameError,
   InvalidModuleKeyError,
+  ScheduleRuleNotApplicableError,
 } from "./department-workspace";
-import type { DepartmentUpdate, ProgramUpdate } from "./workspace-store";
+import type {
+  CreateScheduleRuleCommand,
+  UpdateScheduleRuleCommand,
+} from "./department-workspace";
+import { isWallDate, isWallTime } from "./recurrence";
+import type {
+  DepartmentUpdate,
+  ProgramUpdate,
+  ScheduleRuleRow,
+} from "./workspace-store";
 
 export interface ProgramEnv {
   DB: D1Database;
@@ -643,6 +654,534 @@ export async function handleSetModule(
         "Not authorized to configure modules.",
         requestId
       );
+    }
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PRG-02 (#198): schedule rules, exceptions, generation, events.
+// ---------------------------------------------------------------------------
+
+function isRecurrenceKind(v: unknown): v is "WEEKLY" | "MONTHLY" {
+  return v === "WEEKLY" || v === "MONTHLY";
+}
+
+function isScheduleExceptionAction(v: unknown): v is "CANCEL" | "RESCHEDULE" {
+  return v === "CANCEL" || v === "RESCHEDULE";
+}
+
+function isIsoInstant(v: unknown): v is string {
+  if (typeof v !== "string") {
+    return false;
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u.test(v)
+  ) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(v));
+}
+
+function validation(
+  requestId: string,
+  detail: string
+): Response {
+  return problem(422, "VALIDATION", "Validation failed", detail, requestId);
+}
+
+function notFound(requestId: string, detail: string): Response {
+  return problem(404, "NOT_FOUND", "Not found", detail, requestId);
+}
+
+function isDayOfWeekValue(v: unknown): v is number {
+  return (
+    typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= 0 &&
+    v <= 6
+  );
+}
+
+function isMonthDayValue(v: unknown): v is number {
+  return (
+    typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= 1 &&
+    v <= 31
+  );
+}
+
+type RuleBodyResult =
+  | { ok: false; detail: string }
+  | { ok: true; value: CreateScheduleRuleCommand };
+
+function parseRuleBody(body: {
+  recurrence?: unknown;
+  day_of_week?: unknown;
+  month_day?: unknown;
+  start_time?: unknown;
+  end_time?: unknown;
+}): RuleBodyResult {
+  if (!isRecurrenceKind(body.recurrence)) {
+    return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
+  }
+  if (!isWallTime(body.start_time) || !isWallTime(body.end_time)) {
+    return { ok: false, detail: "start_time and end_time must be HH:MM." };
+  }
+  if (body.end_time <= body.start_time) {
+    return { ok: false, detail: "end_time must be after start_time." };
+  }
+  const isDayOfWeek = isDayOfWeekValue(body.day_of_week);
+  const isMonthDay = isMonthDayValue(body.month_day);
+  if (body.recurrence === "WEEKLY" && !isDayOfWeek) {
+    return { ok: false, detail: "day_of_week (0-6) is required for WEEKLY." };
+  }
+  if (body.recurrence === "MONTHLY" && !isMonthDay) {
+    return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
+  }
+  return {
+    ok: true,
+    value: {
+      recurrence: body.recurrence,
+      day_of_week: isDayOfWeekValue(body.day_of_week)
+        ? body.day_of_week
+        : null,
+      month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
+      start_time: body.start_time,
+      end_time: body.end_time,
+    },
+  };
+}
+
+/** GET /api/v1/programs/:programId/schedule-rules */
+export async function handleListScheduleRules(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  const rules = await workspace.listScheduleRules(
+    ctxFrom(auth.account),
+    programId
+  );
+  return jsonResponse(200, { rules }, requestId);
+}
+
+/** POST /api/v1/programs/:programId/schedule-rules */
+export async function handleCreateScheduleRule(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    recurrence?: unknown;
+    day_of_week?: unknown;
+    month_day?: unknown;
+    start_time?: unknown;
+    end_time?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const parsed = parseRuleBody(body);
+  if (!parsed.ok) {
+    return validation(requestId, parsed.detail);
+  }
+  const { value } = parsed;
+
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const row = await workspace.createScheduleRule(
+      ctxFrom(auth.account),
+      programId,
+      value,
+      requestId
+    );
+    return jsonResponse(201, { rule: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof ScheduleRuleNotApplicableError) {
+      return validation(requestId, error.message);
+    }
+    throw error;
+  }
+}
+
+type RulePatchResult =
+  | { ok: false; detail: string }
+  | { ok: true; update: UpdateScheduleRuleCommand };
+
+function parseRulePatch(
+  body: {
+    recurrence?: unknown;
+    day_of_week?: unknown;
+    month_day?: unknown;
+    start_time?: unknown;
+    end_time?: unknown;
+  },
+  existing: ScheduleRuleRow
+): RulePatchResult {
+  const update: UpdateScheduleRuleCommand = {};
+  if (isRecurrenceKind(body.recurrence)) {
+    update.recurrence = body.recurrence;
+  }
+  if (isDayOfWeekValue(body.day_of_week)) {
+    update.day_of_week = body.day_of_week;
+  }
+  if (isMonthDayValue(body.month_day)) {
+    update.month_day = body.month_day;
+  }
+  const startTime = typeof body.start_time === "string" ? body.start_time : null;
+  const endTime = typeof body.end_time === "string" ? body.end_time : null;
+  if (startTime !== null && !isWallTime(startTime)) {
+    return { ok: false, detail: "start_time must be HH:MM." };
+  }
+  if (endTime !== null && !isWallTime(endTime)) {
+    return { ok: false, detail: "end_time must be HH:MM." };
+  }
+  if (startTime !== null) {
+    update.start_time = startTime;
+  }
+  if (endTime !== null) {
+    update.end_time = endTime;
+  }
+  const resolvedStart = update.start_time ?? existing.start_time;
+  const resolvedEnd = update.end_time ?? existing.end_time;
+  if (resolvedEnd <= resolvedStart) {
+    return { ok: false, detail: "end_time must be after start_time." };
+  }
+  return { ok: true, update };
+}
+
+/** PATCH /api/v1/programs/:programId/schedule-rules/:ruleId */
+export async function handleUpdateScheduleRule(
+  request: Request,
+  env: ProgramEnv,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    recurrence?: unknown;
+    day_of_week?: unknown;
+    month_day?: unknown;
+    start_time?: unknown;
+    end_time?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getScheduleRule(
+    ctxFrom(auth.account),
+    ruleId
+  );
+  if (!existing) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  const parsed = parseRulePatch(body, existing);
+  if (!parsed.ok) {
+    return validation(requestId, parsed.detail);
+  }
+  const { update } = parsed;
+
+  try {
+    const row = await workspace.updateScheduleRule(
+      ctxFrom(auth.account),
+      ruleId,
+      update,
+      requestId
+    );
+    return jsonResponse(200, { rule: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
+export async function handleCreateScheduleException(
+  request: Request,
+  env: ProgramEnv,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    override_date?: unknown;
+    action?: unknown;
+    new_start_time?: unknown;
+    new_end_time?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  if (!isWallDate(body.override_date)) {
+    return validation(requestId, "override_date must be YYYY-MM-DD.");
+  }
+  if (!isScheduleExceptionAction(body.action)) {
+    return validation(requestId, "action must be CANCEL or RESCHEDULE.");
+  }
+  const newStart =
+    typeof body.new_start_time === "string" ? body.new_start_time : null;
+  const newEnd =
+    typeof body.new_end_time === "string" ? body.new_end_time : null;
+  if (newStart !== null && !isWallTime(newStart)) {
+    return validation(requestId, "new_start_time must be HH:MM.");
+  }
+  if (newEnd !== null && !isWallTime(newEnd)) {
+    return validation(requestId, "new_end_time must be HH:MM.");
+  }
+  if (body.action === "RESCHEDULE" && (newStart === null || newEnd === null)) {
+    return validation(
+      requestId,
+      "RESCHEDULE requires new_start_time and new_end_time."
+    );
+  }
+  if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
+    return validation(
+      requestId,
+      "CANCEL must not include new times."
+    );
+  }
+
+  const { workspace } = await getModule(env);
+  const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
+  if (!rule) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  try {
+    const row = await workspace.createScheduleException(
+      ctxFrom(auth.account),
+      ruleId,
+      {
+        override_date: body.override_date,
+        action: body.action,
+        new_start_time: newStart,
+        new_end_time: newEnd,
+      },
+      requestId
+    );
+    return jsonResponse(201, { exception: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** DELETE /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions/:exceptionId */
+export async function handleDeleteScheduleException(
+  request: Request,
+  env: ProgramEnv,
+  exceptionId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const exists = await workspace.getScheduleException(
+    ctxFrom(auth.account),
+    exceptionId
+  );
+  if (!exists) {
+    return notFound(requestId, "Unknown schedule exception.");
+  }
+  try {
+    await workspace.deleteScheduleException(
+      ctxFrom(auth.account),
+      exceptionId,
+      requestId
+    );
+    return jsonResponse(200, { deleted: true }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/events/generate */
+export async function handleGenerateEvents(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ horizon_days?: unknown }>(request);
+  let horizonDays = 90;
+  if (body !== null) {
+    const raw = body.horizon_days;
+    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 1 && raw <= 365) {
+      horizonDays = raw;
+    } else if (raw !== undefined) {
+      return validation(requestId, "horizon_days must be an integer 1-365.");
+    }
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const result = await workspace.generateEvents(
+      ctxFrom(auth.account),
+      programId,
+      horizonDays,
+      requestId
+    );
+    return jsonResponse(200, { generated: result }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof ScheduleRuleNotApplicableError) {
+      return validation(requestId, error.message);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/events */
+export async function handleCreateEvent(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    starts_at?: unknown;
+    ends_at?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  if (!isIsoInstant(body.starts_at) || !isIsoInstant(body.ends_at)) {
+    return validation(requestId, "starts_at and ends_at must be ISO-8601 UTC.");
+  }
+  if (body.ends_at <= body.starts_at) {
+    return validation(requestId, "ends_at must be after starts_at.");
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const row = await workspace.createEvent(
+      ctxFrom(auth.account),
+      programId,
+      { starts_at: body.starts_at, ends_at: body.ends_at },
+      requestId
+    );
+    return jsonResponse(201, { event: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof DuplicateEventError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/events */
+export async function handleListEvents(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rows = await workspace.listEvents(ctxFrom(auth.account), programId);
+  if (rows === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { events: rows }, requestId);
+}
+
+/** PATCH /api/v1/programs/:programId/events/:eventId */
+export async function handleCancelEvent(
+  request: Request,
+  env: ProgramEnv,
+  eventId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ reason?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!reason) {
+    return validation(requestId, "reason is required.");
+  }
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getEvent(ctxFrom(auth.account), eventId);
+  if (!existing) {
+    return notFound(requestId, "Unknown event.");
+  }
+  try {
+    const row = await workspace.cancelEvent(
+      ctxFrom(auth.account),
+      eventId,
+      { reason },
+      requestId
+    );
+    return jsonResponse(200, { event: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     throw error;
   }

@@ -10,9 +10,16 @@ import type {
   DepartmentModuleRow,
   DepartmentRow,
   DepartmentUpdate,
+  EventInput,
+  EventRow,
   ProgramInput,
   ProgramRow,
   ProgramUpdate,
+  ScheduleExceptionInput,
+  ScheduleExceptionRow,
+  ScheduleRuleInput,
+  ScheduleRuleRow,
+  ScheduleRuleUpdate,
   WorkspaceStore,
 } from "./workspace-store";
 
@@ -316,6 +323,266 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(departmentId)
       .all<DepartmentModuleRow>();
     return result.results ?? [];
+  }
+
+  async createScheduleRule(
+    input: ScheduleRuleInput
+  ): Promise<ScheduleRuleRow> {
+    const ruleId = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
+           day_of_week, month_day, start_time, end_time, created_by, created_at,
+           updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        ruleId,
+        input.program_id,
+        input.recurrence,
+        input.day_of_week,
+        input.month_day,
+        input.start_time,
+        input.end_time,
+        input.created_by,
+        input.created_at,
+        input.updated_by,
+        input.updated_at
+      )
+      .run();
+    const row = await this.findScheduleRule(ruleId);
+    if (!row) {
+      throw new WorkspaceNotFoundError("schedule_rule", ruleId);
+    }
+    return row;
+  }
+
+  async updateScheduleRule(
+    ruleId: string,
+    update: ScheduleRuleUpdate
+  ): Promise<ScheduleRuleRow> {
+    await this.db
+      .prepare(
+        `UPDATE program_schedule_rules SET
+           recurrence = COALESCE(?, recurrence),
+           day_of_week = COALESCE(?, day_of_week),
+           month_day = COALESCE(?, month_day),
+           start_time = COALESCE(?, start_time),
+           end_time = COALESCE(?, end_time),
+           updated_by = ?,
+           updated_at = ?
+         WHERE rule_id = ?`
+      )
+      .bind(
+        update.recurrence ?? null,
+        update.day_of_week ?? null,
+        update.month_day ?? null,
+        update.start_time ?? null,
+        update.end_time ?? null,
+        update.updated_by,
+        update.updated_at,
+        ruleId
+      )
+      .run();
+    const row = await this.findScheduleRule(ruleId);
+    if (!row) {
+      throw new WorkspaceNotFoundError("schedule_rule", ruleId);
+    }
+    return row;
+  }
+
+  async listScheduleRules(programId: string): Promise<ScheduleRuleRow[]> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM program_schedule_rules WHERE program_id = ? ORDER BY created_at ASC"
+      )
+      .bind(programId)
+      .all<ScheduleRuleRow>();
+    return result.results ?? [];
+  }
+
+  async findScheduleRule(ruleId: string): Promise<ScheduleRuleRow | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM program_schedule_rules WHERE rule_id = ?")
+      .bind(ruleId)
+      .first<ScheduleRuleRow>();
+    return row ?? null;
+  }
+
+  async createScheduleException(
+    input: ScheduleExceptionInput
+  ): Promise<ScheduleExceptionRow> {
+    const exceptionId = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO program_schedule_exceptions (exception_id, rule_id,
+           override_date, action, new_start_time, new_end_time, created_by,
+           created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        exceptionId,
+        input.rule_id,
+        input.override_date,
+        input.action,
+        input.new_start_time,
+        input.new_end_time,
+        input.created_by,
+        input.created_at
+      )
+      .run();
+    const row = await this.db
+      .prepare(
+        "SELECT * FROM program_schedule_exceptions WHERE exception_id = ?"
+      )
+      .bind(exceptionId)
+      .first<ScheduleExceptionRow>();
+    if (!row) {
+      throw new WorkspaceNotFoundError("schedule_exception", exceptionId);
+    }
+    return row;
+  }
+
+  async deleteScheduleException(exceptionId: string): Promise<boolean> {
+    const result = await this.db
+      .prepare("DELETE FROM program_schedule_exceptions WHERE exception_id = ?")
+      .bind(exceptionId)
+      .run();
+    return (result.meta?.changes ?? 0) > 0;
+  }
+
+  async listScheduleExceptions(
+    ruleIds: string[]
+  ): Promise<ScheduleExceptionRow[]> {
+    if (ruleIds.length === 0) {
+      return [];
+    }
+    const placeholders = ruleIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM program_schedule_exceptions
+         WHERE rule_id IN (${placeholders}) ORDER BY override_date ASC`
+      )
+      .bind(...ruleIds)
+      .all<ScheduleExceptionRow>();
+    return result.results ?? [];
+  }
+
+  async findScheduleException(
+    exceptionId: string
+  ): Promise<ScheduleExceptionRow | null> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM program_schedule_exceptions WHERE exception_id = ?"
+      )
+      .bind(exceptionId)
+      .first<ScheduleExceptionRow>();
+    return result ?? null;
+  }
+
+  async createEvent(input: EventInput): Promise<EventRow> {
+    const eventId = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
+           source, cancel_reason, created_by, created_at, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        input.program_id,
+        input.starts_at,
+        input.ends_at,
+        input.status,
+        input.source,
+        input.cancel_reason,
+        input.created_by,
+        input.created_at,
+        input.updated_by,
+        input.updated_at
+      )
+      .run();
+    const row = await this.findEventById(eventId);
+    if (!row) {
+      throw new WorkspaceNotFoundError("event", eventId);
+    }
+    return row;
+  }
+
+  async insertGeneratedEvent(input: EventInput): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
+           status, source, cancel_reason, created_by, created_at, updated_by,
+           updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        crypto.randomUUID(),
+        input.program_id,
+        input.starts_at,
+        input.ends_at,
+        input.status,
+        input.source,
+        input.cancel_reason,
+        input.created_by,
+        input.created_at,
+        input.updated_by,
+        input.updated_at
+      )
+      .run();
+    return (result.meta?.changes ?? 0) > 0;
+  }
+
+  async findEventByStart(
+    programId: string,
+    startsAt: string
+  ): Promise<EventRow | null> {
+    const row = await this.db
+      .prepare(
+        "SELECT * FROM events WHERE program_id = ? AND starts_at = ?"
+      )
+      .bind(programId, startsAt)
+      .first<EventRow>();
+    return row ?? null;
+  }
+
+  async findEventById(id: string): Promise<EventRow | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM events WHERE event_id = ?")
+      .bind(id)
+      .first<EventRow>();
+    return row ?? null;
+  }
+
+  async listEvents(programId: string): Promise<EventRow[]> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM events WHERE program_id = ? ORDER BY starts_at ASC"
+      )
+      .bind(programId)
+      .all<EventRow>();
+    return result.results ?? [];
+  }
+
+  async cancelEvent(
+    id: string,
+    reason: string,
+    updatedBy: string,
+    updatedAt: string
+  ): Promise<EventRow | null> {
+    const result = await this.db
+      .prepare(
+        `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
+           updated_by = ?, updated_at = ?
+         WHERE event_id = ?`
+      )
+      .bind(reason, updatedBy, updatedAt, id)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    return this.findEventById(id);
   }
 
   async audit(input: AuditInput): Promise<void> {

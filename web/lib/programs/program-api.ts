@@ -59,6 +59,54 @@ export interface DepartmentInput {
   lifecycle?: Department["lifecycle"];
 }
 
+export interface ScheduleRule {
+  rule_id: string;
+  program_id: string;
+  recurrence: "WEEKLY" | "MONTHLY";
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleException {
+  exception_id: string;
+  rule_id: string;
+  override_date: string;
+  action: "CANCEL" | "RESCHEDULE";
+  new_start_time: string | null;
+  new_end_time: string | null;
+  created_at: string;
+}
+
+export interface ProgramEvent {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: "Active" | "Cancelled";
+  source: "SCHEDULE" | "MANUAL";
+  cancel_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GenerateResult {
+  created: number;
+  skipped: number;
+  rule_count: number;
+}
+
+export interface ScheduleRuleInput {
+  recurrence: ScheduleRule["recurrence"];
+  day_of_week?: number;
+  month_day?: number;
+  start_time: string;
+  end_time: string;
+}
+
 export interface ProgramInput {
   name: string;
   description?: string;
@@ -74,7 +122,7 @@ interface ProgramsSuccess<T> {
 /** One fetch to the cookie-only programs surface. Never builds auth headers. */
 async function programsFetch<T>(
   path: string,
-  method: "POST" | "GET" | "PATCH",
+  method: "POST" | "GET" | "PATCH" | "DELETE",
   body?: unknown
 ): Promise<T> {
   let res: Response;
@@ -205,5 +253,115 @@ export function setDepartmentModule(
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
     "POST"
+  );
+}
+
+/** GET /api/v1/programs/:id/schedule-rules */
+export function listScheduleRules(
+  programId: string
+): Promise<{ rules: ScheduleRule[] }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/programs/:id/schedule-rules */
+export function createScheduleRule(
+  programId: string,
+  input: ScheduleRuleInput
+): Promise<{ rule: ScheduleRule }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
+    "POST",
+    input
+  );
+}
+
+/** PATCH /api/v1/programs/:id/schedule-rules/:ruleId */
+export function updateScheduleRule(
+  programId: string,
+  ruleId: string,
+  patch: Partial<ScheduleRuleInput>
+): Promise<{ rule: ScheduleRule }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
+    "PATCH",
+    patch
+  );
+}
+
+/** POST /api/v1/programs/:id/schedule-rules/:ruleId/exceptions */
+export function createScheduleException(
+  programId: string,
+  ruleId: string,
+  input: {
+    override_date: string;
+    action: "CANCEL" | "RESCHEDULE";
+    new_start_time?: string;
+    new_end_time?: string;
+  }
+): Promise<{ exception: ScheduleException }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
+    "POST",
+    input
+  );
+}
+
+/** DELETE /api/v1/programs/:id/schedule-rules/:ruleId/exceptions/:exceptionId */
+export function deleteScheduleException(
+  programId: string,
+  ruleId: string,
+  exceptionId: string
+): Promise<{ deleted: boolean }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
+    "DELETE"
+  );
+}
+
+/** POST /api/v1/programs/:id/events/generate */
+export function generateEvents(
+  programId: string,
+  horizonDays?: number
+): Promise<{ generated: GenerateResult }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/generate`,
+    "POST",
+    horizonDays === undefined ? {} : { horizon_days: horizonDays }
+  );
+}
+
+/** POST /api/v1/programs/:id/events */
+export function createEvent(
+  programId: string,
+  input: { starts_at: string; ends_at: string }
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events`,
+    "POST",
+    input
+  );
+}
+
+/** GET /api/v1/programs/:id/events */
+export function listEvents(programId: string): Promise<{ events: ProgramEvent[] }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events`,
+    "GET"
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — soft cancel */
+export function cancelEvent(
+  programId: string,
+  eventId: string,
+  reason: string
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "PATCH",
+    { reason }
   );
 }
