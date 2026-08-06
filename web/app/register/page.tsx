@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { LANDING } from "@/lib/copy";
 import { RegistrationForm } from "@/lib/registration-form";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 
@@ -15,18 +16,23 @@ export default function RegisterPage() {
   return (
     <main className={styles.page}>
       <a className={styles.skipLink} href="#register">
-        跳到註冊表單
+        {LANDING.skipToRegister}
       </a>
       <header className={styles.header}>
-        <Link className={styles.brand} href="/" aria-label="顯恩堂系統首頁">
+        <Link className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
           <span className={styles.seal} aria-hidden="true">
             恩
           </span>
-          <span>中國基督教播道會顯恩堂</span>
+          <span>{LANDING.brandFull}</span>
         </Link>
       </header>
       <div className={styles.body}>
-        <section className={styles.card} id="register" aria-labelledby="register-title">
+        <section
+          className={styles.card}
+          id="register"
+          tabIndex={-1}
+          aria-labelledby="register-title"
+        >
           <h1 id="register-title" className={styles.cardTitle}>
             {REGISTRATION_COPY.pageTitle}
           </h1>

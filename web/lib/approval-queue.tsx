@@ -21,13 +21,13 @@ type QueueState =
 const thStyle: React.CSSProperties = {
   textAlign: "left",
   padding: "0.75rem 0.875rem",
-  borderBottom: "1px solid var(--surface-ink-line, #d6dcde)",
+  borderBottom: "1px solid var(--line, #d6dcde)",
   fontSize: "0.875rem",
   color: "var(--ink-muted)",
 };
 const tdStyle: React.CSSProperties = {
   padding: "0.875rem",
-  borderBottom: "1px solid var(--surface-ink-line, #d6dcde)",
+  borderBottom: "1px solid var(--line, #d6dcde)",
   fontSize: "0.9375rem",
   verticalAlign: "top",
 };
@@ -116,7 +116,7 @@ export function ApprovalQueue() {
           >
             {QUEUE_COPY.pageTitle}
           </h1>
-          {state.kind === "ready" && state.registrations.length > 0 ? (
+          {state.kind === "ready" ? (
             <span
               role="status"
             style={{
@@ -241,6 +241,7 @@ export function ApprovalQueue() {
                       <td style={tdStyle}>{formatSubmittedAt(item.submittedAt)}</td>
                       <td style={tdStyle}>{item.role}</td>
                       <td style={tdStyle}>
+                        <div className="stack-phone">
                         <button
                           type="button"
                           disabled={busy || busyId !== null}
@@ -248,7 +249,6 @@ export function ApprovalQueue() {
                           style={{
                             minHeight: 44,
                             padding: "0 1rem",
-                            marginRight: "0.5rem",
                             border: "none",
                             borderRadius: 8,
                             background: "#15803d",
@@ -282,6 +282,7 @@ export function ApprovalQueue() {
                         >
                           {busy ? QUEUE_COPY.rejecting : QUEUE_COPY.reject}
                         </button>
+                        </div>
                       </td>
                     </tr>
                   );

@@ -111,6 +111,7 @@ export function errorCopyFor(
 // testimonials, metrics, or security claims are invented on this surface.
 export const LANDING = {
   skipToLogin: "跳到登入",
+  skipToRegister: "跳到註冊表單",
   brandFull: "中國基督教播道會顯恩堂",
   brand: "顯恩堂",
   brandSystem: "系統",

@@ -157,6 +157,20 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+/* Approval-queue action cluster (S4): row on desktop, stacked on phone. */
+.stack-phone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 799.98px) {
+  .stack-phone {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .shell {
   height: 100dvh;
   display: flex;
