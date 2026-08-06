@@ -159,6 +159,8 @@ export async function changeUsername(
           `UPDATE accounts
               SET username = ?, username_normalized = ?, updated_at = ?
             WHERE user_id = ?
+              AND account_status = 'Active'
+              AND username_normalized = ?
               AND NOT EXISTS (
                 SELECT 1 FROM accounts
                  WHERE username_normalized = ? AND user_id <> ?)
@@ -171,6 +173,7 @@ export async function changeUsername(
           normalized,
           now,
           account.user_id,
+          account.username_normalized,
           normalized,
           account.user_id,
           normalized
@@ -187,8 +190,11 @@ export async function changeUsername(
               SELECT 1 FROM accounts
                WHERE username_normalized = ? AND user_id <> ?)
               AND NOT EXISTS (
-                SELECT 1 FROM registration_requests
-                 WHERE username_normalized = ?)`
+               SELECT 1 FROM registration_requests
+               WHERE username_normalized = ?)
+             AND EXISTS (
+                SELECT 1 FROM accounts
+                 WHERE user_id = ? AND username_normalized = ?)`
         )
         .bind(
           eventId,
@@ -197,6 +203,8 @@ export async function changeUsername(
           normalized,
           options.requestId,
           now,
+          normalized,
+          account.user_id,
           normalized,
           account.user_id,
           normalized
@@ -266,13 +274,14 @@ export async function changePassword(
   // One atomic transaction: the credential UPDATE plus its audit row plus the
   // revocation. The audit row stores no credential material.
   const eventId = crypto.randomUUID();
-  await db.batch([
+  const results = await db.batch([
     db
       .prepare(
         `UPDATE accounts
             SET credential_hash = ?, credential_kind = 'password',
                 credential_version = 2, updated_at = ?
-          WHERE user_id = ?`
+          WHERE user_id = ?
+            AND account_status = 'Active'`
       )
       .bind(newCredentialHash, now, account.user_id),
     db
@@ -281,16 +290,37 @@ export async function changePassword(
            event_id, actor_user_id, action,
            old_username_normalized, new_username_normalized,
            correlation_id, created_at
-         ) VALUES (?, ?, 'password_changed', NULL, NULL, ?, ?)`
       )
-      .bind(eventId, account.user_id, options.requestId, now),
+          SELECT ?, ?, 'password_changed', NULL, NULL, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM accounts
+              WHERE user_id = ? AND credential_hash = ?)`
+      )
+      .bind(
+        eventId,
+        account.user_id,
+        options.requestId,
+        now,
+        account.user_id,
+        newCredentialHash
+      ),
     db
       .prepare(
         `UPDATE sessions SET revoked_at = ?
-          WHERE user_id = ? AND revoked_at IS NULL`
+          WHERE user_id = ? AND revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1 FROM accounts
+               WHERE user_id = ? AND credential_hash = ?)`
       )
-      .bind(now, account.user_id),
+      .bind(now, account.user_id, account.user_id, newCredentialHash),
   ]);
+
+  // 0 rows changed means the account is no longer Active (suspended between
+  // the current-password check and this batch) — fail closed with a 403, and
+  // nothing lands: the guarded audit + revocation no-op together.
+  if ((results[0]?.meta.changes ?? 0) === 0) {
+    throw new AccountStatusError("Account is not active.");
+}
 
   return { ok: true };
 }
