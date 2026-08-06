@@ -1,0 +1,10 @@
+# Copy this file to web/.dev.vars for local Worker proxy development.
+# It is a reference/placeholder file only and must never contain production
+# credentials. web/.dev.vars is gitignored; keep real values out of Git.
+#
+# The transitional Worker `/api/v1/rpc` proxy forwards domain RPCs to an Apps
+# Script deployment's /exec URL. Replace the placeholder with the isolated
+# Apps Script versioned deployment's /exec URL (never the production
+# deployment). Prefer `wrangler secret put APPS_SCRIPT_EXEC_URL` for anything
+# beyond a throwaway prototype.
+APPS_SCRIPT_EXEC_URL="https://script.google.com/macros/s/REPLACE_WITH_ISOLATED_APPS_SCRIPT_EXEC_URL/exec"

@@ -87,27 +87,40 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary and [`docs/adr/0022-sta
 
 ## Quick start
 
-### Install
+New developers should follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full contributor workflow — clone, branching, worktrees, pre-commit, environment, and deployment boundaries. The canonical fresh-clone flow is below.
+
+### Clone and install
 
 ```sh
-pnpm install
+git clone <repo-url> efcc
+cd efcc
+corepack enable
+fnm use   # or: mise install / asdf install — selects Node 22 from .node-version
+pnpm run bootstrap
 ```
 
-Requirements: Git, Node.js 20+, pnpm 11+, and Chromium for Playwright. Apps Script deployment additionally requires an authenticated `clasp` client.
+Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chromium for Playwright. Apps Script deployment additionally requires an authenticated `clasp` client.
+
+`pnpm run bootstrap` is the single fresh-clone dependency command. It installs the root dependencies (GAS/prototype tooling, TypeScript, Playwright) and then the `web/` dependencies (Next.js, Cloudflare Wrangler/D1, Vitest) using the frozen root and `web/` lockfiles, and installs the Playwright Chromium browser through the root install lifecycle.
 
 ### Verify the repository
 
 ```sh
-pnpm typecheck
-pnpm test:gas
-pnpm test:prototype
-pnpm --dir web typecheck
-pnpm --dir web test
-pnpm --dir web test:components
-pnpm check
+pnpm run verify
 ```
 
-The root `pnpm test` command covers the tracked GAS and prototype suites. The web suites run separately because they use the Cloudflare workerd and jsdom environments.
+`pnpm run verify` runs the deterministic CI gate locally in the same order as the Precheck workflow: root typecheck, root GAS/prototype tests, `web/` typecheck, `web/` workerd tests, `web/` component tests, then the responsive-shell Playwright suite. It requires no deployment credentials.
+
+### Lockfiles and the two install boundaries
+
+The repository has two independent pnpm install boundaries, each with its own lockfile:
+
+| Workspace | Lockfile | Contents |
+| --- | --- | --- |
+| Root | `pnpm-lock.yaml` | GAS/prototype tooling, TypeScript, Playwright, husky |
+| `web/` | `web/pnpm-lock.yaml` | Next.js, Cloudflare Wrangler/D1, Vitest, jsdom |
+
+`pnpm run bootstrap` installs both. Work inside `web/` with `pnpm --dir web <script>`; the root and `web/` trees have separate dependency installations and do not share a `node_modules`.
 
 ### Build and run the web Worker locally
 
