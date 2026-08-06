@@ -136,3 +136,93 @@ jobs:
           path: tests/e2e/test-results/auth-d1-results.json
           if-no-files-found: ignore
           retention-days: 14
+
+  deployed-programs:
+    name: Deployed programs smoke (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate deployed programs prerequisites (fail-closed)
+        env:
+          PROGRAMS_TARGET_URL: ${{ vars.PROGRAMS_TARGET_URL }}
+          PROGRAMS_ADMIN_USERNAME: ${{ secrets.PROGRAMS_ADMIN_USERNAME }}
+          PROGRAMS_ADMIN_CREDENTIAL: ${{ secrets.PROGRAMS_ADMIN_CREDENTIAL }}
+          PROGRAMS_STAFF_USERNAME: ${{ secrets.PROGRAMS_STAFF_USERNAME }}
+          PROGRAMS_STAFF_CREDENTIAL: ${{ secrets.PROGRAMS_STAFF_CREDENTIAL }}
+          PROGRAMS_MEMBER_USERNAME: ${{ secrets.PROGRAMS_MEMBER_USERNAME }}
+          PROGRAMS_MEMBER_CREDENTIAL: ${{ secrets.PROGRAMS_MEMBER_CREDENTIAL }}
+        run: |
+          set -u
+          missing=""
+          [ -n "$PROGRAMS_TARGET_URL" ] || missing="$missing PROGRAMS_TARGET_URL"
+          [ -n "$PROGRAMS_ADMIN_USERNAME" ] || missing="$missing PROGRAMS_ADMIN_USERNAME"
+          [ -n "$PROGRAMS_ADMIN_CREDENTIAL" ] || missing="$missing PROGRAMS_ADMIN_CREDENTIAL"
+          [ -n "$PROGRAMS_STAFF_USERNAME" ] || missing="$missing PROGRAMS_STAFF_USERNAME"
+          [ -n "$PROGRAMS_STAFF_CREDENTIAL" ] || missing="$missing PROGRAMS_STAFF_CREDENTIAL"
+          [ -n "$PROGRAMS_MEMBER_USERNAME" ] || missing="$missing PROGRAMS_MEMBER_USERNAME"
+          [ -n "$PROGRAMS_MEMBER_CREDENTIAL" ] || missing="$missing PROGRAMS_MEMBER_CREDENTIAL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing deployed programs prerequisites:$missing"
+            echo "Provision an isolated Worker/D1 target and acceptance accounts (see .github/CI-SECRETS.md)."
+            exit 1
+          fi
+          PROGRAMS_TARGET_URL="$PROGRAMS_TARGET_URL" node --input-type=module <<'NODE'
+          const target = new URL(process.env.PROGRAMS_TARGET_URL);
+          if (target.protocol !== "https:" || target.username || target.password) {
+            console.error("::error::PROGRAMS_TARGET_URL must be an absolute HTTPS URL without credentials.");
+            process.exit(1);
+          }
+          if (
+            !/^efcc-auth-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
+              target.hostname
+            )
+          ) {
+            console.error(
+              "::error::PROGRAMS_TARGET_URL must use the isolated efcc-auth-*.efcc-ggc.workers.dev acceptance host."
+            );
+            process.exit(1);
+          }
+          NODE
+          echo "Deployed programs prerequisites present."
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run deployed programs smoke
+        env:
+          PROGRAMS_TARGET_URL: ${{ vars.PROGRAMS_TARGET_URL }}
+          PROGRAMS_ADMIN_USERNAME: ${{ secrets.PROGRAMS_ADMIN_USERNAME }}
+          PROGRAMS_ADMIN_CREDENTIAL: ${{ secrets.PROGRAMS_ADMIN_CREDENTIAL }}
+          PROGRAMS_STAFF_USERNAME: ${{ secrets.PROGRAMS_STAFF_USERNAME }}
+          PROGRAMS_STAFF_CREDENTIAL: ${{ secrets.PROGRAMS_STAFF_CREDENTIAL }}
+          PROGRAMS_MEMBER_USERNAME: ${{ secrets.PROGRAMS_MEMBER_USERNAME }}
+          PROGRAMS_MEMBER_CREDENTIAL: ${{ secrets.PROGRAMS_MEMBER_CREDENTIAL }}
+        run: pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts
+
+      - name: Upload deployed programs evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: programs-d1-playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

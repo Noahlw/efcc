@@ -46,6 +46,16 @@ The deployed Next UI gate (`tests/e2e/live-ui.config.ts`) also requires six out-
 
 Each username must be distinct and start with `E2E_`; each credential must contain at least eight non-whitespace characters. Seed the three accounts in the isolated acceptance D1/database before running `pnpm exec playwright test -c tests/e2e/live-ui.config.ts`. These values are never printed or committed and must not be reused for production or the D1 auth smoke fixtures above.
 
+## Deployed programs smoke (PRG-05 #201)
+
+Same rotation as the auth gate, same isolated acceptance target (the Worker serves the Next.js static export and the `/api/v1/programs/*` surface from one origin). Configure `PROGRAMS_TARGET_URL` under Actions variables, and these secrets under Actions secrets:
+
+- `PROGRAMS_ADMIN_USERNAME` / `PROGRAMS_ADMIN_CREDENTIAL` — Admin role acceptance account.
+- `PROGRAMS_STAFF_USERNAME` / `PROGRAMS_STAFF_CREDENTIAL` — Staff role acceptance account.
+- `PROGRAMS_MEMBER_USERNAME` / `PROGRAMS_MEMBER_CREDENTIAL` — Member role acceptance account.
+
+All three usernames must start with `E2E_` (disposable convention; the suite fails closed otherwise). The suite creates its own `E2E_*` department/program/leader rows per run, so repeated dispatches against a reused target are idempotent. Rotate all accounts whenever the auth contract or D1 migrations change, together with the auth gate accounts. The deployed programs smoke (`e2e.yml` `deployed-programs` job) runs only from `workflow_dispatch`, is fail-closed on missing vars/secrets, and rejects hosts outside the reserved `efcc-auth-*.efcc-ggc.workers.dev` acceptance namespace. It never writes to a production database or Google Sheet.
+
 ## Legacy Apps Script gate
 
 The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.
