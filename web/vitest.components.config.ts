@@ -20,6 +20,7 @@ export default defineProject({
       "lib/qr-code.test.tsx",
       "lib/programs/programs-events-panel.test.tsx",
       "lib/programs/programs-enrollment-panel.test.tsx",
+      "lib/programs/programs-leaders-panel.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

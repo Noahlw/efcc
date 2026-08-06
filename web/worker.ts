@@ -399,31 +399,56 @@ export default {
         handleAssistedEnroll,
         handleListEnrollments,
         handleCancelEnrollment,
+        handleAssignProgramLeader,
+        handleRevokeProgramLeader,
+        handleListProgramLeaders,
       } = await import("./lib/programs/program-handlers");
 
-      if (url.pathname === "/api/v1/programs/departments" && request.method === "POST") {
+      if (
+        url.pathname === "/api/v1/programs/departments" &&
+        request.method === "POST"
+      ) {
         return handleCreateDepartment(request, programEnv);
       }
-      if (url.pathname === "/api/v1/programs/departments" && request.method === "GET") {
+      if (
+        url.pathname === "/api/v1/programs/departments" &&
+        request.method === "GET"
+      ) {
         return handleListDepartments(request, programEnv);
       }
       const department = url.pathname.match(
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)$/u
       );
       if (department && request.method === "GET") {
-        return handleGetDepartment(request, programEnv, department.groups?.id ?? "");
+        return handleGetDepartment(
+          request,
+          programEnv,
+          department.groups?.id ?? ""
+        );
       }
       if (department && request.method === "PATCH") {
-        return handleUpdateDepartment(request, programEnv, department.groups?.id ?? "");
+        return handleUpdateDepartment(
+          request,
+          programEnv,
+          department.groups?.id ?? ""
+        );
       }
       const departmentPrograms = url.pathname.match(
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/programs$/u
       );
       if (departmentPrograms && request.method === "POST") {
-        return handleCreateProgram(request, programEnv, departmentPrograms.groups?.id ?? "");
+        return handleCreateProgram(
+          request,
+          programEnv,
+          departmentPrograms.groups?.id ?? ""
+        );
       }
       if (departmentPrograms && request.method === "GET") {
-        return handleListPrograms(request, programEnv, departmentPrograms.groups?.id ?? "");
+        return handleListPrograms(
+          request,
+          programEnv,
+          departmentPrograms.groups?.id ?? ""
+        );
       }
       const moduleMatch = url.pathname.match(
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/modules\/(?<key>[^/]+)\/(?<action>enable|disable)$/u
@@ -444,7 +469,11 @@ export default {
         return handleGetProgram(request, programEnv, program.groups?.id ?? "");
       }
       if (program && request.method === "PATCH") {
-        return handleUpdateProgram(request, programEnv, program.groups?.id ?? "");
+        return handleUpdateProgram(
+          request,
+          programEnv,
+          program.groups?.id ?? ""
+        );
       }
       const scheduleRules = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
@@ -524,7 +553,11 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
       );
       if (event && request.method === "PATCH") {
-        return handleCancelEvent(request, programEnv, event.groups?.eventId ?? "");
+        return handleCancelEvent(
+          request,
+          programEnv,
+          event.groups?.eventId ?? ""
+        );
       }
       const enrollmentRequests = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests$/u
@@ -585,6 +618,34 @@ export default {
           request,
           programEnv,
           enrollment.groups?.enrollmentId ?? ""
+        );
+      }
+      const leaders = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/leaders$/u
+      );
+      if (leaders && request.method === "POST") {
+        return handleAssignProgramLeader(
+          request,
+          programEnv,
+          leaders.groups?.id ?? ""
+        );
+      }
+      if (leaders && request.method === "GET") {
+        return handleListProgramLeaders(
+          request,
+          programEnv,
+          leaders.groups?.id ?? ""
+        );
+      }
+      const leaderRevoke = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/leaders\/(?<userId>[^/]+)\/revoke$/u
+      );
+      if (leaderRevoke && request.method === "POST") {
+        return handleRevokeProgramLeader(
+          request,
+          programEnv,
+          leaderRevoke.groups?.id ?? "",
+          leaderRevoke.groups?.userId ?? ""
         );
       }
       return authProblemResponse(

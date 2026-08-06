@@ -1,0 +1,168 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { RpcError } from "@/lib/api";
+import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
+import {
+  assignProgramLeader,
+  listProgramLeaders,
+  revokeProgramLeader,
+} from "@/lib/programs/program-api";
+import type { Program, ProgramLeader } from "@/lib/programs/program-api";
+
+import styles from "@/app/programs/programs.module.css";
+
+function errorMessage(err: unknown): string {
+  return err instanceof RpcError
+    ? errorCopyFor(err.problem.code)
+    : COPY.error.networkError;
+}
+
+export const LeadersPanel = ({
+  program,
+  canManage,
+}: {
+  program: Program;
+  canManage: boolean;
+}) => {
+  const [leaders, setLeaders] = useState<ProgramLeader[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    []
+  );
+
+  const load = useCallback(async () => {
+    setLeaders(null);
+    setActionError(null);
+    try {
+      const { leaders: rows } = await listProgramLeaders(program.program_id);
+      if (!mounted.current) {
+        return;
+      }
+      setLeaders(rows);
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      setActionError(errorMessage(error));
+      setLeaders([]);
+    }
+  }, [program.program_id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const runAction = useCallback(
+    async (fn: () => Promise<unknown>, successCopy: string) => {
+      setBusy(true);
+      setActionError(null);
+      try {
+        await fn();
+        if (!mounted.current) {
+          return;
+        }
+        await load();
+        if (!mounted.current) {
+          return;
+        }
+        setNotice(successCopy);
+        announce(successCopy);
+      } catch (error) {
+        if (!mounted.current) {
+          return;
+        }
+        setActionError(errorMessage(error));
+        announce(errorMessage(error));
+      } finally {
+        if (mounted.current) {
+          setBusy(false);
+        }
+      }
+    },
+    [load]
+  );
+
+  const handleAssign = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const userId = String(form.get("user_id") ?? "").trim();
+    if (!userId) {
+      return;
+    }
+    event.currentTarget.reset();
+    void runAction(
+      () => assignProgramLeader(program.program_id, userId),
+      COPY.programs.leaderAssignedNotice
+    );
+  };
+
+  const handleRevoke = (userId: string) => {
+    void runAction(
+      () => revokeProgramLeader(program.program_id, userId),
+      COPY.programs.leaderRevokedNotice
+    );
+  };
+
+  return (
+    <section className={styles.eventsPanel} aria-label={COPY.programs.leaders}>
+      {notice !== null && (
+        <output className={styles.panelNotice}>{notice}</output>
+      )}
+      {actionError !== null && (
+        <output className={styles.panelError} role="alert">
+          {actionError}
+        </output>
+      )}
+
+      <h3 className={styles.panelHeading}>{COPY.programs.leaders}</h3>
+
+      {canManage && (
+        <form className={styles.ruleForm} onSubmit={handleAssign}>
+          <input
+            type="text"
+            name="user_id"
+            required
+            aria-label={COPY.programs.leaderUserId}
+            placeholder={COPY.programs.leaderUserIdPlaceholder}
+          />
+          <button type="submit" disabled={busy} className={styles.actionButton}>
+            {busy ? COPY.programs.submitting : COPY.programs.assignLeader}
+          </button>
+        </form>
+      )}
+
+      <ul className={styles.eventList} aria-label={COPY.programs.leaders}>
+        {leaders === null ? null : leaders.length === 0 ? (
+          <li className={styles.emptyLine}>{COPY.programs.noLeaders}</li>
+        ) : (
+          leaders.map((leader) => (
+            <li key={leader.user_id} className={styles.eventRow}>
+              <span className={styles.eventDate}>{leader.user_id}</span>
+              <span className={styles.eventSource}>{leader.granted_at}</span>
+              {canManage && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={styles.actionButton}
+                  onClick={() => handleRevoke(leader.user_id)}
+                >
+                  {COPY.programs.revokeLeader}
+                </button>
+              )}
+            </li>
+          ))
+        )}
+      </ul>
+    </section>
+  );
+};

@@ -120,6 +120,15 @@ export interface Enrollment {
 
 export type EnrollmentDecision = "Approved" | "Rejected";
 
+export interface ProgramLeader {
+  program_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+}
+
 export interface GenerateResult {
   created: number;
   skipped: number;
@@ -291,6 +300,35 @@ export function cancelEnrollment(
   );
 }
 
+/** GET /api/v1/programs/:programId/leaders */
+export function listProgramLeaders(
+  programId: string
+): Promise<{ leaders: ProgramLeader[] }> {
+  return programsFetch(`/api/v1/programs/${programId}/leaders`, "GET");
+}
+
+/** POST /api/v1/programs/:programId/leaders */
+export function assignProgramLeader(
+  programId: string,
+  userId: string
+): Promise<{ leader: ProgramLeader }> {
+  return programsFetch(`/api/v1/programs/${programId}/leaders`, "POST", {
+    user_id: userId,
+  });
+}
+
+/** POST /api/v1/programs/:programId/leaders/:userId/revoke */
+export function revokeProgramLeader(
+  programId: string,
+  userId: string
+): Promise<{ leader: ProgramLeader }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/leaders/${userId}/revoke`,
+    "POST",
+    {}
+  );
+}
+
 /** GET /api/v1/programs/departments */
 export function listDepartments(): Promise<{
   departments: Department[];
@@ -449,7 +487,9 @@ export function createEvent(
 }
 
 /** GET /api/v1/programs/:id/events */
-export function listEvents(programId: string): Promise<{ events: ProgramEvent[] }> {
+export function listEvents(
+  programId: string
+): Promise<{ events: ProgramEvent[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
     "GET"

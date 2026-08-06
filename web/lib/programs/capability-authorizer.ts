@@ -7,11 +7,22 @@
  */
 
 import type { Capability } from "./capabilities";
+import { CAPABILITY } from "./capabilities";
 
 export interface AuthorizationContext {
   actorUserId: string;
   actorRole: string;
 }
+
+/**
+ * Program-scoped leadership (program_leaders) grants only operational
+ * capabilities for that program — never delegation/administration powers.
+ * ADR-0006: grant/revoke Program Leader is Admin/Staff only.
+ */
+const LEADERSHIP_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>([
+  CAPABILITY.PROGRAM_MANAGE,
+  CAPABILITY.PROGRAM_PUBLISH,
+]);
 
 export interface CapabilityAuthorizer {
   can: (
@@ -42,6 +53,7 @@ export class D1CapabilityAuthorizer implements CapabilityAuthorizer {
       return true;
     }
     if (
+      LEADERSHIP_CAPABILITIES.has(capability) &&
       scope?.programId &&
       (await this.store.hasProgramLeadership(ctx.actorUserId, scope.programId))
     ) {

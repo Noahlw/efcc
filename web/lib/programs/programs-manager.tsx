@@ -20,8 +20,9 @@ import type {
   DepartmentModule,
   Program,
 } from "@/lib/programs/program-api";
-import { EventsPanel } from "@/lib/programs/programs-events-panel";
 import { EnrollmentPanel } from "@/lib/programs/programs-enrollment-panel";
+import { EventsPanel } from "@/lib/programs/programs-events-panel";
+import { LeadersPanel } from "@/lib/programs/programs-leaders-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -445,6 +446,9 @@ const ProgramsManager = () => {
                               canManage={canManage}
                               currentUserId={bootstrap.profile.userId}
                             />
+                            {canManage && (
+                              <LeadersPanel program={program} canManage />
+                            )}
                           </li>
                         ))}
                       </ul>

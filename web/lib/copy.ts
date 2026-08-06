@@ -188,6 +188,14 @@ export const COPY = {
     managerOnlyNote: "此課程由管理員安排成員加入。",
     selfEnrollmentNote: "你已加入此課程。",
     enrollmentError: "報名操作失敗。",
+    leaders: "事工負責人",
+    noLeaders: "目前沒有事工負責人。",
+    assignLeader: "新增負責人",
+    revokeLeader: "移除負責人",
+    leaderUserId: "成員 ID",
+    leaderUserIdPlaceholder: "成員 User ID",
+    leaderAssignedNotice: "已新增事工負責人。",
+    leaderRevokedNotice: "已移除事工負責人。",
   },
 } as const;
 
