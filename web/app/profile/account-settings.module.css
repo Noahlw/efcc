@@ -75,9 +75,9 @@
 }
 
 .input:focus-visible {
-  outline: 2px solid #1565c0;
+  outline: 2px solid var(--focus, #176a87);
   outline-offset: 2px;
-  border-color: #1565c0;
+  border-color: var(--focus, #176a87);
 }
 
 .fieldHint {

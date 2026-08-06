@@ -2,6 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
@@ -370,5 +372,17 @@ describe(ProfileSettingsPage, () => {
         screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("account-settings.module.css focus token", () => {
+  test(".input:focus-visible uses var(--focus), not the #1565c0 literal", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "app/profile/account-settings.module.css"),
+      "utf8"
+    );
+    const block = css.match(/\.input:focus-visible\s*{[^}]*}/)?.[0] ?? "";
+    expect(block).toContain("var(--focus");
+    expect(block).not.toContain("#1565c0");
   });
 });
