@@ -143,7 +143,7 @@ describe("AUTH-01: legacy import", () => {
       HEADER,
       ["U201", "Alice Chan", "alice201", "1234", "Admin", "Active"],
       ["U202", "Bob Lee", "bob202", "5678", "Member", "Active"],
-      ["U203", "Carol Wong", "carol203", "0000", "Teacher", "Active"],
+      ["U203", "Carol Wong", "carol203", "0000", "Staff", "Active"],
     ];
     const result = await importLegacyUsers(testDb(), rows);
     expect(result.imported).toBe(3);

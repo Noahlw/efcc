@@ -36,6 +36,13 @@
     "worker.test.ts",
     "worker.auth.test.ts",
     "lib/auth",
+    "lib/programs/capabilities.ts",
+    "lib/programs/workspace-store.ts",
+    "lib/programs/d1-workspace-store.ts",
+    "lib/programs/capability-authorizer.ts",
+    "lib/programs/department-workspace.ts",
+    "lib/programs/program-handlers.ts",
+    "lib/programs/programs.test.ts",
     "lib/service-envelope.ts",
     "lib/service-envelope.test.ts"
   ]

@@ -20,7 +20,7 @@
  *   - logout: clears both cookies (Max-Age=0) and revokes the refresh
  *     session server-side.
  *   - registrations/:id/approve and /:id/reject: `{ requestId, data:
- *     { accountStatus } }`, Idempotency-Key required, Admin/Teacher-only,
+ *     { accountStatus } }`, Idempotency-Key required, Admin/Staff-only,
  *     idempotent replay, and conflict/404 handling.
  *   - Every response carries `X-Request-Id` matching the body `requestId`.
  *   - No credential or token value appears in any response body or log.

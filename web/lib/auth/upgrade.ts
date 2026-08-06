@@ -16,7 +16,7 @@
  * key space is only 4 digits, the check is brute-force hardened by a
  * per-account escalation ladder: 5 failed verifications enter a 5-minute lock,
  * a further round enters a 15-minute lock, and a final round locks the path
- * until an Admin/Teacher unlocks it. Failed attempts are counted and the
+ * until an Admin/Staff unlocks it. Failed attempts are counted and the
  * lockout state persisted (non-secret counters/timestamps only); the legacy
  * PIN itself is never stored, logged, or returned.
  *

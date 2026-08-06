@@ -1,4 +1,4 @@
-// AUTH-05 (#163) — component tests for the Teacher/Admin approval queue.
+// AUTH-05 (#163) — component tests for the Staff/Admin approval queue.
 // MSW intercepts the Worker queue endpoints (the same seam used by
 // lib/app.test.tsx). Fixtures carry no credential material.
 import userEvent from "@testing-library/user-event";
@@ -90,7 +90,7 @@ describe("ApprovalQueue", () => {
     expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
   });
 
-  test("shows the S13 forbidden state for a non-Admin/Teacher caller (403)", async () => {
+  test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json(

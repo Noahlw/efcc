@@ -3,7 +3,7 @@
  * #165, ADR-0020 §3).
  *
  * Self-service registrations land as `Pending` rows in `registration_requests`
- * (identity + credential hash + Pending status). A Teacher/Admin later
+ * (identity + credential hash + Pending status). A Staff/Admin later
  * approves one into `accounts` with an Active status, or rejects it without
  * creating an account. The approval workflow's UI is AUTH-05 (#163); this
  * module owns only the storage shape and the Pending-before-Active gate.
@@ -358,7 +358,7 @@ export async function rejectRegistration(
 }
 
 /**
- * Safe metadata columns for the Teacher/Admin approval queue (AUTH-05
+ * Safe metadata columns for the Staff/Admin approval queue (AUTH-05
  * #163). Deliberately excludes `credential_hash`, `credential_kind`, and
  * `user_id` — the queue must never expose credential material or the
  * immutable identity key to the browser.

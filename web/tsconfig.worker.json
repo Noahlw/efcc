@@ -24,6 +24,8 @@
     "worker.test.ts",
     "lib/auth/**/*.ts",
     "lib/sections.ts",
-    "lib/sections.test.ts"
-  ]
+    "lib/sections.test.ts",
+    "lib/programs/**/*.ts"
+  ],
+  "exclude": ["lib/programs/program-api.ts"]
 }

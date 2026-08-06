@@ -359,6 +359,85 @@ export default {
       }
     }
 
+    // ---- Programs domain: cookie-only transport, no CORS ----------------
+    if (url.pathname.startsWith("/api/v1/programs/")) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const programEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const {
+        handleCreateDepartment,
+        handleListDepartments,
+        handleGetDepartment,
+        handleUpdateDepartment,
+        handleCreateProgram,
+        handleListPrograms,
+        handleGetProgram,
+        handleUpdateProgram,
+        handleSetModule,
+      } = await import("./lib/programs/program-handlers");
+
+      if (url.pathname === "/api/v1/programs/departments" && request.method === "POST") {
+        return handleCreateDepartment(request, programEnv);
+      }
+      if (url.pathname === "/api/v1/programs/departments" && request.method === "GET") {
+        return handleListDepartments(request, programEnv);
+      }
+      const department = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)$/u
+      );
+      if (department && request.method === "GET") {
+        return handleGetDepartment(request, programEnv, department.groups?.id ?? "");
+      }
+      if (department && request.method === "PATCH") {
+        return handleUpdateDepartment(request, programEnv, department.groups?.id ?? "");
+      }
+      const departmentPrograms = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/programs$/u
+      );
+      if (departmentPrograms && request.method === "POST") {
+        return handleCreateProgram(request, programEnv, departmentPrograms.groups?.id ?? "");
+      }
+      if (departmentPrograms && request.method === "GET") {
+        return handleListPrograms(request, programEnv, departmentPrograms.groups?.id ?? "");
+      }
+      const moduleMatch = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/modules\/(?<key>[^/]+)\/(?<action>enable|disable)$/u
+      );
+      if (moduleMatch && request.method === "POST") {
+        return handleSetModule(
+          request,
+          programEnv,
+          moduleMatch.groups?.id ?? "",
+          moduleMatch.groups?.key ?? "",
+          moduleMatch.groups?.action === "enable"
+        );
+      }
+      const program = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)$/u
+      );
+      if (program && request.method === "GET") {
+        return handleGetProgram(request, programEnv, program.groups?.id ?? "");
+      }
+      if (program && request.method === "PATCH") {
+        return handleUpdateProgram(request, programEnv, program.groups?.id ?? "");
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown programs route."
+      );
+    }
+
     // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {
       // Should not normally be reached (run_worker_first scopes this
