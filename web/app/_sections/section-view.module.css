@@ -21,7 +21,7 @@
   align-items: baseline;
   gap: 0.75rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border, #d6dcde);
+  border-bottom: 1px solid var(--line, #d6dcde);
   margin-bottom: 2rem;
 }
 
@@ -32,7 +32,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.25;
-  color: var(--txt-primary, #171a1d);
+  color: var(--ink, #171a1d);
 }
 
 .stateCenter {
@@ -48,7 +48,7 @@
 }
 
 .placeholderText {
-  color: var(--txt-muted, #59636a);
+  color: var(--ink-muted, #59636a);
   font-size: 1rem;
   line-height: 1.6;
 }
