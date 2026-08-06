@@ -158,4 +158,15 @@ describe(sectionsForRole, () => {
       "programs",
     ]);
   });
+
+  test("inherited Object keys (toString/constructor) fall back like unknown roles", () => {
+    expect(sectionsForRole("toString").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+    expect(sectionsForRole("constructor").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
 });

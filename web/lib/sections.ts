@@ -40,7 +40,12 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
  * Member set (profile + programs) — the least-privilege default.
  */
 export function sectionsForRole(role: string): Section[] {
-  const allowed = ROLE_SECTION_KEYS[role];
+  // hasOwn: a "constructor"/"toString"-shaped role must not resolve an
+  // inherited prototype member (which is not an array and would throw in
+  // .includes) — falls back like any unknown role.
+  const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
+    ? ROLE_SECTION_KEYS[role]
+    : undefined;
   const keys = allowed ?? ROLE_SECTION_KEYS.Member;
   return defaultSections().filter((s) => keys.includes(s.key));
 }
