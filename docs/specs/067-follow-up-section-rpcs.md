@@ -1,5 +1,7 @@
 # Follow-up ticket: Server-side Section RPCs (deferred from #67, AC #9)
 
+*Number-collision note (2026-08-06): the `067` prefix denotes origin issue #67, not a separate issue number — issue #67's own acceptance plan lives at `docs/specs/067-role-nav-acceptance-plan.md`. This file is the draft ticket body for #67's deferred AC #9, not yet filed as a tracked issue (per CONTEXT.md).*
+
 **File via `gh issue create` on Noahlw/efcc with this body. Blocked-by this branch merging first.**
 
 ## Parent

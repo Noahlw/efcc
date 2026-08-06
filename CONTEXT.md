@@ -1,19 +1,21 @@
 # 顯恩堂系統 — EFCC Church Management System
 
-**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
+**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Platform status**: the repository restarted on D1 (ADR-0024) — D1 owns identity, credentials, sessions, login, registration, and approval today; the Apps Script/Sheets backend is historical and remains only as the transitional domain backend. **Frontend archive**: retired frontends — `程式碼.js` (reference), the React SPA (`src/frontend/`), and the T00–T07 `gas-vertical-slice-v1` attempt (issues #41–48, superseded by ADR-0010) — are no longer in the tree; their content lives in git history **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
 
 ---
 
 ## Domain Glossary
 
+Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets surface; the D1 platform is the current target unless a term is marked legacy.
+
 | Term (English) | Term (Chinese) | Definition |
 | --- | --- | --- |
-| Member | 會員 | A church member with a User_ID, username, PIN, QR code, role, and status (`Active`/`Pending`/`Inactive`). `Pending` members cannot log in until a `Teacher`/`Admin` approves them — see ADR-0006. |
-| Role | 角色權限 | Global user permission level stored in the `System_Role` column of the `Users` sheet. Production values are **`Admin`**, **`Teacher`**, and **`Member`** (default when empty). See the [Users sheet](#users-sheet) section for the exact column mapping. The code's internal `Role` field (`ADMIN`, `STAFF`, `MEMBER`) is a normalized representation derived from the sheet — `STAFF` is a legacy placeholder from earlier ADRs that does not (yet) correspond to a production sheet value. See also **Program Leader** below — a separate, per-program permission, not a `Role` value. |
+| Member (legacy) | 會員 | A church member with a User_ID, username, PIN, QR code, role, and status (`Active`/`Pending`/`Inactive`). `Pending` members cannot log in until a `Teacher`/`Admin` approves them — see ADR-0006. On D1, identity is in the `accounts` table; the `Users` sheet remains the member-record source while transitional. |
+| Role | 角色權限 | Global user permission level stored in the `System_Role` column of the `Users` sheet (legacy) or the D1 `accounts` global role. Production values are **`Admin`**, **`Teacher`**, and **`Member`** (default when empty). The code's internal `Role` field (`ADMIN`, `STAFF`, `MEMBER`) is a normalized representation — `STAFF` is a legacy placeholder from earlier ADRs that does not (yet) correspond to a production value. See also **Program Leader** — a separate, per-program permission, not a `Role` value. |
 | Program | 課程 / 事工 | A class, activity, or ministry group members can enroll in (e.g. 青崇 Youth Worship). Each program has a `type` field for categorization. |
-| Program Enrollment | 報名 | A member signing up for a program. Tracked in the Enrollments sheet with Active/Cancelled status. |
-| Assisted Enrollment | 代為報名 | A privileged enrollment change performed in the Programs Section for another active Member. Teacher/Admin may add or soft-cancel enrollment in any active Program; an active Program Leader may do so only in a Program they lead. Scanner never changes enrollment. |
-| Program Leader | 事工負責人 *(proposed — confirm translation)* | A member granted Teacher-equivalent event-management power (create/cancel/edit events, take attendance, view attendance) scoped to one or more specific programs, tracked in the `Program_Leaders` sheet. Independent of the member's global `Role`. Replaces the retired global `EVENT_LEADER` role (ADR-0006). |
+| Program Enrollment | 報名 | A member signing up for a program. Tracked in the Enrollments sheet (legacy) with Active/Cancelled status. |
+| Assisted Enrollment (legacy) | 代為報名 | A privileged enrollment change performed in the Programs Section for another active Member. Teacher/Admin may add or soft-cancel enrollment in any active Program; an active Program Leader may do so only in a Program they lead. Scanner never changes enrollment. |
+| Program Leader | 事工負責人 *(proposed — confirm translation)* | A member granted event-management power (create/cancel/edit events, take attendance, view attendance) scoped to one or more specific programs, tracked in the `Program_Leaders` sheet. Independent of the member's global `Role`. |
 | Event | 聚會 | One dated occurrence belonging to exactly one Program. Attendance records target this concrete Event; it may be created interactively by an authorized Program Leader, Teacher, or Admin, or generated by a separate scheduled process. |
 | Recurrence Tag | 重複標記 | Informational Event metadata (`NONE`, `WEEKLY`, or `MONTHLY`) describing an expected schedule pattern. It does not create, link, update, or cancel any other Event. |
 | Event Cancellation | 聚會取消 | A soft status change from Active to Cancelled. It never deletes the Event or Attendance history and is rejected once active Attendance exists. |
@@ -21,19 +23,19 @@
 | Attendance Void | 出席作廢 | A correction that changes an active Attendance record to `Voided` without deleting it. It requires an authorized actor and reason, is audited, leaves history intact, and permits a later new check-in. |
 | Care Dashboard | 關懷儀表板 | A church-wide STAFF/ADMIN-only view of member inactivity, contact details, program participation, attendance-derived activity, and pastoral follow-up context. Program Leader grants do not provide access. |
 | QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
-| PIN | PIN 碼 | 4-digit numeric credential used with username for member login. |
-| Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Teacher unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
-| Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, and Care. Use **Section** instead of the ambiguous product terms “page” or “screen”; implementation files may still use `.html` fragment names. |
-| Scanner Section | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
-| Scanner Window | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
-| scannedCode | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
-| Section Link | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
-| Session | 登入工作階段 | A server-validated authenticated period for one Member. A Member may hold multiple independent Sessions across devices; revoking one Session does not revoke the others. |
-| Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
+| PIN (legacy) | PIN 碼 | 4-digit numeric credential used with username for member login on the legacy Apps Script surface. |
+| Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported D1 account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Teacher unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
+| Section (legacy) | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, and Care. Use **Section** instead of the ambiguous product terms “page” or “screen”; implementation files may still use `.html` fragment names. |
+| Scanner Section (legacy) | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
+| Scanner Window (legacy) | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
+| scannedCode (legacy) | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
+| Section Link (legacy) | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
+| Session | 登入工作階段 | A server-validated authenticated period for one Member. A Member may hold multiple independent Sessions across devices; revoking one Session does not revoke the others. On D1 each login creates an independent Session row (ADR-0020). |
+| Draft (legacy) | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
-| Storage State | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
-| Identity Authority | 身份權威 | The system that owns member identity, credentials, sessions, and authentication decisions. During the staged migration, Cloudflare D1 is the Identity Authority. |
-| Domain Backend | 領域後端 | The system that owns church-management records and business operations such as Programs, Events, Attendance, and Enrollments. Apps Script + Google Sheets is the transitional Domain Backend. |
+| Storage State (legacy) | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
+| Identity Authority | 身份權威 | The system that owns member identity, credentials, sessions, and authentication decisions. During the staged migration, Cloudflare D1 is the Identity Authority (ADR-0020). |
+| Domain Backend (legacy) | 領域後端 | The system that owns church-management records and business operations such as Programs, Events, Attendance, and Enrollments. Apps Script + Google Sheets is the transitional Domain Backend. |
 | Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
 | Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
@@ -41,11 +43,12 @@
 ---
 
 ## Data Store (Google Sheets)
+
 **Authoritative reference:** [ADR-0013: Google Sheets Database Structure](docs/adr/0013-google-sheets-database-structure.md) —
 this document is the canonical, version-controlled source of truth for every sheet tab,
 column name, column position, and valid value. The summary below is for convenience;
-ADR-0013 governs when they conflict.
-
+ADR-0013 governs when they conflict. Google Sheets remains the church-domain database
+during the staged migration; D1 owns identity and session data (ADR-0020).
 
 A single Google Spreadsheet with these named sheets:
 
@@ -57,7 +60,7 @@ A single Google Spreadsheet with these named sheets:
 | `Events` | Scheduled instances | Event_ID, Program_ID, Event_Date, Time_Slot, Event_Name |
 | `Attendances` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By, Status |
 | `Program_Leaders` | Per-program leader assignments (ADR-0006) | Assignment_ID, Program_ID, User_ID, Assigned_By, Assigned_Date, Status |
-| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0015, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
+| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0023, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
 
 ### Users sheet
 
@@ -84,16 +87,19 @@ See ADR-0001 for the rationale behind Google Sheets as the database layer.
 
 The staged migration has two concurrent platform boundaries:
 
-- **Cloudflare Worker + D1** is the Identity Authority and the target owner for every migrated capability. PR #166 establishes the identity/auth boundary and the authenticated static web shell.
+- **Cloudflare Worker + D1** is the Identity Authority and the target owner for every migrated capability. PR #166 establishes the identity/auth boundary and the authenticated static web shell. Since ADR-0024 the repository is treated as **restarting on D1**.
 - **Apps Script + Google Sheets** is the transitional Domain Backend. Its existing Programs, Events, Attendance, Enrollments, and related RPCs remain operational until each capability has a Worker/D1 replacement and fresh acceptance proof.
 
 The feature roadmap in [`README.md`](README.md#feature-roadmap) records both the current Feature State and the Target Owner. A capability implemented in the legacy backend is not automatically Complete for the new website.
+
+---
 
 ## Transitional Apps Script Architecture (`src/gas/`)
 
 Read this section before opening `src/gas/` source files cold — it is the
 file map and contract cheat sheet a fresh session otherwise has to
-reconstruct by reading every file's header comment.
+reconstruct by reading every file's header comment. This is the **legacy**
+backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023).
 
 ### File map
 
@@ -137,32 +143,44 @@ reconstruct by reading every file's header comment.
 
 ## Architecture Decisions
 
+The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0023) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+
+### D1 era (current)
+
 | #    | Title                                         | Status   |
 | ---- | --------------------------------------------- | -------- |
-| 0001 | Google Sheets as Database                     | Accepted |
-| 0002 | PIN-Based Authentication                      | Accepted |
-| 0003 | Client-Server RPC via google.script.run       | Accepted |
-| 0004 | Monthly Recurring Event Generation            | Accepted |
-| 0005 | Role-Based Access Control (RBAC) via PIN Auth           | Accepted — Amended by 0006 |
-| 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Accepted |
-| 0007 | Vanilla Multi-Page HTML Service Architecture  | Accepted |
-| 0008 | Schema-Driven Restart from GAS Template (Grills 1.1–1.5 locked) | Accepted |
-| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded (Proposed) by 0015 — write-pattern shape and schema; non-repudiation principle carried forward |
-| 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
-| 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
-| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
-| 0013 | Google Sheets Database Structure | Accepted |
-| 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
-| 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
+| 0017 | Frontend Repository, Rendering, and Cloudflare Deployment Boundary | Proposed — decision locked via grilling on #127 (monorepo, Next.js static export, Workers + static assets); deployed Cloudflare proof pending |
+| 0018 | Frontend HTTP Boundary, Authentication, and API Contract | Proposed — decision locked via grilling on #128; CF0/CF1 implementation evidence pending |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
 | 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
 | 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |
+| 0022 | Staged Worker/D1 Platform Migration | Accepted |
+| 0023 | Single-Lock Mutation and Audit Contract | Proposed — official Apps Script API support verified; deployed `/exec` proof pending (renumbered from 0015, 2026-08-06) |
+| 0024 | D1 Platform Restart: Relationship to the Apps Script/Google Sheets Backend | Accepted |
+
+### Apps Script era (historical)
+
+| #    | Title                                         | Status   |
+| ---- | --------------------------------------------- | -------- |
+| 0001 | Google Sheets as Database | Live domain basis — Sheets remains the church-domain database; mechanism runs in Apps Script until each capability migrates (ADR-0022) |
+| 0002 | PIN-Based Authentication | Superseded by ADR-0020 — D1 owns credentials; PIN survives only as the legacy-PIN upgrade path |
+| 0003 | Client-Server RPC via google.script.run | Superseded by ADR-0018 — browser talks to the Worker over the HTTP boundary |
+| 0004 | Monthly Recurring Event Generation | Live domain basis — mechanism remains in Apps Script until Events migrate to D1 |
+| 0005 | Role-Based Access Control (RBAC) via PIN Auth | Accepted — Amended by 0006; role model carries into D1 (ADR-0020 global role) |
+| 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Live domain basis — capability matrix and Program Leader model carry into D1/CF2 |
+| 0007 | Vanilla Multi-Page HTML Service Architecture | Superseded by ADR-0017 — frontend moved to Next.js static export on Cloudflare |
+| 0008 | Schema-Driven Restart from GAS Template (Grills 1.1–1.5 locked) | Historical — the GAS template restart it describes is no longer the path (ADR-0024 restart is on D1) |
+| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded by ADR-0023 — write-pattern shape and schema; non-repudiation principle carried forward |
+| 0010 | Stable App Document and Expandable Sections | Superseded by ADR-0017/ADR-0020 — no HtmlService App Document on the D1 platform |
+| 0011 | One Active Session per Member | Superseded by ADR-0020 — multi-device sessions implemented (PR #166) |
+| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted — historical tooling; storage-state retained only for the legacy `/exec` suite |
+| 0013 | Google Sheets Database Structure | Live domain basis — canonical sheet reference; governs the Sheets side of the migration |
+| 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted — tooling, unchanged by the restart |
+| 0015 | Camera QR Capture (External HTTPS Origin) | Proposed — mechanism flagged for replacement pending #136; trust-boundary rules carry forward |
+| 0016 | Operational Attendances Sheet Migration | Proposed — Apps Script mechanism; superseded on D1 by the Attendance migration (ADR-0022) |
 
 ---
 
 ## Known Tooling Issues
 
-| Date | Issue | Impact | Workaround |
-| --- | --- | --- | --- |
-| 2026-07-28 | Context7 MCP returned "Invalid API key" at startup. **Root-cause note:** the only "401" we ever observed was against the deprecated `GET https://context7.com/api/v1/search` (v1) endpoint, which the current docs flag as superseded by `/api/v2`; that endpoint also returned `405 Method Not Allowed` for an unsupported method, so the 401 came from a different probe in the same session and is not a clean validator. The real validator is whatever the OMP MCP client uses against the MCP server at startup (the user-facing error "Invalid API key" surfaces there). Two keys were pasted in chat during diagnosis: the original (`34b9…2c07`) and a rotated value (`f76c…4163`); both are exposed and **must be revoked at `context7.com/dashboard`**. Subsequent probes (see `scripts/diag-ctx7-probe.js`): (1) the MCP-server `initialize`/`tools/list` rows return 200 **with or without** a key, so they do not validate the key; (2) `GET /api/v2/libs/search` returns 200 with a `results[]` body for a valid Bearer, an empty Bearer, and no auth header at all, so that endpoint is publicly readable and is not a key-validity signal. **No clean upstream signal for `f76c…4163` is available from the current probe set.** Also: MCP `tools/call resolve-library-id` argument name is **`query`** (not `libraryName`). | **OPEN** — `f76c…4163` is not proven valid upstream. | (1) Revoke `34b9…2c07` and `f76c…4163` at `context7.com/dashboard`; do not paste a third key in chat. (2) Do not write any key string into `mcp.json`; the file currently holds the `${CTX7_KEY}` env-var placeholder. (3) The third key, if generated, must travel via `CTX7_KEY` env and the MCP client's auth must be verified by the OMP MCP client's own startup output, not by a separate REST probe. |
-| 2026-07-29 | `mcp__context_mode_ctx_execute` silently drops the `env` map supplied in the call payload. Reproduction: pass `env: { CTX7_KEY: '<key>' }` in the call args; the script's `printenv` and `process.env` checks return empty even though the host shell has the variable set. Symptom: a REST call from the sandbox returns 200 even when the script reports `CTX7_KEY NOT SET in sandbox` — the response body is authenticated by an inherited env var, not the one passed in. Workaround: invoke `node scripts/diag-ctx7-probe.js` from `bash` with `CTX7_KEY=…` on the same line; bash→node env handoff works. Impact: `ctx_execute` HTTP probes are unreliable for **key-validity** testing — the bash→node invocation is the only authoritative path in this session. | Affects all HTTP probes run via `ctx_execute`. | Pass env via `bash` to `node` (or any interpreter) and let the script read `process.env`. |
+_None currently tracked._

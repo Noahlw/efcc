@@ -1,10 +1,12 @@
-# ADR-0015 — Single-Lock Mutation and Audit Contract
+# ADR-0023 — Single-Lock Mutation and Audit Contract
+
+*Renumbered from ADR-0015 on 2026-08-06: the previous `0015` number collided with the camera-origin ADR (`0015-external-camera-origin-for-qr-scanner.md`); this file was renamed to `0023-single-lock-mutation-and-audit-contract.md`. All inbound references were updated; issue-number citations (ADR-0009, ADR-0013, ADR-0019, CONTEXT.md, spec 073) that referred to this record by number now read ADR-0023.*
 
 - **Status**: Proposed — official Apps Script API support verified (LockService, Session docs, this ADR's Research line); deployed `/exec` proof pending. Per `AGENTS.md`'s Apps Script evidence gate, this stays `Proposed` until a minimal implementation test and a fresh deployed `/exec` smoke test both pass; flip to Accepted then, with the test flow, deployment version, date, and observed result appended here.
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-08-01
 - **Related**: Supersedes ADR-0009's write-pattern shape (lock ownership, two-phase audit calls). Carries forward ADR-0009's non-repudiation principle and reconciles the `Audit_Log` schema drift across ADR-0006, ADR-0009, and spec #63. Amends ADR-0013 (adds the missing `Audit_Log` sheet definition). Governs every mutating Apps Script service under Feature F1 (#79): Attendance, Enrollment, Events, Permissions. Implementation-facing contract: spec issue #115.
-- **Research**: Context7 (`/websites/developers_google_apps-script`) returned `Invalid API key` (pre-existing Known Tooling Issue in `CONTEXT.md`); fell back to `developers.google.com/apps-script/reference/lock/*` and `.../base/session` directly, per the `AGENTS.md` Apps Script evidence gate's documented fallback order.
+- **Research**: Context7 (`/websites/developers_google_apps-script`) returned `Invalid API key` at the time; fell back to `developers.google.com/apps-script/reference/lock/*` and `.../base/session` directly, per the `AGENTS.md` Apps Script evidence gate's documented fallback order.
 - **Grill session**: issue #58 (Feature F1 `#79`, map `#77`)
 
 ## Context

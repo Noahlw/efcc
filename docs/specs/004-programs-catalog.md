@@ -90,6 +90,13 @@ Returns the full program catalog with an `isEnrolled` boolean per program, indic
 
 This is the primary function consumed by the web app to render the enrollment screen.
 
+> **SUPERSEDED (2026-08-06):** this bare-array `getAvailablePrograms(userId)`
+> contract predates the #53 Programs/Enrollment authorization model and
+> conflicts with it — spec 069 (lines 19–23) deliberately builds a different
+> minimal READ-ONLY Programs RPC instead. The cache layer (§3) and
+> header-name column resolution (§5) remain authoritative; see
+> `docs/specs/073-htmlservice-spec-reconciliation-matrix.md` §11.2.
+
 ---
 
 ## 5. Column Discovery

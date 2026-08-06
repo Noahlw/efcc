@@ -1,10 +1,10 @@
 # ADR-0009 — Audit Log Write Pattern (LockService + Extended Schema)
 
-- **Status**: Superseded (Proposed, 2026-08-01) by ADR-0015 for the write-pattern shape (lock ownership, two-phase `ATTEMPT`/outcome calls) and schema (`Outcome`/`Correlation_ID`/`Actor_Session_Key` columns) — ADR-0015 itself remains `Proposed` pending deployed `/exec` proof, per the `AGENTS.md` evidence gate. Non-repudiation principle and audit-write-must-not-be-swallowed rule carried forward unchanged — see ADR-0015.
+- **Status**: Superseded (Proposed, 2026-08-01) by ADR-0023 for the write-pattern shape (lock ownership, two-phase `ATTEMPT`/outcome calls) and schema (`Outcome`/`Correlation_ID`/`Actor_Session_Key` columns) — ADR-0023 itself remains `Proposed` pending deployed `/exec` proof, per the `AGENTS.md` evidence gate. Non-repudiation principle and audit-write-must-not-be-swallowed rule carried forward unchanged — see ADR-0023.
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-07-28
-- **Related**: ADR-0006 (Audit_Log sheet origin), ADR-0008 (restart from template — this ADR covers a sub-decision of the rebuild), ADR-0015 (supersedes this ADR's write-pattern shape and schema)
-- **Research**: primary-sourced via `web_search` + librarian subagent (Context7 was unreachable — see `CONTEXT.md` Known Tooling Issues)
+- **Related**: ADR-0006 (Audit_Log sheet origin), ADR-0008 (restart from template — this ADR covers a sub-decision of the rebuild), ADR-0023 (supersedes this ADR's write-pattern shape and schema)
+- **Research**: primary-sourced via `web_search` + librarian subagent (Context7 was unreachable at the time)
 
 ## Context
 
