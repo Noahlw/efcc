@@ -20,6 +20,20 @@
     // for anything beyond a throwaway prototype.
     "APPS_SCRIPT_EXEC_URL": "",
   },
+  // D1 identity database (ADR-0020 / AUTH-01 #159). Sole system of record
+  // for accounts, credentials, sessions, and registration requests. The
+  // database_id is a placeholder - replace with the real D1 database id
+  // before `wrangler deploy`. In dev/test the binding is auto-provided by
+  // @cloudflare/vitest-pool-workers and migrations are applied by the test
+  // setup file (web/test/apply-migrations.ts).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "efcc-identity",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
   // Rate Limiting binding (ADR-0018 §9). Session-keyed, never IP - the
   // Worker reads X-Efcc-Session-Id or the login body's username and calls
   // env.RPC_RATE_LIMITER.limit({ key }). Limits are per-Cloudflare-location

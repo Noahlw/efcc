@@ -1,6 +1,6 @@
 # 顯恩堂系統 — EFCC Church Management System
 
-**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: Google Apps Script (V8 runtime) + Google Sheets + one stable App Document served via HtmlService, per ADR-0010 (deployed proof pending) **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Google Apps Script (server), Browser (client)
+**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
 
 ---
 
@@ -22,15 +22,21 @@
 | Care Dashboard | 關懷儀表板 | A church-wide STAFF/ADMIN-only view of member inactivity, contact details, program participation, attendance-derived activity, and pastoral follow-up context. Program Leader grants do not provide access. |
 | QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
 | PIN | PIN 碼 | 4-digit numeric credential used with username for member login. |
+| Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Teacher unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
 | Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, and Care. Use **Section** instead of the ambiguous product terms “page” or “screen”; implementation files may still use `.html` fragment names. |
 | Scanner Section | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
 | Scanner Window | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
 | scannedCode | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
 | Section Link | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
-| Session | 登入工作階段 | A server-validated authenticated period for one Member. Whether a Member may hold one or multiple concurrent Sessions is intentionally deferred to a separate authentication-hardening decision. |
+| Session | 登入工作階段 | A server-validated authenticated period for one Member. A Member may hold multiple independent Sessions across devices; revoking one Session does not revoke the others. |
 | Draft | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
 | Storage State | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
+| Identity Authority | 身份權威 | The system that owns member identity, credentials, sessions, and authentication decisions. During the staged migration, Cloudflare D1 is the Identity Authority. |
+| Domain Backend | 領域後端 | The system that owns church-management records and business operations such as Programs, Events, Attendance, and Enrollments. Apps Script + Google Sheets is the transitional Domain Backend. |
+| Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
+| Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
+| Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
 
 ---
 
@@ -74,7 +80,16 @@ See ADR-0001 for the rationale behind Google Sheets as the database layer.
 
 ---
 
-## Application Architecture (`src/gas/`)
+## Platform Ownership
+
+The staged migration has two concurrent platform boundaries:
+
+- **Cloudflare Worker + D1** is the Identity Authority and the target owner for every migrated capability. PR #166 establishes the identity/auth boundary and the authenticated static web shell.
+- **Apps Script + Google Sheets** is the transitional Domain Backend. Its existing Programs, Events, Attendance, Enrollments, and related RPCs remain operational until each capability has a Worker/D1 replacement and fresh acceptance proof.
+
+The feature roadmap in [`README.md`](README.md#feature-roadmap) records both the current Feature State and the Target Owner. A capability implemented in the legacy backend is not automatically Complete for the new website.
+
+## Transitional Apps Script Architecture (`src/gas/`)
 
 Read this section before opening `src/gas/` source files cold — it is the
 file map and contract cheat sheet a fresh session otherwise has to
@@ -110,10 +125,12 @@ reconstruct by reading every file's header comment.
 
 - `pnpm typecheck` — Runs TypeScript compiler (`tsc --noEmit`) sequentially across root `tsconfig.json` and `tests/e2e/tsconfig.json` (ADR-0014).
 - `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. Fast, deterministic unit layer.
-- `pnpm test:e2e` — Playwright against a **deployed** `/exec` URL using per-role storage states in `.auth/` (ADR-0012). Requires `E2E_TARGET_URL` exported and `.auth/{alice,bob,noah}.storage.json` captured via `pnpm e2e:auth -- --role=<role>`. A passing run auto-appends an "Executed results" table to the relevant ticket's plan doc under `docs/specs/`.
+- `pnpm --dir web test` — Vitest in the real Cloudflare workerd pool for the rebuilt D1 cookie-only Worker/auth boundary, D1 migrations, sessions, lockout, and client contracts.
+- `pnpm test:e2e` — retained/manual Playwright suite against the legacy deployed Apps Script `/exec` URL using per-role storage states in `.auth/` (ADR-0012). It is not the rebuilt D1 login gate.
+- `pnpm exec playwright test --config=tests/e2e/auth-d1.config.ts` — manual Playwright request-context smoke against an isolated deployed D1 Worker; requires `AUTH_TARGET_URL` and five disposable acceptance-account secrets. It never uses Google storage state.
 - `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
-- GitHub Actions (`.github/workflows/`) — `precheck.yml` (typecheck + `test:gas` unit suite) and `e2e.yml` (Playwright E2E suite) run automatically on `push` and `pull_request` events to gate mergeability (ADR-0014).
-- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned deployment; update `E2E_TARGET_URL` afterward. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
+- GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes the deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0014).
+- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned legacy Apps Script deployment; update `E2E_TARGET_URL` only when running the retained `/exec` suite. The rebuilt D1 gate uses `AUTH_TARGET_URL` and a separate Worker deployment. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
 - Full step-by-step workflow: `README.md` § "Push and deploy" and § "Where things live".
 
 ---
@@ -138,6 +155,8 @@ reconstruct by reading every file's header comment.
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
 | 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
+| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
+| 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |
 
 ---
 

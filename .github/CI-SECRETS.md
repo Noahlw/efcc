@@ -1,31 +1,46 @@
-# CI credentials — DEV Apps Script E2E
+# CI credentials — D1 auth acceptance gate
 
-The E2E workflow runs Playwright against the existing DEV Apps Script `/exec` deployment. It does not create a project, deployment, or spreadsheet, and it does not write business data to the DEV spreadsheet.
+The rebuilt login boundary is the Cloudflare Worker `/api/auth/*` surface backed by D1. The deployed gate (`.github/workflows/e2e.yml`) no longer uses the retired Apps Script `/exec` role-nav suite or Google storage-state cookies.
 
-## Repository secrets
+## How the checks behave
 
-Configure these three secrets under GitHub Settings → Secrets and variables → Actions:
+- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root GAS/prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
+- **D1 auth contract check** (`e2e.yml`, `auth-contract` job) also needs no secrets or deployment. It runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool and covers the cookie-only transport, legacy-PIN upgrade, session lifecycle, and forbidden header/CORS paths.
+- **Deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is not a deployment and never writes to a production database.
 
-- `ALICE_STORAGE_STATE`
-- `BOB_STORAGE_STATE`
-- `NOAH_STORAGE_STATE`
-
-Each value is the base64 encoding of the complete local storage-state file:
-
-```sh
-base64 < .auth/alice.storage.json | tr -d '\n'
-```
-
-The files contain live Google session cookies. Never print, commit, upload, or paste decoded storage-state JSON into issues, pull requests, or chat.
+The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` path; it is not presented as the rebuilt D1 login. The deployed smoke therefore targets `/api/auth/*` directly with Playwright's request context until the browser client is rewired in the follow-up login/UI work.
 
 ## Repository variable
 
-Configure `E2E_TARGET_URL` as the approved DEV URL:
+Configure `AUTH_TARGET_URL` under GitHub Settings → Secrets and variables → Actions → Variables. It must be an HTTPS URL for an isolated, versioned Worker deployment backed by a disposable/acceptance D1 database. Do not point it at production or a shared developer database. The workflow rejects URLs containing embedded credentials.
 
-```text
-https://script.google.com/macros/s/AKfycbz1aLqfh-DoDqky-KYeLL-mx1uyVDzHXykzyyA8kWmHzXYY7FZDmt5nsKdMM-lhMdHL/exec
-```
+Rotate the target whenever the auth contract or D1 migration changes:
 
-`tests/e2e/playwright.config.ts` checks this exact deployment ID before Playwright starts. A different URL fails closed.
+1. Deploy the branch's Worker code to the isolated target.
+2. Apply the branch's D1 migrations to the isolated acceptance database.
+3. Seed one active password account and one legacy-PIN account used only by this gate.
+4. Update `AUTH_TARGET_URL` to the new deployment URL.
+5. Run `D1 auth acceptance gate` with `workflow_dispatch` and retain the Playwright artifact.
 
-When a DEV deployment is intentionally rotated, update the pinned ID in the Playwright config and this variable together, then run the fresh `/exec` acceptance plan before treating CI as authoritative.
+The deployed result is evidence for the fresh deployment only. A missing manual run must never be described as a passing production smoke.
+
+## Repository secrets
+
+Configure these under GitHub Settings → Secrets and variables → Actions → Secrets:
+
+- `AUTH_TEST_USERNAME` — active account used for password login/logout.
+- `AUTH_TEST_CREDENTIAL` — credential for that acceptance account.
+- `AUTH_LEGACY_USERNAME` — imported account with `requires_upgrade = 1`.
+- `AUTH_LEGACY_PIN` — one-time legacy PIN for that account.
+- `AUTH_NEW_CREDENTIAL` — replacement credential used by the upgrade smoke.
+
+These values are sent only to the deployed Playwright process. Never print them, include them in test names, commit them, or paste them into issues/PRs. The test asserts cookie names and security attributes without printing cookie values or response bodies.
+
+## Legacy Apps Script gate
+
+The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.
+
+The AGENTS.md fresh `/exec` headless-gate requirement still applies whenever
+the legacy Apps Script UI/domain flow is in scope. This D1 auth gate is a
+separate Worker boundary proof and must not be used as a substitute for that
+legacy UI smoke.

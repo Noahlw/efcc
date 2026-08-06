@@ -1,20 +1,41 @@
 /**
- * EFCC same-origin RPC proxy Worker (ADR-0017 / ADR-0018).
+ * EFCC Cloudflare Worker (ADR-0017 / ADR-0018 / ADR-0020 / ADR-0021).
  *
- * Transport-only: serves the Next.js static export via the `ASSETS` binding
- * for every path except `/api/*` (routed here via `run_worker_first` in
- * wrangler.jsonc), which is proxied to the Apps Script `/exec` endpoint.
- * Owns CORS/preflight, header forwarding, the Apps Script body-status
- * remap (load-bearing - ContentService.TextOutput cannot set HTTP status),
- * request correlation, and session-keyed rate limiting. Owns NO business
- * authorization - that stays server-enforced in Apps Script.
+ * Two routes, two transport contracts:
  *
- * Pointer: https://github.com/Noahlw/efcc/issues/142 (CF0-01)
+ *   * `/api/v1/auth/*` — cookie-only auth surface (AUTH-04 #162 / AUTH-06
+ *     #165). Six locked actions — register, login, refresh, logout,
+ *     registrations/:id/approve, registrations/:id/reject — plus the
+ *     preserved legacy forced-upgrade helpers (upgrade, me, admin-unlock).
+ *     No CORS, no OPTIONS, no Authorization header, no X-Efcc-Session-Id
+ *     header. Token material travels only in two httpOnly Secure
+ *     SameSite=Strict cookies. The transport guard rejects forbidden
+ *     headers before any handler runs.
+ *
+ *   * `/api/v1/rpc` — same-origin RPC proxy for the legacy domain RPCs
+ *     (ADR-0018). The legacy proxy contract is preserved unchanged: it
+ *     forwards Authorization / X-Efcc-Session-Id / Idempotency-Key, emits
+ *     CORS preflight, and remaps the Apps Script body status onto the
+ *     outer HTTP response. No business authorization is owned here.
+ *
+ * Non-/api paths fall through to the ASSETS binding (static export).
+ * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
+ * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
  */
 
 export interface Env {
   ASSETS: Fetcher;
   APPS_SCRIPT_EXEC_URL: string;
+  /**
+   * D1 identity database (ADR-0020 / AUTH-01 #159). Sole system of record
+   * for accounts, credentials, sessions, and registration requests. The
+   * auth/session lifecycle in web/lib/auth/ reads and writes here.
+   *
+   * Set via `wrangler secret put EFCC_ACCESS_TOKEN_SECRET` before deploy;
+   * the Worker fails closed when it is absent.
+   */
+  DB: D1Database;
+  EFCC_ACCESS_TOKEN_SECRET?: string;
   /**
    * Rate Limiting binding (ADR-0018 §9). Optional in dev/test - when absent,
    * rate limiting is skipped. Keys on session identity (authenticated) or
@@ -52,12 +73,24 @@ async function rateLimitKeyFor(request: Request): Promise<string | null> {
   // so the body remains readable for the upstream forward below.
   try {
     const peek = await request.clone().json();
-    if (typeof peek === "object" && peek !== null) {
-      const { action } = peek as { action?: unknown };
-      const username = (peek as { params?: { username?: unknown } }).params
-        ?.username;
-      if (action === "loginUser" && typeof username === "string") {
-        return `login:${username}`;
+    if (
+      typeof peek === "object" &&
+      peek !== null &&
+      "action" in peek &&
+      "params" in peek
+    ) {
+      const { action } = peek;
+      const { params } = peek;
+      if (
+        action === "loginUser" &&
+        typeof params === "object" &&
+        params !== null &&
+        "username" in params
+      ) {
+        const { username } = params;
+        if (typeof username === "string") {
+          return `login:${username}`;
+        }
       }
     }
   } catch {
@@ -66,7 +99,7 @@ async function rateLimitKeyFor(request: Request): Promise<string | null> {
   return null;
 }
 
-/** Build a minimal RFC 9457 Problem Details response. */
+/** Build a minimal RFC 9457 Problem Details response (proxy path only). */
 function problemResponse(
   status: number,
   code: string,
@@ -75,18 +108,17 @@ function problemResponse(
   detail?: string,
   extra?: { retryAfter?: string }
 ): Response {
-  // One correlation ID threads through both the body and the header
-  // (ADR-0018 §8: "The same requestId value threads through... both
-  // response envelopes").
   const requestId = crypto.randomUUID();
-  const body = JSON.stringify({
-    type: `tag:efcc.app,2026:error:${code}`,
+  const body: Record<string, unknown> = {
+    type: `https://efcc.dev/problems/${code.toLowerCase()}`,
     status,
     code,
     title,
-    detail,
     requestId,
-  });
+  };
+  if (detail !== undefined) {
+    body.detail = detail;
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/problem+json",
     "Access-Control-Allow-Origin": origin,
@@ -95,19 +127,202 @@ function problemResponse(
   if (extra?.retryAfter) {
     headers["Retry-After"] = extra.retryAfter;
   }
-  return new Response(body, { status, headers });
+  return Response.json(body, { status, headers });
+}
+
+function authProblemResponse(
+  status: number,
+  code: string,
+  title: string,
+  detail: string
+): Response {
+  const requestId = crypto.randomUUID();
+  return Response.json(
+    {
+      type: `tag:apps-script/efcc/errors#${code}`,
+      title,
+      status,
+      detail,
+      code,
+      requestId,
+    },
+    {
+      status,
+      headers: {
+        "Content-Type": "application/problem+json",
+        "X-Request-Id": requestId,
+      },
+    }
+  );
+}
+
+/**
+ * Cookie-only transport guard for the `/api/v1/auth/*` surface (AUTH-04 #162).
+ * Rejects:
+ *   * OPTIONS / non-POST/GET methods (no CORS preflight support).
+ *   * Authorization header (every flavor is forbidden on this surface).
+ *   * X-Efcc-Session-Id header (the legacy session id travels only via the
+ *     opaque refresh cookie).
+ *   * Cross-origin requests (no CORS = no cross-origin).
+ * Returns null on a clean cookie-only same-origin request, or a 403/405
+ * Response otherwise.
+ */
+function authTransportGuard(request: Request): Response | null {
+  const url = new URL(request.url);
+  const reqOrigin = request.headers.get("Origin");
+  // Same-origin when no Origin is sent (same-host navigation) or when the
+  // Origin matches the Worker's own host.
+  if (reqOrigin) {
+    let reqOriginHost: string;
+    try {
+      reqOriginHost = new URL(reqOrigin).host;
+    } catch {
+      return authProblemResponse(
+        403,
+        "CROSS_ORIGIN_FORBIDDEN",
+        "Forbidden",
+        "Cross-origin requests are not supported on this transport."
+      );
+    }
+    if (reqOriginHost !== url.host) {
+      return authProblemResponse(
+        403,
+        "CROSS_ORIGIN_FORBIDDEN",
+        "Forbidden",
+        "Cross-origin requests are not supported on this transport."
+      );
+    }
+  }
+  if (request.method === "OPTIONS") {
+    return authProblemResponse(
+      405,
+      "METHOD_NOT_ALLOWED",
+      "Method Not Allowed",
+      "CORS preflight is not supported on this transport."
+    );
+  }
+  if (request.headers.get("Authorization") !== null) {
+    return authProblemResponse(
+      403,
+      "TRANSPORT_FORBIDDEN",
+      "Forbidden",
+      "Authorization header is not supported on this transport."
+    );
+  }
+  if (request.headers.get("X-Efcc-Session-Id") !== null) {
+    return authProblemResponse(
+      403,
+      "TRANSPORT_FORBIDDEN",
+      "Forbidden",
+      "X-Efcc-Session-Id header is not supported on this transport."
+    );
+  }
+  return null;
 }
 
 export default {
+  // The explicit route matrix is the locked auth contract; complexity is intentional.
+  // oxlint-disable-next-line eslint/complexity
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // ---- Auth surface: cookie-only transport, no CORS ------------------
+    if (url.pathname.startsWith("/api/v1/auth/")) {
+      const guard = authTransportGuard(request);
+      if (guard) {
+        return guard;
+      }
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const authEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const {
+        handleRegister,
+        handleLogin,
+        handleUpgrade,
+        handleRefresh,
+        handleLogout,
+        handleMe,
+        handleAdminUnlock,
+        handleApprove,
+        handleReject,
+        handleListRegistrations,
+      } = await import("./lib/auth/handlers");
+      if (
+        url.pathname === "/api/v1/auth/register" &&
+        request.method === "POST"
+      ) {
+        return handleRegister(request, authEnv);
+      }
+      if (url.pathname === "/api/v1/auth/login" && request.method === "POST") {
+        return handleLogin(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/upgrade" &&
+        request.method === "POST"
+      ) {
+        return handleUpgrade(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/refresh" &&
+        request.method === "POST"
+      ) {
+        return handleRefresh(request, authEnv);
+      }
+      if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
+        return handleLogout(request, authEnv);
+      }
+      if (url.pathname === "/api/v1/auth/me" && request.method === "GET") {
+        return handleMe(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/registrations" &&
+        request.method === "GET"
+      ) {
+        return handleListRegistrations(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/admin-unlock" &&
+        request.method === "POST"
+      ) {
+        return handleAdminUnlock(request, authEnv);
+      }
+      const approve = url.pathname.match(
+        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/approve$/u
+      );
+      if (approve && request.method === "POST") {
+        return handleApprove(request, authEnv, approve.groups?.id ?? "");
+      }
+      const reject = url.pathname.match(
+        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/reject$/u
+      );
+      if (reject && request.method === "POST") {
+        return handleReject(request, authEnv, reject.groups?.id ?? "");
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown auth route."
+      );
+    }
+
+    // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {
       // Should not normally be reached (run_worker_first scopes this
       // Worker to /api/* only), but fall back to assets defensively.
       return env.ASSETS.fetch(request);
     }
 
+    // ---- Domain RPC proxy: preserves legacy CF1 transport -------------
     const origin = request.headers.get("Origin") ?? "*";
 
     if (request.method === "OPTIONS") {

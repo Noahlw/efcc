@@ -1,23 +1,37 @@
-name: E2E (Playwright)
+# GitHub Actions: D1 auth acceptance gate.
+#
+# The rebuilt login boundary is a Cloudflare Worker backed by D1. This
+# workflow no longer drives the retired Apps Script /exec role-nav suite or
+# decodes Google storage-state cookies. Pull requests run the deterministic
+# workerd contract; an operator can run the deployed Worker smoke manually
+# after provisioning an isolated D1 database and seeded acceptance accounts.
+#
+# The browser UI still uses the legacy /api/v1/rpc surface in this branch, so
+# the deployed job targets the Worker auth API directly with Playwright's
+# request context. It proves the actual cookie boundary without pretending the
+# legacy Apps Script iframe is the new login implementation.
+
+name: D1 auth acceptance gate
 
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  e2e:
-    name: DEV role-navigation acceptance
+  auth-contract:
+    name: D1 auth contract (workerd)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
+      - name: Enable pnpm (corepack)
         run: corepack enable
 
       - name: Setup Node
@@ -25,45 +39,90 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Install dependencies
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Typecheck Worker/auth code
+        run: pnpm --dir web typecheck
+
+      - name: Run D1 auth acceptance contract
+        run: pnpm --dir web exec vitest run worker.auth.test.ts lib/auth
+
+  deployed-auth:
+    name: Deployed D1 auth smoke (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browser
+      - name: Validate deployed auth prerequisites (fail-closed)
+        env:
+          AUTH_TARGET_URL: ${{ vars.AUTH_TARGET_URL }}
+          AUTH_TEST_USERNAME: ${{ secrets.AUTH_TEST_USERNAME }}
+          AUTH_TEST_CREDENTIAL: ${{ secrets.AUTH_TEST_CREDENTIAL }}
+          AUTH_LEGACY_USERNAME: ${{ secrets.AUTH_LEGACY_USERNAME }}
+          AUTH_LEGACY_PIN: ${{ secrets.AUTH_LEGACY_PIN }}
+          AUTH_NEW_CREDENTIAL: ${{ secrets.AUTH_NEW_CREDENTIAL }}
+        run: |
+          set -u
+          missing=""
+          [ -n "$AUTH_TARGET_URL" ] || missing="$missing AUTH_TARGET_URL"
+          [ -n "$AUTH_TEST_USERNAME" ] || missing="$missing AUTH_TEST_USERNAME"
+          [ -n "$AUTH_TEST_CREDENTIAL" ] || missing="$missing AUTH_TEST_CREDENTIAL"
+          [ -n "$AUTH_LEGACY_USERNAME" ] || missing="$missing AUTH_LEGACY_USERNAME"
+          [ -n "$AUTH_LEGACY_PIN" ] || missing="$missing AUTH_LEGACY_PIN"
+          [ -n "$AUTH_NEW_CREDENTIAL" ] || missing="$missing AUTH_NEW_CREDENTIAL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing deployed D1 auth prerequisites:$missing"
+            echo "Provision an isolated Worker/D1 target and acceptance accounts (see .github/CI-SECRETS.md)."
+            exit 1
+          fi
+          AUTH_TARGET_URL="$AUTH_TARGET_URL" node --input-type=module <<'NODE'
+          const target = new URL(process.env.AUTH_TARGET_URL);
+          if (target.protocol !== "https:" || target.username || target.password) {
+            console.error("::error::AUTH_TARGET_URL must be an absolute HTTPS URL without credentials.");
+            process.exit(1);
+          }
+          NODE
+          echo "Deployed D1 auth prerequisites present."
+
+      - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Decode Google storage states
+      - name: Run deployed D1 auth smoke
         env:
-          ALICE_STORAGE_STATE: ${{ secrets.ALICE_STORAGE_STATE }}
-          BOB_STORAGE_STATE: ${{ secrets.BOB_STORAGE_STATE }}
-          NOAH_STORAGE_STATE: ${{ secrets.NOAH_STORAGE_STATE }}
-        run: |
-          test -n "$ALICE_STORAGE_STATE"
-          test -n "$BOB_STORAGE_STATE"
-          test -n "$NOAH_STORAGE_STATE"
-          mkdir -p .auth
-          echo "$ALICE_STORAGE_STATE" | base64 --decode > .auth/alice.storage.json
-          echo "$BOB_STORAGE_STATE" | base64 --decode > .auth/bob.storage.json
-          echo "$NOAH_STORAGE_STATE" | base64 --decode > .auth/noah.storage.json
+          AUTH_TARGET_URL: ${{ vars.AUTH_TARGET_URL }}
+          AUTH_TEST_USERNAME: ${{ secrets.AUTH_TEST_USERNAME }}
+          AUTH_TEST_CREDENTIAL: ${{ secrets.AUTH_TEST_CREDENTIAL }}
+          AUTH_LEGACY_USERNAME: ${{ secrets.AUTH_LEGACY_USERNAME }}
+          AUTH_LEGACY_PIN: ${{ secrets.AUTH_LEGACY_PIN }}
+          AUTH_NEW_CREDENTIAL: ${{ secrets.AUTH_NEW_CREDENTIAL }}
+        run: pnpm exec playwright test --config=tests/e2e/auth-d1.config.ts
 
-      - name: Run Playwright E2E against approved DEV deployment
-        env:
-          E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
-        run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
-
-      - name: Append executed results to acceptance plan
-        if: always() && hashFiles('test-results/e2e-results.json') != ''
-        env:
-          E2E_TARGET_URL: ${{ vars.E2E_TARGET_URL }}
-        run: pnpm exec tsx tests/e2e/plan-doc-appender.ts
-
-      - name: Upload Playwright evidence
+      - name: Upload deployed auth evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-e2e-results
-          path: |
-            test-results/
-            docs/specs/067-role-nav-acceptance-plan.md
+          name: d1-auth-playwright-results
+          path: test-results/
           if-no-files-found: ignore
           retention-days: 14

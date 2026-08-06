@@ -4,8 +4,8 @@
  */
 // CF0-06 acceptance suite — local production shell at 375×812 and 1280×800.
 // Runs against the static export served by tests/e2e/serve-static.ts; the
-// /api/v1/rpc endpoint is stubbed in-browser so the suite has no Google /
-// Apps Script dependency (criterion 7).
+// /api/v1/auth/* cookie boundary is stubbed in-browser so the suite has no
+// Google / Apps Script dependency (criterion 7).
 
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
@@ -23,111 +23,50 @@ function requireBox(box: { width: number; height: number } | null): {
   return box;
 }
 
-interface Bootstrap {
-  session: {
-    userId: string;
-    name: string;
-    role: string;
-    qrCodeString: string;
-    sessionId: string;
-    sessionToken: string;
-  };
-  sections: {
-    key: string;
-    label: string;
-    capability: string;
-    requiresServerAuth: boolean;
-  }[];
-  profile: {
-    userId: string;
-    name: string;
-    username: string;
-    phone: string;
-    role: string;
-    status: string;
-    qrCodeString: string;
-  };
-}
-
-const SESSION = {
+const PUBLIC_USER = {
   userId: "u1",
-  sessionId: "s1",
-  sessionToken: "t1",
-} as const;
-
-const BOOTSTRAP: Bootstrap = {
-  session: {
-    userId: "u1",
-    name: "Test User",
-    role: "staff",
-    qrCodeString: "qr:u1",
-    sessionId: "s1",
-    sessionToken: "t1",
-  },
-  sections: [
-    {
-      key: "profile",
-      label: COPY.sections.profile,
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "programs",
-      label: COPY.sections.programs,
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "care",
-      label: COPY.sections.care,
-      capability: "AUTH",
-      requiresServerAuth: true,
-    },
-  ],
-  profile: {
-    userId: "u1",
-    name: "Test User",
-    username: "tester",
-    phone: "0900000000",
-    role: "staff",
-    status: "active",
-    qrCodeString: "qr:u1",
-  },
+  name: "Test User",
+  username: "tester",
+  phone: "0900000000",
+  role: "staff",
+  status: "active",
+  qrCodeString: "qr:u1",
 };
 
-async function stubRpc(route: Route, request: { postDataJSON: () => unknown }) {
-  const body = request.postDataJSON() ?? {};
-  const action =
-    body &&
-    typeof body === "object" &&
-    "action" in body &&
-    typeof body.action === "string"
-      ? body.action
-      : undefined;
+const AUTH_HINT_KEY = "efcc_auth_active";
 
-  if (action === "restoreApp") {
+// Stub the cookie-only AUTH boundary. The shell resolves the user via
+// GET /api/v1/auth/me (access cookie) and refreshes via POST
+// /api/v1/auth/refresh; logout is POST /api/v1/auth/logout (204). The
+// legacy /api/v1/rpc proxy is no longer called by the shell.
+async function stubAuth(route: Route) {
+  const url = new URL(route.request().url());
+  const path = url.pathname;
+  const method = route.request().method();
+
+  if (path === "/api/v1/auth/me" && method === "GET") {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        success: true,
-        requestId: "r-1",
-        data: BOOTSTRAP,
+        requestId: "r-me",
+        data: { user: PUBLIC_USER },
       }),
     });
     return;
   }
 
-  if (action === "authorizedNavigate") {
+  if (path === "/api/v1/auth/refresh" && method === "POST") {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        success: true,
-        requestId: "r-2",
-        data: { authorized: true },
-      }),
+      body: JSON.stringify({ requestId: "r-refresh", data: {} }),
     });
+    return;
+  }
+
+  if (path === "/api/v1/auth/logout" && method === "POST") {
+    await route.fulfill({ status: 204 });
     return;
   }
 
@@ -143,13 +82,18 @@ async function stubRpc(route: Route, request: { postDataJSON: () => unknown }) {
 }
 
 test.beforeEach(async ({ page }: { page: Page }) => {
-  // Stringify inside the init script: SESSION is a Node value, not a value
-  // that survives into the browser context otherwise.
-  await page.addInitScript((serialized: string) => {
-    localStorage.setItem("efcc_session", serialized);
-  }, JSON.stringify(SESSION));
+  // Presence hint (non-secret) so the shell attempts a cookie restore.
+  await page.addInitScript(
+    ({ key, value }: { key: string; value: string }) => {
+      localStorage.setItem(key, value);
+    },
+    { key: AUTH_HINT_KEY, value: "1" }
+  );
 
-  await page.route("**/api/v1/rpc", stubRpc);
+  await page.route("**/api/v1/auth/me", stubAuth);
+  await page.route("**/api/v1/auth/refresh", stubAuth);
+  await page.route("**/api/v1/auth/logout", stubAuth);
+  await page.route("**/api/v1/rpc", stubAuth);
 });
 
 const isMobile = (projectName: string) => projectName.startsWith("mobile");
@@ -306,7 +250,7 @@ test("exactly one polite live region announces shell status", async ({
   const regions = page.locator('output[role="status"][aria-live="polite"]');
   await expect(regions).toHaveCount(1);
 
-  // Wait for the restoreApp announcement to land (the live region is empty
+  // Wait for the restore announcement to land (the live region is empty
   // before the bootstrap resolves).
   await expect
     .poll(async () => (await regions.first().textContent()) ?? "", {
@@ -327,32 +271,45 @@ test("primary controls are at least 44x44", async ({ page }) => {
 });
 
 test("login form controls are at least 44x44", async ({ page }) => {
-  // Force the login route: an AUTH_REQUIRED restore response makes the
-  // shell clear the stored session and redirect to /.
-  await page.unroute("**/api/v1/rpc");
-  await page.route("**/api/v1/rpc", (route) =>
+  // Force the login route: an expired/revoked cookie restore (me 401 then
+  // refresh 401) makes the shell clear the presence hint and land on Login.
+  await page.unroute("**/api/v1/auth/me");
+  await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({
       status: 401,
       contentType: "application/problem+json",
       body: JSON.stringify({
         status: 401,
         code: "AUTH_REQUIRED",
-        title: "Session expired",
+        title: "Unauthorized",
+        detail: "Access cookie invalid or expired.",
+      }),
+    })
+  );
+  await page.route("**/api/v1/auth/refresh", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        status: 401,
+        code: "AUTH_REQUIRED",
+        title: "Unauthorized",
+        detail: "Refresh cookie missing.",
       }),
     })
   );
   await page.goto("/care");
 
   const username = page.locator('input[autocomplete="username"]');
-  const pin = page.locator('input[autocomplete="current-password"]');
+  const password = page.locator('input[autocomplete="current-password"]');
   const submit = page.getByRole("button", { name: COPY.login.submit });
   await expect(username).toBeVisible();
-  await expect(pin).toBeVisible();
+  await expect(password).toBeVisible();
   await expect(submit).toBeVisible();
 
   for (const [label, control] of [
     ["username", username],
-    ["PIN", pin],
+    ["password", password],
     ["submit", submit],
   ] as const) {
     const box = await control.boundingBox();
@@ -364,9 +321,9 @@ test("login form controls are at least 44x44", async ({ page }) => {
 });
 
 test("recovery retry control is at least 44x44", async ({ page }) => {
-  // A 503 restore failure renders the RecoveryView with a retry control.
-  await page.unroute("**/api/v1/rpc");
-  await page.route("**/api/v1/rpc", (route) =>
+  // A 503 /me failure renders the RecoveryView with a retry control.
+  await page.unroute("**/api/v1/auth/me");
+  await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/problem+json",

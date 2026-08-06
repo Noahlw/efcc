@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 
 import type { Section } from "./api";
 import {
+  defaultSections,
   firstSection,
   isPermitted,
   getSection,
@@ -93,5 +94,22 @@ describe(getSection, () => {
 describe(recoverySection, () => {
   test("returns first section for MEMBER", () => {
     expect(recoverySection(MEMBER_SECTIONS)).toBe("profile");
+  });
+});
+
+describe(defaultSections, () => {
+  test("returns the six shell sections with profile first (CF0-04 stand-in)", () => {
+    const sections = defaultSections();
+    expect(sections.map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+      "events",
+      "scanner",
+      "care",
+      "permissions",
+    ]);
+    expect(firstSection(sections)).toBe("profile");
+    // No section requires a server-auth RPC in this slice (deferred to CF0-04).
+    expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
   });
 });

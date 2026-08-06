@@ -1,0 +1,3 @@
+# Staged Worker/D1 platform migration
+
+**Status: accepted.** Cloudflare Worker + D1 is the eventual platform owner for EFCC identity and domain capabilities, but the migration proceeds capability by capability. PR #166 establishes D1 as the Identity Authority for credentials, sessions, login, registration, and approval; Apps Script + Google Sheets remains the transitional Domain Backend for programs, events, attendance, enrollments, and other capabilities until each replacement has implementation and acceptance proof. This boundary keeps the new authentication foundation mergeable without deleting still-load-bearing domain behavior.

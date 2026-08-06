@@ -30,5 +30,13 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "worker.ts", "worker.test.ts"]
+  "exclude": [
+    "node_modules",
+    "worker.ts",
+    "worker.test.ts",
+    "worker.auth.test.ts",
+    "lib/auth",
+    "lib/service-envelope.ts",
+    "lib/service-envelope.test.ts"
+  ]
 }

@@ -4,11 +4,17 @@ export const COPY = {
   appName: "顯恩堂系統",
   login: {
     title: "登入",
+    upgradeTitle: "設定新密碼",
     usernameLabel: "用戶名稱",
-    pinLabel: "PIN 碼",
+    passwordLabel: "密碼",
+    legacyPasswordLabel: "舊 PIN 碼",
+    newPasswordLabel: "新密碼",
     submit: "登入",
     submitting: "登入中…",
-    error: "用戶名稱或 PIN 碼不正確。",
+    upgradeSubmit: "設定新密碼並登入",
+    upgrading: "設定中…",
+    error: "用戶名稱或密碼不正確。",
+    upgradeRequired: "此帳戶需要先設定新密碼才能登入。",
     networkError: "無法連接伺服器，請檢查網路後再試。",
     success: "登入成功。",
   },
@@ -96,3 +102,35 @@ export function errorCopyFor(
   }
   return COPY.error.unknown;
 }
+
+// Traditional Chinese landing-page copy for the signed-out Persuade surface.
+// Drawn from the real sections the app ships (Spec 000 / Spec 074); no
+// testimonials, metrics, or security claims are invented on this surface.
+export const LANDING = {
+  skipToLogin: "跳到登入",
+  brand: "顯恩堂",
+  brandSystem: "系統",
+  homeLabel: "顯恩堂系統首頁",
+  navLabel: "頁面導覽",
+  featuresNav: "認識功能",
+  loginNav: "登入",
+  heroTitle: "一堂的相聚，有據可依",
+  heroSub:
+    "將課程報名、聚會管理、掃描簽到與關懷追蹤，收進同一本會友名冊——讓牧養有事可循，讓服事有據可查。",
+  primaryCta: "立即登入",
+  secondaryCta: "認識功能",
+  registerTitle: "一本名冊，涵蓋一堂",
+  registerLead: "以下都是顯恩堂系統實際提供的功能。",
+  featurePrograms: "課程與活動",
+  featureProgramsDesc: "活動與課程的報名、名單，一處掌握。",
+  featureEvents: "聚會管理",
+  featureEventsDesc: "定期聚會與日程安排，一目了然。",
+  featureScanner: "掃描簽到",
+  featureScannerDesc: "以 QR 碼即時記錄出席，無需手寫名單。",
+  featureCare: "關懷儀表板",
+  featureCareDesc: "把需要跟進的會友，放在事奉者眼前。",
+  loginPanelLead: "使用你的用戶名稱與密碼。",
+  loginAfterNote: "登入後，將進入你獲授權的功能頁面。",
+  footerMotto: "一堂之務，一處安放。",
+  footerNote: "顯恩堂系統 — 教會管理系統",
+} as const;

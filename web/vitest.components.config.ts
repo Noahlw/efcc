@@ -13,6 +13,8 @@ export default defineProject({
       "lib/sections.test.ts",
       "lib/api.test.ts",
       "lib/navigation-controller.test.ts",
+    "lib/registration.test.tsx",
+    "lib/approval-queue.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {
