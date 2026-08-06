@@ -364,6 +364,10 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       );
       expect(res.status).toBe(409);
       expect((await problemOf(res)).code).toBe("CONFLICT");
+      // The spy must have been exercised — otherwise the pre-flight would have
+      // rejected the duplicate itself and this test would not be covering the
+      // batch guard at all.
+      expect(spy).toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }
