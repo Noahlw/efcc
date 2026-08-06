@@ -23,12 +23,16 @@ set, not from a local file read.
 
 Inherited sources inventoried in the repository on the `feat/qr-scan` branch:
 
-- `docs/adr/0001` … `docs/adr/0016` — 17 ADR entries (the two ADR-0015 files are separate records).
+- `docs/adr/0001` … `docs/adr/0016` — 17 ADR entries (the two ADR-0015 files are separate records). *(2026-08-06: ADR numbering now runs 0001–0023; the single-lock record was renumbered to ADR-0023 — see §11.1.)*
 - `docs/specs/000` … `docs/specs/009` — 10 domain specs.
 - `docs/specs/067` … `docs/specs/072` — 8 acceptance-plan files (the `067`
   and `071` numbers each have two files: `067-follow-up-section-rpcs.md`,
   `067-role-nav-acceptance-plan.md`, `068-…`, `069-…`, `070-…`,
-  `071-accessibility-…`, `071-database-schema.md`, `072-…`).
+  `071-accessibility-…`, `database-schema-reference.md`, `072-…`).
+  *(2026-08-06: the file once named `071-database-schema.md` is a reference
+  doc parented to #70, not issue #71's spec; it was renamed
+  `database-schema-reference.md` — see §11.3. The two `067` files remain
+  distinguished by their descriptive suffixes and cross-reference notes.)*
 - Issue-only sources referenced by the inherited ADR/spec set and by
   issue #130: issue [#50](https://github.com/Noahlw/efcc/issues/50) and
   issue [#93](https://github.com/Noahlw/efcc/issues/93). Neither exists as
@@ -67,34 +71,34 @@ domain substrate is intact.
 | ADR | Path | Class | Rationale |
 |---|---|---|---|
 | ADR-0001 | `docs/adr/0001-google-sheets-as-database.md` | **PRESERVE** | Database choice (Google Sheets, header-name lookup, soft-delete pattern, single spreadsheet, `CacheService`) is transport-agnostic. ADR-0018's HTTP envelope forwards DTOs; it does not move Sheets off Apps Script. |
-| ADR-0002 | `docs/adr/0002-pin-based-authentication.md` | **PRESERVE** | Username + 4-digit PIN, account-status lifecycle, ambiguous-error discipline, and `normalizePin_` semantics are backend domain authority. Only the client-side "session-less" note (`google.script.run` runs as the deployer) is replaced by ADR-0018's session-token transport — the rest of the document carries forward. |
+| ADR-0002 | `docs/adr/0002-pin-based-authentication.md` | **PRESERVE** | Username + 4-digit PIN, account-status lifecycle, ambiguous-error discipline, and `normalizePin_` semantics are backend domain authority. Only the client-side "session-less" note is replaced by ADR-0020's D1 `Session` rows and cookie-only transport (see §11.4) — the rest of the document carries forward unchanged; D1's `web/lib/auth/credentials.ts` implements the same PIN discipline. |
 | ADR-0003 | `docs/adr/0003-google-script-run-rpc.md` | **SUPERSEDE** | The entire `google.script.run` / `withSuccessHandler` / `withFailureHandler` transport is replaced by ADR-0018's `POST /api/v1/rpc` plus RFC 9457 Problem Details. The "Proposed amendment" structured-codes clause in this ADR (`AUTH_REQUIRED`, `FORBIDDEN`, `VALIDATION`, `NOT_FOUND`, `CONFLICT`, `UNAVAILABLE`) is the **direct precedent** for ADR-0018's `RPC_CODES` carry-forward on the `code` extension — same vocabulary, same six codes, now carrying over verbatim. |
 | ADR-0004 | `docs/adr/0004-monthly-recurring-event-generation.md` | **PRESERVE** | Recurring event generation, hardcoded program list, monthly time-driven trigger, `setValues` bulk write, and Event_ID format are server-only mechanics. UI presentation (and any per-month config) changes, but the ADR's contract carries forward. |
 | ADR-0005 | `docs/adr/0005-role-based-access-control-and-pin-auth.md` | **PRESERVE** | ADR-0005 remains a clean inherited authority record for PIN/RBAC semantics; ADR-0006's later role-model amendment is already part of the repository's decision history. The React migration does not reclassify either document or move its domain authority into the browser. |
-| ADR-0006 | `docs/adr/0006-admin-capability-matrix.md` | **PRESERVE** | The 3-tier role hierarchy, the capability matrix, the Program Leader model, the `Program_Leaders` join-sheet, the `Pending` member-approval flow, and the original 8-column `Audit_Log` shape are all server/domain authority. ADR-0019 amends the `Program_Leaders` schema lock-step with ADR-0013. Audit_Log schema is superseded by ADR-0015-lock, not by ADR-0006's role model. |
+| ADR-0006 | `docs/adr/0006-admin-capability-matrix.md` | **PRESERVE** | The 3-tier role hierarchy, the capability matrix, the Program Leader model, the `Program_Leaders` join-sheet, the `Pending` member-approval flow, and the original 8-column `Audit_Log` shape are all server/domain authority. ADR-0019 amends the `Program_Leaders` schema lock-step with ADR-0013. Audit_Log schema is superseded by ADR-0023-lock, not by ADR-0006's role model. |
 | ADR-0007 | `docs/adr/0007-vanilla-multipage-html-service.md` | **AMEND** | The principle that "no framework is required for EFCC's web app" survives as an architectural preference (ADR-0017 picks React for maintainability, not because vanilla was wrong for EFCC's scope). The clause "5 MB GAS project limit" and "single inlined HTML file via `HtmlService`" are superseded by ADR-0017's Next.js static export on Cloudflare. The "Apps Script native surface" / "official-docs vanilla-first" rationale is moot under React. |
 | ADR-0008 | `docs/adr/0008-restart-from-template-1rl1o1ngg.md` | **SUPERSEDE** | The template-derived SPA shell + `document.open()` / `document.write()` / `document.close()` document handoff is replaced by ADR-0017's Cloudflare-hosted Next.js + same-origin Worker proxy. The bulletproof-baseline exit criteria and the cherry-pick expansion list lose their target (no `src/gas/` under the new architecture). The login-flow pattern (Username + PIN, RBAC-filtered chrome, server-rendered fragments) re-emerges in spec 074's shell contract rather than this ADR. |
-| ADR-0009 | `docs/adr/0009-audit-log-write-pattern.md` | **PRESERVE** | ADR-0009's own supersession note points to ADR-0015-lock for the current single-lock audit contract. Its non-repudiation principle and the rule that audit failures must not be silently swallowed remain preserved through that successor; the React migration does not alter this authority chain. |
+| ADR-0009 | `docs/adr/0009-audit-log-write-pattern.md` | **PRESERVE** | ADR-0009's own supersession note points to ADR-0023-lock (renumbered from 0015, 2026-08-06) for the current single-lock audit contract. Its non-repudiation principle and the rule that audit failures must not be silently swallowed remain preserved through that successor; the React migration does not alter this authority chain. |
 | ADR-0010 | `docs/adr/0010-stable-app-document-and-expandable-sections.md` | **AMEND** | The "one stable top-level document" model is replaced by ADR-0017's Cloudflare-hosted Next.js shell (one stable document per Next.js page, not one HtmlService document). The Section-registry concept (stable key, capability-gated, server-rendered fragments) is the **direct precedent** for spec 074's section model — same shape, different transport. The clause "Large optional dependencies, including the QR scanner library, use a shared on-demand asset loader" is superseded for camera by ADR-0015-camera's external-origin flow. |
-| ADR-0011 | `docs/adr/0011-one-active-session-per-member.md` | **PRESERVE** (as deferred) | The ADR is `Deferred — not part of the shell-navigation baseline` and is unaffected by the React migration. Session durability, HMAC, `EFCC_SESSION_SALT`, and replacement-on-login semantics are transport-agnostic. ADR-0018's header-based session transport (`Authorization: Bearer <sessionToken>` + `X-Efcc-Session-Id`) is compatible with this model; it is the wire format, not the concurrency policy. |
-| ADR-0012 | `docs/adr/0012-e2e-testing-strategy.md` | **AMEND** | The Playwright storage-state pipeline is transport-agnostic and PRESERVES. The headless-browser auth blocker it documents — `google.script.run` failing in a headless context because the iframe routes RPC through a Google sign-in wall — **does not exist** under ADR-0018: a headless HTTP client can set `Authorization` and `X-Efcc-Session-Id` directly, no iframe sign-in required. Storage-state secrets remain useful for any browser-driven smoke flow that does require a Google account (none currently identified). |
-| ADR-0013 | `docs/adr/0013-google-sheets-database-structure.md` | **PRESERVE** | The canonical Sheet inventory, column-by-column definitions, code-to-DB coupling map, and the `Audit_Log` reconciliation pointer to ADR-0015-lock are all server-side authority. This ADR is the source of truth for what header names exist on every tab; React reads through the same Apps Script RPCs and gets the same DTO shapes. |
+| ADR-0011 | `docs/adr/0011-one-active-session-per-member.md` | **SUPERSEDE** | Superseded by ADR-0020: D1 `web/lib/auth/sessions.ts` creates an independent Session row per login and revocation is per row. The header-transport compatibility clause is also false under the shipped cookie-only boundary (see §11.4). |
+| ADR-0012 | `docs/adr/0012-e2e-testing-strategy.md` | **AMEND** | The Playwright storage-state pipeline is transport-agnostic and PRESERVES. The headless-browser auth blocker it documents does not apply to the D1 boundary: a headless client drives the real browser through the Worker login flow, which sets httpOnly cookies (no auth headers — see §11.4). Storage-state secrets remain useful for the retained legacy `/exec` suite. |
+| ADR-0013 | `docs/adr/0013-google-sheets-database-structure.md` | **PRESERVE** | The canonical Sheet inventory, column-by-column definitions, code-to-DB coupling map, and the `Audit_Log` reconciliation pointer to ADR-0023-lock (renumbered from 0015, 2026-08-06) are all server-side authority. This ADR is the source of truth for what header names exist on every tab; React reads through the same Apps Script RPCs and gets the same DTO shapes. |
 | ADR-0014 | `docs/adr/0014-precheck-and-precommit-workflow.md` | **PRESERVE** | The pre-commit typecheck, multi-config `tsc`, and split `precheck.yml` + `e2e.yml` workflows are transport-agnostic dev-process mechanics. The new `web/` TypeScript surface inherits the same gate. |
 | ADR-0015 (camera) | `docs/adr/0015-external-camera-origin-for-qr-scanner.md` | **SUPERSEDE-flagged pending #136** | The external-HTTPS-origin + `getUserMedia` + `postMessage` mechanism exists solely because HtmlService's IFRAME blocks `getUserMedia()`. A Cloudflare-hosted page has no such restriction. The trust-boundary clauses — opaque `scannedCode`, server-side resolution in `api_qrCheckIn`, `event.origin === "https://noahwong-hue.github.io"` allowlist — carry forward regardless of #136's outcome. The mechanism itself (popup+postMessage bridge) is **flagged for replacement** by issue [#136](https://github.com/Noahlw/efcc/issues/136); this matrix does not decide #136. |
-| ADR-0015 (lock) | `docs/adr/0015-single-lock-mutation-and-audit-contract.md` | **PRESERVE** | `withScriptLock_`, the five-value `Outcome` vocabulary (`SUCCESS`/`DUPLICATE`/`CONFLICT`/`DENIED`/`FAILED`), the natural-key idempotency rule, the partial-failure posture (Cloud Logging breadcrumb before `Audit_Log.appendRow`), and the final `Audit_Log` schema are backend authority. ADR-0019 carries these into CF2 verbatim. Status: `Proposed` until deployed `/exec` proof, unchanged by the React migration. |
+| ADR-0023 (lock, renumbered) | `docs/adr/0023-single-lock-mutation-and-audit-contract.md` | **PRESERVE** | `withScriptLock_`, the five-value `Outcome` vocabulary (`SUCCESS`/`DUPLICATE`/`CONFLICT`/`DENIED`/`FAILED`), the natural-key idempotency rule, the partial-failure posture (Cloud Logging breadcrumb before `Audit_Log.appendRow`), and the final `Audit_Log` schema are backend authority. ADR-0019 carries these into CF2 verbatim. Status: `Proposed` until deployed `/exec` proof, unchanged by the React migration. *(Renumbered from 0015, 2026-08-06 — see §11.1.)* |
 | ADR-0016 | `docs/adr/0016-operational-attendances-sheet-migration.md` | **PRESERVE** | The manual archive + `setupAttendancesSheet_` procedure and the seven operational column headers (`Attendance_ID`/`Event_ID`/`User_ID`/`CheckIn_Time`/`CheckIn_Method`/`CheckIn_By`/`Status`) are backend authority. The application reads only the new tab. |
 
 ### ADRs — carry-forward clauses (high-confidence domain substrate)
 
 These clauses are explicitly preserved regardless of any UI/transport change:
 
-- **Database & schema:** Sheets as primary store, header-name lookup, soft-delete, sheet constants in repository files, `Audit_Log` per ADR-0015-lock (0001, 0013).
+- **Database & schema:** Sheets as primary store, header-name lookup, soft-delete, sheet constants in repository files, `Audit_Log` per ADR-0023-lock (0001, 0013).
 - **Auth:** Username + 4-digit PIN, `normalizePin_`, ambiguous-error discipline, account-status lifecycle (0002).
 - **RBAC & Program Leader:** 3-tier `ADMIN`/`STAFF`/`MEMBER` model, capability matrix, Program Leader scoped to `(user, program)` pair, `Must be Active` predicate on `Program_Leaders` row (0005, 0006, 0019).
 - **Recurring events:** monthly time-driven generator, hardcoded program list, Event_ID format, bulk `setValues` (0004).
-- **Audit:** `withScriptLock_` lifecycle, five-value `Outcome` vocabulary, natural-key idempotency, Cloud Logging breadcrumb before audit append (0015-lock).
+- **Audit:** `withScriptLock_` lifecycle, five-value `Outcome` vocabulary, natural-key idempotency, Cloud Logging breadcrumb before audit append (0023-lock).
 - **Permissions mutations:** query-driven reads, `grantProgramLeader` / `revokeProgramLeader` actions, six-column `Program_Leaders` schema preserved (0019).
-- **Session:** HMAC token, `EFCC_SESSION_SALT` deployment secret, replacement-on-login semantics (0011, deferred but compatible).
+- **Session:** HMAC token, `EFCC_SESSION_SALT` deployment secret, replacement-on-login semantics (0011 — superseded by ADR-0020; see §11.2).
 - **CI/precheck:** multi-config `tsc`, Playwright storage-state pipeline (0012, 0014).
 
 ---
@@ -104,17 +108,17 @@ These clauses are explicitly preserved regardless of any UI/transport change:
 | Spec | Path | Class | Rationale |
 |---|---|---|---|
 | Spec 000 | `docs/specs/000-efcc-system-spec.md` | **AMEND** | The user stories and migration narrative (`TypeScript React WebApp`, Vite + React 19 + `vite-plugin-singlefile`, single bundled `index.html` via `HtmlService.createHtmlOutputFromFile('index')`) are **superseded** — React survives but the bundling target moves from Apps Script `HtmlService` to ADR-0017's Cloudflare-hosted Next.js static export. The architectural commitments (`localStorage.setItem('efcc_session', …)`, server-authoritative role + HMAC token verification, `vite-plugin-singlefile` singlefile) are **AMEND** — the localStorage session shape and server-authoritative verification are preserved per ADR-0018, but the single-file bundle and the `HtmlService.createHtmlOutputFromFile` delivery are gone. |
-| Spec 001 | `docs/specs/001-member-registration.md` | **PRESERVE** (already `Deferred`) | Already deferred; the manual Users-sheet process continues. No browser-callable registration RPC exists, and the React shell ships no Register view. Carries forward unchanged. |
+| Spec 001 | `docs/specs/001-member-registration.md` | **SUPERSEDE** | Registration shipped in PR #166: `/register/` page + registered RPC against the D1 `accounts` table; the manual Users-sheet process remains only for admin-created accounts. *(Superseded 2026-08-06 — §11.2.)* |
 | Spec 002 | `docs/specs/002-program-enrollment.md` | **PRESERVE** | Domain content (`enrollUser`, `cancelEnrollment`, `getUserEnrolledProgramIds`, soft-delete pattern, advisory Event-clash warning, capability-gated privileged cancellation). The trigger and UI surface change; the server contract carries forward. |
 | Spec 003 | `docs/specs/003-events-recurring.md` | **PRESERVE** | Recurring event generation, monthly trigger, Event sheet columns, `generateMonthlyRecurringEvents` reference. The Events-sheet column conflict with spec 005 is flagged below (open thread #2). |
-| Spec 004 | `docs/specs/004-programs-catalog.md` | **PRESERVE** | Programs catalog, `CacheService` cache layer, header-name column resolution, `getAvailablePrograms(userId)`. The `getAvailablePrograms` bare-array contract predates the #53 Programs/Enrollment spec and is itself acknowledged in spec 069 to conflict with #53 — flagged below (open thread). The `CacheService` decision and `findHeaderIndex_` pattern remain authoritative. |
+| Spec 004 | `docs/specs/004-programs-catalog.md` | **PRESERVE** | Programs catalog, `CacheService` cache layer, header-name column resolution, `getAvailablePrograms(userId)`. The `getAvailablePrograms` bare-array contract predates the #53 Programs/Enrollment spec and is itself acknowledged in spec 069 to conflict with #53 — flagged below (open thread). The bare-array clause itself is superseded by the spec 069 decision and spec 043 §5 (§11.2). The `CacheService` decision and `findHeaderIndex_` pattern remain authoritative. |
 | Spec 005 | `docs/specs/005-dynamic-event-management.md` | **PRESERVE** | Interactive Event create/cancel/edit, exact-Program capability, soft cancel with `CONFLICT` on active Attendance, share-the-lock with check-in, one-row-per-interactive-creation rule. The Events-sheet column conflict with spec 003 is flagged below. |
 | Spec 006 | `docs/specs/006-attendance-tracking.md` | **AMEND** | The concurrency boundary (one caller-owned minimal script lock around final authoritative checks and write), the `NOT_ENROLLED` business result, the audit and void semantics carry forward. **§3.1 "QR Code Scanning Flow"** — in particular "HTML5 camera video stream via `html5-qrcode`" — is **superseded for F5** by ADR-0015-camera's external-origin flow (per the cross-reference table in ADR-0015-camera and the resolution recorded in #130). The §3.1 step "open event check-in view (`/events/:eventId/checkin`)" assumes an Apps Script shell URL pattern; the React/Cloudflare path is owned by spec 074. |
 | Spec 007 | `docs/specs/007-member-activity-and-care-dashboard.md` | **PRESERVE** | Inactivity calculation rules, exact-Program-active-enrollment predicate, `api_getUserActivityProfile` and `api_getCareDashboard` contracts, STAFF/ADMIN access boundary. The header cards are already deferred to a separate Care metrics ticket — that deferral is unchanged. |
 | Spec 008 | `docs/specs/008-vanilla-restructure.md` | **SUPERSEDE** | The vanilla multi-page architecture (`?page=` query-string routing, `.gs` server modules + `.html` client pages, `app.js.html` shared module, `styles.html` include, clasp `src/gas/` push) is wholesale replaced by ADR-0017's Next.js monorepo on Cloudflare. No `src/gas/` directory survives in the new architecture. The file responsibilities, shared JS contract, CSS token set, clasp configuration, and migration approach in this spec lose their target. |
 | Spec 009 | `docs/specs/009-phone-first-shell-navigation.md` | **AMEND** | The architecture (one stable top-level document, App Document state machine, route contract, `navigateTo`, fragment registry, RPC envelope, phone-first responsive layout, decision evidence standard, the ledger of in-flight decisions) is the **direct precedent** for spec 074's shell contract — same vocabulary, same state machine, same envelope shape, different transport (Next.js + Cloudflare Worker instead of HtmlService App Document). **The `google.script.run` transport**, the **`allow-popups-to-escape-sandbox`** IFRAME rules, and the **App-Document-loaded `html5-qrcode` clause** are superseded by ADR-0017/ADR-0018 and ADR-0015-camera's external origin respectively. Domain clauses (capability, RBAC, single-lock around final authoritative checks, the "Hong Kong-fixed date/time transport" rule, dirty-form protection, failure envelope codes) carry forward. |
 | Spec 071 (accessibility) | `docs/specs/071-accessibility-acceptance-plan.md` | **PRESERVE** | The 13 acceptance criteria (touch targets, safe-area insets, semantic nav, keyboard traversal, focus management, `aria-live` status, non-color cues, badge labels, Traditional Chinese copy, automated + manual checks, versioned isolated `/exec`) are transport-agnostic UX contracts. The acceptance trace steps that say "open `/exec`" assume an Apps Script deployment URL; under ADR-0017 the equivalent flow runs against the Cloudflare-hosted URL. The mechanical criteria are unchanged. |
-| Spec 071 (database schema) | `docs/specs/071-database-schema.md` | **PRESERVE** | The authoritative Users/Programs/Program_Leaders columns and the header-name resolution rule are domain authority. The "Conflicts found" subsection (Events column conflict between spec 003/005) is flagged below as an open thread. |
+| Spec 071 (database schema reference) | `docs/specs/database-schema-reference.md` | **PRESERVE** | The authoritative column definitions and the header-name resolution rule are domain authority. The "Conflicts found" subsection (Events column conflict between spec 003/005) is flagged below as an open thread. *(Renamed 2026-08-06 from 071-database-schema.md — it is parented to issue #70, not issue #71; §11.3.)* |
 
 ### Domain specs — carry-forward clauses
 
@@ -125,7 +129,7 @@ These clauses are explicitly preserved regardless of any UI/transport change:
 - **Care:** inactivity predicate (`Users.Status == "Active"` AND no recent enrollment AND `coverage assumption`), STAFF/ADMIN access boundary, header metrics deferred (spec 007).
 - **Auth envelope:** `data` contains only JSON-safe primitives, arrays, plain objects — no Date, no Range. The `requestId` correlation id. Six canonical RPC codes (spec 009).
 - **Accessibility:** 44×44 touch targets, safe-area insets, no horizontal overflow, semantic nav with `aria-current`, intentional focus management, `aria-live` status, non-color cues (spec 071).
-- **Header-name resolution:** the project's established pattern; `program-leaders-repository.gs` non-compliance flagged in spec 071 as a code-side fix independent of this matrix (spec 071).
+- **Header-name resolution:** the project's established pattern; `program-leaders-repository.gs` non-compliance flagged in the database-schema reference as a code-side fix independent of this matrix (§11.3).
 
 ### Domain specs — superseded clauses
 
@@ -140,9 +144,9 @@ These clauses are explicitly preserved regardless of any UI/transport change:
 
 | Spec | Path | Class | Rationale |
 |---|---|---|---|
-| Spec 067 (follow-up) | `docs/specs/067-follow-up-section-rpcs.md` | **AMEND** | The five capability-gated RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) and the `sessionHasCapability_` shared helper are server-side authority and **carry forward** into CF0. The `google.script.run` trigger and the "client-side `renderSection_` calls the matching RPC" wiring are replaced by ADR-0018's `POST /api/v1/rpc` action-multiplexed JSON body and the React shell's section loader. The vm-harness unit-test approach (`tests/gas/role-navigation.test.js`) carries forward; the **Playwright storage-state acceptance run is structurally unblocked** under ADR-0018 (headless client sets auth headers directly). |
-| Spec 067 (role nav) | `docs/specs/067-role-nav-acceptance-plan.md` | **AMEND** | The role matrix, viewport traces (375×812 phone, 1280×800 desktop), forbidden-route trace, recovery trace, and the 13 AC disposition are UX contracts and **carry forward**. The documented blocker — "`google.script.run` callbacks fail with TRANSPORT in the headless browser because the iframe routes RPC calls through a sign-in wall" — **does not exist** under ADR-0018. The `/exec` URL target becomes the Cloudflare-hosted Next.js deployment URL. The login-gated Playwright storage-state pipeline (ADR-0012) remains useful for any browser-driven smoke flow requiring a Google account; the unblocking is in the headless-client-with-headers path, not in the storage-state path. |
-| Spec 068 | `docs/specs/068-nested-task-navigation-acceptance-plan.md` | **AMEND** | The navigation model (root Section + optional nested task, active parent, loading/error state, recoverable per-Section view context, demo detail + demo edit tasks) and the role matrix are **carry-forward**. The "client-only extension of `shell-session.js.html`" framing is replaced by spec 074's React/Next.js section model. The Playwright acceptance run is structurally unblocked (headless client sets auth headers). |
+| Spec 067 (follow-up) | `docs/specs/067-follow-up-section-rpcs.md` | **AMEND** | The five capability-gated RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) and the `sessionHasCapability_` shared helper are server-side authority and **carry forward** into CF0. The `google.script.run` trigger and the "client-side `renderSection_` calls the matching RPC" wiring are replaced by ADR-0018's `POST /api/v1/rpc` action-multiplexed JSON body and the React shell's section loader. The vm-harness unit-test approach (`tests/gas/role-navigation.test.js`) carries forward; the **Playwright acceptance run is structurally unblocked** under the D1 boundary: it drives the real-browser login flow and the Worker issues an httpOnly session cookie (§11.4). |
+| Spec 067 (role nav) | `docs/specs/067-role-nav-acceptance-plan.md` | **AMEND** | The role matrix, viewport traces (375×812 phone, 1280×800 desktop), forbidden-route trace, recovery trace, and the 13 AC disposition are UX contracts and **carry forward**. The documented blocker — "`google.script.run` callbacks fail with TRANSPORT in the headless browser because the iframe routes RPC calls through a sign-in wall" — **does not exist** under ADR-0018. The `/exec` URL target becomes the Cloudflare-hosted Next.js deployment URL. The login-gated Playwright storage-state pipeline (ADR-0012) remains useful for any browser-driven smoke flow requiring a Google account; the unblocking is in the D1 boundary's real-browser login flow (httpOnly cookie), not in the storage-state path (§11.4). |
+| Spec 068 | `docs/specs/068-nested-task-navigation-acceptance-plan.md` | **AMEND** | The navigation model (root Section + optional nested task, active parent, loading/error state, recoverable per-Section view context, demo detail + demo edit tasks) and the role matrix are **carry-forward**. The "client-only extension of `shell-session.js.html`" framing is replaced by spec 074's React/Next.js section model. The Playwright acceptance run is structurally unblocked through the D1-boundary login flow (§11.4). |
 | Spec 069 | `docs/specs/069-async-recovery-acceptance-plan.md` | **AMEND** | The READ-ONLY Programs list, the `programs-repository.gs` header-name resolution, the `navGeneration_` monotonic counter, and the recovery flows (forbidden / session-expired) are **carry-forward** UX contracts. The "`google.script.run` transport" trigger is replaced by ADR-0018's HTTP envelope. The 108/108 unit-test pass + `pnpm check` clean + `pnpm typecheck` clean baseline carries forward to the React-era equivalents. |
 | Spec 070 | `docs/specs/070-form-protection-acceptance-plan.md` | **AMEND** (with explicit idempotency precedent) | The form state machine (`PRISTINE` → `DIRTY` → `SUBMITTING` → `SUCCEEDED` / `FAILED`), `confirmDiscard` modal semantics, dirty-form guard in `navigateTo_` / `closeTask_` / `handleLogoutClick_`, and `renderMultilineText` / `buildSafeLink` safe-rendering utilities are **carry-forward** UX contracts. **Idempotency precedent (explicit):** the demo form's `requestKey` + `CacheService.getScriptCache()` + 60-second TTL pattern (`api_submitDemoTaskForm`) is the **direct precedent** ADR-0018 generalized into the project-defined `Idempotency-Key` HTTP header; no external standards semantics are implied. The mechanism shape (key derivation, server-side dedup envelope, `idempotent: true` on repeat) survives verbatim; the wire format moves from an Apps Script function argument to a header. The `RPC_CODES.VALIDATION` and `RPC_CODES.INTERNAL_ERROR` carry forward verbatim. The "Cloudflare Workers can set HTTP response headers, unlike Apps Script" implication (open thread #3 below) does not affect this matrix's classification. |
 | Spec 072 | `docs/specs/072-scanner-acceptance-plan.md` | **SUPERSEDE-flagged pending #136** | The runtime ownership split (Scanner Section in App Document + Scanner Window on external origin), the role matrix, the recovery paths, and the trust-boundary rules (server-authoritative `api_qrCheckIn`, opaque `scannedCode`) are **carry-forward**. The external-origin mechanism itself is **flagged for replacement** by issue [#136](https://github.com/Noahlw/efcc/issues/136): under ADR-0017 a Cloudflare-hosted page has no IFRAME restriction on `getUserMedia`, so the popup+postMessage bridge may not be required. This matrix does not decide #136. The verification boundary (unit tests + deployed phone run) and the `Attendances` operational header set (ADR-0016) carry forward regardless. |
@@ -159,7 +163,7 @@ These clauses are explicitly preserved regardless of any UI/transport change:
 ### Acceptance-plan specs — superseded clauses
 
 - **All `google.script.run` invocations and `withSuccessHandler`/`withFailureHandler` wiring** in every acceptance-plan spec — replaced by ADR-0018's `POST /api/v1/rpc` + Problem Details.
-- **All "headless browser storage-state auth is the only path past the iframe sign-in wall" blockers** — replaced by ADR-0018's header-based session transport; a headless HTTP client sets auth headers directly.
+- **All "headless browser storage-state auth is the only path past the iframe sign-in wall" blockers** — resolved by the D1 boundary: acceptance runs sign in through the real-browser login flow and the Worker writes the httpOnly session cookie; the shell sends no auth headers (§11.4).
 - **Spec 072 external-origin mechanism** — flagged for replacement by #136.
 
 ---
@@ -201,15 +205,15 @@ replaced:
 | `FORBIDDEN` | 403 | ADR-0003 amendment + ADR-0018 |
 | `VALIDATION` | 422 | ADR-0003 amendment + ADR-0018 |
 | `*_NOT_FOUND` | 404 | ADR-0018 |
-| `CONFLICT` | 409 | ADR-0015-lock + ADR-0018 |
+| `CONFLICT` | 409 | ADR-0023-lock + ADR-0018 |
 | `NOT_ENROLLED` | 409 | spec 006 + ADR-0018 |
 | `MEMBER_INACTIVE` | 409 | ADR-0018 |
 | `EVENT_NOT_ACTIVE` | 409 | ADR-0018 |
 | `UNAVAILABLE` | 503 | ADR-0003 amendment + ADR-0018 |
 | `INTERNAL_ERROR` | 500 | ADR-0018 |
-| `DUPLICATE` | (success, idempotent flag) | ADR-0015-lock |
+| `DUPLICATE` | (success, idempotent part) | ADR-0023-lock |
 
-ADR-0015-lock's `DENIED` and `FAILED` outcomes are not HTTP status codes;
+ADR-0023-lock's `DENIED` and `FAILED` outcomes are not HTTP status codes;
 they are audit-log `Outcome` values that ride alongside the HTTP envelope.
 
 ### 7.2 Idempotency precedent and wire carry-forward
@@ -248,22 +252,25 @@ a Google cookie the headless browser does not have.
 
 Under ADR-0018, the iframe sign-in wall is gone:
 
-1. The browser speaks to a same-origin Cloudflare Worker over `fetch` with
-   `Authorization: Bearer <sessionToken>` and `X-Efcc-Session-Id: <sessionId>`.
+1. The browser speaks to a same-origin Cloudflare Worker over `fetch`,
+   authenticated by the httpOnly session cookie issued at login
+   (cookie-only transport — the shipped D1 boundary sends no
+   `Authorization`/`X-Efcc-Session-Id` headers; see §11.4).
 2. The Worker is a dumb pass-through to Apps Script's `/exec` (same
    deployment access as today, `webapp.access = ANYONE_ANONYMOUS`,
    `executeAs = USER_DEPLOYING`).
-3. A headless HTTP client (Playwright `request` fixture, `curl`, Vitest
-   with `fetch` mock) can set those headers directly, with no Google
-   cookie, no Playwright storage state.
+3. A headless Playwright acceptance run drives the real browser through
+   the Worker login flow and receives the same httpOnly cookie — no
+   Google cookie, no Apps-Script storage state.
 
 Implications for the acceptance-plan specs:
 
 - Spec 067 role nav, spec 068, spec 069, spec 070 — the documented
-  "blocked on headless-browser authentication" status unblocks. The
-  Playwright storage-state pipeline (ADR-0012) remains useful for
-  browser-driven smoke flows that need a Google account, but it is no
-  longer the only path to a passing login-gated acceptance run.
+  "blocked on headless-browser authentication" status unblocks: the
+  login-gated acceptance run now drives the D1 login flow end-to-end.
+  The legacy Playwright storage-state pipeline (ADR-0012) remains for
+  the retained `/exec` suite, but it is no longer the only path to a
+  passing login-gated acceptance run.
 - The "manual real-account credential" gate remains for any flow that
   specifically exercises Google-Sign-In UX, but no acceptance-plan spec
   in this matrix requires that.
@@ -283,7 +290,7 @@ to re-derive them. None of them blocks CF0.
 | # | Thread | Source | Status |
 |---|---|---|---|
 | 1 | Scanner inline/popup — is the popup+postMessage bridge still required under ADR-0017's Cloudflare-hosted page? | issue [#136](https://github.com/Noahlw/efcc/issues/136) | SUPERSEDE-flagged pending #136 in this matrix; not decided here. |
-| 2 | Events-schema conflict between spec 003 (Recurring) and spec 005 (Dynamic). Overlapping Events columns with different formats for `Event_ID`, `Event_Date`, `Time_Slot`. | spec 071-database-schema §4b "CONFLICT" note | Pre-existing data-model issue unrelated to this migration. Resolution is owned by an Events-sheet reconciliation ticket, not by CF0. |
+| 2 | Events-schema conflict between spec 003 (Recurring) and spec 005 (Dynamic). Overlapping Events columns with different formats for `Event_ID`, `Event_Date`, `Time_Slot`. | database-schema reference §4b "CONFLICT" note (file renamed from 071-database-schema — §11.3) | Pre-existing data-model issue unrelated to this migration. Resolution is owned by an Events-sheet reconciliation ticket, not by CF0. |
 | 3 | Now-moot non-goal in spec 070 — Cloudflare Workers can set HTTP response headers, unlike Apps Script. | spec 070 consequences | Recorded here so future cleanup can remove the non-goal; no action required for CF0. |
 | 4 | Nested-task views (spec 068) — do they get real Next.js routes (`/programs/[id]`) or remain client-side state under the section? | spec 068 + spec 074 | Owned by spec 074's section-model decision. Not decided by this matrix. |
 
@@ -304,3 +311,76 @@ to re-derive them. None of them blocks CF0.
   [#127](https://github.com/Noahlw/efcc/issues/127) and
   [#128](https://github.com/Noahlw/efcc/issues/128). No new domain
   decision is introduced by this matrix.
+
+---
+
+## 11. Amendment — 2026-08-06 (post-merge cleanup, PR #168)
+
+This amendment reconciles the matrix with the merged D1 auth foundation
+(PR #166) and the developer-onboarding changes (PR #167) on `main`. It
+records the renumber/rename events and corrects two transport claims that
+were written against the ADR-0018 proposal draft (header-based session
+transport).
+
+### 11.1 New includes (counting update)
+
+- ADR numbering now runs **0001\u20130023**: the single-lock mutation and
+  audit contract was renumbered
+  `docs/adr/0015-single-lock-mutation-and-audit-contract.md` →
+  `docs/adr/0023-single-lock-mutation-and-audit-contract.md`
+  (2026-08-06). The camera record keeps ADR-0015:
+  `docs/adr/0015-external-camera-origin-for-qr-scanner.md`.
+- New ADRs merged by PR #166/#167: **ADR-0020**
+  (`0020-cloudflare-d1-identity-session-and-auth-boundary.md`),
+  **ADR-0021** (`0021-d1-to-sheets-identity-metadata-review-mirror.md`),
+  **ADR-0022** (`0022-staged-worker-d1-platform-migration.md`).
+- New specs merged by PR #166/#167: **spec 074**
+  (`074-cloudflare-frontend-shell.md`), **spec 075**
+  (`075-auth-d1-foundation-acceptance-plan.md`), **spec 076**
+  (`076-landing-page-acceptance-plan.md`), **spec 077**
+  (`077-legacy-credential-upgrade-acceptance-plan.md`), **spec 078**
+  (`078-staged-platform-migration-acceptance-plan.md`).
+
+### 11.2 Classification changes
+
+- **Spec 001** — reclassified from `Deferred` to **SUPERSEDE**:
+  member registration shipped in PR #166 (`/register/` page + registration
+  RPC against the D1 `accounts` table). The manual Users-sheet process
+  remains only for admin-created accounts.
+- **ADR-0011** — reclassified **SUPERSEDE**: the one-active-session
+  policy is replaced by ADR-0020's per-login D1 `Session` rows.
+- **Spec 004** — the `getAvailablePrograms` bare-array clause is
+  **superseded** by the spec 069 decision (spec 043 §5); the
+  `CacheService`/`findHeaderIndex_` pattern row is preserved.
+
+### 11.3 Renames
+
+- `docs/specs/071-database-schema.md` →
+  **`docs/specs/database-schema-reference.md`**. The file is parented to
+  issue #70, not issue #71's spec; keeping the `071-` prefix implied it
+  was issue #71's document. All references in this matrix now point at the
+  new name. The two `067` files (follow-up section RPCs vs role-nav
+  acceptance) remain distinguished by their descriptive suffixes; each
+  carries a cross-reference note.
+
+### 11.4 Transport-correction claims
+
+- The header-based session claims in §3 (ADR-0011 row) and §8
+  items 1 and 3, and the spec 067/068 rows, were written against the
+  ADR-0018 draft describing `Authorization: Bearer` +
+  `X-Efcc-Session-Id`. The shipped D1 boundary is **cookie-only**: the
+  Worker login flow writes an httpOnly session cookie and the shell sends
+  no auth tokens (ADR-0020/ADR-0021). Transport-agnostic domain-substrate
+  statements are unaffected.
+- §8's "headless client sets headers directly without storage state"
+  claim is replaced: headless acceptance runs drive the real login flow
+  and receive the cookie.
+
+### 11.5 Flagged (unchanged)
+
+- ADR-0015 (camera) external-origin mechanism, spec 072, and issue #93
+  remain flagged pending #136; this matrix still does not decide #136.
+- Events-schema conflict (open thread #2) remains unresolved and owned by
+  an Events-sheet reconciliation ticket.
+- This amendment is mechanical renumber/rename/citation work; no new
+  domain decision is introduced by it.

@@ -1,5 +1,7 @@
 # Database Schema — Authoritative Reference
 
+*Renamed from `071-database-schema.md` on 2026-08-06: it is a reference doc parented to issue #70, not issue #71's spec (the `071-` prefix collided with `071-accessibility-acceptance-plan.md`). ADR-0013 remains the canonical version-controlled sheet-schema authority; this file is the production column reference it points to.*
+
 **Source of truth:** `Copy of Church Attendance System.xlsx` (production export)
 **Purpose:** Single source of truth for all sheet structures, column names, and data formats. Resolve every "what column is this?" question from this file alone.
 **Date:** 2026-07-29

@@ -1,6 +1,6 @@
 # 顯恩堂系統 — EFCC Church Management System
 
-**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Frontend archive**: `程式碼.js` (reference), `src/frontend/` (retired React SPA, files removed — see git history), and `docs/archieved-code/gas-vertical-slice-v1/` (retired T00–T07 multi-page/document-swap SPA attempt, issues #41–48, superseded by ADR-0010) **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
+**Church**: Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂) **Repository**: `efcc` **Stack**: staged migration from Google Apps Script + Google Sheets to Cloudflare Worker + D1. The Worker/D1 stack is the eventual platform owner; Apps Script/Sheets remains the transitional domain backend while programs, events, attendance, enrollments, and related operations migrate. **Frontend archive**: retired frontends — `程式碼.js` (reference), the React SPA (`src/frontend/`), and the T00–T07 `gas-vertical-slice-v1` attempt (issues #41–48, superseded by ADR-0010) — are no longer in the tree; their content lives in git history **Runtime**: Cloudflare Worker + D1 (identity/auth), Apps Script + Google Sheets (transitional domain backend), Browser (client)
 
 ---
 
@@ -57,7 +57,7 @@ A single Google Spreadsheet with these named sheets:
 | `Events` | Scheduled instances | Event_ID, Program_ID, Event_Date, Time_Slot, Event_Name |
 | `Attendances` | Check-in records | Attendance_ID, Event_ID, User_ID, CheckIn_Time, CheckIn_Method, CheckIn_By, Status |
 | `Program_Leaders` | Per-program leader assignments (ADR-0006) | Assignment_ID, Program_ID, User_ID, Assigned_By, Assigned_Date, Status |
-| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0015, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
+| `Audit_Log` | Privileged-mutation and attendance audit trail (ADR-0023, additive, not yet in production xlsx) | Log_ID, Timestamp, Actor_User_ID, Action_Type, Target_User_ID, Target_Program_ID, Target_Event_ID, Old_Value, New_Value, Reason, Outcome, Correlation_ID |
 
 ### Users sheet
 
@@ -147,13 +147,14 @@ reconstruct by reading every file's header comment.
 | 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Accepted |
 | 0007 | Vanilla Multi-Page HTML Service Architecture  | Accepted |
 | 0008 | Schema-Driven Restart from GAS Template (Grills 1.1–1.5 locked) | Accepted |
-| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded (Proposed) by 0015 — write-pattern shape and schema; non-repudiation principle carried forward |
+| 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded (Proposed) by 0023 — write-pattern shape and schema; non-repudiation principle carried forward |
 | 0010 | Stable App Document and Expandable Sections | Proposed — official API support verified; deployed proof pending |
-| 0011 | One Active Session per Member | Deferred — session concurrency moves to a later authentication-hardening ticket |
+| 0011 | One Active Session per Member | Superseded by 0020 — multi-device sessions implemented (PR #166) |
 | 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted |
 | 0013 | Google Sheets Database Structure | Accepted |
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted |
-| 0015 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending |
+| 0015 | Camera QR Capture (External HTTPS Origin) | Proposed — mechanism flagged for replacement pending #136; trust-boundary rules carry forward |
+| 0023 | Single-Lock Mutation and Audit Contract | Proposed — official API support verified; deployed proof pending (renumbered from 0015, 2026-08-06) |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
 | 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
 | 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |

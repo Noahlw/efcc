@@ -3,7 +3,7 @@
 - **Status**: Proposed — decision locked via grilling. Local and deployed proof is downstream CF2 implementation evidence, not work or an acceptance claim for issue #133; the ADR remains Proposed under `AGENTS.md` until that downstream acceptance is complete.
 - **Deciders**: Noah Wong, OMP planner (grilling)
 - **Date**: 2026-08-03
-- **Related**: [Feature CF2 — Permissions & Program Leadership on HTTP Frontend (#120)](https://github.com/Noahlw/efcc/issues/120), [Map #117](https://github.com/Noahlw/efcc/issues/117), [ADR-0006](0006-admin-capability-matrix.md), [ADR-0010](0010-stable-app-document-and-expandable-sections.md) (bootstrap shape), [ADR-0013](0013-google-sheets-database-structure.md) (authoritative sheet schema), [ADR-0015](0015-single-lock-mutation-and-audit-contract.md), [Spec #63](https://github.com/Noahlw/efcc/issues/63), and the CF0/CF1 HTTP decisions tracked by issues [#128](https://github.com/Noahlw/efcc/issues/128) and [#131](https://github.com/Noahlw/efcc/issues/131).
+- **Related**: [Feature CF2 — Permissions & Program Leadership on HTTP Frontend (#120)](https://github.com/Noahlw/efcc/issues/120), [Map #117](https://github.com/Noahlw/efcc/issues/117), [ADR-0006](0006-admin-capability-matrix.md), [ADR-0010](0010-stable-app-document-and-expandable-sections.md) (bootstrap shape), [ADR-0013](0013-google-sheets-database-structure.md) (authoritative sheet schema), [ADR-0023](0023-single-lock-mutation-and-audit-contract.md), [Spec #63](https://github.com/Noahlw/efcc/issues/63), and the CF0/CF1 HTTP decisions tracked by issues [#128](https://github.com/Noahlw/efcc/issues/128) and [#131](https://github.com/Noahlw/efcc/issues/131).
 
 ## Context
 

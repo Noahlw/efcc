@@ -1,5 +1,7 @@
 # Issue #67 — Headless Browser Acceptance Plan
 
+*Number-collision note (2026-08-06): a second file also carries the `067` prefix — `docs/specs/067-follow-up-section-rpcs.md` is the deferred-from-#67 AC #9 follow-up ticket body (same origin issue, different document). This file is issue #67's acceptance plan.*
+
 **Target:** Fresh versioned `/exec` deployment after push
 **Spec:** `docs/specs/009-phone-first-shell-navigation.md` + issue #67 AC
 **Date:** 2026-07-29

@@ -11,6 +11,12 @@
 > setup script is introduced. The remaining sections below are retained as
 > historical candidate behavior only and are not implementation requirements.
 
+> **SUPERSEDED (2026-08-06, PR #166):** self-service registration shipped with
+> the D1 auth foundation — `web/app/register/page.tsx` (view) and
+> `web/lib/auth/registrations.ts` (server contract, pending-approval flow per
+> ADR-0006). This deferral is historical; see
+> `docs/specs/073-htmlservice-spec-reconciliation-matrix.md` §11.2
+
 ---
 
 ## 1. Purpose
