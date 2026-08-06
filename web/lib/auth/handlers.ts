@@ -61,6 +61,7 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
+import { sectionsForRole } from "../sections";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -745,37 +746,11 @@ export async function handleMe(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access cookie missing.",
-      requestId
-    );
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access token invalid or expired.",
-      requestId
-    );
-  }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Unknown account.",
-      requestId
-    );
-  }
-  if (account.account_status !== "Active") {
+  if (resolved.account.account_status !== "Active") {
     return problem(
       403,
       "FORBIDDEN",
@@ -784,9 +759,19 @@ export async function handleMe(
       requestId
     );
   }
+  // S15: the server authorizes the section list. The sections are computed
+  // here from the canonical stored role (ADR-0025) and shipped inside the
+  // bootstrap response; the client renders them verbatim and treats any
+  // direct link to an absent section as forbidden.
   return jsonResponse(
     200,
-    { requestId, data: { user: secretFreeUser(account) } },
+    {
+      requestId,
+      data: {
+        user: secretFreeUser(resolved.account),
+        sections: sectionsForRole(resolved.account.role),
+      },
+    },
     requestId
   );
 }

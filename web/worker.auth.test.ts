@@ -516,6 +516,48 @@ describe("AUTH-06: login", () => {
     assertBodyHasNoTokenKeys(body);
   });
 
+  test("/me returns the server-authorized section list (S15)", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const adminRes = await worker.fetch(
+      authRequest("/api/v1/auth/me", {
+        method: "GET",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(adminRes.status, 200);
+    const adminBody = (await assertCorrelated(adminRes)) as {
+      data: { sections: Array<{ key: string }> };
+    };
+    assert.deepStrictEqual(
+      adminBody.data.sections.map((s) => s.key),
+      ["profile", "programs", "events", "scanner", "care", "permissions"]
+    );
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const memberRes = await worker.fetch(
+      authRequest("/api/v1/auth/me", {
+        method: "GET",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberRes.status, 200);
+    const memberBody = (await assertCorrelated(memberRes)) as {
+      data: { sections: Array<{ key: string }> };
+    };
+    assert.deepStrictEqual(
+      memberBody.data.sections.map((s) => s.key),
+      ["profile", "programs"]
+    );
+  });
+
   test("a repeated successful login issues a fresh refresh session (not idempotent)", async () => {
     const one = await worker.fetch(
       authRequest("/api/v1/auth/login", {

@@ -193,8 +193,8 @@ export default function LoginPage() {
       setAuthHint();
       // Login sets the cookies; /me resolves the full profile from the
       // access cookie to assemble the shell bootstrap.
-      const user = await authMe();
-      const bootstrap = buildBootstrap(user);
+      const me = await authMe();
+      const bootstrap = buildBootstrap(me.user, me.sections);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -215,8 +215,8 @@ export default function LoginPage() {
 
   const finishUpgrade = useCallback(async () => {
     try {
-      const user = await authMe();
-      const bootstrap = buildBootstrap(user);
+      const me = await authMe();
+      const bootstrap = buildBootstrap(me.user, me.sections);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -258,8 +258,8 @@ export default function LoginPage() {
       // of a consumed PIN would 409 and strand the user despite a valid
       // session (Spec 077 U5).
       try {
-        const user = await authMe();
-        const bootstrap = buildBootstrap(user);
+        const me = await authMe();
+        const bootstrap = buildBootstrap(me.user, me.sections);
         setAuthHint();
         announce(COPY.login.success);
         navigateAfterLogin(bootstrap);

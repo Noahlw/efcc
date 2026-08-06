@@ -12,6 +12,7 @@
 
 import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
+import type { Section } from "@/lib/api";
 import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
@@ -48,7 +49,18 @@ export function clearAuthHint(): void {
  * authorizing the shell sections by the user's role (S15).
  */
 export function buildBootstrap(user: PublicUser): Bootstrap {
-  return { profile: user, sections: sectionsForRole(user.role) };
+export function buildBootstrap(
+  user: PublicUser,
+  serverSections?: Section[]
+): Bootstrap {
+  // S15: the server authorizes the section list. /api/v1/auth/me returns the
+  // role-appropriate `sections` (computed with the canonical stored role);
+  // the client consumes them verbatim. `sectionsForRole` is only a
+  // resilience fallback for servers that do not send the list yet.
+  return {
+    profile: user,
+    sections: serverSections ?? sectionsForRole(user.role),
+  };
 }
 
 /**
@@ -58,6 +70,10 @@ export function buildBootstrap(user: PublicUser): Bootstrap {
  * Throws RpcError otherwise (AUTH_REQUIRED = refresh cookie gone/revoked).
  */
 async function currentUser(): Promise<PublicUser> {
+async function currentUser(): Promise<{
+  user: PublicUser;
+  sections: Section[];
+}> {
   try {
     return await authMe();
   } catch (error) {
@@ -80,6 +96,6 @@ export async function restoreBootstrap(): Promise<Bootstrap | null> {
     clearAuthHint();
     return null;
   }
-  const user = await currentUser();
-  return buildBootstrap(user);
+  const { user, sections } = await currentUser();
+  return buildBootstrap(user, sections);
 }

@@ -369,13 +369,17 @@ describe("api.ts: AUTH-04 cookie surface", () => {
     }
   });
 
-  test("authMe GETs /api/v1/auth/me and returns the public user", async () => {
+  test("authMe GETs /api/v1/auth/me and returns the user + server-authorized sections (S15)", async () => {
     const fetchMock = installFetch(() =>
-      makeResponse(200, { requestId: "r-me", data: { user: PUBLIC_USER } })
+      makeResponse(200, {
+        requestId: "r-me",
+        data: { user: PUBLIC_USER, sections: [{ key: "profile" }] },
+      })
     );
     try {
-      const user = await authMe();
-      assert.deepEqual(user, PUBLIC_USER);
+      const me = await authMe();
+      assert.deepEqual(me.user, PUBLIC_USER);
+      assert.deepEqual(me.sections, [{ key: "profile" }]);
       const [call] = fetchMock.calls;
       assert.equal(call.method, "GET");
       assert.equal(call.url, "/api/v1/auth/me");

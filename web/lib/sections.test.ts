@@ -117,7 +117,7 @@ describe(defaultSections, () => {
 
 describe(sectionsForRole, () => {
   test("Admin sees all six sections", () => {
-    expect(sectionsForRole("ADMIN").map((s) => s.key)).toStrictEqual([
+    expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual([
       "profile",
       "programs",
       "events",
@@ -127,18 +127,19 @@ describe(sectionsForRole, () => {
     ]);
   });
 
-  test("Staff sees five sections, without permissions", () => {
-    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual([
+  test("Staff sees all six sections (067-follow-up: STAFF -> api_getPermissionsData success)", () => {
+    expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual([
       "profile",
       "programs",
       "events",
       "scanner",
       "care",
+      "permissions",
     ]);
   });
 
   test("Member sees two sections (profile, programs)", () => {
-    expect(sectionsForRole("MEMBER").map((s) => s.key)).toStrictEqual([
+    expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual([
       "profile",
       "programs",
     ]);
@@ -146,6 +147,13 @@ describe(sectionsForRole, () => {
 
   test("unknown role falls back to the Member set", () => {
     expect(sectionsForRole("UNKNOWN").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
+
+  test("uppercase legacy spellings are NOT accepted (canonical ADR-0025 values)", () => {
+    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual([
       "profile",
       "programs",
     ]);

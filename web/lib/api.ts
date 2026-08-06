@@ -82,6 +82,16 @@ export interface Bootstrap {
   profile: PublicUser;
 }
 
+/**
+ * GET /api/v1/auth/me response payload — the cookie-verified public user
+ * plus the server-authorized section list (S15). The server computes the
+ * sections from the canonical stored role; the client renders them verbatim.
+ */
+export interface AuthMeResult {
+  user: PublicUser;
+  sections: Section[];
+}
+
 async function parseProblemDetails(
   res: Response,
   requestIdHeader?: string
@@ -277,9 +287,8 @@ export function authLogout(): Promise<void> {
  * The endpoint wraps the user under `data.user`; unwrap it here.
  */
 
-export async function authMe(): Promise<PublicUser> {
-  const data = await authFetch<{ user: PublicUser }>("/api/v1/auth/me", "GET");
-  return data.user;
+export async function authMe(): Promise<AuthMeResult> {
+  return authFetch<AuthMeResult>("/api/v1/auth/me", "GET");
 }
 
 /**

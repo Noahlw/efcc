@@ -11,9 +11,28 @@ import { COPY } from "@/lib/copy";
  * source of truth.
  */
 const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
-  MEMBER: ["profile", "programs"],
-  STAFF: ["profile", "programs", "events", "scanner", "care"],
-  ADMIN: ["profile", "programs", "events", "scanner", "care", "permissions"],
+  // Canonical ADR-0025 values (title-case): D1 stores and the API expose
+  // Admin / Staff / Member — NOT uppercase. Uppercase keys here silently
+  // fell back to the Member set for every Staff/Admin account.
+  Member: ["profile", "programs"],
+  // Staff reads permissions data (067-follow-up §2: STAFF ->
+  // api_getPermissionsData success; role-matrix.test.ts bob set).
+  Staff: [
+    "profile",
+    "programs",
+    "events",
+    "scanner",
+    "care",
+    "permissions",
+  ],
+  Admin: [
+    "profile",
+    "programs",
+    "events",
+    "scanner",
+    "care",
+    "permissions",
+  ],
 };
 
 /**
@@ -22,7 +41,7 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
  */
 export function sectionsForRole(role: string): Section[] {
   const allowed = ROLE_SECTION_KEYS[role];
-  const keys = allowed ?? ROLE_SECTION_KEYS.MEMBER;
+  const keys = allowed ?? ROLE_SECTION_KEYS.Member;
   return defaultSections().filter((s) => keys.includes(s.key));
 }
 
