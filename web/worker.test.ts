@@ -423,8 +423,10 @@ describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", (
       /application\/problem\+json/
     );
     assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
-    const body = await json<{ type: string; status: number }>(res);
-    assert.ok(body.type.includes("#INTERNAL"), "type must reference #INTERNAL");
+    const body = await json<{ type: string; status: number; code: string; detail: string }>(res);
+    assert.ok(body.type.includes("#INTERNAL_ERROR"), "type must reference #INTERNAL_ERROR");
+    assert.equal(body.code, "INTERNAL_ERROR");
+    assert.equal(body.detail, "Internal server error.");
     assert.equal(body.status, 500);
   });
 });

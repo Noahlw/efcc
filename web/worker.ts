@@ -135,9 +135,11 @@ function authProblemResponse(
   status: number,
   code: string,
   title: string,
-  detail: string
+  detail: string,
+  // Optional correlation id; the caller may pre-generate one to link the
+  // response envelope to its own server log line (catch blocks).
+  requestId: string = crypto.randomUUID()
 ): Response {
-  const requestId = crypto.randomUUID();
   return Response.json(
     {
       type: `tag:apps-script/efcc/errors#${code}`,
@@ -342,11 +344,17 @@ export default {
         // flow through the handlers' problem() paths; this catch only fires
         // on untyped throws. authProblemResponse sets X-Request-Id, so the
         // 500 always carries one for log correlation.
+        // The detail is a constant safe string (ADR-0018 §5): raw exception
+        // text could expose D1/implementation diagnostics; the requestId in
+        // the envelope correlates with the server log line below.
+        const requestId = crypto.randomUUID();
+        console.error(`[auth] unhandled route error requestId=${requestId}:`, error);
         return authProblemResponse(
           500,
-          "INTERNAL",
+          "INTERNAL_ERROR",
           "Internal error",
-          error instanceof Error ? error.message : String(error)
+          "Internal server error.",
+          requestId
         );
       }
     }
