@@ -20,6 +20,9 @@
   left: 1rem;
   top: -3rem;
   z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0.75rem 1rem;
   background: var(--accent);
   color: #fff;
@@ -52,6 +55,7 @@
 .brand {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 0.625rem;
   color: var(--ink);
   text-decoration: none;

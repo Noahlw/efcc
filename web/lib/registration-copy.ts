@@ -26,7 +26,7 @@ export const REGISTRATION_COPY = {
   passwordLabel: "密碼",
   nameLabel: "姓名",
   phoneLabel: "電話（選填）",
-  submit: "提交註冊",
+  submit: "提交註冊申請",
   submitting: "提交中…",
   missingFields: "請填寫用戶名稱、密碼及姓名。",
   doneTitle: "申請已提交",

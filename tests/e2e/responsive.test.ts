@@ -11,6 +11,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
+import { LANDING } from "../../web/lib/copy";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -400,4 +401,24 @@ test("recovery retry control is at least 44x44", async ({ page }) => {
   const { width, height } = requireBox(box);
   expect(width).toBeGreaterThanOrEqual(44);
   expect(height).toBeGreaterThanOrEqual(44);
+});
+
+test("register skip link and brand are at least 44px tall", async ({
+  page,
+}) => {
+  await page.goto("/register.html");
+  // CSS module classes are hashed in the static export, so select by the
+  // stable role/aria-label the register surface exposes.
+  const skip = page.locator('a[href="#register"]');
+  const brand = page.getByRole("link", { name: LANDING.homeLabel });
+  await expect(brand).toBeVisible();
+  for (const [label, el] of [
+    ["skip link", skip],
+    ["brand", brand],
+  ] as const) {
+    const height = await el.evaluate(
+      (node) => node.getBoundingClientRect().height
+    );
+    expect(height, `${label} height`).toBeGreaterThanOrEqual(44);
+  }
 });

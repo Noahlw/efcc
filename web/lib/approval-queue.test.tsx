@@ -8,6 +8,7 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 
 import { ApprovalQueue } from "./approval-queue";
+import { COPY } from "./copy";
 import { QUEUE_COPY } from "./registration-copy";
 
 const server = setupServer();
@@ -87,7 +88,7 @@ describe("ApprovalQueue", () => {
     expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
   });
 
-  test("shows an error for a non-Admin/Teacher caller (403)", async () => {
+  test("shows the S13 forbidden state for a non-Admin/Teacher caller (403)", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json(
@@ -103,6 +104,9 @@ describe("ApprovalQueue", () => {
       )
     );
     render(<ApprovalQueue />);
-    expect(await screen.findByRole("alert")).toHaveTextContent(QUEUE_COPY.forbidden);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("您沒有權限執行此操作。");
+    const link = screen.getByRole("link", { name: COPY.nav.backToProfile });
+    expect(link).toHaveAttribute("href", "/profile");
   });
 });

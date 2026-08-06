@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ForbiddenView } from "@/lib/forbidden-view";
 import {
   decideRegistration,
   fetchPendingRegistrations,
@@ -13,10 +14,13 @@ import {
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
 import { announce } from "@/lib/live-region";
 
+import styles from "./approval-queue.module.css";
+
 type QueueState =
   | { kind: "loading" }
   | { kind: "ready"; registrations: PendingRegistration[] }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  | { kind: "forbidden" };
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
@@ -57,6 +61,16 @@ export function ApprovalQueue() {
       setState({ kind: "ready", registrations });
     } catch (err) {
       if (!mounted.current) return;
+      // 401/403 — the session is unauthenticated or lacks the role this
+      // surface demands. Render the canonical S13 forbidden state (with a
+      // safe 返回個人檔案 exit) instead of a bare inline alert + 返回首頁.
+      if (
+        err instanceof RegistrationApiError &&
+        (err.status === 401 || err.status === 403)
+      ) {
+        setState({ kind: "forbidden" });
+        return;
+      }
       const message =
         err instanceof RegistrationApiError
           ? registrationErrorCopy(err.code)
@@ -93,6 +107,10 @@ export function ApprovalQueue() {
       if (mounted.current) setBusyId(null);
     }
   };
+
+  if (state.kind === "forbidden") {
+    return <ForbiddenView safeHref="/profile" />;
+  }
 
   return (
     <div>
@@ -295,7 +313,7 @@ export function ApprovalQueue() {
       <div style={{ marginTop: "2rem" }}>
         <Link
           href="/"
-          style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
+          className={styles.backLink}
         >
           {QUEUE_COPY.backToHome}
         </Link>
