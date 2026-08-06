@@ -64,6 +64,8 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
 | dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the default local E2E target for the programs-d1 and attendance-d1 suites (live-ui targets the efcc-auth-* acceptance host). |
 | E2E acceptance |  | Deterministic Playwright run against the dev-testing worker asserting observable DOM state + same-origin server responses; visual evidence via trace/screenshot artifacts. |
+| Audit Event | 審計記錄 | One immutable, append-only relational record of a domain mutation on D1: actor, action, entity type and id, old/new value snapshots, reason, outcome, and correlation id. It is the D1 successor to the legacy Sheet `Audit_Log` (ADR-0023) but rebuilt generically: one stream covers Department, Program, Enrollment, Event, and Attendance actions, with no per-entity columns. Rows can never be updated or deleted. |
+| Department Lifecycle | 部門狀態 | The editorial state of a Department, distinct from Program lifecycle: `Draft`, `PendingDevelopment`, `Active`, or `Archived`. Publishing a Department to `Active` is a separate capability-gated action. |
 
 ---
 
@@ -107,6 +109,32 @@ User_ID | Username | Name | Email | Phone | Date of Birth | Age | PIN_Code | QR_
 - `QR_Code_String` defaults to the `User_ID` when empty (the QR code is the same as the user ID).
 
 See ADR-0001 for the rationale behind Google Sheets as the database layer.
+
+---
+
+## D1 Relational Schema
+
+The authoritative D1 relational schema (identity, authorization, Departments,
+Programs, Events, EnrollmentRequests, Enrollments, Program Leaders, Attendances,
+and the rebuilt audit stream) is defined in
+[`docs/specs/080-d1-relational-schema.md`](docs/specs/080-d1-relational-schema.md),
+parented to Spec #190. It supersedes the identity-tables portion of
+`web/migrations/0000_init.sql` going forward and is the source that PRG-01 turns
+into the next D1 migration.
+
+- **Development database**: the same D1 database is used for development as for
+  production unless a concrete need to split appears. The new Programs/Enrollment
+  domain starts **fresh from the latest `main` branch database** — no xlsx import,
+  no legacy Sheet adapter, no dual-write path.
+- **Timestamps**: ISO-8601 UTC TEXT for all new domain tables. The existing
+  identity tables (`0000_init.sql`) still use epoch-millis INTEGER; converting them
+  is a separate table-rebuild migration, so a dual-format transitional state
+  exists until then. Dates display in `Asia/Hong_Kong` (see Church Time).
+- **Foreign keys**: `ON DELETE RESTRICT` everywhere. D1 enforces foreign keys by
+  default (equivalent to `PRAGMA foreign_keys = on` per transaction) — no
+  per-connection pragma is required.
+- **Constrained values**: every closed vocabulary (lifecycle, status, mode,
+  outcome, recurrence) is enforced with a CHECK constraint.
 
 ---
 
@@ -180,7 +208,7 @@ backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023
 
 ## Architecture Decisions
 
-The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0023) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0026) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
 
 ### D1 era (current)
 
