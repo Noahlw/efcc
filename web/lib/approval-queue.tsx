@@ -21,13 +21,13 @@ type QueueState =
 const thStyle: React.CSSProperties = {
   textAlign: "left",
   padding: "0.75rem 0.875rem",
-  borderBottom: "1px solid rgba(32, 29, 23, 0.16)",
+  borderBottom: "1px solid var(--surface-ink-line, #d6dcde)",
   fontSize: "0.875rem",
-  color: "#5c564a",
+  color: "var(--ink-muted)",
 };
 const tdStyle: React.CSSProperties = {
   padding: "0.875rem",
-  borderBottom: "1px solid rgba(32, 29, 23, 0.16)",
+  borderBottom: "1px solid var(--surface-ink-line, #d6dcde)",
   fontSize: "0.9375rem",
   verticalAlign: "top",
 };
@@ -111,14 +111,33 @@ export function ApprovalQueue() {
               margin: "0 0 0.375rem",
               fontSize: "1.5rem",
               fontWeight: 900,
-              color: "#201d17",
+              color: "var(--ink)",
             }}
           >
             {QUEUE_COPY.pageTitle}
           </h1>
-          <p style={{ margin: 0, fontSize: "0.9375rem", color: "#5c564a" }}>
+          {state.kind === "ready" && state.registrations.length > 0 ? (
+            <span
+              role="status"
+            style={{
+                display: "inline-block",
+                marginTop: "0.25rem",
+                padding: "0.25rem 0.6rem",
+            borderRadius: 12,
+                background: "var(--surface-raised)",
+                border: "1px solid var(--line)",
+                color: "var(--ink)",
+                fontSize: "0.82rem",
+            fontWeight: 700,
+            }}
+          >
+              {state.registrations.length} {QUEUE_COPY.pendingCount}
+            </span>
+          ) : (
+            <p style={{ margin: 0, fontSize: "0.9375rem", color: "var(--ink-muted)" }}>
             {QUEUE_COPY.pageLead}
           </p>
+          )}
         </div>
         <button
           type="button"
@@ -126,10 +145,10 @@ export function ApprovalQueue() {
           style={{
             minHeight: 44,
             padding: "0 1rem",
-            border: "1px solid rgba(32, 29, 23, 0.32)",
-            borderRadius: 12,
+            border: "1px solid var(--line-strong)",
+            borderRadius: 8,
             background: "transparent",
-            color: "#201d17",
+            color: "var(--ink)",
             fontSize: "0.9375rem",
             fontWeight: 700,
             fontFamily: "inherit",
@@ -147,8 +166,8 @@ export function ApprovalQueue() {
             margin: "0 0 1rem",
             padding: "0.75rem 0.875rem",
             borderRadius: 10,
-            background: "rgba(179, 38, 30, 0.09)",
-            color: "#8f1d16",
+            background: "rgba(156, 48, 44, 0.09)",
+            color: "var(--accent-deep)",
             fontSize: "0.9375rem",
           }}
         >
@@ -156,7 +175,7 @@ export function ApprovalQueue() {
         </p>
       )}
 
-      {state.kind === "loading" && <p style={{ color: "#5c564a" }}>{QUEUE_COPY.loading}</p>}
+      {state.kind === "loading" && <p style={{ color: "var(--ink-muted)" }}>{QUEUE_COPY.loading}</p>}
 
       {state.kind === "error" && (
         <p
@@ -165,8 +184,8 @@ export function ApprovalQueue() {
             margin: 0,
             padding: "1rem",
             borderRadius: 12,
-            background: "rgba(179, 38, 30, 0.09)",
-            color: "#8f1d16",
+            background: "rgba(156, 48, 44, 0.09)",
+            color: "var(--accent-deep)",
             fontSize: "0.9375rem",
             lineHeight: 1.6,
           }}
@@ -177,16 +196,16 @@ export function ApprovalQueue() {
 
       {state.kind === "ready" &&
         (state.registrations.length === 0 ? (
-          <p style={{ color: "#5c564a" }}>{QUEUE_COPY.empty}</p>
+          <p role="status" style={{ color: "var(--ink-muted)" }}>{QUEUE_COPY.empty}</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table
               style={{
                 width: "100%",
                 borderCollapse: "collapse",
-                background: "#faf6ec",
-                border: "1px solid rgba(32, 29, 23, 0.32)",
-                borderRadius: 16,
+                background: "var(--surface-raised)",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
               }}
             >
               <thead>
@@ -227,12 +246,12 @@ export function ApprovalQueue() {
                           disabled={busy || busyId !== null}
                           onClick={() => void handleDecision(item, "approve")}
                           style={{
-                            minHeight: 40,
+                            minHeight: 44,
                             padding: "0 1rem",
                             marginRight: "0.5rem",
                             border: "none",
-                            borderRadius: 10,
-                            background: "#b3261e",
+                            borderRadius: 8,
+                            background: "#15803d",
                             color: "#fff",
                             fontSize: "0.875rem",
                             fontWeight: 700,
@@ -248,12 +267,12 @@ export function ApprovalQueue() {
                           disabled={busy || busyId !== null}
                           onClick={() => void handleDecision(item, "reject")}
                           style={{
-                            minHeight: 40,
+                            minHeight: 44,
                             padding: "0 1rem",
-                            border: "1px solid rgba(32, 29, 23, 0.32)",
-                            borderRadius: 10,
+                            border: "1px solid var(--line-strong)",
+                            borderRadius: 8,
                             background: "transparent",
-                            color: "#201d17",
+                            color: "var(--ink)",
                             fontSize: "0.875rem",
                             fontWeight: 700,
                             fontFamily: "inherit",
@@ -275,7 +294,7 @@ export function ApprovalQueue() {
       <div style={{ marginTop: "2rem" }}>
         <Link
           href="/"
-          style={{ color: "#8f1d16", fontWeight: 700, textDecoration: "underline" }}
+          style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
         >
           {QUEUE_COPY.backToHome}
         </Link>

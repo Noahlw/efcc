@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import { ApprovalQueue } from "@/lib/approval-queue";
 
-const FONT =
-  '-apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif';
+import styles from "../auth.module.css";
 
 /**
  * Teacher/Admin registration approval queue page (AUTH-05 #163). Protected on
@@ -12,17 +13,25 @@ const FONT =
  */
 export default function RegistrationsPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f2ede2",
-        color: "#201d17",
-        fontFamily: FONT,
-        WebkitFontSmoothing: "antialiased",
-      }}
-    >
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "3rem 1.25rem" }}>
-        <ApprovalQueue />
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <Link className={styles.brand} href="/" aria-label="顯恩堂系統首頁">
+          <span className={styles.seal} aria-hidden="true">
+            恩
+          </span>
+          <span>中國基督教播道會顯恩堂</span>
+        </Link>
+      </header>
+      <div
+        className={styles.body}
+        style={{ paddingTop: "clamp(1.5rem, 4vh, 2.5rem)" }}
+      >
+        <section
+          className={styles.card}
+          style={{ maxWidth: 920 }}
+        >
+          <ApprovalQueue />
+        </section>
       </div>
     </main>
   );

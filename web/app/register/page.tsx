@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
+
 import { RegistrationForm } from "@/lib/registration-form";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 
-const FONT =
-  '-apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif';
+import styles from "../auth.module.css";
 
 /**
  * Self-service registration page (AUTH-05 #163). Public surface — no session
@@ -12,37 +13,26 @@ const FONT =
  */
 export default function RegisterPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f2ede2",
-        color: "#201d17",
-        fontFamily: FONT,
-        WebkitFontSmoothing: "antialiased",
-      }}
-    >
-      <div style={{ maxWidth: 440, margin: "0 auto", padding: "3rem 1.25rem" }}>
-        <h1
-          style={{
-            margin: "0 0 0.375rem",
-            fontSize: "1.75rem",
-            fontWeight: 900,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {REGISTRATION_COPY.pageTitle}
-        </h1>
-        <p
-          style={{
-            margin: "0 0 2rem",
-            fontSize: "0.9375rem",
-            lineHeight: 1.7,
-            color: "#5c564a",
-          }}
-        >
-          {REGISTRATION_COPY.pageLead}
-        </p>
-        <RegistrationForm />
+    <main className={styles.page}>
+      <a className={styles.skipLink} href="#register">
+        跳到註冊表單
+      </a>
+      <header className={styles.header}>
+        <Link className={styles.brand} href="/" aria-label="顯恩堂系統首頁">
+          <span className={styles.seal} aria-hidden="true">
+            恩
+          </span>
+          <span>中國基督教播道會顯恩堂</span>
+        </Link>
+      </header>
+      <div className={styles.body}>
+        <section className={styles.card} id="register" aria-labelledby="register-title">
+          <h1 id="register-title" className={styles.cardTitle}>
+            {REGISTRATION_COPY.pageTitle}
+          </h1>
+          <p className={styles.cardLead}>{REGISTRATION_COPY.pageLead}</p>
+          <RegistrationForm />
+        </section>
       </div>
     </main>
   );

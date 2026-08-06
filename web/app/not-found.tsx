@@ -6,25 +6,49 @@ export default function NotFound() {
   return (
     <main
       style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "1.5rem",
+        padding: "1rem",
+        background: "var(--surface)",
+        color: "var(--ink)",
+        fontFamily: "var(--font-sans)",
         textAlign: "center",
       }}
     >
-      <p role="alert" style={{ color: "#b00020", marginBottom: "1.5rem" }}>
+      <p
+        role="alert"
+        style={{
+          margin: 0,
+          padding: "0.85rem 1rem",
+          borderRadius: 8,
+          background: "rgba(156, 48, 44, 0.09)",
+          border: "1px solid rgba(156, 48, 44, 0.3)",
+          color: "var(--accent-deep)",
+          fontSize: "0.9375rem",
+          lineHeight: 1.6,
+          maxWidth: 400,
+        }}
+      >
         {COPY.nav.unknownRoute}
       </p>
       <Link
         href="/"
         style={{
-          display: "inline-block",
-          padding: "0.75rem 1.5rem",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "0 1.5rem",
           minHeight: 44,
+          borderRadius: 8,
+          background: "var(--accent)",
+          color: "#fff",
           fontSize: "1rem",
-          color: "#1565c0",
-          textDecoration: "underline",
+          fontWeight: 700,
+          textDecoration: "none",
         }}
       >
         {COPY.nav.backToHome}

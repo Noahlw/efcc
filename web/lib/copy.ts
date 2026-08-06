@@ -38,6 +38,9 @@ export const COPY = {
     failedNotice: "登出請求失敗，但本機工作階段已清除。",
     success: "已登出。",
   },
+  account: {
+    updatedNotice: "帳戶資料已更新，請重新登入。",
+  },
   sections: {
     profile: "個人檔案",
     programs: "課程與活動",
@@ -108,6 +111,7 @@ export function errorCopyFor(
 // testimonials, metrics, or security claims are invented on this surface.
 export const LANDING = {
   skipToLogin: "跳到登入",
+  brandFull: "中國基督教播道會顯恩堂",
   brand: "顯恩堂",
   brandSystem: "系統",
   homeLabel: "顯恩堂系統首頁",

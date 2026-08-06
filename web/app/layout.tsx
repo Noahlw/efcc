@@ -6,8 +6,8 @@ import { LiveRegion } from "@/lib/live-region";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "顯恩堂系統",
-  description: "EFCC Church Management System",
+  title: "中國基督教播道會顯恩堂系統",
+  description: "中國基督教播道會顯恩堂教會管理系統",
 };
 
 // viewport-fit=cover lets env(safe-area-inset-*) resolve on notched devices;

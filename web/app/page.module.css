@@ -15,15 +15,16 @@
    ========================================================================== */
 
 .page {
-  --paper: #f2ede2;
-  --paper-raised: #faf6ec;
-  --ink: #201d17;
-  --ink-soft: #5c564a;
-  --seal: #b3261e;
-  --seal-deep: #8f1d16;
-  --line: rgba(32, 29, 23, 0.16);
-  --line-strong: rgba(32, 29, 23, 0.32);
-  --maxw: 1120px;
+  --paper: #f4f5f3;
+  --paper-raised: #ffffff;
+  --ink: #171a1d;
+  --ink-soft: #59636a;
+  --seal: #9c302c;
+  --seal-deep: #76231f;
+  --line: #d6dcde;
+  --line-strong: #aeb8bc;
+  --focus: #176a87;
+  --maxw: 1180px;
 
   min-height: 100vh;
   display: flex;
@@ -81,13 +82,8 @@
   font-size: 1.125rem;
 }
 
-.brandSuffix {
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-
 .brand:focus-visible {
-  outline: 2px solid var(--seal);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
   border-radius: 4px;
 }
@@ -115,7 +111,7 @@
 }
 
 .navLink:focus-visible {
-  outline: 2px solid var(--seal);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -188,7 +184,7 @@
   justify-content: center;
   min-height: 48px;
   padding: 0 1.5rem;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 700;
   font-size: 1rem;
   text-decoration: none;
@@ -220,7 +216,7 @@
 
 .primaryAction:focus-visible,
 .secondaryAction:focus-visible {
-  outline: 2px solid var(--seal);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 
@@ -242,7 +238,7 @@
 
 .register {
   border: 1px solid var(--line-strong);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--paper-raised);
   box-shadow: 0 1px 2px rgba(32, 29, 23, 0.08),
     0 24px 48px -28px rgba(32, 29, 23, 0.35);
@@ -311,7 +307,7 @@
 
 .loginPanel {
   border: 1px solid var(--line-strong);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--paper-raised);
   box-shadow: 0 1px 2px rgba(32, 29, 23, 0.08),
     0 24px 48px -28px rgba(32, 29, 23, 0.35);
@@ -342,7 +338,7 @@
   margin: 0 0 1rem;
   padding: 0.75rem 0.875rem;
   border-radius: 10px;
-  background: rgba(179, 38, 30, 0.09);
+  background: rgba(156, 48, 44, 0.09);
   color: var(--seal-deep);
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -370,7 +366,7 @@
   min-height: 48px;
   padding: 0 0.875rem;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 8px;
   background: #fff;
   color: var(--ink);
   font-size: 1rem;
@@ -385,8 +381,8 @@
 
 .input:focus-visible {
   outline: none;
-  border-color: var(--seal);
-  box-shadow: 0 0 0 3px rgba(179, 38, 30, 0.18);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgba(23, 106, 135, 0.18);
 }
 
 .input:disabled {
@@ -396,7 +392,7 @@
 .submit {
   min-height: 48px;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--seal);
   color: #fff;
   font-size: 1rem;
@@ -414,7 +410,7 @@
 }
 
 .submit:focus-visible {
-  outline: 2px solid var(--seal);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 
@@ -468,8 +464,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
   padding: 1rem;
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
   font-family: inherit;
   text-align: center;
@@ -477,12 +475,31 @@
 
 .restoring p {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--ink-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ---- Responsive: stack below 768px ------------------------------------- */
 
-@media (max-width: 767px) {
+@media (max-width: 799px) {
+  .hero {
+    display: none;
+  }
+
   .split {
     grid-template-columns: 1fr;
   }
@@ -525,6 +542,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hero * {
+    animation: none;
+  }
+
+  .spinner {
     animation: none;
   }
 }

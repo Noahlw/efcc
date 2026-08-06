@@ -22,6 +22,7 @@ import styles from "./page.module.css";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
+const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 
 /* The four capacities the system actually ships (Spec 000 / Spec 074). */
 const REGISTER_FEATURES = [
@@ -163,6 +164,11 @@ export default function LoginPage() {
       setNotice(COPY.logout.failedNotice);
       sessionStorage.removeItem(LOGOUT_FAILED_KEY);
     }
+    if (sessionStorage.getItem(ACCOUNT_UPDATED_KEY) === "1") {
+      announce(COPY.account.updatedNotice);
+      setNotice(COPY.account.updatedNotice);
+      sessionStorage.removeItem(ACCOUNT_UPDATED_KEY);
+    }
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -290,6 +296,7 @@ export default function LoginPage() {
   if (view.kind === "RESTORING") {
     return (
       <main className={styles.restoring}>
+        <div className={styles.spinner} aria-hidden="true" />
         <p>{COPY.restore.loading}</p>
       </main>
     );
@@ -314,10 +321,7 @@ export default function LoginPage() {
       <header className={styles.header}>
         <a className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
           <SealMark />
-          <span>
-            {LANDING.brand}
-            <span className={styles.brandSuffix}>{LANDING.brandSystem}</span>
-          </span>
+          <span>{LANDING.brandFull}</span>
         </a>
         <nav className={styles.nav} aria-label={LANDING.navLabel}>
           <a className={styles.navLink} href="#features">

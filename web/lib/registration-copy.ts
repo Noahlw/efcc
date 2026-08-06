@@ -39,6 +39,7 @@ export const QUEUE_COPY = {
   backToHome: "返回首頁",
   pageTitle: "註冊審批",
   pageLead: "檢視待審批的註冊申請。",
+  pendingCount: "筆待審核",
   loading: "載入中…",
   empty: "目前沒有待審批的申請。",
   refresh: "重新整理",
