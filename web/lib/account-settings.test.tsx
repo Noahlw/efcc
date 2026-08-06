@@ -33,6 +33,14 @@ vi.mock(import("next/navigation"), () => ({
   usePathname: () => "/profile",
 }));
 
+const sessionMocks = vi.hoisted(() => ({
+  clearAuthHintMock: vi.fn<() => void>(),
+}));
+
+vi.mock(import("@/lib/session"), () => ({
+  clearAuthHint: sessionMocks.clearAuthHintMock,
+}));
+
 const PROFILE: PublicUser = {
   userId: "U001",
   name: "Alice Chan",
@@ -86,6 +94,7 @@ describe(AccountSettings, () => {
     cleanup();
     server.resetHandlers();
     replaceMock.mockReset();
+    sessionMocks.clearAuthHintMock.mockReset();
     sessionStorage.removeItem(ACCOUNT_UPDATED_KEY);
   });
   afterAll(() => server.close());
@@ -134,6 +143,30 @@ describe(AccountSettings, () => {
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
     expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBe("1");
+  });
+
+  test("sessionRevoked: handoff is synchronous (no 900ms delay, no unmount cancel)", async () => {
+    server.use(
+      http.post("/api/v1/auth/username", () =>
+        HttpResponse.json({
+          requestId: "req-s16",
+          data: { username: "alice2", sessionRevoked: true },
+        })
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "alice2");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    // Success state renders synchronously after the fetch resolves; the
+    // handoff must already have happened in the same tick — no timer.
+    await screen.findByText(ACCOUNT_SETTINGS_COPY.updated);
+    expect(replaceMock).toHaveBeenCalledWith("/");
+    expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBe("1");
+    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalled();
   });
 
   test("username no-op (sessionRevoked false) keeps the session and shows notice", async () => {

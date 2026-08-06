@@ -25,9 +25,6 @@ import styles from "./account-settings.module.css";
  */
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 
-/** How long the 已更新 success state stays visible before routing to login. */
-const REDIRECT_DELAY_MS = 900;
-
 type UsernameState =
   | { kind: "idle" }
   | { kind: "submitting" }
@@ -66,18 +63,10 @@ export function AccountSettings() {
     kind: "idle",
   });
   const [outcome, setOutcome] = useState<{ kind: "done" } | null>(null);
-  const mountRef = useRef(true);
   const usernameFormRef = useRef<HTMLFormElement>(null);
   const passwordFormRef = useRef<HTMLFormElement>(null);
   const usernameRetryRef = useRef<HTMLButtonElement>(null);
   const passwordRetryRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(
-    () => () => {
-      mountRef.current = false;
-    },
-    []
-  );
 
   // Focus handoff (matrix S14): when a network failure renders the recovery
   // block, keyboard / screen-reader users land directly on the retry control.
@@ -93,19 +82,18 @@ export function AccountSettings() {
     }
   }, [passwordState]);
 
-  const completeChange = () => {
+  const completeChange = (result: { sessionRevoked: boolean }) => {
+    if (!result.sessionRevoked) {
+      return;
+    }
     setOutcome({ kind: "done" });
     announce(ACCOUNT_SETTINGS_COPY.updated);
-    // Brief success state, then hand off to the login surface with the
-    // one-time notice (Spec #191 §6: sessionStorage-carried).
-    window.setTimeout(() => {
-      if (!mountRef.current) {
-        return;
-      }
-      sessionStorage.setItem(ACCOUNT_UPDATED_KEY, "1");
-      clearAuthHint();
-      router.replace("/");
-    }, REDIRECT_DELAY_MS);
+    // Hand off to the login surface with the one-time notice (Spec #191 §6:
+    // sessionStorage-carried). Synchronous — the session was revoked, so route
+    // immediately instead of lingering on a delayed success state.
+    sessionStorage.setItem(ACCOUNT_UPDATED_KEY, "1");
+    clearAuthHint();
+    router.replace("/");
   };
 
   const submitUsername = (e: React.FormEvent<HTMLFormElement>) => {
@@ -125,21 +113,15 @@ export function AccountSettings() {
     setUsernameState({ kind: "submitting" });
     void authChangeUsername(trimmed)
       .then((result) => {
-        if (!mountRef.current) {
-          return;
-        }
         if (!result.sessionRevoked) {
           // Value-idempotent no-op: the session stays live, no sign-out.
           announce(ACCOUNT_SETTINGS_COPY.usernameUnchanged);
           setUsernameState({ kind: "unchanged" });
           return;
         }
-        completeChange();
+        completeChange(result);
       })
       .catch((err: unknown) => {
-        if (!mountRef.current) {
-          return;
-        }
         const isNetwork =
           !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
         if (!isNetwork) {
@@ -187,16 +169,10 @@ export function AccountSettings() {
     }
     setPasswordState({ kind: "submitting" });
     void authChangePassword(currentPassword, newPassword)
-      .then(() => {
-        if (!mountRef.current) {
-          return;
-        }
-        completeChange();
+      .then((result) => {
+        completeChange(result);
       })
       .catch((err: unknown) => {
-        if (!mountRef.current) {
-          return;
-        }
         const isNetwork =
           !(err instanceof RpcError) || err.problem.code === "NETWORK_ERROR";
         if (!isNetwork) {
