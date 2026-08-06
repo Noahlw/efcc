@@ -42,7 +42,7 @@ The Cloudflare Worker exposes exactly one RPC endpoint:
 
 The version literal `v1` is in the path so a future contract break can ship `/api/v2/rpc` in parallel with a deprecation window. `action` multiplexes the existing `api_*` server functions behind one URL because Apps Script has no native path router (`doPost` receives one script-wide dispatcher); REST-style `/api/v1/loginUser`, `/api/v1/restoreApp`, etc. would require a reverse-router inside `doPost` that just renames the same multiplexing. This stays action-multiplexed all the way through the proxy and the dispatcher.
 
-GET, PUT, PATCH, DELETE on `/api/*` return `405 application/problem+json`. The Worker only handles `POST` (and `OPTIONS` for preflight; see §4). Action names are the existing RPC tokens: `loginUser`, `restoreApp`, `logoutUser`, `authorizedNavigate`, plus the domain actions classified by ADR-0015 / Spec #141 / CF1+ features. The `params` payload is action-specific and validated server-side; the contract here is only the wrapper shape.
+GET, PUT, PATCH, DELETE on `/api/*` return `405 application/problem+json`. The Worker only handles `POST` (and `OPTIONS` for preflight; see §4). Action names are the existing RPC tokens: `loginUser`, `restoreApp`, `logoutUser`, `authorizedNavigate`, plus the domain actions classified by ADR-0023 / Spec #141 / CF1+ features. The `params` payload is action-specific and validated server-side; the contract here is only the wrapper shape.
 
 The client (`web/lib/api.ts`) is the sole owner of `fetch` to `POST /api/v1/rpc`. Nothing else in the browser makes RPC calls; nothing else knows the URL or the envelope.
 
@@ -143,7 +143,7 @@ Retries never fire on:
 
 - Any `4xx`. A `4xx` is the server telling the client "your request is wrong; do not send it again." That includes `429 Too Many Requests` — the `Retry-After` header is parsed and surfaced on the thrown `RpcError` for the UI to honor, but the client does not auto-retry.
 - `500 Internal Server Error`. A `500` is a server bug, not a transport blip; replaying it does not help and can mask the bug from monitoring.
-- Any non-idempotent mutation. ADR-0015's "no replay on ambiguous network result" rule applies; an `Idempotency-Key` does not make an unsafe mutation replay-safe. The CF2 Program Leader grant/revoke actions are the explicit no-replay exception described in §8 and ADR-0019. Idempotent mutations such as the current `loginUser` and `logoutUser` may retry only under the network/502/503/504 rules above.
+- Any non-idempotent mutation. ADR-0023's "no replay on ambiguous network result" rule applies; an `Idempotency-Key` does not make an unsafe mutation replay-safe. The CF2 Program Leader grant/revoke actions are the explicit no-replay exception described in §8 and ADR-0019. Idempotent mutations such as the current `loginUser` and `logoutUser` may retry only under the network/502/503/504 rules above.
 
 Bounded retry parameters (current values, exported as `MAX_RETRIES` and `BASE_BACKOFF_MS` in `web/lib/api.ts`):
 

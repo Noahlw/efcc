@@ -4,7 +4,7 @@
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-07-28
 - **Related**: ADR-0006 (Audit_Log sheet origin), ADR-0008 (restart from template — this ADR covers a sub-decision of the rebuild), ADR-0023 (supersedes this ADR's write-pattern shape and schema)
-- **Research**: primary-sourced via `web_search` + librarian subagent (Context7 was unreachable — see `CONTEXT.md` Known Tooling Issues)
+- **Research**: primary-sourced via `web_search` + librarian subagent (Context7 was unreachable at the time)
 
 ## Context
 

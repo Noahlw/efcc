@@ -126,8 +126,8 @@ repository returns empty results when the sheet is missing.
 ## Sheet (proposed): Audit_Log
 
 **Note:** This sheet does NOT exist in the production xlsx. It is additive. Schema
-settled by ADR-0015, reconciling drift across ADR-0006, ADR-0009, and spec #63 —
-see ADR-0015 for full rationale per column.
+settled by ADR-0023, reconciling drift across ADR-0006, ADR-0009, and spec #63 —
+see ADR-0023 for full rationale per column.
 
 | # | Header | Type | Required | Description |
 |---|--------|------|----------|-------------|
@@ -141,7 +141,7 @@ see ADR-0015 for full rationale per column.
 | 8 | Old_Value | string | No | — |
 | 9 | New_Value | string | No | — |
 | 10 | Reason | string | No | Optional |
-| 11 | Outcome | string | Yes | `SUCCESS`\|`DUPLICATE`\|`CONFLICT`\|`DENIED`\|`FAILED` — see ADR-0015 §3 |
+| 11 | Outcome | string | Yes | `SUCCESS`\|`DUPLICATE`\|`CONFLICT`\|`DENIED`\|`FAILED` — see ADR-0023 §3 |
 | 12 | Correlation_ID | string | Yes | The RPC's own `requestId` from `rpcRequestId_()` (`rpc-envelope.gs`) — joins to `rpcLog_` Cloud Logging diagnostics |
 
 ---

@@ -6,7 +6,7 @@
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-08-01
 - **Related**: Supersedes ADR-0009's write-pattern shape (lock ownership, two-phase audit calls). Carries forward ADR-0009's non-repudiation principle and reconciles the `Audit_Log` schema drift across ADR-0006, ADR-0009, and spec #63. Amends ADR-0013 (adds the missing `Audit_Log` sheet definition). Governs every mutating Apps Script service under Feature F1 (#79): Attendance, Enrollment, Events, Permissions. Implementation-facing contract: spec issue #115.
-- **Research**: Context7 (`/websites/developers_google_apps-script`) returned `Invalid API key` (pre-existing Known Tooling Issue in `CONTEXT.md`); fell back to `developers.google.com/apps-script/reference/lock/*` and `.../base/session` directly, per the `AGENTS.md` Apps Script evidence gate's documented fallback order.
+- **Research**: Context7 (`/websites/developers_google_apps-script`) returned `Invalid API key` at the time; fell back to `developers.google.com/apps-script/reference/lock/*` and `.../base/session` directly, per the `AGENTS.md` Apps Script evidence gate's documented fallback order.
 - **Grill session**: issue #58 (Feature F1 `#79`, map `#77`)
 
 ## Context

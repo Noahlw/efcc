@@ -116,7 +116,7 @@ Only after the official platform claims used by this ADR are verified, a minimal
 | --- | --- |
 | ADR-0007 | Supersedes the frontend portion only (the multi-page `HtmlService` architecture); backend posture unchanged. |
 | ADR-0018 | Companion record: HTTP wire protocol, session/auth headers, error envelope, retries, idempotency, correlation, rate limiting. |
-| ADR-0015 (single-lock) | Unchanged; governs every mutating RPC the new frontend invokes. |
+| ADR-0023 (single-lock) | Unchanged; governs every mutating RPC the new frontend invokes |
 | ADR-0015 (camera) | Unchanged; the external camera page is a separate origin outside this boundary. |
 | ADR-0013 | Unchanged; canonical Sheet schema record. |
 | Spec #141 / `docs/specs/074-cloudflare-frontend-shell.md` | The CF0 canonical spec that synthesizes this ADR + ADR-0018 + Spec 073 + Prototype #129 into an implementable shell contract. |

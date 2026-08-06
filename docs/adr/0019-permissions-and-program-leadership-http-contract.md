@@ -50,7 +50,7 @@ The authenticated actor is derived from the verified session, never accepted as 
 
 The relationship keeps exactly the six columns in ADR-0013; it adds no `Revoked_By`, `Revoked_Date`, or other revocation metadata. Its `Status` values are `Active` and `Revoked` as established by ADR-0006 and Spec #63; ADR-0013's `Must be Active` wording is the active-authorization predicate, not an exclusive status enum. Only `Active` rows authorize current Program Leader access.
 
-Each mutation performs its final authorization and natural-key recheck inside the single caller-owned mutation lock required by ADR-0015. The natural key is `(targetUserId, programId)`:
+Each mutation performs its final authorization and natural-key recheck inside the single caller-owned mutation lock required by ADR-0023. The natural key is `(targetUserId, programId)`:
 
 - A grant creates one active relationship when no active row exists.
 - A grant against an already-active natural key is a `DUPLICATE` quiet success for any authorized actor and creates no second active relationship; grant classification does not depend on which actor established the existing row.
@@ -64,7 +64,7 @@ These mutations do not use a client-supplied `Idempotency-Key` and are never aut
 
 ### 4. Audit semantics
 
-Grant and revoke preserve ADR-0015's single-lock and `Audit_Log` contract. When the authenticated actor and target are known, the mutation constructs one business audit row for its terminal outcome and attempts one append:
+Grant and revoke preserve ADR-0023's single-lock and `Audit_Log` contract. When the authenticated actor and target are known, the mutation constructs one business audit row for its terminal outcome and attempts one append:
 
 - `SUCCESS`
 - `DUPLICATE`
@@ -74,7 +74,7 @@ Grant and revoke preserve ADR-0015's single-lock and `Audit_Log` contract. When 
 
 Rows use `PROGRAM_LEADER_GRANT` or `PROGRAM_LEADER_REVOKE`, the session-derived `Actor_User_ID`, target User and Program identifiers, optional `Reason`, the existing `Audit_Log` value fields, and the RPC `requestId` as `Correlation_ID`. No new `Program_Leaders` columns are assumed by this contract; the current six-column relationship schema remains authoritative.
 
-When the append succeeds, exactly one row is written for that authorized terminal outcome. If the domain write commits but `Audit_Log.appendRow` fails, ADR-0015's partial-failure posture applies: the response is `FAILED`/`INTERNAL_ERROR`, the attempted row is emitted as a Cloud Logging breadcrumb, no sheet row is guaranteed, and the mutation is never automatically retried. A lock/quota failure that prevents reaching the append has the same no-row guarantee.
+When the append succeeds, exactly one row is written for that authorized terminal outcome. If the domain write commits but `Audit_Log.appendRow` fails, ADR-0023's partial-failure posture applies: the response is `FAILED`/`INTERNAL_ERROR`, the attempted row is emitted as a Cloud Logging breadcrumb, no sheet row is guaranteed, and the mutation is never automatically retried. A lock/quota failure that prevents reaching the append has the same no-row guarantee.
 
 `AUTH_REQUIRED`, pre-authority `FORBIDDEN`, malformed requests, and schema-level validation failures write no business audit row. They remain transport/RPC diagnostics. No audit-history UI is added by CF2.
 
@@ -96,7 +96,7 @@ The following checklist is handed to the CF2 specification and implementation ti
 5. `permissionsGetAssignments` rejects missing/empty, both, and unknown selectors with `VALIDATION`; a `userId` selector returns only that member's rows and a `programId` selector only that Program's rows, never an all-assignments snapshot.
 6. STAFF/ADMIN reads succeed; MEMBER and Program Leader calls to all Permissions reads and mutations return `FORBIDDEN` without business audit rows.
 7. Two active assignments for one member across two Programs authorize exactly those Programs; an unrelated Program remains forbidden, and one assignment applies to all Events in its Program.
-8. Grant/revoke natural-key duplicates create no second active relationship, competing revokes return `CONFLICT`, no automatic mutation replay occurs, and every authorized outcome whose audit append succeeds has exactly one matching audit row with `Correlation_ID = requestId`; append failure follows ADR-0015's `FAILED`/`INTERNAL_ERROR` plus Cloud Logging breadcrumb path without automatic retry.
+8. Grant/revoke natural-key duplicates create no second active relationship, competing revokes return `CONFLICT`, no automatic mutation replay occurs, and every authorized outcome whose audit append succeeds has exactly one matching audit row with `Correlation_ID = requestId`; append failure follows ADR-0023's `FAILED`/`INTERNAL_ERROR` plus Cloud Logging breadcrumb path without automatic retry.
 9. No production or operational Google Sheet is mutated by the agent; any required schema/fixture change follows the Sheet-Immutable rules in `AGENTS.md`.
 10. Protected request secrets follow ADR-0018's header-only transport: `sessionToken` never appears in URLs or action parameters. Any interim dispatcher compatibility may carry only non-secret lookup fields and must not treat them as authority assertions.
 

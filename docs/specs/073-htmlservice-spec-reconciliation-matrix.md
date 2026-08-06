@@ -314,7 +314,7 @@ to re-derive them. None of them blocks CF0.
 
 ---
 
-## 11. Amendment — 2026-08-06 (post-merge cleanup, PR #168)
+## 11. Amendment — 2026-08-06 (post-merge cleanup, PR #176)
 
 This amendment reconciles the matrix with the merged D1 auth foundation
 (PR #166) and the developer-onboarding changes (PR #167) on `main`. It
