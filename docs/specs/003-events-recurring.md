@@ -6,6 +6,14 @@
 
 ---
 
+## Reopened D1 Event contract (Issue #184)
+
+This document preserves the legacy recurring-event implementation baseline. The D1 target is broader: both `Recurring` and `OneOff` Programs may own dated Events. Recurring Programs use a configurable schedule rule; OneOff Programs use permitted manual Event creation. The durable Program-history model, including any time-bounded Program Offering concept, remains open under Issue #184 and the related history research ticket.
+
+The legacy sections below describe only the old hard-coded recurring generator and must not constrain the new D1 module Interface.
+
+---
+
 ## 1. Purpose
 
 Generate individual event instances for recurring programs (e.g. weekly youth worship services) on a monthly basis. Events serve as the concrete schedule that feeds enrollment conflict checking and will later power attendance tracking.
