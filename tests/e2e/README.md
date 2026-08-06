@@ -54,6 +54,34 @@ The D1 workflow never creates or deletes a Worker deployment or database. A fres
 
 The deterministic PR checks (typecheck + unit/component tests + the shell responsive suite below) live in `.github/workflows/precheck.yml` and need no secrets or deployment.
 
+## Fresh Cloudflare deployment flow (authenticated E2E authority)
+
+The authenticated D1 auth smoke is the E2E authority and runs against a **fresh Cloudflare deployment**, not a local stub. `AGENTS.md` Headless-Gate requires 100% pass on that deployment before `READY`. Run it end to end with:
+
+```sh
+# 1. Deploy the Worker/D1 surface to Cloudflare (wrangler name: efcc-prototype-129)
+cd web && pnpm exec wrangler deploy
+
+# 2. Point the suite at the deployed *.workers.dev URL and set the five
+#    acceptance-account secrets (documented in .github/CI-SECRETS.md)
+export AUTH_TARGET_URL="https://efcc-prototype-129.<account>.workers.dev"
+export AUTH_TEST_USERNAME="..."   # active account used for password login/logout
+export AUTH_TEST_CREDENTIAL="..." # credential for that acceptance account
+export AUTH_LEGACY_USERNAME="..." # imported account with requires_upgrade = 1
+export AUTH_LEGACY_PIN="..."      # one-time legacy PIN for that account
+export AUTH_NEW_CREDENTIAL="..."  # replacement credential used by the upgrade smoke
+
+# 3. Run the authenticated auth-d1 pipeline
+pnpm exec playwright test -c tests/e2e/auth-d1.config.ts
+
+# 4. Append the executed-results table to the acceptance plan
+npx tsx tests/e2e/plan-doc-appender.ts \
+  --plan=docs/omp-plans/2026-08-06-ui-stack-review-fixes.md \
+  --results=test-results/auth-d1-results.json
+```
+
+The suite fails closed if `AUTH_TARGET_URL` or any of the five secrets is missing or malformed. This is the gate that produces deployment evidence for AUTH-01/02; without a fresh-deployment pass they remain not-READY.
+
 ## Implemented-scope rule
 
 Only implemented scenarios may run as passing acceptance coverage. The D1 auth smoke covers the implemented Worker `/api/v1/auth/*` surface; unfinished domain capabilities remain explicitly transitional or planned in the [migration roadmap](../../README.md#feature-roadmap) and linked to their follow-up spec or ticket.
