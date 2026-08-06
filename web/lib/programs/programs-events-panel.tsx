@@ -68,7 +68,6 @@ export const EventsPanel = ({
 
   const load = useCallback(async () => {
     setEvents(null);
-    setNotice(null);
     setActionError(null);
     try {
       const [rulesResp, eventsResp] = await Promise.all([
@@ -102,9 +101,12 @@ export const EventsPanel = ({
         if (!mounted.current) {
           return;
         }
+        await load();
+        if (!mounted.current) {
+          return;
+        }
         setNotice(successCopy);
         announce(successCopy);
-        await load();
       } catch (error) {
         if (!mounted.current) {
           return;
@@ -123,9 +125,12 @@ export const EventsPanel = ({
   const submitRule = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const recurrence = form.get("recurrence") === "monthly" ? "MONTHLY" : "WEEKLY";
-    const dayOfWeek = recurrence === "WEEKLY" ? Number(form.get("day_of_week")) : undefined;
-    const monthDay = recurrence === "MONTHLY" ? Number(form.get("month_day")) : undefined;
+    const recurrence =
+      form.get("recurrence") === "monthly" ? "MONTHLY" : "WEEKLY";
+    const dayOfWeek =
+      recurrence === "WEEKLY" ? Number(form.get("day_of_week")) : undefined;
+    const monthDay =
+      recurrence === "MONTHLY" ? Number(form.get("month_day")) : undefined;
     const startTime = String(form.get("start_time") ?? "");
     const endTime = String(form.get("end_time") ?? "");
     void runAction(
@@ -147,20 +152,25 @@ export const EventsPanel = ({
     const startsAt = String(form.get("starts_at") ?? "");
     const endsAt = String(form.get("ends_at") ?? "");
     void runAction(
-      () => createEvent(program.program_id, { starts_at: startsAt, ends_at: endsAt }),
+      () =>
+        createEvent(program.program_id, {
+          starts_at: startsAt,
+          ends_at: endsAt,
+        }),
       COPY.programs.created
     );
   };
 
-  const submitCancel = (eventId: string) => (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const reason = String(form.get("cancel_reason") ?? "").trim();
-    void runAction(
-      () => cancelEvent(program.program_id, eventId, reason),
-      COPY.programs.eventCancelledNotice
-    );
-  };
+  const submitCancel =
+    (eventId: string) => (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const reason = String(form.get("cancel_reason") ?? "").trim();
+      void runAction(
+        () => cancelEvent(program.program_id, eventId, reason),
+        COPY.programs.eventCancelledNotice
+      );
+    };
 
   const handleGenerate = () => {
     void runAction(
@@ -168,24 +178,53 @@ export const EventsPanel = ({
         const { generated } = await generateEvents(program.program_id);
         return generated;
       },
-      COPY.programs.generated.replace("{created}", "0").replace("{skipped}", "0")
+      COPY.programs.generated
+        .replace("{created}", "0")
+        .replace("{skipped}", "0")
     );
   };
 
   return (
     <section className={styles.eventsPanel} aria-label={COPY.programs.events}>
-      {notice !== null && <output className={styles.panelNotice}>{notice}</output>}
+      {notice !== null && (
+        <output className={styles.panelNotice}>{notice}</output>
+      )}
       {actionError !== null && (
         <output className={styles.panelError} role="alert">
           {actionError}
         </output>
       )}
 
+      {program.behavior_type === "Recurring" && (
+        <ul className={styles.ruleList} aria-label={COPY.programs.events}>
+          {rules === null ? null : rules.length === 0 ? (
+            <li className={styles.emptyLine}>{COPY.programs.noRules}</li>
+          ) : (
+            rules.map((rule) => (
+              <li key={rule.rule_id} className={styles.ruleRow}>
+                <span>
+                  {rule.recurrence === "WEEKLY"
+                    ? `${COPY.programs.ruleWeekly} ${rule.day_of_week}`
+                    : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
+                </span>
+                <span>
+                  {rule.start_time}–{rule.end_time}
+                </span>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+
       {canManage && program.behavior_type === "Recurring" && (
         <>
           <h3 className={styles.panelHeading}>{COPY.programs.events}</h3>
           <form className={styles.ruleForm} onSubmit={submitRule}>
-            <select name="recurrence" defaultValue="weekly" aria-label={COPY.programs.behaviorType}>
+            <select
+              name="recurrence"
+              defaultValue="weekly"
+              aria-label={COPY.programs.behaviorType}
+            >
               <option value="weekly">{COPY.programs.ruleWeekly}</option>
               <option value="monthly">{COPY.programs.ruleMonthly}</option>
             </select>
@@ -204,9 +243,23 @@ export const EventsPanel = ({
               max={31}
               aria-label={COPY.programs.monthDayLabel}
             />
-            <input type="time" name="start_time" required aria-label={COPY.programs.startTime} />
-            <input type="time" name="end_time" required aria-label={COPY.programs.endTime} />
-            <button type="submit" disabled={busy} className={styles.actionButton}>
+            <input
+              type="time"
+              name="start_time"
+              required
+              aria-label={COPY.programs.startTime}
+            />
+            <input
+              type="time"
+              name="end_time"
+              required
+              aria-label={COPY.programs.endTime}
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className={styles.actionButton}
+            >
               {busy ? COPY.programs.submitting : COPY.programs.addRule}
             </button>
           </form>
@@ -219,33 +272,23 @@ export const EventsPanel = ({
             {busy ? COPY.programs.generating : COPY.programs.generateEvents}
           </button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
-          <ul className={styles.ruleList} aria-label={COPY.programs.events}>
-            {rules === null
-              ? null
-              : rules.length === 0
-                ? (
-                    <li className={styles.emptyLine}>{COPY.programs.noRules}</li>
-                  )
-                : rules.map((rule) => (
-                    <li key={rule.rule_id} className={styles.ruleRow}>
-                      <span>
-                        {rule.recurrence === "WEEKLY"
-                          ? `${COPY.programs.ruleWeekly} ${rule.day_of_week}`
-                          : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
-                      </span>
-                      <span>
-                        {rule.start_time}–{rule.end_time}
-                      </span>
-                    </li>
-                  ))}
-          </ul>
         </>
       )}
 
       {canManage && program.behavior_type === "OneOff" && (
         <form className={styles.ruleForm} onSubmit={submitManualEvent}>
-          <input type="datetime-local" name="starts_at" required aria-label={COPY.programs.eventStart} />
-          <input type="datetime-local" name="ends_at" required aria-label={COPY.programs.eventEnd} />
+          <input
+            type="datetime-local"
+            name="starts_at"
+            required
+            aria-label={COPY.programs.eventStart}
+          />
+          <input
+            type="datetime-local"
+            name="ends_at"
+            required
+            aria-label={COPY.programs.eventEnd}
+          />
           <button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.createEvent}
           </button>
@@ -253,45 +296,52 @@ export const EventsPanel = ({
       )}
 
       <ul className={styles.eventList} aria-label={COPY.programs.events}>
-        {events === null
-          ? null
-          : events.length === 0
-            ? (
-                <li className={styles.emptyLine}>{COPY.programs.eventsEmpty}</li>
-              )
-            : events.map((event) => (
-                <li key={event.event_id} className={styles.eventRow}>
-                  <span className={styles.eventDate}>{hkWallLabel(event.starts_at)}</span>
-                  <span className={styles.eventSource}>
-                    {event.source === "SCHEDULE"
-                      ? COPY.programs.eventScheduleSource
-                      : COPY.programs.eventManualSource}
-                  </span>
-                  <span
-                    className={
-                      event.status === "Cancelled"
-                        ? styles.eventCancelled
-                        : styles.eventActive
-                    }
+        {events === null ? null : events.length === 0 ? (
+          <li className={styles.emptyLine}>{COPY.programs.eventsEmpty}</li>
+        ) : (
+          events.map((event) => (
+            <li key={event.event_id} className={styles.eventRow}>
+              <span className={styles.eventDate}>
+                {hkWallLabel(event.starts_at)}
+              </span>
+              <span className={styles.eventSource}>
+                {event.source === "SCHEDULE"
+                  ? COPY.programs.eventScheduleSource
+                  : COPY.programs.eventManualSource}
+              </span>
+              <span
+                className={
+                  event.status === "Cancelled"
+                    ? styles.eventCancelled
+                    : styles.eventActive
+                }
+              >
+                {STATUS_LABEL[event.status]}
+              </span>
+              {canManage && event.status === "Active" && (
+                <form
+                  className={styles.cancelForm}
+                  onSubmit={submitCancel(event.event_id)}
+                >
+                  <input
+                    type="text"
+                    name="cancel_reason"
+                    placeholder={COPY.programs.cancelReasonPlaceholder}
+                    required
+                    aria-label={COPY.programs.cancelReason}
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className={styles.actionButton}
                   >
-                    {STATUS_LABEL[event.status]}
-                  </span>
-                  {canManage && event.status === "Active" && (
-                    <form className={styles.cancelForm} onSubmit={submitCancel(event.event_id)}>
-                      <input
-                        type="text"
-                        name="cancel_reason"
-                        placeholder={COPY.programs.cancelReasonPlaceholder}
-                        required
-                        aria-label={COPY.programs.cancelReason}
-                      />
-                      <button type="submit" disabled={busy} className={styles.actionButton}>
-                        {COPY.programs.cancelEvent}
-                      </button>
-                    </form>
-                  )}
-                </li>
-              ))}
+                    {COPY.programs.cancelEvent}
+                  </button>
+                </form>
+              )}
+            </li>
+          ))
+        )}
       </ul>
     </section>
   );

@@ -1,8 +1,8 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 // PRG-02 (#198) — component tests for the events panel (U1-U6).
 // MSW intercepts the Worker program endpoints; fixtures carry no credential
 // material. Hong Kong wall times are asserted via Intl-rendered labels.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
@@ -63,7 +63,7 @@ const ACTIVE_EVENT: ProgramEvent = {
 };
 
 function normalized(text: string): string {
-  return text.replaceAll(/[\u202F\u00A0]/gu, " ");
+  return text.replaceAll(/[\u202F\u00A0\u2009]/gu, " ");
 }
 
 describe("PRG-02 events panel", () => {
@@ -92,16 +92,23 @@ describe("PRG-02 events panel", () => {
     );
     render(<EventsPanel program={RECURRING} canManage={false} />);
     await expect(
-      screen.findByText((text) => text.includes(`${COPY.programs.ruleWeekly} 2`))
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText((_, el) =>
-        el?.textContent !== undefined && normalized(el.textContent).includes("2026/08/13 19:30")
+      screen.findByText((text) =>
+        text.includes(`${COPY.programs.ruleWeekly} 2`)
       )
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
+    const matches = await screen.findAllByText(
+      (_, el) =>
+        el?.textContent !== undefined &&
+        normalized(el.textContent).includes("2026/08/13 19:30")
+    );
+    expect(matches.length).toBeGreaterThan(0);
     expect(screen.getByText(COPY.programs.eventActive)).toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.eventScheduleSource)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: COPY.programs.addRule })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.eventScheduleSource)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.addRule })
+    ).not.toBeInTheDocument();
   });
 
   test("U2 Recurring managers get the rule form, generate button, and empty copy", async () => {
@@ -114,11 +121,15 @@ describe("PRG-02 events panel", () => {
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
-    await expect(screen.findByText(COPY.programs.noRules)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.noRules)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.programs.eventsEmpty)).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.hkTimeMarker)).toBeInTheDocument();
     expect(screen.getByLabelText(COPY.programs.startTime)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: COPY.programs.addRule })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    ).toBeInTheDocument();
   });
 
   test("U3 OneOff managers get the manual event form, not rule/generate controls", async () => {
@@ -131,10 +142,16 @@ describe("PRG-02 events panel", () => {
       )
     );
     render(<EventsPanel program={ONE_OFF} canManage />);
-    await expect(screen.findByText(COPY.programs.eventsEmpty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.eventsEmpty)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByLabelText(COPY.programs.eventStart)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: COPY.programs.createEvent })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: COPY.programs.addRule })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.createEvent })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.addRule })
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.generateEvents })
     ).not.toBeInTheDocument();
@@ -149,38 +166,48 @@ describe("PRG-02 events panel", () => {
       http.get("/api/v1/programs/prog-1/events", () =>
         HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
       ),
-      http.post("/api/v1/programs/prog-1/schedule-rules", async ({ request }) => {
-        const body = (await request.json()) as {
-          recurrence: string;
-          day_of_week: number;
-          start_time: string;
-          end_time: string;
-        };
-        expect(body.day_of_week).toBe(3);
-        expect(body.start_time).toBe("19:30");
-        rules.push({
-          ...WEEKLY_RULE,
-          rule_id: "rule-new",
-          day_of_week: 3,
-          start_time: "19:30",
-          end_time: "21:00",
-        });
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { rule: rules[0] },
-        });
-      })
+      http.post(
+        "/api/v1/programs/prog-1/schedule-rules",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            recurrence: string;
+            day_of_week: number;
+            start_time: string;
+            end_time: string;
+          };
+          expect(body.day_of_week).toBe(3);
+          expect(body.start_time).toBe("19:30");
+          rules.push({
+            ...WEEKLY_RULE,
+            rule_id: "rule-new",
+            day_of_week: 3,
+            start_time: "19:30",
+            end_time: "21:00",
+          });
+          return HttpResponse.json({
+            requestId: "rid-3",
+            data: { rule: rules[0] },
+          });
+        }
+      )
     );
     const user = userEvent.setup();
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.noRules);
+    await user.clear(screen.getByLabelText(COPY.programs.dayOfWeekLabel));
     await user.type(screen.getByLabelText(COPY.programs.dayOfWeekLabel), "3");
     await user.type(screen.getByLabelText(COPY.programs.startTime), "19:30");
     await user.type(screen.getByLabelText(COPY.programs.endTime), "21:00");
-    await user.click(screen.getByRole("button", { name: COPY.programs.addRule }));
-    await expect(screen.findByText(COPY.programs.created)).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
     await expect(
-      screen.findByText((text) => text.includes(`${COPY.programs.ruleWeekly} 3`))
+      screen.findByText(COPY.programs.created)
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText((text) =>
+        text.includes(`${COPY.programs.ruleWeekly} 3`)
+      )
     ).resolves.toBeInTheDocument();
   });
 
@@ -193,33 +220,40 @@ describe("PRG-02 events panel", () => {
       http.get("/api/v1/programs/prog-1/events", () =>
         HttpResponse.json({ requestId: "rid-2", data: { events } })
       ),
-      http.patch("/api/v1/programs/prog-1/events/evt-1", async ({ request }) => {
-        const body = (await request.json()) as { reason: string };
-        expect(body.reason).toBe("惡劣天氣");
-        events[0] = {
-          ...events[0],
-          status: "Cancelled",
-          cancel_reason: body.reason,
-        };
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { event: events[0] },
-        });
-      })
+      http.patch(
+        "/api/v1/programs/prog-1/events/evt-1",
+        async ({ request }) => {
+          const body = (await request.json()) as { reason: string };
+          expect(body.reason).toBe("惡劣天氣");
+          events[0] = {
+            ...events[0],
+            status: "Cancelled",
+            cancel_reason: body.reason,
+          };
+          return HttpResponse.json({
+            requestId: "rid-3",
+            data: { event: events[0] },
+          });
+        }
+      )
     );
     const user = userEvent.setup();
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.eventActive);
-    const cancelButton = screen.getByRole("button", { name: COPY.programs.cancelEvent });
+    const cancelReasonInput = screen.getByLabelText(COPY.programs.cancelReason);
     // the form is invalid until the manager types a reason
-    expect(cancelButton).toBeDisabled();
-    await user.type(screen.getByLabelText(COPY.programs.cancelReason), "惡劣天氣");
-    await user.click(cancelButton);
+    expect(cancelReasonInput).toBeRequired();
+    await user.type(cancelReasonInput, "惡劣天氣");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEvent })
+    );
     await expect(
       screen.findByText(COPY.programs.eventCancelledNotice)
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText(COPY.programs.eventCancelled)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.programs.eventCancelled)
+      ).toBeInTheDocument();
     });
   });
 
@@ -248,7 +282,11 @@ describe("PRG-02 events panel", () => {
     const user = userEvent.setup();
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.noRules);
-    await user.click(screen.getByRole("button", { name: COPY.programs.generateEvents }));
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(errorCopyFor("VALIDATION"));
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      errorCopyFor("VALIDATION")
+    );
   });
 });

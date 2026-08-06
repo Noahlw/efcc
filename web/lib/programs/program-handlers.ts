@@ -18,9 +18,12 @@ import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import {
   DepartmentWorkspace,
   DuplicateDepartmentCodeError,
+  DuplicateEnrollmentError,
   DuplicateEventError,
   DuplicateProgramNameError,
+  EnrollmentNotAllowedError,
   InvalidModuleKeyError,
+  RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
 } from "./department-workspace";
 import type {
@@ -1182,6 +1185,262 @@ export async function handleCancelEvent(
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests */
+export async function handleCreateEnrollmentRequest(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const row = await workspace.submitEnrollmentRequest(
+      ctxFrom(auth.account),
+      programId,
+      { programId },
+      requestId
+    );
+    return jsonResponse(201, { request: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof EnrollmentNotAllowedError) {
+      return validation(requestId, error.message);
+    }
+    if (error instanceof DuplicateEnrollmentError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/enrollment-requests */
+export async function handleListEnrollmentRequests(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rows = await workspace.listEnrollmentRequests(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (rows === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { requests: rows }, requestId);
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
+export async function handleDecideEnrollmentRequest(
+  request: Request,
+  env: ProgramEnv,
+  requestId: string
+): Promise<Response> {
+  const requestId2 = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId2);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId2, "Body must be JSON.");
+  }
+  if (body.action !== "Approved" && body.action !== "Rejected") {
+    return validation(requestId2, "action must be Approved or Rejected.");
+  }
+  const note = typeof body.note === "string" ? body.note.trim() : null;
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getEnrollmentRequest(
+    ctxFrom(auth.account),
+    requestId
+  );
+  if (!existing) {
+    return notFound(requestId2, "Unknown enrollment request.");
+  }
+  try {
+    const row = await workspace.decideEnrollmentRequest(
+      ctxFrom(auth.account),
+      existing.program_id,
+      requestId,
+      { action: body.action, note },
+      requestId2
+    );
+    return jsonResponse(200, { request: row }, requestId2);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+    }
+    if (error instanceof RequestNotDecidableError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+    }
+    if (error instanceof DuplicateEnrollmentError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests/:requestId/withdraw */
+export async function handleWithdrawEnrollmentRequest(
+  request: Request,
+  env: ProgramEnv,
+  requestId: string
+): Promise<Response> {
+  const requestId2 = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId2);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getEnrollmentRequest(
+    ctxFrom(auth.account),
+    requestId
+  );
+  if (!existing) {
+    return notFound(requestId2, "Unknown enrollment request.");
+  }
+  try {
+    const row = await workspace.withdrawEnrollmentRequest(
+      ctxFrom(auth.account),
+      existing.program_id,
+      requestId,
+      requestId2
+    );
+    return jsonResponse(200, { request: row }, requestId2);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+    }
+    if (error instanceof RequestNotDecidableError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/enrollments */
+export async function handleAssistedEnroll(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ member_user_id?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const memberUserId =
+    typeof body.member_user_id === "string" ? body.member_user_id : "";
+  if (!memberUserId) {
+    return validation(requestId, "member_user_id is required.");
+  }
+  const member = await findAccountByUserId(env.DB, memberUserId);
+  if (!member) {
+    return validation(requestId, "Unknown member_user_id.");
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const row = await workspace.assistedEnroll(
+      ctxFrom(auth.account),
+      programId,
+      { programId, memberUserId },
+      requestId
+    );
+    return jsonResponse(201, { enrollment: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof EnrollmentNotAllowedError) {
+      return validation(requestId, error.message);
+    }
+    if (error instanceof DuplicateEnrollmentError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/enrollments */
+export async function handleListEnrollments(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rows = await workspace.listEnrollments(ctxFrom(auth.account), programId);
+  if (rows === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { enrollments: rows }, requestId);
+}
+
+/** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
+export async function handleCancelEnrollment(
+  request: Request,
+  env: ProgramEnv,
+  enrollmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getEnrollment(
+    ctxFrom(auth.account),
+    enrollmentId
+  );
+  if (!existing) {
+    return notFound(requestId, "Unknown enrollment.");
+  }
+  try {
+    const row = await workspace.cancelEnrollment(
+      ctxFrom(auth.account),
+      existing.program_id,
+      enrollmentId,
+      requestId
+    );
+    return jsonResponse(200, { enrollment: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof RequestNotDecidableError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }

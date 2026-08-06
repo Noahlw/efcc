@@ -16,6 +16,7 @@ export const DEPARTMENT_CAPABILITY = {
 export const PROGRAM_CAPABILITY = {
   MANAGE: "program.manage",
   PUBLISH: "program.publish",
+  ENROLL: "program.enroll",
 } as const;
 
 export const CAPABILITY = {
@@ -24,6 +25,7 @@ export const CAPABILITY = {
   DEPARTMENT_MODULE_CONFIGURE: DEPARTMENT_CAPABILITY.MODULE_CONFIGURE,
   PROGRAM_MANAGE: PROGRAM_CAPABILITY.MANAGE,
   PROGRAM_PUBLISH: PROGRAM_CAPABILITY.PUBLISH,
+  PROGRAM_ENROLL: PROGRAM_CAPABILITY.ENROLL,
 } as const;
 
 export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];
@@ -93,5 +95,10 @@ export const DEFAULT_ROLE_POLICIES: Record<
       granted_at: "2026-08-06T00:00:00Z",
     },
   ],
-  Member: [],
+  Member: [
+    {
+      capability: CAPABILITY.PROGRAM_ENROLL,
+      granted_at: "2026-08-06T00:00:00Z",
+    },
+  ],
 };

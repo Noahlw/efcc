@@ -18,6 +18,8 @@ import type {
   DepartmentLifecycle,
   DepartmentRow,
   DepartmentUpdate,
+  EnrollmentRequestRow,
+  EnrollmentRow,
   EventRow,
   GenerateResult,
   ProgramLifecycle,
@@ -88,6 +90,20 @@ export interface CancelEventCommand {
   reason: string;
 }
 
+export interface SubmitEnrollmentRequestCommand {
+  programId: string;
+}
+
+export interface DecideEnrollmentRequestCommand {
+  action: "Approved" | "Rejected";
+  note: string | null;
+}
+
+export interface AssistedEnrollCommand {
+  programId: string;
+  memberUserId: string;
+}
+
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateDepartmentCodeError extends Error {
   constructor(code: string) {
@@ -125,6 +141,34 @@ export class DuplicateEventError extends Error {
   constructor(startsAt: string) {
     super(`An event already exists for this start time: ${startsAt}`);
     this.name = "DuplicateEventError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentNotAllowedError extends Error {
+  constructor(programId: string, expected: string) {
+    super(
+      `Program ${programId} does not accept enrollment mode ${expected}.`
+    );
+    this.name = "EnrollmentNotAllowedError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class DuplicateEnrollmentError extends Error {
+  constructor(programId: string, memberUserId: string) {
+    super(
+      `Member ${memberUserId} already has an open request or active enrollment for program ${programId}.`
+    );
+    this.name = "DuplicateEnrollmentError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class RequestNotDecidableError extends Error {
+  constructor(requestId: string) {
+    super(`Enrollment request ${requestId} is not in a decidable state.`);
+    this.name = "RequestNotDecidableError";
   }
 }
 
@@ -783,5 +827,344 @@ export class DepartmentWorkspace {
       correlationId
     );
     return updated;
+  }
+
+  getEnrollmentRequest(
+    _ctx: AuthorizationContext,
+    requestId: string
+  ): Promise<EnrollmentRequestRow | null> {
+    return this.store.findEnrollmentRequestById(requestId);
+  }
+
+  getEnrollment(
+    _ctx: AuthorizationContext,
+    enrollmentId: string
+  ): Promise<EnrollmentRow | null> {
+    return this.store.findEnrollmentById(enrollmentId);
+  }
+
+  async submitEnrollmentRequest(
+    ctx: AuthorizationContext,
+    programId: string,
+    _cmd: SubmitEnrollmentRequestCommand,
+    correlationId: string | null
+  ): Promise<EnrollmentRequestRow> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_ENROLL
+    );
+    if (program.enrollment_mode !== "MemberRequest") {
+      throw new EnrollmentNotAllowedError(programId, "MemberRequest");
+    }
+    if (await this.store.hasActiveEnrollment(programId, ctx.actorUserId)) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_CREATE",
+        "enrollment_request",
+        programId,
+        "CONFLICT",
+        null,
+        { member_user_id: ctx.actorUserId, reason: "active_enrollment_exists" },
+        correlationId
+      );
+      throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
+    }
+    if (
+      await this.store.findPendingRequestByMember(programId, ctx.actorUserId)
+    ) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_CREATE",
+        "enrollment_request",
+        programId,
+        "CONFLICT",
+        null,
+        { member_user_id: ctx.actorUserId, reason: "pending_request_exists" },
+        correlationId
+      );
+      throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
+    }
+    const now = new Date().toISOString();
+    const row = await this.store.createEnrollmentRequest({
+      request_id: crypto.randomUUID(),
+      program_id: programId,
+      member_user_id: ctx.actorUserId,
+      status: "Pending",
+      submitted_at: now,
+      request_version: 1,
+    });
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_CREATE",
+      "enrollment_request",
+      row.request_id,
+      "SUCCESS",
+      null,
+      row,
+      correlationId
+    );
+    return row;
+  }
+
+  async listEnrollmentRequests(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<EnrollmentRequestRow[] | null> {
+    const program = await this.store.findProgramById(programId);
+    if (!program) {
+      return null;
+    }
+    const canManage = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      {
+        departmentId: program.department_id,
+        programId: program.program_id,
+      }
+    );
+    const rows = await this.store.listEnrollmentRequests(programId);
+    if (canManage) {
+      return rows;
+    }
+    if (program.discoverability === "Unlisted") {
+      return null;
+    }
+    await this.ensure(ctx, CAPABILITY.PROGRAM_ENROLL, {
+      departmentId: program.department_id,
+      programId: program.program_id,
+    });
+    return rows.filter((r) => r.member_user_id === ctx.actorUserId);
+  }
+
+  async decideEnrollmentRequest(
+    ctx: AuthorizationContext,
+    programId: string,
+    requestId: string,
+    cmd: DecideEnrollmentRequestCommand,
+    correlationId: string | null
+  ): Promise<EnrollmentRequestRow> {
+    await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_MANAGE);
+    const request = await this.store.findEnrollmentRequestById(requestId);
+    if (!request || request.program_id !== programId) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    const now = new Date().toISOString();
+    const decided = await this.store.decideRequest(
+      requestId,
+      cmd.action,
+      ctx.actorUserId,
+      now,
+      cmd.note
+    );
+    if (!decided) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    let enrollment: EnrollmentRow | null = null;
+    if (cmd.action === "Approved") {
+      try {
+        enrollment = await this.store.createEnrollment({
+          enrollment_id: crypto.randomUUID(),
+          program_id: programId,
+          member_user_id: request.member_user_id,
+          request_id: requestId,
+          status: "Active",
+          enrolled_at: now,
+          created_by: ctx.actorUserId,
+          created_at: now,
+        });
+      } catch (error) {
+        // ponytail: partial unique index is the race guard; on constraint
+        // violation the member already has an Active enrollment.
+        if (await this.store.hasActiveEnrollment(programId, request.member_user_id)) {
+          throw new DuplicateEnrollmentError(programId, request.member_user_id);
+        }
+        throw error;
+      }
+      await this.audit(
+        ctx,
+        "ENROLLMENT_CREATE",
+        "enrollment",
+        enrollment.enrollment_id,
+        "SUCCESS",
+        null,
+        enrollment,
+        correlationId
+      );
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_DECIDE",
+      "enrollment_request",
+      requestId,
+      "SUCCESS",
+      { status: "Pending" },
+      { ...decided, enrollment_id: enrollment?.enrollment_id ?? null },
+      correlationId
+    );
+    return decided;
+  }
+
+  async withdrawEnrollmentRequest(
+    ctx: AuthorizationContext,
+    programId: string,
+    requestId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentRequestRow> {
+    await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_ENROLL);
+    const request = await this.store.findEnrollmentRequestById(requestId);
+    if (!request || request.program_id !== programId) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    if (request.member_user_id !== ctx.actorUserId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_ENROLL);
+    }
+    const withdrawn = await this.store.withdrawRequest(
+      requestId,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!withdrawn) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_WITHDRAW",
+      "enrollment_request",
+      requestId,
+      "SUCCESS",
+      { status: "Pending" },
+      withdrawn,
+      correlationId
+    );
+    return withdrawn;
+  }
+
+  async assistedEnroll(
+    ctx: AuthorizationContext,
+    programId: string,
+    cmd: AssistedEnrollCommand,
+    correlationId: string | null
+  ): Promise<EnrollmentRow> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    if (program.enrollment_mode !== "ManagerOnly") {
+      throw new EnrollmentNotAllowedError(programId, "ManagerOnly");
+    }
+    if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_CREATE",
+        "enrollment",
+        programId,
+        "CONFLICT",
+        null,
+        { member_user_id: cmd.memberUserId, reason: "active_enrollment_exists" },
+        correlationId
+      );
+      throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
+    }
+    const now = new Date().toISOString();
+    let row: EnrollmentRow;
+    try {
+      row = await this.store.createEnrollment({
+        enrollment_id: crypto.randomUUID(),
+        program_id: programId,
+        member_user_id: cmd.memberUserId,
+        request_id: null,
+        status: "Active",
+        enrolled_at: now,
+        created_by: ctx.actorUserId,
+        created_at: now,
+      });
+    } catch (error) {
+      // ponytail: partial unique index is the race guard; on constraint
+      // violation the member already has an Active enrollment.
+      if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+        throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
+      }
+      throw error;
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_CREATE",
+      "enrollment",
+      row.enrollment_id,
+      "SUCCESS",
+      null,
+      row,
+      correlationId
+    );
+    return row;
+  }
+
+  async listEnrollments(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<EnrollmentRow[] | null> {
+    const program = await this.store.findProgramById(programId);
+    if (!program) {
+      return null;
+    }
+    const canManage = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      {
+        departmentId: program.department_id,
+        programId: program.program_id,
+      }
+    );
+    const rows = await this.store.listEnrollments(programId);
+    if (canManage) {
+      return rows;
+    }
+    if (program.discoverability === "Unlisted") {
+      return null;
+    }
+    await this.ensure(ctx, CAPABILITY.PROGRAM_ENROLL, {
+      departmentId: program.department_id,
+      programId: program.program_id,
+    });
+    return rows.filter((r) => r.member_user_id === ctx.actorUserId);
+  }
+
+  async cancelEnrollment(
+    ctx: AuthorizationContext,
+    programId: string,
+    enrollmentId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentRow> {
+    const enrollment = await this.store.findEnrollmentById(enrollmentId);
+    if (!enrollment || enrollment.program_id !== programId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_ENROLL);
+    }
+    const isOwner = enrollment.member_user_id === ctx.actorUserId;
+    if (isOwner) {
+      await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_ENROLL);
+    } else {
+      await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_MANAGE);
+    }
+    const cancelled = await this.store.cancelEnrollment(
+      enrollmentId,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!cancelled) {
+      throw new RequestNotDecidableError(enrollmentId);
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_CANCEL",
+      "enrollment",
+      enrollmentId,
+      "SUCCESS",
+      enrollment,
+      cancelled,
+      correlationId
+    );
+    return cancelled;
   }
 }

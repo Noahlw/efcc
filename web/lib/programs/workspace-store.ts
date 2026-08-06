@@ -177,8 +177,7 @@ export interface EventInput {
   source: EventSource;
   cancel_reason: string | null;
   created_by: string | null;
-  created_at: string;
-  updated_by: string | null;
+  created_at: string;  updated_by: string | null;
   updated_at: string;
 }
 
@@ -200,6 +199,58 @@ export interface GenerateResult {
   created: number;
   skipped: number;
   rule_count: number;
+}
+
+export type EnrollmentRequestStatus =
+  | "Pending"
+  | "Approved"
+  | "Rejected"
+  | "Withdrawn";
+export type EnrollmentStatus = "Active" | "Cancelled";
+
+export interface EnrollmentRequestRow {
+  request_id: string;
+  program_id: string;
+  member_user_id: string;
+  status: EnrollmentRequestStatus;
+  submitted_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  request_version: number;
+}
+
+export interface EnrollmentRow {
+  enrollment_id: string;
+  program_id: string;
+  member_user_id: string;
+  request_id: string | null;
+  status: EnrollmentStatus;
+  enrolled_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface EnrollmentRequestInput {
+  request_id: string;
+  program_id: string;
+  member_user_id: string;
+  status: "Pending";
+  submitted_at: string;
+  request_version: number;
+}
+
+export interface EnrollmentInput {
+  enrollment_id: string;
+  program_id: string;
+  member_user_id: string;
+  request_id: string | null;
+  status: "Active";
+  enrolled_at: string;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface AuditInput {
@@ -289,6 +340,45 @@ export interface WorkspaceStore {
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
+
+  createEnrollmentRequest: (
+    input: EnrollmentRequestInput
+  ) => Promise<EnrollmentRequestRow>;
+  findEnrollmentRequestById: (
+    id: string
+  ) => Promise<EnrollmentRequestRow | null>;
+  findPendingRequestByMember: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<EnrollmentRequestRow | null>;
+  listEnrollmentRequests: (
+    programId: string
+  ) => Promise<EnrollmentRequestRow[]>;
+  decideRequest: (
+    id: string,
+    decision: "Approved" | "Rejected",
+    decidedBy: string,
+    decidedAt: string,
+    note: string | null
+  ) => Promise<EnrollmentRequestRow | null>;
+  withdrawRequest: (
+    id: string,
+    memberUserId: string,
+    withdrawnAt: string
+  ) => Promise<EnrollmentRequestRow | null>;
+
+  createEnrollment: (input: EnrollmentInput) => Promise<EnrollmentRow>;
+  hasActiveEnrollment: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<boolean>;
+  findEnrollmentById: (id: string) => Promise<EnrollmentRow | null>;
+  listEnrollments: (programId: string) => Promise<EnrollmentRow[]>;
+  cancelEnrollment: (
+    id: string,
+    cancelledBy: string,
+    cancelledAt: string
+  ) => Promise<EnrollmentRow | null>;
 
   audit: (input: AuditInput) => Promise<void>;
 }
