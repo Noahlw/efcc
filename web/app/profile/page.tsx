@@ -5,6 +5,7 @@ import { useApp } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
 
+import { AccountSettings } from "./account-settings";
 import styles from "./profile.module.css";
 
 function ProfileContent() {
@@ -61,6 +62,8 @@ function ProfileContent() {
           <EmptyState title={COPY.profile.qrCode} message={COPY.profile.qrEmpty} />
         )}
       </div>
+
+      <AccountSettings />
     </div>
   );
 }
