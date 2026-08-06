@@ -15,7 +15,8 @@ export default defineProject({
       "lib/navigation-controller.test.ts",
     "lib/registration.test.tsx",
     "lib/approval-queue.test.tsx",
-     "lib/section-view.test.tsx",
+"lib/section-view.test.tsx",
+    "lib/account-settings.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

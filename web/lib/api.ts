@@ -254,3 +254,38 @@ export async function authMe(): Promise<PublicUser> {
   const data = await authFetch<{ user: PublicUser }>("/api/v1/auth/me", "GET");
   return data.user;
 }
+
+/**
+ * POST /api/v1/auth/username (UI-04 #196 / Spec #191) — session-authenticated
+ * self-service username change. Success clears both auth cookies server-side
+ * and revokes every refresh session; `sessionRevoked: true` tells the caller
+ * to transition to the signed-out surface immediately. An unchanged value is
+ * a value-idempotent no-op (`sessionRevoked: false`, session stays live).
+ */
+export async function authChangeUsername(
+  username: string
+): Promise<{ username: string; sessionRevoked: boolean }> {
+  return authFetch<{ username: string; sessionRevoked: boolean }>(
+    "/api/v1/auth/username",
+    "POST",
+    { username }
+  );
+}
+
+/**
+ * POST /api/v1/auth/password (UI-04 #196 / Spec #191) — session-authenticated
+ * self-service password change. Requires the correct current password (a
+ * mismatch is a 422 VALIDATION with detail "current password is incorrect",
+ * deliberately NOT 401). Success revokes every refresh session, clears both
+ * cookies, and returns `sessionRevoked: true`.
+ */
+export async function authChangePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ sessionRevoked: boolean }> {
+  return authFetch<{ sessionRevoked: boolean }>(
+    "/api/v1/auth/password",
+    "POST",
+    { currentPassword, newPassword }
+  );
+}

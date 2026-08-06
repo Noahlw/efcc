@@ -4,8 +4,9 @@
  * Two routes, two transport contracts:
  *
  *   * `/api/v1/auth/*` — cookie-only auth surface (AUTH-04 #162 / AUTH-06
- *     #165). Six locked actions — register, login, refresh, logout,
+ *     #165). Locked actions — register, login, refresh, logout,
  *     registrations/:id/approve, registrations/:id/reject — plus the
+ *     self-service account changes (username, password, UI-04 #196) and the
  *     preserved legacy forced-upgrade helpers (upgrade, me, admin-unlock).
  *     No CORS, no OPTIONS, no Authorization header, no X-Efcc-Session-Id
  *     header. Token material travels only in two httpOnly Secure
@@ -255,7 +256,21 @@ export default {
         handleApprove,
         handleReject,
         handleListRegistrations,
+        handleChangeUsername,
+        handleChangePassword,
       } = await import("./lib/auth/handlers");
+      if (
+        url.pathname === "/api/v1/auth/username" &&
+        request.method === "POST"
+      ) {
+        return handleChangeUsername(request, authEnv);
+      }
+      if (
+        url.pathname === "/api/v1/auth/password" &&
+        request.method === "POST"
+      ) {
+        return handleChangePassword(request, authEnv);
+      }
       if (
         url.pathname === "/api/v1/auth/register" &&
         request.method === "POST"

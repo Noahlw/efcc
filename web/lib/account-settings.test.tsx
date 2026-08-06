@@ -1,0 +1,297 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+
+import { AccountSettings } from "@/app/profile/account-settings";
+import { ACCOUNT_UPDATED_KEY } from "@/app/profile/account-settings";
+import type { Bootstrap, PublicUser } from "@/lib/api";
+import { AppProvider } from "@/lib/app-context";
+import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
+
+const mocks = vi.hoisted(() => {
+  const replaceMock = vi.fn<(path: string) => void>();
+  const mockRouter = {
+    replace: replaceMock,
+    back: vi.fn<() => void>(),
+    forward: vi.fn<() => void>(),
+    refresh: vi.fn<() => void>(),
+    push: vi.fn<(path: string) => void>(),
+    prefetch: vi.fn<(path: string) => void>(),
+  };
+  return { replaceMock, mockRouter };
+});
+
+const { replaceMock } = mocks;
+const { mockRouter } = mocks;
+
+vi.mock(import("next/navigation"), () => ({
+  useRouter: () => mockRouter,
+  usePathname: () => "/profile",
+}));
+
+const PROFILE: PublicUser = {
+  userId: "U001",
+  name: "Alice Chan",
+  username: "alice",
+  phone: "555",
+  role: "Admin",
+  status: "Active",
+  qrCodeString: "qr-alice",
+};
+
+const BOOTSTRAP: Bootstrap = {
+  sections: [],
+  profile: PROFILE,
+};
+
+const server = setupServer();
+
+function renderSettings() {
+  return render(
+    <AppProvider bootstrap={BOOTSTRAP} onSignOut={vi.fn()}>
+      <AccountSettings />
+    </AppProvider>
+  );
+}
+
+async function fillUsername(user: UserEvent, value: string) {
+  await user.type(
+    screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel),
+    value
+  );
+}
+
+async function fillPassword(
+  user: UserEvent,
+  current: string,
+  next: string
+) {
+  await user.type(
+    screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel),
+    current
+  );
+  await user.type(
+    screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel),
+    next
+  );
+}
+
+describe(AccountSettings, () => {
+  beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  afterEach(() => {
+    cleanup();
+    server.resetHandlers();
+    replaceMock.mockReset();
+    sessionStorage.removeItem(ACCOUNT_UPDATED_KEY);
+  });
+  afterAll(() => server.close());
+
+  test("renders both forms with labeled inputs and the 8-char hint", () => {
+    renderSettings();
+    expect(
+      screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)
+    ).toBeInTheDocument();
+    // ≥8-char hint in zh-Hant; no confirmation field.
+    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.passwordHint)).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("確認新密碼")
+    ).not.toBeInTheDocument();
+  });
+
+  test("username success: 已更新 state, sessionStorage notice, clear hint, route to /", async () => {
+    server.use(
+      http.post("/api/v1/auth/username", () =>
+        HttpResponse.json({
+          requestId: "req-1",
+          data: { username: "alice2", sessionRevoked: true },
+        })
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "alice2");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.updated)
+    ).toBeInTheDocument();
+    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.redirecting)).toBeInTheDocument();
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+    expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBe("1");
+  });
+
+  test("username no-op (sessionRevoked false) keeps the session and shows notice", async () => {
+    server.use(
+      http.post("/api/v1/auth/username", () =>
+        HttpResponse.json({
+          requestId: "req-2",
+          data: { username: "alice", sessionRevoked: false },
+        })
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "alice");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.usernameUnchanged)
+    ).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBeNull();
+  });
+
+  test("duplicate username 409 renders 此用戶名稱已被使用 inline", async () => {
+    server.use(
+      http.post("/api/v1/auth/username", () =>
+        HttpResponse.json(
+          {
+            type: "tag:apps-script/efcc/errors#CONFLICT",
+            title: "Conflict",
+            status: 409,
+            code: "CONFLICT",
+            requestId: "req-3",
+            detail: "An account with that username already exists.",
+          },
+          { status: 409 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillUsername(user, "carol");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.usernameTaken)
+    ).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  test("wrong current password 422 renders 目前密碼不正確 inline", async () => {
+    server.use(
+      http.post("/api/v1/auth/password", () =>
+        HttpResponse.json(
+          {
+            type: "tag:apps-script/efcc/errors#VALIDATION",
+            title: "Validation failed",
+            status: 422,
+            code: "VALIDATION",
+            requestId: "req-4",
+            detail: "current password is incorrect",
+          },
+          { status: 422 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillPassword(user, "wrong", "alice-new-secret");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.wrongCurrentPassword)
+    ).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  test("password success: 已更新 state then route to / with the notice", async () => {
+    server.use(
+      http.post("/api/v1/auth/password", () =>
+        HttpResponse.json({
+          requestId: "req-5",
+          data: { sessionRevoked: true },
+        })
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillPassword(user, "alice-secret", "alice-new-secret");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.updated)
+    ).toBeInTheDocument();
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+    expect(sessionStorage.getItem(ACCOUNT_UPDATED_KEY)).toBe("1");
+  });
+
+  test("network error renders the recovery-state message", async () => {
+    server.use(
+      http.post("/api/v1/auth/password", () =>
+        HttpResponse.error()
+      )
+    );
+    const user = userEvent.setup();
+    renderSettings();
+    await fillPassword(user, "alice-secret", "alice-new-secret");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+
+    expect(
+      await screen.findByText(ACCOUNT_SETTINGS_COPY.networkError)
+    ).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  test("client-side validation: empty fields and short password blocked before fetch", async () => {
+    let fetched = false;
+    server.use(
+      http.post("/api/v1/auth/password", () => {
+        fetched = true;
+        return HttpResponse.json({
+          requestId: "req-6",
+          data: { sessionRevoked: true },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    renderSettings();
+
+    // Empty password form.
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.missingPasswordFields)
+    ).toBeInTheDocument();
+
+    // Short new password.
+    await fillPassword(user, "alice-secret", "short7");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(
+      screen.getAllByRole("alert").some(
+        (el) => el.textContent === ACCOUNT_SETTINGS_COPY.shortPassword
+      )
+    ).toBe(true);
+
+    expect(fetched).toBe(false);
+  });
+});
