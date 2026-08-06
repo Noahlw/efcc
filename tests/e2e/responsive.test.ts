@@ -422,3 +422,13 @@ test("register skip link and brand are at least 44px tall", async ({
     expect(height, `${label} height`).toBeGreaterThanOrEqual(44);
   }
 });
+
+test("register page fits 375x667 without vertical scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/register.html");
+  const fits = await page.evaluate(
+    () =>
+      document.documentElement.scrollHeight <= document.documentElement.clientHeight
+  );
+  expect(fits, "register exceeds the 375x667 viewport").toBeTruthy();
+});
