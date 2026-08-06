@@ -229,105 +229,126 @@ export default {
 
     // ---- Auth surface: cookie-only transport, no CORS ------------------
     if (url.pathname.startsWith("/api/v1/auth/")) {
-      const guard = authTransportGuard(request);
-      if (guard) {
-        return guard;
-      }
-      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+      try {
+        return await (async () => {
+          const guard = authTransportGuard(request);
+          if (guard) {
+            return guard;
+          }
+          if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+            return authProblemResponse(
+              503,
+              "AUTH_NOT_CONFIGURED",
+              "Service unavailable",
+              "Auth signing secret is not configured."
+            );
+          }
+          const authEnv = {
+            DB: env.DB,
+            EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+          } as const;
+          const {
+            handleRegister,
+            handleLogin,
+            handleUpgrade,
+            handleRefresh,
+            handleLogout,
+            handleMe,
+            handleAdminUnlock,
+            handleApprove,
+            handleReject,
+            handleListRegistrations,
+            handleChangeUsername,
+            handleChangePassword,
+          } = await import("./lib/auth/handlers");
+          if (
+            url.pathname === "/api/v1/auth/username" &&
+            request.method === "POST"
+          ) {
+            return handleChangeUsername(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/password" &&
+            request.method === "POST"
+          ) {
+            return handleChangePassword(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/register" &&
+            request.method === "POST"
+          ) {
+            return handleRegister(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/login" &&
+            request.method === "POST"
+          ) {
+            return handleLogin(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/upgrade" &&
+            request.method === "POST"
+          ) {
+            return handleUpgrade(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/refresh" &&
+            request.method === "POST"
+          ) {
+            return handleRefresh(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/logout" &&
+            request.method === "POST"
+          ) {
+            return handleLogout(request, authEnv);
+          }
+          if (url.pathname === "/api/v1/auth/me" && request.method === "GET") {
+            return handleMe(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/registrations" &&
+            request.method === "GET"
+          ) {
+            return handleListRegistrations(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/admin-unlock" &&
+            request.method === "POST"
+          ) {
+            return handleAdminUnlock(request, authEnv);
+          }
+          const approve = url.pathname.match(
+            /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/approve$/u
+          );
+          if (approve && request.method === "POST") {
+            return handleApprove(request, authEnv, approve.groups?.id ?? "");
+          }
+          const reject = url.pathname.match(
+            /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/reject$/u
+          );
+          if (reject && request.method === "POST") {
+            return handleReject(request, authEnv, reject.groups?.id ?? "");
+          }
+          return authProblemResponse(
+            404,
+            "NOT_FOUND",
+            "Not found",
+            "Unknown auth route."
+          );
+        })();
+      } catch (error) {
+        // RFC 9457 envelope for unhandled route errors. Typed errors already
+        // flow through the handlers' problem() paths; this catch only fires
+        // on untyped throws. authProblemResponse sets X-Request-Id, so the
+        // 500 always carries one for log correlation.
         return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
+          500,
+          "INTERNAL",
+          "Internal error",
+          error instanceof Error ? error.message : String(error)
         );
       }
-      const authEnv = {
-        DB: env.DB,
-        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
-      } as const;
-      const {
-        handleRegister,
-        handleLogin,
-        handleUpgrade,
-        handleRefresh,
-        handleLogout,
-        handleMe,
-        handleAdminUnlock,
-        handleApprove,
-        handleReject,
-        handleListRegistrations,
-        handleChangeUsername,
-        handleChangePassword,
-      } = await import("./lib/auth/handlers");
-      if (
-        url.pathname === "/api/v1/auth/username" &&
-        request.method === "POST"
-      ) {
-        return handleChangeUsername(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/password" &&
-        request.method === "POST"
-      ) {
-        return handleChangePassword(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/register" &&
-        request.method === "POST"
-      ) {
-        return handleRegister(request, authEnv);
-      }
-      if (url.pathname === "/api/v1/auth/login" && request.method === "POST") {
-        return handleLogin(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/upgrade" &&
-        request.method === "POST"
-      ) {
-        return handleUpgrade(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/refresh" &&
-        request.method === "POST"
-      ) {
-        return handleRefresh(request, authEnv);
-      }
-      if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
-        return handleLogout(request, authEnv);
-      }
-      if (url.pathname === "/api/v1/auth/me" && request.method === "GET") {
-        return handleMe(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/registrations" &&
-        request.method === "GET"
-      ) {
-        return handleListRegistrations(request, authEnv);
-      }
-      if (
-        url.pathname === "/api/v1/auth/admin-unlock" &&
-        request.method === "POST"
-      ) {
-        return handleAdminUnlock(request, authEnv);
-      }
-      const approve = url.pathname.match(
-        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/approve$/u
-      );
-      if (approve && request.method === "POST") {
-        return handleApprove(request, authEnv, approve.groups?.id ?? "");
-      }
-      const reject = url.pathname.match(
-        /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/reject$/u
-      );
-      if (reject && request.method === "POST") {
-        return handleReject(request, authEnv, reject.groups?.id ?? "");
-      }
-      return authProblemResponse(
-        404,
-        "NOT_FOUND",
-        "Not found",
-        "Unknown auth route."
-      );
     }
 
     // ---- Static assets fallthrough -------------------------------------
