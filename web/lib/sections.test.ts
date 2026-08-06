@@ -7,6 +7,7 @@ import {
   isPermitted,
   getSection,
   recoverySection,
+  sectionsForRole,
 } from "./sections";
 
 const profile: Section = {
@@ -111,5 +112,42 @@ describe(defaultSections, () => {
     expect(firstSection(sections)).toBe("profile");
     // No section requires a server-auth RPC in this slice (deferred to CF0-04).
     expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
+  });
+});
+
+describe(sectionsForRole, () => {
+  test("Admin sees all six sections", () => {
+    expect(sectionsForRole("ADMIN").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+      "events",
+      "scanner",
+      "care",
+      "permissions",
+    ]);
+  });
+
+  test("Staff sees five sections, without permissions", () => {
+    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+      "events",
+      "scanner",
+      "care",
+    ]);
+  });
+
+  test("Member sees two sections (profile, programs)", () => {
+    expect(sectionsForRole("MEMBER").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
+
+  test("unknown role falls back to the Member set", () => {
+    expect(sectionsForRole("UNKNOWN").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
   });
 });

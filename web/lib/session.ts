@@ -12,7 +12,7 @@
 
 import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
-import { defaultSections } from "@/lib/sections";
+import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -44,12 +44,11 @@ export function clearAuthHint(): void {
 }
 
 /**
- * Assemble the shell's Bootstrap from a cookie-verified public user and the
- * shell's section baseline. Section authorization is CF0-04's concern; the
- * client never hardcodes a role→Section map here.
+ * Assemble the shell's Bootstrap from a cookie-verified public user,
+ * authorizing the shell sections by the user's role (S15).
  */
 export function buildBootstrap(user: PublicUser): Bootstrap {
-  return { profile: user, sections: defaultSections() };
+  return { profile: user, sections: sectionsForRole(user.role) };
 }
 
 /**

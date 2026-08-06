@@ -33,6 +33,7 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
+import { sectionsForRole } from "@/lib/sections";
 import { setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
@@ -111,6 +112,9 @@ const PUBLIC_USER: PublicUser = {
   status: "Active",
   qrCodeString: "qr-placeholder",
 };
+
+const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "STAFF" };
+const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "ADMIN" };
 
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
@@ -982,6 +986,16 @@ describe("Shell", () => {
       expect(screen.getAllByText("聚會").length).toBeGreaterThanOrEqual(1);
     });
 
+    test("Member nav omits events, scanner, care, and permissions (S15)", () => {
+      renderWithProvider(sectionsForRole("MEMBER"), "/profile");
+      expect(screen.getAllByText(COPY.sections.profile).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(COPY.sections.programs).length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryAllByText(COPY.sections.events)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.scanner)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.care)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
+    });
+
     test("renders all STAFF sections", () => {
       renderWithProvider(STAFF_SECTIONS, "/profile");
       expect(screen.getAllByText("掃描").length).toBeGreaterThanOrEqual(1);
@@ -1026,6 +1040,21 @@ describe("Shell", () => {
       expect(screen.queryByText("care content")).not.toBeInTheDocument();
       const link = screen.getByText(COPY.nav.backToProfile).closest("a");
       expect(link).toHaveAttribute("href", "/profile");
+    });
+
+    test("Member deep-linking to scanner renders forbidden view (S15)", () => {
+      render(
+        <AppProvider
+          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("MEMBER") }}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="scanner">
+            <p>scanner content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
     });
   });
 
@@ -1190,7 +1219,7 @@ describe("Shell", () => {
   });
 
   describe("Section page titles from COPY.sections", () => {
-    function withAuthRestore() {
+    function withAuthRestore(user: PublicUser = PUBLIC_USER) {
       server.use(
         http.post("/api/v1/auth/refresh", () =>
           HttpResponse.json({ requestId: "r-refresh", data: {} })
@@ -1198,7 +1227,7 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user },
           })
         )
       );
@@ -1215,6 +1244,7 @@ describe("Shell", () => {
     });
 
     test("events page renders COPY.sections.events title", async () => {
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
@@ -1225,7 +1255,7 @@ describe("Shell", () => {
     });
 
     test("scanner page renders COPY.sections.scanner title", async () => {
-      withAuthRestore();
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<ScannerPage />);
       await waitFor(() => {
@@ -1236,7 +1266,7 @@ describe("Shell", () => {
     });
 
     test("care page renders COPY.sections.care title", async () => {
-      withAuthRestore();
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<CarePage />);
       await waitFor(() => {
@@ -1247,7 +1277,7 @@ describe("Shell", () => {
     });
 
     test("permissions page renders COPY.sections.permissions title", async () => {
-      withAuthRestore();
+      withAuthRestore(ADMIN_USER);
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
