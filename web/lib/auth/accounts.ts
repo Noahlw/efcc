@@ -34,7 +34,7 @@ export const ACCOUNT_STATUS = {
 
 export const ROLE = {
   ADMIN: "Admin",
-  TEACHER: "Teacher",
+  STAFF: "Staff",
   MEMBER: "Member",
 } as const;
 
@@ -201,12 +201,13 @@ export async function importLegacyUsers(
     seenNormalized.add(usernameNormalized);
 
     // Map the uppercased sheet value to the canonical stored Role so the
-    // schema values ("Admin" / "Teacher" / "Member") stay consistent.
+    // schema values ("Admin" / "Staff" / "Member") stay consistent. The
+    // legacy "Teacher" spelling is retired to Staff (ADR-0025).
     const role: Role =
       roleRaw === "ADMIN"
         ? ROLE.ADMIN
-        : roleRaw === "TEACHER"
-          ? ROLE.TEACHER
+        : roleRaw === "TEACHER" || roleRaw === "STAFF"
+          ? ROLE.STAFF
           : ROLE.MEMBER;
 
     parsed.push({

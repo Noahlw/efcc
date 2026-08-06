@@ -247,6 +247,8 @@ beforeAll(async () => {
     // U003 stays legacy-imported (requires_upgrade=1) for the forced-upgrade
     // login + upgrade tests.
     ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
+    // U005 is a Staff member — the canonical elevated role (ADR-0025).
+    ["U005", "Eve Staff", "eve", "9999", "Staff", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -257,6 +259,11 @@ beforeAll(async () => {
     userId: "U002",
     legacyPin: "5678",
     newCredential: "bob-secret",
+  });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U005",
+    legacyPin: "9999",
+    newCredential: "eve-secret",
   });
 });
 
@@ -1026,6 +1033,40 @@ describe("AUTH-06: registrations approve/reject", () => {
     assert.strictEqual(res.status, 403);
     const body = await problemOf(res);
     assert.strictEqual(body.code, "FORBIDDEN");
+  });
+
+  test("a Staff caller can approve (requireAdminOrStaff accepts Staff)", async () => {
+    // eve is a Staff member — the canonical elevated role (ADR-0025).
+    const candidate = `iris-${crypto.randomUUID().slice(0, 8)}`;
+    const reg = await worker.fetch(
+      authRequest("/api/v1/auth/register", {
+        headers: { Origin: HOST, "Idempotency-Key": "idem-staff-approve" },
+        body: {
+          username: candidate,
+          password: "iris-password-1",
+          name: "Iris Wu",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+    const requestId = await registrationIdFor(candidate);
+    const staffAccess = await accessCookieFor("eve", "eve-secret");
+    const res = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${requestId}/approve`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `efcc_access=${staffAccess}`,
+          "Idempotency-Key": "idem-staff-approve",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { accountStatus: string };
+    };
+    assert.strictEqual(body.data.accountStatus, "active");
   });
 });
 

@@ -215,11 +215,11 @@ function readCookie(headers: Headers, name: string): string | null {
 }
 
 /**
- * Resolve the caller from the access cookie and require Admin or Teacher
- * role. Returns `{ caller }` on success, or a Problem Details Response to
- * return directly.
+ * Resolve the caller from the access cookie and require Admin or Staff
+ * role (ADR-0025: Teacher is retired). Returns `{ caller }` on success, or
+ * a Problem Details Response to return directly.
  */
-async function requireAdminOrTeacher(
+async function requireAdminOrStaff(
   request: Request,
   env: AuthEnv,
   requestId: string
@@ -254,12 +254,12 @@ async function requireAdminOrTeacher(
       requestId
     );
   }
-  if (caller.role !== "Admin" && caller.role !== "Teacher") {
+  if (caller.role !== "Admin" && caller.role !== "Staff") {
     return problem(
       403,
       "FORBIDDEN",
       "Forbidden",
-      "Admin or Teacher role required.",
+      "Admin or Staff role required.",
       requestId
     );
   }
@@ -1006,14 +1006,14 @@ export async function handleChangePassword(
  *
  * Admin/Teacher intervention: clears a legacy-PIN lockout so the upgrade can
  * proceed. Body: `{ userId }`. The caller must be authenticated (access
- * cookie) and hold Admin or Teacher.
+ * cookie) and hold Admin or Staff.
  */
 export async function handleAdminUnlock(
   request: Request,
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -1082,7 +1082,7 @@ export async function handleApprove(
       requestId
     );
   }
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -1133,7 +1133,7 @@ export async function handleReject(
       requestId
     );
   }
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -1168,14 +1168,14 @@ export async function handleReject(
  * Teacher/Admin-only approval queue listing. Returns safe metadata only for
  * Pending requests — no credential hash, no session/token material, no
  * immutable identity key — correlated via X-Request-Id. 401 when
- * unauthenticated, 403 for non-Admin/Teacher roles.
+ * unauthenticated, 403 for non-Admin/Staff roles.
  */
 export async function handleListRegistrations(
   request: Request,
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }

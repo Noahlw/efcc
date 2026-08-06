@@ -19,6 +19,8 @@
  * assertion, fixture diagnostic, or expected/logged output.
  */
 import { describe, test, expect, beforeAll } from "vitest";
+import assert from "node:assert/strict";
+import { env } from "cloudflare:workers";
 
 import { applyMigrations, testDb } from "./test-bootstrap";
 import {
@@ -155,6 +157,10 @@ describe("AUTH-01: legacy import", () => {
     expect(alice!.requires_upgrade).toBe(1);
     expect(alice!.credential_kind).toBe("legacy_pin");
     expect(alice!.credential_hash).toBeNull();
+    // TEACHER source is retired to STAFF (ADR-0025): no stored Teacher role.
+    const carol = await findAccountByUsername(testDb(), "carol203");
+    expect(carol).not.toBeNull();
+    expect(carol!.role).toBe("Staff");
     // One-time legacy PIN hash is stored, never the cleartext PIN.
     expect(alice!.legacy_pin_hash).toMatch(/^pbkdf2:/);
     // Scan every field except the wall-clock timestamps, whose digits can
@@ -163,6 +169,40 @@ describe("AUTH-01: legacy import", () => {
     void created_at;
     void updated_at;
     expect(JSON.stringify(rest)).not.toContain("1234");
+  });
+
+  test("migration 0002 retires stored Teacher roles to Staff", async () => {
+    // Seed a legacy Teacher row directly (the importer now maps TEACHER ->
+    // STAFF, so raw SQL is the only way to produce the pre-migration value).
+    await testDb()
+      .prepare(
+        'INSERT INTO accounts (' +
+          ' user_id, name, username, username_normalized, role,' +
+          ' account_status, credential_kind, requires_upgrade,' +
+          ' created_at, updated_at' +
+          ' ) VALUES (' +
+          " 'U700', 'Tina Teacher', 'tina700', 'tina700', 'Teacher'," +
+          " 'Active', 'legacy_pin', 1, ?, ?" +
+          ' )'
+      )
+      .bind(Date.now(), Date.now())
+      .run();
+    const seeded = await findAccountByUserId(testDb(), "U700");
+    expect(seeded?.role).toBe("Teacher");
+
+    // Run the actual 0002 migration file (parsed into TEST_MIGRATIONS) so
+    // the test exercises the shipped SQL, not a copy of it.
+    const migrations = (env as unknown as {
+      TEST_MIGRATIONS: { name: string; queries: string[] }[];
+    }).TEST_MIGRATIONS;
+    const retire = migrations.find((m) => m.name.includes("0002"));
+    assert.ok(retire, "0002_retire_teacher.sql must be present");
+    for (const q of retire.queries) {
+      await testDb().prepare(q).run();
+    }
+
+    const retired = await findAccountByUserId(testDb(), "U700");
+    expect(retired?.role).toBe("Staff");
   });
 
   test("re-run is idempotent — no duplicate accounts", async () => {
