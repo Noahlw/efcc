@@ -215,65 +215,12 @@ function readCookie(headers: Headers, name: string): string | null {
 }
 
 /**
- * Resolve the caller from the access cookie and require Admin or Staff
- * role (ADR-0025: Teacher is retired). Returns `{ caller }` on success, or
- * a Problem Details Response to return directly.
+ * Resolve the authenticated account from the access cookie. Returns
+ * `{ account }` on success, or a Problem Details Response (401) to return
+ * directly — cookie missing / token invalid / unknown account. Shared by
+ * the Admin-or-Staff and self-service session gates.
  */
-async function requireAdminOrStaff(
-  request: Request,
-  env: AuthEnv,
-  requestId: string
-): Promise<{ caller: AccountRow } | Response> {
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access cookie missing.",
-      requestId
-    );
-  }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access token invalid or expired.",
-      requestId
-    );
-  }
-  const caller = await findAccountByUserId(env.DB, claims.uid);
-  if (!caller) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Unknown account.",
-      requestId
-    );
-  }
-  if (caller.role !== "Admin" && caller.role !== "Staff") {
-    return problem(
-      403,
-      "FORBIDDEN",
-      "Forbidden",
-      "Admin or Staff role required.",
-      requestId
-    );
-  }
-  return { caller };
-}
-
-/**
- * Resolve the currently authenticated account from the access cookie and
- * require an Active status. Returns `{ account }` on success, or a Problem
- * Details Response to return directly. This is the self-service session gate
- * for the account-change handlers (Spec #191): missing/invalid session -> 401;
- * account not Active -> 403.
- */
-async function requireSessionUser(
+async function resolveAuthenticatedAccount(
   request: Request,
   env: AuthEnv,
   requestId: string
@@ -308,7 +255,52 @@ async function requireSessionUser(
       requestId
     );
   }
-  if (account.account_status !== "Active") {
+  return { account };
+}
+
+/**
+ * Resolve the caller from the access cookie and require Admin or Staff
+ * role (ADR-0025: Teacher is retired). Returns `{ caller }` on success, or
+ * a Problem Details Response to return directly.
+ */
+async function requireAdminOrStaff(
+  request: Request,
+  env: AuthEnv,
+  requestId: string
+): Promise<{ caller: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.role !== "Admin" && resolved.account.role !== "Staff") {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Admin or Staff role required.",
+      requestId
+    );
+  }
+  return { caller: resolved.account };
+}
+
+/**
+ * Resolve the currently authenticated account from the access cookie and
+ * require an Active status. Returns `{ account }` on success, or a Problem
+ * Details Response to return directly. This is the self-service session gate
+ * for the account-change handlers (Spec #191): missing/invalid session -> 401;
+ * account not Active -> 403.
+ */
+async function requireSessionUser(
+  request: Request,
+  env: AuthEnv,
+  requestId: string
+): Promise<{ account: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.account_status !== "Active") {
     return problem(
       403,
       "FORBIDDEN",
@@ -317,7 +309,7 @@ async function requireSessionUser(
       requestId
     );
   }
-  return { account };
+  return { account: resolved.account };
 }
 
 /**
