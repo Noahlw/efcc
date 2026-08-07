@@ -490,15 +490,13 @@ export async function handleCreateProgram(
     "name",
     "behavior_type",
     "lifecycle",
-    "discoverability",
-    "enrollment_mode",
   ]);
   if (!fields) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, behavior_type, lifecycle, discoverability, and enrollment_mode are required and must be valid.",
+      "name, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -518,8 +516,10 @@ export async function handleCreateProgram(
           typeof fields.category === "string" ? fields.category : undefined,
         behavior_type: fields.behavior_type as "Recurring" | "OneOff",
         lifecycle: fields.lifecycle as "Draft" | "Active" | "Archived",
-        discoverability: fields.discoverability as "Listed" | "Unlisted",
-        enrollment_mode: fields.enrollment_mode as
+        discoverability: (fields.discoverability ?? "Listed") as
+          | "Listed"
+          | "Unlisted",
+        enrollment_mode: (fields.enrollment_mode ?? "MemberRequest") as
           | "MemberRequest"
           | "ManagerOnly",
         display_order:

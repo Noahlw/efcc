@@ -553,6 +553,69 @@ describe("PRG-01: programs", () => {
     );
   });
 
+  test("program create defaults discoverability/enrollment_mode/display_order", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "DEFAULT-PROG-DEPT",
+      name: "Default Program Dept",
+    });
+
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "Defaulted Program",
+            behavior_type: "Recurring",
+            lifecycle: "Draft",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 201);
+    const result = (await assertCorrelated(res)) as {
+      data: {
+        program: {
+          discoverability: string;
+          enrollment_mode: string;
+          display_order: number;
+        };
+      };
+    };
+    assert.strictEqual(result.data.program.discoverability, "Listed");
+    assert.strictEqual(result.data.program.enrollment_mode, "MemberRequest");
+    assert.strictEqual(result.data.program.display_order, 0);
+
+    const badEnum = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "Bad Enum Program",
+            behavior_type: "Recurring",
+            lifecycle: "Draft",
+            discoverability: "Public",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(badEnum.status, 422);
+  });
+
   test("program update rejects invalid fields and archives permanently", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
