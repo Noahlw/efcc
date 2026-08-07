@@ -129,12 +129,13 @@ pnpm test:shell-responsive     # unauth E2E if runner available
 ```
 
 Acceptance per ADR-0027 vocabulary:
-- [ ] approve = one transaction; request Pending → Approved AND enrollment created atomically; failure leaves request Pending
-- [ ] zero-rule generate → 422 + FAILED audit row; accepted runs audit once with `skipped>0`
-- [ ] leader assign to non-Active account → 422 + FAILED audit; revoke-revoked → DUPLICATE audit row
-- [ ] migration 0003 idempotent seeds: `role_capabilities` = DEFAULT_ROLE_POLICIES, `department_modules` = 5 keys × every existing department, all disabled; runtime seeding removed
-- [ ] no demo credentials anywhere in `web/`
-- [ ] member-options + parseProgramFields committed and tested
+- [x] approve = one transaction; request Pending → Approved AND enrollment created atomically; failure leaves request Pending
+- [x] zero-rule generate → 422 + FAILED audit row; accepted runs audit once with `skipped>0`
+- [x] leader assign to non-Active account → 422 + FAILED audit; revoke-revoked → DUPLICATE audit row
+- [x] migration 0003 idempotent seeds: `role_capabilities` = DEFAULT_ROLE_POLICIES, `department_modules` = 5 keys × every existing department, all disabled; runtime seeding removed
+- [x] no demo credentials anywhere in `web/`
+- [x] member-options + parseProgramFields committed and tested
+- [ ] deployed `programs-d1` E2E: operator-blocked (fresh target + `PROGRAMS_*` secrets); trace appender + E2E-12/duplicate-generate assertions are committed and run automatically when the target exists
 
 ## 7. Commit protocol
 
