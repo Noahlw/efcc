@@ -28,6 +28,10 @@ Session goal: **phase 1** E2E completeness → **phase 2** UI/UX → **phase 3**
 | Timestamp (UTC) | Workstream | Branch | Commit (short) | Contains | Known-good state |
 |-----------------|------------|--------|----------------|----------|------------------|
 | 2026-08-08 | live-ui E2E + glossary | `rebase/prg-05-201` | `aadef18` | Two live-ui mutation tests (registration submit/reject, admin password rotation round-trip), seed reset handles `registration_requests`, CONTEXT.md glossary rows (Guest Check-in, Check-in Sheet, dev-testing worker), session-fallback doc | `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` against `efcc-auth-test`: 26/26 PASS; trace appended to `docs/omp-plans/2026-08-07-ui-04-release-stack.md` |
+| 2026-08-07T19:02Z | events-panel UI slice (WS-A) | `rebase/prg-05-201` | `e00c99f` | Red acceptance trace E2E-18..22 (MONTHLY rule, member picker, per-event 改期/取消該次/恢復該次, cancel-with-reason) — red run recorded: 75/29, new tests failed on 4 engines as intended | red baseline proving the missing controls |
+| 2026-08-07T19:05Z | events-panel UI slice (WS-A) | `rebase/prg-05-201` | `58e9ed1` | Per-event exception controls implemented (capability-gated), cancel reason display, copy.ts strings, panel unit tests U8-U11 | 104/104 across 4 engines (per-engine reset+seed discipline), unit 253/253 + 162/162, worker deployed Version 21609297-4a3f-4e62-879d-2efd7e82021e |
+
+Run discipline: a single 4-project invocation accumulates D1 state and times out later engines — reset+seed before EACH engine run is now the required procedure for programs-d1 (recorded in the ticket-201 trace).
 
 ## Restore recipes
 
