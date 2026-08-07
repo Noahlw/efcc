@@ -350,7 +350,7 @@ Observed after the final responsive, local-demo logout, and deployed-fixture val
 | `pnpm --dir web typecheck` | PASS — Next app and Worker TypeScript configs emit no diagnostics. |
 | `pnpm test` | PASS — 17 files, 278 tests. |
 | `pnpm --dir web test` | PASS — 10 files, 170 tests. |
-| `pnpm --dir web test:components` | PASS — 9 files, 140 tests, including local-demo logout API-boundary coverage. |
+| `pnpm --dir web test:components` | PASS — 9 files, 141 tests, including local-demo logout API-boundary and demo-marker collision coverage. |
 | `pnpm test:shell-responsive` | PASS — 38 passed, 1 expected desktop-only skip across `mobile-375x812`, `mobile-375x667`, and `desktop-1280x800`; no-overflow coverage includes `/profile/settings.html`. |
 | Impeccable detector (`--scope type,layout`) | PASS — `[]` findings for the selected landing, Profile, registration, approval, and prototype paths. |
 | `pnpm --dir web build` | PASS — 14 static routes generated, including `/profile/settings` and `/prototype`. |
