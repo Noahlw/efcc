@@ -83,6 +83,28 @@ const COPY = {
   eventEnd: "結束時間（香港時間）",
   createEvent: "新增聚會",
   enrollmentDuplicate: "此會友已報名此課程。",
+  // E2E-18..22 — events-panel slice (monthly rules, exceptions, cancel reason).
+  ruleMonthly: "每月",
+  monthDayLabel: "每月日子",
+  rescheduleEvent: "改期",
+  confirmReschedule: "確認改期",
+  rescheduleStart: "改期開始時間",
+  rescheduleEnd: "改期結束時間",
+  cancelOccurrence: "取消該次",
+  confirmCancelOccurrence: "確定取消該次",
+  keepOccurrence: "保留該次",
+  restoreOccurrence: "恢復該次",
+  exceptionUpdatedNotice: "已更新例外。",
+  exceptionRemovedNotice: "已移除例外。",
+  cancelledReasonLabel: "取消原因：",
+  memberSearchEmpty: "找不到符合的現有會友。",
+  clearMember: "清除選擇",
+  cancelEvent: "取消聚會",
+  cancelReason: "取消原因",
+  confirmCancelEvent: "取消聚會",
+  cancelEventConfirm: "確定取消這場聚會嗎？取消後仍會保留記錄。",
+  eventCancelledNotice: "聚會已取消。",
+  eventCancelled: "已取消",
 };
 
 function required(name: string, value: string | undefined): string {
@@ -255,6 +277,92 @@ async function chooseMember(item: Locator, username: string): Promise<void> {
   await openProgramTask(item, COPY.programLeaders);
   await item.getByLabel(COPY.leaderUserId).fill(username);
   await item.getByRole("button", { name: new RegExp(username, "u") }).click();
+}
+
+// ---------------------------------------------------------------------------
+// E2E-18..22 — events-panel slice helpers (monthly rules, exceptions, cancel).
+// ---------------------------------------------------------------------------
+
+/** Today's HK wall date, "YYYY-MM-DD" (matches the worker's hkTodayWallDate). */
+function hkWallToday(): string {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Shift a HK wall date by whole days (DST-free wall arithmetic). */
+function addWallDays(wallDate: string, days: number): string {
+  const shifted = new Date(`${wallDate}T00:00:00+08:00`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** First wall date strictly after `wallDate` whose HK weekday is `weekday`. */
+function nextWallWeekday(wallDate: string, weekday: number): string {
+  for (let days = 1; days <= 7; days += 1) {
+    const candidate = addWallDays(wallDate, days);
+    if (new Date(`${candidate}T00:00:00+08:00`).getUTCDay() === weekday) {
+      return candidate;
+    }
+  }
+  throw new Error("unreachable: one weekday must occur within 7 days");
+}
+
+/** "YYYY-MM-DD" + "HH:MM" (HK wall) -> ISO-8601 UTC instant. */
+function hkWallToUtc(wallDate: string, wallTime: string): string {
+  return new Date(`${wallDate}T${wallTime}:00+08:00`).toISOString();
+}
+
+async function listEventsVia(
+  page: Page,
+  programId: string
+): Promise<{ event_id: string; starts_at: string; status: string }[]> {
+  const res = await page.request.get(`/api/v1/programs/${programId}/events`);
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as {
+    data: { events: { event_id: string; starts_at: string; status: string }[] };
+  };
+  return body.data.events;
+}
+
+// The event <li> whose date span carries the given HK wall start time. Dates
+// render as "2026/08/11 19:30" (Intl may insert narrow no-break spaces).
+function eventRowAt(item: Locator, page: Page, time: string): Locator {
+  return item
+    .locator("li")
+    .filter({
+      has: page.getByText(
+        new RegExp(`^\\d{4}/\\d{2}/\\d{2}\\s*${time}`, "u")
+      ),
+    })
+    .first();
+}
+
+/** Wall date ("YYYY-MM-DD") of the earliest event row starting at `time`. */
+async function firstEventWallDate(
+  item: Locator,
+  page: Page,
+  time: string
+): Promise<string> {
+  const row = eventRowAt(item, page, time);
+  const label = await row
+    .getByText(/^\d{4}\/\d{2}\/\d{2}\s*\d{2}:\d{2}/u)
+    .textContent();
+  const match = label?.match(/^(\d{4})\/(\d{2})\/(\d{2})/u);
+  if (!match) {
+    throw new Error(`event row has no wall-date label: ${label}`);
+  }
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+// E2E-04/05-style rule creation (weekly Tuesday 19:30-21:00) + first generate.
+async function addTuesdayRuleAndGenerate(item: Locator): Promise<void> {
+  await item.getByLabel(COPY.dayOfWeekLabel).selectOption("2");
+  await item.getByLabel(COPY.startTime).fill("19:30");
+  await item.getByLabel(COPY.endTime).fill("21:00");
+  await item.getByRole("button", { name: COPY.addRule }).click();
+  await expect(item.getByText(COPY.created)).toBeVisible();
+  await item.getByRole("button", { name: COPY.generateEvents }).click();
+  await expect(item.getByText(/已產生 [1-9]/u)).toBeVisible();
+  await expect(item.getByText(COPY.eventActive).first()).toBeVisible();
 }
 
 test.beforeAll(() => {
@@ -1047,5 +1155,245 @@ test.describe("PRG-05 deployed programs proof", () => {
     await expect(
       item.getByText(COPY.enrollmentActive, { exact: true })
     ).toBeVisible();
+});
+
+  test("E2E-18 staff creates a MONTHLY rule; generate renders events on month_day (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const { programName, deptCode } = await setupProgram(page);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await item.getByLabel(COPY.behaviorType).selectOption("monthly");
+    await item.getByLabel(COPY.monthDayLabel).fill("15");
+    await item.getByLabel(COPY.startTime).fill("19:30");
+    await item.getByLabel(COPY.endTime).fill("21:00");
+    await item.getByRole("button", { name: COPY.addRule }).click();
+    await expect(item.getByText(COPY.created)).toBeVisible();
+    await expect(item.getByText(`${COPY.ruleMonthly} 15`)).toBeVisible();
+    await item.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(item.getByText(/已產生 [1-9]/u)).toBeVisible();
+    // Events materialize on the 15th of each month in the horizon.
+    await expect(item.getByText(/\/15\s*19:30/u).first()).toBeVisible();
+    // Rule row persists across reload.
+    await page.reload();
+    await openDepartment(page, deptCode);
+    const reloaded = innermostLiWith(page, programName);
+    await openProgramTask(reloaded, COPY.programEvents);
+    await expect(reloaded.getByText(`${COPY.ruleMonthly} 15`)).toBeVisible();
+  });
+
+  test("E2E-19 admin member-search picker: typing → results → selection (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programName } = await setupProgram(page);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programLeaders);
+    // The input is role=combobox; the options <ul> shares the aria-label, so
+    // role-scoping keeps the locator unambiguous once results render.
+    const picker = item.getByRole("combobox", { name: COPY.leaderUserId });
+    // Typing >= 2 chars fires the member search; the option row renders.
+    await picker.fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await expect(
+      item.getByRole("button", {
+        name: new RegExp(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER), "u"),
+      })
+    ).toBeVisible();
+    // A query matching nobody surfaces the empty-state hint.
+    await picker.fill("E2E_zzzz");
+    await expect(item.getByText(COPY.memberSearchEmpty)).toBeVisible();
+    // Re-search and select; the chip shows "name (username)" and clears.
+    await picker.fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await item
+      .getByRole("button", {
+        name: new RegExp(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER), "u"),
+      })
+      .click();
+    await expect(
+      item.getByText(
+        new RegExp(
+          `${required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER)}\\)`,
+          "u"
+        )
+      )
+    ).toBeVisible();
+    await expect(
+      item.getByRole("button", { name: COPY.clearMember })
+    ).toBeVisible();
+    // The selected member becomes the leader through the same panel.
+    await item.getByRole("button", { name: COPY.assignLeader }).click();
+    await expect(item.getByText(COPY.leaderAssignedNotice)).toBeVisible();
+  });
+
+  test("E2E-20 per-event 改期 reschedules an occurrence; regenerate keeps the exception (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const { programName } = await setupProgram(page);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await addTuesdayRuleAndGenerate(item);
+    const row = eventRowAt(item, page, "19:30");
+    const wallDate = await firstEventWallDate(item, page, "19:30");
+    // 改期 moves the occurrence to 20:30-22:00 on the same HK wall date.
+    await row.getByRole("button", { name: COPY.rescheduleEvent }).click();
+    await row.getByLabel(COPY.rescheduleStart).fill("20:30");
+    await row.getByLabel(COPY.rescheduleEnd).fill("22:00");
+    await row.getByRole("button", { name: COPY.confirmReschedule }).click();
+    await expect(item.getByText(COPY.exceptionUpdatedNotice)).toBeVisible();
+    // Regenerating materializes the rescheduled occurrence and keeps it:
+    // the new-time row appears once, and a second generate creates nothing.
+    const dateSlash = wallDate.replaceAll("-", "/");
+    await item.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      item.getByText(new RegExp(`${dateSlash}\\s*20:30`, "u")).first()
+    ).toBeVisible();
+    await item.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(item.getByText(/已產生 0 場聚會，跳過 [1-9]/u)).toBeVisible();
+  });
+
+  test("E2E-21 per-event 取消該次 suppresses an occurrence; 恢復該次 restores it (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const { programId, programName } = await setupProgram(page);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await addTuesdayRuleAndGenerate(item);
+    const row = eventRowAt(item, page, "19:30");
+    // 取消該次 adds a CANCEL exception for the occurrence's wall date.
+    await row.getByRole("button", { name: COPY.cancelOccurrence }).click();
+    await row
+      .getByRole("button", { name: COPY.confirmCancelOccurrence })
+      .click();
+    await expect(item.getByText(COPY.exceptionUpdatedNotice)).toBeVisible();
+    await expect(
+      row.getByRole("button", { name: COPY.restoreOccurrence })
+    ).toBeVisible();
+    // Regenerate suppresses: nothing new is materialized; the row is intact.
+    await item.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(item.getByText(/已產生 0 場聚會，跳過 [1-9]/u)).toBeVisible();
+    await expect(row.getByText(COPY.eventActive)).toBeVisible();
+    // 恢復該次 removes the exception; the occurrence control returns.
+    await row.getByRole("button", { name: COPY.restoreOccurrence }).click();
+    await expect(item.getByText(COPY.exceptionRemovedNotice)).toBeVisible();
+    await expect(
+      row.getByRole("button", { name: COPY.cancelOccurrence })
+    ).toBeVisible();
+    // Server contract (the UI cannot show an un-materialized occurrence): a
+    // CANCEL exception suppresses the next Thursday, DELETE restores it.
+    const rule = await page.request.post(
+      `/api/v1/programs/${programId}/schedule-rules`,
+      {
+        data: {
+          recurrence: "WEEKLY",
+          day_of_week: 4,
+          month_day: null,
+          start_time: "20:00",
+          end_time: "21:00",
+        },
+      }
+    );
+    expect(rule.status()).toBe(201);
+    const ruleId = (
+      (await rule.json()) as { data: { rule: { rule_id: string } } }
+    ).data.rule.rule_id;
+    const thursday = nextWallWeekday(hkWallToday(), 4);
+    const exception = await page.request.post(
+      `/api/v1/programs/${programId}/schedule-rules/${ruleId}/exceptions`,
+      { data: { override_date: thursday, action: "CANCEL" } }
+    );
+    expect(exception.status()).toBe(201);
+    const exceptionId = (
+      (await exception.json()) as {
+        data: { exception: { exception_id: string } };
+      }
+    ).data.exception.exception_id;
+    const first = await page.request.post(
+      `/api/v1/programs/${programId}/events/generate`,
+      { data: {} }
+    );
+    expect(first.status()).toBe(200);
+    const suppressed = await listEventsVia(page, programId);
+    expect(
+      suppressed.some((e) => e.starts_at === hkWallToUtc(thursday, "20:00"))
+    ).toBe(false);
+    const removed = await page.request.delete(
+      `/api/v1/programs/${programId}/schedule-rules/${ruleId}/exceptions/${exceptionId}`
+    );
+    expect(removed.status()).toBe(200);
+    const second = await page.request.post(
+      `/api/v1/programs/${programId}/events/generate`,
+      { data: {} }
+    );
+    expect(second.status()).toBe(200);
+    const restored = await listEventsVia(page, programId);
+    expect(
+      restored.some((e) => e.starts_at === hkWallToUtc(thursday, "20:00"))
+    ).toBe(true);
+  });
+
+  test("E2E-22 per-event 取消活動 needs a reason; Cancelled status + reason visible; repeat cancel is quiet (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const { programId, programName } = await setupProgram(page);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await addTuesdayRuleAndGenerate(item);
+    const row = eventRowAt(item, page, "19:30");
+    const reasonInput = row.getByLabel(COPY.cancelReason);
+    // The reason is mandatory: an empty submit never reaches the confirm step.
+    await expect(reasonInput).toHaveAttribute("required", "");
+    await row.getByRole("button", { name: COPY.cancelEvent }).click();
+    await expect(
+      row.getByText(COPY.cancelEventConfirm)
+    ).toHaveCount(0);
+    const reason = "惡劣天氣";
+    await reasonInput.fill(reason);
+    await row.getByRole("button", { name: COPY.cancelEvent }).click();
+    await expect(row.getByText(COPY.cancelEventConfirm)).toBeVisible();
+    await row.getByRole("button", { name: COPY.confirmCancelEvent }).click();
+    await expect(item.getByText(COPY.eventCancelledNotice)).toBeVisible();
+    await expect(
+      row.getByText(COPY.eventCancelled, { exact: true })
+    ).toBeVisible();
+    await expect(
+      row.getByText(`${COPY.cancelledReasonLabel}${reason}`)
+    ).toBeVisible();
+    // The cancel affordance disappears for a Cancelled event.
+    await expect(
+      row.getByRole("button", { name: COPY.cancelEvent })
+    ).toHaveCount(0);
+    // Server contract: a repeat cancel is a quiet 200 (EVT-9).
+    const events = await listEventsVia(page, programId);
+    const eventId = events[0]?.event_id;
+    expect(eventId).toBeTruthy();
+    const repeat = await page.request.patch(
+      `/api/v1/programs/${programId}/events/${eventId}`,
+      { data: { reason: "重複取消" } }
+    );
+    expect(repeat.status()).toBe(200);
   });
 });
