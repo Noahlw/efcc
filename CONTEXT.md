@@ -60,6 +60,8 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
 | Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
+| dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the sole local E2E target. |
+| E2E acceptance |  | Deterministic Playwright run against the dev-testing worker asserting observable DOM state + same-origin server responses; visual evidence via trace/screenshot artifacts. |
 
 ---
 
