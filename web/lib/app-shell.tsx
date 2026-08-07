@@ -1,16 +1,24 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
-import { clearAuthHint, restoreBootstrap } from "@/lib/session";
+import {
+  clearAuthHint,
+  isLocalDemoBootstrap,
+  restoreBootstrap,
+} from "@/lib/session";
+import { ShellHeader } from "@/lib/shell-header";
+
+import styles from "./auth-shell.module.css";
 
 const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
@@ -23,13 +31,16 @@ function ShellFrame({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const localDemo = isLocalDemoBootstrap(bootstrap);
 
   const handleSignOut = useCallback(async () => {
     let rpcFailed = false;
-    try {
-      await authLogout();
-    } catch {
-      rpcFailed = true;
+    if (!localDemo) {
+      try {
+        await authLogout();
+      } catch {
+        rpcFailed = true;
+      }
     }
     clearAuthHint();
     sessionStorage.removeItem(DEEP_LINK_KEY);
@@ -38,11 +49,12 @@ function ShellFrame({
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
     }
     router.replace("/");
-  }, [router]);
+  }, [localDemo, router]);
 
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
+        <ShellHeader />
         <NavBar />
         <main className="shell-content">{children}</main>
       </div>
@@ -56,15 +68,8 @@ function LoadingShell() {
   }, []);
 
   return (
-    <main
-      style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-        textAlign: "center",
-      }}
-    >
+    <main className={styles.state}>
+      <span className={styles.spinner} aria-hidden="true" />
       <p>{COPY.restore.loading}</p>
     </main>
   );
@@ -78,21 +83,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     | { kind: "ready"; bootstrap: Bootstrap }
     | { kind: "error"; message: string; code?: string }
   >({ kind: "loading" });
-  const mountRef = useRef(true);
   const [tick, setTick] = useState(0);
 
-  useEffect(
-    () => () => {
-      mountRef.current = false;
-    },
-    []
-  );
-
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const bootstrap = await restoreBootstrap();
-        if (!mountRef.current) {
+        if (cancelled) {
           return;
         }
         if (bootstrap === null) {
@@ -104,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         announce(COPY.restore.restored);
         setState({ kind: "ready", bootstrap });
       } catch (error) {
-        if (!mountRef.current) {
+        if (cancelled) {
           return;
         }
         // AUTH_REQUIRED means the refresh cookie is dead (expired or
@@ -127,6 +125,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setState({ kind: "error", message: msg, code });
       }
     })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- router/pathname are stable; tick triggers retry
   }, [router, pathname, tick]);
 
@@ -134,9 +135,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <LoadingShell />;
   }
   if (state.kind === "error") {
-    // AUTH_REQUIRED is handled inline (clears hint + redirects); any error
-    // reaching this branch is transient (network / 5xx), so retry is always
+    // AUTH_REQUIRED is handled inline (clears hint + redirects). FORBIDDEN is
+    // a hard authorization failure — render the forbidden state (S13), not a
+    // retry. Any other error here is transient (network / 5xx), so retry is
     // appropriate. Bumping `tick` re-runs the restore effect.
+    if (state.code === "FORBIDDEN") {
+      // An authenticated account whose status is no longer Active (403 from
+      // the auth boundary) cannot recover through the profile link — every
+      // restore re-verifies and fails again. Offer a real exit: clear the
+      // presence hint and return to the signed-out surface (review P1).
+      const handleForbiddenSignOut = async () => {
+        try {
+          await authLogout();
+        } catch {
+          // Best-effort: the boundary already refuses this session.
+        }
+        clearAuthHint();
+        router.replace("/");
+      };
+      return (
+        <ForbiddenView
+          safeHref="/profile"
+          onSignOut={() => void handleForbiddenSignOut()}
+        />
+      );
+    }
     return (
       <RecoveryView
         message={state.message}

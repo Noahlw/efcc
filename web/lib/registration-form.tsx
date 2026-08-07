@@ -31,10 +31,10 @@ const field = {
     width: "100%",
     minHeight: 48,
     padding: "0 0.875rem",
-    border: "1px solid rgba(32, 29, 23, 0.32)",
-    borderRadius: 12,
-    background: "#fff",
-    color: "#201d17",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 8,
+    background: "var(--surface-raised)",
+    color: "var(--ink)",
     fontSize: "1rem",
     fontFamily: "inherit",
     boxSizing: "border-box" as const,
@@ -91,9 +91,9 @@ export function RegistrationForm() {
           maxWidth: 440,
           margin: "0 auto",
           padding: "2rem",
-          border: "1px solid rgba(32, 29, 23, 0.32)",
-          borderRadius: 16,
-          background: "#faf6ec",
+          border: "1px solid var(--line)",
+          borderRadius: 12,
+          background: "var(--surface-raised)",
           textAlign: "center",
         }}
       >
@@ -102,7 +102,7 @@ export function RegistrationForm() {
             margin: "0 0 0.75rem",
             fontSize: "1.5rem",
             fontWeight: 900,
-            color: "#201d17",
+            color: "var(--ink)",
           }}
         >
           {REGISTRATION_COPY.doneTitle}
@@ -112,14 +112,14 @@ export function RegistrationForm() {
             margin: "0 0 1.5rem",
             fontSize: "0.9375rem",
             lineHeight: 1.7,
-            color: "#5c564a",
+            color: "var(--ink-muted)",
           }}
         >
           {REGISTRATION_COPY.doneMessage}
         </p>
         <Link
           href="/"
-          style={{ color: "#8f1d16", fontWeight: 700, textDecoration: "underline" }}
+          style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
         >
           {REGISTRATION_COPY.backToLogin}
         </Link>
@@ -199,8 +199,8 @@ export function RegistrationForm() {
             margin: 0,
             padding: "0.75rem 0.875rem",
             borderRadius: 10,
-            background: "rgba(179, 38, 30, 0.09)",
-            color: "#8f1d16",
+            background: "rgba(156, 48, 44, 0.09)",
+            color: "var(--accent-deep)",
             fontSize: "0.9375rem",
             lineHeight: 1.5,
           }}
@@ -213,10 +213,10 @@ export function RegistrationForm() {
         type="submit"
         disabled={busy}
         style={{
-          minHeight: 48,
+          minHeight: 44,
           border: "none",
-          borderRadius: 12,
-          background: "#b3261e",
+          borderRadius: 8,
+          background: "var(--accent)",
           color: "#fff",
           fontSize: "1rem",
           fontWeight: 800,

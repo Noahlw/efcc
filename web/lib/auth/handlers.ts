@@ -27,6 +27,14 @@
 import { findAccountByUserId, findAccountByUsername } from "./accounts";
 import type { AccountRow } from "./accounts";
 import {
+  AccountConflictError,
+  AccountStatusError,
+  WrongCurrentPasswordError,
+  changePassword,
+  changeUsername,
+} from "./account-settings";
+import type { UsernameChangeResult } from "./account-settings";
+import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
   accessCookieHeader,
@@ -53,6 +61,7 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
+import { sectionsForRole } from "../sections";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -152,6 +161,25 @@ function authCookieJsonResponse(
   return Response.json(body, { status, headers });
 }
 
+/**
+ * Success response that CLEARS BOTH auth cookies via two real `Set-Cookie`
+ * delete headers (the `handleLogout` fail-closed clearing pattern). Used by
+ * the account-change handlers: both changes revoke every refresh session, so
+ * the client must drop both cookies and re-authenticate. Token material is
+ * never emitted in the body.
+ */
+function clearedAuthJsonResponse(
+  status: number,
+  body: unknown,
+  requestId: string
+): Response {
+  const cleared = clearAuthCookieHeaders();
+  const headers = setAuthCookieHeaders(cleared[0], cleared[1]);
+  headers.set("Content-Type", "application/json");
+  headers.set("X-Request-Id", requestId);
+  return Response.json(body, { status, headers });
+}
+
 /** Map a session-layer AuthError onto its Problem Details response. */
 function authErrorToProblem(err: Error, requestId: string): Response {
   if (err instanceof AuthError) {
@@ -188,15 +216,16 @@ function readCookie(headers: Headers, name: string): string | null {
 }
 
 /**
- * Resolve the caller from the access cookie and require Admin or Teacher
- * role. Returns `{ caller }` on success, or a Problem Details Response to
- * return directly.
+ * Resolve the authenticated account from the access cookie. Returns
+ * `{ account }` on success, or a Problem Details Response (401) to return
+ * directly — cookie missing / token invalid / unknown account. Shared by
+ * the Admin-or-Staff and self-service session gates.
  */
-async function requireAdminOrTeacher(
+async function resolveAuthenticatedAccount(
   request: Request,
   env: AuthEnv,
   requestId: string
-): Promise<{ caller: AccountRow } | Response> {
+): Promise<{ account: AccountRow } | Response> {
   const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
   if (!access) {
     return problem(
@@ -217,8 +246,8 @@ async function requireAdminOrTeacher(
       requestId
     );
   }
-  const caller = await findAccountByUserId(env.DB, claims.uid);
-  if (!caller) {
+  const account = await findAccountByUserId(env.DB, claims.uid);
+  if (!account) {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -227,16 +256,61 @@ async function requireAdminOrTeacher(
       requestId
     );
   }
-  if (caller.role !== "Admin" && caller.role !== "Teacher") {
+  return { account };
+}
+
+/**
+ * Resolve the caller from the access cookie and require Admin or Staff
+ * role (ADR-0025: Teacher is retired). Returns `{ caller }` on success, or
+ * a Problem Details Response to return directly.
+ */
+async function requireAdminOrStaff(
+  request: Request,
+  env: AuthEnv,
+  requestId: string
+): Promise<{ caller: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.role !== "Admin" && resolved.account.role !== "Staff") {
     return problem(
       403,
       "FORBIDDEN",
       "Forbidden",
-      "Admin or Teacher role required.",
+      "Admin or Staff role required.",
       requestId
     );
   }
-  return { caller };
+  return { caller: resolved.account };
+}
+
+/**
+ * Resolve the currently authenticated account from the access cookie and
+ * require an Active status. Returns `{ account }` on success, or a Problem
+ * Details Response to return directly. This is the self-service session gate
+ * for the account-change handlers (Spec #191): missing/invalid session -> 401;
+ * account not Active -> 403.
+ */
+async function requireSessionUser(
+  request: Request,
+  env: AuthEnv,
+  requestId: string
+): Promise<{ account: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.account_status !== "Active") {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Account is not active.",
+      requestId
+    );
+  }
+  return { account: resolved.account };
 }
 
 /**
@@ -672,37 +746,11 @@ export async function handleMe(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access cookie missing.",
-      requestId
-    );
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Access token invalid or expired.",
-      requestId
-    );
-  }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Unknown account.",
-      requestId
-    );
-  }
-  if (account.account_status !== "Active") {
+  if (resolved.account.account_status !== "Active") {
     return problem(
       403,
       "FORBIDDEN",
@@ -711,9 +759,234 @@ export async function handleMe(
       requestId
     );
   }
+  // S15: the server authorizes the section list. The sections are computed
+  // here from the canonical stored role (ADR-0025) and shipped inside the
+  // bootstrap response; the client renders them verbatim and treats any
+  // direct link to an absent section as forbidden.
   return jsonResponse(
     200,
-    { requestId, data: { user: secretFreeUser(account) } },
+    {
+      requestId,
+      data: {
+        user: secretFreeUser(resolved.account),
+        sections: sectionsForRole(resolved.account.role),
+      },
+    },
+    requestId
+  );
+}
+
+/**
+ * POST /api/v1/auth/username (UI-04 #196 / Spec #191)
+ *
+ * Session-authenticated self-service username change. Body: `{ username }`.
+ * No current password is required (ADR-0020 §1.1 locks a session-authenticated
+ * flow). The immutable User_ID and QR identity default are never touched.
+ *
+ * Success (200) carries `{ requestId, data: { username, sessionRevoked:
+ * true } }` and clears BOTH auth cookies via Set-Cookie delete headers,
+ * because every refresh session was revoked inside the same transaction.
+ * An unchanged value is a value-idempotent no-op (200, `sessionRevoked:
+ * false`, no cookies cleared). Duplicates fail closed with 409 (accounts AND
+ * registration_requests, incl. the race path); validation is 422.
+ */
+export async function handleChangeUsername(
+  request: Request,
+  env: AuthEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireSessionUser(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  let body: { username?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be JSON.",
+      requestId
+    );
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be a JSON object.",
+      requestId
+    );
+  }
+  const username = typeof body.username === "string" ? body.username : "";
+  if (!username.trim()) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "username is required.",
+      requestId
+    );
+  }
+
+  let result: UsernameChangeResult;
+  try {
+    result = await changeUsername(env.DB, {
+      userId: auth.account.user_id,
+      username,
+      requestId,
+    });
+  } catch (error) {
+    if (error instanceof AccountConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof AccountStatusError) {
+      return problem(
+        403,
+        "FORBIDDEN",
+        "Forbidden",
+        error.message,
+        requestId
+      );
+    }
+    throw error;
+  }
+
+  if (!result.changed) {
+    if (result.sessionRevoked) {
+      // Replay of an identical earlier change that already revoked every
+      // session: this request wrote nothing, but the client must clear its
+      // auth cookies to leave the signed-out surface.
+      return clearedAuthJsonResponse(
+        200,
+        {
+          requestId,
+          data: { username: result.username, sessionRevoked: true },
+        },
+        requestId
+      );
+    }
+    // Fresh value-idempotent no-op: nothing changed, so no revocation and
+    // no cookie clearing — the session stays live.
+    return jsonResponse(
+      200,
+      {
+        requestId,
+        data: { username: result.username, sessionRevoked: false },
+      },
+      requestId
+    );
+  }
+  return clearedAuthJsonResponse(
+    200,
+    {
+      requestId,
+      data: { username: result.username, sessionRevoked: true },
+    },
+    requestId
+  );
+}
+
+/**
+ * POST /api/v1/auth/password (UI-04 #196 / Spec #191)
+ *
+ * Session-authenticated self-service password change. Body:
+ * `{ currentPassword, newPassword }`. The current password is verified
+ * against the stored PBKDF2 hash; a wrong value is 422 VALIDATION with
+ * detail "current password is incorrect" — deliberately NOT 401, so the
+ * client cannot conflate it with session expiry. `newPassword` must be
+ * >= 8 characters (Unicode). Success (200) carries `{ requestId, data:
+ * { sessionRevoked: true } }` and clears both auth cookies.
+ */
+export async function handleChangePassword(
+  request: Request,
+  env: AuthEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireSessionUser(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  let body: { currentPassword?: unknown; newPassword?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be JSON.",
+      requestId
+    );
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be a JSON object.",
+      requestId
+    );
+  }
+  const currentPassword =
+    typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const newPassword =
+    typeof body.newPassword === "string" ? body.newPassword : "";
+  if (!currentPassword || !newPassword) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "currentPassword and newPassword are required.",
+      requestId
+    );
+  }
+  if (newPassword.length < 8) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "newPassword must be at least 8 characters.",
+      requestId
+    );
+  }
+
+  try {
+    await changePassword(env.DB, {
+      userId: auth.account.user_id,
+      currentPassword,
+      newPassword,
+      requestId,
+    });
+  } catch (error) {
+    if (error instanceof WrongCurrentPasswordError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
+    }
+    if (error instanceof AccountStatusError) {
+      return problem(
+        403,
+        "FORBIDDEN",
+        "Forbidden",
+        error.message,
+        requestId
+      );
+    }
+    throw error;
+  }
+
+  return clearedAuthJsonResponse(
+    200,
+    { requestId, data: { sessionRevoked: true } },
     requestId
   );
 }
@@ -723,14 +996,14 @@ export async function handleMe(
  *
  * Admin/Teacher intervention: clears a legacy-PIN lockout so the upgrade can
  * proceed. Body: `{ userId }`. The caller must be authenticated (access
- * cookie) and hold Admin or Teacher.
+ * cookie) and hold Admin or Staff.
  */
 export async function handleAdminUnlock(
   request: Request,
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -799,7 +1072,7 @@ export async function handleApprove(
       requestId
     );
   }
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -850,7 +1123,7 @@ export async function handleReject(
       requestId
     );
   }
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -885,14 +1158,14 @@ export async function handleReject(
  * Teacher/Admin-only approval queue listing. Returns safe metadata only for
  * Pending requests — no credential hash, no session/token material, no
  * immutable identity key — correlated via X-Request-Id. 401 when
- * unauthenticated, 403 for non-Admin/Teacher roles.
+ * unauthenticated, 403 for non-Admin/Staff roles.
  */
 export async function handleListRegistrations(
   request: Request,
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrTeacher(request, env, requestId);
+  const auth = await requireAdminOrStaff(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }

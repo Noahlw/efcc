@@ -82,6 +82,16 @@ export interface Bootstrap {
   profile: PublicUser;
 }
 
+/**
+ * GET /api/v1/auth/me response payload — the cookie-verified public user
+ * plus the server-authorized section list (S15). The server computes the
+ * sections from the canonical stored role; the client renders them verbatim.
+ */
+export interface AuthMeResult {
+  user: PublicUser;
+  sections: Section[];
+}
+
 async function parseProblemDetails(
   res: Response,
   requestIdHeader?: string
@@ -143,21 +153,38 @@ interface AuthSuccess<T> {
 }
 
 /**
+ * Per-call options for the cookie-only surface.
+ */
+interface AuthFetchOptions {
+  /**
+   * Mint a fresh Idempotency-Key header for this mutating call (ADR-0018
+   * §8) so the server can dedup a retried mutation. Reads omit it.
+   */
+  mutating?: boolean;
+}
+
+/**
  * One fetch to the cookie-only auth surface. No auth headers are built and
- * no Idempotency-Key is attached: identity comes from the server-set
- * cookies on the request, and login must not be blindly retried. 4xx and
- * 5xx are never retried; a network failure surfaces as a safe NETWORK_ERROR.
+ * identity comes from the server-set cookies on the request. Mutating calls
+ * carry a fresh Idempotency-Key (ADR-0018 §8). 4xx and 5xx are never
+ * retried; a network failure surfaces as a safe NETWORK_ERROR.
  */
 async function authFetch<T>(
   path: string,
   method: "POST" | "GET",
-  body?: unknown
+  body?: unknown,
+  opts: AuthFetchOptions = {}
 ): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(opts.mutating
+          ? { "Idempotency-Key": crypto.randomUUID() }
+          : {}),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       // Bounded timeout per AGENTS.md Production Resilience.
       signal: AbortSignal.timeout(30_000),
@@ -215,7 +242,7 @@ export function authLogin(
   return authFetch<LoginResult>("/api/v1/auth/login", "POST", {
     username,
     password,
-  });
+  }, { mutating: true });
 }
 
 /** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
@@ -228,12 +255,17 @@ export function authUpgrade(
     username,
     legacyPin,
     newCredential,
-  });
+  }, { mutating: true });
 }
 
 /** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
 export function authRefresh(): Promise<void> {
-  return authFetch<void>("/api/v1/auth/refresh", "POST");
+  return authFetch<void>(
+    "/api/v1/auth/refresh",
+    "POST",
+    undefined,
+    { mutating: true }
+  );
 }
 
 /**
@@ -242,7 +274,12 @@ export function authRefresh(): Promise<void> {
  * as best-effort (local session is cleared regardless).
  */
 export function authLogout(): Promise<void> {
-  return authFetch<void>("/api/v1/auth/logout", "POST");
+  return authFetch<void>(
+    "/api/v1/auth/logout",
+    "POST",
+    undefined,
+    { mutating: true }
+  );
 }
 
 /**
@@ -250,7 +287,43 @@ export function authLogout(): Promise<void> {
  * The endpoint wraps the user under `data.user`; unwrap it here.
  */
 
-export async function authMe(): Promise<PublicUser> {
-  const data = await authFetch<{ user: PublicUser }>("/api/v1/auth/me", "GET");
-  return data.user;
+export async function authMe(): Promise<AuthMeResult> {
+  return authFetch<AuthMeResult>("/api/v1/auth/me", "GET");
+}
+
+/**
+ * POST /api/v1/auth/username (UI-04 #196 / Spec #191) — session-authenticated
+ * self-service username change. Success clears both auth cookies server-side
+ * and revokes every refresh session; `sessionRevoked: true` tells the caller
+ * to transition to the signed-out surface immediately. An unchanged value is
+ * a value-idempotent no-op (`sessionRevoked: false`, session stays live).
+ */
+export async function authChangeUsername(
+  username: string
+): Promise<{ username: string; sessionRevoked: boolean }> {
+  return authFetch<{ username: string; sessionRevoked: boolean }>(
+    "/api/v1/auth/username",
+    "POST",
+    { username },
+    { mutating: true }
+  );
+}
+
+/**
+ * POST /api/v1/auth/password (UI-04 #196 / Spec #191) — session-authenticated
+ * self-service password change. Requires the correct current password (a
+ * mismatch is a 422 VALIDATION with detail "current password is incorrect",
+ * deliberately NOT 401). Success revokes every refresh session, clears both
+ * cookies, and returns `sessionRevoked: true`.
+ */
+export async function authChangePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ sessionRevoked: boolean }> {
+  return authFetch<{ sessionRevoked: boolean }>(
+    "/api/v1/auth/password",
+    "POST",
+    { currentPassword, newPassword },
+    { mutating: true }
+  );
 }

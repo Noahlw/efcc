@@ -14,9 +14,17 @@
  *     test-runner coupling, which makes it independently debuggable
  *     (`npx tsx tests/e2e/plan-doc-appender.ts --plan=…`).
  *
- * Output target and JSON input are CLI-configurable so future tickets
- * can reuse the same utility against their own plan docs without code
- * changes here.
+ * Output target, JSON input, the markdown section heading, and the
+ * recorded target URL are CLI-configurable so future tickets can reuse the
+ * same utility against their own plan docs / evidence sections without
+ * code changes here. `--heading` lets two acceptance runs (for example the
+ * legacy `/exec` gate and the rebuilt Next UI gate) append their results to
+ * the same plan doc under distinct headings so one run cannot overwrite the
+ * other's evidence; `--target-url` records the deployment under test.
+ *
+ * Defaults preserve the Wave-1 behavior: `--plan` and `--results` alone
+ * append a `## Executed results` section and read the target URL from the
+ * `E2E_TARGET_URL` environment variable.
  *
  * Match the import style of sibling `auth.ts` (node: protocol, no
  * `@types/node` dependency in this repo's baseline).
@@ -24,13 +32,14 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { argv, env } from "node:process";
 
-/** Default target per ADR-0012 §Decision-4 and the current ticket. */
+/** Defaults per ADR-0012 §Decision-4 and the current ticket. */
 const DEFAULT_PLAN_DOC = "docs/specs/067-role-nav-acceptance-plan.md";
 const DEFAULT_RESULTS_JSON = "test-results/e2e-results.json";
-const SECTION_HEADER = "## Executed results";
+const DEFAULT_SECTION_HEADER = "## Executed results";
 
 interface JsonReporterSpec {
   title?: string;
+  specs?: JsonReporterSpec[];
   suites?: JsonReporterSpec[];
   tests?: {
     projectName?: string;
@@ -63,10 +72,24 @@ function parseArgs(): {
   planDoc: string;
   resultsJson: string;
   targetUrl: string | undefined;
+  heading: string;
 } {
-  const args = argv.slice(2);
+  // Accept both `--name value` and `--name=value` spellings (the runbook
+  // documents the equals form). Splitting on the first `=` normalizes every
+  // `--x=y` token into two tokens so the exact-match logic below covers both.
+  const args: string[] = [];
+  for (const raw of argv.slice(2)) {
+    if (raw.startsWith("--") && raw.includes("=")) {
+      const eq = raw.indexOf("=");
+      args.push(raw.slice(0, eq), raw.slice(eq + 1));
+    } else {
+      args.push(raw);
+    }
+  }
   let planDoc = DEFAULT_PLAN_DOC;
   let resultsJson = DEFAULT_RESULTS_JSON;
+  let heading = DEFAULT_SECTION_HEADER;
+  let targetUrl = env.E2E_TARGET_URL;
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
     if (a === "--plan" && i + 1 < args.length) {
@@ -75,17 +98,44 @@ function parseArgs(): {
     } else if (a === "--results" && i + 1 < args.length) {
       i += 1;
       resultsJson = args[i];
+    } else if (a === "--heading" && i + 1 < args.length) {
+      i += 1;
+      heading = args[i];
+    } else if (a === "--target-url" && i + 1 < args.length) {
+      i += 1;
+      targetUrl = args[i];
     } else if (a === "--help" || a === "-h") {
       process.stdout.write(
         "usage: tsx tests/e2e/plan-doc-appender.ts " +
-          "[--plan <plan.md>] [--results <e2e-results.json>]\n"
+          "[--plan <plan.md>] [--results <e2e-results.json>] " +
+          "[--heading <\"## Executed results\">] [--target-url <url>]\n"
       );
       process.exit(0);
     } else {
       die(`unrecognized argument: ${a}`);
     }
   }
-  return { planDoc, resultsJson, targetUrl: env.E2E_TARGET_URL };
+  return { planDoc, resultsJson, targetUrl, heading };
+}
+
+/** Keep credentials and query-string tokens out of committed evidence. */
+function sanitizeTargetUrl(targetUrl: string | undefined): string | undefined {
+  if (!targetUrl) {
+    return undefined;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    die(`target URL must be an absolute http(s) URL: ${targetUrl}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    die(`target URL must be an absolute http(s) URL: ${targetUrl}`);
+  }
+  if (parsed.username || parsed.password) {
+    die("target URL must not contain userinfo credentials");
+  }
+  return `${parsed.origin}${parsed.pathname}`;
 }
 
 /**
@@ -112,6 +162,9 @@ function flattenResults(root: JsonReporterRoot): FlatRow[] {
   };
   const walkSuite = (suite: JsonReporterSpec): void => {
     walkSpec(suite);
+    for (const spec of suite.specs ?? []) {
+      walkSpec(spec);
+    }
     for (const child of suite.suites ?? []) {
       walkSuite(child);
     }
@@ -125,13 +178,14 @@ function flattenResults(root: JsonReporterRoot): FlatRow[] {
 function renderSection(
   rows: FlatRow[],
   targetUrl: string | undefined,
-  timestamp: string
+  timestamp: string,
+  heading: string
 ): string {
   const total = rows.length;
   const passed = rows.filter((r) => r.pass).length;
   const failed = total - passed;
   const header = [
-    SECTION_HEADER,
+    heading,
     "",
     `- Generated: ${timestamp}`,
     targetUrl ? `- Target: ${targetUrl}` : "- Target: <not recorded>",
@@ -159,18 +213,35 @@ function renderSection(
   return [...header, ...tableHeader, ...tableRows, ""].join("\n");
 }
 
-/** Replace an existing `## Executed results` block, or append a new one. */
-function upsertSection(doc: string, section: string): string {
+/**
+ * The markdown heading level of `line` (1-6), or 0 when it is not a heading.
+ */
+function headingLevel(line: string): number {
+  const m = /^(#{1,6})\s/u.exec(line.trim());
+  return m ? m[1].length : 0;
+}
+
+/**
+ * Replace an existing block headed by `heading`, or append a new one. The
+ * block is terminated by the next heading of the same or higher level.
+ */
+function upsertSection(
+  doc: string,
+  section: string,
+  heading: string
+): string {
   const lines = doc.split(/\r?\n/u);
-  const startIdx = lines.findIndex((l) => l.trim() === SECTION_HEADER);
+  const startIdx = lines.findIndex((l) => l.trim() === heading);
   if (startIdx === -1) {
     const sep = doc.endsWith("\n") || doc.length === 0 ? "" : "\n";
     return `${doc}${sep}\n${section}\n`;
   }
+  const sectionLevel = headingLevel(heading);
   // The next same-or-higher-level heading terminates this section.
   let endIdx = lines.length;
   for (let i = startIdx + 1; i < lines.length; i += 1) {
-    if (/^#{1,2}\s/u.test(lines[i])) {
+    const level = headingLevel(lines[i]);
+    if (level > 0 && level <= sectionLevel) {
       endIdx = i;
       break;
     }
@@ -182,7 +253,8 @@ function upsertSection(doc: string, section: string): string {
 }
 
 async function main(): Promise<void> {
-  const { planDoc, resultsJson, targetUrl } = parseArgs();
+  const { planDoc, resultsJson, targetUrl: rawTargetUrl, heading } = parseArgs();
+  const targetUrl = sanitizeTargetUrl(rawTargetUrl);
   const timestamp = new Date().toISOString();
 
   let rawResults: string;
@@ -202,7 +274,7 @@ async function main(): Promise<void> {
     );
   }
   const rows = flattenResults(parsed);
-  const section = renderSection(rows, targetUrl, timestamp);
+  const section = renderSection(rows, targetUrl, timestamp, heading);
 
   let doc: string;
   try {
@@ -212,7 +284,7 @@ async function main(): Promise<void> {
       `failed to read plan doc at ${planDoc}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
-  const updated = upsertSection(doc, section);
+  const updated = upsertSection(doc, section, heading);
   if (updated === doc) {
     process.stderr.write(
       `warn: ${planDoc} unchanged (append produced identical content)\n`

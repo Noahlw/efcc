@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
+
+import { LANDING } from "@/lib/copy";
 import { RegistrationForm } from "@/lib/registration-form";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 
-const FONT =
-  '-apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif';
+import styles from "../auth.module.css";
 
 /**
  * Self-service registration page (AUTH-05 #163). Public surface — no session
@@ -12,37 +14,31 @@ const FONT =
  */
 export default function RegisterPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f2ede2",
-        color: "#201d17",
-        fontFamily: FONT,
-        WebkitFontSmoothing: "antialiased",
-      }}
-    >
-      <div style={{ maxWidth: 440, margin: "0 auto", padding: "3rem 1.25rem" }}>
-        <h1
-          style={{
-            margin: "0 0 0.375rem",
-            fontSize: "1.75rem",
-            fontWeight: 900,
-            letterSpacing: "-0.01em",
-          }}
+    <main className={styles.page}>
+      <a className={styles.skipLink} href="#register">
+        {LANDING.skipToRegister}
+      </a>
+      <header className={styles.header}>
+        <Link className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
+          <span className={styles.seal} aria-hidden="true">
+            恩
+          </span>
+          <span>{LANDING.brandFull}</span>
+        </Link>
+      </header>
+      <div className={styles.body}>
+        <section
+          className={styles.card}
+          id="register"
+          tabIndex={-1}
+          aria-labelledby="register-title"
         >
-          {REGISTRATION_COPY.pageTitle}
-        </h1>
-        <p
-          style={{
-            margin: "0 0 2rem",
-            fontSize: "0.9375rem",
-            lineHeight: 1.7,
-            color: "#5c564a",
-          }}
-        >
-          {REGISTRATION_COPY.pageLead}
-        </p>
-        <RegistrationForm />
+          <h1 id="register-title" className={styles.cardTitle}>
+            {REGISTRATION_COPY.pageTitle}
+          </h1>
+          <p className={styles.cardLead}>{REGISTRATION_COPY.pageLead}</p>
+          <RegistrationForm />
+        </section>
       </div>
     </main>
   );

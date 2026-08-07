@@ -1,0 +1,201 @@
+/* Authenticated shell chrome + account-facing states (Profile ticket #194).
+   Tokens reference `.impeccable/design.json` names with literal fallbacks so
+   the module renders before and after Ui01Shell's globals.css token merge. */
+
+.header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem clamp(1rem, 3vw, 1.5rem);
+  background: var(--surface-raised, #ffffff);
+  border-bottom: 1px solid var(--line, #d6dcde);
+}
+
+@media (min-width: 800px) {
+  /* The desktop side rail (globals.css .nav-desktop) is fixed at left:0 with
+     width 200px; offset the header beside it so the seal + church title stay
+     visible (review P1). */
+  .header {
+    margin-left: 200px;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.seal {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--accent, #9c302c);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink, #171a1d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signOut {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink, #171a1d);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.signOut:hover {
+  background: var(--surface, #f4f5f3);
+}
+
+.signOut:focus-visible {
+  outline: 2px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+/* Full-viewport centered state (loading / recovery / forbidden / empty). */
+.state {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 2rem clamp(1rem, 4vw, 2rem);
+  text-align: center;
+  background: var(--surface, #f4f5f3);
+  color: var(--ink, #171a1d);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--line, #d6dcde);
+  border-top-color: var(--accent, #9c302c);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    /* Reduced motion: no spin; rely on the live-region announcement. */
+    animation: none;
+    transform: rotate(0deg);
+  }
+}
+
+.alert {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(185, 28, 28, 0.3);
+  border-radius: 8px;
+  background: rgba(185, 28, 28, 0.1);
+  color: #b91c1c;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.btnPrimary {
+  min-height: 44px;
+  padding: 0 1.5rem;
+  border: 1px solid var(--accent, #9c302c);
+  border-radius: 8px;
+  background: var(--accent, #9c302c);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btnPrimary:hover {
+  background: var(--accent-deep, #76231f);
+  border-color: var(--accent-deep, #76231f);
+}
+
+.btnPrimary:focus-visible {
+  outline: 2px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1.5rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink, #171a1d);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.btnSecondary:hover {
+  border-color: var(--ink, #171a1d);
+  background: var(--surface, #f4f5f3);
+}
+
+.btnSecondary:focus-visible {
+  outline: 2px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+/* Empty state (S12): centered, readable, announced. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--ink-muted, #59636a);
+}
+
+.emptyTitle {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--ink, #171a1d);
+}
+
+.emptyIcon {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--line-strong, #aeb8bc);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink-muted, #59636a);
+}

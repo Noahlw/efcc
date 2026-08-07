@@ -1,5 +1,5 @@
 // AUTH-05 (#163) — Traditional Chinese copy for self-service registration and
-// the Teacher/Admin approval queue. Centralized here (matching the shell's
+// the Staff/Admin approval queue. Centralized here (matching the shell's
 // COPY pattern in lib/copy.ts) so no user-facing string lives in a component.
 // Kept separate from lib/copy.ts to avoid coupling this ticket to the
 // concurrently-in-flight login landing copy (CF0-08).
@@ -21,17 +21,17 @@ function registrationErrorFor(code: string, detail?: string): string {
 export const REGISTRATION_COPY = {
   backToLogin: "返回登入",
   pageTitle: "註冊帳戶",
-  pageLead: "提交後，帳戶將在導師或管理員審批後啟用。",
+  pageLead: "提交後，帳戶將在 Staff 或 Admin 審批後啟用。",
   usernameLabel: "用戶名稱",
   passwordLabel: "密碼",
   nameLabel: "姓名",
   phoneLabel: "電話（選填）",
-  submit: "提交註冊",
+  submit: "提交註冊申請",
   submitting: "提交中…",
   missingFields: "請填寫用戶名稱、密碼及姓名。",
   doneTitle: "申請已提交",
   doneMessage:
-    "你的註冊申請已提交，帳戶尚待導師或管理員審批。審批完成後即可登入。",
+    "你的註冊申請已提交，帳戶尚待 Staff 或 Admin 審批。審批完成後即可登入。",
   submittedLive: "註冊申請已提交。",
 } as const;
 
@@ -39,6 +39,7 @@ export const QUEUE_COPY = {
   backToHome: "返回首頁",
   pageTitle: "註冊審批",
   pageLead: "檢視待審批的註冊申請。",
+  pendingCount: "筆待審核",
   loading: "載入中…",
   empty: "目前沒有待審批的申請。",
   refresh: "重新整理",
@@ -57,7 +58,7 @@ export const QUEUE_COPY = {
   validation: "輸入資料無效，請檢查後再試。",
   conflict: "資料衝突，請重新整理後再試。",
   notFound: "找不到該申請，可能已被處理。",
-  unauthorized: "請先以導師或管理員身分登入。",
+  unauthorized: "請先以 Staff 或 Admin 身分登入。",
   unavailable: "系統暫時無法使用，請稍後再試。",
   unknownError: "發生未知錯誤，請稍後再試。",
 } as const;

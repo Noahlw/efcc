@@ -37,6 +37,13 @@ describe(RegistrationForm, () => {
 
   afterAll(() => server.close());
 
+  test("renders the submit button with the exact 提交註冊申請 label", () => {
+    render(<RegistrationForm />);
+    expect(
+      screen.getByRole("button", { name: "提交註冊申請" })
+    ).toBeInTheDocument();
+  });
+
   test("submits the locked register payload with an Idempotency-Key", async () => {
     let captured: {
       method: string;

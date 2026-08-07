@@ -7,6 +7,7 @@ import {
   isPermitted,
   getSection,
   recoverySection,
+  sectionsForRole,
 } from "./sections";
 
 const profile: Section = {
@@ -111,5 +112,61 @@ describe(defaultSections, () => {
     expect(firstSection(sections)).toBe("profile");
     // No section requires a server-auth RPC in this slice (deferred to CF0-04).
     expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
+  });
+});
+
+describe(sectionsForRole, () => {
+  test("Admin sees all six sections", () => {
+    expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+      "events",
+      "scanner",
+      "care",
+      "permissions",
+    ]);
+  });
+
+  test("Staff sees all six sections (067-follow-up: STAFF -> api_getPermissionsData success)", () => {
+    expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+      "events",
+      "scanner",
+      "care",
+      "permissions",
+    ]);
+  });
+
+  test("Member sees two sections (profile, programs)", () => {
+    expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
+
+  test("unknown role falls back to the Member set", () => {
+    expect(sectionsForRole("UNKNOWN").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
+
+  test("uppercase legacy spellings are NOT accepted (canonical ADR-0025 values)", () => {
+    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+  });
+
+  test("inherited Object keys (toString/constructor) fall back like unknown roles", () => {
+    expect(sectionsForRole("toString").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
+    expect(sectionsForRole("constructor").map((s) => s.key)).toStrictEqual([
+      "profile",
+      "programs",
+    ]);
   });
 });

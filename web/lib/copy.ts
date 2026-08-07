@@ -2,6 +2,9 @@
 // Every user-facing string lives here; no hardcoded text in components.
 export const COPY = {
   appName: "顯恩堂系統",
+  // Official full church title used as the primary brand string in headers
+  // (Spec 079 §1: shorter marks are legacy shorthand only).
+  appFullName: "中國基督教播道會顯恩堂",
   login: {
     title: "登入",
     upgradeTitle: "設定新密碼",
@@ -19,13 +22,16 @@ export const COPY = {
     success: "登入成功。",
   },
   profile: {
-    title: "個人資料",
+    title: "個人檔案",
     name: "姓名",
     username: "用戶名稱",
     phone: "電話",
     role: "角色",
     status: "狀態",
     qrCode: "QR Code",
+    qrEmpty: "目前沒有 QR 資料。",
+    accountSettings: "帳戶資料",
+    accountSettingsHint: "更新用戶名稱或密碼。",
   },
   restore: {
     loading: "正在還原工作階段…",
@@ -37,6 +43,10 @@ export const COPY = {
     error: "登出時發生錯誤，但已安全終止工作階段。",
     failedNotice: "登出請求失敗，但本機工作階段已清除。",
     success: "已登出。",
+    forbiddenAction: "登出並返回登入",
+  },
+  account: {
+    updatedNotice: "帳戶資料已更新，請重新登入。",
   },
   sections: {
     profile: "個人檔案",
@@ -45,10 +55,14 @@ export const COPY = {
     scanner: "掃描簽到",
     care: "關懷儀表板",
     permissions: "權限管理",
+    // S10 heading: distinguishes the permissions SECTION label from the
+    // page title (roles + permissions table, Spec #079 §S10).
+    permissionsHeading: "權限與角色管理",
     placeholder: "內容建置中。",
   },
   nav: {
     backToHome: "返回首頁",
+    backToProfile: "返回個人檔案",
     loading: "載入中…",
     unauthorized: "您沒有權限存取此頁面。",
     unknownRoute: "找不到此頁面。",
@@ -64,7 +78,11 @@ export const COPY = {
     conflict: "資料衝突，請重新整理後再試。",
     malformed: "伺服器回應格式錯誤。",
     unknown: "發生未知錯誤。",
-    retry: "重試",
+    retry: "重試連接",
+  },
+  empty: {
+    courseData: "目前沒有課程資料。",
+    title: "無資料",
   },
 } as const;
 
@@ -108,6 +126,8 @@ export function errorCopyFor(
 // testimonials, metrics, or security claims are invented on this surface.
 export const LANDING = {
   skipToLogin: "跳到登入",
+  skipToRegister: "跳到註冊表單",
+  brandFull: "中國基督教播道會顯恩堂",
   brand: "顯恩堂",
   brandSystem: "系統",
   homeLabel: "顯恩堂系統首頁",

@@ -17,11 +17,17 @@ Map #158 moves identity off that shared ceiling: **Cloudflare D1 becomes the sol
 
 Three tables in `web/migrations/` (versioned Wrangler D1 migrations, applied by `wrangler d1 migrations apply`):
 
-- **`accounts`** — one row per member. `user_id` (immutable `User_ID`, enforced by a schema trigger), `username` + `username_normalized` (trimmed + lowercased, the unique lookup key, enforced transactionally by a unique index), `credential_hash` (PBKDF2-sha256, `pbkdf2:salt:hash`), `credential_kind` (`legacy_pin` | `password` | `pin`), `account_status` (`Pending` | `Active` | `Suspended` | `Deactivated`), `role` (`Admin` | `Teacher` | `Member`), plus the legacy-migration marker (`legacy_pin_hash`, `requires_upgrade`).
+- **`accounts`** — one row per member. `user_id` (immutable existing `User_ID`, including its established format, enforced by a schema trigger), `username` + `username_normalized` (mutable display login name plus trimmed/lowercased unique lookup key, enforced transactionally), `credential_hash` (PBKDF2-sha256, `pbkdf2:salt:hash`), `credential_kind` (`legacy_pin` | `password` | `pin`), `account_status` (`Pending` | `Active` | `Suspended` | `Deactivated`), `role` (`Admin` | `Teacher` | `Member`), plus the legacy-migration marker (`legacy_pin_hash`, `requires_upgrade`).
 - **`registration_requests`** — `Pending` self-service registrations awaiting Teacher/Admin approval (§3; the approval workflow UI is AUTH-05).
 - **`sessions`** — the refresh-session rows populated by §2.
 
 No cleartext PIN, password, access token, or raw session value is ever stored in D1, logged, or returned across an RPC boundary.
+
+### 1.1 Account credential changes
+
+Active account holders may change their login username and password through an authenticated account-settings flow. A username change never changes `user_id`, the established User_ID format, QR identity, role, or account status. The display username may retain user-selected casing, while `username_normalized = trim + lowercase` remains the unique login key.
+
+The uniqueness check must be atomic and must reject collisions with both existing accounts and registration requests, including concurrent updates. A password change stores only a fresh PBKDF2 hash. Normal self-service password changes require the current password; the legacy-PIN upgrade remains the existing controlled exception. Credential changes are audited without credential material; both password changes and username changes revoke all refresh sessions and require the user to sign in again. A future Admin reset or account-recovery path requires a separate authorized and audited contract.
 
 ### 2. Session architecture — short-lived access token + refresh session
 

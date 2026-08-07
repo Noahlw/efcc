@@ -6,6 +6,22 @@
 
 ---
 
+## Reopened D1 migration contract (Issue #184)
+
+This document preserves the Apps Script/Google Sheets implementation baseline; it is not the final D1 contract. Issue #184 reopened the enrollment mechanics for the staged migration. The target behavior is now:
+
+- Member self-enrollment creates a `Pending` request and requires approval before an `Active` enrollment exists.
+- `EnrollmentRequest` is separate from `Enrollment`: requests preserve decisions; approved or direct-manager actions create an Enrollment; cancellation is soft and re-enrollment creates a new Enrollment record.
+- Programs independently configure lifecycle (`Draft`/`Active`/`Archived`), discoverability (`Listed`/`Unlisted`), and enrollment mode (`MemberRequest`/`ManagerOnly`). A `ManagerOnly` Program accepts only authorized direct-active assisted enrollment; discoverability is not authorization.
+- Any active actor whose effective global-role policy or scoped Program Leader grant includes the required management/approval capability for the exact Program may approve or reject that request.
+- An authorized manager may use the direct-active assisted-enrollment path; that action is the approval decision and is audited.
+- Scanner never creates or approves enrollment.
+- The new D1 request/enrollment domain starts empty; no legacy Programs, Program Leaders, Enrollments, or domain audit rows are imported. The final schema, bootstrap, ownership, and rollback contract remain conditional on Issue #184 and the deployed auth dependency chain.
+
+The legacy flows below describe the current transitional Apps Script behavior and must not be implemented as the new D1 contract without the Issue #184 decision record.
+
+---
+
 ## 1. Purpose
 
 Allow members to enroll in church Programs and soft-cancel their own enrollment,

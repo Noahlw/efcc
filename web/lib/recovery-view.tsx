@@ -6,14 +6,23 @@ import { useRef, useEffect } from "react";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 
+import styles from "./auth-shell.module.css";
+
+/**
+ * Transient network-error recovery state (matrix S14): alert block + primary
+ * `重試連接` action + secondary route home. Announces the message for screen
+ * readers and moves focus in so the state is immediately reachable.
+ */
 export function RecoveryView({
   message,
   safeHref,
   onRetry,
+  safeLabel = COPY.nav.backToHome,
 }: {
   message: string;
   safeHref: string;
   onRetry?: () => void;
+  safeLabel?: string;
 }) {
   const liveRef = useRef<HTMLDivElement>(null);
 
@@ -23,50 +32,17 @@ export function RecoveryView({
   }, [message]);
 
   return (
-    <main
-      style={{
-        maxWidth: 400,
-        margin: "4rem auto",
-        padding: "0 1rem",
-        fontFamily: "sans-serif",
-        textAlign: "center",
-      }}
-      ref={liveRef}
-      tabIndex={-1}
-    >
-      <p style={{ color: "#b00020", marginBottom: "1.5rem" }}>{message}</p>
+    <main className={styles.state} ref={liveRef} tabIndex={-1}>
+      <div className={styles.alert} role="alert">
+        {message}
+      </div>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          style={{
-            display: "inline-block",
-            padding: "0.75rem 1.5rem",
-            minHeight: 44,
-            fontSize: "1rem",
-            color: "#fff",
-            backgroundColor: "#1565c0",
-            border: "none",
-            borderRadius: 4,
-            cursor: "pointer",
-            marginRight: "0.5rem",
-          }}
-        >
+        <button type="button" className={styles.btnPrimary} onClick={onRetry}>
           {COPY.error.retry}
         </button>
       )}
-      <Link
-        href={safeHref}
-        style={{
-          display: "inline-block",
-          padding: "0.75rem 1.5rem",
-          minHeight: 44,
-          fontSize: "1rem",
-          color: "#1565c0",
-          textDecoration: "underline",
-        }}
-      >
-        {COPY.nav.backToHome}
+      <Link className={styles.btnSecondary} href={safeHref}>
+        {safeLabel}
       </Link>
     </main>
   );

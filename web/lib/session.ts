@@ -12,9 +12,11 @@
 
 import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
-import { defaultSections } from "@/lib/sections";
+import type { Section } from "@/lib/api";
+import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
+const LOCAL_DEMO_AUTH_KEY = "efcc_local_demo_auth";
 
 /** True when a cookie-authenticated session was last known to be active. */
 export function hasAuthHint(): boolean {
@@ -38,18 +40,95 @@ export function setAuthHint(): void {
 export function clearAuthHint(): void {
   try {
     localStorage.removeItem(AUTH_HINT_KEY);
+    localStorage.removeItem(LOCAL_DEMO_AUTH_KEY);
   } catch {
     // Best-effort.
   }
 }
 
+function localDemoEnabled(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+/** Local-only login fixture for the running development server. */
+export function isLocalDemoCredentials(
+  username: string,
+  password: string
+): boolean {
+  return (
+    localDemoEnabled() && username.trim() === "noah" && password === "6883"
+  );
+}
+
+/** Mark the local demo session without creating or storing a real token. */
+export function setLocalDemoAuth(): void {
+  if (!localDemoEnabled()) {
+    return;
+  }
+  try {
+    localStorage.setItem(LOCAL_DEMO_AUTH_KEY, "1");
+  } catch {
+    // Storage unavailable — the current page can still navigate after login.
+  }
+}
+
+/** Remove a development-only demo marker before a real auth attempt. */
+export function clearLocalDemoAuth(): void {
+  try {
+    localStorage.removeItem(LOCAL_DEMO_AUTH_KEY);
+  } catch {
+    // Storage unavailable — no marker can be read on the next restore.
+  }
+}
+
+function hasLocalDemoAuth(): boolean {
+  if (!localDemoEnabled()) {
+    return false;
+  }
+  try {
+    return localStorage.getItem(LOCAL_DEMO_AUTH_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function buildLocalDemoBootstrap(): Bootstrap {
+  return {
+    profile: {
+      userId: "local-noah",
+      name: "Noah",
+      username: "noah",
+      phone: "",
+      role: "Staff",
+      status: "Active",
+      qrCodeString: "EFCC-LOCAL-NOAH",
+    },
+    // S15: role-based section authorization (Staff sees six sections).
+    sections: sectionsForRole("Staff"),
+  };
+}
+
+/** Keep local-demo sign-out from calling the production auth API. */
+export function isLocalDemoBootstrap(bootstrap: Bootstrap): boolean {
+  return hasLocalDemoAuth() && bootstrap.profile.userId === "local-noah";
+}
+
 /**
- * Assemble the shell's Bootstrap from a cookie-verified public user and the
- * shell's section baseline. Section authorization is CF0-04's concern; the
- * client never hardcodes a role→Section map here.
+ * Assemble the shell's Bootstrap from a cookie-verified public user,
+ * authorizing the shell sections by the user's role (S15).
  */
-export function buildBootstrap(user: PublicUser): Bootstrap {
-  return { profile: user, sections: defaultSections() };
+export function buildBootstrap(
+  user: PublicUser,
+  serverSections?: Section[]
+): Bootstrap {
+  // S15: the server authorizes the section list. /api/v1/auth/me returns the
+  // role-appropriate `sections` (computed with the canonical stored role);
+  // the client consumes them verbatim. `sectionsForRole` is only a
+  // resilience fallback for servers that do not send the list yet.
+  return {
+    profile: user,
+    sections: serverSections ?? sectionsForRole(user.role),
+  };
 }
 
 /**
@@ -58,7 +137,10 @@ export function buildBootstrap(user: PublicUser): Bootstrap {
  * token expired), silently refreshes the refresh cookie and retries me.
  * Throws RpcError otherwise (AUTH_REQUIRED = refresh cookie gone/revoked).
  */
-async function currentUser(): Promise<PublicUser> {
+async function currentUser(): Promise<{
+  user: PublicUser;
+  sections: Section[];
+}> {
   try {
     return await authMe();
   } catch (error) {
@@ -77,10 +159,13 @@ async function currentUser(): Promise<PublicUser> {
  * same codes as the auth surface (AUTH_REQUIRED = expired/revoked refresh).
  */
 export async function restoreBootstrap(): Promise<Bootstrap | null> {
+  if (hasLocalDemoAuth()) {
+    return buildLocalDemoBootstrap();
+  }
   if (!hasAuthHint()) {
     clearAuthHint();
     return null;
   }
-  const user = await currentUser();
-  return buildBootstrap(user);
+  const { user, sections } = await currentUser();
+  return buildBootstrap(user, sections);
 }

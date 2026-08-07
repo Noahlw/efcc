@@ -15,10 +15,21 @@ import assert from "node:assert/strict";
 // No PINs, session tokens, or QR values appear in any assertion or
 // fixture here - the verification requirement in #142.
 import { env } from "cloudflare:workers";
-import { describe, test } from "vitest";
+import { describe, test, vi } from "vitest";
 
 import worker from "./worker";
 import type { Env } from "./worker";
+import type * as Handlers from "./lib/auth/handlers";
+
+// T3: stub a single auth handler to throw so the Worker's new outer RFC9457
+// catch is exercised. The rest of the module stays real.
+vi.mock("./lib/auth/handlers", async (importOriginal) => {
+  const actual = await importOriginal<typeof Handlers>();
+  return {
+    ...actual,
+    handleMe: vi.fn().mockRejectedValue(new Error("boom")),
+  };
+});
 
 const UPSTREAM_URL = "https://script.google.com/macros/s/fake/exec";
 const ORIGIN = "https://efcc.example";
@@ -392,5 +403,30 @@ describe("Worker: fail-closed rate limiter (ADR-0018 §9)", () => {
     const body = await json<{ code: string; detail: string }>(res);
     assert.equal(body.code, "UNAVAILABLE");
     assert.equal(body.detail, "系統暫時無法處理請求，請稍後再試。");
+  });
+});
+
+describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", () => {
+  test("a throwing handler returns 500 application/problem+json with X-Request-Id", async () => {
+    const res = await worker.fetch(
+      makeRequest("/api/v1/auth/me", {
+        method: "GET",
+        headers: {
+          Cookie: `efcc_access=abc; efcc_refresh=def`,
+        },
+      }),
+      testEnv({ EFCC_ACCESS_TOKEN_SECRET: "test-secret" })
+    );
+    assert.equal(res.status, 500);
+    assert.match(
+      res.headers.get("Content-Type") ?? "",
+      /application\/problem\+json/
+    );
+    assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
+    const body = await json<{ type: string; status: number; code: string; detail: string }>(res);
+    assert.ok(body.type.includes("#INTERNAL_ERROR"), "type must reference #INTERNAL_ERROR");
+    assert.equal(body.code, "INTERNAL_ERROR");
+    assert.equal(body.detail, "Internal server error.");
+    assert.equal(body.status, 500);
   });
 });

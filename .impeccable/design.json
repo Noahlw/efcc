@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-06T06:10:00Z",
+  "title": "Design System: 中國基督教播道會顯恩堂系統 (Variant A: Official Civic Minimal)",
+  "extensions": {
+    "colorMeta": {
+      "surface": {
+        "role": "neutral-bg",
+        "displayName": "Surface Off-White",
+        "canonical": "#f4f5f3",
+        "tonalRamp": [
+          "#141615",
+          "#2a2d2b",
+          "#4a4f4c",
+          "#737a76",
+          "#a1a9a4",
+          "#cacedb",
+          "#e9ebe8",
+          "#f4f5f3"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral-card",
+        "displayName": "Surface Raised White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#555555",
+          "#777777",
+          "#aaaaaa",
+          "#cccccc",
+          "#eeeeee",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral-text",
+        "displayName": "Ink Charcoal",
+        "canonical": "#171a1d",
+        "tonalRamp": [
+          "#08090a",
+          "#171a1d",
+          "#2d3339",
+          "#48515a",
+          "#6b7784",
+          "#95a1ae",
+          "#c4cbd4",
+          "#eaf0f5"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Cinnabar Red",
+        "canonical": "#9c302c",
+        "tonalRamp": [
+          "#360e0d",
+          "#591917",
+          "#76231f",
+          "#9c302c",
+          "#c24742",
+          "#db6e69",
+          "#eb9d9a",
+          "#f7cfcd"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Hero",
+        "purpose": "Primary page title"
+      },
+      "title": {
+        "displayName": "Section Title",
+        "purpose": "Panel and section headings"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Narrative copy and descriptions"
+      }
+    },
+    "breakpoints": [
+      { "name": "sm", "value": "560px" },
+      { "name": "md", "value": "800px" },
+      { "name": "lg", "value": "1180px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary submission control for authentication.",
+      "html": "<button class=\"ds-btn-primary\">登入</button>",
+      "css": ".ds-btn-primary { background: #9c302c; color: #ffffff; min-height: 44px; padding: 0 24px; border: 1px solid #9c302c; border-radius: 8px; font-weight: 800; font-size: 16px; cursor: pointer; } .ds-btn-primary:hover { background: #76231f; border-color: #76231f; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary action or anchor link.",
+      "html": "<a class=\"ds-btn-secondary\" href=\"#features\">認識功能</a>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid #aeb8bc; border-radius: 8px; color: #171a1d; font-weight: 700; text-decoration: none; font-size: 15px; } .ds-btn-secondary:hover { border-color: #171a1d; background: #e9eceb; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Text input for username or password.",
+      "html": "<input class=\"ds-input\" placeholder=\"用戶名稱\" />",
+      "css": ".ds-input { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid #aeb8bc; border-radius: 8px; background: #ffffff; color: #171a1d; font-size: 16px; } .ds-input:focus { outline: 3px solid rgba(23, 106, 135, 0.32); border-color: #176a87; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Official Ordinance",
+    "overview": "An official church operations application surface built specifically for 中國基督教播道會顯恩堂. It prioritizes direct task operation, clarity of intent, and dependable workflows for congregation members, ministry leaders, teachers, and admins.",
+    "keyCharacteristics": [
+      "Official Identity: Full church title used as the binding brand string.",
+      "Direct Operation: Immediate sign-in access; no marketing tour detour.",
+      "Cantonese-First: Copy, labels, and aria descriptions prioritize Traditional Chinese for Hong Kong operating context.",
+      "Phone-First Ministry, Desktop Management: Responsive layout prioritizes touch targets (≥44px) and top-of-view sign-in on phone, while supporting 2-column density on desktop."
+    ],
+    "rules": [
+      {
+        "name": "The Cinnabar Accent Rule",
+        "body": "The cinnabar accent is used solely for primary submission, active state indicators, and the brand mark slot.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use the full title 中國基督教播道會顯恩堂 as the primary brand string.",
+      "Do place the sign-in panel first on phone viewports (<800px).",
+      "Do ensure interactive controls maintain min-height ≥44px for touch targets."
+    ],
+    "donts": [
+      "Don't add generic SaaS marketing fluff, pricing tables, or fake social proof.",
+      "Don't use neon gradients or drop-shadow halo cards.",
+      "Don't treat the temporary 恩 seal mark as a permanent non-replaceable logo asset."
+    ]
+  }
+}
