@@ -37,7 +37,13 @@ To restore any milestone row:
 2. **Destructive operation — requires user confirmation:** `git -C <worktree> reset --hard <sha>` (discards everything after `<sha>` on that branch; never run on a pushed branch without explicit approval).
    - Live-ui worktree: `/var/folders/pw/6vk89mjx4klgcgc8yp48y_lm0000gp/T/opencode/efcc-prg05` on `rebase/prg-05-201`.
 3. If the environment itself needs to return to a baseline (worker redeploy + reseed D1):
-   - Redeploy the worker: `pnpm --dir web exec wrangler deploy` (config `web/wrangler.jsonc`).
-   - Reseed the dev-testing D1: `pnpm exec tsx tests/e2e/seed-dev-accounts.ts > /tmp/seed-dev.sql && pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=/tmp/seed-dev.sql`.
-   - Reseed the acceptance D1 (live-ui fixtures): apply the same SQL to `efcc-identity`: `pnpm exec wrangler d1 execute efcc-identity --remote --file=/tmp/seed-dev.sql` (includes the `registration_requests` E2E cleanup in `--reset` mode).
+   - Redeploy — never deploy the checked-in `web/wrangler.jsonc` directly (placeholder worker `efcc-prototype-129` + placeholder D1 id):
+     - `pnpm --dir web build`
+     - `cp /tmp/wrangler-dev.json web/wrangler-dev.json` (renames the worker to `efcc-dev-testing` with the real D1 id `edb464d2-d142-4c51-aa50-c5b800112756`; migrations auto-apply)
+     - `pnpm --dir web exec wrangler deploy --config wrangler-dev.json`
+     - `rm web/wrangler-dev.json`
+   - Reseed the dev-testing D1 — use the direct binary (pnpm prints "Already up to date" to stdout, corrupting a redirected SQL file) and ALWAYS use a fresh filename (wrangler caches by filename):
+     - reset first: `RESET_SQL=/tmp/reset-$(date +%s).sql && ./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts --reset > "$RESET_SQL" && pnpm --dir web exec wrangler d1 execute efcc-dev-testing --remote --file="$RESET_SQL"`
+     - then seed: `SEED_SQL=/tmp/seed-$(date +%s%N).sql && ./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts > "$SEED_SQL" && pnpm --dir web exec wrangler d1 execute efcc-dev-testing --remote --file="$SEED_SQL"`
+   - Reseed the acceptance D1 (live-ui fixtures): apply the same reset + seed to `efcc-identity` with the same fresh-filename rule. `INSERT OR IGNORE` skips existing rows, so to rotate credentials/QR values delete the three fixture rows first: `DELETE FROM accounts WHERE user_id IN ('U-E2E-ADMIN','U-E2E-STAFF','U-E2E-MEMBER');` (each reseed step also clears `E2E_%` registration_requests in `--reset` mode)
 4. Re-run the suite for the restored milestone and confirm the recorded known-good state before continuing.
