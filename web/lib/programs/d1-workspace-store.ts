@@ -689,17 +689,47 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     decision: "Approved" | "Rejected",
     decidedBy: string,
     decidedAt: string,
-    note: string | null
+    note: string | null,
+    audit: AuditInput
   ): Promise<EnrollmentRequestRow | null> {
-    const result = await this.db
-      .prepare(
-        `UPDATE enrollment_requests
-         SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
-         WHERE request_id = ? AND status = 'Pending'`
-      )
-      .bind(decision, decidedBy, decidedAt, note, id)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) {
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE enrollment_requests
+           SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
+           WHERE request_id = ? AND status = 'Pending'`
+        )
+        .bind(decision, decidedBy, decidedAt, note, id),
+      // ponytail: gate the audit on the same decided-state the UPDATE just
+      // wrote, so a no-op decision (0 changes) inserts no audit row.
+      this.db
+        .prepare(
+          `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
+             entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
+             correlation_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             FROM enrollment_requests r
+            WHERE r.request_id = ? AND r.status = ? AND r.decided_by = ? AND r.decided_at = ?`
+        )
+        .bind(
+          audit.audit_id,
+          audit.inserted_at,
+          audit.actor_user_id,
+          audit.action,
+          audit.entity_type,
+          audit.entity_id,
+          audit.old_value_json,
+          audit.new_value_json,
+          audit.reason,
+          audit.outcome,
+          audit.correlation_id,
+          id,
+          decision,
+          decidedBy,
+          decidedAt
+        ),
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) === 0) {
       return null;
     }
     return this.findEnrollmentRequestById(id);
@@ -713,6 +743,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     decided_by: string;
     decided_at: string;
     note: string | null;
+    auditCreate: AuditInput;
+    auditDecide: AuditInput;
   }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
     const results = await this.db.batch([
       this.db
@@ -743,6 +775,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
           input.note,
           input.request_id
         ),
+      // ponytail: gate both audits on the enrollment row the INSERT..SELECT
+      // just created, so a no-op batch (0-row select) inserts no audit rows.
+      this.auditInsertGated(input.auditCreate, input.enrollment_id),
+      this.auditInsertGated(input.auditDecide, input.enrollment_id),
     ]);
     if ((results[1]?.meta?.changes ?? 0) === 0) {
       return null;
@@ -813,6 +849,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(programId, memberUserId)
       .first<{ enrollment_id: string }>();
     return row !== null;
+  }
+
+  async findActiveEnrollment(
+    programId: string,
+    memberUserId: string
+  ): Promise<EnrollmentRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM enrollments
+         WHERE program_id = ? AND member_user_id = ? AND status = 'Active'`
+      )
+      .bind(programId, memberUserId)
+      .first<EnrollmentRow>();
+    return row ?? null;
   }
 
   async findEnrollmentById(id: string): Promise<EnrollmentRow | null> {
@@ -940,8 +990,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.findProgramLeader(input.program_id, input.user_id);
   }
 
-  async audit(input: AuditInput): Promise<void> {
-    await this.db
+  private auditInsertStatement(input: AuditInput): D1PreparedStatement {
+    return this.db
       .prepare(
         `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
            entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
@@ -960,8 +1010,40 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.reason,
         input.outcome,
         input.correlation_id
+      );
+  }
+
+  private auditInsertGated(
+    input: AuditInput,
+    enrollmentId: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
+           entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
+           correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           FROM enrollments e
+          WHERE e.enrollment_id = ?`
       )
-      .run();
+      .bind(
+        input.audit_id,
+        input.inserted_at,
+        input.actor_user_id,
+        input.action,
+        input.entity_type,
+        input.entity_id,
+        input.old_value_json,
+        input.new_value_json,
+        input.reason,
+        input.outcome,
+        input.correlation_id,
+        enrollmentId
+      );
+  }
+
+  async audit(input: AuditInput): Promise<void> {
+    await this.auditInsertStatement(input).run();
   }
 
   async hasCapability(role: string, capability: Capability): Promise<boolean> {

@@ -2326,6 +2326,53 @@ describe("PRG-03: enrollment requests", () => {
     );
   });
 
+  test("REQ-9 approval race loser audits CONFLICT against the existing enrollment", async () => {
+    const programId = await freshRequestProgram("REQ-9 Program");
+    const request = await submitRequest(carolAccess, programId);
+    const now = new Date().toISOString();
+    const otherRequestId = crypto.randomUUID();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollment_requests (request_id, program_id, member_user_id,
+           status, submitted_at, request_version)
+         VALUES (?, ?, 'U003', 'Rejected', ?, 1)`
+      )
+      .bind(otherRequestId, programId, now)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+           request_id, status, enrolled_at, created_by, created_at)
+         VALUES (?, ?, 'U003', ?, 'Active', ?, ?, ?)`
+      )
+      .bind(
+        crypto.randomUUID(),
+        programId,
+        otherRequestId,
+        now,
+        "U002",
+        now
+      )
+      .run();
+    const res = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(res.status, 409);
+    const conflictAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'CONFLICT' AND entity_id = ?"
+      )
+      .bind(request.request_id)
+      .all<{ outcome: string }>();
+    assert.ok(
+      conflictAudit.results && conflictAudit.results.length > 0,
+      "race loser audits CONFLICT (ADR-0027)"
+    );
+  });
+
   test("REQ-8 no credential material leaks in request responses", async () => {
     const res = await worker.fetch(
       programsRequest(

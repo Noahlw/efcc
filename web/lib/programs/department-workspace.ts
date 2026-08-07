@@ -15,6 +15,8 @@ import type {
 } from "./capability-authorizer";
 import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
 import type {
+  AuditInput,
+  AuditOutcome,
   DepartmentLifecycle,
   DepartmentRow,
   DepartmentUpdate,
@@ -253,17 +255,17 @@ export class DepartmentWorkspace {
     }
   }
 
-  private async audit(
+  private buildAuditRow(
     ctx: AuthorizationContext,
     action: string,
     entityType: string,
     entityId: string,
-    outcome: "SUCCESS" | "DUPLICATE" | "CONFLICT" | "DENIED" | "FAILED",
+    outcome: AuditOutcome,
     oldValue: unknown,
     newValue: unknown,
     correlationId: string | null
-  ): Promise<void> {
-    await this.store.audit({
+  ): AuditInput {
+    return {
       audit_id: crypto.randomUUID(),
       inserted_at: new Date().toISOString(),
       actor_user_id: ctx.actorUserId,
@@ -275,7 +277,31 @@ export class DepartmentWorkspace {
       reason: null,
       outcome,
       correlation_id: correlationId,
-    });
+    };
+  }
+
+  private async audit(
+    ctx: AuthorizationContext,
+    action: string,
+    entityType: string,
+    entityId: string,
+    outcome: AuditOutcome,
+    oldValue: unknown,
+    newValue: unknown,
+    correlationId: string | null
+  ): Promise<void> {
+    await this.store.audit(
+      this.buildAuditRow(
+        ctx,
+        action,
+        entityType,
+        entityId,
+        outcome,
+        oldValue,
+        newValue,
+        correlationId
+      )
+    );
   }
 
   async createDepartment(
@@ -1195,41 +1221,107 @@ export class DepartmentWorkspace {
     }
     const now = new Date().toISOString();
     let decided: EnrollmentRequestRow | null;
-    let enrollment: EnrollmentRow | null = null;
     if (cmd.action === "Approved") {
+      const enrollmentId = crypto.randomUUID();
+      const auditCreate = this.buildAuditRow(
+        ctx,
+        "ENROLLMENT_CREATE",
+        "enrollment",
+        enrollmentId,
+        "SUCCESS",
+        null,
+        {
+          enrollment_id: enrollmentId,
+          program_id: request.program_id,
+          member_user_id: request.member_user_id,
+          request_id: requestId,
+          status: "Active",
+        },
+        correlationId
+      );
+      const auditDecide = this.buildAuditRow(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "SUCCESS",
+        { status: "Pending" },
+        {
+          ...request,
+          status: "Approved",
+          decided_by: ctx.actorUserId,
+          decided_at: now,
+          note: cmd.note,
+          enrollment_id: enrollmentId,
+        },
+        correlationId
+      );
       try {
         const committed = await this.store.approveEnrollmentRequest({
           request_id: requestId,
           program_id: programId,
           member_user_id: request.member_user_id,
-          enrollment_id: crypto.randomUUID(),
+          enrollment_id: enrollmentId,
           decided_by: ctx.actorUserId,
           decided_at: now,
           note: cmd.note,
+          auditCreate,
+          auditDecide,
         });
         decided = committed?.request ?? null;
-        enrollment = committed?.enrollment ?? null;
       } catch (error) {
         // ponytail: the (member, program) unique index is the race guard; on
         // constraint violation the whole batch rolled back, so the request is
         // still Pending and the member already has an Active enrollment.
-        if (
-          await this.store.hasActiveEnrollment(
-            programId,
-            request.member_user_id
-          )
-        ) {
+        const existing = await this.store.findActiveEnrollment(
+          programId,
+          request.member_user_id
+        );
+        if (existing) {
+          const outcome =
+            existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+          await this.audit(
+            ctx,
+            "ENROLLMENT_REQUEST_DECIDE",
+            "enrollment_request",
+            requestId,
+            outcome,
+            null,
+            {
+              status: "Pending",
+              enrollment_id: existing.enrollment_id,
+              reason: "active_enrollment_exists",
+            },
+            correlationId
+          );
           throw new DuplicateEnrollmentError(programId, request.member_user_id);
         }
         throw error;
       }
     } else {
+      const auditDecide = this.buildAuditRow(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "SUCCESS",
+        { status: "Pending" },
+        {
+          ...request,
+          status: "Rejected",
+          decided_by: ctx.actorUserId,
+          decided_at: now,
+          note: cmd.note,
+        },
+        correlationId
+      );
       decided = await this.store.decideRequest(
         requestId,
         "Rejected",
         ctx.actorUserId,
         now,
-        cmd.note
+        cmd.note,
+        auditDecide
       );
     }
     if (!decided) {
@@ -1245,28 +1337,6 @@ export class DepartmentWorkspace {
       );
       return request;
     }
-    if (enrollment !== null) {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_CREATE",
-        "enrollment",
-        enrollment.enrollment_id,
-        "SUCCESS",
-        null,
-        enrollment,
-        correlationId
-      );
-    }
-    await this.audit(
-      ctx,
-      "ENROLLMENT_REQUEST_DECIDE",
-      "enrollment_request",
-      requestId,
-      "SUCCESS",
-      { status: "Pending" },
-      { ...decided, enrollment_id: enrollment?.enrollment_id ?? null },
-      correlationId
-    );
     return decided;
   }
 

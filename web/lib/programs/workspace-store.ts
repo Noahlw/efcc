@@ -396,7 +396,8 @@ export interface WorkspaceStore {
     decision: "Approved" | "Rejected",
     decidedBy: string,
     decidedAt: string,
-    note: string | null
+    note: string | null,
+    audit: AuditInput
   ) => Promise<EnrollmentRequestRow | null>;
   approveEnrollmentRequest: (input: {
     request_id: string;
@@ -406,6 +407,8 @@ export interface WorkspaceStore {
     decided_by: string;
     decided_at: string;
     note: string | null;
+    auditCreate: AuditInput;
+    auditDecide: AuditInput;
   }) => Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null>;
   withdrawRequest: (
     id: string,
@@ -418,6 +421,10 @@ export interface WorkspaceStore {
     programId: string,
     memberUserId: string
   ) => Promise<boolean>;
+  findActiveEnrollment: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<EnrollmentRow | null>;
   findEnrollmentById: (id: string) => Promise<EnrollmentRow | null>;
   listEnrollments: (programId: string) => Promise<EnrollmentRow[]>;
   cancelEnrollment: (
