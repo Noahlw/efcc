@@ -116,17 +116,12 @@ export interface CancelEventCommand {
   reason: string;
 }
 
-export interface SubmitEnrollmentRequestCommand {
-  programId: string;
-}
-
 export interface DecideEnrollmentRequestCommand {
   action: "Approved" | "Rejected";
   note: string | null;
 }
 
 export interface AssistedEnrollCommand {
-  programId: string;
   memberUserId: string;
 }
 
@@ -1097,7 +1092,6 @@ export class DepartmentWorkspace {
   async submitEnrollmentRequest(
     ctx: AuthorizationContext,
     programId: string,
-    _cmd: SubmitEnrollmentRequestCommand,
     correlationId: string | null
   ): Promise<EnrollmentRequestRow> {
     const program = await this.requireProgramFor(

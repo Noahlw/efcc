@@ -1345,7 +1345,6 @@ export async function handleCreateEnrollmentRequest(
     const row = await workspace.submitEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
-      { programId },
       requestId
     );
     return jsonResponse(201, { request: row }, requestId);
@@ -1392,17 +1391,17 @@ export async function handleDecideEnrollmentRequest(
   programId: string,
   requestId: string
 ): Promise<Response> {
-  const requestId2 = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId2);
+  const correlationId = crypto.randomUUID();
+  const auth = await requireActor(request, env, correlationId);
   if (auth instanceof Response) {
     return auth;
   }
   const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
   if (body === null) {
-    return validation(requestId2, "Body must be JSON.");
+    return validation(correlationId, "Body must be JSON.");
   }
   if (body.action !== "Approved" && body.action !== "Rejected") {
-    return validation(requestId2, "action must be Approved or Rejected.");
+    return validation(correlationId, "action must be Approved or Rejected.");
   }
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
@@ -1411,10 +1410,10 @@ export async function handleDecideEnrollmentRequest(
     requestId
   );
   if (!existing) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(correlationId, "Unknown enrollment request.");
   }
   if (existing.program_id !== programId) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(correlationId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.decideEnrollmentRequest(
@@ -1422,18 +1421,18 @@ export async function handleDecideEnrollmentRequest(
       programId,
       requestId,
       { action: body.action, note },
-      requestId2
+      correlationId
     );
-    return jsonResponse(200, { request: row }, requestId2);
+    return jsonResponse(200, { request: row }, correlationId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, correlationId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
     }
     throw error;
   }
@@ -1446,8 +1445,8 @@ export async function handleWithdrawEnrollmentRequest(
   programId: string,
   requestId: string
 ): Promise<Response> {
-  const requestId2 = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId2);
+  const correlationId = crypto.randomUUID();
+  const auth = await requireActor(request, env, correlationId);
   if (auth instanceof Response) {
     return auth;
   }
@@ -1457,25 +1456,25 @@ export async function handleWithdrawEnrollmentRequest(
     requestId
   );
   if (!existing) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(correlationId, "Unknown enrollment request.");
   }
   if (existing.program_id !== programId) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(correlationId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.withdrawEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
       requestId,
-      requestId2
+      correlationId
     );
-    return jsonResponse(200, { request: row }, requestId2);
+    return jsonResponse(200, { request: row }, correlationId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, correlationId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
     }
     throw error;
   }
@@ -1514,7 +1513,7 @@ export async function handleAssistedEnroll(
     const row = await workspace.assistedEnroll(
       ctxFrom(auth.account),
       programId,
-      { programId, memberUserId },
+      { memberUserId },
       requestId
     );
     return jsonResponse(201, { enrollment: row }, requestId);
