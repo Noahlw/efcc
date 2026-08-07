@@ -769,12 +769,8 @@ function AccountSettings({
                   type="text"
                   placeholder="—"
                   autoComplete="username"
-                  aria-describedby={
-                    viewport === "desktop"
-                      ? "prototype-settings-username-error"
-                      : undefined
-                  }
-                  aria-invalid={viewport === "desktop" ? true : undefined}
+                  aria-describedby="prototype-settings-username-error"
+                  aria-invalid
                   required
                 />
               </div>
@@ -800,12 +796,8 @@ function AccountSettings({
                   type="password"
                   placeholder="—"
                   autoComplete="current-password"
-                  aria-describedby={
-                    viewport === "desktop"
-                      ? "prototype-settings-current-error"
-                      : undefined
-                  }
-                  aria-invalid={viewport === "desktop" ? true : undefined}
+                   aria-describedby="prototype-settings-current-error"
+                   aria-invalid
                   required
                 />
               </div>
