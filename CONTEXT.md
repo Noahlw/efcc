@@ -32,8 +32,10 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Event Cancellation | 聚會取消 | A soft status change from Active to Cancelled. It never deletes the Event or Attendance history and is rejected once active Attendance exists. |
 | Attendance | 出席 | A member checking in at a specific event instance via QR scan or manual search. |
 | Attendance Void | 出席作廢 | A correction that changes an active Attendance record to `Voided` without deleting it. It requires an authorized actor and reason, is audited, leaves history intact, and permits a later new check-in. |
+| Guest Check-in | 訪客簽到 | A signed-out check-in by a non-member at a specific Event using a manual entry code or QR code, capturing a name and a normalized phone. It creates an Attendance row identified by `member_user_id IS NULL` and `guest_phone_normalized NOT NULL`; at most one active guest check-in per normalized phone per Event (partial unique index). Guests never see other attendees' data. |
 | Care Dashboard | 關懷儀表板 | A church-wide Staff/Admin-only view of member inactivity, contact details, program participation, attendance-derived activity, and pastoral follow-up context. Program Leader grants do not provide access. |
 | QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
+| Check-in Sheet | 簽到表 | The printable attendance roster for one Event, embedding each enrolled member's QR URL plus manual entry codes, exported from the Events surface for scan-free check-in. |
 | Login Username | 登入用戶名稱 | The mutable login identifier displayed to and chosen by an account holder. It may change without changing the established User_ID or QR identity. D1 stores the display value plus a trimmed, lowercased `username_normalized` key; that normalized key is unique across active accounts and registration reservations, including concurrent changes. A username change revokes all refresh sessions and requires sign-in again. |
 | Password Credential | 密碼憑證 | The current user-selected login secret after legacy upgrade or new registration. Only a salted PBKDF2 hash is stored. A normal self-service password change requires the current password, revokes all refresh sessions, requires sign-in again, and never changes User_ID. |
 | PIN (legacy) | PIN 碼 | 4-digit numeric credential used with username for member login on the legacy Apps Script surface; in D1 it survives only as the one-time migration proof. |
@@ -60,7 +62,7 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
 | Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
-| dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the sole local E2E target. |
+| dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the default local E2E target for the programs-d1 and attendance-d1 suites (live-ui targets the efcc-auth-* acceptance host). |
 | E2E acceptance |  | Deterministic Playwright run against the dev-testing worker asserting observable DOM state + same-origin server responses; visual evidence via trace/screenshot artifacts. |
 
 ---

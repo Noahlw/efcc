@@ -415,6 +415,40 @@ Known non-failing output: root recovery tests intentionally log simulated render
 | desktop-1280x720 | invalid login surfaces an observable error with no session | PASS |  |
 | desktop-1280x720 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
 
+- Generated: 2026-08-07T17:19:36.115Z (PRG-05 #201 live-ui extension run)
+- Target: https://efcc-auth-test.efcc-ggc.workers.dev/
+- Command: `AUTH_UI_TARGET_URL=https://efcc-auth-test.efcc-ggc.workers.dev PROGRAMS_ADMIN_USERNAME=E2E_admin PROGRAMS_ADMIN_CREDENTIAL="E2E_admin!dev" ... pnpm exec playwright test --config=tests/e2e/live-ui.config.ts`
+- Result: 26/26 PASS (13 tests × phone-375x667 + desktop-1280x720). The two new mutation flows leave fixtures pristine: the submitted registration request is rejected (removed from the pending queue) and the admin credential is rotated to `E2E_admin!devRot` and changed back, verified by the admin-login tests that follow in the same run.
+
+| Project | Viewport test | Result | Notes |
+|----------|-----------|--------|--------|
+| phone-375x667 | admin login renders the shared shell and Profile identity | PASS |  |
+| phone-375x667 | staff login renders the shell and Profile identity | PASS |  |
+| phone-375x667 | member login renders the shell and Profile identity | PASS |  |
+| phone-375x667 | member shell omits unauthorized sections (role-gated nav) | PASS |  |
+| phone-375x667 | member direct links render the shared forbidden state | PASS |  |
+| phone-375x667 | registration form renders on the public /register surface | PASS |  |
+| phone-375x667 | Account Settings surface renders credential-change fields | PASS |  |
+| phone-375x667 | approval queue renders for Admin (role-gated) | PASS |  |
+| phone-375x667 | approval queue is forbidden for Member (role-gated) | PASS |  |
+| phone-375x667 | invalid login surfaces an observable error with no session | PASS |  |
+| phone-375x667 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
+| phone-375x667 | registration submit creates a new request the admin queue can reject | PASS | mutation case (PRG-05 #201) |
+| phone-375x667 | admin password rotation revokes the session and restores the fixture | PASS | mutation case (PRG-05 #201) |
+| desktop-1280x720 | admin login renders the shared shell and Profile identity | PASS |  |
+| desktop-1280x720 | staff login renders the shell and Profile identity | PASS |  |
+| desktop-1280x720 | member login renders the shell and Profile identity | PASS |  |
+| desktop-1280x720 | member shell omits unauthorized sections (role-gated nav) | PASS |  |
+| desktop-1280x720 | member direct links render the shared forbidden state | PASS |  |
+| desktop-1280x720 | registration form renders on the public /register surface | PASS |  |
+| desktop-1280x720 | Account Settings surface renders credential-change fields | PASS |  |
+| desktop-1280x720 | approval queue renders for Admin (role-gated) | PASS |  |
+| desktop-1280x720 | approval queue is forbidden for Member (role-gated) | PASS |  |
+| desktop-1280x720 | invalid login surfaces an observable error with no session | PASS |  |
+| desktop-1280x720 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
+| desktop-1280x720 | registration submit creates a new request the admin queue can reject | PASS | mutation case (PRG-05 #201) |
+| desktop-1280x720 | admin password rotation revokes the session and restores the fixture | PASS | mutation case (PRG-05 #201) |
+
 ## Executed results — D1 auth
 
 - Generated: 2026-08-07T07:40:58.870Z

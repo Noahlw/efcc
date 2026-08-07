@@ -91,12 +91,14 @@ async function main(): Promise<void> {
 
   if (reset) {
     // Standing dev-testing D1 accumulates E2E_ rows across runs (departments,
-    // programs, leaders, requests, enrollments, events). Delete children
-    // before parents (FKs are ON DELETE RESTRICT); audit_events carries no
-    // FK and is left as history.
+    // programs, leaders, requests, enrollments, events, registration
+    // requests). Delete children before parents (FKs are ON DELETE RESTRICT);
+    // audit_events carries no FK and is left as history. registration_requests
+    // has no FK and is deleted last.
     process.stdout.write(
       [
         "-- EFCC dev-testing D1 reset (PRG-05 #224). Deletes all E2E_ rows.",
+        "-- Includes registration requests (no FK, deleted last).",
         "-- Run before each suite run so consecutive runs stay green:",
         "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
         "DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%'));",
@@ -109,6 +111,7 @@ async function main(): Promise<void> {
         "DELETE FROM programs WHERE name LIKE 'E2E_%';",
         "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code LIKE 'E2E_%' OR name LIKE 'E2E_%');",
         "DELETE FROM departments WHERE code LIKE 'E2E_%' OR name LIKE 'E2E_%';",
+        "DELETE FROM registration_requests WHERE username LIKE 'E2E_%';",
         "",
       ].join("\n")
     );
