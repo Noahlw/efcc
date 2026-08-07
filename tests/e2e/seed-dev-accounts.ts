@@ -39,7 +39,10 @@ import {
   hashCredential,
   normalizeUsername,
 } from "../../web/lib/auth/credentials";
-import { DEV_ACCOUNTS } from "./dev-fixtures";
+import {
+  DEV_ACCOUNTS,
+  type DevFixtureAccount,
+} from "./dev-fixtures";
 
 const FIXTURE_NAMES: Record<string, string> = {
   "U-E2E-ADMIN": "E2E Admin",
@@ -52,7 +55,10 @@ function sqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-async function buildInsert(account: DevAccount, now: number): Promise<string> {
+async function buildInsert(
+  account: DevFixtureAccount,
+  now: number
+): Promise<string> {
   const credentialHash = await hashCredential(account.credential);
   // Deterministic fixture QR value (non-secret), mirroring the pattern used
   // by the acceptance D1 seed so the Profile surface renders its QR square.
