@@ -19,6 +19,8 @@ type BarcodeDetectorConstructor = new (options: { formats: string[] }) => {
   detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
 };
 
+type StatusTone = "info" | "success" | "error";
+
 function eventLabel(event: AttendanceEvent): string {
   return `${event.program_name} · ${new Date(event.starts_at).toLocaleString("zh-HK")}`;
 }
@@ -56,18 +58,25 @@ export const AttendancePanel = ({
   const [selected, setSelected] = useState<AttendanceEvent | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [tone, setTone] = useState<StatusTone>("info");
   const [cameraOpen, setCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  /** Status + tone are updated together on every feedback path. */
+  const showStatus = (message: string, nextTone: StatusTone = "info") => {
+    setStatus(message);
+    setTone(nextTone);
+  };
+
   async function resolve(value: string, fromQr = false) {
     const entry = entryFromValue(value);
     if (!entry.value) {
-      setStatus(COPY.attendance.inputLabel);
+      showStatus(COPY.attendance.inputLabel);
       return;
     }
     setBusy(true);
-    setStatus(COPY.attendance.resolving);
+    showStatus(COPY.attendance.resolving);
     try {
       // Bare typed values are ambiguous (manual code vs Program token): send
       // them as `entry` and let the server disambiguate. URL-sourced values
@@ -79,17 +88,19 @@ export const AttendancePanel = ({
       setEvents(result.events);
       setSelected(result.events.length === 1 ? result.events[0] : null);
       const message =
-        result.events.length === 1
-          ? eventLabel(result.events[0])
-          : COPY.attendance.chooseEvent;
-      setStatus(message);
+        result.events.length === 0
+          ? COPY.attendance.noEvents
+          : result.events.length === 1
+            ? eventLabel(result.events[0])
+            : COPY.attendance.chooseEvent;
+      showStatus(message);
       announce(message);
     } catch (error) {
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
-      setStatus(message);
+      showStatus(message, "error");
       announce(message);
     } finally {
       setBusy(false);
@@ -134,7 +145,7 @@ export const AttendancePanel = ({
       window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
     ).BarcodeDetector;
     if (!detector) {
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
       return;
     }
     const video = videoRef.current;
@@ -172,7 +183,7 @@ export const AttendancePanel = ({
       window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
     ).BarcodeDetector;
     if (!detector || !navigator.mediaDevices?.getUserMedia) {
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
       return;
     }
     try {
@@ -183,13 +194,13 @@ export const AttendancePanel = ({
       setCameraOpen(true);
     } catch {
       stopCamera();
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
     }
   }
 
   async function submit() {
     if (!selected) {
-      setStatus(COPY.attendance.chooseEvent);
+      showStatus(COPY.attendance.chooseEvent);
       return;
     }
     setBusy(true);
@@ -217,14 +228,15 @@ export const AttendancePanel = ({
             ? COPY.attendance.guestDuplicate
             : COPY.attendance.duplicate
           : COPY.attendance.success;
-      setStatus(message);
+      // Already-done outcomes are notices, not failures: neutral tone.
+      showStatus(message, result.outcome === "duplicate" ? "info" : "success");
       announce(message);
     } catch (error) {
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
-      setStatus(message);
+      showStatus(message, "error");
       announce(message);
     } finally {
       setBusy(false);
@@ -235,12 +247,9 @@ export const AttendancePanel = ({
     <main className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
         <h1 id="attendance-title" className={styles.title}>
-          {title ??
-            (guest ? COPY.attendance.guestTitle : COPY.sections.scanner)}
+          {title ?? (guest ? COPY.attendance.guestTitle : COPY.sections.scanner)}
         </h1>
-        <p className={styles.lead}>
-          {guest ? COPY.attendance.signedOutNote : COPY.sections.scanner}
-        </p>
+        {guest && <p className={styles.lead}>{COPY.attendance.signedOutNote}</p>}
         <button
           className={styles.button}
           type="button"
@@ -249,7 +258,7 @@ export const AttendancePanel = ({
           {cameraOpen ? COPY.attendance.cameraRetry : COPY.attendance.camera}
         </button>
         {cameraOpen && (
-          <>
+          <div className={styles.group}>
             <video
               ref={videoRef}
               className={styles.video}
@@ -258,23 +267,25 @@ export const AttendancePanel = ({
               aria-label={COPY.attendance.camera}
             />
             <button
-              className={styles.button}
+              className={styles.buttonSecondary}
               type="button"
               onClick={stopCamera}
             >
               {COPY.attendance.cameraClose}
             </button>
-          </>
+          </div>
         )}
         <form
-          className={styles.form}
+          className={styles.inputRow}
           onSubmit={(event) => {
             event.preventDefault();
             void resolve(input);
           }}
         >
           <label className={styles.field} htmlFor="attendance-code">
-            {COPY.attendance.inputLabel}
+            <span className={styles.fieldLabel}>
+              {COPY.attendance.inputLabel}
+            </span>
             <input
               id="attendance-code"
               className={styles.input}
@@ -284,13 +295,20 @@ export const AttendancePanel = ({
               autoComplete="off"
             />
           </label>
-          <button className={styles.button} type="submit" disabled={busy}>
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={busy}
+            aria-busy={busy}
+          >
             {busy ? COPY.attendance.resolving : COPY.attendance.resolve}
           </button>
         </form>
         {events.length > 1 && (
-          <div>
-            <h2>{COPY.attendance.chooseEvent}</h2>
+          <div className={styles.group} aria-labelledby="choose-event-title">
+            <h2 id="choose-event-title" className={styles.sectionTitle}>
+              {COPY.attendance.chooseEvent}
+            </h2>
             <ul className={styles.events}>
               {events.map((event) => (
                 <li key={event.event_id}>
@@ -311,28 +329,43 @@ export const AttendancePanel = ({
           </div>
         )}
         {guest && selected && (
-          <div className={styles.fields}>
-            <label className={styles.field} htmlFor="guest-name">
-              {COPY.attendance.guestName}
-              <input
-                id="guest-name"
-                className={styles.input}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
-              />
-            </label>
-            <label className={styles.field} htmlFor="guest-phone">
-              {COPY.attendance.guestPhone}
-              <input
-                id="guest-phone"
-                className={styles.input}
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                autoComplete="tel"
-                inputMode="tel"
-              />
-            </label>
+          <div className={styles.group} aria-labelledby="guest-fields-title">
+            <h2 id="guest-fields-title" className={styles.sectionTitle}>
+              {COPY.attendance.guestFields}
+            </h2>
+            <div className={styles.fields}>
+              <label className={styles.field} htmlFor="guest-name">
+                <span className={styles.fieldLabel}>
+                  {COPY.attendance.guestName}
+                </span>
+                <input
+                  id="guest-name"
+                  className={styles.input}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </label>
+              <label className={styles.field} htmlFor="guest-phone">
+                <span className={styles.fieldLabel}>
+                  {COPY.attendance.guestPhone}
+                </span>
+                <input
+                  id="guest-phone"
+                  className={styles.input}
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  autoComplete="tel"
+                  inputMode="tel"
+                  required
+                  aria-describedby="guest-phone-hint"
+                />
+                <span id="guest-phone-hint" className={styles.fieldHint}>
+                  {COPY.attendance.guestPhoneHint}
+                </span>
+              </label>
+            </div>
           </div>
         )}
         {selected && (
@@ -345,16 +378,22 @@ export const AttendancePanel = ({
             className={styles.button}
             type="button"
             disabled={busy}
+            aria-busy={busy}
             onClick={() => void submit()}
           >
             {guest ? COPY.attendance.guestSubmit : COPY.attendance.memberSubmit}
           </button>
         )}
-        <output className={styles.status} aria-live="polite">
+        <output
+          className={styles.status}
+          data-tone={status ? tone : undefined}
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {status}
         </output>
         {guest && (
-          <>
+          <div className={styles.group}>
             <a
               className={styles.back}
               href="/"
@@ -373,7 +412,7 @@ export const AttendancePanel = ({
             <a className={styles.back} href="/">
               {COPY.nav.backToHome}
             </a>
-          </>
+          </div>
         )}
       </section>
     </main>

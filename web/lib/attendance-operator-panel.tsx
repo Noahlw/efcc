@@ -25,6 +25,8 @@ type BarcodeDetectorConstructor = new (options: { formats: string[] }) => {
   detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
 };
 
+type StatusTone = "info" | "success" | "error";
+
 export const AttendanceOperatorPanel = () => {
   const [eventId, setEventId] = useState("");
   const [chooserEvents, setChooserEvents] = useState<AttendanceEvent[]>([]);
@@ -38,6 +40,8 @@ export const AttendanceOperatorPanel = () => {
   const [correctionReason, setCorrectionReason] = useState("");
   const [voidReason, setVoidReason] = useState("");
   const [status, setStatus] = useState("");
+  const [tone, setTone] = useState<StatusTone>("info");
+  const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -51,36 +55,52 @@ export const AttendanceOperatorPanel = () => {
     []
   );
 
+  /** Status + tone are updated together on every feedback path. */
+  const showStatus = (message: string, nextTone: StatusTone = "info") => {
+    setStatus(message);
+    setTone(nextTone);
+  };
+
   function showError(error: unknown) {
     const message =
       error instanceof RpcError
         ? errorCopyFor(error.problem.code, error.problem.detail)
         : COPY.error.networkError;
-    setStatus(message);
+    showStatus(message, "error");
     announce(message);
   }
 
   async function loadRoster(eventIdInput = eventId) {
     if (!eventIdInput.trim()) {
-      setStatus(COPY.attendance.eventId);
+      showStatus(COPY.attendance.eventId);
       return;
     }
+    setBusy(true);
     try {
       const result = await listAttendanceRoster(eventIdInput.trim());
       setEvent(result.event);
       setRows(result.attendances);
-      setStatus(`${result.attendances.length} ${COPY.attendance.roster}`);
+      showStatus(`${result.attendances.length} ${COPY.attendance.roster}`);
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function searchMembers() {
+    setBusy(true);
     try {
       const result = await searchAttendanceMembers(eventId.trim(), query);
       setMembers(result.members);
+      if (result.members.length === 0) {
+        showStatus(COPY.attendance.memberSearchEmpty);
+        announce(COPY.attendance.memberSearchEmpty);
+      }
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -88,12 +108,15 @@ export const AttendanceOperatorPanel = () => {
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
+    setBusy(true);
     try {
       await assistedCheckIn(eventId.trim(), member.user_id, method);
-      setStatus(COPY.attendance.success);
+      showStatus(COPY.attendance.success, "success");
       await loadRoster();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -104,9 +127,8 @@ export const AttendanceOperatorPanel = () => {
     try {
       const result = await searchAttendanceMembers(eventId.trim(), rawValue);
       if (result.members.length !== 1) {
-        const message = COPY.attendance.memberSearch;
-        setStatus(message);
-        announce(message);
+        showStatus(COPY.attendance.memberSearchEmpty);
+        announce(COPY.attendance.memberSearchEmpty);
         return;
       }
       await checkIn(result.members[0], "leader_qr_scan");
@@ -142,15 +164,18 @@ export const AttendanceOperatorPanel = () => {
 
   async function voidRow(row: AttendanceRow) {
     if (!voidReason.trim()) {
-      setStatus(COPY.attendance.voidReason);
+      showStatus(COPY.attendance.voidReason);
       return;
     }
+    setBusy(true);
     try {
       await voidAttendance(row.attendance_id, voidReason);
       setVoidReason("");
       await loadRoster();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -158,6 +183,7 @@ export const AttendanceOperatorPanel = () => {
     if (!correctionId) {
       return;
     }
+    setBusy(true);
     try {
       await correctGuestAttendance(correctionId, {
         name: correctionName,
@@ -168,6 +194,8 @@ export const AttendanceOperatorPanel = () => {
       await loadRoster();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -184,7 +212,7 @@ export const AttendanceOperatorPanel = () => {
       window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
     ).BarcodeDetector;
     if (!detector || !navigator.mediaDevices?.getUserMedia) {
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
       return;
     }
     try {
@@ -195,7 +223,7 @@ export const AttendanceOperatorPanel = () => {
       setCameraOpen(true);
     } catch {
       stopCamera();
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
     }
   }
 
@@ -207,7 +235,7 @@ export const AttendanceOperatorPanel = () => {
       window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
     ).BarcodeDetector;
     if (!detector) {
-      setStatus(COPY.attendance.cameraUnavailable);
+      showStatus(COPY.attendance.cameraUnavailable, "error");
       return;
     }
     const video = videoRef.current;
@@ -245,10 +273,13 @@ export const AttendanceOperatorPanel = () => {
         <h1 id="operator-title" className={styles.title}>
           {COPY.sections.events}
         </h1>
+        <p className={styles.lead}>{COPY.attendance.operatorTitle}</p>
         {chooserEvents.length > 0 && (
           <div className={styles.form}>
             <label className={styles.field} htmlFor="event-chooser">
-              {COPY.attendance.chooseEvent}
+              <span className={styles.fieldLabel}>
+                {COPY.attendance.chooseEvent}
+              </span>
               <select
                 id="event-chooser"
                 className={styles.input}
@@ -274,7 +305,7 @@ export const AttendanceOperatorPanel = () => {
         )}
         <div className={styles.form}>
           <label className={styles.field} htmlFor="event-id">
-            {COPY.attendance.eventId}
+            <span className={styles.fieldLabel}>{COPY.attendance.eventId}</span>
             <input
               id="event-id"
               className={styles.input}
@@ -283,8 +314,9 @@ export const AttendanceOperatorPanel = () => {
             />
           </label>
           <button
-            className={styles.button}
+            className={styles.buttonSecondary}
             type="button"
+            disabled={busy}
             onClick={() => void loadRoster()}
           >
             {COPY.attendance.roster}
@@ -297,25 +329,28 @@ export const AttendanceOperatorPanel = () => {
           </p>
         )}
         {event && (
-          <div className={styles.form}>
-            <button
-              className={styles.button}
-              type="button"
-              onClick={() => void startCamera()}
-            >
-              {cameraOpen
-                ? COPY.attendance.cameraRetry
-                : COPY.attendance.camera}
-            </button>
-            {cameraOpen && (
+          <div className={styles.group}>
+            <div className={styles.actionsRow}>
               <button
                 className={styles.button}
                 type="button"
-                onClick={stopCamera}
+                disabled={busy}
+                onClick={() => void startCamera()}
               >
-                {COPY.attendance.cameraClose}
+                {cameraOpen
+                  ? COPY.attendance.cameraRetry
+                  : COPY.attendance.camera}
               </button>
-            )}
+              {cameraOpen && (
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={stopCamera}
+                >
+                  {COPY.attendance.cameraClose}
+                </button>
+              )}
+            </div>
           </div>
         )}
         {cameraOpen && (
@@ -327,60 +362,82 @@ export const AttendanceOperatorPanel = () => {
             aria-label={COPY.attendance.camera}
           />
         )}
-        <div className={styles.form}>
-          <label className={styles.field} htmlFor="member-search">
-            {COPY.attendance.memberSearch}
-            <input
-              id="member-search"
-              className={styles.input}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => void searchMembers()}
-          >
-            {COPY.attendance.search}
-          </button>
+        <div className={styles.group}>
+          <div className={styles.inputRow}>
+            <label className={styles.field} htmlFor="member-search">
+              <span className={styles.fieldLabel}>
+                {COPY.attendance.memberSearch}
+              </span>
+              <input
+                id="member-search"
+                className={styles.input}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <button
+              className={styles.buttonSecondary}
+              type="button"
+              disabled={busy}
+              onClick={() => void searchMembers()}
+            >
+              {COPY.attendance.search}
+            </button>
+          </div>
+          {members.length > 0 && (
+            <ul className={styles.events}>
+              {members.map((member) => (
+                <li key={member.user_id}>
+                  <button
+                    className={styles.eventButton}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void checkIn(member)}
+                  >
+                    <strong>{member.name}</strong>
+                    <span className={styles.eventMeta}>
+                      {member.phone ?? member.user_id}
+                    </span>
+                    <span className={styles.rowAction}>
+                      {COPY.attendance.checkInMember}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        {members.length > 0 && (
-          <ul className={styles.events}>
-            {members.map((member) => (
-              <li key={member.user_id}>
-                <button
-                  className={styles.eventButton}
-                  type="button"
-                  onClick={() => void checkIn(member)}
-                >
-                  <strong>{member.name}</strong>
-                  <span className={styles.eventMeta}>
-                    {member.phone ?? member.user_id}
-                  </span>
-                  <span>{COPY.attendance.checkInMember}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
         {rows.length > 0 && (
-          <div className={styles.fields}>
-            <h2>{COPY.attendance.roster}</h2>
+          <div className={styles.group}>
+            <h2 className={styles.sectionTitle}>{COPY.attendance.roster}</h2>
             {rows.map((row) => (
-              <article className={styles.card} key={row.attendance_id}>
-                <strong>{row.guest_name ?? row.member_user_id}</strong>
+              <article className={styles.rowCard} key={row.attendance_id}>
+                <div className={styles.actionsRow}>
+                  <strong className={styles.rowName}>
+                    {row.guest_name ?? row.member_user_id}
+                  </strong>
+                  <span
+                    className={
+                      row.status === "Active"
+                        ? `${styles.pill} ${styles.pillActive}`
+                        : `${styles.pill} ${styles.pillMuted}`
+                    }
+                  >
+                    {row.status}
+                  </span>
+                </div>
                 <span className={styles.eventMeta}>
                   {row.guest_phone ?? row.method}
                 </span>
-                <span>{row.status}</span>
                 {row.status === "Active" && (
                   <>
                     <label
                       className={styles.field}
                       htmlFor={`void-${row.attendance_id}`}
                     >
-                      {COPY.attendance.voidReason}
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.voidReason}
+                      </span>
                       <input
                         id={`void-${row.attendance_id}`}
                         className={styles.input}
@@ -388,32 +445,38 @@ export const AttendanceOperatorPanel = () => {
                         onChange={(e) => setVoidReason(e.target.value)}
                       />
                     </label>
-                    <button
-                      className={styles.button}
-                      type="button"
-                      onClick={() => void voidRow(row)}
-                    >
-                      {COPY.attendance.void}
-                    </button>
-                    {row.member_user_id === null && (
+                    <div className={styles.actionsRow}>
                       <button
-                        className={styles.button}
+                        className={styles.buttonDanger}
                         type="button"
-                        onClick={() => {
-                          setCorrectionId(row.attendance_id);
-                          setCorrectionName(row.guest_name ?? "");
-                          setCorrectionPhone(row.guest_phone ?? "");
-                        }}
+                        disabled={busy}
+                        onClick={() => void voidRow(row)}
                       >
-                        {COPY.attendance.correctGuest}
+                        {COPY.attendance.void}
                       </button>
-                    )}
+                      {row.member_user_id === null && (
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setCorrectionId(row.attendance_id);
+                            setCorrectionName(row.guest_name ?? "");
+                            setCorrectionPhone(row.guest_phone ?? "");
+                          }}
+                        >
+                          {COPY.attendance.correctGuest}
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
                 {correctionId === row.attendance_id && (
-                  <div className={styles.fields}>
+                  <div className={styles.correctionPanel}>
                     <label className={styles.field} htmlFor="correction-name">
-                      {COPY.attendance.guestName}
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.guestName}
+                      </span>
                       <input
                         id="correction-name"
                         className={styles.input}
@@ -422,7 +485,9 @@ export const AttendanceOperatorPanel = () => {
                       />
                     </label>
                     <label className={styles.field} htmlFor="correction-phone">
-                      {COPY.attendance.guestPhone}
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.guestPhone}
+                      </span>
                       <input
                         id="correction-phone"
                         className={styles.input}
@@ -430,8 +495,13 @@ export const AttendanceOperatorPanel = () => {
                         onChange={(e) => setCorrectionPhone(e.target.value)}
                       />
                     </label>
-                    <label className={styles.field} htmlFor="correction-reason">
-                      {COPY.attendance.correctionReason}
+                    <label
+                      className={styles.field}
+                      htmlFor="correction-reason"
+                    >
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.correctionReason}
+                      </span>
                       <input
                         id="correction-reason"
                         className={styles.input}
@@ -442,6 +512,7 @@ export const AttendanceOperatorPanel = () => {
                     <button
                       className={styles.button}
                       type="button"
+                      disabled={busy}
                       onClick={() => void saveCorrection()}
                     >
                       {COPY.attendance.saveCorrection}
@@ -454,14 +525,19 @@ export const AttendanceOperatorPanel = () => {
         )}
         {event && (
           <button
-            className={styles.button}
+            className={styles.buttonSecondary}
             type="button"
             onClick={() => window.print()}
           >
             {COPY.attendance.printSheet}
           </button>
         )}
-        <output className={styles.status} aria-live="polite">
+        <output
+          className={styles.status}
+          data-tone={status ? tone : undefined}
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {status}
         </output>
       </section>
