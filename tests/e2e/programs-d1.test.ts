@@ -40,23 +40,23 @@ const COPY = {
   approve: "核准",
   enrollmentActive: "已加入",
   eventActive: "進行",
-  leaderUserId: "成員 ID",
+  leaderUserId: "選擇會友",
   assignLeader: "新增負責人",
   revokeLeader: "移除負責人",
   leaderAssignedNotice: "已新增事工負責人。",
   leaderRevokedNotice: "已移除事工負責人。",
   noLeaders: "目前沒有事工負責人。",
-  noRules: "尚未設定時間表。新增時間表後可產生聚會。",
+  noRules: "尚未設定時間表。",
   eventsEmpty: "目前沒有聚會。",
   programDetails: "查看課程詳情",
   programOverview: "概覽",
   programEvents: "聚會與時間表",
   programEnrollment: "報名",
   programLeaders: "事工負責人",
-  noDepartments: "目前沒有部門。",
+  noDepartments: "目前沒有部門。新增部門後，就可以開始建立課程。",
   ruleWeekly: "每週",
   confirmRevoke: "確定移除",
-  conflict: "資料衝突，請重新整理後再試。",
+  enrollmentDuplicate: "此會友已報名此課程。",
 };
 
 function required(name: string, value: string | undefined): string {
@@ -362,6 +362,98 @@ test.describe("PRG-05 deployed programs proof", () => {
     await memberContext.close();
   });
 
+  test("E2E-06b server contract: department create without lifecycle is a 422 VALIDATION", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const res = await page.request.post("/api/v1/programs/departments", {
+      data: { code: fresh("E2E_STRICT"), name: "E2E Strict Dept" },
+    });
+    expect(res.status()).toBe(422);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe("VALIDATION");
+  });
+
+  test("E2E-06c server contract: repeat enrollment request is a 409 ENROLLMENT_DUPLICATE", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programId } = await setupProgram(page);
+    const memberContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+    });
+    const memberPage = await memberContext.newPage();
+    await loginAs(
+      memberPage,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const first = await memberPage.request.post(
+      `/api/v1/programs/${programId}/enrollment-requests`,
+      { data: {} }
+    );
+    expect(first.status()).toBe(201);
+    const second = await memberPage.request.post(
+      `/api/v1/programs/${programId}/enrollment-requests`,
+      { data: {} }
+    );
+    expect(second.status()).toBe(409);
+    const body = (await second.json()) as { code?: string };
+    expect(body.code).toBe("ENROLLMENT_DUPLICATE");
+    await memberContext.close();
+  });
+
+  test("E2E-06d server contract: repeat approve is a quiet 200 (ADR-0027 DUPLICATE)", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programId } = await setupProgram(page);
+    const memberContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+    });
+    const memberPage = await memberContext.newPage();
+    await loginAs(
+      memberPage,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const submit = await memberPage.request.post(
+      `/api/v1/programs/${programId}/enrollment-requests`,
+      { data: {} }
+    );
+    expect(submit.status()).toBe(201);
+    const requestId = (
+      (await submit.json()) as {
+        data: { request: { request_id: string } };
+      }
+    ).data.request.request_id;
+    const approve = await page.request.post(
+      `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+      { data: { action: "Approved" } }
+    );
+    expect(approve.status()).toBe(200);
+    const repeat = await page.request.post(
+      `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+      { data: { action: "Approved" } }
+    );
+    expect(repeat.status()).toBe(200);
+    await memberContext.close();
+  });
+
   test("E2E-07 member duplicate request surfaces conflict; member API forbid is server-side (C2, C4)", async ({
     page,
     browser,
@@ -416,7 +508,9 @@ test.describe("PRG-05 deployed programs proof", () => {
 
     const secondItem = innermostLiWith(secondPage, programName);
     await secondItem.getByRole("button", { name: COPY.requestEnroll }).click();
-    await expect(secondItem.getByRole("alert")).toContainText(COPY.conflict);
+    await expect(secondItem.getByRole("alert")).toContainText(
+      COPY.enrollmentDuplicate
+    );
 
     const duplicate = await secondContext.request.post(
       `/api/v1/programs/${programId}/enrollment-requests`,
