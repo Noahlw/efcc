@@ -972,6 +972,31 @@ describe("Shell", () => {
       expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
     });
+
+    test("a cookie session with the demo user ID still calls the auth API", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      setAuthHint();
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-local-id",
+            data: { user: { ...PUBLIC_USER, userId: "local-noah" } },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(authCalls).toContain("/api/v1/auth/logout");
+    });
   });
 
   describe(ProfilePage, () => {

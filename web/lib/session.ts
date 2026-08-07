@@ -110,7 +110,7 @@ export function buildLocalDemoBootstrap(): Bootstrap {
 
 /** Keep local-demo sign-out from calling the production auth API. */
 export function isLocalDemoBootstrap(bootstrap: Bootstrap): boolean {
-  return localDemoEnabled() && bootstrap.profile.userId === "local-noah";
+  return hasLocalDemoAuth() && bootstrap.profile.userId === "local-noah";
 }
 
 /**
