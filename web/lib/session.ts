@@ -90,9 +90,6 @@ async function currentUser(): Promise<{
  * same codes as the auth surface (AUTH_REQUIRED = expired/revoked refresh).
  */
 export async function restoreBootstrap(): Promise<Bootstrap | null> {
-  if (hasLocalDemoAuth()) {
-    return buildLocalDemoBootstrap();
-  }
   if (!hasAuthHint()) {
     clearAuthHint();
     return null;
