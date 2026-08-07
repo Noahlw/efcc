@@ -93,19 +93,48 @@ async function buildInsert(account: DevAccount, now: number): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  let reset = false;
   try {
-    parseArgs({
+    const parsed = parseArgs({
       options: {
         "print-only": { type: "boolean", default: false },
+        reset: { type: "boolean", default: false },
       },
       strict: true,
       allowPositionals: false,
     });
+    reset = parsed.values.reset === true;
   } catch (error) {
     process.stderr.write(
       `error: ${error instanceof Error ? error.message : String(error)}\n`
     );
     process.exit(1);
+  }
+
+  if (reset) {
+    // Standing dev-testing D1 accumulates E2E_ rows across runs (departments,
+    // programs, leaders, requests, enrollments, events). Delete children
+    // before parents (FKs are ON DELETE RESTRICT); audit_events carries no
+    // FK and is left as history.
+    process.stdout.write(
+      [
+        "-- EFCC dev-testing D1 reset (PRG-05 #224). Deletes all E2E_ rows.",
+        "-- Run before each suite run so consecutive runs stay green:",
+        "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
+        "DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%'));",
+        "DELETE FROM program_schedule_rules WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%');",
+        "DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%'));",
+        "DELETE FROM events WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%');",
+        "DELETE FROM enrollments WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%');",
+        "DELETE FROM enrollment_requests WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%');",
+        "DELETE FROM program_leaders WHERE program_id IN (SELECT program_id FROM programs WHERE name LIKE 'E2E_%');",
+        "DELETE FROM programs WHERE name LIKE 'E2E_%';",
+        "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code LIKE 'E2E_%' OR name LIKE 'E2E_%');",
+        "DELETE FROM departments WHERE code LIKE 'E2E_%' OR name LIKE 'E2E_%';",
+        "",
+      ].join("\n")
+    );
+    return;
   }
 
   const now = Date.now();

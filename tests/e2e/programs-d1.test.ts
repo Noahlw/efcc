@@ -85,9 +85,12 @@ function fresh(prefix: string): string {
 // unique per level (dept code only in the dept row, program name only in the
 // program row), so a direct filter is unambiguous.
 function innermostLiWith(page: Page, text: string) {
+  // The dept <li> nests the program <li>s (leader view), so the raw filter
+  // can match both; the LAST match in document order is the innermost row.
   return page
     .locator("li")
-    .filter({ has: page.getByText(text, { exact: true }) });
+    .filter({ has: page.getByText(text, { exact: true }) })
+    .last();
 }
 
 async function loginAs(
@@ -365,13 +368,12 @@ test.describe("PRG-05 deployed programs proof", () => {
 
     await memberPage.reload();
     await openDepartment(memberPage, deptCode);
+    const reloadedItem = innermostLiWith(memberPage, programName);
+    await openProgramTask(reloadedItem, COPY.programEnrollment);
     await expect(
-      innermostLiWith(memberPage, programName).getByText(
-        COPY.enrollmentActive,
-        {
-          exact: true,
-        }
-      )
+      reloadedItem.getByText(COPY.enrollmentActive, {
+        exact: true,
+      })
     ).toBeVisible();
     await memberContext.close();
   });
@@ -637,7 +639,9 @@ test.describe("PRG-05 deployed programs proof", () => {
       `/api/v1/programs/${programId}/leaders`,
       {
         data: {
-          user_id: required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+          // The delegation target must be an immutable user_id; the seeded
+          // fixtures fix these ids (see seed-dev-accounts.ts).
+          user_id: "U-E2E-ADMIN",
         },
       }
     );
