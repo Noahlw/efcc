@@ -287,6 +287,27 @@ export async function handleCreateDepartment(
       requestId
     );
   }
+  if (
+    typeof body.lifecycle !== "string" ||
+    !isDepartmentLifecycle(body.lifecycle)
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "lifecycle must be Draft, PendingDevelopment, Active, or Archived.",
+      requestId
+    );
+  }
+  if (body.display_order !== undefined && typeof body.display_order !== "number") {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "display_order must be a number.",
+      requestId
+    );
+  }
 
   const { workspace } = await getModule(env);
   try {
@@ -297,9 +318,7 @@ export async function handleCreateDepartment(
         name,
         description:
           typeof body.description === "string" ? body.description : undefined,
-        lifecycle: isDepartmentLifecycle(body.lifecycle)
-          ? body.lifecycle
-          : "Draft",
+        lifecycle: body.lifecycle,
         display_order:
           typeof body.display_order === "number" ? body.display_order : 0,
       },

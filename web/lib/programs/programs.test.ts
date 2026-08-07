@@ -129,7 +129,7 @@ async function createDepartment(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body,
+      body: { ...body, lifecycle: body.lifecycle ?? "Draft" },
     }),
     testEnv()
   );
@@ -307,13 +307,89 @@ describe("PRG-01: departments", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
           "Content-Type": "application/json",
         },
-        body: { code: "DUPLICATE", name: "Second" },
+        body: { code: "DUPLICATE", name: "Second", lifecycle: "Draft" },
       }),
       testEnv()
     );
     assert.strictEqual(res.status, 409);
     const body = await problemOf(res);
     assert.strictEqual(body.code, "CONFLICT");
+  });
+
+  test("department create rejects invalid or missing lifecycle and bad display_order", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+
+    const invalidLifecycle = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { code: "STRICT-DEPT-1", name: "Strict Dept", lifecycle: "Published" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(invalidLifecycle.status, 422);
+    const invalidLifecycleBody = await problemOf(invalidLifecycle);
+    assert.strictEqual(invalidLifecycleBody.code, "VALIDATION");
+
+    const missingLifecycle = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { code: "STRICT-DEPT-2", name: "Strict Dept" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(missingLifecycle.status, 422);
+    const missingLifecycleBody = await problemOf(missingLifecycle);
+    assert.strictEqual(missingLifecycleBody.code, "VALIDATION");
+
+    const stringDisplayOrder = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          code: "STRICT-DEPT-3",
+          name: "Strict Dept",
+          lifecycle: "Active",
+          display_order: "1",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(stringDisplayOrder.status, 422);
+    const stringDisplayOrderBody = await problemOf(stringDisplayOrder);
+    assert.strictEqual(stringDisplayOrderBody.code, "VALIDATION");
+
+    const valid = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          code: "STRICT-DEPT-4",
+          name: "Strict Dept",
+          lifecycle: "Active",
+          display_order: 3,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(valid.status, 201);
   });
 
   test("Member cannot create a department", async () => {
@@ -326,7 +402,7 @@ describe("PRG-01: departments", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
           "Content-Type": "application/json",
         },
-        body: { code: "MEMBER", name: "Member Dept" },
+        body: { code: "MEMBER", name: "Member Dept", lifecycle: "Draft" },
       }),
       testEnv()
     );
