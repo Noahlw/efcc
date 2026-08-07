@@ -1,4 +1,4 @@
--- Migration number: 0002 	 2026-08-06T00:00:00.000Z
+-- Migration number: 0003 	 2026-08-06T00:00:00.000Z
 -- EFCC D1 Program/Enrollment domain foundation (PRG-01 #197 / Spec #190).
 --
 -- Deploys the authoritative relational schema from docs/specs/080-d1-relational-schema.md
@@ -166,7 +166,7 @@ CREATE TABLE departments (
 CREATE TABLE department_modules (
   department_id TEXT NOT NULL,
   module_key    TEXT NOT NULL CHECK (module_key IN ('program_catalog','enrollment','events','attendance','custom_forms')),
-  enabled       INTEGER NOT NULL DEFAULT 1,
+  enabled       INTEGER NOT NULL DEFAULT 0,
   enabled_by    TEXT,
   enabled_at    TEXT NOT NULL,
   PRIMARY KEY (department_id, module_key),
