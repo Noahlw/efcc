@@ -227,34 +227,6 @@
   font-size: 1rem;
   font-weight: 800;
   color: var(--txt-primary);
-}
-
-.sealSlot {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 0.85rem;
-}
-
-.sealSlotLarge {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 1.4rem;
-}
-
 .mockBody {
   flex: 1;
   padding: 1.5rem;
@@ -350,7 +322,6 @@
   gap: 0.7rem;
 }
 
-.splitLoginMobile .cardHead .sealSlot,
 .splitLoginMobile .cardLead,
 .splitLoginMobile .fieldNote {
   display: none;

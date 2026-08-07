@@ -27,22 +27,6 @@
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
-}
-
-.seal {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  background: var(--accent, #9c302c);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 0.85rem;
-}
-
 .title {
   font-size: 1rem;
   font-weight: 800;

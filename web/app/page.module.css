@@ -3,10 +3,10 @@
    ----------------------------------------------------------------------------
    THESIS: the signed-out shell is a minimal civic-operational surface for one
    congregation. It refuses the SaaS marketing hero, slogans, and decorative
-   cheer; the visitor sees the official mark, the church title, and the login
+   cheer; the visitor sees the church title and the login
    action — nothing persuasive or invented.
    OWN-WORLD: off-white surface, ink type, hairline rules, one cinnabar accent
-   for submission + brand mark, squar-cut seal (恩) as the mark.
+   for submission and active state.
    STORY: first viewport is login — 2-col on desktop (minimal system copy
    left, form right); stacked on phone with the form first.
    FINISH: visual authority is the accepted Variant A prototype
@@ -18,8 +18,8 @@
   --paper-raised: #ffffff;
   --ink: #171a1d;
   --ink-soft: #59636a;
-  --seal: #9c302c;
-  --seal-deep: #76231f;
+  --accent: #9c302c;
+  --accent-deep: #76231f;
   --line: #d6dcde;
   --line-strong: #aeb8bc;
   --focus: #176a87;
@@ -42,7 +42,7 @@
   top: -3rem;
   z-index: 200;
   padding: 0.75rem 1rem;
-  background: var(--seal);
+  background: var(--accent);
   color: #fff;
   border-radius: 8px;
   font-weight: 700;
@@ -112,7 +112,7 @@
 }
 
 .loginCopy h1 {
-  margin: 1rem 0 0.75rem;
+  margin: 0 0 0.75rem;
   font-size: clamp(1.75rem, 3vw, 2.25rem);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -157,15 +157,6 @@
   align-items: center;
   gap: 0.65rem;
   margin-bottom: 0.4rem;
-}
-
-.cardSeal {
-  display: inline-flex;
-  align-items: center;
-}
-
-.cardSeal svg {
-  border-radius: 6px;
 }
 
 .cardTitle {
@@ -234,7 +225,7 @@
   min-height: 44px;
   border: none;
   border-radius: 8px;
-  background: var(--seal);
+  background: var(--accent);
   color: #fff;
   font-size: 0.98rem;
   font-weight: 800;
@@ -244,7 +235,7 @@
 }
 
 .submit:hover:not(:disabled) {
-  background: var(--seal-deep);
+  background: var(--accent-deep);
 }
 
 .submit:focus-visible {
@@ -300,7 +291,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid var(--line);
-  border-top-color: var(--seal);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 800ms linear infinite;
 }
@@ -337,7 +328,6 @@
     gap: 0.7rem;
   }
 
-  .cardSeal,
   .cardLead {
     display: none;
   }

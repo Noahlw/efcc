@@ -31,42 +31,6 @@ const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 /* Minimal civic system copy for the signed-out shell (Variant A, Issue #178). */
 const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
 
-/** Squar-cut seal mark (恩) — the brand's carved-stamp identity. */
-function SealMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect x="1" y="1" width="30" height="30" rx="6" fill="var(--seal)" />
-      <rect
-        x="1"
-        y="1"
-        width="30"
-        height="30"
-        rx="6"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity="0.18"
-      />
-      <text
-        x="16"
-        y="22.6"
-        textAnchor="middle"
-        fontSize="17"
-        fontWeight="800"
-        fill="#fff"
-        fontFamily="inherit"
-      >
-        恩
-      </text>
-    </svg>
-  );
-}
-
 type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
@@ -325,10 +289,9 @@ export default function LoginPage() {
         {LANDING.skipToLogin}
       </a>
 
-      {/* Minimal civic shell — seal mark + official church title. */}
+      {/* Minimal civic shell — official church title. */}
       <header className={styles.header}>
         <div className={styles.brand} aria-label={LANDING.homeLabel}>
-          <SealMark />
           <span>{LANDING.brandFull}</span>
         </div>
       </header>
@@ -342,9 +305,6 @@ export default function LoginPage() {
               aria-labelledby="login-title"
             >
               <div className={styles.cardHead}>
-                <span className={styles.cardSeal}>
-                  <SealMark size={22} />
-                </span>
                 <h2 id="login-title" className={styles.cardTitle}>
                   {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
                 </h2>
@@ -454,9 +414,6 @@ export default function LoginPage() {
             </section>
 
             <div className={styles.loginCopy}>
-              <span className={styles.copySeal}>
-                <SealMark size={44} />
-              </span>
               <h1>{LANDING.brandFull}</h1>
               <p>{SYSTEM_DESCRIPTION}</p>
             </div>

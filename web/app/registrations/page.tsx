@@ -17,9 +17,6 @@ export default function RegistrationsPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/" aria-label="顯恩堂系統首頁">
-          <span className={styles.seal} aria-hidden="true">
-            恩
-          </span>
           <span>中國基督教播道會顯恩堂</span>
         </Link>
       </header>

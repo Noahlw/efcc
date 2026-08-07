@@ -20,9 +20,6 @@ export default function RegisterPage() {
       </a>
       <header className={styles.header}>
         <Link className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
-          <span className={styles.seal} aria-hidden="true">
-            恩
-          </span>
           <span>{LANDING.brandFull}</span>
         </Link>
       </header>

@@ -24,7 +24,7 @@ function ProfileContent() {
     );
   }
 
-  const avatarChar = Array.from(p.name || "恩")[0] ?? "恩";
+  const avatarChar = Array.from(p.name || p.username || "?")[0] ?? "?";
   const hasQr = Boolean(p.qrCodeString);
 
   return (
