@@ -201,6 +201,7 @@ export function ApprovalQueue() {
                             disabled={busy || busyId !== null}
                             onClick={() => void handleDecision(item, "approve")}
                             className={styles.approve}
+                            aria-label={`${QUEUE_COPY.approve} ${item.role}`}
                           >
                             {busy ? QUEUE_COPY.approving : QUEUE_COPY.approve}
                           </button>

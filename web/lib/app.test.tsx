@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import {
   describe,
   test,
@@ -1613,6 +1613,65 @@ describe("Shell", () => {
       await waitFor(() => {
         expect(replaceMock).toHaveBeenCalledWith("/");
       });
+    });
+
+    test("StrictMode remount: a stale restore failure cannot overwrite a fresh restore", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/profile");
+      let meCalls = 0;
+      let releaseStale: (() => void) | null = null;
+      server.use(
+        http.get("/api/v1/auth/me", async () => {
+          meCalls += 1;
+          if (meCalls === 1) {
+            // The first (stale) run hangs until after the fresh run lands,
+            // then fails — the ordering that used to let run #1 overwrite
+            // run #2's ready state via the shared mountRef boolean.
+            await new Promise<void>((resolve) => {
+              releaseStale = resolve;
+            });
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "系統暫時無法使用",
+                requestId: "r-stale",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json({
+            requestId: "r-me",
+            data: { user: PUBLIC_USER },
+          });
+        })
+      );
+      render(
+        <StrictMode>
+          <AppShell>
+            <div>children</div>
+          </AppShell>
+        </StrictMode>
+      );
+      // The fresh restore resolves to the authenticated shell.
+      const logoutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      // Release the stale 503 only after the fresh result already landed.
+      await act(async () => {
+        releaseStale?.();
+      });
+      // The stale failure must not overwrite the ready shell.
+      expect(logoutButton).toBeInTheDocument();
+      expect(
+        screen.queryByText(COPY.error.unavailable)
+      ).not.toBeInTheDocument();
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(meCalls).toBeGreaterThanOrEqual(2);
     });
   });
 });

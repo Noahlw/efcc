@@ -36,6 +36,16 @@ Configure these under GitHub Settings → Secrets and variables → Actions → 
 
 These values are sent only to the deployed Playwright process. Never print them, include them in test names, commit them, or paste them into issues/PRs. The test asserts cookie names and security attributes without printing cookie values or response bodies.
 
+## Rebuilt Next UI role fixtures
+
+The deployed Next UI gate (`tests/e2e/live-ui.config.ts`) also requires six out-of-band fixtures under **Secrets and variables → Actions → Secrets**:
+
+- `PROGRAMS_ADMIN_USERNAME` / `PROGRAMS_ADMIN_CREDENTIAL` — disposable Admin account.
+- `PROGRAMS_STAFF_USERNAME` / `PROGRAMS_STAFF_CREDENTIAL` — disposable Staff account.
+- `PROGRAMS_MEMBER_USERNAME` / `PROGRAMS_MEMBER_CREDENTIAL` — disposable Member account.
+
+Each username must be distinct and start with `E2E_`; each credential must contain at least eight non-whitespace characters. Seed the three accounts in the isolated acceptance D1/database before running `pnpm exec playwright test -c tests/e2e/live-ui.config.ts`. These values are never printed or committed and must not be reused for production or the D1 auth smoke fixtures above.
+
 ## Legacy Apps Script gate
 
 The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.

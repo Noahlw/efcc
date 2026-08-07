@@ -45,7 +45,9 @@ describe("ApprovalQueue", () => {
     render(<ApprovalQueue />);
     expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: QUEUE_COPY.approve })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `${QUEUE_COPY.approve} Member` })
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: QUEUE_COPY.reject })).toBeInTheDocument();
   });
 
@@ -82,7 +84,7 @@ describe("ApprovalQueue", () => {
     const user = userEvent.setup();
     render(<ApprovalQueue />);
     await user.click(
-      await screen.findByRole("button", { name: QUEUE_COPY.approve })
+      await screen.findByRole("button", { name: `${QUEUE_COPY.approve} Member` })
     );
     // After the approve round-trip the queue reloads and the row is gone.
     expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();

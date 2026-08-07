@@ -80,6 +80,15 @@ const COPY = {
   forbidden: "您沒有權限執行此操作。",
 } as const;
 
+const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
+  ? new URL(process.env.AUTH_UI_TARGET_URL).pathname.replace(/\/$/u, "")
+  : "";
+
+function appPath(pathname: string): string {
+  return `${TARGET_PATH}${pathname}` || "/";
+}
+const SIGNED_OUT_PATH = appPath("/");
+
 function required(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(`${name} is required`);
@@ -92,12 +101,12 @@ async function loginAs(
   username: string,
   password: string
 ): Promise<void> {
-  await page.goto("/");
+  await page.goto(appPath("/"));
   await page.locator('input[autocomplete="username"]').fill(username);
   await page.locator('input[autocomplete="current-password"]').fill(password);
   await page.getByRole("button", { name: COPY.loginSubmit }).click();
   // The landing page navigates to the first permitted section on success.
-  await page.waitForURL((url) => url.pathname !== "/");
+  await page.waitForURL((url) => url.pathname !== SIGNED_OUT_PATH);
 }
 
 test.beforeAll(() => {
@@ -142,7 +151,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto("/profile");
+    await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
     await expect(
       page.getByText(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER), {
@@ -155,6 +164,9 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
     await expect(qr).toHaveCSS("width", "220px");
     await expect(qr).toHaveCSS("height", "220px");
+    const qrBox = await qr.boundingBox();
+    expect(qrBox?.width).toBe(220);
+    expect(qrBox?.height).toBe(220);
     await expect(page.getByText(COPY.phone, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.status, { exact: true })).toBeVisible();
   });
@@ -167,7 +179,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
       required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
     );
-    await page.goto("/profile");
+    await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
     await expect(page.getByText("Staff", { exact: true })).toBeVisible();
     for (const section of [
@@ -190,7 +202,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
-    await page.goto("/profile");
+    await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
     await expect(page.getByText("Member", { exact: true })).toBeVisible();
   });
@@ -203,7 +215,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
-    await page.goto("/profile");
+    await page.goto(appPath("/profile"));
     for (const section of [
       COPY.eventsSection,
       COPY.scannerSection,
@@ -229,7 +241,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       "/permissions",
       "/registrations",
     ]) {
-      await page.goto(path);
+      await page.goto(appPath(path));
       await expect(page.getByRole("alert")).toContainText(COPY.forbidden);
     }
   });
@@ -237,7 +249,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
   test("registration form renders on the public /register surface", async ({
     page,
   }) => {
-    await page.goto("/register");
+    await page.goto(appPath("/register"));
     await expect(
       page.getByRole("heading", { name: COPY.registerTitle })
     ).toBeVisible();
@@ -258,7 +270,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto("/profile/settings");
+    await page.goto(appPath("/profile/settings"));
     await expect(
       page.getByRole("heading", { name: COPY.accountSettingsTitle })
     ).toBeVisible();
@@ -276,12 +288,16 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto("/registrations");
+    await page.goto(appPath("/registrations"));
     await expect(
       page.getByRole("heading", { name: COPY.approvalTitle })
     ).toBeVisible();
     await expect(page.getByText(COPY.approvalCount)).toBeVisible();
-    const approveButtons = page.getByRole("button", { name: COPY.approve });
+    // Approve buttons carry a role-qualified aria-label (批准 Member) so
+    // screen-reader users can disambiguate rows; match it loosely.
+    const approveButtons = page.getByRole("button", {
+      name: new RegExp(`^${COPY.approve}(?: Member)?$`, "u"),
+    });
     const rejectButtons = page.getByRole("button", { name: COPY.reject });
     if ((await approveButtons.count()) > 0) {
       await expect(rejectButtons).toHaveCount(await approveButtons.count());
@@ -298,14 +314,14 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
-    await page.goto("/registrations");
+    await page.goto(appPath("/registrations"));
     await expect(page.getByRole("alert")).toContainText(COPY.forbidden);
   });
 
   test("invalid login surfaces an observable error with no session", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto(appPath("/"));
     await expect(page.getByLabel(COPY.registerUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.registerPassword)).toBeVisible();
     await page
@@ -326,7 +342,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto("/profile");
+    await page.goto(appPath("/profile"));
     const { width } = page.viewportSize() ?? { width: 0 };
     const phone = width < 800;
     const phoneNav = page.locator(".nav-phone").first();

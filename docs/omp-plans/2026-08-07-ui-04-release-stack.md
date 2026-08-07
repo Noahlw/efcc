@@ -350,10 +350,23 @@ Observed after the final responsive, local-demo logout, and deployed-fixture val
 | `pnpm --dir web typecheck` | PASS — Next app and Worker TypeScript configs emit no diagnostics. |
 | `pnpm test` | PASS — 17 files, 278 tests. |
 | `pnpm --dir web test` | PASS — 10 files, 170 tests. |
-| `pnpm --dir web test:components` | PASS — 9 files, 141 tests, including local-demo logout API-boundary and demo-marker collision coverage. |
+| `pnpm --dir web test:components` | PASS — 9 files, 142 tests, including local-demo logout API-boundary, demo-marker collision, and AppShell StrictMode stale-restore regression coverage. |
 | `pnpm test:shell-responsive` | PASS — 38 passed, 1 expected desktop-only skip across `mobile-375x812`, `mobile-375x667`, and `desktop-1280x800`; no-overflow coverage includes `/profile/settings.html`. |
-| Impeccable detector (`--scope type,layout`) | PASS — `[]` findings for the selected landing, Profile, registration, approval, and prototype paths. |
+| Impeccable detector (`--scope type,layout`) | PASS — `[]` findings for the selected landing, Profile, registration, approval, shell, and prototype paths. |
 | `pnpm --dir web build` | PASS — 14 static routes generated, including `/profile/settings` and `/prototype`. |
+
+## Standards-Fix Verification — 2026-08-07 (post-`FinalStandardsReview`)
+
+Deterministic re-audit after the two P2 fixes:
+
+| Check | Result |
+|---|---|
+| Live-UI base-path normalization | PASS — every `page.goto` in `tests/e2e/live-ui.test.ts` routes through `appPath()`; member-nav, settings, approval, forbidden, invalid-login, and 375x667 targets no longer bypass `TARGET_PATH` on path-prefixed deployment URLs. |
+| Approval action a11y | PASS — approve buttons carry role-qualified `aria-label="批准 <Role>"`; component tests match role names (批准 Member); the live gate uses an anchored regex. |
+| QR bounding contract | PASS — `.qrSquare` reuses the global `border-box` reset with `aspect-ratio: 1 / 1`, so the outer box is exactly 220x220; the live gate asserts the bounding box. |
+| AppShell restore race | PASS — per-run `cancelled` flag replaces the shared `mountRef` boolean; a StrictMode regression forces a stale 503 after a fresh success and asserts the shell stays ready (no `COPY.error.unavailable`, no `replaceMock`). |
+| Fixture docs gap | PASS — `.github/CI-SECRETS.md` now documents the six `PROGRAMS_*` username/credential fixtures the live-ui gate requires, with provisioning guidance; documentation only, no secret values. |
+| `pnpm --dir web test:components` | PASS — 9 files, 142 tests, with the StrictMode regression included. |
 | Local browser smoke | PASS — `noah`/`6883` reached `/profile` with visible Noah/Staff identity and six navigation labels; reload preserved the local session and announced `工作階段已還原。`; `/profile/settings` rendered `帳戶資料` with all three labels and no horizontal overflow; 375x667 Profile fit its shell scroll box; logout returned `/` and cleared both local markers. |
 
 Known non-failing output: root recovery tests intentionally log simulated render errors; Next reports the repository's multiple-lockfile workspace-root warning during build/responsive runs. The deployed `/exec`, deployed Next UI, and D1 acceptance gates remain unrun because fresh targets, role fixtures, and operator-held credentials are unavailable. Disposition remains **merge-ready locally**, not **READY**.
