@@ -431,33 +431,50 @@ describe("PRG-01: programs", () => {
     );
     assert.strictEqual(archivedCreate.status, 422);
 
-    for (const body of [
-      {},
-      { behavior_type: "Recurring", lifecycle: "Draft", discoverability: "Listed", enrollment_mode: "MemberRequest" },
-      { name: "No Type", lifecycle: "Draft", discoverability: "Listed", enrollment_mode: "MemberRequest" },
-      { name: "No Lifecycle", behavior_type: "Recurring", discoverability: "Listed", enrollment_mode: "MemberRequest" },
-    ]) {
-      const missingField = await worker.fetch(
-        programsRequest(
-          `/api/v1/programs/departments/${dept.department_id}/programs`,
-          {
-            method: "POST",
-            headers: {
-              Origin: HOST,
-              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-              "Content-Type": "application/json",
-            },
-            body,
-          }
-        ),
-        testEnv()
-      );
-      assert.strictEqual(
-        missingField.status,
-        422,
-        `expected 422 for body ${JSON.stringify(body)}`
-      );
-    }
+    await Promise.all(
+      [
+        {},
+        {
+          behavior_type: "Recurring",
+          lifecycle: "Draft",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+        {
+          name: "No Type",
+          lifecycle: "Draft",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+        {
+          name: "No Lifecycle",
+          behavior_type: "Recurring",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+      ].map(async (incompleteBody) => {
+        const missingField = await worker.fetch(
+          programsRequest(
+            `/api/v1/programs/departments/${dept.department_id}/programs`,
+            {
+              method: "POST",
+              headers: {
+                Origin: HOST,
+                Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+                "Content-Type": "application/json",
+              },
+              body: incompleteBody,
+            }
+          ),
+          testEnv()
+        );
+        assert.strictEqual(
+          missingField.status,
+          422,
+          `expected 422 for body ${JSON.stringify(incompleteBody)}`
+        );
+      })
+    );
   });
 
   test("program update rejects invalid fields and archives permanently", async () => {
@@ -1371,15 +1388,18 @@ describe("PRG-02: generation", () => {
       behavior_type: "Recurring",
     });
     const res = await worker.fetch(
-      programsRequest(`/api/v1/programs/${noRules.program_id}/events/generate`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: {},
-      }),
+      programsRequest(
+        `/api/v1/programs/${noRules.program_id}/events/generate`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 422);
@@ -2721,9 +2741,7 @@ describe("PRG-04: program leaders", () => {
     const res = await assignLeader(adminAccess, leaderProgramId, "U004");
     assert.strictEqual(res.status, 422);
     const rows = await testDb()
-      .prepare(
-        "SELECT 1 FROM program_leaders WHERE user_id = 'U004'"
-      )
+      .prepare("SELECT 1 FROM program_leaders WHERE user_id = 'U004'")
       .all();
     assert.strictEqual((rows.results ?? []).length, 0);
     const audit = await testDb()
