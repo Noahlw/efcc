@@ -54,12 +54,34 @@ const COPY = {
   eventsEmpty: "目前沒有聚會。",
   programDetails: "查看課程詳情",
   programOverview: "概覽",
+  programEdit: "基本資料",
   programEvents: "聚會與時間表",
   programEnrollment: "報名",
   programLeaders: "事工負責人",
   pageLead: "先選部門，再處理課程、聚會或報名。",
   ruleWeekly: "每週",
   confirmRevoke: "確定移除",
+  behaviorType: "形式",
+  programLifecycle: "課程狀態",
+  lifecycleActive: "啟用",
+  saveProgram: "儲存課程",
+  editProgram: "編輯課程",
+  updated: "已更新。",
+  withdrawRequest: "撤回申請",
+  requestWithdrawnNotice: "申請已撤回。",
+  requestWithdrawn: "已撤回",
+  cancelEnrollment: "取消報名",
+  enrollmentCancelledNotice: "報名已取消。",
+  enrollmentCancelled: "已取消",
+  memberId: "成員 ID",
+  assistedEnroll: "新增報名",
+  assistedSubmitted: "已新增報名。",
+  enable: "啟用",
+  disable: "停用",
+  moduleEvents: "聚會",
+  eventStart: "開始時間（香港時間）",
+  eventEnd: "結束時間（香港時間）",
+  createEvent: "新增聚會",
   enrollmentDuplicate: "此會友已報名此課程。",
 };
 
@@ -179,9 +201,13 @@ async function createDepartmentViaUi(
 async function createProgramViaUi(
   page: Page,
   deptCode: string,
-  departmentId: string
+  departmentId: string,
+  behavior: "Recurring" | "OneOff" = "Recurring"
 ): Promise<{ programId: string; programName: string }> {
-  const programName = `E2E 課程 ${fresh("P")}`;
+  const programName =
+    behavior === "OneOff"
+      ? `E2E 單次 ${fresh("P")}`
+      : `E2E 課程 ${fresh("P")}`;
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -191,6 +217,9 @@ async function createProgramViaUi(
   );
   await openDepartment(page, deptCode);
   await page.getByLabel(COPY.programName).fill(programName);
+  if (behavior === "OneOff") {
+    await page.getByLabel(COPY.behaviorType).selectOption("OneOff");
+  }
   await page.getByLabel(COPY.discoverabilityListed).selectOption("Listed");
   await page.getByRole("button", { name: COPY.createProgram }).click();
   const response = await responsePromise;
@@ -791,5 +820,232 @@ test.describe("PRG-05 deployed programs proof", () => {
     await openProgramTask(reloadedItem, COPY.programEvents);
     await expect(reloadedItem.getByText(COPY.noRules)).toBeVisible();
     await expect(reloadedItem.getByText(COPY.eventsEmpty)).toBeVisible();
+    });
+
+  test("E2E-13 OneOff program creates a manual event; no schedule-rule surface (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { departmentId, deptCode } = await createDepartmentViaUi(page);
+    const { programName } = await createProgramViaUi(
+      page,
+      deptCode,
+      departmentId,
+      "OneOff"
+    );
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await expect(
+      item.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
+    await item.getByLabel(COPY.eventStart).fill("2026-08-20T19:30");
+    await item.getByLabel(COPY.eventEnd).fill("2026-08-20T21:00");
+    await item.getByRole("button", { name: COPY.createEvent }).click();
+    await expect(item.getByText(COPY.eventActive).first()).toBeVisible();
+  });
+
+  test("E2E-14 admin edits program name and publishes lifecycle; persists (C1, C3, C4)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programName, deptCode } = await setupProgram(page);
+    const renamed = `${programName} 改名`;
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEdit);
+    // The tab click can land pre-hydration; wait for the edit form and retry.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (await item.getByText(COPY.editProgram).count()) {
+        break;
+      }
+      await item.getByRole("button", { name: COPY.programEdit, exact: true }).click();
+      await page.waitForTimeout(500);
+    }
+    await expect(item.getByText(COPY.editProgram)).toBeVisible();
+    const nameInput = item.getByLabel(COPY.programName);
+    await nameInput.fill(renamed);
+    await item.getByLabel(COPY.programLifecycle).selectOption("Active");
+    await item.getByRole("button", { name: COPY.saveProgram }).click();
+    // The save notice is transient; assert the renamed row renders instead.
+    await expect(page.getByText(renamed)).toBeVisible();
+    await page.reload();
+    await openDepartment(page, deptCode);
+    await expect(page.getByText(renamed)).toBeVisible();
+  });
+
+  test("E2E-15 admin publishes a department and toggles a module via UI; persists (C1, C3, C4)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { deptCode } = await createDepartmentViaUi(page);
+    const dept = innermostLiWith(page, deptCode);
+    // Retry the publish click — a click landing pre-hydration silently no-ops.
+    // The success signal is the publish BUTTON disappearing (the lifecycle
+    // badge and the button share the 啟用 text, so the button count is the
+    // unambiguous state).
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const publish = dept
+        .getByRole("button", { name: COPY.lifecycleActive, exact: true })
+        .first();
+      if ((await publish.count()) === 0) {
+        break;
+      }
+      await publish.click();
+      await page.waitForTimeout(700);
+    }
+    await expect(
+      dept
+        .getByRole("button", { name: COPY.lifecycleActive, exact: true })
+        .first()
+    ).toHaveCount(0);
+    await openDepartment(page, deptCode);
+    // The module row is the parent of the module-name label; its only button
+    // is the enable/disable toggle.
+    const eventsModuleRow = dept
+      .getByText(COPY.moduleEvents, { exact: true })
+      .locator("xpath=..");
+    await eventsModuleRow.getByRole("button", { name: COPY.disable }).click();
+    await expect(
+      eventsModuleRow.getByRole("button", { name: COPY.enable })
+    ).toBeVisible();
+    await page.reload();
+    await openDepartment(page, deptCode);
+    const reloadedDept = innermostLiWith(page, deptCode);
+    await expect(
+      reloadedDept.getByText(COPY.lifecycleActive, { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      reloadedDept
+        .getByText(COPY.moduleEvents, { exact: true })
+        .locator("xpath=..")
+        .getByRole("button", { name: COPY.enable })
+    ).toBeVisible();
+  });
+
+  test("E2E-16a member withdraws a Pending request via UI (C1, C3)", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programName, deptCode } = await setupProgram(page);
+    const memberContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+    });
+    const memberPage = await memberContext.newPage();
+    await loginAs(
+      memberPage,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await openDepartment(memberPage, deptCode);
+    const memberItem = innermostLiWith(memberPage, programName);
+    await openProgramTask(memberItem, COPY.programEnrollment);
+    await memberItem.getByRole("button", { name: COPY.requestEnroll }).click();
+    await expect(memberItem.getByText(COPY.requestPending)).toBeVisible();
+    await memberItem.getByRole("button", { name: COPY.withdrawRequest }).click();
+    await expect(memberItem.getByText(COPY.requestWithdrawnNotice)).toBeVisible();
+    await expect(
+      memberItem.getByText(COPY.requestWithdrawn, { exact: true })
+    ).toBeVisible();
+    await memberContext.close();
+  });
+
+  test("E2E-16b member cancels an Active enrollment via UI (C1, C3)", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programName, deptCode } = await setupProgram(page);
+    const memberContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+    });
+    const memberPage = await memberContext.newPage();
+    await loginAs(
+      memberPage,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await openDepartment(memberPage, deptCode);
+    const memberItem = innermostLiWith(memberPage, programName);
+    await openProgramTask(memberItem, COPY.programEnrollment);
+    await memberItem.getByRole("button", { name: COPY.requestEnroll }).click();
+    await expect(memberItem.getByText(COPY.requestPending)).toBeVisible();
+
+    await page.reload();
+    await openDepartment(page, deptCode);
+    const adminItem = innermostLiWith(page, programName);
+    await openProgramTask(adminItem, COPY.programEnrollment);
+    await adminItem.getByRole("button", { name: COPY.approve }).click();
+    await expect(adminItem.getByText(COPY.requestPending)).toHaveCount(0);
+
+    await memberPage.reload();
+    await openDepartment(memberPage, deptCode);
+    const reloadedItem = innermostLiWith(memberPage, programName);
+    await openProgramTask(reloadedItem, COPY.programEnrollment);
+    await expect(
+      reloadedItem.getByText(COPY.enrollmentActive, { exact: true })
+    ).toBeVisible();
+    await reloadedItem.getByRole("button", { name: COPY.cancelEnrollment }).click();
+    await expect(
+      reloadedItem.getByText(COPY.enrollmentCancelledNotice)
+    ).toBeVisible();
+    await expect(
+      reloadedItem.getByText(COPY.enrollmentCancelled, { exact: true })
+    ).toBeVisible();
+    await memberContext.close();
+  });
+
+  test("E2E-17 admin assists enrollment on a ManagerOnly program via UI (C1, C3)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { departmentId, deptCode } = await createDepartmentViaUi(page);
+    const programName = `E2E 專員 ${fresh("P")}`;
+    const create = await page.request.post(
+      `/api/v1/programs/departments/${departmentId}/programs`,
+      {
+        data: {
+          name: programName,
+          behavior_type: "Recurring",
+          lifecycle: "Draft",
+          enrollment_mode: "ManagerOnly",
+        },
+      }
+    );
+    expect(create.status()).toBe(201);
+    await page.reload();
+    await openDepartment(page, deptCode);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEnrollment);
+    await item.getByLabel(COPY.memberId).fill(MEMBER_USER);
+    await item.getByRole("button", { name: new RegExp(MEMBER_USER, "u") }).click();
+    await item.getByRole("button", { name: COPY.assistedEnroll }).click();
+    await expect(item.getByText(COPY.assistedSubmitted)).toBeVisible();
+    await expect(
+      item.getByText(COPY.enrollmentActive, { exact: true })
+    ).toBeVisible();
   });
 });

@@ -174,11 +174,14 @@ export const EventsPanel = ({
     const form = new FormData(event.currentTarget);
     const startsAt = String(form.get("starts_at") ?? "");
     const endsAt = String(form.get("ends_at") ?? "");
+    // datetime-local yields wall-clock HK time without a zone; the server
+    // requires ISO-8601 UTC instants ending in Z — interpret as UTC+8 (the
+    // form labels state 香港時間) and normalize.
     void runAction(
       () =>
         createEvent(program.program_id, {
-          starts_at: startsAt,
-          ends_at: endsAt,
+          starts_at: new Date(`${startsAt}:00+08:00`).toISOString(),
+          ends_at: new Date(`${endsAt}:00+08:00`).toISOString(),
         }),
       COPY.programs.created
     );
