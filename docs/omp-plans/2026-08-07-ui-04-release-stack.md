@@ -13,7 +13,7 @@
 - Target worktree: `~/.omp/wt/ui-04-196`, branch `ui-04-196`; current dirty source worktree: `~/orca/workspaces/EFCC-dev/main`, branch `prg-05-201`.
 - PR #205 is open with head `f6f535d`/`ui-04-196`, base `ui-03-195`/PR #204, and is the fourth link in the stack `#202 → #203 → #204 → #205 → #207 → #208 → #209 → #210 → #211`.
 - User explicitly selected scope **5B**: transplant all current UI changes, not only the UI-04 account-settings delta. Preserve that decision; do not silently split or discard the landing, Profile, settings, registration, approval, prototype, shell, copy, or test changes.
-- Downstream PRs #207–#211 own the Programs domain. Exclude `web/lib/programs/`, `web/app/programs/`, `web/migrations/0002_*.sql`, `tests/e2e/programs-d1.*`, `.github/workflows/e2e.yml`, `.github/CI-SECRETS.md`, and any later Programs route/copy/config hunks from this transplant. In shared files, keep only the selected UI hunks and do not pull downstream `/api/v1/programs/*` routes or PRG role-renames.
+- Downstream PRs #207–#211 own the Programs domain. Exclude `web/lib/programs/`, `web/app/programs/`, `web/migrations/0002_d1_program_domain.sql`, `tests/e2e/programs-d1.*`, `.github/workflows/e2e.yml`, `.github/CI-SECRETS.md`, and any later Programs route/copy/config hunks from this transplant. Retain the earlier UI-04-owned `web/migrations/0002_retire_teacher.sql` role-retirement migration. In shared files, keep only the selected UI hunks and do not pull downstream `/api/v1/programs/*` routes or PRG role-renames.
 - Keep `.codex/`, `.cursor/`, `.impeccable/config.json`, `.impeccable/config.local.json`, and `local/` out of the PR. They are local tooling/user artifacts, not the selected UI change set. Include the selected untracked UI/E2E paths: `web/app/profile/settings/`, `web/lib/approval-queue.module.css`, and the new `tests/e2e/live-ui.*` gate files.
 - `noah/6883` MUST remain development-only (`process.env.NODE_ENV !== "production"`) in both the live login and the exported prototype gallery; production login continues through `/api/v1/auth/login` and `/api/v1/auth/me`. Never seed or expose a hard-coded online Staff backdoor.
 - Identity, credentials, sessions, and login decisions remain owned by Worker + D1. Do not edit the Google Sheet or Users tab.
@@ -48,7 +48,7 @@
 
 ### Explicitly excluded downstream ticket scope
 
-- `web/lib/programs/`, `web/app/programs/`, `web/migrations/0002_*.sql`, `tests/e2e/programs-d1.*`, `.github/workflows/e2e.yml`, and `.github/CI-SECRETS.md` remain owned by PRs #207–#211 and are not staged in PR #205.
+- `web/lib/programs/`, `web/app/programs/`, `web/migrations/0002_d1_program_domain.sql`, `tests/e2e/programs-d1.*`, `.github/workflows/e2e.yml`, and `.github/CI-SECRETS.md` remain owned by PRs #207–#211 and are not staged in PR #205. The earlier UI-04-owned `web/migrations/0002_retire_teacher.sql` remains in this branch.
 - Shared `web/lib/copy.ts`, `web/worker.ts`, `web/lib/auth/handlers.ts`, and `web/vitest.components.config.ts` receive only the UI-04-owned hunks; later Programs routes, role migrations, and Programs test registrations stay downstream.
 
 ## What Already Exists
