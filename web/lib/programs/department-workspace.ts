@@ -24,6 +24,7 @@ import type {
   GenerateResult,
   ProgramLifecycle,
   DepartmentModuleRow,
+  MemberOptionRow,
   ProgramRow,
   ProgramLeaderRow,
   ProgramUpdate,
@@ -1040,6 +1041,14 @@ export class DepartmentWorkspace {
     requestId: string
   ): Promise<EnrollmentRequestRow | null> {
     return this.store.findEnrollmentRequestById(requestId);
+  }
+
+  searchActiveMembers(
+    programId: string,
+    query: string,
+    limit: number
+  ): Promise<MemberOptionRow[]> {
+    return this.store.searchActiveMembers(programId, query, limit);
   }
 
   getEnrollment(

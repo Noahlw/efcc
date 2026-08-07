@@ -731,10 +731,7 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const members = await new D1WorkspaceStore(env.DB).searchActiveMembers(
-    query,
-    20
-  );
+  const members = await workspace.searchActiveMembers(programId, query, 20);
   return jsonResponse(200, { members }, requestId);
 }
 
