@@ -322,7 +322,7 @@ describe("PRG-03 enrollment panel", () => {
             type: "about:blank",
             title: "Conflict",
             status: 409,
-            code: "CONFLICT",
+            code: "ENROLLMENT_DUPLICATE",
             detail: "Member U002 already has an open request.",
             requestId: "rid-3",
           },
@@ -343,7 +343,7 @@ describe("PRG-03 enrollment panel", () => {
       screen.getByRole("button", { name: COPY.programs.requestEnroll })
     );
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      errorCopyFor("CONFLICT")
+      errorCopyFor("ENROLLMENT_DUPLICATE")
     );
   });
 });

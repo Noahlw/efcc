@@ -1369,7 +1369,13 @@ export async function handleCreateEnrollmentRequest(
       return validation(requestId, error.message);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1445,7 +1451,13 @@ export async function handleDecideEnrollmentRequest(
       return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        correlationId
+      );
     }
     throw error;
   }
@@ -1539,7 +1551,13 @@ export async function handleAssistedEnroll(
       return validation(requestId, error.message);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1651,7 +1669,13 @@ export async function handleAssignProgramLeader(
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof LeaderAccountInactiveError) {
-      return validation(requestId, error.message);
+      return problem(
+        422,
+        "ACCOUNT_INACTIVE",
+        "Validation failed",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }

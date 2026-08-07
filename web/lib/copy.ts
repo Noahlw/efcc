@@ -234,6 +234,8 @@ export const COPY = {
     leaderUserIdPlaceholder: "輸入姓名或用戶名稱",
     leaderAssignedNotice: "已新增事工負責人。",
     leaderRevokedNotice: "已移除事工負責人。",
+    leaderAccountInactive: "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
+    enrollmentDuplicate: "此會友已報名此課程。",
   },
 } as const;
 
@@ -259,6 +261,12 @@ export function errorCopyFor(
   }
   if (code === "CONFLICT") {
     return COPY.error.conflict;
+  }
+  if (code === "ACCOUNT_INACTIVE") {
+    return COPY.programs.leaderAccountInactive;
+  }
+  if (code === "ENROLLMENT_DUPLICATE") {
+    return COPY.programs.enrollmentDuplicate;
   }
   if (code === "UNAVAILABLE") {
     return COPY.error.unavailable;

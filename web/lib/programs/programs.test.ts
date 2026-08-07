@@ -1725,6 +1725,8 @@ describe("PRG-02: events", () => {
       testEnv()
     );
     assert.strictEqual(duplicate.status, 409);
+    const dupBody = await problemOf(duplicate);
+    assert.strictEqual(dupBody.code, "CONFLICT");
   });
 
   test("cancellation is soft, audited, and preserves attendance", async () => {
@@ -2213,6 +2215,8 @@ describe("PRG-03: enrollment requests", () => {
       testEnv()
     );
     assert.strictEqual(duplicate.status, 409);
+    const dupBody = await problemOf(duplicate);
+    assert.strictEqual(dupBody.code, "ENROLLMENT_DUPLICATE");
 
     const approved = await decideRequest(
       adminAccess,
@@ -2235,6 +2239,8 @@ describe("PRG-03: enrollment requests", () => {
       testEnv()
     );
     assert.strictEqual(afterActive.status, 409);
+    const afterActiveBody = await problemOf(afterActive);
+    assert.strictEqual(afterActiveBody.code, "ENROLLMENT_DUPLICATE");
 
     const duplicateAudit = await testDb()
       .prepare(
@@ -2460,6 +2466,8 @@ describe("PRG-03: enrollment requests", () => {
       "Approved"
     );
     assert.strictEqual(res.status, 409);
+    const raceBody = await problemOf(res);
+    assert.strictEqual(raceBody.code, "ENROLLMENT_DUPLICATE");
     const conflictAudit = await testDb()
       .prepare(
         "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'CONFLICT' AND entity_id = ?"
@@ -2592,6 +2600,8 @@ describe("PRG-03: enrollments", () => {
   test("ENR-4 members cancel their own enrollment; managers cancel in scope; cross-member is 403", async () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
     assert.strictEqual(res.status, 409, "U002 already active from ENR-1");
+    const dupEnrollBody = await problemOf(res);
+    assert.strictEqual(dupEnrollBody.code, "ENROLLMENT_DUPLICATE");
     const bobEnrollment = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
@@ -3233,6 +3243,8 @@ describe("PRG-04: program leaders", () => {
   test("DLG-1b Pending target account is rejected with 422 and a FAILED audit row", async () => {
     const res = await assignLeader(adminAccess, leaderProgramId, "U004");
     assert.strictEqual(res.status, 422);
+    const inactiveBody = await problemOf(res);
+    assert.strictEqual(inactiveBody.code, "ACCOUNT_INACTIVE");
     const rows = await testDb()
       .prepare("SELECT 1 FROM program_leaders WHERE user_id = 'U004'")
       .all();
