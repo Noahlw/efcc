@@ -255,6 +255,7 @@ export async function handleCreateDepartment(
   env: ProgramEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -322,7 +323,7 @@ export async function handleCreateDepartment(
         display_order:
           typeof body.display_order === "number" ? body.display_order : 0,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { department: row }, requestId);
   } catch (error) {
@@ -392,6 +393,7 @@ export async function handleUpdateDepartment(
   departmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -435,7 +437,7 @@ export async function handleUpdateDepartment(
       ctxFrom(auth.account),
       departmentId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { department: row }, requestId);
   } catch (error) {
@@ -462,6 +464,7 @@ export async function handleCreateProgram(
   departmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -525,7 +528,7 @@ export async function handleCreateProgram(
         display_order:
           typeof fields.display_order === "number" ? fields.display_order : 0,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { program: row }, requestId);
   } catch (error) {
@@ -610,6 +613,7 @@ export async function handleUpdateProgram(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -667,7 +671,7 @@ export async function handleUpdateProgram(
       ctxFrom(auth.account),
       programId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { program: row }, requestId);
   } catch (error) {
@@ -744,6 +748,7 @@ export async function handleSetModule(
   enabled: boolean
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -758,7 +763,7 @@ export async function handleSetModule(
         module_key: moduleKey as ModuleKey,
         enabled,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(200, { module }, requestId);
   } catch (error) {
@@ -895,6 +900,7 @@ export async function handleCreateScheduleRule(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -925,7 +931,7 @@ export async function handleCreateScheduleRule(
       ctxFrom(auth.account),
       programId,
       value,
-      requestId
+      correlationId
     );
     return jsonResponse(201, { rule: row }, requestId);
   } catch (error) {
@@ -994,6 +1000,7 @@ export async function handleUpdateScheduleRule(
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1031,7 +1038,7 @@ export async function handleUpdateScheduleRule(
       ctxFrom(auth.account),
       ruleId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { rule: row }, requestId);
   } catch (error) {
@@ -1051,6 +1058,7 @@ export async function handleCreateScheduleException(
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1108,7 +1116,7 @@ export async function handleCreateScheduleException(
         new_start_time: newStart,
         new_end_time: newEnd,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { exception: row }, requestId);
   } catch (error) {
@@ -1127,6 +1135,7 @@ export async function handleDeleteScheduleException(
   exceptionId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1150,7 +1159,7 @@ export async function handleDeleteScheduleException(
     await workspace.deleteScheduleException(
       ctxFrom(auth.account),
       exceptionId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { deleted: true }, requestId);
   } catch (error) {
@@ -1168,6 +1177,7 @@ export async function handleGenerateEvents(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1197,7 +1207,7 @@ export async function handleGenerateEvents(
       ctxFrom(auth.account),
       programId,
       horizonDays,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { generated: result }, requestId);
   } catch (error) {
@@ -1221,6 +1231,7 @@ export async function handleCreateEvent(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1248,7 +1259,7 @@ export async function handleCreateEvent(
       ctxFrom(auth.account),
       programId,
       { starts_at: body.starts_at, ends_at: body.ends_at },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { event: row }, requestId);
   } catch (error) {
@@ -1289,6 +1300,7 @@ export async function handleCancelEvent(
   eventId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1314,7 +1326,7 @@ export async function handleCancelEvent(
       ctxFrom(auth.account),
       eventId,
       { reason },
-      requestId
+      correlationId
     );
     return jsonResponse(200, { event: row }, requestId);
   } catch (error) {
@@ -1332,6 +1344,7 @@ export async function handleCreateEnrollmentRequest(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1345,7 +1358,7 @@ export async function handleCreateEnrollmentRequest(
     const row = await workspace.submitEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
-      requestId
+      correlationId
     );
     return jsonResponse(201, { request: row }, requestId);
   } catch (error) {
@@ -1391,7 +1404,7 @@ export async function handleDecideEnrollmentRequest(
   programId: string,
   requestId: string
 ): Promise<Response> {
-  const correlationId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? crypto.randomUUID();
   const auth = await requireActor(request, env, correlationId);
   if (auth instanceof Response) {
     return auth;
@@ -1445,7 +1458,7 @@ export async function handleWithdrawEnrollmentRequest(
   programId: string,
   requestId: string
 ): Promise<Response> {
-  const correlationId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? crypto.randomUUID();
   const auth = await requireActor(request, env, correlationId);
   if (auth instanceof Response) {
     return auth;
@@ -1487,6 +1500,7 @@ export async function handleAssistedEnroll(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1514,7 +1528,7 @@ export async function handleAssistedEnroll(
       ctxFrom(auth.account),
       programId,
       { memberUserId },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { enrollment: row }, requestId);
   } catch (error) {
@@ -1561,6 +1575,7 @@ export async function handleCancelEnrollment(
   enrollmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1581,7 +1596,7 @@ export async function handleCancelEnrollment(
       ctxFrom(auth.account),
       programId,
       enrollmentId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { enrollment: row }, requestId);
   } catch (error) {
@@ -1602,6 +1617,7 @@ export async function handleAssignProgramLeader(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1624,7 +1640,7 @@ export async function handleAssignProgramLeader(
       ctxFrom(auth.account),
       programId,
       userId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {
@@ -1649,6 +1665,7 @@ export async function handleRevokeProgramLeader(
   userId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1659,7 +1676,7 @@ export async function handleRevokeProgramLeader(
       ctxFrom(auth.account),
       programId,
       userId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {

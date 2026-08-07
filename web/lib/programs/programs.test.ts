@@ -993,6 +993,42 @@ describe("PRG-01: audit", () => {
     assert.ok(create, "audit row must exist for department creation");
     assert.strictEqual(create.outcome, "SUCCESS");
   });
+
+  test("mutations correlate audits to the client Idempotency-Key", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: `IDEM-${Date.now()}`,
+      name: "Idempotency Dept",
+    });
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "client-key-abc",
+          },
+          body: {
+            name: "Idempotency Program",
+            behavior_type: "Recurring",
+            lifecycle: "Draft",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 201);
+    const audit = await testDb()
+      .prepare(
+        "SELECT correlation_id FROM audit_events WHERE action = 'PROGRAM_CREATE' AND correlation_id = ?"
+      )
+      .bind("client-key-abc")
+      .first<{ correlation_id: string }>();
+    assert.ok(audit, "audit must carry the client Idempotency-Key");
+  });
 });
 
 // ---------------------------------------------------------------------------
