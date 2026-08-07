@@ -1,15 +1,18 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const targetUrl = process.env.PROGRAMS_TARGET_URL;
-if (!targetUrl) {
-  throw new Error("PROGRAMS_TARGET_URL is required");
-}
+// Shared dev-testing worker (see .github/CI-SECRETS.md). Overridable via
+// PROGRAMS_TARGET_URL; everything else stays fail-closed below.
+const DEFAULT_TARGET_URL = "https://efcc-dev-testing.efcc-ggc.workers.dev";
+
+const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;
 
 let parsedTarget: URL;
 try {
   parsedTarget = new URL(targetUrl);
 } catch {
-  throw new Error("PROGRAMS_TARGET_URL must be an absolute HTTPS URL");
+  throw new Error(
+    `PROGRAMS_TARGET_URL must be an absolute HTTPS URL (default: ${DEFAULT_TARGET_URL})`
+  );
 }
 
 const allowLocal =
@@ -27,12 +30,12 @@ if (!allowLocal) {
     );
   }
   if (
-    !/^efcc-auth-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
+    !/^efcc-(?:auth|dev)-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
       parsedTarget.hostname
     )
   ) {
     throw new Error(
-      "PROGRAMS_TARGET_URL must use the isolated efcc-auth-*.efcc-ggc.workers.dev acceptance host"
+      "PROGRAMS_TARGET_URL must use the efcc-auth-*.efcc-ggc.workers.dev acceptance host or the efcc-dev-*.efcc-ggc.workers.dev dev-testing host"
     );
   }
 }
@@ -49,8 +52,10 @@ export default defineConfig({
   ],
   use: {
     baseURL: targetUrl,
-    // UI traces would capture credential request bodies.
-    trace: "off",
+    // Dev fixtures are non-secret: keep traces and screenshots as failure
+    // evidence for local debugging.
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     {

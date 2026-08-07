@@ -46,15 +46,27 @@ The deployed Next UI gate (`tests/e2e/live-ui.config.ts`) also requires six out-
 
 Each username must be distinct and start with `E2E_`; each credential must contain at least eight non-whitespace characters. Seed the three accounts in the isolated acceptance D1/database before running `pnpm exec playwright test -c tests/e2e/live-ui.config.ts`. These values are never printed or committed and must not be reused for production or the D1 auth smoke fixtures above.
 
-## Deployed programs smoke (PRG-05 #201)
+## Dev-testing worker (local E2E)
 
-Same rotation as the auth gate, same isolated acceptance target (the Worker serves the Next.js static export and the `/api/v1/programs/*` surface from one origin). Configure `PROGRAMS_TARGET_URL` under Actions variables, and these secrets under Actions secrets:
+The programs-d1 suite (`tests/e2e/programs-d1.test.ts`) runs **locally**, not in CI, against the shared dev-testing worker: `https://efcc-dev-testing.efcc-ggc.workers.dev`. `tests/e2e/programs-d1.config.ts` defaults to that URL; `PROGRAMS_TARGET_URL` overrides it. Either way the config stays fail-closed: HTTPS-only, no embedded credentials, and only the reserved `efcc-auth-*.efcc-ggc.workers.dev` (acceptance) / `efcc-dev-*.efcc-ggc.workers.dev` (dev-testing) hostnames.
 
-- `PROGRAMS_ADMIN_USERNAME` / `PROGRAMS_ADMIN_CREDENTIAL` — Admin role acceptance account.
-- `PROGRAMS_STAFF_USERNAME` / `PROGRAMS_STAFF_CREDENTIAL` — Staff role acceptance account.
-- `PROGRAMS_MEMBER_USERNAME` / `PROGRAMS_MEMBER_CREDENTIAL` — Member role acceptance account.
+The dev worker is backed by the `efcc-dev-testing` D1, seeded with three **dev-only** fixture accounts. These are NOT GitHub secrets: they are plaintext in the repo (`tests/e2e/seed-dev-accounts.ts` + this doc) and hashed with the real PBKDF2 hasher at seed time. Never reuse them for production or the CI acceptance gate.
 
-All three usernames must start with `E2E_` (disposable convention; the suite fails closed otherwise). The suite creates its own `E2E_*` department/program/leader rows per run, so repeated dispatches against a reused target are idempotent. Rotate all accounts whenever the auth contract or D1 migrations change, together with the auth gate accounts. The deployed programs smoke (`e2e.yml` `deployed-programs` job) runs only from `workflow_dispatch`, is fail-closed on missing vars/secrets, and rejects hosts outside the reserved `efcc-auth-*.efcc-ggc.workers.dev` acceptance namespace. It never writes to a production database or Google Sheet.
+| username     | role   | credential       |
+| ------------ | ------ | ---------------- |
+| `E2E_admin`  | Admin  | `E2E_admin!dev`  |
+| `E2E_staff`  | Staff  | `E2E_staff!dev`  |
+| `E2E_member` | Member | `E2E_member!dev` |
+
+One-time provisioning runbook (all wrangler commands from `web/`):
+
+1. Create the dev database: `wrangler d1 create efcc-dev-testing` (record its `database_id`).
+2. Apply migrations: `wrangler d1 migrations apply efcc-dev-testing --remote`.
+3. Deploy the worker with the dev D1 override: `wrangler deploy --d1 DB=<database_id>`.
+4. Set a dev-only secret: `wrangler secret put EFCC_ACCESS_TOKEN_SECRET`.
+5. Seed the three accounts (idempotent — safe to re-run): `pnpm exec tsx tests/e2e/seed-dev-accounts.ts > /tmp/seed-dev.sql && wrangler d1 execute efcc-dev-testing --remote --file=/tmp/seed-dev.sql` (or single-shot: `wrangler d1 execute efcc-dev-testing --remote --command="$(pnpm exec tsx tests/e2e/seed-dev-accounts.ts)"`)
+
+Then run the suite locally: `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts`.
 
 ## Legacy Apps Script gate
 
