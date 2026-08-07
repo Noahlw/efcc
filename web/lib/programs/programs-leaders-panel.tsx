@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import { MemberPicker } from "@/lib/programs/member-picker";
 import {
   assignProgramLeader,
   listProgramLeaders,
@@ -31,6 +32,7 @@ export const LeadersPanel = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
   const mounted = useRef(true);
 
   useEffect(
@@ -107,14 +109,21 @@ export const LeadersPanel = ({
   };
 
   const handleRevoke = (userId: string) => {
+    setConfirmingUserId(userId);
+  };
+
+  const confirmRevoke = (userId: string) => {
+    setConfirmingUserId(null);
     void runAction(
       () => revokeProgramLeader(program.program_id, userId),
       COPY.programs.leaderRevokedNotice
     );
   };
 
+  const headingId = `${program.program_id}-leaders-heading`;
+
   return (
-    <section className={styles.eventsPanel} aria-label={COPY.programs.leaders}>
+    <section className={styles.eventsPanel} aria-labelledby={headingId}>
       {notice !== null && (
         <output className={styles.panelNotice}>{notice}</output>
       )}
@@ -124,15 +133,16 @@ export const LeadersPanel = ({
         </output>
       )}
 
-      <h3 className={styles.panelHeading}>{COPY.programs.leaders}</h3>
+      <h3 id={headingId} className={styles.panelHeading}>
+        {COPY.programs.leaders}
+      </h3>
 
       {canManage && (
         <form className={styles.ruleForm} onSubmit={handleAssign}>
-          <input
-            type="text"
+          <MemberPicker
+            programId={program.program_id}
             name="user_id"
-            required
-            aria-label={COPY.programs.leaderUserId}
+            label={COPY.programs.leaderUserId}
             placeholder={COPY.programs.leaderUserIdPlaceholder}
           />
           <button type="submit" disabled={busy} className={styles.actionButton}>
@@ -142,23 +152,51 @@ export const LeadersPanel = ({
       )}
 
       <ul className={styles.eventList} aria-label={COPY.programs.leaders}>
-        {leaders === null ? null : leaders.length === 0 ? (
+        {leaders === null ? (
+          <li className={styles.emptyLine} aria-live="polite">
+            {COPY.nav.loading}
+          </li>
+        ) : leaders.length === 0 ? (
           <li className={styles.emptyLine}>{COPY.programs.noLeaders}</li>
         ) : (
           leaders.map((leader) => (
             <li key={leader.user_id} className={styles.eventRow}>
-              <span className={styles.eventDate}>{leader.user_id}</span>
+              <span className={styles.eventDate}>
+                {leader.user_name ?? leader.user_id}
+                {leader.username ? ` (${leader.username})` : ""}
+              </span>
               <span className={styles.eventSource}>{leader.granted_at}</span>
-              {canManage && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  className={styles.actionButton}
-                  onClick={() => handleRevoke(leader.user_id)}
-                >
-                  {COPY.programs.revokeLeader}
-                </button>
-              )}
+              {canManage &&
+                (confirmingUserId === leader.user_id ? (
+                  <div className={styles.confirmRow}>
+                    <span>{COPY.programs.confirmRevokeLeader}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={styles.actionButton}
+                      onClick={() => confirmRevoke(leader.user_id)}
+                    >
+                      {COPY.programs.confirmRevoke}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={styles.toggle}
+                      onClick={() => setConfirmingUserId(null)}
+                    >
+                      {COPY.programs.cancelRevoke}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className={styles.actionButton}
+                    onClick={() => handleRevoke(leader.user_id)}
+                  >
+                    {COPY.programs.revokeLeader}
+                  </button>
+                ))}
             </li>
           ))
         )}

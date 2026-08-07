@@ -12,8 +12,14 @@
      --line           #d6dcde  (hairline dividers)
      --line-strong    #aeb8bc  (input borders)
      --accent         #9c302c  (cinnabar — primary submit / active / brand mark)
-     --accent-deep    #76231f  (accent hover)
-     --focus          #176a87  (focus-visible ring)
+   --accent-deep    #76231f  (accent hover)
+   --focus          #176a87  (focus-visible ring)
+      --success        #2e6b37  (positive state)
+      --success-surface #eef4ef
+      --success-border  #b9cfbe
+      --error          #b3261e  (error state)
+      --error-surface   #fbeeed
+      --error-border    #e5b4b0
    ========================================================================== */
 :root {
   --surface: #f4f5f3;
@@ -25,10 +31,18 @@
   --accent: #9c302c;
   --accent-deep: #76231f;
   --focus: #176a87;
-  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+  --success: #2e6b37;
+  --success-surface: #eef4ef;
+  --success-border: #b9cfbe;
+  --error: #b3261e;
+  --error-surface: #fbeeed;
+  --error-border: #e5b4b0;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
     "Microsoft JhengHei", Arial, sans-serif;
   --radius-sm: 8px;
   --radius-md: 12px;
+  --radius-pill: 999px;
 }
 
 html {

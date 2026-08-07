@@ -26,6 +26,12 @@ const PROGRAM: Program = {
   display_order: 1,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  capabilities: {
+    manage: true,
+    publish: true,
+    enroll: false,
+    leader_assign: true,
+  },
 };
 
 const LEADER_BOB: ProgramLeader = {
@@ -42,6 +48,16 @@ function leadersHandlers(leaders: ProgramLeader[]) {
     http.get("/api/v1/programs/prog-1/leaders", () =>
       HttpResponse.json({ requestId: "rid-1", data: { leaders } })
     ),
+    http.get("/api/v1/programs/prog-1/member-options", ({ request }) => {
+      const query = new URL(request.url).searchParams.get("q");
+      const userId = query === "ghost-user" ? "ghost-user" : "U003";
+      return HttpResponse.json({
+        requestId: "rid-members",
+        data: {
+          members: [{ user_id: userId, name: "測試會友", username: userId }],
+        },
+      });
+    }),
   ];
 }
 
@@ -72,6 +88,7 @@ describe("PRG-04 leaders panel", () => {
     render(<LeadersPanel program={PROGRAM} canManage />);
     await screen.findByText(COPY.programs.noLeaders);
     await user.type(screen.getByLabelText(COPY.programs.leaderUserId), "U003");
+    await user.click(await screen.findByRole("button", { name: /U003/u }));
     await user.click(
       screen.getByRole("button", { name: COPY.programs.assignLeader })
     );
@@ -100,6 +117,9 @@ describe("PRG-04 leaders panel", () => {
     await screen.findByText("U002");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.revokeLeader })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmRevoke })
     );
     await expect(
       screen.findByText(COPY.programs.leaderRevokedNotice)
@@ -132,6 +152,9 @@ describe("PRG-04 leaders panel", () => {
     await user.type(
       screen.getByLabelText(COPY.programs.leaderUserId),
       "ghost-user"
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /ghost-user/u })
     );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.assignLeader })

@@ -45,6 +45,16 @@ function hkWallLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
+const WEEKDAY_LABELS = [
+  COPY.programs.weekdaySunday,
+  COPY.programs.weekdayMonday,
+  COPY.programs.weekdayTuesday,
+  COPY.programs.weekdayWednesday,
+  COPY.programs.weekdayThursday,
+  COPY.programs.weekdayFriday,
+  COPY.programs.weekdaySaturday,
+];
+
 export const EventsPanel = ({
   program,
   canManage,
@@ -56,6 +66,10 @@ export const EventsPanel = ({
   const [events, setEvents] = useState<ProgramEvent[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
+    null
+  );
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
 
@@ -67,8 +81,10 @@ export const EventsPanel = ({
   );
 
   const load = useCallback(async () => {
+    setRules(null);
     setEvents(null);
     setActionError(null);
+    setLoadError(false);
     try {
       const [rulesResp, eventsResp] = await Promise.all([
         listScheduleRules(program.program_id),
@@ -84,6 +100,8 @@ export const EventsPanel = ({
         return;
       }
       setActionError(errorMessage(error));
+      setLoadError(true);
+      setRules([]);
       setEvents([]);
     }
   }, [program.program_id]);
@@ -93,11 +111,14 @@ export const EventsPanel = ({
   }, [load]);
 
   const runAction = useCallback(
-    async (fn: () => Promise<unknown>, successCopy: string) => {
+    async (
+      fn: () => Promise<unknown>,
+      successCopy: string | ((result: unknown) => string)
+    ) => {
       setBusy(true);
       setActionError(null);
       try {
-        await fn();
+        const result = await fn();
         if (!mounted.current) {
           return;
         }
@@ -105,8 +126,10 @@ export const EventsPanel = ({
         if (!mounted.current) {
           return;
         }
-        setNotice(successCopy);
-        announce(successCopy);
+        const message =
+          typeof successCopy === "function" ? successCopy(result) : successCopy;
+        setNotice(message);
+        announce(message);
       } catch (error) {
         if (!mounted.current) {
           return;
@@ -164,12 +187,17 @@ export const EventsPanel = ({
   const submitCancel =
     (eventId: string) => (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (confirmingEventId !== eventId) {
+        setConfirmingEventId(eventId);
+        return;
+      }
       const form = new FormData(event.currentTarget);
       const reason = String(form.get("cancel_reason") ?? "").trim();
       void runAction(
         () => cancelEvent(program.program_id, eventId, reason),
         COPY.programs.eventCancelledNotice
       );
+      setConfirmingEventId(null);
     };
 
   const handleGenerate = () => {
@@ -178,9 +206,15 @@ export const EventsPanel = ({
         const { generated } = await generateEvents(program.program_id);
         return generated;
       },
-      COPY.programs.generated
-        .replace("{created}", "0")
-        .replace("{skipped}", "0")
+      (result) => {
+        const generated = result as {
+          created: number;
+          skipped: number;
+        };
+        return COPY.programs.generated
+          .replace("{created}", String(generated.created))
+          .replace("{skipped}", String(generated.skipped));
+      }
     );
   };
 
@@ -194,17 +228,30 @@ export const EventsPanel = ({
           {actionError}
         </output>
       )}
+      {loadError && (
+        <button
+          type="button"
+          className={styles.retry}
+          onClick={() => void load()}
+        >
+          {COPY.error.retry}
+        </button>
+      )}
 
       {program.behavior_type === "Recurring" && (
         <ul className={styles.ruleList} aria-label={COPY.programs.events}>
-          {rules === null ? null : rules.length === 0 ? (
+          {rules === null ? (
+            <li className={styles.emptyLine} aria-live="polite">
+              {COPY.nav.loading}
+            </li>
+          ) : rules.length === 0 ? (
             <li className={styles.emptyLine}>{COPY.programs.noRules}</li>
           ) : (
             rules.map((rule) => (
               <li key={rule.rule_id} className={styles.ruleRow}>
                 <span>
                   {rule.recurrence === "WEEKLY"
-                    ? `${COPY.programs.ruleWeekly} ${rule.day_of_week}`
+                    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0]}`
                     : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
                 </span>
                 <span>
@@ -228,14 +275,17 @@ export const EventsPanel = ({
               <option value="weekly">{COPY.programs.ruleWeekly}</option>
               <option value="monthly">{COPY.programs.ruleMonthly}</option>
             </select>
-            <input
-              type="number"
+            <select
               name="day_of_week"
-              min={0}
-              max={6}
               defaultValue={2}
               aria-label={COPY.programs.dayOfWeekLabel}
-            />
+            >
+              {WEEKDAY_LABELS.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <input
               type="number"
               name="month_day"
@@ -292,11 +342,16 @@ export const EventsPanel = ({
           <button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.createEvent}
           </button>
+          <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
       )}
 
       <ul className={styles.eventList} aria-label={COPY.programs.events}>
-        {events === null ? null : events.length === 0 ? (
+        {events === null ? (
+          <li className={styles.emptyLine} aria-live="polite">
+            {COPY.nav.loading}
+          </li>
+        ) : events.length === 0 ? (
           <li className={styles.emptyLine}>{COPY.programs.eventsEmpty}</li>
         ) : (
           events.map((event) => (
@@ -330,13 +385,35 @@ export const EventsPanel = ({
                     required
                     aria-label={COPY.programs.cancelReason}
                   />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className={styles.actionButton}
-                  >
-                    {COPY.programs.cancelEvent}
-                  </button>
+                  {confirmingEventId !== event.event_id && (
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className={styles.actionButton}
+                    >
+                      {COPY.programs.cancelEvent}
+                    </button>
+                  )}
+                  {confirmingEventId === event.event_id && (
+                    <div className={styles.confirmation} role="alert">
+                      <span>{COPY.programs.cancelEventConfirm}</span>
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className={styles.dangerButton}
+                      >
+                        {COPY.programs.confirmCancelEvent}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className={styles.secondaryButton}
+                        onClick={() => setConfirmingEventId(null)}
+                      >
+                        {COPY.programs.keepEvent}
+                      </button>
+                    </div>
+                  )}
                 </form>
               )}
             </li>

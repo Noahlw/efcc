@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
@@ -14,11 +15,13 @@ import {
   listPrograms,
   setDepartmentModule,
   updateDepartment,
+  updateProgram,
 } from "@/lib/programs/program-api";
 import type {
   Department,
   DepartmentModule,
   Program,
+  ProgramInput,
 } from "@/lib/programs/program-api";
 import { EnrollmentPanel } from "@/lib/programs/programs-enrollment-panel";
 import { EventsPanel } from "@/lib/programs/programs-events-panel";
@@ -31,7 +34,16 @@ type View =
   | { kind: "ready"; departments: Department[] }
   | { kind: "error"; message: string };
 
-const LIFECYCLE_LABEL: Record<Department["lifecycle"], string> = {
+type ProgramFormValues = ProgramInput;
+type ProgramTask = "overview" | "edit" | "events" | "enrollment" | "leaders";
+
+const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
+  Draft: COPY.programs.lifecycleDraft,
+  Active: COPY.programs.lifecycleActive,
+  Archived: COPY.programs.lifecycleArchived,
+};
+
+const DEPARTMENT_LIFECYCLE_LABEL: Record<Department["lifecycle"], string> = {
   Draft: COPY.programs.lifecycleDraft,
   PendingDevelopment: COPY.programs.lifecyclePending,
   Active: COPY.programs.lifecycleActive,
@@ -52,16 +64,182 @@ function errorMessage(err: unknown): string {
     : COPY.error.networkError;
 }
 
+function readProgramForm(
+  form: HTMLFormElement,
+  initialBehaviorType?: Program["behavior_type"]
+): ProgramFormValues {
+  const data = new FormData(form);
+  return {
+    name: String(data.get("name") ?? "").trim(),
+    description: String(data.get("description") ?? "").trim() || undefined,
+    category: String(data.get("category") ?? "").trim() || undefined,
+    behavior_type:
+      data.get("behavior_type") === "OneOff"
+        ? "OneOff"
+        : (initialBehaviorType ?? "Recurring"),
+    lifecycle:
+      data.get("lifecycle") === "Active"
+        ? "Active"
+        : data.get("lifecycle") === "Archived"
+          ? "Archived"
+          : "Draft",
+    discoverability:
+      data.get("discoverability") === "Listed" ? "Listed" : "Unlisted",
+    enrollment_mode:
+      data.get("enrollment_mode") === "ManagerOnly"
+        ? "ManagerOnly"
+        : "MemberRequest",
+    display_order: Math.max(0, Number(data.get("display_order") ?? 0)),
+  };
+}
+
+const ProgramForm = ({
+  initial,
+  busy,
+  onSubmit,
+  submitLabel,
+}: {
+  initial?: Program;
+  busy: boolean;
+  onSubmit: (values: ProgramFormValues, form: HTMLFormElement) => void;
+  submitLabel: string;
+}) => (
+  <form
+    className={styles.form}
+    onSubmit={(event) => {
+      event.preventDefault();
+      onSubmit(
+        readProgramForm(event.currentTarget, initial?.behavior_type),
+        event.currentTarget
+      );
+    }}
+  >
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programName}
+        <input
+          name="name"
+          className={styles.input}
+          defaultValue={initial?.name ?? ""}
+          placeholder={COPY.programs.programNamePlaceholder}
+          required
+        />
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programDescription}
+        <textarea
+          name="description"
+          className={styles.textarea}
+          defaultValue={initial?.description ?? ""}
+          rows={2}
+        />
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programCategory}
+        <input
+          name="category"
+          className={styles.input}
+          defaultValue={initial?.category ?? ""}
+        />
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.behaviorType}
+        <select
+          name="behavior_type"
+          className={styles.select}
+          defaultValue={initial?.behavior_type ?? "Recurring"}
+          disabled={initial !== undefined}
+        >
+          <option value="Recurring">{COPY.programs.behaviorRecurring}</option>
+          <option value="OneOff">{COPY.programs.behaviorOneOff}</option>
+        </select>
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programLifecycle}
+        <select
+          name="lifecycle"
+          className={styles.select}
+          defaultValue={initial?.lifecycle ?? "Draft"}
+          disabled={initial?.lifecycle === "Archived"}
+        >
+          <option value="Draft">{COPY.programs.lifecycleDraft}</option>
+          <option value="Active">{COPY.programs.lifecycleActive}</option>
+          <option value="Archived">{COPY.programs.lifecycleArchived}</option>
+        </select>
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.discoverabilityListed}
+        <select
+          name="discoverability"
+          className={styles.select}
+          defaultValue={initial?.discoverability ?? "Unlisted"}
+        >
+          <option value="Unlisted">
+            {COPY.programs.discoverabilityUnlisted}
+          </option>
+          <option value="Listed">{COPY.programs.discoverabilityListed}</option>
+        </select>
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programEnrollmentMode}
+        <select
+          name="enrollment_mode"
+          className={styles.select}
+          defaultValue={initial?.enrollment_mode ?? "MemberRequest"}
+        >
+          <option value="MemberRequest">
+            {COPY.programs.enrollmentModeMemberRequest}
+          </option>
+          <option value="ManagerOnly">
+            {COPY.programs.enrollmentModeManagerOnly}
+          </option>
+        </select>
+      </label>
+    </div>
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>
+        {COPY.programs.programDisplayOrder}
+        <input
+          name="display_order"
+          className={styles.input}
+          type="number"
+          min={0}
+          step={1}
+          defaultValue={initial?.display_order ?? 0}
+        />
+      </label>
+    </div>
+    <button className={styles.button} type="submit" disabled={busy}>
+      {busy ? COPY.programs.submitting : submitLabel}
+    </button>
+  </form>
+);
+
 const ProgramsManager = () => {
   const { bootstrap } = useApp();
-  const canManage =
+  const canCreateDepartment =
     bootstrap.profile.role === "Admin" || bootstrap.profile.role === "Staff";
-
   const [view, setView] = useState<View>({ kind: "loading" });
-  const [expanded, setExpanded] = useState<
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [modules, setModules] = useState<
     Record<string, DepartmentModule[] | null>
   >({});
   const [programs, setPrograms] = useState<Record<string, Program[] | null>>(
+    {}
+  );
+  const [programTasks, setProgramTasks] = useState<Record<string, ProgramTask>>(
     {}
   );
   const [busy, setBusy] = useState(false);
@@ -85,10 +263,9 @@ const ProgramsManager = () => {
       }
       setView({ kind: "ready", departments });
     } catch (error) {
-      if (!mounted.current) {
-        return;
+      if (mounted.current) {
+        setView({ kind: "error", message: errorMessage(error) });
       }
-      setView({ kind: "error", message: errorMessage(error) });
     }
   }, []);
 
@@ -96,41 +273,47 @@ const ProgramsManager = () => {
     void load();
   }, [load]);
 
-  const expand = useCallback(
-    async (departmentId: string) => {
-      setExpanded((prev) => ({
-        ...prev,
-        [departmentId]: prev[departmentId] ?? null,
-      }));
-      if (expanded[departmentId] !== undefined) {
+  const loadDepartment = useCallback(async (departmentId: string) => {
+    try {
+      const [detail, programRows] = await Promise.all([
+        getDepartment(departmentId),
+        listPrograms(departmentId),
+      ]);
+      if (!mounted.current) {
         return;
       }
-      try {
-        const [detail, programRows] = await Promise.all([
-          getDepartment(departmentId),
-          listPrograms(departmentId),
-        ]);
-        if (!mounted.current) {
-          return;
-        }
-        setExpanded((prev) => ({ ...prev, [departmentId]: detail.modules }));
-        setPrograms((prev) => ({
-          ...prev,
-          [departmentId]: programRows.programs,
-        }));
-      } catch (error) {
-        if (!mounted.current) {
-          return;
-        }
-        setNotice(errorMessage(error));
+      setModules((prev) => ({ ...prev, [departmentId]: detail.modules }));
+      setPrograms((prev) => ({
+        ...prev,
+        [departmentId]: programRows.programs,
+      }));
+    } catch (error) {
+      if (mounted.current) {
+        setExpanded((prev) => ({ ...prev, [departmentId]: false }));
+        setActionError(errorMessage(error));
       }
+    }
+  }, []);
+
+  const toggleDepartment = useCallback(
+    async (departmentId: string) => {
+      if (expanded[departmentId]) {
+        setExpanded((prev) => ({ ...prev, [departmentId]: false }));
+        return;
+      }
+      setExpanded((prev) => ({ ...prev, [departmentId]: true }));
+      if (
+        Object.hasOwn(modules, departmentId) &&
+        Object.hasOwn(programs, departmentId)
+      ) {
+        return;
+      }
+      await loadDepartment(departmentId);
     },
-    [expanded]
+    [expanded, loadDepartment, modules, programs]
   );
 
-  const handleCreateDepartment = async (
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
+  const handleCreateDepartment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy) {
       return;
@@ -146,18 +329,14 @@ const ProgramsManager = () => {
     setActionError(null);
     try {
       await createDepartment({ code, name });
-      if (!mounted.current) {
-        return;
-      }
       announce(COPY.programs.created);
       setNotice(COPY.programs.created);
       form.reset();
       await load();
     } catch (error) {
-      if (!mounted.current) {
-        return;
+      if (mounted.current) {
+        setActionError(errorMessage(error));
       }
-      setActionError(errorMessage(error));
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -167,44 +346,65 @@ const ProgramsManager = () => {
 
   const handleCreateProgram = async (
     departmentId: string,
-    event: React.FormEvent<HTMLFormElement>
+    values: ProgramFormValues,
+    form: HTMLFormElement
   ) => {
-    event.preventDefault();
     if (busy) {
-      return;
-    }
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const name = String(data.get("name") ?? "").trim();
-    if (!name) {
       return;
     }
     setBusy(true);
     setActionError(null);
     try {
-      await createProgram(departmentId, {
-        name,
-        behavior_type:
-          data.get("behavior_type") === "OneOff" ? "OneOff" : "Recurring",
-        discoverability:
-          data.get("discoverability") === "Listed" ? "Listed" : "Unlisted",
+      await createProgram(departmentId, values);
+      announce(COPY.programs.created);
+      setNotice(COPY.programs.created);
+      form.reset();
+      await loadDepartment(departmentId);
+    } catch (error) {
+      if (mounted.current) {
+        setActionError(errorMessage(error));
+      }
+    } finally {
+      if (mounted.current) {
+        setBusy(false);
+      }
+    }
+  };
+
+  const handleUpdateProgram = async (
+    program: Program,
+    values: ProgramFormValues
+  ) => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      const { program: updated } = await updateProgram(program.program_id, {
+        ...values,
+        description: values.description ?? null,
+        category: values.category ?? null,
       });
       if (!mounted.current) {
         return;
       }
-      announce(COPY.programs.created);
-      setNotice(COPY.programs.created);
-      form.reset();
-      const { programs: rows } = await listPrograms(departmentId);
-      if (!mounted.current) {
-        return;
-      }
-      setPrograms((prev) => ({ ...prev, [departmentId]: rows }));
+      setPrograms((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).map(([departmentId, rows]) => [
+            departmentId,
+            rows?.map((row) =>
+              row.program_id === updated.program_id ? updated : row
+            ) ?? null,
+          ])
+        )
+      );
+      announce(COPY.programs.updated);
+      setNotice(COPY.programs.updated);
     } catch (error) {
-      if (!mounted.current) {
-        return;
+      if (mounted.current) {
+        setActionError(errorMessage(error));
       }
-      setActionError(errorMessage(error));
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -220,17 +420,13 @@ const ProgramsManager = () => {
     setActionError(null);
     try {
       await updateDepartment(department.department_id, { lifecycle: "Active" });
-      if (!mounted.current) {
-        return;
-      }
       announce(COPY.programs.updated);
       setNotice(COPY.programs.updated);
       await load();
     } catch (error) {
-      if (!mounted.current) {
-        return;
+      if (mounted.current) {
+        setActionError(errorMessage(error));
       }
-      setActionError(errorMessage(error));
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -250,21 +446,13 @@ const ProgramsManager = () => {
     setActionError(null);
     try {
       await setDepartmentModule(departmentId, moduleKey, enabled === 0);
-      if (!mounted.current) {
-        return;
-      }
       announce(COPY.programs.updated);
       setNotice(COPY.programs.updated);
-      const detail = await getDepartment(departmentId);
-      if (!mounted.current) {
-        return;
-      }
-      setExpanded((prev) => ({ ...prev, [departmentId]: detail.modules }));
+      await loadDepartment(departmentId);
     } catch (error) {
-      if (!mounted.current) {
-        return;
+      if (mounted.current) {
+        setActionError(errorMessage(error));
       }
-      setActionError(errorMessage(error));
     } finally {
       if (mounted.current) {
         setBusy(false);
@@ -283,7 +471,7 @@ const ProgramsManager = () => {
           {COPY.programs.pageTitle}
         </h1>
         <div className={styles.stateCenter}>
-          <p>{COPY.nav.loading}</p>
+          <p aria-live="polite">{COPY.nav.loading}</p>
         </div>
       </section>
     );
@@ -296,7 +484,7 @@ const ProgramsManager = () => {
           {COPY.programs.pageTitle}
         </h1>
         <div className={styles.stateCenter}>
-          <p>{view.message}</p>
+          <p role="alert">{view.message}</p>
           <button
             className={styles.retry}
             type="button"
@@ -316,7 +504,11 @@ const ProgramsManager = () => {
       </h1>
       <p className={styles.cardLead}>{COPY.programs.lead}</p>
 
-      {notice !== null && <output className={styles.notice}>{notice}</output>}
+      {notice !== null && (
+        <output className={styles.notice} aria-live="polite">
+          {notice}
+        </output>
+      )}
       {actionError !== null && (
         <p className={styles.error} role="alert">
           {actionError}
@@ -329,9 +521,21 @@ const ProgramsManager = () => {
       ) : (
         <ul className={styles.deptList}>
           {view.departments.map((department) => {
-            const isOpen = expanded[department.department_id] !== undefined;
-            const modules = expanded[department.department_id] ?? null;
-            const rows = programs[department.department_id] ?? null;
+            const isOpen = expanded[department.department_id] === true;
+            const departmentModules = modules[department.department_id] ?? null;
+            const departmentPrograms =
+              programs[department.department_id] ?? null;
+            const catalogEnabled = departmentModules?.some(
+              (module) =>
+                module.module_key === "program_catalog" && module.enabled === 1
+            );
+            const eventsEnabled = departmentModules?.some(
+              (module) => module.module_key === "events" && module.enabled === 1
+            );
+            const enrollmentEnabled = departmentModules?.some(
+              (module) =>
+                module.module_key === "enrollment" && module.enabled === 1
+            );
             return (
               <li key={department.department_id} className={styles.deptItem}>
                 <div className={styles.deptRow}>
@@ -343,9 +547,9 @@ const ProgramsManager = () => {
                     <span
                       className={`${styles.badge} ${department.lifecycle === "Active" ? styles.badgeActive : ""}`}
                     >
-                      {LIFECYCLE_LABEL[department.lifecycle]}
+                      {DEPARTMENT_LIFECYCLE_LABEL[department.lifecycle]}
                     </span>
-                    {canManage &&
+                    {department.capabilities.publish &&
                       department.lifecycle !== "Active" &&
                       department.lifecycle !== "Archived" && (
                         <button
@@ -361,7 +565,9 @@ const ProgramsManager = () => {
                       className={styles.toggle}
                       type="button"
                       aria-expanded={isOpen}
-                      onClick={() => void expand(department.department_id)}
+                      onClick={() =>
+                        void toggleDepartment(department.department_id)
+                      }
                     >
                       {isOpen ? COPY.programs.collapse : COPY.programs.expand}
                     </button>
@@ -370,15 +576,15 @@ const ProgramsManager = () => {
 
                 {isOpen && (
                   <div className={styles.detail}>
-                    {canManage && (
-                      <>
+                    {department.capabilities.module_configure && (
+                      <section className={styles.moduleSection}>
                         <h3 className={styles.sectionLabel}>
                           {COPY.programs.modules}
                         </h3>
-                        {modules === null ? (
-                          <p>{COPY.nav.loading}</p>
+                        {departmentModules === null ? (
+                          <p aria-live="polite">{COPY.nav.loading}</p>
                         ) : (
-                          modules.map((module) => (
+                          departmentModules.map((module) => (
                             <div
                               key={module.module_key}
                               className={styles.moduleRow}
@@ -405,130 +611,220 @@ const ProgramsManager = () => {
                             </div>
                           ))
                         )}
-                      </>
+                      </section>
                     )}
 
                     <h3 className={styles.sectionLabel}>
                       {COPY.programs.programs}
                     </h3>
-                    {rows === null ? (
-                      <p>{COPY.nav.loading}</p>
-                    ) : rows.length === 0 ? (
+                    {departmentModules === null ? (
+                      <p aria-live="polite">{COPY.nav.loading}</p>
+                    ) : catalogEnabled === false ? (
+                      <p className={styles.moduleName}>
+                        {COPY.programs.moduleDisabled}
+                      </p>
+                    ) : departmentPrograms === null ? (
+                      <p aria-live="polite">{COPY.nav.loading}</p>
+                    ) : departmentPrograms.length === 0 ? (
                       <p className={styles.moduleName}>
                         {COPY.programs.noPrograms}
                       </p>
                     ) : (
                       <ul className={styles.programList}>
-                        {rows.map((program) => (
-                          <li
-                            key={program.program_id}
-                            className={styles.programItem}
-                          >
-                            <p className={styles.programName}>{program.name}</p>
-                            <div className={styles.programMeta}>
-                              <span className={styles.tag}>
-                                {program.behavior_type === "Recurring"
-                                  ? COPY.programs.behaviorRecurring
-                                  : COPY.programs.behaviorOneOff}
-                              </span>
-                              <span className={styles.tag}>
-                                {program.discoverability === "Listed"
-                                  ? COPY.programs.discoverabilityListed
-                                  : COPY.programs.discoverabilityUnlisted}
-                              </span>
-                            </div>
-                            <EventsPanel
-                              program={program}
-                              canManage={canManage}
-                            />
-                            <EnrollmentPanel
-                              program={program}
-                              canManage={canManage}
-                              currentUserId={bootstrap.profile.userId}
-                            />
-                            {canManage && (
-                              <LeadersPanel program={program} canManage />
-                            )}
-                          </li>
-                        ))}
+                        {departmentPrograms.map((program) => {
+                          const activeTask =
+                            programTasks[program.program_id] ?? "overview";
+                          const detailOpen = Object.hasOwn(
+                            programTasks,
+                            program.program_id
+                          );
+                          return (
+                            <li
+                              key={program.program_id}
+                              className={styles.programItem}
+                            >
+                              <div className={styles.programSummary}>
+                                <div>
+                                  <p className={styles.programName}>
+                                    {program.name}
+                                  </p>
+                                  <div className={styles.programMeta}>
+                                    <span className={styles.tag}>
+                                      {program.behavior_type === "Recurring"
+                                        ? COPY.programs.behaviorRecurring
+                                        : COPY.programs.behaviorOneOff}
+                                    </span>
+                                    <span className={styles.tag}>
+                                      {program.discoverability === "Listed"
+                                        ? COPY.programs.discoverabilityListed
+                                        : COPY.programs.discoverabilityUnlisted}
+                                    </span>
+                                    <span className={styles.tag}>
+                                      {LIFECYCLE_LABEL[program.lifecycle]}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  className={styles.toggle}
+                                  type="button"
+                                  aria-expanded={detailOpen}
+                                  onClick={() =>
+                                    setProgramTasks((prev) => {
+                                      const next = { ...prev };
+                                      if (detailOpen) {
+                                        return Object.fromEntries(
+                                          Object.entries(next).filter(
+                                            ([key]) =>
+                                              key !== program.program_id
+                                          )
+                                        );
+                                      }
+                                      next[program.program_id] = "overview";
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  {detailOpen
+                                    ? COPY.programs.collapse
+                                    : COPY.programs.programDetails}
+                                </button>
+                              </div>
+                              {detailOpen && (
+                                <div className={styles.programDetail}>
+                                  <nav
+                                    className={styles.taskNav}
+                                    aria-label={COPY.programs.programTasks}
+                                  >
+                                    {[
+                                      {
+                                        task: "overview" as const,
+                                        label: COPY.programs.programOverview,
+                                        enabled: true,
+                                      },
+                                      {
+                                        task: "edit" as const,
+                                        label: COPY.programs.programEdit,
+                                        enabled: program.capabilities.manage,
+                                      },
+                                      {
+                                        task: "events" as const,
+                                        label: COPY.programs.programEvents,
+                                        enabled: eventsEnabled,
+                                      },
+                                      {
+                                        task: "enrollment" as const,
+                                        label: COPY.programs.programEnrollment,
+                                        enabled: enrollmentEnabled,
+                                      },
+                                      {
+                                        task: "leaders" as const,
+                                        label: COPY.programs.programLeaders,
+                                        enabled:
+                                          program.capabilities.leader_assign,
+                                      },
+                                    ].map(({ task, label, enabled }) =>
+                                      enabled ? (
+                                        <button
+                                          key={task}
+                                          type="button"
+                                          className={styles.taskButton}
+                                          aria-pressed={activeTask === task}
+                                          onClick={() =>
+                                            setProgramTasks((prev) => ({
+                                              ...prev,
+                                              [program.program_id]: task,
+                                            }))
+                                          }
+                                        >
+                                          {label}
+                                        </button>
+                                      ) : null
+                                    )}
+                                  </nav>
+                                  {activeTask === "overview" && (
+                                    <div className={styles.programOverview}>
+                                      <p>
+                                        {program.description ??
+                                          COPY.programs.programDescriptionEmpty}
+                                      </p>
+                                      {program.category && (
+                                        <p
+                                          className={styles.programOverviewMeta}
+                                        >
+                                          {COPY.programs.programCategory}:{" "}
+                                          {program.category}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                  {activeTask === "edit" &&
+                                    program.capabilities.manage && (
+                                      <>
+                                        <h4 className={styles.panelHeading}>
+                                          {COPY.programs.editProgram}
+                                        </h4>
+                                        <ProgramForm
+                                          key={`${program.program_id}-${program.updated_at}`}
+                                          initial={program}
+                                          busy={busy}
+                                          submitLabel={
+                                            COPY.programs.saveProgram
+                                          }
+                                          onSubmit={(values) =>
+                                            void handleUpdateProgram(
+                                              program,
+                                              values
+                                            )
+                                          }
+                                        />
+                                      </>
+                                    )}
+                                  {activeTask === "events" && eventsEnabled && (
+                                    <EventsPanel
+                                      program={program}
+                                      canManage={program.capabilities.manage}
+                                    />
+                                  )}
+                                  {activeTask === "enrollment" &&
+                                    enrollmentEnabled && (
+                                      <EnrollmentPanel
+                                        program={program}
+                                        canManage={program.capabilities.manage}
+                                        currentUserId={bootstrap.profile.userId}
+                                      />
+                                    )}
+                                  {activeTask === "leaders" &&
+                                    program.capabilities.leader_assign && (
+                                      <LeadersPanel
+                                        program={program}
+                                        canManage
+                                      />
+                                    )}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
 
-                    {canManage && (
-                      <form
-                        className={styles.form}
-                        onSubmit={(event) =>
-                          void handleCreateProgram(
-                            department.department_id,
-                            event
-                          )
-                        }
-                      >
-                        <div className={styles.field}>
-                          <label
-                            className={styles.fieldLabel}
-                            htmlFor={`program-name-${department.department_id}`}
-                          >
-                            {COPY.programs.programName}
-                          </label>
-                          <input
-                            id={`program-name-${department.department_id}`}
-                            name="name"
-                            className={styles.input}
-                            placeholder={COPY.programs.programNamePlaceholder}
-                            required
-                          />
-                        </div>
-                        <div className={styles.field}>
-                          <label
-                            className={styles.fieldLabel}
-                            htmlFor={`behavior-${department.department_id}`}
-                          >
-                            {COPY.programs.behaviorType}
-                          </label>
-                          <select
-                            id={`behavior-${department.department_id}`}
-                            name="behavior_type"
-                            className={styles.select}
-                          >
-                            <option value="Recurring">
-                              {COPY.programs.behaviorRecurring}
-                            </option>
-                            <option value="OneOff">
-                              {COPY.programs.behaviorOneOff}
-                            </option>
-                          </select>
-                        </div>
-                        <div className={styles.field}>
-                          <label
-                            className={styles.fieldLabel}
-                            htmlFor={`disc-${department.department_id}`}
-                          >
-                            {COPY.programs.discoverabilityListed}
-                          </label>
-                          <select
-                            id={`disc-${department.department_id}`}
-                            name="discoverability"
-                            className={styles.select}
-                          >
-                            <option value="Unlisted">
-                              {COPY.programs.discoverabilityUnlisted}
-                            </option>
-                            <option value="Listed">
-                              {COPY.programs.discoverabilityListed}
-                            </option>
-                          </select>
-                        </div>
-                        <button
-                          className={styles.button}
-                          type="submit"
-                          disabled={busy}
-                        >
-                          {busy
-                            ? COPY.programs.submitting
-                            : COPY.programs.createProgram}
-                        </button>
-                      </form>
+                    {department.capabilities.manage && catalogEnabled && (
+                      <>
+                        <h3 className={styles.sectionLabel}>
+                          {COPY.programs.createProgram}
+                        </h3>
+                        <ProgramForm
+                          busy={busy}
+                          submitLabel={COPY.programs.createProgram}
+                          onSubmit={(values, form) =>
+                            void handleCreateProgram(
+                              department.department_id,
+                              values,
+                              form
+                            )
+                          }
+                        />
+                      </>
                     )}
                   </div>
                 )}
@@ -538,34 +834,32 @@ const ProgramsManager = () => {
         </ul>
       )}
 
-      {canManage && (
+      {canCreateDepartment && (
         <form
           className={styles.form}
           onSubmit={(event) => void handleCreateDepartment(event)}
         >
           <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor="dept-code">
+            <label className={styles.fieldLabel}>
               {COPY.programs.deptCode}
+              <input
+                name="code"
+                className={styles.input}
+                placeholder={COPY.programs.deptCodePlaceholder}
+                required
+              />
             </label>
-            <input
-              id="dept-code"
-              name="code"
-              className={styles.input}
-              placeholder={COPY.programs.deptCodePlaceholder}
-              required
-            />
           </div>
           <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor="dept-name">
+            <label className={styles.fieldLabel}>
               {COPY.programs.deptName}
+              <input
+                name="name"
+                className={styles.input}
+                placeholder={COPY.programs.deptNamePlaceholder}
+                required
+              />
             </label>
-            <input
-              id="dept-name"
-              name="name"
-              className={styles.input}
-              placeholder={COPY.programs.deptNamePlaceholder}
-              required
-            />
           </div>
           <button className={styles.button} type="submit" disabled={busy}>
             {busy ? COPY.programs.submitting : COPY.programs.createDepartment}

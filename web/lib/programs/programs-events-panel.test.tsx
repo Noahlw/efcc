@@ -30,6 +30,12 @@ const RECURRING: Program = {
   display_order: 1,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  capabilities: {
+    manage: true,
+    publish: true,
+    enroll: false,
+    leader_assign: true,
+  },
 };
 
 const ONE_OFF: Program = {
@@ -93,7 +99,7 @@ describe("PRG-02 events panel", () => {
     render(<EventsPanel program={RECURRING} canManage={false} />);
     await expect(
       screen.findByText((text) =>
-        text.includes(`${COPY.programs.ruleWeekly} 2`)
+        text.includes(`${COPY.programs.ruleWeekly} 星期二`)
       )
     ).resolves.toBeInTheDocument();
     const matches = await screen.findAllByText(
@@ -194,8 +200,10 @@ describe("PRG-02 events panel", () => {
     const user = userEvent.setup();
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.noRules);
-    await user.clear(screen.getByLabelText(COPY.programs.dayOfWeekLabel));
-    await user.type(screen.getByLabelText(COPY.programs.dayOfWeekLabel), "3");
+    await user.selectOptions(
+      screen.getByLabelText(COPY.programs.dayOfWeekLabel),
+      "3"
+    );
     await user.type(screen.getByLabelText(COPY.programs.startTime), "19:30");
     await user.type(screen.getByLabelText(COPY.programs.endTime), "21:00");
     await user.click(
@@ -206,7 +214,7 @@ describe("PRG-02 events panel", () => {
     ).resolves.toBeInTheDocument();
     await expect(
       screen.findByText((text) =>
-        text.includes(`${COPY.programs.ruleWeekly} 3`)
+        text.includes(`${COPY.programs.ruleWeekly} 星期三`)
       )
     ).resolves.toBeInTheDocument();
   });
@@ -246,6 +254,9 @@ describe("PRG-02 events panel", () => {
     await user.type(cancelReasonInput, "惡劣天氣");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEvent })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmCancelEvent })
     );
     await expect(
       screen.findByText(COPY.programs.eventCancelledNotice)
@@ -288,5 +299,44 @@ describe("PRG-02 events panel", () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       errorCopyFor("VALIDATION")
     );
+  });
+
+  test("U7 generation notice reports created and skipped counts", async () => {
+    let callCount = 0;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+      ),
+      http.post("/api/v1/programs/prog-1/events/generate", () => {
+        callCount += 1;
+        return HttpResponse.json({
+          requestId: `rid-${callCount + 2}`,
+          data: {
+            generated: {
+              created: callCount === 1 ? 2 : 0,
+              skipped: callCount === 1 ? 0 : 2,
+              rule_count: 1,
+            },
+          },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await screen.findByText(COPY.programs.noRules);
+    const generate = screen.getByRole("button", {
+      name: COPY.programs.generateEvents,
+    });
+    await user.click(generate);
+    await expect(
+      screen.findByText("已產生 2 場聚會，跳過 0 場重複。")
+    ).resolves.toBeInTheDocument();
+    await user.click(generate);
+    await expect(
+      screen.findByText("已產生 0 場聚會，跳過 2 場重複。")
+    ).resolves.toBeInTheDocument();
   });
 });

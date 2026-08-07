@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import { MemberPicker } from "@/lib/programs/member-picker";
 import {
   assistedEnroll,
   cancelEnrollment,
@@ -58,12 +59,19 @@ const RequestList = ({
   onWithdraw: (requestId: string) => void;
 }) => (
   <ul className={styles.eventList} aria-label={COPY.programs.requests}>
-    {requests === null ? null : requests.length === 0 ? (
+    {requests === null ? (
+      <li className={styles.emptyLine} aria-live="polite">
+        {COPY.nav.loading}
+      </li>
+    ) : requests.length === 0 ? (
       <li className={styles.emptyLine}>{COPY.programs.noRequests}</li>
     ) : (
       requests.map((request) => (
         <li key={request.request_id} className={styles.eventRow}>
-          <span className={styles.eventDate}>{request.member_user_id}</span>
+          <span className={styles.eventDate}>
+            {request.member_name ?? request.member_user_id}
+            {request.member_username ? ` (${request.member_username})` : ""}
+          </span>
           <span className={styles.eventSource}>
             {REQUEST_STATUS_LABEL[request.status]}
           </span>
@@ -129,12 +137,21 @@ const EnrollmentList = ({
   onCancel: (enrollmentId: string) => void;
 }) => (
   <ul className={styles.eventList} aria-label={COPY.programs.enrollments}>
-    {enrollments === null ? null : enrollments.length === 0 ? (
+    {enrollments === null ? (
+      <li className={styles.emptyLine} aria-live="polite">
+        {COPY.nav.loading}
+      </li>
+    ) : enrollments.length === 0 ? (
       <li className={styles.emptyLine}>{COPY.programs.noEnrollments}</li>
     ) : (
       enrollments.map((enrollment) => (
         <li key={enrollment.enrollment_id} className={styles.eventRow}>
-          <span className={styles.eventDate}>{enrollment.member_user_id}</span>
+          <span className={styles.eventDate}>
+            {enrollment.member_name ?? enrollment.member_user_id}
+            {enrollment.member_username
+              ? ` (${enrollment.member_username})`
+              : ""}
+          </span>
           <span
             className={
               enrollment.status === "Cancelled"
@@ -341,11 +358,10 @@ export const EnrollmentPanel = ({
 
       {canManage && program.enrollment_mode === "ManagerOnly" && (
         <form className={styles.ruleForm} onSubmit={handleAssisted}>
-          <input
-            type="text"
+          <MemberPicker
+            programId={program.program_id}
             name="member_user_id"
-            required
-            aria-label={COPY.programs.memberId}
+            label={COPY.programs.memberId}
             placeholder={COPY.programs.memberIdPlaceholder}
           />
           <button type="submit" disabled={busy} className={styles.actionButton}>
