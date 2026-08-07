@@ -12,14 +12,10 @@ import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { firstSection } from "@/lib/sections";
 import {
   buildBootstrap,
-  buildLocalDemoBootstrap,
   clearAuthHint,
-  clearLocalDemoAuth,
   hasAuthHint,
-  isLocalDemoCredentials,
   restoreBootstrap,
   setAuthHint,
-  setLocalDemoAuth,
 } from "@/lib/session";
 
 import styles from "./page.module.css";
@@ -174,14 +170,6 @@ export default function LoginPage() {
     setView({ kind: "AUTHENTICATING" });
     announce(COPY.login.submitting);
     setNotice(null);
-    if (isLocalDemoCredentials(username, password)) {
-      setLocalDemoAuth();
-      setAuthHint();
-      announce(COPY.login.success);
-      navigateAfterLogin(buildLocalDemoBootstrap());
-      return;
-    }
-    clearLocalDemoAuth();
     try {
       const result = await authLogin(username, password);
       if (result.mustSetNewCredential) {

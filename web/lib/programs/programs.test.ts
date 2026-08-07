@@ -430,6 +430,34 @@ describe("PRG-01: programs", () => {
       testEnv()
     );
     assert.strictEqual(archivedCreate.status, 422);
+
+    for (const body of [
+      {},
+      { behavior_type: "Recurring", lifecycle: "Draft", discoverability: "Listed", enrollment_mode: "MemberRequest" },
+      { name: "No Type", lifecycle: "Draft", discoverability: "Listed", enrollment_mode: "MemberRequest" },
+      { name: "No Lifecycle", behavior_type: "Recurring", discoverability: "Listed", enrollment_mode: "MemberRequest" },
+    ]) {
+      const missingField = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${dept.department_id}/programs`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(
+        missingField.status,
+        422,
+        `expected 422 for body ${JSON.stringify(body)}`
+      );
+    }
   });
 
   test("program update rejects invalid fields and archives permanently", async () => {

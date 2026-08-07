@@ -16,7 +16,6 @@ import type { Section } from "@/lib/api";
 import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
-const LOCAL_DEMO_AUTH_KEY = "efcc_local_demo_auth";
 
 /** True when a cookie-authenticated session was last known to be active. */
 export function hasAuthHint(): boolean {
@@ -40,77 +39,9 @@ export function setAuthHint(): void {
 export function clearAuthHint(): void {
   try {
     localStorage.removeItem(AUTH_HINT_KEY);
-    localStorage.removeItem(LOCAL_DEMO_AUTH_KEY);
   } catch {
     // Best-effort.
   }
-}
-
-function localDemoEnabled(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
-
-/** Local-only login fixture for the running development server. */
-export function isLocalDemoCredentials(
-  username: string,
-  password: string
-): boolean {
-  return (
-    localDemoEnabled() && username.trim() === "noah" && password === "6883"
-  );
-}
-
-/** Mark the local demo session without creating or storing a real token. */
-export function setLocalDemoAuth(): void {
-  if (!localDemoEnabled()) {
-    return;
-  }
-  try {
-    localStorage.setItem(LOCAL_DEMO_AUTH_KEY, "1");
-  } catch {
-    // Storage unavailable — the current page can still navigate after login.
-  }
-}
-
-/** Remove a development-only demo marker before a real auth attempt. */
-export function clearLocalDemoAuth(): void {
-  try {
-    localStorage.removeItem(LOCAL_DEMO_AUTH_KEY);
-  } catch {
-    // Storage unavailable — no marker can be read on the next restore.
-  }
-}
-
-function hasLocalDemoAuth(): boolean {
-  if (!localDemoEnabled()) {
-    return false;
-  }
-  try {
-    return localStorage.getItem(LOCAL_DEMO_AUTH_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function buildLocalDemoBootstrap(): Bootstrap {
-  return {
-    profile: {
-      userId: "local-noah",
-      name: "Noah",
-      username: "noah",
-      phone: "",
-      role: "Staff",
-      status: "Active",
-      qrCodeString: "EFCC-LOCAL-NOAH",
-    },
-    // S15: role-based section authorization (Staff sees six sections).
-    sections: sectionsForRole("Staff"),
-  };
-}
-
-/** Keep local-demo sign-out from calling the production auth API. */
-export function isLocalDemoBootstrap(bootstrap: Bootstrap): boolean {
-  return hasLocalDemoAuth() && bootstrap.profile.userId === "local-noah";
 }
 
 /**

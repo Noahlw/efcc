@@ -36,7 +36,7 @@ import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { sectionsForRole } from "@/lib/sections";
-import { setAuthHint, setLocalDemoAuth } from "@/lib/session";
+import { setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 const mocks = vi.hoisted(() => {
@@ -261,41 +261,6 @@ describe("Shell", () => {
       expect(authCalls).toContain("/api/v1/auth/me");
       // Presence hint is set (non-secret); no legacy session object is stored.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
-    });
-
-    test("real login clears any local demo marker before restore can reuse it", async () => {
-      localStorage.setItem("efcc_local_demo_auth", "1");
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
-      await user.type(
-        screen.getByLabelText(COPY.login.passwordLabel),
-        "pw-pass"
-      );
-      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
-
-      await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith("/profile");
-      });
-      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
-    });
-
-    test("local development login accepts noah/6883 without calling the auth API", async () => {
-      const user = userEvent.setup();
-      render(<LoginPage />);
-
-      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "noah");
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "6883");
-      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
-
-      await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith("/profile");
-      });
-      expect(authCalls).not.toContain("/api/v1/auth/login");
-      expect(authCalls).not.toContain("/api/v1/auth/me");
-      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
-      expect(localStorage.getItem("efcc_local_demo_auth")).toBe("1");
     });
 
     test("stores no credential/token/session identifier in browser storage", async () => {
@@ -951,25 +916,6 @@ describe("Shell", () => {
       cleanup();
       render(<LoginPage />);
       expect(screen.getByText(COPY.logout.failedNotice)).toBeInTheDocument();
-      expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
-    });
-
-    test("local demo logout clears local state without calling the auth API", async () => {
-      pathnameMock.mockReturnValue("/profile");
-      setLocalDemoAuth();
-      const user = userEvent.setup();
-      render(<ProfilePage />);
-
-      const signOutButton = await screen.findByRole("button", {
-        name: COPY.logout.submit,
-      });
-      await user.click(signOutButton);
-
-      await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith("/");
-      });
-      expect(authCalls).not.toContain("/api/v1/auth/logout");
-      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
     });
 
