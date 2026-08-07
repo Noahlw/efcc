@@ -311,10 +311,6 @@ export type AuditOutcome =
   | "FAILED";
 
 export interface WorkspaceStore {
-  seedRolePolicies: (
-    policies: Record<string, { capability: string; granted_at: string }[]>
-  ) => Promise<void>;
-
   createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
   listDepartments: () => Promise<DepartmentRow[]>;
   findDepartmentById: (id: string) => Promise<DepartmentRow | null>;
@@ -401,6 +397,15 @@ export interface WorkspaceStore {
     decidedAt: string,
     note: string | null
   ) => Promise<EnrollmentRequestRow | null>;
+  approveEnrollmentRequest: (input: {
+    request_id: string;
+    program_id: string;
+    member_user_id: string;
+    enrollment_id: string;
+    decided_by: string;
+    decided_at: string;
+    note: string | null;
+  }) => Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null>;
   withdrawRequest: (
     id: string,
     memberUserId: string,
@@ -424,6 +429,7 @@ export interface WorkspaceStore {
     programId: string,
     userId: string
   ) => Promise<ProgramLeaderRow | null>;
+  isAccountActive: (userId: string) => Promise<boolean>;
   listProgramLeaders: (programId: string) => Promise<ProgramLeaderRow[]>;
   listProgramLeaderHistory: (programId: string) => Promise<ProgramLeaderRow[]>;
   assignProgramLeader: (

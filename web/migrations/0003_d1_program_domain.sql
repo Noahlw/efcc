@@ -386,4 +386,35 @@ VALUES
   ('018f3b8a-0000-7000-8000-000000000002', '成區', '成區', '成人事工部門', 'PendingDevelopment', 1, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z'),
   ('018f3b8a-0000-7000-8000-000000000003', '兒區', '兒區', '兒童事工部門', 'PendingDevelopment', 2, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z');
 
+-- ---------------------------------------------------------------------------
+-- 9. Seed role policies and disabled module rows. The migration is the single
+-- source of seeding; there is no runtime per-request seeding fan-out.
+-- ---------------------------------------------------------------------------
+
+INSERT OR IGNORE INTO role_capabilities (role, capability, granted_by, granted_at) VALUES
+  ('Admin',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
+  ('Member', 'program.enroll',              NULL, '2026-08-06T00:00:00Z');
+
+INSERT OR IGNORE INTO department_modules (department_id, module_key, enabled, enabled_by, enabled_at)
+SELECT d.department_id, m.module_key, 0, NULL, '2026-08-06T00:00:00Z'
+  FROM departments d
+ CROSS JOIN (
+   SELECT 'program_catalog' AS module_key
+   UNION ALL SELECT 'enrollment'
+   UNION ALL SELECT 'events'
+   UNION ALL SELECT 'attendance'
+   UNION ALL SELECT 'custom_forms'
+ ) AS m;
+
 -- Migration ends here

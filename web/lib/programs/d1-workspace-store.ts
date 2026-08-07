@@ -64,21 +64,14 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return row;
   }
 
-  async seedRolePolicies(
-    policies: Record<string, { capability: string; granted_at: string }[]>
-  ): Promise<void> {
-    const statements = Object.entries(policies).flatMap(([role, caps]) =>
-      caps.map(({ capability, granted_at }) =>
-        this.db
-          .prepare(
-            `INSERT OR IGNORE INTO role_capabilities (role, capability, granted_at)
-             VALUES (?, ?, ?)`
-          )
-          .bind(role, capability, granted_at)
-          .run()
+  async isAccountActive(userId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        "SELECT 1 FROM accounts WHERE user_id = ? AND account_status = 'Active'"
       )
-    );
-    await Promise.all(statements);
+      .bind(userId)
+      .first<{ _: 1 }>();
+    return row !== null;
   }
 
   async createDepartment(input: DepartmentInput): Promise<DepartmentRow> {
@@ -706,6 +699,58 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       return null;
     }
     return this.findEnrollmentRequestById(id);
+  }
+
+  async approveEnrollmentRequest(input: {
+    request_id: string;
+    program_id: string;
+    member_user_id: string;
+    enrollment_id: string;
+    decided_by: string;
+    decided_at: string;
+    note: string | null;
+  }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+             request_id, status, enrolled_at, created_by, created_at)
+           SELECT ?, r.program_id, r.member_user_id, ?, 'Active', ?, ?, ?
+             FROM enrollment_requests r
+            WHERE r.request_id = ? AND r.status = 'Pending'`
+        )
+        .bind(
+          input.enrollment_id,
+          input.request_id,
+          input.decided_at,
+          input.decided_by,
+          input.decided_at,
+          input.request_id
+        ),
+      this.db
+        .prepare(
+          `UPDATE enrollment_requests
+           SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
+           WHERE request_id = ? AND status = 'Pending'`
+        )
+        .bind(
+          input.decided_by,
+          input.decided_at,
+          input.note,
+          input.request_id
+        ),
+    ]);
+    if ((results[1]?.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    const [request, enrollment] = await Promise.all([
+      this.findEnrollmentRequestById(input.request_id),
+      this.findEnrollmentById(input.enrollment_id),
+    ]);
+    if (!request || !enrollment) {
+      throw new WorkspaceNotFoundError("enrollment", input.enrollment_id);
+    }
+    return { request, enrollment };
   }
 
   async withdrawRequest(

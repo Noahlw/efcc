@@ -168,6 +168,14 @@ export class ScheduleRuleNotApplicableError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class NoScheduleRulesError extends Error {
+  constructor(programId: string) {
+    super(`Program ${programId} has no schedule rules to generate events from.`);
+    this.name = "NoScheduleRulesError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateEventError extends Error {
   constructor(startsAt: string) {
     super(`An event already exists for this start time: ${startsAt}`);
@@ -214,6 +222,14 @@ export class LeaderNotAssignedError extends Error {
   constructor(programId: string, userId: string) {
     super(`User ${userId} is not an active Program Leader of ${programId}.`);
     this.name = "LeaderNotAssignedError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class LeaderAccountInactiveError extends Error {
+  constructor(userId: string) {
+    super(`Cannot assign ${userId} as Program Leader: account is not Active.`);
+    this.name = "LeaderAccountInactiveError";
   }
 }
 
@@ -826,7 +842,17 @@ export class DepartmentWorkspace {
     }
     const rules = await this.store.listScheduleRules(programId);
     if (rules.length === 0) {
-      return { created: 0, skipped: 0, rule_count: 0 };
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "FAILED",
+        null,
+        { rule_count: 0 },
+        correlationId
+      );
+      throw new NoScheduleRulesError(programId);
     }
     const exceptions = await this.store.listScheduleExceptions(
       rules.map((r) => r.rule_id)
@@ -1047,7 +1073,7 @@ export class DepartmentWorkspace {
         "ENROLLMENT_REQUEST_CREATE",
         "enrollment_request",
         programId,
-        "CONFLICT",
+        "DUPLICATE",
         null,
         { member_user_id: ctx.actorUserId, reason: "active_enrollment_exists" },
         correlationId
@@ -1062,7 +1088,7 @@ export class DepartmentWorkspace {
         "ENROLLMENT_REQUEST_CREATE",
         "enrollment_request",
         programId,
-        "CONFLICT",
+        "DUPLICATE",
         null,
         { member_user_id: ctx.actorUserId, reason: "pending_request_exists" },
         correlationId
@@ -1149,32 +1175,25 @@ export class DepartmentWorkspace {
       throw new RequestNotDecidableError(requestId);
     }
     const now = new Date().toISOString();
-    const decided = await this.store.decideRequest(
-      requestId,
-      cmd.action,
-      ctx.actorUserId,
-      now,
-      cmd.note
-    );
-    if (!decided) {
-      throw new RequestNotDecidableError(requestId);
-    }
+    let decided: EnrollmentRequestRow | null;
     let enrollment: EnrollmentRow | null = null;
     if (cmd.action === "Approved") {
       try {
-        enrollment = await this.store.createEnrollment({
-          enrollment_id: crypto.randomUUID(),
+        const committed = await this.store.approveEnrollmentRequest({
+          request_id: requestId,
           program_id: programId,
           member_user_id: request.member_user_id,
-          request_id: requestId,
-          status: "Active",
-          enrolled_at: now,
-          created_by: ctx.actorUserId,
-          created_at: now,
+          enrollment_id: crypto.randomUUID(),
+          decided_by: ctx.actorUserId,
+          decided_at: now,
+          note: cmd.note,
         });
+        decided = committed?.request ?? null;
+        enrollment = committed?.enrollment ?? null;
       } catch (error) {
-        // ponytail: partial unique index is the race guard; on constraint
-        // violation the member already has an Active enrollment.
+        // ponytail: the (member, program) unique index is the race guard; on
+        // constraint violation the whole batch rolled back, so the request is
+        // still Pending and the member already has an Active enrollment.
         if (
           await this.store.hasActiveEnrollment(
             programId,
@@ -1185,6 +1204,19 @@ export class DepartmentWorkspace {
         }
         throw error;
       }
+    } else {
+      decided = await this.store.decideRequest(
+        requestId,
+        "Rejected",
+        ctx.actorUserId,
+        now,
+        cmd.note
+      );
+    }
+    if (!decided) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    if (enrollment !== null) {
       await this.audit(
         ctx,
         "ENROLLMENT_CREATE",
@@ -1412,6 +1444,19 @@ export class DepartmentWorkspace {
     if (userId === ctx.actorUserId) {
       throw new SelfDelegationError(userId);
     }
+    if (!(await this.store.isAccountActive(userId))) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "FAILED",
+        null,
+        { user_id: userId, reason: "target_account_not_active" },
+        correlationId
+      );
+      throw new LeaderAccountInactiveError(userId);
+    }
     const existing = await this.store.findProgramLeader(programId, userId);
     if (existing && existing.revoked_at === null) {
       await this.audit(
@@ -1462,6 +1507,16 @@ export class DepartmentWorkspace {
       throw new LeaderNotAssignedError(programId, userId);
     }
     if (existing.revoked_at !== null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "DUPLICATE",
+        existing,
+        existing,
+        correlationId
+      );
       return existing;
     }
     const revoked = await this.store.revokeProgramLeader({

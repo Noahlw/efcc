@@ -201,6 +201,7 @@ beforeAll(async () => {
     HEADER,
     ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
     ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
+    ["U004", "Dana Pending", "dana", "9999", "Member", "Pending"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -1335,6 +1336,35 @@ describe("PRG-02: generation", () => {
     const row = rows.results?.find((r) => r.outcome === "SUCCESS");
     assert.ok(row, "EVENT_GENERATE audit row must exist");
   });
+
+  test("generation on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
+    const noRules = await createProgram(adminAccess, deptId, {
+      name: "Generation No Rules",
+      behavior_type: "Recurring",
+    });
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${noRules.program_id}/events/generate`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'EVENT_GENERATE' AND outcome = 'FAILED'
+           AND entity_id = ?`
+      )
+      .bind(noRules.program_id)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "zero-rule generation must write a FAILED audit row");
+  });
 });
 
 describe("PRG-02: events", () => {
@@ -1959,12 +1989,15 @@ describe("PRG-03: enrollment requests", () => {
     );
     assert.strictEqual(afterActive.status, 409);
 
-    const conflictAudit = await testDb()
+    const duplicateAudit = await testDb()
       .prepare(
-        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_CREATE' AND outcome = 'CONFLICT'"
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_CREATE' AND outcome = 'DUPLICATE'"
       )
       .all<{ outcome: string }>();
-    assert.ok(conflictAudit.results && conflictAudit.results.length > 0);
+    assert.ok(
+      duplicateAudit.results && duplicateAudit.results.length > 0,
+      "same-actor repeat submissions audit DUPLICATE (ADR-0023)"
+    );
   });
 
   test("REQ-4 approval creates an Active enrollment tied to the request", async () => {
@@ -2112,6 +2145,28 @@ describe("PRG-03: enrollment requests", () => {
       .bind(request.request_id)
       .all<{ enrollment_id: string }>();
     assert.strictEqual(enrollments.results?.length, 1);
+
+    const orphans = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS n FROM enrollment_requests r
+         LEFT JOIN enrollments e ON e.request_id = r.request_id
+         WHERE r.status = 'Approved' AND e.enrollment_id IS NULL`
+      )
+      .first<{ n: number }>();
+    assert.strictEqual(
+      orphans?.n,
+      0,
+      "no Approved request may exist without an Enrollment (terminal evidence)"
+    );
+
+    const decides = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS n FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ?`
+      )
+      .bind(request.request_id)
+      .first<{ n: number }>();
+    assert.strictEqual(decides?.n, 1, "DECIDE audits once, on commit only");
   });
 
   test("REQ-8 no credential material leaks in request responses", async () => {
@@ -2614,6 +2669,46 @@ describe("PRG-04: program leaders", () => {
     assert.strictEqual((rows.results ?? []).length, 0);
   });
 
+  test("DLG-4b revoke-on-revoked is a quiet 200 with a DUPLICATE audit row", async () => {
+    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(revoke.status, 200);
+    const again = await revokeLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(again.status, 200);
+    const body = (await assertCorrelated(again)) as {
+      data: { leader: { revoked_at: string | null } };
+    };
+    assert.ok(body.data.leader.revoked_at, "row stays revoked");
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
+      )
+      .bind(leaderProgramId)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "revoke-revoked must write a DUPLICATE audit row");
+  });
+
+  test("DLG-1b Pending target account is rejected with 422 and a FAILED audit row", async () => {
+    const res = await assignLeader(adminAccess, leaderProgramId, "U004");
+    assert.strictEqual(res.status, 422);
+    const rows = await testDb()
+      .prepare(
+        "SELECT 1 FROM program_leaders WHERE user_id = 'U004'"
+      )
+      .all();
+    assert.strictEqual((rows.results ?? []).length, 0);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'FAILED'
+           AND entity_id = ?`
+      )
+      .bind(leaderProgramId)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "inactive target must write a FAILED grant audit row");
+  });
+
   test("DLG-6 unknown program does not leak existence (403)", async () => {
     const res = await assignLeader(adminAccess, "no-such-program", "U002");
     assert.strictEqual(res.status, 403);
@@ -2699,24 +2794,26 @@ describe("PRG-04: program leaders", () => {
     assert.strictEqual(res.status, 404);
   });
 
-  test("DLG-13 revoking an already-revoked pair is a no-op 200 with no new audit", async () => {
+  test("DLG-13 revoking an already-revoked pair is a quiet 200 that audits DUPLICATE", async () => {
     const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
     assert.strictEqual(grant.status, 200);
     const first = await revokeLeader(adminAccess, leaderProgramId, "U003");
     assert.strictEqual(first.status, 200);
-    const before = await testDb()
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'"
-      )
-      .first<{ n: number }>();
     const second = await revokeLeader(adminAccess, leaderProgramId, "U003");
     assert.strictEqual(second.status, 200);
-    const after = await testDb()
+    const body = (await assertCorrelated(second)) as {
+      data: { leader: { revoked_at: string | null } };
+    };
+    assert.ok(body.data.leader.revoked_at, "row stays revoked");
+    const dup = await testDb()
       .prepare(
-        "SELECT COUNT(*) AS n FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'"
+        `SELECT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
       )
-      .first<{ n: number }>();
-    assert.strictEqual(after?.n, before?.n, "no second revoke audit");
+      .bind(leaderProgramId)
+      .first<{ outcome: string }>();
+    assert.ok(dup, "revoke-revoked writes a DUPLICATE audit row (ADR-0027)");
   });
 
   test("DLG-14 member and scoped leader cannot revoke", async () => {

@@ -10,7 +10,6 @@ import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { verifyAccessToken } from "../auth/sessions";
-import { DEFAULT_ROLE_POLICIES } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
 import {
   AuthorizationDeniedError,
@@ -27,7 +26,9 @@ import {
   EnrollmentNotAllowedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
+  LeaderAccountInactiveError,
   LeaderNotAssignedError,
+  NoScheduleRulesError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
@@ -232,7 +233,6 @@ async function getModule(
   env: ProgramEnv
 ): Promise<{ workspace: DepartmentWorkspace }> {
   const store = new D1WorkspaceStore(env.DB);
-  await store.seedRolePolicies(DEFAULT_ROLE_POLICIES);
   const authorizer = new D1CapabilityAuthorizer(store);
   return { workspace: new DepartmentWorkspace(store, authorizer) };
 }
@@ -1191,6 +1191,9 @@ export async function handleGenerateEvents(
     if (error instanceof ScheduleRuleNotApplicableError) {
       return validation(requestId, error.message);
     }
+    if (error instanceof NoScheduleRulesError) {
+      return validation(requestId, error.message);
+    }
     throw error;
   }
 }
@@ -1615,6 +1618,9 @@ export async function handleAssignProgramLeader(
     }
     if (error instanceof SelfDelegationError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof LeaderAccountInactiveError) {
+      return validation(requestId, error.message);
     }
     throw error;
   }
