@@ -366,6 +366,7 @@ Deterministic re-audit after the two P2 fixes:
 | QR bounding contract | PASS — `.qrSquare` reuses the global `border-box` reset with `aspect-ratio: 1 / 1`, so the outer box is exactly 220x220; the live gate asserts the bounding box. |
 | AppShell restore race | PASS — per-run `cancelled` flag replaces the shared `mountRef` boolean; a StrictMode regression forces a stale 503 after a fresh success and asserts the shell stays ready (no `COPY.error.unavailable`, no `replaceMock`). |
 | Fixture docs gap | PASS — `.github/CI-SECRETS.md` now documents the six `PROGRAMS_*` username/credential fixtures the live-ui gate requires, with provisioning guidance; documentation only, no secret values. |
+| Prototype settings a11y (gallery) | PASS — `web/app/prototype/page.tsx` Account Settings mock emits `aria-describedby` + `aria-invalid` unconditionally on both fields, matching the always-visible `role="alert"` error blocks on every viewport (previously mobile omitted the association). |
 | `pnpm --dir web test:components` | PASS — 9 files, 142 tests, with the StrictMode regression included. |
 | Local browser smoke | PASS — `noah`/`6883` reached `/profile` with visible Noah/Staff identity and six navigation labels; reload preserved the local session and announced `工作階段已還原。`; `/profile/settings` rendered `帳戶資料` with all three labels and no horizontal overflow; 375x667 Profile fit its shell scroll box; logout returned `/` and cleared both local markers. |
 
