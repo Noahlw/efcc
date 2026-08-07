@@ -5,7 +5,7 @@
  * and the login page (reader) so the two realms cannot drift apart.
  */
 
-export const GUEST_CONTEXT_KEY = "efcc_guest_context";
+const GUEST_CONTEXT_KEY = "efcc_guest_context";
 
 export type CheckInCredentialKind = "program_token" | "manual_code";
 

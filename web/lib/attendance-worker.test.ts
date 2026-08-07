@@ -479,9 +479,11 @@ describe("attendance Worker routes", () => {
     );
     assert.strictEqual(checkIn.status, 201);
     const checkInBody = await json(checkIn);
-    assert.strictEqual(
-      (checkInBody.data as { attendance_id: string }).attendance_id.length > 0,
-      true
+    const assistedId = (checkInBody.data as { attendance_id: string })
+      .attendance_id;
+    assert.match(
+      assistedId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
     );
   });
 
@@ -647,5 +649,129 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(closed.status, 409);
     const closedBody = await json(closed);
     assert.strictEqual(closedBody.code, "CHECK_IN_CLOSED");
+  });
+
+  test("guest correction updates the row; a phone already active on the Event conflicts", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const phoneA = "6555 5555";
+    const phoneB = "6666 6666";
+    const phoneC = "6777 7777";
+    const guest = async (name: string, phone: string) => {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          body: JSON.stringify({
+            event_id: EVENT,
+            method: "guest_manual_code",
+            manual_code: "ATT1234",
+            name,
+            phone,
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 201);
+      const body = await json(response);
+      return body.data as { attendance_id: string };
+    };
+    const rowA = await guest("訪客更正甲", phoneA);
+    await guest("訪客更正乙", phoneB);
+    const header = { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` };
+
+    // Correcting A onto B's phone collides with the active-guest unique
+    // index and must surface as a 409, not a 500.
+    const conflict = await worker.fetch(
+      request(`/api/v1/attendance/${rowA.attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: header,
+        body: JSON.stringify({
+          name: "訪客更正甲",
+          phone: phoneB,
+          reason: "電話更正測試",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(conflict.status, 409);
+    const conflictBody = await json(conflict);
+    assert.strictEqual(conflictBody.code, "DUPLICATE_ATTENDANCE");
+
+    // A fresh phone corrects cleanly and the roster reflects the edit.
+    const corrected = await worker.fetch(
+      request(`/api/v1/attendance/${rowA.attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: header,
+        body: JSON.stringify({
+          name: "訪客更正甲改",
+          phone: phoneC,
+          reason: "電話更正測試",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(corrected.status, 200);
+    const correctedBody = await json(corrected);
+    assert.strictEqual(
+      (correctedBody.data as { outcome: string }).outcome,
+      "corrected"
+    );
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: header,
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 200);
+    const rosterBody = await json(roster);
+    const rows = rosterBody.data as {
+      attendances: {
+        attendance_id: string;
+        guest_name: string;
+        guest_phone: string;
+      }[];
+    };
+    const row = rows.attendances.find(
+      (candidate) => candidate.attendance_id === rowA.attendance_id
+    );
+    assert.ok(row, "corrected row must remain on the roster");
+    assert.strictEqual(row.guest_name, "訪客更正甲改");
+    assert.strictEqual(row.guest_phone, phoneC);
+  });
+
+  test("void requires a non-blank reason (422 VALIDATION)", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客作廢測試",
+          phone: "6888 8888",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 201);
+    const checkInBody = await json(checkIn);
+    const { attendance_id } = checkInBody.data as { attendance_id: string };
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/void`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({ reason: "   " }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+    const body = await json(response);
+    assert.strictEqual(body.code, "VALIDATION");
+    const row = await testDb()
+      .prepare(`SELECT status FROM attendances WHERE attendance_id = ?`)
+      .bind(attendance_id)
+      .first<{ status: string }>();
+    assert.strictEqual(row?.status, "Active");
   });
 });

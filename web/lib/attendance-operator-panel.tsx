@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -18,12 +18,9 @@ import type {
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/programs/program-api";
+import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
-
-type BarcodeDetectorConstructor = new (options: { formats: string[] }) => {
-  detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
-};
 
 type StatusTone = "info" | "success" | "error";
 
@@ -42,18 +39,6 @@ export const AttendanceOperatorPanel = () => {
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  useEffect(
-    () => () => {
-      for (const track of streamRef.current?.getTracks() ?? []) {
-        track.stop();
-      }
-    },
-    []
-  );
 
   /** Status + tone are updated together on every feedback path. */
   const showStatus = (message: string, nextTone: StatusTone = "info") => {
@@ -137,6 +122,13 @@ export const AttendanceOperatorPanel = () => {
     }
   }
 
+  const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
+    onDetect: (value) => {
+      void scanMember(value);
+    },
+    onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
+  });
+
   useEffect(() => {
     // The events list deep-links here (e.g. /events?eventId=...); keep the
     // static-export-friendly window.location.search read, same as the scanner.
@@ -198,74 +190,6 @@ export const AttendanceOperatorPanel = () => {
       setBusy(false);
     }
   }
-
-  function stopCamera() {
-    for (const track of streamRef.current?.getTracks() ?? []) {
-      track.stop();
-    }
-    streamRef.current = null;
-    setCameraOpen(false);
-  }
-
-  async function startCamera() {
-    const detector = (
-      window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
-    ).BarcodeDetector;
-    if (!detector || !navigator.mediaDevices?.getUserMedia) {
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      streamRef.current = stream;
-      setCameraOpen(true);
-    } catch {
-      stopCamera();
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-    }
-  }
-
-  useEffect(() => {
-    if (!cameraOpen || !streamRef.current || !videoRef.current) {
-      return;
-    }
-    const detector = (
-      window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
-    ).BarcodeDetector;
-    if (!detector) {
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-      return;
-    }
-    const video = videoRef.current;
-    const stream = streamRef.current;
-    let cancelled = false;
-    const scanner = new detector({ formats: ["qr_code"] });
-    const scan = async () => {
-      if (cancelled) {
-        return;
-      }
-      const codes = await scanner.detect(video);
-      const value = codes[0]?.rawValue;
-      if (value) {
-        stopCamera();
-        await scanMember(value);
-        return;
-      }
-      requestAnimationFrame(() => void scan());
-    };
-    video.srcObject = stream;
-    const startScan = async () => {
-      await video.play();
-      await scan();
-    };
-    void startScan();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraOpen]);
 
   return (
     <main className={styles.page}>
@@ -495,10 +419,7 @@ export const AttendanceOperatorPanel = () => {
                         onChange={(e) => setCorrectionPhone(e.target.value)}
                       />
                     </label>
-                    <label
-                      className={styles.field}
-                      htmlFor="correction-reason"
-                    >
+                    <label className={styles.field} htmlFor="correction-reason">
                       <span className={styles.fieldLabel}>
                         {COPY.attendance.correctionReason}
                       </span>

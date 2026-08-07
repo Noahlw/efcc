@@ -95,7 +95,6 @@ const PROBLEM_TITLES: Record<string, string> = {
   RATE_LIMITED: "Too many requests",
   UNAVAILABLE: "Service unavailable",
   CONFLICT: "Conflict",
-  INTERNAL_ERROR: "Internal error",
 };
 
 function problem(
@@ -169,6 +168,21 @@ async function actor(
     return required ? problem(403, "FORBIDDEN", "帳戶不可用", id) : null;
   }
   return account;
+}
+
+/**
+ * Authenticated-actor prologue shared by every protected handler: resolves
+ * the account (401 when absent) so callers only handle the Response branch.
+ */
+async function requireActor(
+  request: Request,
+  env: AttendanceEnv,
+  id: string
+): Promise<AccountRow | Response> {
+  const current = await actor(request, env, id, true);
+  return current instanceof Response || current === null
+    ? (current ?? problem(401, "AUTH_REQUIRED", "登入要求", id))
+    : current;
 }
 
 async function findEvent(
@@ -435,18 +449,18 @@ export async function handleResolve(
       status = await matchingEventStatus(env.DB, byToken, value);
     }
   } else {
-    events = await openEvents(env.DB, false, entry ?? "");
+    events = await openEvents(env.DB, false, value);
     if (events.length === 0) {
       // Same disambiguation order as resolveEntryMethod: the typed value may
       // be a cancelled/closed Event's manual code, so check the manual
       // column's status before falling back to the Program token column
       // (previously the token fallback erased the manual identity and a
       // cancelled Event's manual code 404'd instead of 410 EVENT_CANCELLED).
-      status = await matchingEventStatus(env.DB, false, entry ?? "");
+      status = await matchingEventStatus(env.DB, false, value);
       if (status === null) {
-        events = await openEvents(env.DB, true, entry ?? "");
+        events = await openEvents(env.DB, true, value);
         if (events.length === 0) {
-          status = await matchingEventStatus(env.DB, true, entry ?? "");
+          status = await matchingEventStatus(env.DB, true, value);
         }
       }
     }
@@ -613,9 +627,9 @@ export async function handleSelfCheckIn(
   env: AttendanceEnv
 ): Promise<Response> {
   const id = requestId();
-  const current = await actor(request, env, id, true);
-  if (current instanceof Response || current === null) {
-    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
   }
   const input = await body<{
     event_id?: unknown;
@@ -713,9 +727,9 @@ async function requireEventOperator(
   eventId: string,
   id: string
 ): Promise<{ current: AccountRow; event: AttendanceEvent } | Response> {
-  const current = await actor(request, env, id, true);
-  if (current instanceof Response || current === null) {
-    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
   }
   const event = await findEvent(env.DB, eventId);
   if (!event) {
@@ -932,9 +946,9 @@ export async function handleListManageableEvents(
   env: AttendanceEnv
 ): Promise<Response> {
   const id = requestId();
-  const current = await actor(request, env, id, true);
-  if (current instanceof Response || current === null) {
-    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
   }
   const result = await env.DB.prepare(
     `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
@@ -965,9 +979,9 @@ export async function handleVoidAttendance(
   attendanceId: string
 ): Promise<Response> {
   const id = requestId();
-  const current = await actor(request, env, id, true);
-  if (current instanceof Response || current === null) {
-    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
   }
   const input = await body<{ reason?: unknown }>(request);
   if (!input || typeof input.reason !== "string" || !input.reason.trim()) {
@@ -1032,9 +1046,9 @@ export async function handleCorrectGuest(
   attendanceId: string
 ): Promise<Response> {
   const id = requestId();
-  const current = await actor(request, env, id, true);
-  if (current instanceof Response || current === null) {
-    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
   }
   const input = await body<{
     name?: unknown;

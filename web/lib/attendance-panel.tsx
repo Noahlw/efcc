@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -12,12 +12,9 @@ import {
   selfCheckIn,
 } from "@/lib/programs/program-api";
 import type { AttendanceEvent } from "@/lib/programs/program-api";
+import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
-
-type BarcodeDetectorConstructor = new (options: { formats: string[] }) => {
-  detect: (video: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
-};
 
 type StatusTone = "info" | "success" | "error";
 
@@ -59,9 +56,6 @@ export const AttendancePanel = ({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   /** Status + tone are updated together on every feedback path. */
   const showStatus = (message: string, nextTone: StatusTone = "info") => {
@@ -107,6 +101,16 @@ export const AttendancePanel = ({
     }
   }
 
+  const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
+    onDetect: (value) => {
+      const entry = entryFromValue(value);
+      setInput(entry.value);
+      stopCamera();
+      void resolve(entry.value, entry.fromQr);
+    },
+    onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
+  });
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const programToken = params.get("program_token");
@@ -119,84 +123,6 @@ export const AttendancePanel = ({
     // The URL is the QR entry seam; only run it when the deep-link changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(
-    () => () => {
-      for (const track of streamRef.current?.getTracks() ?? []) {
-        track.stop();
-      }
-    },
-    []
-  );
-
-  function stopCamera() {
-    for (const track of streamRef.current?.getTracks() ?? []) {
-      track.stop();
-    }
-    streamRef.current = null;
-    setCameraOpen(false);
-  }
-
-  useEffect(() => {
-    if (!cameraOpen || !streamRef.current || !videoRef.current) {
-      return;
-    }
-    const detector = (
-      window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
-    ).BarcodeDetector;
-    if (!detector) {
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-      return;
-    }
-    const video = videoRef.current;
-    const stream = streamRef.current;
-    let cancelled = false;
-    const scanner = new detector({ formats: ["qr_code"] });
-    const scan = async () => {
-      if (cancelled) {
-        return;
-      }
-      const codes = await scanner.detect(video);
-      const value = codes[0]?.rawValue;
-      if (value) {
-        const entry = entryFromValue(value);
-        setInput(entry.value);
-        stopCamera();
-        await resolve(entry.value, entry.fromQr);
-        return;
-      }
-      requestAnimationFrame(() => void scan());
-    };
-    video.srcObject = stream;
-    const startScan = async () => {
-      await video.play();
-      await scan();
-    };
-    void startScan();
-    return () => {
-      cancelled = true;
-    };
-  }, [cameraOpen]);
-
-  async function startCamera() {
-    const detector = (
-      window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
-    ).BarcodeDetector;
-    if (!detector || !navigator.mediaDevices?.getUserMedia) {
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      streamRef.current = stream;
-      setCameraOpen(true);
-    } catch {
-      stopCamera();
-      showStatus(COPY.attendance.cameraUnavailable, "error");
-    }
-  }
 
   async function submit() {
     if (!selected) {
@@ -247,9 +173,12 @@ export const AttendancePanel = ({
     <main className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
         <h1 id="attendance-title" className={styles.title}>
-          {title ?? (guest ? COPY.attendance.guestTitle : COPY.sections.scanner)}
+          {title ??
+            (guest ? COPY.attendance.guestTitle : COPY.sections.scanner)}
         </h1>
-        {guest && <p className={styles.lead}>{COPY.attendance.signedOutNote}</p>}
+        {guest && (
+          <p className={styles.lead}>{COPY.attendance.signedOutNote}</p>
+        )}
         <button
           className={styles.button}
           type="button"
