@@ -521,6 +521,19 @@
   text-decoration: line-through;
 }
 
+.eventActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex-basis: 100%;
+}
+
+.eventReason {
+  flex-basis: 100%;
+  color: var(--ink-muted);
+}
+
 .emptyLine {
   font-size: 0.875rem;
   color: var(--ink-muted);
@@ -645,7 +658,8 @@
 
   .form,
   .ruleForm,
-  .cancelForm {
+  .cancelForm,
+  .eventActions {
     align-items: stretch;
     flex-direction: column;
   }

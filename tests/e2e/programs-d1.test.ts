@@ -290,16 +290,20 @@ function hkWallToday(): string {
 
 /** Shift a HK wall date by whole days (DST-free wall arithmetic). */
 function addWallDays(wallDate: string, days: number): string {
-  const shifted = new Date(`${wallDate}T00:00:00+08:00`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
+  const [year, month, day] = wallDate.split("-").map(Number);
+  // Date.UTC normalizes overflow (e.g. Aug 32 -> Sep 1); wall-date weekday
+  // is read back from the same UTC calendar day.
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 }
 
 /** First wall date strictly after `wallDate` whose HK weekday is `weekday`. */
 function nextWallWeekday(wallDate: string, weekday: number): string {
   for (let days = 1; days <= 7; days += 1) {
     const candidate = addWallDays(wallDate, days);
-    if (new Date(`${candidate}T00:00:00+08:00`).getUTCDay() === weekday) {
+    const [year, month, day] = candidate.split("-").map(Number);
+    if (new Date(Date.UTC(year, month - 1, day)).getUTCDay() === weekday) {
       return candidate;
     }
   }

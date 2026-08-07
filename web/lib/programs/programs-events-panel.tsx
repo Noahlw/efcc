@@ -8,7 +8,9 @@ import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
   createEvent,
+  createScheduleException,
   createScheduleRule,
+  deleteScheduleException,
   generateEvents,
   listEvents,
   listScheduleRules,
@@ -16,9 +18,14 @@ import {
 import type {
   Program,
   ProgramEvent,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
-import { HK_TIME_ZONE } from "@/lib/programs/recurrence";
+import {
+  HK_TIME_ZONE,
+  HK_UTC_OFFSET_MINUTES,
+  wallWeekday,
+} from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -55,6 +62,43 @@ const WEEKDAY_LABELS = [
   COPY.programs.weekdaySaturday,
 ];
 
+/** HK wall date ("YYYY-MM-DD") and time ("HH:MM") of an ISO instant. */
+function hkWallParts(iso: string): { date: string; time: string } {
+  const shifted = new Date(
+    new Date(iso).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  );
+  return {
+    date: shifted.toISOString().slice(0, 10),
+    time: shifted.toISOString().slice(11, 16),
+  };
+}
+
+/**
+ * The rule whose schedule produced this event, when attribution is
+ * unambiguous: a single rule firing on the event's HK wall date wins; a
+ * time match breaks ties among same-date rules. Events carry no rule_id,
+ * so exception controls hide when attribution is ambiguous.
+ */
+function ruleForEvent(
+  event: ProgramEvent,
+  rules: ScheduleRule[]
+): ScheduleRule | null {
+  if (event.source !== "SCHEDULE") {
+    return null;
+  }
+  const { date, time } = hkWallParts(event.starts_at);
+  const byDate = rules.filter((rule) =>
+    rule.recurrence === "WEEKLY"
+      ? rule.day_of_week === wallWeekday(date)
+      : rule.month_day === Number(date.slice(8, 10))
+  );
+  if (byDate.length === 1) {
+    return byDate[0];
+  }
+  const byTime = byDate.filter((rule) => rule.start_time === time);
+  return byTime.length === 1 ? byTime[0] : null;
+}
+
 export const EventsPanel = ({
   program,
   canManage,
@@ -69,6 +113,17 @@ export const EventsPanel = ({
   const [loadError, setLoadError] = useState(false);
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
+  );
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(
+    null
+  );
+  const [reschedulingEventId, setReschedulingEventId] = useState<string | null>(
+    null
+  );
+  // Exceptions created this session, keyed by HK wall date. The API exposes
+  // no list-exceptions endpoint, so the 恢復 affordance lives for the session.
+  const [exceptions, setExceptions] = useState<Record<string, ScheduleException>>(
+    {}
   );
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -202,6 +257,78 @@ export const EventsPanel = ({
       );
       setConfirmingEventId(null);
     };
+
+  const rememberException = (result: unknown): void => {
+    const { exception } = result as { exception: ScheduleException };
+    setExceptions((previous) => ({
+      ...previous,
+      [exception.override_date]: exception,
+    }));
+  };
+
+  const submitReschedule =
+    (rule: ScheduleRule, wallDate: string) =>
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const newStartTime = String(form.get("new_start_time") ?? "");
+      const newEndTime = String(form.get("new_end_time") ?? "");
+      void runAction(
+        () =>
+          createScheduleException(program.program_id, rule.rule_id, {
+            override_date: wallDate,
+            action: "RESCHEDULE",
+            new_start_time: newStartTime,
+            new_end_time: newEndTime,
+          }),
+        (result) => {
+          rememberException(result);
+          return COPY.programs.exceptionUpdatedNotice;
+        }
+      );
+      setReschedulingEventId(null);
+    };
+
+  const submitCancelOccurrence =
+    (rule: ScheduleRule, wallDate: string, eventId: string) =>
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (confirmingCancelId !== eventId) {
+        setConfirmingCancelId(eventId);
+        return;
+      }
+      void runAction(
+        () =>
+          createScheduleException(program.program_id, rule.rule_id, {
+            override_date: wallDate,
+            action: "CANCEL",
+          }),
+        (result) => {
+          rememberException(result);
+          return COPY.programs.exceptionUpdatedNotice;
+        }
+      );
+      setConfirmingCancelId(null);
+    };
+
+  const removeException = (exception: ScheduleException) => {
+    void runAction(
+      () =>
+        deleteScheduleException(
+          program.program_id,
+          exception.rule_id,
+          exception.exception_id
+        ),
+      () => {
+        setExceptions((previous) => {
+          const next = { ...previous };
+          delete next[exception.override_date];
+          return next;
+        });
+        return COPY.programs.exceptionRemovedNotice;
+      }
+    );
+  };
 
   const handleGenerate = () => {
     void runAction(
@@ -357,7 +484,11 @@ export const EventsPanel = ({
         ) : events.length === 0 ? (
           <li className={styles.emptyLine}>{COPY.programs.eventsEmpty}</li>
         ) : (
-          events.map((event) => (
+          events.map((event) => {
+            const wall = hkWallParts(event.starts_at);
+            const rule = ruleForEvent(event, rules ?? []);
+            const exception = exceptions[wall.date];
+            return (
             <li key={event.event_id} className={styles.eventRow}>
               <span className={styles.eventDate}>
                 {hkWallLabel(event.starts_at)}
@@ -376,6 +507,104 @@ export const EventsPanel = ({
               >
                 {STATUS_LABEL[event.status]}
               </span>
+              {canManage && event.status === "Active" && rule !== null &&
+                (exception === undefined ? (
+                  <div className={styles.eventActions}>
+                    {reschedulingEventId === event.event_id ? (
+                      <form
+                        className={styles.ruleForm}
+                        onSubmit={submitReschedule(rule, wall.date)}
+                      >
+                        <input
+                          type="time"
+                          name="new_start_time"
+                          required
+                          aria-label={COPY.programs.rescheduleStart}
+                        />
+                        <input
+                          type="time"
+                          name="new_end_time"
+                          required
+                          aria-label={COPY.programs.rescheduleEnd}
+                        />
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className={styles.actionButton}
+                        >
+                          {COPY.programs.confirmReschedule}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className={styles.secondaryButton}
+                          onClick={() => setReschedulingEventId(null)}
+                        >
+                          {COPY.programs.cancelRevoke}
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className={styles.actionButton}
+                        onClick={() => setReschedulingEventId(event.event_id)}
+                      >
+                        {COPY.programs.rescheduleEvent}
+                      </button>
+                    )}
+                    <form
+                      className={styles.cancelForm}
+                      onSubmit={submitCancelOccurrence(rule, wall.date, event.event_id)}
+                    >
+                      {confirmingCancelId !== event.event_id ? (
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className={styles.secondaryButton}
+                        >
+                          {COPY.programs.cancelOccurrence}
+                        </button>
+                      ) : (
+                        <div className={styles.confirmation} role="alert">
+                          <span>{COPY.programs.cancelOccurrenceConfirm}</span>
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className={styles.dangerButton}
+                          >
+                            {COPY.programs.confirmCancelOccurrence}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={styles.secondaryButton}
+                            onClick={() => setConfirmingCancelId(null)}
+                          >
+                            {COPY.programs.keepOccurrence}
+                          </button>
+                        </div>
+                      )}
+                    </form>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className={styles.secondaryButton}
+                    onClick={() => removeException(exception!)}
+                  >
+                    {COPY.programs.restoreOccurrence}
+                  </button>
+                ))}
+              {event.status === "Cancelled" && event.cancel_reason !== null && (
+                <span className={styles.eventReason}>
+                  {COPY.programs.cancelledReason.replace(
+                    "{reason}",
+                    event.cancel_reason
+                  )}
+                </span>
+              )}
               {canManage && event.status === "Active" && (
                 <form
                   className={styles.cancelForm}
@@ -420,7 +649,8 @@ export const EventsPanel = ({
                 </form>
               )}
             </li>
-          ))
+            );
+          })
         )}
       </ul>
     </section>
