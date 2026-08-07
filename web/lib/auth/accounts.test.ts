@@ -19,6 +19,8 @@
  * assertion, fixture diagnostic, or expected/logged output.
  */
 import { describe, test, expect, beforeAll } from "vitest";
+import assert from "node:assert/strict";
+import { env } from "cloudflare:workers";
 
 import { applyMigrations, testDb } from "./test-bootstrap";
 import {
@@ -155,6 +157,10 @@ describe("AUTH-01: legacy import", () => {
     expect(alice!.requires_upgrade).toBe(1);
     expect(alice!.credential_kind).toBe("legacy_pin");
     expect(alice!.credential_hash).toBeNull();
+    // TEACHER source is retired to STAFF (ADR-0025): no stored Teacher role.
+    const carol = await findAccountByUsername(testDb(), "carol203");
+    expect(carol).not.toBeNull();
+    expect(carol!.role).toBe("Staff");
     // One-time legacy PIN hash is stored, never the cleartext PIN.
     expect(alice!.legacy_pin_hash).toMatch(/^pbkdf2:/);
     // Scan every field except the wall-clock timestamps, whose digits can
@@ -173,6 +179,63 @@ describe("AUTH-01: legacy import", () => {
     expect(rerun.imported).toBe(0);
     expect(rerun.skipped).toBe(1);
     expect(await countAccounts()).toBe(first);
+  });
+
+  test("0002 write-time guard: INSERT/UPDATE of a non-canonical role aborts (RAISE ABORT)", async () => {
+    // The migration's data UPDATE retires existing Teacher rows; the guards
+    // below close the write path so the retired spelling can never return.
+    // Canonical: Admin, Staff, Member (ADR-0025).
+
+    // INSERT with the retired spelling fails closed.
+    await expect(
+      testDb()
+        .prepare(
+          'INSERT INTO accounts (' +
+            ' user_id, name, username, username_normalized, role,' +
+            ' account_status, credential_kind, requires_upgrade,' +
+            ' created_at, updated_at' +
+            ' ) VALUES (' +
+            " 'U700', 'Tina Teacher', 'tina700', 'tina700', 'Teacher'," +
+            " 'Active', 'legacy_pin', 1, ?, ?" +
+            ' )'
+        )
+        .bind(Date.now(), Date.now())
+        .run()
+    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+
+    // Canonical INSERT still works.
+    await testDb()
+      .prepare(
+        'INSERT INTO accounts (' +
+          ' user_id, name, username, username_normalized, role,' +
+          ' account_status, credential_kind, requires_upgrade,' +
+          ' created_at, updated_at' +
+          ' ) VALUES (' +
+          " 'U701', 'Uma Staff', 'uma701', 'uma701', 'Staff'," +
+          " 'Active', 'legacy_pin', 1, ?, ?" +
+          ' )'
+      )
+      .bind(Date.now(), Date.now())
+      .run();
+
+    // UPDATE back to the retired spelling is rejected, and the row survives
+    // with its canonical role.
+    await expect(
+      testDb()
+        .prepare("UPDATE accounts SET role = 'Teacher' WHERE user_id = ?")
+        .bind("U701")
+        .run()
+    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+    const after = await findAccountByUserId(testDb(), "U701");
+    expect(after?.role).toBe("Staff");
+
+    // Canonical UPDATE still works.
+    await testDb()
+      .prepare("UPDATE accounts SET role = 'Admin' WHERE user_id = ?")
+      .bind("U701")
+      .run();
+    const promoted = await findAccountByUserId(testDb(), "U701");
+    expect(promoted?.role).toBe("Admin");
   });
 
   test("duplicate username in source fails closed with no partial write", async () => {

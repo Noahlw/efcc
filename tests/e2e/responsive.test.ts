@@ -11,6 +11,8 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
+import { LANDING } from "../../web/lib/copy";
+import { sectionsForRole } from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -32,7 +34,7 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "staff",
+  role: "Staff",
   status: "active",
   qrCodeString: "qr:u1",
 };
@@ -54,7 +56,12 @@ async function stubAuth(route: Route) {
       contentType: "application/json",
       body: JSON.stringify({
         requestId: "r-me",
-        data: { user: PUBLIC_USER },
+        data: {
+          user: PUBLIC_USER,
+          // R1 contract: /auth/me returns role-authorized sections, not a
+          // client-side derivation from the role.
+          sections: sectionsForRole(PUBLIC_USER.role),
+        },
       }),
     });
     return;
@@ -150,13 +157,33 @@ test("shell header brand sits beside the desktop side rail, not under it", async
 });
 
 test("no horizontal overflow at the target viewport", async ({ page }) => {
-  for (const path of ["/profile.html", "/care.html"] as const) {
+  for (const path of [
+    "/profile.html",
+    "/profile/settings.html",
+    "/care.html",
+  ] as const) {
     await page.goto(path);
     const fits = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth
     );
     expect(fits, `horizontal overflow on ${path}`).toBeTruthy();
   }
+});
+
+test("profile page fits the shell-content scroll box at 375x812", async ({
+  page,
+}, testInfo) => {
+  test.skip(!isMobile(testInfo.project.name), "mobile-only");
+  await page.goto("/profile.html");
+  await expect(page.locator(".shell-content")).toBeVisible();
+  const fits = await page.evaluate(() => {
+    const el = document.querySelector(".shell-content");
+    if (!el) {
+      return false;
+    }
+    return el.scrollHeight <= el.clientHeight;
+  });
+  expect(fits, "profile overflows the shell-content scroll box").toBeTruthy();
 });
 
 test("bottom nav and page outlet reserve safe-area inset", async ({
@@ -384,4 +411,34 @@ test("recovery retry control is at least 44x44", async ({ page }) => {
   const { width, height } = requireBox(box);
   expect(width).toBeGreaterThanOrEqual(44);
   expect(height).toBeGreaterThanOrEqual(44);
+});
+
+test("register skip link and brand are at least 44px tall", async ({
+  page,
+}) => {
+  await page.goto("/register.html");
+  // CSS module classes are hashed in the static export, so select by the
+  // stable role/aria-label the register surface exposes.
+  const skip = page.locator('a[href="#register"]');
+  const brand = page.getByRole("link", { name: LANDING.homeLabel });
+  await expect(brand).toBeVisible();
+  for (const [label, el] of [
+    ["skip link", skip],
+    ["brand", brand],
+  ] as const) {
+    const height = await el.evaluate(
+      (node) => node.getBoundingClientRect().height
+    );
+    expect(height, `${label} height`).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("register page fits 375x667 without vertical scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/register.html");
+  const fits = await page.evaluate(
+    () =>
+      document.documentElement.scrollHeight <= document.documentElement.clientHeight
+  );
+  expect(fits, "register exceeds the 375x667 viewport").toBeTruthy();
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
@@ -11,7 +11,11 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
-import { clearAuthHint, restoreBootstrap } from "@/lib/session";
+import {
+  clearAuthHint,
+  isLocalDemoBootstrap,
+  restoreBootstrap,
+} from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 import styles from "./auth-shell.module.css";
@@ -27,13 +31,16 @@ function ShellFrame({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const localDemo = isLocalDemoBootstrap(bootstrap);
 
   const handleSignOut = useCallback(async () => {
     let rpcFailed = false;
-    try {
-      await authLogout();
-    } catch {
-      rpcFailed = true;
+    if (!localDemo) {
+      try {
+        await authLogout();
+      } catch {
+        rpcFailed = true;
+      }
     }
     clearAuthHint();
     sessionStorage.removeItem(DEEP_LINK_KEY);
@@ -42,7 +49,7 @@ function ShellFrame({
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
     }
     router.replace("/");
-  }, [router]);
+  }, [localDemo, router]);
 
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
@@ -76,21 +83,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     | { kind: "ready"; bootstrap: Bootstrap }
     | { kind: "error"; message: string; code?: string }
   >({ kind: "loading" });
-  const mountRef = useRef(true);
   const [tick, setTick] = useState(0);
 
-  useEffect(
-    () => () => {
-      mountRef.current = false;
-    },
-    []
-  );
-
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const bootstrap = await restoreBootstrap();
-        if (!mountRef.current) {
+        if (cancelled) {
           return;
         }
         if (bootstrap === null) {
@@ -102,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         announce(COPY.restore.restored);
         setState({ kind: "ready", bootstrap });
       } catch (error) {
-        if (!mountRef.current) {
+        if (cancelled) {
           return;
         }
         // AUTH_REQUIRED means the refresh cookie is dead (expired or
@@ -125,6 +125,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setState({ kind: "error", message: msg, code });
       }
     })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- router/pathname are stable; tick triggers retry
   }, [router, pathname, tick]);
 

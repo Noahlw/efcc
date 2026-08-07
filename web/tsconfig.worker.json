@@ -13,11 +13,17 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "isolatedModules": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
   "include": [
     "worker.ts",
     "worker.test.ts",
-    "lib/auth/**/*.ts"
+    "lib/auth/**/*.ts",
+    "lib/sections.ts",
+    "lib/sections.test.ts"
   ]
 }

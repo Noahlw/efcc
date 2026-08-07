@@ -1,8 +1,10 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import {
   describe,
   test,
@@ -33,7 +35,8 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
-import { setAuthHint } from "@/lib/session";
+import { sectionsForRole } from "@/lib/sections";
+import { setAuthHint, setLocalDemoAuth } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 const mocks = vi.hoisted(() => {
@@ -103,14 +106,18 @@ const STAFF_SECTIONS = [
 ];
 
 const PUBLIC_USER: PublicUser = {
-  userId: "U-test",
+  userId: "U001",
   name: "測試用",
   username: "test",
   phone: "00000000",
-  role: "MEMBER",
+  role: "Member",
   status: "Active",
   qrCodeString: "qr-placeholder",
 };
+// Canonical ADR-0025 role strings — D1 stores and the API expose these
+// title-case values; uppercase spellings fall back to the Member set.
+const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
+const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
 
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
@@ -137,7 +144,7 @@ const DEFAULT_HANDLER = [
         data: {
           userId: "U-test",
           name: "測試用",
-          role: "MEMBER",
+          role: "Member",
           status: "Active",
           mustSetNewCredential: false,
         },
@@ -254,6 +261,41 @@ describe("Shell", () => {
       expect(authCalls).toContain("/api/v1/auth/me");
       // Presence hint is set (non-secret); no legacy session object is stored.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+    });
+
+    test("real login clears any local demo marker before restore can reuse it", async () => {
+      localStorage.setItem("efcc_local_demo_auth", "1");
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
+      await user.type(
+        screen.getByLabelText(COPY.login.passwordLabel),
+        "pw-pass"
+      );
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
+    });
+
+    test("local development login accepts noah/6883 without calling the auth API", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "noah");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "6883");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(authCalls).not.toContain("/api/v1/auth/login");
+      expect(authCalls).not.toContain("/api/v1/auth/me");
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBe("1");
     });
 
     test("stores no credential/token/session identifier in browser storage", async () => {
@@ -911,6 +953,50 @@ describe("Shell", () => {
       expect(screen.getByText(COPY.logout.failedNotice)).toBeInTheDocument();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
     });
+
+    test("local demo logout clears local state without calling the auth API", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      setLocalDemoAuth();
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(authCalls).not.toContain("/api/v1/auth/logout");
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
+      expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
+    });
+
+    test("a cookie session with the demo user ID still calls the auth API", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      setAuthHint();
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-local-id",
+            data: { user: { ...PUBLIC_USER, userId: "local-noah" } },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(authCalls).toContain("/api/v1/auth/logout");
+    });
   });
 
   describe(ProfilePage, () => {
@@ -928,7 +1014,14 @@ describe("Shell", () => {
       await screen.findByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.qrCodeString)).toBeInTheDocument();
+      // The QR slot is a fixed 220px square — no proportional min() clamp
+      // that would shrink the code below scannable size on narrow phones (S5).
+      const css = readFileSync(
+        resolve(process.cwd(), "app/profile/profile.module.css"),
+        "utf8"
+      );
+      const qrSquare = css.match(/\.qrSquare\s*{[^}]*}/)?.[0] ?? "";
+      expect(qrSquare).not.toContain("min(");
     });
 
     test("renders the phone and status info grid with their values", async () => {
@@ -982,6 +1075,16 @@ describe("Shell", () => {
       expect(screen.getAllByText("聚會").length).toBeGreaterThanOrEqual(1);
     });
 
+    test("Member nav omits events, scanner, care, and permissions (S15)", () => {
+      renderWithProvider(sectionsForRole("Member"), "/profile");
+      expect(screen.getAllByText(COPY.sections.profile).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(COPY.sections.programs).length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryAllByText(COPY.sections.events)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.scanner)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.care)).toHaveLength(0);
+      expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
+    });
+
     test("renders all STAFF sections", () => {
       renderWithProvider(STAFF_SECTIONS, "/profile");
       expect(screen.getAllByText("掃描").length).toBeGreaterThanOrEqual(1);
@@ -999,6 +1102,14 @@ describe("Shell", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
       const [inactive] = screen.getAllByText("個人資料");
       expect(inactive).not.toHaveAttribute("aria-current");
+    });
+
+    test("/profile/settings highlights the profile section (prefix-aware)", () => {
+      renderWithProvider(MEMBER_SECTIONS, "/profile/settings");
+      const [profile] = screen.getAllByText("個人資料");
+      const [programs] = screen.getAllByText("課程");
+      expect(profile).toHaveAttribute("aria-current", "page");
+      expect(programs).not.toHaveAttribute("aria-current");
     });
   });
 
@@ -1026,6 +1137,21 @@ describe("Shell", () => {
       expect(screen.queryByText("care content")).not.toBeInTheDocument();
       const link = screen.getByText(COPY.nav.backToProfile).closest("a");
       expect(link).toHaveAttribute("href", "/profile");
+    });
+
+    test("Member deep-linking to scanner renders forbidden view (S15)", () => {
+      render(
+        <AppProvider
+          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
+          onSignOut={() => {}}
+        >
+          <GuardedSection sectionKey="scanner">
+            <p>scanner content</p>
+          </GuardedSection>
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
     });
   });
 
@@ -1190,7 +1316,7 @@ describe("Shell", () => {
   });
 
   describe("Section page titles from COPY.sections", () => {
-    function withAuthRestore() {
+    function withAuthRestore(user: PublicUser = PUBLIC_USER) {
       server.use(
         http.post("/api/v1/auth/refresh", () =>
           HttpResponse.json({ requestId: "r-refresh", data: {} })
@@ -1198,7 +1324,7 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user },
           })
         )
       );
@@ -1215,6 +1341,7 @@ describe("Shell", () => {
     });
 
     test("events page renders COPY.sections.events title", async () => {
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
@@ -1225,7 +1352,7 @@ describe("Shell", () => {
     });
 
     test("scanner page renders COPY.sections.scanner title", async () => {
-      withAuthRestore();
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<ScannerPage />);
       await waitFor(() => {
@@ -1236,7 +1363,7 @@ describe("Shell", () => {
     });
 
     test("care page renders COPY.sections.care title", async () => {
-      withAuthRestore();
+      withAuthRestore(STAFF_USER);
       setAuthHint();
       render(<CarePage />);
       await waitFor(() => {
@@ -1246,13 +1373,13 @@ describe("Shell", () => {
       });
     });
 
-    test("permissions page renders COPY.sections.permissions title", async () => {
-      withAuthRestore();
+    test("permissions page renders the S10 permissionsHeading title", async () => {
+      withAuthRestore(ADMIN_USER);
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.permissions })
+          screen.getByRole("heading", { name: COPY.sections.permissionsHeading })
         ).toBeInTheDocument();
       });
     });
@@ -1486,6 +1613,65 @@ describe("Shell", () => {
       await waitFor(() => {
         expect(replaceMock).toHaveBeenCalledWith("/");
       });
+    });
+
+    test("StrictMode remount: a stale restore failure cannot overwrite a fresh restore", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/profile");
+      let meCalls = 0;
+      let releaseStale: (() => void) | null = null;
+      server.use(
+        http.get("/api/v1/auth/me", async () => {
+          meCalls += 1;
+          if (meCalls === 1) {
+            // The first (stale) run hangs until after the fresh run lands,
+            // then fails — the ordering that used to let run #1 overwrite
+            // run #2's ready state via the shared mountRef boolean.
+            await new Promise<void>((resolve) => {
+              releaseStale = resolve;
+            });
+            return HttpResponse.json(
+              {
+                status: 503,
+                code: "UNAVAILABLE",
+                title: "Unavailable",
+                detail: "系統暫時無法使用",
+                requestId: "r-stale",
+              },
+              {
+                status: 503,
+                headers: { "Content-Type": "application/problem+json" },
+              }
+            );
+          }
+          return HttpResponse.json({
+            requestId: "r-me",
+            data: { user: PUBLIC_USER },
+          });
+        })
+      );
+      render(
+        <StrictMode>
+          <AppShell>
+            <div>children</div>
+          </AppShell>
+        </StrictMode>
+      );
+      // The fresh restore resolves to the authenticated shell.
+      const logoutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      // Release the stale 503 only after the fresh result already landed.
+      await act(async () => {
+        releaseStale?.();
+      });
+      // The stale failure must not overwrite the ready shell.
+      expect(logoutButton).toBeInTheDocument();
+      expect(
+        screen.queryByText(COPY.error.unavailable)
+      ).not.toBeInTheDocument();
+      expect(replaceMock).not.toHaveBeenCalled();
+      expect(meCalls).toBeGreaterThanOrEqual(2);
     });
   });
 });

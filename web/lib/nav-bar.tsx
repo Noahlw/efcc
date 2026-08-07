@@ -10,7 +10,9 @@ export function NavBar() {
   const { bootstrap } = useApp();
   const pathname = usePathname();
 
-  const current = pathname.replace(/^\//u, "") || "profile";
+  // Prefix-aware: /profile/settings (and future sub-routes) still highlight
+  // the owning section (review P2 aria-current finding).
+  const current = pathname.replace(/^\//u, "").split("/")[0] || "profile";
 
   return (
     <>

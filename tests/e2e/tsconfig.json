@@ -9,7 +9,10 @@
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["../../web/*"]
+    }
   },
   "include": ["**/*.ts"]
 }

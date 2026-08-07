@@ -20,6 +20,9 @@
   left: 1rem;
   top: -3rem;
   z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0.75rem 1rem;
   background: var(--accent);
   color: #fff;
@@ -44,7 +47,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem clamp(1.25rem, 4vw, 2.5rem);
+  padding: 0.5rem clamp(1.25rem, 4vw, 2.5rem);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--line);
 }
@@ -52,6 +55,7 @@
 .brand {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 0.625rem;
   color: var(--ink);
   text-decoration: none;
@@ -84,7 +88,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: clamp(2rem, 6vh, 3.5rem) 1.25rem;
+  padding: 0.5rem 1.25rem;
 }
 
 .card {
@@ -93,7 +97,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 1.75rem;
+  padding: 0.75rem;
 }
 
 .cardTitle {
@@ -104,7 +108,7 @@
 }
 
 .cardLead {
-  margin: 0 0 1.5rem;
+  margin: 0 0 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.6;
   color: var(--ink-muted);

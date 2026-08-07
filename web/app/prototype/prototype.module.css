@@ -242,6 +242,19 @@
   font-size: 0.85rem;
 }
 
+.sealSlotLarge {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.4rem;
+}
+
 .mockBody {
   flex: 1;
   padding: 1.5rem;
@@ -255,6 +268,12 @@
   padding: 2rem 1.5rem;
 }
 
+.mockBodyCenterMobile {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 1rem;
+}
+
 .splitLayout {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -262,38 +281,79 @@
   align-items: start;
 }
 
-.heroSection h2 {
- font-size: 1.35rem;
- font-weight: 700;
- margin: 0 0 1rem;
+
+/* Login split: minimal system copy left, form right (desktop); form first (phone). */
+.splitLogin {
+  display: grid;
+  gap: 2rem;
+  align-items: center;
+  width: 100%;
+  max-width: 860px;
 }
 
-.heroSection p {
+.loginCopy {
+  max-width: 40ch;
+}
+
+.loginCopy h2 {
+  margin: 1rem 0 0.75rem;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.loginCopy p {
+  margin: 0;
   color: var(--txt-muted);
-  font-size: 1rem;
   line-height: 1.6;
 }
 
-.featureList {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  margin-top: 1.5rem;
+@media (min-width: 800px) {
+  .splitLogin {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "copy form";
+  }
+
+  .splitLogin .loginCopy {
+    grid-area: copy;
+  }
+
+  .splitLogin .formCard {
+    grid-area: form;
+    justify-self: end;
+  }
 }
 
-.featureItem {
-  border-left: 2px solid var(--accent);
-  padding-left: 0.85rem;
+.splitLoginMobile {
+  grid-template-columns: 1fr;
+  grid-template-areas: none;
+  align-self: flex-start;
+  align-items: start;
 }
 
-.featureItem strong {
-  display: block;
-  font-size: 0.95rem;
+.splitLoginMobile .formCard {
+  grid-area: auto;
+  order: -1;
+  justify-self: stretch;
 }
 
-.featureItem span {
-  font-size: 0.88rem;
-  color: var(--txt-muted);
+.splitLoginMobile .loginCopy {
+  display: none;
+}
+
+.splitLoginMobile .formCard {
+  padding: 1rem;
+}
+
+.splitLoginMobile .form {
+  gap: 0.7rem;
+}
+
+.splitLoginMobile .cardHead .sealSlot,
+.splitLoginMobile .cardLead,
+.splitLoginMobile .fieldNote {
+  display: none;
 }
 
 .formCard, .formCardSingle {
@@ -349,13 +409,24 @@
   padding: 0 0.75rem;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-primary);
+  background: var(--bg-card);
   color: var(--txt-primary);
   font-size: 0.98rem;
 }
 
-.field input:focus {
-  outline: 2px solid var(--focus);
+.field input:focus-visible,
+.btnPrimary:focus-visible,
+.btnSecondary:focus-visible,
+.btnSignOut:focus-visible,
+.btnSmSuccess:focus-visible,
+.btnSmDanger:focus-visible,
+.btnSmPrimary:focus-visible,
+.btnSmSecondary:focus-visible,
+.navItem:focus-visible,
+.surfaceNav button:focus-visible,
+.buttonGroup button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .btnPrimary {
@@ -399,7 +470,13 @@
   font-size: 0.8rem;
   color: var(--txt-muted);
   text-align: center;
-  margin: 0.2rem 0 0;
+}
+
+.fieldError {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 0;
+
 }
 
 .fieldNote a {
@@ -524,6 +601,11 @@
   flex-wrap: wrap;
 }
 
+.profileActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .profileMeta {
   display: flex;
   flex-direction: column;
@@ -546,26 +628,54 @@
 .qrCenter {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 0.5rem;
 }
 
 .qrSquare {
-  width: min(220px, 55vw);
-  height: min(220px, 55vw);
+  width: 220px;
+  height: 220px;
   aspect-ratio: 1 / 1;
   background: #ffffff;
-  color: #171a1d;
   border: 2px solid var(--border);
   border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2.5rem;
-  font-weight: 900;
-  letter-spacing: 0.05em;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  position: relative;
+  background-image: radial-gradient(#171a1d 1.1px, transparent 1.4px);
+  background-size: 11px 11px;
+}
+
+.qrFind {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  background: #171a1d;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 6px #ffffff;
+}
+
+.qrFind[data-corner="tl"] {
+  top: 14px;
+  left: 14px;
+}
+
+.qrFind[data-corner="tr"] {
+  top: 14px;
+  right: 14px;
+}
+
+.qrFind[data-corner="bl"] {
+  bottom: 14px;
+  left: 14px;
+}
+
+.qrCaption {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--txt-muted);
+  text-align: center;
 }
 .profileHead {
   display: flex;
@@ -683,6 +793,125 @@
   margin-bottom: 1.25rem;
 }
 
+/* Account Settings (S16) */
+.settingsStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 600px;
+}
+
+.settingsBodyMobile {
+  padding: 0.5rem 0.5rem 0.25rem;
+  overflow: auto;
+}
+
+.settingsBodyMobile .sectionHead {
+  margin-bottom: 0.25rem;
+}
+
+.settingsBodyMobile .settingsStack {
+  gap: 0.25rem;
+}
+
+.settingsBodyMobile .settingsCard {
+  padding: 0.5rem;
+  border-radius: 10px;
+}
+
+.settingsBodyMobile .settingsCard h3 {
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.settingsBodyMobile .form {
+  gap: 0.5rem;
+}
+
+.settingsBodyMobile .field {
+  gap: 0.2rem;
+}
+
+.settingsBodyMobile .formHint,
+.settingsBodyMobile .formError {
+  font-size: 0.75rem;
+}
+
+.settingsCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.settingsCard h3 {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.formHint {
+  margin: -0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--txt-muted);
+}
+
+.formError {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.successNotice {
+  margin-bottom: 1.25rem;
+  max-width: 600px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+/* Permissions (S10) */
+.permCard {
+  max-width: 560px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+}
+
+.permRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.permRow + .permRow {
+  border-top: 1px solid var(--border);
+}
+
+.permLabel {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.permValue {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.permNote {
+  margin: 0.85rem 0 0;
+  font-size: 0.82rem;
+  color: var(--txt-muted);
+}
+
 .stateCenter {
   padding: 4rem 1rem;
   text-align: center;
@@ -703,6 +932,12 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }
 
 .shellNav {

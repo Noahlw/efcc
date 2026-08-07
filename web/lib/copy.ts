@@ -30,6 +30,8 @@ export const COPY = {
     status: "狀態",
     qrCode: "QR Code",
     qrEmpty: "目前沒有 QR 資料。",
+    accountSettings: "帳戶資料",
+    accountSettingsHint: "更新用戶名稱或密碼。",
   },
   restore: {
     loading: "正在還原工作階段…",
@@ -53,6 +55,9 @@ export const COPY = {
     scanner: "掃描簽到",
     care: "關懷儀表板",
     permissions: "權限管理",
+    // S10 heading: distinguishes the permissions SECTION label from the
+    // page title (roles + permissions table, Spec #079 §S10).
+    permissionsHeading: "權限與角色管理",
     placeholder: "內容建置中。",
   },
   nav: {

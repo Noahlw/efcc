@@ -12,7 +12,7 @@ Primary audiences are all active users of this internal church system:
 
 - **Members** — register, maintain profile, enroll in programs, and participate in church life through the phone interface.
 - **Program Leaders** — run events and attendance/check-in for programs they lead, primarily on phone during gatherings.
-- **Teachers** — approve registrations and operate church workflows on phone; share management duties with Admins.
+- **Staff** — approve registrations and operate church workflows on phone; share management duties with Admins.
 - **Admins** — manage the church system, including heavier administrative work on PC.
 
 This is not a public marketing product. It is the operational system for 中國基督教播道會顯恩堂 (Evangelical Free Church of China — Glorious Grace Church).
@@ -32,18 +32,18 @@ An internal system built specifically for this church’s roles, workflows, and 
 - Used by members and ministry operators around gatherings (phone), and by management on PC.
 - Schedules and user-facing timestamps use Church Time: `Asia/Hong_Kong`, Hong Kong calendar dates, 24-hour clock.
 - Identity and authentication live on Cloudflare Worker + D1; Programs, Events, Attendance, Enrollments and related domain capabilities remain on the transitional Apps Script + Google Sheets backend until each capability is migrated with acceptance proof.
-- Roles in production: Admin, Teacher, Member; Program Leader is a separate per-program grant, not a global role value.
+- Roles in production: Admin, Staff, Member (ADR-0025; Teacher retired); Program Leader is a separate per-program grant, not a global role value.
 - Navigable Sections after auth include Profile, Programs, Events, Scanner, Care, and Permissions (some still transitional or placeholder on the new web shell).
 
 ## Capabilities and Constraints
 
-**Confirmed capabilities (current or transitional):** cookie-only login/session; legacy-PIN upgrade; self-service registration; Admin/Teacher approval queue; member profile; programs, events, attendance/check-in, enrollments (domain still transitional); care dashboard and permissions planned/partial.
+**Confirmed capabilities (current or transitional):** cookie-only login/session; legacy-PIN upgrade; self-service registration; Admin/Staff approval queue; member profile; programs, events, attendance/check-in, enrollments (domain still transitional); care dashboard and permissions planned/partial.
 
 **Constraints future work must preserve:**
 
 - Internal-only church tool; do not invent public marketing claims, testimonials, or multi-church positioning.
 - Cantonese Chinese is the primary product language.
-- Phone interface is the main surface for Members, Program Leaders, and Teachers; PC is for management.
+- Phone interface is the main surface for Members, Program Leaders, and Staff; PC is for management.
 - Staged ownership: D1 owns identity; do not delete the Apps Script domain backend merely because auth migrated.
 - Production Google Sheet is operator-edited; agents do not mutate it (except documented E2E fixture rules).
 - Disposable destructive auth tests use `E2E_`-prefixed usernames only.
@@ -75,11 +75,11 @@ An internal system built specifically for this church’s roles, workflows, and 
 1. **Serve every church role in one system** — member self-serve and staff/admin management share one product, with surfaces matched to who is working.
 2. **Absorb real workload** — design for operational jobs people already do, and leave room for automation rather than one-off screens.
 3. **Cantonese Chinese first** — copy, hierarchy, and defaults prioritize Cantonese Chinese for the congregation and operators.
-4. **Phone for ministry, PC for management** — Members, Program Leaders, and Teachers succeed on phone; administrative depth belongs on desktop.
+4. **Phone for ministry, PC for management** — Members, Program Leaders, and Staff succeed on phone; administrative depth belongs on desktop.
 5. **Church-specific and durable** — preserve this church’s name, roles, Church Time, and staged platform constraints; do not genericize into multi-tenant SaaS patterns.
 
 ## Accessibility & Inclusion
 
-- Primary interaction context for Members, Program Leaders, and Teachers is the phone interface (touch targets, safe areas, readable type, and recoverable errors matter in real gathering conditions).
-- PC is the management context for Admin (and heavier Teacher) workflows; desktop layouts must support those tasks without forcing phone compromises onto management density.
+- Primary interaction context for Members, Program Leaders, and Staff is the phone interface (touch targets, safe areas, readable type, and recoverable errors matter in real gathering conditions).
+- PC is the management context for Admin (and heavier Staff) workflows; desktop layouts must support those tasks without forcing phone compromises onto management density.
 - Existing shell accessibility baseline from product specs remains in force unless explicitly revised: phone-first below 768px with bottom nav, desktop side rail at ≥768px, ≥44×44px interactive targets, semantic navigation, and announced busy/error states.
