@@ -133,6 +133,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: d1-auth-playwright-results
-          path: test-results/
+          path: tests/e2e/test-results/auth-d1-results.json
           if-no-files-found: ignore
           retention-days: 14
