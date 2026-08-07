@@ -323,7 +323,7 @@ Authenticated route
 
 ## Verification Record
 
-**Observed:** 2026-08-07, target worktree `~/.omp/wt/ui-04-196`, commit `80bb7eb` plus this evidence append.
+**Observed:** 2026-08-07, target worktree `~/.omp/wt/ui-04-196`. The acceptance trace is committed before implementation (`ddbf7b1`), followed by implementation (`eec79f7`), verification evidence (`809539e`), and migration-scope clarification (`097ed54`).
 
 | Check | Result |
 |---|---|
