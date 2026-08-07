@@ -10,21 +10,16 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
-// Dev-testing worker fixtures (see .github/CI-SECRETS.md): fixed dev-only
-// credentials seeded in the dev-testing D1 — overridable via PROGRAMS_* env.
-const DEV_ADMIN_USER = "E2E_admin";
-const DEV_ADMIN_CRED = "E2E_admin!dev";
-const DEV_STAFF_USER = "E2E_staff";
-const DEV_STAFF_CRED = "E2E_staff!dev";
-const DEV_MEMBER_USER = "E2E_member";
-const DEV_MEMBER_CRED = "E2E_member!dev";
+// Dev-testing worker fixtures (single source: ./dev-fixtures.ts; see
+// .github/CI-SECRETS.md) — overridable via PROGRAMS_* env.
+import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
-const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN_USER;
-const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN_CRED;
-const STAFF_USER = process.env.PROGRAMS_STAFF_USERNAME ?? DEV_STAFF_USER;
-const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL ?? DEV_STAFF_CRED;
-const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER_USER;
-const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER_CRED;
+const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
+const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN.credential;
+const STAFF_USER = process.env.PROGRAMS_STAFF_USERNAME ?? DEV_STAFF.username;
+const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL ?? DEV_STAFF.credential;
+const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username;
+const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential;
 
 const COPY = {
   login: "登入",
@@ -91,6 +86,24 @@ function innermostLiWith(page: Page, text: string) {
     .locator("li")
     .filter({ has: page.getByText(text, { exact: true }) })
     .last();
+}
+
+
+async function resolveUserId(
+  client: { get: (url: string) => Promise<{ status(): number; json(): Promise<unknown> }> },
+  programId: string,
+  username: string
+): Promise<string> {
+  const res = await client.get(
+    `/api/v1/programs/${programId}/member-options?q=${encodeURIComponent(username)}`
+  );
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as {
+    data: { members: { user_id: string; username: string }[] };
+  };
+  const hit = body.data.members.find((m) => m.username === username);
+  expect(hit).toBeTruthy();
+  return hit!.user_id;
 }
 
 async function loginAs(
@@ -639,9 +652,13 @@ test.describe("PRG-05 deployed programs proof", () => {
       `/api/v1/programs/${programId}/leaders`,
       {
         data: {
-          // The delegation target must be an immutable user_id; the seeded
-          // fixtures fix these ids (see seed-dev-accounts.ts).
-          user_id: "U-E2E-ADMIN",
+          // The delegation target must be an immutable user_id — resolve it
+          // through the same member-options search the picker uses.
+          user_id: await resolveUserId(
+            leaderContext.request,
+            programId,
+            ADMIN_USER
+          ),
         },
       }
     );

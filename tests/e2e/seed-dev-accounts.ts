@@ -12,9 +12,8 @@
  * registration/upgrade time — so the seeded rows are byte-compatible with
  * what `verifyCredential` checks at login.
  *
- * The script is print-only by design (`--print-only` is the default and only
- * mode; the flag exists for explicit runbooks): it never touches a database
- * itself. The operator pipes the SQL into wrangler:
+ * The script is print-only by design: it never touches a database itself.
+ * The operator pipes the SQL into wrangler:
  *
  *   # two-step (recommended):
  *   pnpm exec tsx tests/e2e/seed-dev-accounts.ts > /tmp/seed-dev.sql
@@ -33,43 +32,17 @@
  */
 import { parseArgs } from "node:util";
 
-import { hashCredential } from "../../web/lib/auth/credentials";
+import {
+  hashCredential,
+  normalizeUsername,
+} from "../../web/lib/auth/credentials";
+import { DEV_ACCOUNTS } from "./dev-fixtures";
 
-type DevRole = "Admin" | "Staff" | "Member";
-
-interface DevAccount {
-  /** Immutable User_ID (ADR-0020 §1) — fixed per account for idempotency. */
-  userId: string;
-  name: string;
-  username: string;
-  role: DevRole;
-  /** Dev-only plaintext credential, hashed at runtime — never embedded. */
-  credential: string;
-}
-
-const DEV_ACCOUNTS: DevAccount[] = [
-  {
-    userId: "U-E2E-ADMIN",
-    name: "E2E Admin",
-    username: "E2E_admin",
-    role: "Admin",
-    credential: "E2E_admin!dev",
-  },
-  {
-    userId: "U-E2E-STAFF",
-    name: "E2E Staff",
-    username: "E2E_staff",
-    role: "Staff",
-    credential: "E2E_staff!dev",
-  },
-  {
-    userId: "U-E2E-MEMBER",
-    name: "E2E Member",
-    username: "E2E_member",
-    role: "Member",
-    credential: "E2E_member!dev",
-  },
-];
+const FIXTURE_NAMES: Record<string, string> = {
+  "U-E2E-ADMIN": "E2E Admin",
+  "U-E2E-STAFF": "E2E Staff",
+  "U-E2E-MEMBER": "E2E Member",
+};
 
 /** Single-quote a string for embedding in SQL (doubles embedded quotes). */
 function sqlLiteral(value: string): string {
@@ -84,8 +57,8 @@ async function buildInsert(account: DevAccount, now: number): Promise<string> {
     "  credential_hash, credential_kind, credential_version,",
     "  account_status, role, requires_upgrade, created_at, updated_at",
     ") VALUES (",
-    `  ${sqlLiteral(account.userId)}, ${sqlLiteral(account.name)},`,
-    `  ${sqlLiteral(account.username)}, ${sqlLiteral(account.username.toLowerCase())},`,
+    `  ${sqlLiteral(account.userId)}, ${sqlLiteral(FIXTURE_NAMES[account.userId])},`,
+    `  ${sqlLiteral(account.username)}, ${sqlLiteral(normalizeUsername(account.username))},`,
     `  ${sqlLiteral(credentialHash)}, 'password', 1,`,
     `  'Active', '${account.role}', 0, ${now}, ${now}`,
     ");",
@@ -97,7 +70,6 @@ async function main(): Promise<void> {
   try {
     const parsed = parseArgs({
       options: {
-        "print-only": { type: "boolean", default: false },
         reset: { type: "boolean", default: false },
       },
       strict: true,
