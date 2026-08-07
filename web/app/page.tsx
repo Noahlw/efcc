@@ -6,6 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authLogin, authMe, authUpgrade, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
+import {
+  clearGuestCredential,
+  readGuestCredential,
+  scannerEntryPath,
+} from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
@@ -24,44 +29,39 @@ const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 
-/* Minimal civic system copy for the signed-out shell (Variant A, Issue #178). */
-const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
-
 /** Squar-cut seal mark (恩) — the brand's carved-stamp identity. */
-function SealMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      focusable="false"
+const SealMark = ({ size = 28 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 32 32"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <rect x="1" y="1" width="30" height="30" rx="6" fill="var(--seal)" />
+    <rect
+      x="1"
+      y="1"
+      width="30"
+      height="30"
+      rx="6"
+      fill="none"
+      stroke="#fff"
+      strokeOpacity="0.18"
+    />
+    <text
+      x="16"
+      y="22.6"
+      textAnchor="middle"
+      fontSize="17"
+      fontWeight="800"
+      fill="#fff"
+      fontFamily="inherit"
     >
-      <rect x="1" y="1" width="30" height="30" rx="6" fill="var(--seal)" />
-      <rect
-        x="1"
-        y="1"
-        width="30"
-        height="30"
-        rx="6"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity="0.18"
-      />
-      <text
-        x="16"
-        y="22.6"
-        textAnchor="middle"
-        fontSize="17"
-        fontWeight="800"
-        fill="#fff"
-        fontFamily="inherit"
-      >
-        恩
-      </text>
-    </svg>
-  );
-}
+      恩
+    </text>
+  </svg>
+);
 
 type View =
   | { kind: "SIGNED_OUT" }
@@ -72,7 +72,7 @@ type View =
   | { kind: "ERROR"; error: string }
   | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
 
-export default function LoginPage() {
+const LoginPage = () => {
   const router = useRouter();
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
@@ -105,6 +105,12 @@ export default function LoginPage() {
 
   const navigateAfterLogin = useCallback(
     (bootstrap: Bootstrap) => {
+      const guestCredential = readGuestCredential();
+      if (guestCredential) {
+        clearGuestCredential();
+        router.replace(scannerEntryPath(guestCredential));
+        return;
+      }
       const deepLink = sessionStorage.getItem(DEEP_LINK_KEY);
       sessionStorage.removeItem(DEEP_LINK_KEY);
       router.replace(deepLink || `/${firstSection(bootstrap.sections)}`);
@@ -376,12 +382,11 @@ export default function LoginPage() {
                   }
                 }}
               >
-                <label className={styles.field} htmlFor="login-username">
+                <label className={styles.field}>
                   <span className={styles.fieldLabel}>
                     {COPY.login.usernameLabel}
                   </span>
                   <input
-                    id="login-username"
                     className={styles.input}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -392,27 +397,29 @@ export default function LoginPage() {
                 </label>
                 {upgradeMode ? (
                   <>
-                    <label className={styles.field} htmlFor="upgrade-pin">
+                    <label className={styles.field}>
                       <span className={styles.fieldLabel}>
                         {COPY.login.legacyPasswordLabel}
                       </span>
                       <input
-                        id="upgrade-pin"
                         className={styles.input}
                         type="password"
                         value={legacyPin}
                         onChange={(e) => setLegacyPin(e.target.value)}
                         disabled={busy}
                         autoComplete="current-password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        minLength={4}
+                        pattern="[0-9]{4}"
                         required
                       />
                     </label>
-                    <label className={styles.field} htmlFor="upgrade-password">
+                    <label className={styles.field}>
                       <span className={styles.fieldLabel}>
                         {COPY.login.newPasswordLabel}
                       </span>
                       <input
-                        id="upgrade-password"
                         className={styles.input}
                         type="password"
                         value={newCredential}
@@ -424,12 +431,11 @@ export default function LoginPage() {
                     </label>
                   </>
                 ) : (
-                  <label className={styles.field} htmlFor="login-password">
+                  <label className={styles.field}>
                     <span className={styles.fieldLabel}>
                       {COPY.login.passwordLabel}
                     </span>
                     <input
-                      id="login-password"
                       className={styles.input}
                       type="password"
                       value={password}
@@ -453,6 +459,9 @@ export default function LoginPage() {
                   {LANDING.loginAfterNote}{" "}
                   <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
                 </p>
+                <p className={styles.loginNote}>
+                  <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
+                </p>
               </form>
               {view.kind === "ERROR" && (
                 <p
@@ -469,11 +478,13 @@ export default function LoginPage() {
                 <SealMark size={44} />
               </span>
               <h1>{LANDING.brandFull}</h1>
-              <p>{SYSTEM_DESCRIPTION}</p>
+              <p>{LANDING.systemDescription}</p>
             </div>
           </div>
         </div>
       </main>
     </div>
   );
-}
+};
+
+export default LoginPage;

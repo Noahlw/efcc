@@ -20,11 +20,11 @@
     }
   },
   "include": [
+    "worker-globals.d.ts",
     "worker.ts",
     "worker.test.ts",
+    "lib/attendance-worker.test.ts",
     "lib/auth/**/*.ts",
-    "lib/sections.ts",
-    "lib/sections.test.ts",
     "lib/programs/**/*.ts"
   ],
   "exclude": ["lib/programs/program-api.ts"]

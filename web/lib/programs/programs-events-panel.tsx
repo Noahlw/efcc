@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
+import { buildCheckInSheet } from "@/lib/check-in-sheet";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import { qrDataUrl } from "@/lib/qr";
 import {
   cancelEvent,
   createEvent,
@@ -345,6 +347,54 @@ export const EventsPanel = ({
         return COPY.programs.exceptionRemovedNotice;
       }
     );
+  const printSheet = (event: ProgramEvent) => {
+    const token = program.check_in_token;
+    const code = event.manual_check_in_code;
+    if (!token || !code) {
+      return;
+    }
+    const printWindow = window.open("", "_blank", "popup,width=640,height=720");
+    if (!printWindow) {
+      return;
+    }
+    void (async () => {
+      const sheet = await buildCheckInSheet({
+        programName: program.name,
+        startsAtLabel: hkWallLabel(event.starts_at),
+        checkInUrl: `${window.location.origin}/guest-check-in?program_token=${encodeURIComponent(token)}`,
+        manualCode: code,
+        renderQr: qrDataUrl,
+      });
+      // Build the sheet with textContent DOM, never document.write, so the
+      // popup can never be injected from any string we hold.
+      const doc = printWindow.document;
+      doc.open();
+      doc.write("<!doctype html><html><body></body></html>");
+      const main = doc.createElement("main");
+      const title = doc.createElement("h1");
+      title.textContent = sheet.programName;
+      const time = doc.createElement("p");
+      time.textContent = sheet.startsAtLabel;
+      main.append(title, time);
+      const qr = doc.createElement("img");
+      qr.src = sheet.qrDataUrl;
+      qr.alt = "Program QR";
+      main.append(qr);
+      for (const row of sheet.rows) {
+        if (row.value === null) {
+          continue;
+        }
+        const p = doc.createElement("p");
+        const strong = doc.createElement("strong");
+        strong.textContent = row.value;
+        p.append(row.label, ": ", strong);
+        main.append(p);
+      }
+      doc.body.append(main);
+      doc.close();
+      printWindow.focus();
+      printWindow.print();
+    })();
   };
 
   const handleGenerate = () => {
@@ -655,10 +705,11 @@ export const EventsPanel = ({
                 </span>
               )}
               {canManage && event.status === "Active" && (
-                <form
-                  className={styles.cancelForm}
-                  onSubmit={submitCancel(event.event_id)}
-                >
+                <>
+                  <form
+                    className={styles.cancelForm}
+                    onSubmit={submitCancel(event.event_id)}
+                  >
                   <input
                     type="text"
                     name="cancel_reason"
@@ -700,6 +751,20 @@ export const EventsPanel = ({
                     </div>
                   )}
                 </form>
+                <button
+                  type="button"
+                  className={styles.actionButton}
+                  onClick={() => printSheet(event)}
+                >
+                  {COPY.attendance.printSheet}
+                </button>
+                <a
+                  className={styles.actionButton}
+                  href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
+                >
+                  {COPY.attendance.assistedOpen}
+                </a>
+                </>
               )}
               </li>
             );

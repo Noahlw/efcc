@@ -456,6 +456,8 @@
   background: none;
   color: var(--accent);
   cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
 }
 
 .actionButton:hover:not(:disabled) {

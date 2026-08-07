@@ -1,0 +1,117 @@
+.page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+.card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.title {
+  font-size: clamp(1.5rem, 5vw, 2rem);
+}
+
+.lead,
+.hint,
+.eventMeta {
+  color: var(--ink-muted);
+}
+
+.form,
+.fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.input {
+  min-height: 2.75rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+}
+
+.button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.events {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+}
+
+.eventButton {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.8rem;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.eventButton:hover {
+  border-color: var(--accent);
+}
+
+.status {
+  min-height: 1.5rem;
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+.video {
+  width: 100%;
+  max-height: 320px;
+  border-radius: var(--radius-sm);
+  background: #111;
+}
+
+.back {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (min-width: 800px) {
+  .page {
+    padding-top: 3rem;
+  }
+
+  .card {
+    padding: 2rem;
+  }
+}

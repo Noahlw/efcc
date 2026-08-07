@@ -21,6 +21,49 @@ export const COPY = {
     upgradeRequired: "此帳戶需要先設定新密碼才能登入。",
     networkError: "無法連接伺服器，請檢查網路後再試。",
     success: "登入成功。",
+    guestCheckIn: "訪客簽到",
+  },
+  attendance: {
+    title: "簽到",
+    inputLabel: "課程 QR 代碼或聚會手動代碼",
+    inputPlaceholder: "輸入代碼",
+    resolve: "查找聚會",
+    resolving: "查找中…",
+    chooseEvent: "選擇聚會",
+    noEvents: "目前沒有可簽到的聚會。",
+    memberSubmit: "確認簽到",
+    guestTitle: "訪客簽到",
+    guestName: "姓名",
+    guestPhone: "電話",
+    guestSubmit: "送出訪客簽到",
+    success: "簽到成功。",
+    duplicate: "你已完成此聚會簽到。",
+    guestDuplicate: "此電話已簽到。如需協助，請聯絡聚會負責人。",
+    eventCancelled: "此聚會已取消，不能簽到。",
+    eventClosed: "簽到時間已結束或尚未開始。",
+    invalidEntry: "請從有效的 QR 或聚會代碼進入簽到。",
+    enrollmentRequired: "報名狀態不符合簽到條件。",
+    rateLimited: "請求過於頻繁，請稍後再試。",
+    eventTime: "聚會時間",
+    signedOutNote: "訪客不需要登入。",
+    loginForMember: "登入後以成員身份簽到",
+    operatorTitle: "聚會簽到管理",
+    eventId: "聚會 ID",
+    memberSearch: "搜尋已報名成員",
+    search: "搜尋",
+    checkInMember: "替成員簽到",
+    roster: "簽到名單",
+    void: "取消簽到",
+    voidReason: "取消原因",
+    correctGuest: "修正訪客資料",
+    correctionReason: "修正原因",
+    saveCorrection: "儲存修正",
+    printSheet: "列印聚會簽到表",
+    camera: "使用相機掃描 QR",
+    cameraClose: "關閉相機",
+    cameraRetry: "重試相機",
+    cameraUnavailable: "相機不可用，請使用手動代碼。",
+    assistedOpen: "開協助簽到",
   },
   profile: {
     title: "個人檔案",
@@ -283,6 +326,24 @@ export function errorCopyFor(
   if (code === "ENROLLMENT_DUPLICATE") {
     return COPY.programs.enrollmentDuplicate;
   }
+  if (code === "EVENT_CANCELLED") {
+    return COPY.attendance.eventCancelled;
+  }
+  if (code === "CHECK_IN_CLOSED") {
+    return COPY.attendance.eventClosed;
+  }
+  if (code === "INVALID_CHECK_IN_ENTRY") {
+    return COPY.attendance.invalidEntry;
+  }
+  if (code === "ENROLLMENT_REQUIRED") {
+    return COPY.attendance.enrollmentRequired;
+  }
+  if (code === "RATE_LIMITED") {
+    return COPY.attendance.rateLimited;
+  }
+  if (code === "DUPLICATE_ATTENDANCE") {
+    return COPY.attendance.guestDuplicate;
+  }
   if (code === "UNAVAILABLE") {
     return COPY.error.unavailable;
   }
@@ -305,6 +366,7 @@ export const LANDING = {
   brand: "顯恩堂",
   brandSystem: "系統",
   homeLabel: "顯恩堂系統首頁",
+  systemDescription: "會友與教會同工的內部營運系統。",
   navLabel: "頁面導覽",
   featuresNav: "認識功能",
   loginNav: "登入",

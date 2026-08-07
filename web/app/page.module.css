@@ -29,7 +29,8 @@
   flex-direction: column;
   color: var(--ink);
   background: var(--paper);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
     "Microsoft JhengHei", "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -280,10 +281,6 @@
 }
 
 .loginNote a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 0.25rem;
   color: var(--ink);
   font-weight: 700;
 }
@@ -346,12 +343,17 @@
     padding: 1rem;
   }
 
+  .loginCopy {
+    display: none;
+  }
+
   .form {
     gap: 0.7rem;
   }
 
   .cardSeal,
-  .cardLead {
+  .cardLead,
+  .loginNote {
     display: none;
   }
 }

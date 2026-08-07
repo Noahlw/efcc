@@ -1,0 +1,1086 @@
+import { findAccountByUserId } from "./auth/accounts";
+import type { AccountRow } from "./auth/accounts";
+import { ACCESS_COOKIE_NAME } from "./auth/cookies";
+import { verifyAccessToken } from "./auth/sessions";
+
+export type AttendanceMethod =
+  | "self_qr_scan"
+  | "self_manual_code"
+  | "leader_qr_scan"
+  | "leader_manual_search"
+  | "guest_qr_scan"
+  | "guest_manual_code";
+
+export interface AttendanceEnv {
+  DB: D1Database;
+  EFCC_ACCESS_TOKEN_SECRET: string;
+  RPC_RATE_LIMITER?: RateLimit;
+}
+
+export interface AttendanceEvent {
+  event_id: string;
+  program_id: string;
+  program_name: string;
+  starts_at: string;
+  ends_at: string;
+  manual_check_in_code: string;
+  check_in_window_opens_at: string;
+  check_in_window_closes_at: string;
+  status: "Active" | "Cancelled";
+}
+
+export interface AttendanceRow {
+  attendance_id: string;
+  event_id: string;
+  member_user_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  guest_phone_normalized: string | null;
+  method: AttendanceMethod;
+  status: "Active" | "Voided";
+  checked_in_at: string;
+  checked_in_by: string | null;
+  voided_by: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+export interface AttendanceMember {
+  user_id: string;
+  name: string;
+  phone: string | null;
+  qr_code_string: string | null;
+}
+
+export function normalizeGuestPhone(input: string): string | null {
+  const compact = input.trim().replaceAll(/[\s().-]/gu, "");
+  if (!compact) {
+    return null;
+  }
+  if (/^\+852\d{8}$/u.test(compact)) {
+    return `hk:${compact.slice(1)}`;
+  }
+  if (/^852\d{8}$/u.test(compact)) {
+    return `hk:${compact}`;
+  }
+  if (/^\d{8}$/u.test(compact)) {
+    return `hk:852${compact}`;
+  }
+  if (/^\+[1-9]\d{6,14}$/u.test(compact)) {
+    return `intl:${compact.slice(1)}`;
+  }
+  if (/^\d{7,15}$/u.test(compact)) {
+    return `intl:${compact}`;
+  }
+  return null;
+}
+
+function requestId(): string {
+  return crypto.randomUUID();
+}
+
+// RFC 9457 title map (ADR-0018 §5): a short English label per problem code,
+// distinct from the machine `code` — matching program-handlers.ts.
+const PROBLEM_TITLES: Record<string, string> = {
+  AUTH_REQUIRED: "Authentication required",
+  FORBIDDEN: "Forbidden",
+  VALIDATION: "Invalid request",
+  NOT_FOUND: "Not found",
+  CHECK_IN_NOT_FOUND: "Check-in event not found",
+  CHECK_IN_CLOSED: "Check-in window closed",
+  EVENT_CANCELLED: "Event cancelled",
+  INVALID_CHECK_IN_ENTRY: "Invalid check-in entry",
+  ENROLLMENT_REQUIRED: "Enrollment required",
+  DUPLICATE_ATTENDANCE: "Duplicate attendance",
+  RATE_LIMITED: "Too many requests",
+  UNAVAILABLE: "Service unavailable",
+  CONFLICT: "Conflict",
+  INTERNAL_ERROR: "Internal error",
+};
+
+function problem(
+  status: number,
+  code: string,
+  detail: string,
+  id: string
+): Response {
+  return Response.json(
+    {
+      type: `tag:apps-script/efcc/errors#${code}`,
+      title: PROBLEM_TITLES[code] ?? code,
+      status,
+      detail,
+      code,
+      requestId: id,
+    },
+    {
+      status,
+      headers: {
+        "Content-Type": "application/problem+json",
+        "X-Request-Id": id,
+      },
+    }
+  );
+}
+
+function json(status: number, data: unknown, id: string): Response {
+  return Response.json(
+    { requestId: id, data },
+    { status, headers: { "X-Request-Id": id } }
+  );
+}
+
+async function body<T>(request: Request): Promise<T | null> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function cookie(request: Request): string | null {
+  const value = request.headers.get("Cookie");
+  if (!value) {
+    return null;
+  }
+  const part = value
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${ACCESS_COOKIE_NAME}=`));
+  return part?.slice(ACCESS_COOKIE_NAME.length + 1) ?? null;
+}
+
+async function actor(
+  request: Request,
+  env: AttendanceEnv,
+  id: string,
+  required: boolean
+): Promise<AccountRow | null | Response> {
+  const access = cookie(request);
+  if (!access) {
+    return required ? problem(401, "AUTH_REQUIRED", "登入要求", id) : null;
+  }
+  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
+  if (!claims) {
+    return required ? problem(401, "AUTH_REQUIRED", "登入要求", id) : null;
+  }
+  const account = await findAccountByUserId(env.DB, claims.uid);
+  if (!account || account.account_status !== "Active") {
+    return required ? problem(403, "FORBIDDEN", "帳戶不可用", id) : null;
+  }
+  return account;
+}
+
+async function findEvent(
+  db: D1Database,
+  eventId: string
+): Promise<AttendanceEvent | null> {
+  return (
+    (await db
+      .prepare(
+        `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
+                e.ends_at, e.manual_check_in_code, e.check_in_window_opens_at,
+                e.check_in_window_closes_at, e.status
+           FROM events e JOIN programs p ON p.program_id = e.program_id
+          WHERE e.event_id = ?`
+      )
+      .bind(eventId)
+      .first<AttendanceEvent>()) ?? null
+  );
+}
+
+async function eventMatchesEntry(
+  db: D1Database,
+  eventId: string,
+  method: AttendanceMethod,
+  programToken?: string,
+  manualCode?: string
+): Promise<boolean> {
+  const isQr = method === "self_qr_scan" || method === "guest_qr_scan";
+  if ((isQr && !programToken) || (!isQr && !manualCode)) {
+    return false;
+  }
+  const row = await db
+    .prepare(
+      isQr
+        ? `SELECT 1 FROM events e JOIN programs p ON p.program_id = e.program_id
+            WHERE e.event_id = ? AND p.check_in_token = ?`
+        : `SELECT 1 FROM events
+            WHERE event_id = ? AND manual_check_in_code = ?`
+    )
+    .bind(eventId, isQr ? programToken : manualCode)
+    .first();
+  return Boolean(row);
+}
+
+async function hasActiveEnrollment(
+  db: D1Database,
+  programId: string,
+  memberUserId: string
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 FROM enrollments
+        WHERE program_id = ? AND member_user_id = ? AND status = 'Active'`
+    )
+    .bind(programId, memberUserId)
+    .first();
+  return Boolean(row);
+}
+
+/**
+ * Resolve an ambiguous typed entry to a concrete method + credential pair.
+ * The manual code is tried first (globally unique per migration 0003), then
+ * the Program token. Returns null when neither matches.
+ */
+async function resolveEntryMethod<M extends AttendanceMethod>(
+  db: D1Database,
+  eventId: string,
+  entry: string,
+  manualMethod: M,
+  qrMethod: M
+): Promise<M | null> {
+  if (await eventMatchesEntry(db, eventId, manualMethod, undefined, entry)) {
+    return manualMethod;
+  }
+  if (await eventMatchesEntry(db, eventId, qrMethod, entry)) {
+    return qrMethod;
+  }
+  return null;
+}
+
+/**
+ * Derive the check-in method from an explicit method + credential, or an
+ * ambiguous entry (manual code first, then Program token). Returns a 403
+ * problem when no credential matches the Event.
+ */
+async function deriveCheckInMethod<M extends AttendanceMethod>(
+  env: AttendanceEnv,
+  event: AttendanceEvent,
+  input: {
+    method?: unknown;
+    program_token?: unknown;
+    manual_code?: unknown;
+    entry?: unknown;
+  },
+  manualMethod: M,
+  qrMethod: M,
+  id: string
+): Promise<{ method: M } | { method: null; response: Response }> {
+  const method =
+    input.method === manualMethod
+      ? manualMethod
+      : input.method === qrMethod
+        ? qrMethod
+        : undefined;
+  let resolved = method;
+  if (typeof input.entry === "string" && input.entry) {
+    resolved =
+      (await resolveEntryMethod(
+        env.DB,
+        event.event_id,
+        input.entry,
+        manualMethod,
+        qrMethod
+      )) ?? method;
+  }
+  if (
+    resolved === undefined ||
+    !(await eventMatchesEntry(
+      env.DB,
+      event.event_id,
+      resolved,
+      typeof input.program_token === "string" ? input.program_token : undefined,
+      typeof input.manual_code === "string" ? input.manual_code : undefined
+    ))
+  ) {
+    return {
+      method: null,
+      response: problem(
+        403,
+        "INVALID_CHECK_IN_ENTRY",
+        "請從有效的 QR 或聚會代碼進入簽到。",
+        id
+      ),
+    };
+  }
+  return { method: resolved };
+}
+
+function isOpen(event: AttendanceEvent, now = new Date()): boolean {
+  return (
+    event.status === "Active" &&
+    now >= new Date(event.check_in_window_opens_at) &&
+    now <= new Date(event.check_in_window_closes_at)
+  );
+}
+
+function entryWhere(byProgramToken: boolean): string {
+  return byProgramToken ? "p.check_in_token = ?" : "e.manual_check_in_code = ?";
+}
+
+async function openEvents(
+  db: D1Database,
+  byProgramToken: boolean,
+  value: string
+): Promise<AttendanceEvent[]> {
+  const result = await db
+    .prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
+              e.ends_at, e.manual_check_in_code, e.check_in_window_opens_at,
+              e.check_in_window_closes_at, e.status
+         FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE ${entryWhere(byProgramToken)} AND e.status = 'Active'
+        ORDER BY e.starts_at ASC`
+    )
+    .bind(value)
+    .all<AttendanceEvent>();
+  return (result.results ?? []).filter((event) => isOpen(event));
+}
+
+async function matchingEventStatus(
+  db: D1Database,
+  byProgramToken: boolean,
+  value: string
+): Promise<AttendanceEvent["status"] | null> {
+  const row = await db
+    .prepare(
+      `SELECT e.status FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE ${entryWhere(byProgramToken)}
+        ORDER BY e.starts_at DESC LIMIT 1`
+    )
+    .bind(value)
+    .first<Pick<AttendanceEvent, "status">>();
+  return row?.status ?? null;
+}
+
+async function audit(
+  db: D1Database,
+  input: {
+    actorUserId: string | null;
+    action: string;
+    entityType: string;
+    entityId: string;
+    outcome: "SUCCESS" | "DUPLICATE" | "CONFLICT" | "DENIED" | "FAILED";
+    oldValue?: unknown;
+    newValue?: unknown;
+    reason?: string;
+    correlationId: string;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO audit_events
+        (audit_id, inserted_at, actor_user_id, action, entity_type, entity_id,
+         old_value_json, new_value_json, reason, outcome, correlation_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      new Date().toISOString(),
+      input.actorUserId,
+      input.action,
+      input.entityType,
+      input.entityId,
+      input.oldValue === undefined ? null : JSON.stringify(input.oldValue),
+      input.newValue === undefined ? null : JSON.stringify(input.newValue),
+      input.reason ?? null,
+      input.outcome,
+      input.correlationId
+    )
+    .run();
+}
+
+export async function handleResolve(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const url = new URL(request.url);
+  const token = url.searchParams.get("program_token");
+  const code = url.searchParams.get("manual_code");
+  const entry = url.searchParams.get("entry");
+  const explicitCount = [token, code].filter(Boolean).length;
+  if (explicitCount > 1) {
+    return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
+  }
+  // The typed-input path sends an ambiguous `entry`: the server resolves it
+  // as a manual code first (globally unique per migration 0003), then as a
+  // Program token. No client-side length heuristic decides identity.
+  const value = token ?? code ?? entry ?? "";
+  if (!value) {
+    return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
+  }
+  let events: AttendanceEvent[];
+  let matchedToken = Boolean(token);
+  if (token || code) {
+    events = await openEvents(env.DB, Boolean(token), value);
+  } else {
+    events = await openEvents(env.DB, false, entry ?? "");
+    if (events.length === 0) {
+      events = await openEvents(env.DB, true, entry ?? "");
+      matchedToken = true;
+    }
+  }
+  if (events.length === 0) {
+    const status = await matchingEventStatus(env.DB, matchedToken, value);
+    if (status === "Cancelled") {
+      return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
+    }
+    if (status === "Active") {
+      return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
+    }
+    return problem(404, "CHECK_IN_NOT_FOUND", "找不到可用的簽到聚會。", id);
+  }
+  return json(200, { events }, id);
+}
+
+async function checkInGate(
+  env: AttendanceEnv,
+  event: AttendanceEvent,
+  input: {
+    actor: AccountRow | null;
+    memberUserId: string | null;
+  },
+  id: string,
+  windowGated = true
+): Promise<Response | null> {
+  if (event.status === "Cancelled") {
+    await audit(env.DB, {
+      actorUserId: input.actor?.user_id ?? null,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "EVENT_CANCELLED",
+      correlationId: id,
+    });
+    return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
+  }
+  if (input.memberUserId !== null) {
+    const member = await findAccountByUserId(env.DB, input.memberUserId);
+    if (!member || member.account_status !== "Active") {
+      await audit(env.DB, {
+        actorUserId: input.actor?.user_id ?? null,
+        action: "attendance.check_in",
+        entityType: "Event",
+        entityId: event.event_id,
+        outcome: "DENIED",
+        reason: "ACCOUNT_NOT_ACTIVE",
+        correlationId: id,
+      });
+      return problem(403, "FORBIDDEN", "帳戶不可用", id);
+    }
+  }
+  if (windowGated && !isOpen(event)) {
+    await audit(env.DB, {
+      actorUserId: input.actor?.user_id ?? null,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "CHECK_IN_CLOSED",
+      correlationId: id,
+    });
+    return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
+  }
+  return null;
+}
+
+async function insertAttendance(
+  env: AttendanceEnv,
+  event: AttendanceEvent,
+  input: {
+    actor: AccountRow | null;
+    memberUserId: string | null;
+    guestName?: string | null;
+    guestPhone?: string | null;
+    guestPhoneNormalized?: string | null;
+    method: AttendanceMethod;
+    publicDuplicateMessage: string;
+  },
+  id: string,
+  windowGated = true
+): Promise<Response> {
+  const gated = await checkInGate(env, event, input, id, windowGated);
+  if (gated) {
+    return gated;
+  }
+  const attendanceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO attendances
+        (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+         guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)`
+    )
+      .bind(
+        attendanceId,
+        event.event_id,
+        input.memberUserId,
+        input.guestName ?? null,
+        input.guestPhone ?? null,
+        input.guestPhoneNormalized ?? null,
+        input.method,
+        new Date().toISOString(),
+        input.actor?.user_id ?? null
+      )
+      .run();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !/UNIQUE constraint failed/u.test(error.message)
+    ) {
+      // Only the active-member / active-guest unique indexes turn a real
+      // check-in into a duplicate; anything else must surface as a 500.
+      throw error;
+    }
+    const existing = input.memberUserId
+      ? await env.DB.prepare(
+          `SELECT attendance_id FROM attendances
+            WHERE event_id = ? AND member_user_id = ? AND status = 'Active'`
+        )
+          .bind(event.event_id, input.memberUserId)
+          .first<{ attendance_id: string }>()
+      : null;
+    await audit(env.DB, {
+      actorUserId: input.actor?.user_id ?? null,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DUPLICATE",
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+      correlationId: id,
+    });
+    if (input.memberUserId && existing) {
+      return json(
+        200,
+        {
+          outcome: "duplicate",
+          attendance_id: existing.attendance_id,
+        },
+        id
+      );
+    }
+    return problem(
+      409,
+      "DUPLICATE_ATTENDANCE",
+      input.publicDuplicateMessage,
+      id
+    );
+  }
+  await audit(env.DB, {
+    actorUserId: input.actor?.user_id ?? null,
+    action: "attendance.check_in",
+    entityType: "Attendance",
+    entityId: attendanceId,
+    outcome: "SUCCESS",
+    correlationId: id,
+  });
+  return json(201, { outcome: "success", attendance_id: attendanceId }, id);
+}
+
+export async function handleSelfCheckIn(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const current = await actor(request, env, id, true);
+  if (current instanceof Response || current === null) {
+    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  }
+  const input = await body<{
+    event_id?: unknown;
+    method?: unknown;
+    program_token?: unknown;
+    manual_code?: unknown;
+    entry?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.event_id !== "string" ||
+    (input.method !== undefined &&
+      input.method !== "self_qr_scan" &&
+      input.method !== "self_manual_code") ||
+    (typeof input.entry !== "string" &&
+      typeof input.program_token !== "string" &&
+      typeof input.manual_code !== "string")
+  ) {
+    return problem(422, "VALIDATION", "簽到資料無效。", id);
+  }
+  const event = await findEvent(env.DB, input.event_id);
+  if (!event) {
+    return problem(404, "NOT_FOUND", "找不到聚會。", id);
+  }
+  const derived = await deriveCheckInMethod(
+    env,
+    event,
+    input,
+    "self_manual_code",
+    "self_qr_scan",
+    id
+  );
+  if (derived.method === null) {
+    return derived.response;
+  }
+  const { method } = derived;
+  const enrolled = await hasActiveEnrollment(
+    env.DB,
+    event.program_id,
+    current.user_id
+  );
+  if (!enrolled) {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "ACTIVE_ENROLLMENT_REQUIRED",
+      correlationId: id,
+    });
+    return problem(403, "ENROLLMENT_REQUIRED", "你尚未報名此課程。", id);
+  }
+  return insertAttendance(
+    env,
+    event,
+    {
+      actor: current,
+      memberUserId: current.user_id,
+      method,
+      publicDuplicateMessage: "你已完成此聚會簽到。",
+    },
+    id
+  );
+}
+
+async function permittedOperator(
+  env: AttendanceEnv,
+  actorAccount: AccountRow,
+  programId: string
+): Promise<boolean> {
+  if (actorAccount.role === "Admin" || actorAccount.role === "Staff") {
+    return true;
+  }
+  if (actorAccount.role !== "Member") {
+    return false;
+  }
+  const leader = await env.DB.prepare(
+    `SELECT 1 FROM program_leaders
+      WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL`
+  )
+    .bind(programId, actorAccount.user_id)
+    .first();
+  return Boolean(leader);
+}
+
+/**
+ * Shared operator prologue: resolve the authenticated actor, the Event, and
+ * the Event-Program operator grant. Returns the failure Response, or the
+ * `{ current, event }` pair on success.
+ */
+async function requireEventOperator(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string,
+  id: string
+): Promise<{ current: AccountRow; event: AttendanceEvent } | Response> {
+  const current = await actor(request, env, id, true);
+  if (current instanceof Response || current === null) {
+    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  }
+  const event = await findEvent(env.DB, eventId);
+  if (!event) {
+    return problem(404, "NOT_FOUND", "找不到聚會。", id);
+  }
+  if (!(await permittedOperator(env, current, event.program_id))) {
+    return problem(403, "FORBIDDEN", "你沒有管理此聚會簽到的權限。", id);
+  }
+  return { current, event };
+}
+
+async function guestRateLimit(
+  env: AttendanceEnv,
+  eventId: string,
+  id: string
+): Promise<Response | null> {
+  if (!env.RPC_RATE_LIMITER) {
+    return problem(503, "UNAVAILABLE", "系統暫時無法處理請求。", id);
+  }
+  try {
+    const limited = await env.RPC_RATE_LIMITER.limit({
+      key: `guest:${eventId}`,
+    });
+    if (!limited.success) {
+      return problem(429, "RATE_LIMITED", "請求過於頻繁，請稍後再試。", id);
+    }
+  } catch {
+    return problem(503, "UNAVAILABLE", "系統暫時無法處理請求。", id);
+  }
+  return null;
+}
+
+export async function handleGuestCheckIn(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const input = await body<{
+    event_id?: unknown;
+    method?: unknown;
+    name?: unknown;
+    phone?: unknown;
+    program_token?: unknown;
+    manual_code?: unknown;
+    entry?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.event_id !== "string" ||
+    typeof input.name !== "string" ||
+    typeof input.phone !== "string" ||
+    (input.method !== undefined &&
+      input.method !== "guest_qr_scan" &&
+      input.method !== "guest_manual_code") ||
+    (typeof input.entry !== "string" &&
+      typeof input.program_token !== "string" &&
+      typeof input.manual_code !== "string") ||
+    !input.name.trim()
+  ) {
+    return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  }
+  const normalized = normalizeGuestPhone(input.phone);
+  if (!normalized) {
+    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
+  }
+  const current = await actor(request, env, id, false);
+  if (current instanceof Response) {
+    return current;
+  }
+  const event = await findEvent(env.DB, input.event_id);
+  if (!event) {
+    return problem(404, "NOT_FOUND", "找不到聚會。", id);
+  }
+  const derived = await deriveCheckInMethod(
+    env,
+    event,
+    input,
+    "guest_manual_code",
+    "guest_qr_scan",
+    id
+  );
+  if (derived.method === null) {
+    return derived.response;
+  }
+  const { method } = derived;
+  // Charge the per-Event guest limiter only after the entry validated, so an
+  // attacker cannot burn the shared bucket with garbage inputs.
+  // ponytail: one shared 100/60s Rate Limiting binding (wrangler.jsonc);
+  // split per-Event namespaces only if a single popular Event gets flooded.
+  const limited = await guestRateLimit(env, event.event_id, id);
+  if (limited instanceof Response) {
+    return limited;
+  }
+  return insertAttendance(
+    env,
+    event,
+    {
+      actor: current,
+      memberUserId: null,
+      guestName: input.name.trim(),
+      guestPhone: input.phone.trim(),
+      guestPhoneNormalized: normalized,
+      method,
+      publicDuplicateMessage: "此電話已簽到。如需協助，請聯絡聚會負責人。",
+    },
+    id
+  );
+}
+
+export async function handleListRoster(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const operator = await requireEventOperator(request, env, eventId, id);
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const { event } = operator;
+  const result = await env.DB.prepare(
+    `SELECT * FROM attendances WHERE event_id = ? ORDER BY checked_in_at ASC`
+  )
+    .bind(eventId)
+    .all<AttendanceRow>();
+  return json(200, { event, attendances: result.results ?? [] }, id);
+}
+
+export async function handleAssistedCheckIn(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const operator = await requireEventOperator(request, env, eventId, id);
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const { current, event } = operator;
+  const input = await body<{
+    member_user_id?: unknown;
+    method?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.member_user_id !== "string" ||
+    (input.method !== undefined &&
+      input.method !== "leader_qr_scan" &&
+      input.method !== "leader_manual_search")
+  ) {
+    return problem(422, "VALIDATION", "請選擇已報名成員。", id);
+  }
+  if (
+    !(await hasActiveEnrollment(env.DB, event.program_id, input.member_user_id))
+  ) {
+    return problem(403, "ENROLLMENT_REQUIRED", "此成員尚未報名此課程。", id);
+  }
+  return insertAttendance(
+    env,
+    event,
+    {
+      actor: current,
+      memberUserId: input.member_user_id,
+      method:
+        input.method === "leader_qr_scan"
+          ? "leader_qr_scan"
+          : "leader_manual_search",
+      publicDuplicateMessage: "此成員已完成簽到。",
+    },
+    id,
+    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
+    // may still record attendance after the window closes (US 25 recovery).
+    false
+  );
+}
+
+export async function handleSearchMembers(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const operator = await requireEventOperator(request, env, eventId, id);
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const { event } = operator;
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (!query) {
+    return json(200, { members: [] }, id);
+  }
+  const result = await env.DB.prepare(
+    `SELECT DISTINCT a.user_id, a.name, a.phone, a.qr_code_string
+       FROM accounts a JOIN enrollments en ON en.member_user_id = a.user_id
+      WHERE en.program_id = ? AND en.status = 'Active'
+        AND a.account_status = 'Active'
+        AND (a.name LIKE ? OR a.phone LIKE ? OR a.qr_code_string = ?)
+      ORDER BY a.name ASC LIMIT 20`
+  )
+    .bind(event.program_id, `%${query}%`, `%${query}%`, query)
+    .all<AttendanceMember>();
+  return json(200, { members: result.results ?? [] }, id);
+}
+
+/**
+ * GET /api/v1/attendance/events — the operator chooser (Spec 081 US 20).
+ * Lists Events of Programs the actor may assist: Admin/Staff see every
+ * Program; a Member sees only Programs where they hold an active leader grant.
+ * Events are listed regardless of check-in window (operators act on any
+ * Event of their scope).
+ */
+export async function handleListManageableEvents(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const current = await actor(request, env, id, true);
+  if (current instanceof Response || current === null) {
+    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  }
+  const result = await env.DB.prepare(
+    `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
+            e.ends_at, e.status
+       FROM events e
+       JOIN programs p ON p.program_id = e.program_id
+      WHERE p.lifecycle = 'Active'
+        AND (
+          ? = 'Admin' OR ? = 'Staff'
+          OR EXISTS (
+            SELECT 1 FROM program_leaders pl
+             WHERE pl.program_id = p.program_id
+               AND pl.user_id = ?
+               AND pl.revoked_at IS NULL
+          )
+        )
+      ORDER BY e.starts_at DESC
+      LIMIT 50`
+  )
+    .bind(current.role, current.role, current.user_id)
+    .all<AttendanceEvent>();
+  return json(200, { events: result.results ?? [] }, id);
+}
+
+export async function handleVoidAttendance(
+  request: Request,
+  env: AttendanceEnv,
+  attendanceId: string
+): Promise<Response> {
+  const id = requestId();
+  const current = await actor(request, env, id, true);
+  if (current instanceof Response || current === null) {
+    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  }
+  const input = await body<{ reason?: unknown }>(request);
+  if (!input || typeof input.reason !== "string" || !input.reason.trim()) {
+    return problem(422, "VALIDATION", "取消簽到需要原因。", id);
+  }
+  const existing = await env.DB.prepare(
+    `SELECT a.*, e.program_id FROM attendances a JOIN events e ON e.event_id = a.event_id
+      WHERE a.attendance_id = ?`
+  )
+    .bind(attendanceId)
+    .first<AttendanceRow & { program_id: string }>();
+  if (!existing) {
+    return problem(404, "NOT_FOUND", "找不到簽到記錄。", id);
+  }
+  if (!(await permittedOperator(env, current, existing.program_id))) {
+    return problem(403, "FORBIDDEN", "你沒有取消此簽到的權限。", id);
+  }
+  if (existing.status === "Voided") {
+    // ADR-0023: the duplicate/no-op path is still audited, like the check-in
+    // duplicate path, so every void attempt leaves a trace.
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.void",
+      entityType: "Attendance",
+      entityId: attendanceId,
+      outcome: "DUPLICATE",
+      reason: "ALREADY_VOIDED",
+      correlationId: id,
+    });
+    return json(
+      200,
+      { outcome: "already_voided", attendance_id: attendanceId },
+      id
+    );
+  }
+  await env.DB.prepare(
+    `UPDATE attendances SET status = 'Voided', voided_by = ?, voided_at = ?, void_reason = ?
+      WHERE attendance_id = ? AND status = 'Active'`
+  )
+    .bind(
+      current.user_id,
+      new Date().toISOString(),
+      input.reason.trim(),
+      attendanceId
+    )
+    .run();
+  await audit(env.DB, {
+    actorUserId: current.user_id,
+    action: "attendance.void",
+    entityType: "Attendance",
+    entityId: attendanceId,
+    outcome: "SUCCESS",
+    reason: input.reason.trim(),
+    correlationId: id,
+  });
+  return json(200, { outcome: "voided", attendance_id: attendanceId }, id);
+}
+
+export async function handleCorrectGuest(
+  request: Request,
+  env: AttendanceEnv,
+  attendanceId: string
+): Promise<Response> {
+  const id = requestId();
+  const current = await actor(request, env, id, true);
+  if (current instanceof Response || current === null) {
+    return current ?? problem(401, "AUTH_REQUIRED", "登入要求", id);
+  }
+  const input = await body<{
+    name?: unknown;
+    phone?: unknown;
+    reason?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.name !== "string" ||
+    typeof input.phone !== "string" ||
+    typeof input.reason !== "string" ||
+    !input.name.trim() ||
+    !input.reason.trim()
+  ) {
+    return problem(422, "VALIDATION", "姓名、電話和原因都是必填資料。", id);
+  }
+  const normalized = normalizeGuestPhone(input.phone);
+  if (!normalized) {
+    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
+  }
+  const existing = await env.DB.prepare(
+    `SELECT a.*, e.program_id FROM attendances a JOIN events e ON e.event_id = a.event_id
+      WHERE a.attendance_id = ? AND a.member_user_id IS NULL`
+  )
+    .bind(attendanceId)
+    .first<AttendanceRow & { program_id: string }>();
+  if (!existing) {
+    return problem(404, "NOT_FOUND", "找不到訪客簽到記錄。", id);
+  }
+  if (!(await permittedOperator(env, current, existing.program_id))) {
+    return problem(403, "FORBIDDEN", "你沒有修改此訪客記錄的權限。", id);
+  }
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE attendances SET guest_name = ?, guest_phone = ?, guest_phone_normalized = ?
+        WHERE attendance_id = ? AND status = 'Active'`
+    )
+      .bind(input.name.trim(), input.phone.trim(), normalized, attendanceId)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      // ADR-0023: a rejected mutation attempt is audited, like the check-in
+      // DENIED paths, so the refusal leaves a trace.
+      await audit(env.DB, {
+        actorUserId: current.user_id,
+        action: "attendance.guest_correct",
+        entityType: "Attendance",
+        entityId: attendanceId,
+        outcome: "DENIED",
+        reason: "NOT_ACTIVE_ATTENDANCE",
+        correlationId: id,
+      });
+      return problem(409, "CONFLICT", "只有有效的簽到記錄可以修改。", id);
+    }
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !/UNIQUE constraint failed/u.test(error.message)
+    ) {
+      // Only the active-guest unique index makes a correction a duplicate;
+      // anything else must surface as a 500 rather than a mislabeled 409.
+      throw error;
+    }
+    return problem(409, "DUPLICATE_ATTENDANCE", "此電話已在此聚會簽到。", id);
+  }
+  await audit(env.DB, {
+    actorUserId: current.user_id,
+    action: "attendance.guest_correct",
+    entityType: "Attendance",
+    entityId: attendanceId,
+    outcome: "SUCCESS",
+    oldValue: { name: existing.guest_name, phone: existing.guest_phone },
+    newValue: { name: input.name.trim(), phone: input.phone.trim() },
+    reason: input.reason.trim(),
+    correlationId: id,
+  });
+  return json(200, { outcome: "corrected", attendance_id: attendanceId }, id);
+}

@@ -8,6 +8,19 @@
 
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
+import type {
+  AttendanceEvent as AttendanceEventType,
+  AttendanceMember as AttendanceMemberType,
+  AttendanceRow as AttendanceRowType,
+} from "@/lib/attendance";
+
+// Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
+// Re-export under the original names so the browser surface has one shared shape.
+export type {
+  AttendanceEvent,
+  AttendanceMember,
+  AttendanceRow,
+} from "@/lib/attendance";
 
 export interface Department {
   department_id: string;
@@ -47,6 +60,9 @@ export interface Program {
   lifecycle: "Draft" | "Active" | "Archived";
   discoverability: "Listed" | "Unlisted";
   enrollment_mode: "MemberRequest" | "ManagerOnly";
+  check_in_token?: string | null;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
   display_order: number;
   created_at: string;
   updated_at: string;
@@ -99,6 +115,9 @@ export interface ProgramEvent {
   ends_at: string;
   status: "Active" | "Cancelled";
   source: "SCHEDULE" | "MANUAL";
+  manual_check_in_code?: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
   cancel_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -584,5 +603,120 @@ export function cancelEvent(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
     { reason }
+  );
+}
+
+// --- Attendance client (Spec 081) ---
+
+export interface AttendanceResult {
+  outcome: "success" | "duplicate" | "already_voided" | "voided" | "corrected";
+  attendance_id: string;
+}
+
+/** GET /api/v1/attendance/resolve */
+export function resolveAttendance(input: {
+  program_token?: string;
+  manual_code?: string;
+  entry?: string;
+}): Promise<{ events: AttendanceEventType[] }> {
+  const search = new URLSearchParams();
+  if (input.program_token) {
+    search.set("program_token", input.program_token);
+  }
+  if (input.manual_code) {
+    search.set("manual_code", input.manual_code);
+  }
+  if (input.entry) {
+    search.set("entry", input.entry);
+  }
+  return programsFetch(`/api/v1/attendance/resolve?${search}`, "GET");
+}
+
+/** POST /api/v1/attendance/self */
+export function selfCheckIn(input: {
+  event_id: string;
+  method: "self_qr_scan" | "self_manual_code";
+  program_token?: string;
+  manual_code?: string;
+  entry?: string;
+}): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/self", "POST", input);
+}
+
+/** POST /api/v1/attendance/guest */
+export function guestCheckIn(input: {
+  event_id: string;
+  method: "guest_qr_scan" | "guest_manual_code";
+  name: string;
+  phone: string;
+  program_token?: string;
+  manual_code?: string;
+  entry?: string;
+}): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/guest", "POST", input);
+}
+
+/** GET /api/v1/attendance/events — operator chooser (events the actor can assist) */
+export function listManageableEvents(): Promise<{
+  events: AttendanceEventType[];
+}> {
+  return programsFetch("/api/v1/attendance/events", "GET");
+}
+
+/** GET /api/v1/attendance/events/:eventId/members */
+export function searchAttendanceMembers(
+  eventId: string,
+  query: string
+): Promise<{ members: AttendanceMemberType[] }> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/members?q=${encodeURIComponent(query)}`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/attendance/events/:eventId/check-in */
+export function assistedCheckIn(
+  eventId: string,
+  member_user_id: string,
+  method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
+): Promise<AttendanceResult> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/check-in`,
+    "POST",
+    { member_user_id, method }
+  );
+}
+
+/** GET /api/v1/attendance/events/:eventId/roster */
+export function listAttendanceRoster(
+  eventId: string
+): Promise<{ event: AttendanceEventType; attendances: AttendanceRowType[] }> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/roster`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/attendance/:attendanceId/void */
+export function voidAttendance(
+  attendanceId: string,
+  reason: string
+): Promise<AttendanceResult> {
+  return programsFetch(
+    `/api/v1/attendance/${encodeURIComponent(attendanceId)}/void`,
+    "POST",
+    { reason }
+  );
+}
+
+/** PATCH /api/v1/attendance/:attendanceId/guest-correction */
+export function correctGuestAttendance(
+  attendanceId: string,
+  input: { name: string; phone: string; reason: string }
+): Promise<AttendanceResult> {
+  return programsFetch(
+    `/api/v1/attendance/${encodeURIComponent(attendanceId)}/guest-correction`,
+    "PATCH",
+    input
   );
 }
