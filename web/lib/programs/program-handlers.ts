@@ -26,6 +26,7 @@ import {
   DuplicateProgramNameError,
   EnrollmentNotAllowedError,
   InvalidModuleKeyError,
+  InvalidProgramLifecycleError,
   LeaderNotAssignedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
@@ -74,6 +75,49 @@ function isProgramEnrollmentMode(
   v: unknown
 ): v is "MemberRequest" | "ManagerOnly" {
   return v === "MemberRequest" || v === "ManagerOnly";
+}
+
+const INVALID_PROGRAM_VALUE = Symbol("invalid program value");
+const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
+  name: (value) =>
+    typeof value === "string" && value.trim()
+      ? value.trim()
+      : INVALID_PROGRAM_VALUE,
+  description: (value) =>
+    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+  category: (value) =>
+    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+  behavior_type: (value) =>
+    isProgramBehaviorType(value) ? value : INVALID_PROGRAM_VALUE,
+  lifecycle: (value) =>
+    isProgramLifecycle(value) ? value : INVALID_PROGRAM_VALUE,
+  discoverability: (value) =>
+    isProgramDiscoverability(value) ? value : INVALID_PROGRAM_VALUE,
+  enrollment_mode: (value) =>
+    isProgramEnrollmentMode(value) ? value : INVALID_PROGRAM_VALUE,
+  display_order: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
+};
+
+function parseProgramFields(
+  body: Record<string, unknown>,
+  required: readonly string[]
+): Record<string, unknown> | null {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    const parser = PROGRAM_FIELD_PARSERS[key];
+    if (!parser) {
+      return null;
+    }
+    const parsed = parser(value);
+    if (parsed === INVALID_PROGRAM_VALUE) {
+      return null;
+    }
+    fields[key] = parsed;
+  }
+  return required.every((key) => key in fields) ? fields : null;
 }
 
 function problem(
@@ -423,16 +467,19 @@ export async function handleCreateProgram(
       requestId
     );
   }
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const behaviorType = isProgramBehaviorType(body.behavior_type)
-    ? body.behavior_type
-    : "";
-  if (!name || !behaviorType) {
+  const fields = parseProgramFields(body, [
+    "name",
+    "behavior_type",
+    "lifecycle",
+    "discoverability",
+    "enrollment_mode",
+  ]);
+  if (!fields) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name and behavior_type are required.",
+      "name, behavior_type, lifecycle, discoverability, and enrollment_mode are required and must be valid.",
       requestId
     );
   }
@@ -443,22 +490,21 @@ export async function handleCreateProgram(
       ctxFrom(auth.account),
       {
         department_id: departmentId,
-        name,
+        name: fields.name as string,
         description:
-          typeof body.description === "string" ? body.description : undefined,
-        category: typeof body.category === "string" ? body.category : undefined,
-        behavior_type: behaviorType,
-        lifecycle: isProgramLifecycle(body.lifecycle)
-          ? body.lifecycle
-          : "Draft",
-        discoverability: isProgramDiscoverability(body.discoverability)
-          ? body.discoverability
-          : "Unlisted",
-        enrollment_mode: isProgramEnrollmentMode(body.enrollment_mode)
-          ? body.enrollment_mode
-          : "MemberRequest",
+          typeof fields.description === "string"
+            ? fields.description
+            : undefined,
+        category:
+          typeof fields.category === "string" ? fields.category : undefined,
+        behavior_type: fields.behavior_type as "Recurring" | "OneOff",
+        lifecycle: fields.lifecycle as "Draft" | "Active" | "Archived",
+        discoverability: fields.discoverability as "Listed" | "Unlisted",
+        enrollment_mode: fields.enrollment_mode as
+          | "MemberRequest"
+          | "ManagerOnly",
         display_order:
-          typeof body.display_order === "number" ? body.display_order : 0,
+          typeof fields.display_order === "number" ? fields.display_order : 0,
       },
       requestId
     );
@@ -478,6 +524,15 @@ export async function handleCreateProgram(
     }
     if (error instanceof DuplicateProgramNameError) {
       return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof InvalidProgramLifecycleError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -560,34 +615,32 @@ export async function handleUpdateProgram(
       requestId
     );
   }
+  if (Object.keys(body).length === 0) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "At least one program field is required.",
+      requestId
+    );
+  }
+  const fields = parseProgramFields(body, []);
+  if (!fields) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Program fields must be valid and known.",
+      requestId
+    );
+  }
   const { workspace } = await getModule(env);
   const update: ProgramUpdate = {
     updated_by: auth.account.user_id,
     updated_at: new Date().toISOString(),
   };
-  if (typeof body.name === "string") {
-    update.name = body.name.trim();
-  }
-  if (typeof body.description === "string") {
-    update.description = body.description;
-  }
-  if (typeof body.category === "string") {
-    update.category = body.category;
-  }
-  if (isProgramBehaviorType(body.behavior_type)) {
-    update.behavior_type = body.behavior_type;
-  }
-  if (isProgramLifecycle(body.lifecycle)) {
-    update.lifecycle = body.lifecycle;
-  }
-  if (isProgramDiscoverability(body.discoverability)) {
-    update.discoverability = body.discoverability;
-  }
-  if (isProgramEnrollmentMode(body.enrollment_mode)) {
-    update.enrollment_mode = body.enrollment_mode;
-  }
-  if (typeof body.display_order === "number") {
-    update.display_order = body.display_order;
+  for (const [key, value] of Object.entries(fields)) {
+    (update as unknown as Record<string, unknown>)[key] = value;
   }
 
   try {
@@ -611,8 +664,59 @@ export async function handleUpdateProgram(
         requestId
       );
     }
+    if (error instanceof DuplicateProgramNameError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof InvalidProgramLifecycleError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
+    }
     throw error;
   }
+}
+
+/** GET /api/v1/programs/:id/member-options?q=... */
+export async function handleSearchMemberOptions(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program || !program.capabilities.manage) {
+    return problem(
+      404,
+      "NOT_FOUND",
+      "Not found",
+      "Unknown program.",
+      requestId
+    );
+  }
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Search requires at least two characters.",
+      requestId
+    );
+  }
+  const members = await new D1WorkspaceStore(env.DB).searchActiveMembers(
+    query,
+    20
+  );
+  return jsonResponse(200, { members }, requestId);
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:moduleKey/(enable|disable) */
@@ -631,7 +735,7 @@ export async function handleSetModule(
 
   const { workspace } = await getModule(env);
   try {
-    await workspace.setDepartmentModule(
+    const module = await workspace.setDepartmentModule(
       ctxFrom(auth.account),
       {
         department_id: departmentId,
@@ -640,7 +744,7 @@ export async function handleSetModule(
       },
       requestId
     );
-    return jsonResponse(200, { enabled }, requestId);
+    return jsonResponse(200, { module }, requestId);
   } catch (error) {
     if (error instanceof InvalidModuleKeyError) {
       return problem(
@@ -870,6 +974,7 @@ function parseRulePatch(
 export async function handleUpdateScheduleRule(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -896,6 +1001,9 @@ export async function handleUpdateScheduleRule(
   if (!existing) {
     return notFound(requestId, "Unknown schedule rule.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
   const parsed = parseRulePatch(body, existing);
   if (!parsed.ok) {
     return validation(requestId, parsed.detail);
@@ -919,9 +1027,11 @@ export async function handleUpdateScheduleRule(
 }
 
 /** POST /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
+// oxlint-disable-next-line eslint/complexity
 export async function handleCreateScheduleException(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -969,6 +1079,9 @@ export async function handleCreateScheduleException(
   if (!rule) {
     return notFound(requestId, "Unknown schedule rule.");
   }
+  if (rule.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
   try {
     const row = await workspace.createScheduleException(
       ctxFrom(auth.account),
@@ -994,6 +1107,7 @@ export async function handleCreateScheduleException(
 export async function handleDeleteScheduleException(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   exceptionId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -1007,6 +1121,13 @@ export async function handleDeleteScheduleException(
     exceptionId
   );
   if (!exists) {
+    return notFound(requestId, "Unknown schedule exception.");
+  }
+  const rule = await workspace.getScheduleRule(
+    ctxFrom(auth.account),
+    exists.rule_id
+  );
+  if (!rule || rule.program_id !== programId) {
     return notFound(requestId, "Unknown schedule exception.");
   }
   try {
@@ -1145,6 +1266,7 @@ export async function handleListEvents(
 export async function handleCancelEvent(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   eventId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -1163,6 +1285,9 @@ export async function handleCancelEvent(
   const { workspace } = await getModule(env);
   const existing = await workspace.getEvent(ctxFrom(auth.account), eventId);
   if (!existing) {
+    return notFound(requestId, "Unknown event.");
+  }
+  if (existing.program_id !== programId) {
     return notFound(requestId, "Unknown event.");
   }
   try {
@@ -1245,6 +1370,7 @@ export async function handleListEnrollmentRequests(
 export async function handleDecideEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   requestId: string
 ): Promise<Response> {
   const requestId2 = crypto.randomUUID();
@@ -1268,10 +1394,13 @@ export async function handleDecideEnrollmentRequest(
   if (!existing) {
     return notFound(requestId2, "Unknown enrollment request.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId2, "Unknown enrollment request.");
+  }
   try {
     const row = await workspace.decideEnrollmentRequest(
       ctxFrom(auth.account),
-      existing.program_id,
+      programId,
       requestId,
       { action: body.action, note },
       requestId2
@@ -1295,6 +1424,7 @@ export async function handleDecideEnrollmentRequest(
 export async function handleWithdrawEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   requestId: string
 ): Promise<Response> {
   const requestId2 = crypto.randomUUID();
@@ -1310,10 +1440,13 @@ export async function handleWithdrawEnrollmentRequest(
   if (!existing) {
     return notFound(requestId2, "Unknown enrollment request.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId2, "Unknown enrollment request.");
+  }
   try {
     const row = await workspace.withdrawEnrollmentRequest(
       ctxFrom(auth.account),
-      existing.program_id,
+      programId,
       requestId,
       requestId2
     );
@@ -1406,6 +1539,7 @@ export async function handleListEnrollments(
 export async function handleCancelEnrollment(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   enrollmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -1421,10 +1555,13 @@ export async function handleCancelEnrollment(
   if (!existing) {
     return notFound(requestId, "Unknown enrollment.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown enrollment.");
+  }
   try {
     const row = await workspace.cancelEnrollment(
       ctxFrom(auth.account),
-      existing.program_id,
+      programId,
       enrollmentId,
       requestId
     );

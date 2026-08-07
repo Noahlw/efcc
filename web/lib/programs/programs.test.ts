@@ -118,7 +118,8 @@ async function problemOf(
 
 async function createDepartment(
   access: string,
-  body: { code: string; name: string; lifecycle?: string }
+  body: { code: string; name: string; lifecycle?: string },
+  options: { enableModules?: boolean } = {}
 ): Promise<{ department_id: string; code: string; name: string }> {
   const res = await worker.fetch(
     programsRequest("/api/v1/programs/departments", {
@@ -136,6 +137,26 @@ async function createDepartment(
   const result = (await assertCorrelated(res)) as {
     data: { department: { department_id: string; code: string; name: string } };
   };
+  if (options.enableModules !== false) {
+    await Promise.all(
+      ["program_catalog", "events", "enrollment"].map(async (moduleKey) => {
+        const moduleRes = await worker.fetch(
+          programsRequest(
+            `/api/v1/programs/departments/${result.data.department.department_id}/modules/${moduleKey}/enable`,
+            {
+              method: "POST",
+              headers: {
+                Origin: HOST,
+                Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+              },
+            }
+          ),
+          testEnv()
+        );
+        assert.strictEqual(moduleRes.status, 200);
+      })
+    );
+  }
   return result.data.department;
 }
 
@@ -145,6 +166,7 @@ async function createProgram(
   body: {
     name: string;
     behavior_type: "Recurring" | "OneOff";
+    lifecycle?: "Draft" | "Active" | "Archived";
     discoverability?: "Listed" | "Unlisted";
     enrollment_mode?: "MemberRequest" | "ManagerOnly";
   }
@@ -157,7 +179,12 @@ async function createProgram(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body,
+      body: {
+        ...body,
+        lifecycle: body.lifecycle ?? "Draft",
+        discoverability: body.discoverability ?? "Unlisted",
+        enrollment_mode: body.enrollment_mode ?? "MemberRequest",
+      },
     }),
     testEnv()
   );
@@ -349,6 +376,160 @@ describe("PRG-01: programs", () => {
     assert.strictEqual(program.name, "Test Program");
   });
 
+  test("program creation rejects invalid required settings", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "STRICT-PROG-DEPT",
+      name: "Strict Program Dept",
+    });
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "Strict Program",
+            behavior_type: "Recurring",
+            lifecycle: "Published",
+            discoverability: "Listed",
+            enrollment_mode: "MemberRequest",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "VALIDATION");
+
+    const archivedCreate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "Archived Program",
+            behavior_type: "Recurring",
+            lifecycle: "Archived",
+            discoverability: "Listed",
+            enrollment_mode: "MemberRequest",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(archivedCreate.status, 422);
+  });
+
+  test("program update rejects invalid fields and archives permanently", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "LIFECYCLE-DEPT",
+      name: "Lifecycle Dept",
+    });
+    const program = await createProgram(adminAccess, dept.department_id, {
+      name: "Lifecycle Program",
+      behavior_type: "Recurring",
+      lifecycle: "Draft",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+
+    const invalid = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { name: "", lifecycle: "Published" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(invalid.status, 422);
+
+    const invalidType = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { display_order: "1" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(invalidType.status, 422);
+
+    const unknownField = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { unsupported: true },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unknownField.status, 422);
+
+    const activate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(activate.status, 200);
+
+    const archive = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(archive.status, 200);
+
+    const reopen = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reopen.status, 422);
+  });
+
   test("Member sees only Listed programs", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
@@ -394,6 +575,40 @@ describe("PRG-01: programs", () => {
     );
   });
 
+  test("manager can search active members by name or username", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "MEMBER-SEARCH-DEPT",
+      name: "Member Search Dept",
+    });
+    const program = await createProgram(adminAccess, dept.department_id, {
+      name: "Member Search Program",
+      behavior_type: "OneOff",
+      lifecycle: "Draft",
+      discoverability: "Unlisted",
+      enrollment_mode: "ManagerOnly",
+    });
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/member-options?q=Alice`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { members: { user_id: string; name: string; username: string }[] };
+    };
+    assert.deepStrictEqual(body.data.members, [
+      { user_id: "U001", name: "Alice Chan", username: "alice" },
+    ]);
+  });
+
   test("Member cannot create a program", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -411,7 +626,13 @@ describe("PRG-01: programs", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
             "Content-Type": "application/json",
           },
-          body: { name: "Member Program", behavior_type: "OneOff" },
+          body: {
+            name: "Member Program",
+            behavior_type: "OneOff",
+            lifecycle: "Draft",
+            discoverability: "Listed",
+            enrollment_mode: "MemberRequest",
+          },
         }
       ),
       testEnv()
@@ -425,10 +646,50 @@ describe("PRG-01: programs", () => {
 describe("PRG-01: modules", () => {
   test("Admin can enable a module for a department", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
-    const dept = await createDepartment(adminAccess, {
-      code: "MOD-DEPT",
-      name: "Module Dept",
-    });
+    const dept = await createDepartment(
+      adminAccess,
+      {
+        code: "MOD-DEPT",
+        name: "Module Dept",
+      },
+      { enableModules: false }
+    );
+    const initialRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${dept.department_id}`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    const initialBody = (await assertCorrelated(initialRes)) as {
+      data: { modules: { enabled: number }[] };
+    };
+    assert.strictEqual(initialBody.data.modules.length, 5);
+    assert.ok(initialBody.data.modules.every((module) => module.enabled === 0));
+    const blockedCreate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/programs`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "Blocked Program",
+            behavior_type: "Recurring",
+            lifecycle: "Draft",
+            discoverability: "Listed",
+            enrollment_mode: "MemberRequest",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(blockedCreate.status, 403);
     const res = await worker.fetch(
       programsRequest(
         `/api/v1/programs/departments/${dept.department_id}/modules/program_catalog/enable`,
@@ -444,9 +705,10 @@ describe("PRG-01: modules", () => {
     );
     assert.strictEqual(res.status, 200);
     const body = (await assertCorrelated(res)) as {
-      data: { enabled: boolean };
+      data: { module: { module_key: string; enabled: number } };
     };
-    assert.strictEqual(body.data.enabled, true);
+    assert.strictEqual(body.data.module.module_key, "program_catalog");
+    assert.strictEqual(body.data.module.enabled, 1);
 
     const getRes = await worker.fetch(
       programsRequest(`/api/v1/programs/departments/${dept.department_id}`, {
@@ -458,11 +720,20 @@ describe("PRG-01: modules", () => {
       testEnv()
     );
     const getBody = (await assertCorrelated(getRes)) as {
-      data: { modules: string[] };
+      data: {
+        modules: { module_key: string; enabled: number }[];
+      };
     };
     assert.ok(
-      getBody.data.modules.includes("program_catalog"),
+      getBody.data.modules.some(
+        (module) =>
+          module.module_key === "program_catalog" && module.enabled === 1
+      ),
       "module must be listed"
+    );
+    assert.deepStrictEqual(
+      getBody.data.modules.map((module) => module.module_key),
+      ["attendance", "custom_forms", "enrollment", "events", "program_catalog"]
     );
   });
 
@@ -1558,6 +1829,16 @@ describe("PRG-03: enrollment requests", () => {
     managerOnlyId = managerOnly.program_id;
   });
 
+  async function freshRequestProgram(name: string): Promise<string> {
+    const program = await createProgram(adminAccess, deptId, {
+      name,
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    return program.program_id;
+  }
+
   test("REQ-1/2 a member submits a Pending request; ManagerOnly and unknown programs are rejected", async () => {
     const request = await submitRequest(memberAccess, requestProgramId);
     assert.strictEqual(request.status, "Pending");
@@ -1622,15 +1903,22 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(res.status, 403);
   });
 
-  async function freshRequestProgram(name: string): Promise<string> {
-    const program = await createProgram(adminAccess, deptId, {
-      name,
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
-    });
-    return program.program_id;
-  }
+  test("child enrollment routes reject a mismatched parent program", async () => {
+    const programId = await freshRequestProgram("REQ-2A Scoped Program");
+    const request = await submitRequest(memberAccess, programId);
+    const mismatched = await decideRequest(
+      adminAccess,
+      managerOnlyId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(mismatched.status, 404);
+    const row = await testDb()
+      .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
+      .bind(request.request_id)
+      .first<{ status: string }>();
+    assert.strictEqual(row?.status, "Pending");
+  });
 
   test("REQ-3 duplicate Pending request and existing Active enrollment are 409", async () => {
     const programId = await freshRequestProgram("REQ-3 Program");
@@ -2469,6 +2757,48 @@ describe("PRG-04: program leaders", () => {
     assert.strictEqual(grant.status, 200);
     const leaders = await listLeadersFor(carolAccess, leaderProgramId);
     assert.ok(leaders.length > 0);
+  });
+
+  test("scoped leader sees their own Unlisted Program with projected capabilities", async () => {
+    const own = await createProgram(adminAccess, leaderDeptId, {
+      name: "Leader Unlisted Program",
+      behavior_type: "Recurring",
+      discoverability: "Unlisted",
+    });
+    const other = await createProgram(adminAccess, leaderDeptId, {
+      name: "Other Unlisted Program",
+      behavior_type: "Recurring",
+      discoverability: "Unlisted",
+    });
+    const grant = await assignLeader(adminAccess, own.program_id, "U003");
+    assert.strictEqual(grant.status, 200);
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${leaderDeptId}/programs`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: {
+        programs: {
+          program_id: string;
+          name: string;
+          capabilities: { manage: boolean; publish: boolean };
+        }[];
+      };
+    };
+    const names = body.data.programs.map((program) => program.name);
+    assert.ok(names.includes(own.name));
+    assert.ok(!names.includes(other.name));
+    const ownView = body.data.programs.find(
+      (program) => program.program_id === own.program_id
+    );
+    assert.ok(ownView?.capabilities.manage);
+    assert.ok(ownView?.capabilities.publish);
   });
 
   test("DLG-18 member and cross-program leader are denied listing (404 masks)", async () => {

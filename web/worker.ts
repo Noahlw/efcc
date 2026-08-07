@@ -382,6 +382,7 @@ export default {
         handleListPrograms,
         handleGetProgram,
         handleUpdateProgram,
+        handleSearchMemberOptions,
         handleSetModule,
         handleListScheduleRules,
         handleCreateScheduleRule,
@@ -475,6 +476,16 @@ export default {
           program.groups?.id ?? ""
         );
       }
+      const memberOptions = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/member-options$/u
+      );
+      if (memberOptions && request.method === "GET") {
+        return handleSearchMemberOptions(
+          request,
+          programEnv,
+          memberOptions.groups?.id ?? ""
+        );
+      }
       const scheduleRules = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
       );
@@ -499,6 +510,7 @@ export default {
         return handleUpdateScheduleRule(
           request,
           programEnv,
+          scheduleRule.groups?.id ?? "",
           scheduleRule.groups?.ruleId ?? ""
         );
       }
@@ -509,6 +521,7 @@ export default {
         return handleCreateScheduleException(
           request,
           programEnv,
+          scheduleExceptions.groups?.id ?? "",
           scheduleExceptions.groups?.ruleId ?? ""
         );
       }
@@ -519,6 +532,7 @@ export default {
         return handleDeleteScheduleException(
           request,
           programEnv,
+          scheduleException.groups?.id ?? "",
           scheduleException.groups?.exceptionId ?? ""
         );
       }
@@ -556,6 +570,7 @@ export default {
         return handleCancelEvent(
           request,
           programEnv,
+          event.groups?.id ?? "",
           event.groups?.eventId ?? ""
         );
       }
@@ -584,12 +599,14 @@ export default {
           return handleDecideEnrollmentRequest(
             request,
             programEnv,
+            enrollmentRequest.groups?.id ?? "",
             enrollmentRequest.groups?.requestId ?? ""
           );
         }
         return handleWithdrawEnrollmentRequest(
           request,
           programEnv,
+          enrollmentRequest.groups?.id ?? "",
           enrollmentRequest.groups?.requestId ?? ""
         );
       }
@@ -617,6 +634,7 @@ export default {
         return handleCancelEnrollment(
           request,
           programEnv,
+          enrollment.groups?.id ?? "",
           enrollment.groups?.enrollmentId ?? ""
         );
       }

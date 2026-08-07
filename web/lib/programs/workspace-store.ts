@@ -65,8 +65,8 @@ export interface ProgramInput {
 
 export interface ProgramUpdate {
   name?: string;
-  description?: string;
-  category?: string;
+  description?: string | null;
+  category?: string | null;
   behavior_type?: ProgramBehaviorType;
   lifecycle?: ProgramLifecycle;
   discoverability?: ProgramDiscoverability;
@@ -104,6 +104,12 @@ export interface DepartmentModuleRow {
   enabled: number;
   enabled_by: string | null;
   enabled_at: string;
+}
+
+export interface MemberOptionRow {
+  user_id: string;
+  name: string;
+  username: string;
 }
 
 export type RecurrenceKind = "WEEKLY" | "MONTHLY";
@@ -219,6 +225,8 @@ export interface EnrollmentRequestRow {
   decided_at: string | null;
   decision_note: string | null;
   request_version: number;
+  member_name?: string;
+  member_username?: string;
 }
 
 export interface EnrollmentRow {
@@ -232,6 +240,8 @@ export interface EnrollmentRow {
   cancelled_by: string | null;
   created_by: string | null;
   created_at: string;
+  member_name?: string;
+  member_username?: string;
 }
 
 export interface EnrollmentRequestInput {
@@ -261,6 +271,8 @@ export interface ProgramLeaderRow {
   granted_at: string;
   revoked_by: string | null;
   revoked_at: string | null;
+  user_name?: string;
+  username?: string;
 }
 
 export interface ProgramLeaderGrantInput {
@@ -319,6 +331,10 @@ export interface WorkspaceStore {
   ) => Promise<ProgramRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  searchActiveMembers: (
+    query: string,
+    limit: number
+  ) => Promise<MemberOptionRow[]>;
 
   setDepartmentModule: (
     departmentId: string,

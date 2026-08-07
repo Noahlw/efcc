@@ -2,6 +2,7 @@
  * EFCC Programs domain — D1 persistence adapter (WorkspaceStore).
  */
 
+import { MODULE_KEYS } from "./capabilities";
 import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
@@ -22,6 +23,7 @@ import type {
   ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
+  MemberOptionRow,
   ScheduleExceptionInput,
   ScheduleExceptionRow,
   ScheduleRuleInput,
@@ -81,25 +83,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
 
   async createDepartment(input: DepartmentInput): Promise<DepartmentRow> {
     const id = crypto.randomUUID();
-    await this.db
-      .prepare(
-        `INSERT INTO departments (department_id, code, name, description, lifecycle,
-           display_order, created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        id,
-        input.code,
-        input.name,
-        input.description ?? null,
-        input.lifecycle,
-        input.display_order ?? 0,
-        input.created_by,
-        input.created_at,
-        input.updated_by,
-        input.updated_at
-      )
-      .run();
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO departments (department_id, code, name, description, lifecycle,
+             display_order, created_by, created_at, updated_by, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          id,
+          input.code,
+          input.name,
+          input.description ?? null,
+          input.lifecycle,
+          input.display_order ?? 0,
+          input.created_by,
+          input.created_at,
+          input.updated_by,
+          input.updated_at
+        ),
+      ...MODULE_KEYS.map((moduleKey) =>
+        this.db
+          .prepare(
+            `INSERT INTO department_modules
+               (department_id, module_key, enabled, enabled_by, enabled_at)
+             VALUES (?, ?, 0, NULL, ?)`
+          )
+          .bind(id, moduleKey, input.created_at)
+      ),
+    ]);
     return this.requireDepartment(id);
   }
 
@@ -239,6 +251,26 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         .bind(id)
         .first<ProgramRow>()) ?? null
     );
+  }
+
+  async searchActiveMembers(
+    query: string,
+    limit: number
+  ): Promise<MemberOptionRow[]> {
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const result = await this.db
+      .prepare(
+        `SELECT user_id, name, username
+           FROM accounts
+          WHERE account_status = 'Active'
+            AND (name LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
+          ORDER BY name ASC, username ASC
+          LIMIT ?`
+      )
+      .bind(pattern, pattern, limit)
+      .all<MemberOptionRow>();
+    return result.results ?? [];
   }
 
   async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
@@ -643,8 +675,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   ): Promise<EnrollmentRequestRow[]> {
     const result = await this.db
       .prepare(
-        `SELECT * FROM enrollment_requests
-         WHERE program_id = ? ORDER BY submitted_at ASC`
+        `SELECT enrollment_requests.*, accounts.name AS member_name,
+                accounts.username AS member_username
+           FROM enrollment_requests
+           LEFT JOIN accounts ON accounts.user_id = enrollment_requests.member_user_id
+          WHERE enrollment_requests.program_id = ?
+          ORDER BY enrollment_requests.submitted_at ASC`
       )
       .bind(programId)
       .all<EnrollmentRequestRow>();
@@ -741,8 +777,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   async listEnrollments(programId: string): Promise<EnrollmentRow[]> {
     const result = await this.db
       .prepare(
-        `SELECT * FROM enrollments WHERE program_id = ?
-         ORDER BY enrolled_at ASC`
+        `SELECT enrollments.*, accounts.name AS member_name,
+                accounts.username AS member_username
+           FROM enrollments
+           LEFT JOIN accounts ON accounts.user_id = enrollments.member_user_id
+          WHERE enrollments.program_id = ?
+          ORDER BY enrollments.enrolled_at ASC`
       )
       .bind(programId)
       .all<EnrollmentRow>();
@@ -785,10 +825,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   listProgramLeaders(programId: string): Promise<ProgramLeaderRow[]> {
     return this.db
       .prepare(
-        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-         FROM program_leaders
-         WHERE program_id = ? AND revoked_at IS NULL
-         ORDER BY granted_at`
+        `SELECT program_leaders.*, accounts.name AS user_name,
+                accounts.username
+           FROM program_leaders
+           LEFT JOIN accounts ON accounts.user_id = program_leaders.user_id
+          WHERE program_leaders.program_id = ? AND program_leaders.revoked_at IS NULL
+          ORDER BY program_leaders.granted_at`
       )
       .bind(programId)
       .all<ProgramLeaderRow>()
