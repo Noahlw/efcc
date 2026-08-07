@@ -37,6 +37,14 @@ if (!allowLocal) {
       "AUTH_UI_TARGET_URL must be an absolute HTTPS URL without credentials"
     );
   }
+  // efcc-auth-test is the live deployment bound to the original efcc-identity
+  // D1 (real accounts); the E2E fixtures live on the isolated efcc-auth-ui04
+  // worker + efcc-identity-ui04 D1. Refuse the live host by name.
+  if (parsedTarget.hostname === "efcc-auth-test.efcc-ggc.workers.dev") {
+    throw new Error(
+      "AUTH_UI_TARGET_URL must not target the live efcc-auth-test deployment (bound to the efcc-identity production D1); use the isolated efcc-auth-ui04 acceptance worker"
+    );
+  }
   if (
     !/^efcc-auth-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
       parsedTarget.hostname
