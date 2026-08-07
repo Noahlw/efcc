@@ -8,7 +8,7 @@
 // Copy strings below mirror web/lib/copy.ts; the suite asserts observable
 // DOM state and server responses, never client-side gating alone.
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME;
 const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL;
@@ -29,7 +29,7 @@ const COPY = {
   createProgram: "新增課程",
   expand: "展開",
   collapse: "收合",
-  dayOfWeekLabel: "星期幾（0=日）",
+  dayOfWeekLabel: "每週日子",
   startTime: "開始時間",
   endTime: "結束時間",
   addRule: "新增時間表",
@@ -46,6 +46,16 @@ const COPY = {
   leaderAssignedNotice: "已新增事工負責人。",
   leaderRevokedNotice: "已移除事工負責人。",
   noLeaders: "目前沒有事工負責人。",
+  noRules: "尚未設定時間表。新增時間表後可產生聚會。",
+  eventsEmpty: "目前沒有聚會。",
+  programDetails: "查看課程詳情",
+  programOverview: "概覽",
+  programEvents: "聚會與時間表",
+  programEnrollment: "報名",
+  programLeaders: "事工負責人",
+  noDepartments: "目前沒有部門。",
+  ruleWeekly: "每週",
+  confirmRevoke: "確定移除",
   conflict: "資料衝突，請重新整理後再試。",
 };
 
@@ -130,6 +140,14 @@ async function createDepartmentViaUi(
   };
   await expect(page.getByText(COPY.created)).toBeVisible();
   await expect(page.getByText(deptCode, { exact: true })).toBeVisible();
+  await Promise.all(
+    ["program_catalog", "events", "enrollment"].map(async (moduleKey) => {
+      const moduleResponse = await page.request.post(
+        `/api/v1/programs/departments/${body.data.department.department_id}/modules/${moduleKey}/enable`
+      );
+      expect(moduleResponse.status()).toBe(200);
+    })
+  );
   return { departmentId: body.data.department.department_id, deptCode };
 }
 
@@ -170,6 +188,21 @@ async function setupProgram(
   return { programId, programName, deptCode };
 }
 
+async function openProgramTask(item: Locator, taskName: string): Promise<void> {
+  const task = item.getByRole("button", { name: taskName, exact: true });
+  if ((await task.count()) === 0) {
+    await item.getByRole("button", { name: COPY.programDetails }).click();
+  }
+  await expect(task).toBeVisible();
+  await task.click();
+}
+
+async function chooseMember(item: Locator, username: string): Promise<void> {
+  await openProgramTask(item, COPY.programLeaders);
+  await item.getByLabel(COPY.leaderUserId).fill(username);
+  await item.getByRole("button", { name: new RegExp(username, "u") }).click();
+}
+
 test.beforeAll(() => {
   for (const [name, value] of [
     ["PROGRAMS_ADMIN_USERNAME", ADMIN_USER],
@@ -203,6 +236,7 @@ test.describe("PRG-05 deployed programs proof", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
+    await expect(page.getByText(COPY.noDepartments)).toBeVisible();
   });
 
   test("E2E-02 admin creates a department; row persists on reload (C1, C3, C4)", async ({
@@ -241,13 +275,20 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     const { programName, deptCode } = await setupProgram(page);
     const item = innermostLiWith(page, programName);
-    await item.getByLabel(COPY.dayOfWeekLabel).fill("2");
+    await openProgramTask(item, COPY.programEvents);
+    await item.getByLabel(COPY.dayOfWeekLabel).selectOption("2");
     await item.getByLabel(COPY.startTime).fill("19:30");
     await item.getByLabel(COPY.endTime).fill("21:00");
     await item.getByRole("button", { name: COPY.addRule }).click();
     await expect(item.getByText(COPY.created)).toBeVisible();
     await page.reload();
     await openDepartment(page, deptCode);
+    const reloadedDepartment = innermostLiWith(page, deptCode);
+    await openProgramTask(reloadedDepartment, COPY.programEvents);
+    await expect(
+      reloadedDepartment.getByText(`${COPY.ruleWeekly} 星期二`)
+    ).toBeVisible();
+    await expect(reloadedDepartment.getByText("19:30–21:00")).toBeVisible();
     await expect(page.getByText(programName)).toBeVisible();
   });
 
@@ -261,7 +302,8 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     const { programName } = await setupProgram(page);
     const item = innermostLiWith(page, programName);
-    await item.getByLabel(COPY.dayOfWeekLabel).fill("2");
+    await openProgramTask(item, COPY.programEvents);
+    await item.getByLabel(COPY.dayOfWeekLabel).selectOption("2");
     await item.getByLabel(COPY.startTime).fill("19:30");
     await item.getByLabel(COPY.endTime).fill("21:00");
     await item.getByRole("button", { name: COPY.addRule }).click();
@@ -269,6 +311,8 @@ test.describe("PRG-05 deployed programs proof", () => {
     await item.getByRole("button", { name: COPY.generateEvents }).click();
     await expect(item.getByText(/已產生/u)).toBeVisible();
     await expect(item.getByText(COPY.eventActive).first()).toBeVisible();
+    await item.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(item.getByText(/已產生 0 場聚會，跳過 [1-9]/u)).toBeVisible();
   });
 
   test("E2E-06 member requests enrollment; admin approves; enrollment active (C1, C3)", async ({
@@ -293,6 +337,7 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     await openDepartment(memberPage, deptCode);
     const memberItem = innermostLiWith(memberPage, programName);
+    await openProgramTask(memberItem, COPY.programEnrollment);
     await memberItem.getByRole("button", { name: COPY.requestEnroll }).click();
     await expect(memberItem.getByText(COPY.requestSubmitted)).toBeVisible();
     await expect(memberItem.getByText(COPY.requestPending)).toBeVisible();
@@ -300,6 +345,7 @@ test.describe("PRG-05 deployed programs proof", () => {
     await page.reload();
     await openDepartment(page, deptCode);
     const adminItem = innermostLiWith(page, programName);
+    await openProgramTask(adminItem, COPY.programEnrollment);
     await adminItem.getByRole("button", { name: COPY.approve }).click();
     await expect(adminItem.getByText(COPY.requestPending)).toHaveCount(0);
 
@@ -337,6 +383,10 @@ test.describe("PRG-05 deployed programs proof", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await openDepartment(firstPage, deptCode);
+    await openProgramTask(
+      innermostLiWith(firstPage, programName),
+      COPY.programEnrollment
+    );
 
     const secondContext = await browser.newContext({
       viewport: { width: 375, height: 812 },
@@ -348,6 +398,10 @@ test.describe("PRG-05 deployed programs proof", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await openDepartment(secondPage, deptCode);
+    await openProgramTask(
+      innermostLiWith(secondPage, programName),
+      COPY.programEnrollment
+    );
     // Ensure the stale second session has its request button rendered before
     // the first session submits, so its later click is a genuine duplicate.
     await expect(
@@ -398,17 +452,23 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     const { programId, programName, deptCode } = await setupProgram(page);
     const item = innermostLiWith(page, programName);
-    await item
-      .getByLabel(COPY.leaderUserId)
-      .fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await chooseMember(item, required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
     await item.getByRole("button", { name: COPY.assignLeader }).click();
     await expect(item.getByText(COPY.leaderAssignedNotice)).toBeVisible();
 
     await page.reload();
     await openDepartment(page, deptCode);
+    const reloadedItem = innermostLiWith(page, programName);
+    await openProgramTask(reloadedItem, COPY.programLeaders);
+    await expect(reloadedItem.getByText(COPY.noLeaders)).toHaveCount(0);
     await expect(
-      innermostLiWith(page, programName).getByText(COPY.noLeaders)
-    ).toHaveCount(0);
+      reloadedItem.getByText(
+        new RegExp(
+          `${required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER)}\\)`,
+          "u"
+        )
+      )
+    ).toBeVisible();
 
     const leaderContext = await browser.newContext({
       viewport: { width: 1280, height: 720 },
@@ -446,9 +506,7 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     const { programId, programName, deptCode } = await setupProgram(page);
     const item = innermostLiWith(page, programName);
-    await item
-      .getByLabel(COPY.leaderUserId)
-      .fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await chooseMember(item, required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
     await item.getByRole("button", { name: COPY.assignLeader }).click();
     await expect(item.getByText(COPY.leaderAssignedNotice)).toBeVisible();
 
@@ -463,6 +521,7 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     await openDepartment(leaderPage, deptCode);
     const leaderItem = innermostLiWith(leaderPage, programName);
+    await openProgramTask(leaderItem, COPY.programEvents);
     await expect(
       leaderItem.getByRole("button", { name: COPY.assignLeader })
     ).toHaveCount(0);
@@ -489,12 +548,11 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     const { programId, programName, deptCode } = await setupProgram(page);
     const item = innermostLiWith(page, programName);
-    await item
-      .getByLabel(COPY.leaderUserId)
-      .fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await chooseMember(item, required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
     await item.getByRole("button", { name: COPY.assignLeader }).click();
     await expect(item.getByText(COPY.leaderAssignedNotice)).toBeVisible();
     await item.getByRole("button", { name: COPY.revokeLeader }).click();
+    await item.getByRole("button", { name: COPY.confirmRevoke }).click();
     await expect(item.getByText(COPY.leaderRevokedNotice)).toBeVisible();
     await expect(item.getByText(COPY.noLeaders)).toBeVisible();
 
@@ -541,9 +599,10 @@ test.describe("PRG-05 deployed programs proof", () => {
     const { programId: programAId, programName: programAName } =
       await createProgramViaUi(page, deptCode, departmentId);
     const itemA = innermostLiWith(page, programAName);
-    await itemA
-      .getByLabel(COPY.leaderUserId)
-      .fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await chooseMember(
+      itemA,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER)
+    );
     await itemA.getByRole("button", { name: COPY.assignLeader }).click();
     await expect(itemA.getByText(COPY.leaderAssignedNotice)).toBeVisible();
 
@@ -560,6 +619,17 @@ test.describe("PRG-05 deployed programs proof", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
+    await openDepartment(leaderPage, deptCode);
+    for (const programName of [programAName, programBName]) {
+      const item = innermostLiWith(leaderPage, programName);
+      await openProgramTask(item, COPY.programOverview);
+      await expect(
+        item.getByRole("button", { name: COPY.programLeaders })
+      ).toHaveCount(0);
+      await expect(
+        item.getByRole("button", { name: COPY.revokeLeader })
+      ).toHaveCount(0);
+    }
     const own = await leaderContext.request.get(
       `/api/v1/programs/${programAId}/leaders`
     );
@@ -569,5 +639,28 @@ test.describe("PRG-05 deployed programs proof", () => {
     );
     expect(cross.status()).toBe(404);
     await leaderContext.close();
+  });
+
+  test("E2E-12 program detail empty states survive reload recovery (C3, C4)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const { programName, deptCode } = await setupProgram(page);
+    await openDepartment(page, deptCode);
+    const item = innermostLiWith(page, programName);
+    await openProgramTask(item, COPY.programEvents);
+    await expect(item.getByText(COPY.noRules)).toBeVisible();
+    await expect(item.getByText(COPY.eventsEmpty)).toBeVisible();
+
+    await page.reload();
+    await openDepartment(page, deptCode);
+    const reloadedItem = innermostLiWith(page, programName);
+    await openProgramTask(reloadedItem, COPY.programEvents);
+    await expect(reloadedItem.getByText(COPY.noRules)).toBeVisible();
+    await expect(reloadedItem.getByText(COPY.eventsEmpty)).toBeVisible();
   });
 });

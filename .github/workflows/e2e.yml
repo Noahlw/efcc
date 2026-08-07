@@ -218,11 +218,20 @@ jobs:
           PROGRAMS_MEMBER_CREDENTIAL: ${{ secrets.PROGRAMS_MEMBER_CREDENTIAL }}
         run: pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts
 
+      - name: Append programs acceptance trace
+        if: always()
+        env:
+          E2E_TARGET_URL: ${{ vars.PROGRAMS_TARGET_URL }}
+        run: >-
+          pnpm exec tsx tests/e2e/plan-doc-appender.ts --plan docs/omp-plans/2026-08-06-prg-05-ticket-201.md --results test-results/programs-d1-results.json
+
       - name: Upload deployed programs evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: programs-d1-playwright-results
-          path: test-results/
+          path: |
+            test-results/
+            docs/omp-plans/2026-08-06-prg-05-ticket-201.md
           if-no-files-found: ignore
           retention-days: 14
