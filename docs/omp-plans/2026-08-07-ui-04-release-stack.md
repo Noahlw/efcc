@@ -317,9 +317,9 @@ Authenticated route
 - [x] Deploy with the real D1 binding and Worker secret; keep the committed placeholder `web/wrangler.jsonc` unchanged (deployment-time config `wrangler.acceptance.jsonc` was used transiently and deleted; never committed).
 - [x] Run the `live-ui` Playwright gate against the fresh deployment: **22/22 PASS** on both viewports (375x667, 1280x720) at `https://efcc-auth-ui04.efcc-ggc.workers.dev`. The local run used a temporary DNS-pin wrapper (`--host-resolver-rules` to real Cloudflare IPs) because this machine's DNS blackholes every `*.workers.dev` name to 127.0.0.1; the canonical `--config=tests/e2e/live-ui.config.ts` invocation is equivalent in a normal-network environment.
 - [x] Extend `tests/e2e/plan-doc-appender.ts` to walk Playwright JSON `specs` rows (previously flattened 0 rows) and append the Next UI results under `## Executed results — Next UI` (22 rows appended below).
-- [ ] Set `AUTH_TARGET_URL` and run the manual `deployed-auth` workflow; require every auth test to pass and retain the artifact.
-- [ ] Append the `/exec` URL, D1 workflow run, and artifact references to the plan; never append secret values. Role fixture names may be recorded, but their values must never be recorded.
-- [ ] Only then change disposition from merge-ready to `READY` for the release scope.
+* [x] Set `AUTH_TARGET_URL` (https://efcc-auth-ui04.efcc-ggc.workers.dev/) and five `AUTH_*` secrets, ran the manual `deployed-auth` workflow (runs #31156122309, #31158426504), 2/2 passed, artifact `d1-auth-playwright-results` retained (auth-d1-results.json); evidence appended under `## Executed results — D1 auth`.
+* [ ] Append the `/exec` URL, D1 workflow run, and artifact references to the plan; never append secret values. Role fixture names may be recorded, but their values must never be recorded.
+* [ ] Only when the legacy `/exec` trace also passes 100%, change disposition from merge-ready to `READY` for the release scope.
 
 ## Verification Record
 
@@ -380,7 +380,7 @@ Known non-failing output: root recovery tests intentionally log simulated render
 - **Boring by default:** the plan copies the existing dirty diff into the target worktree and reuses existing modules; it adds no service, dependency, storage backend, or auth abstraction.
 - **Reversibility:** each transplant task is a separate commit; the target branch is isolated; deployment substitutions are ephemeral; the force-push remains an explicit user gate.
 - **Known gap:** fresh `/exec` deployment state, the six existing `PROGRAMS_*` role fixtures, and online D1 acceptance accounts/secrets are not available in this plan's authoring environment, so Task 8 remains blocked until the operator provisions both targets and supplies all role fixtures out-of-band.
-**Known gap (updated 2026-08-07):** the fresh Next UI gate has now run 100% (22/22) against the isolated `efcc-auth-ui04.efcc-ggc.workers.dev` Worker + fresh D1 `efcc-identity-ui04`, with the six `PROGRAMS_*` fixtures seeded through the app's own PBKDF2 credential path. The legacy Apps Script `/exec` trace (R2) and the GitHub Actions D1 `deployed-auth` smoke (R3) remain operator-gated; the live Next UI browser gate is complete.
+* **Known gap (updated 2026-08-07T07:41Z):** the fresh Next UI gate has now run 100% (22/22) against the isolated `efcc-auth-ui04.efcc-ggc.workers.dev` Worker + fresh D1 `efcc-identity-ui04`, with the six `PROGRAMS_*` fixtures seeded through the app's own PBKDF2 credential path. The GitHub Actions D1 `deployed-auth` smoke (R3) has now run 2/2 and its artifact is retained. The legacy Apps Script `/exec` trace (R2) is the only remaining operator-gated item: it needs a fresh isolated `/exec` deployment and hand-typed Google storage-state capture, both blocked on the operator re-authenticating clasp (its OAuth grant returned `invalid_grant/invalid_rapt`).
 
 ## Executed results — Next UI
 
@@ -412,4 +412,15 @@ Known non-failing output: root recovery tests intentionally log simulated render
 | desktop-1280x720 | approval queue is forbidden for Member (role-gated) | PASS |  |
 | desktop-1280x720 | invalid login surfaces an observable error with no session | PASS |  |
 | desktop-1280x720 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
+
+## Executed results — D1 auth
+
+- Generated: 2026-08-07T07:40:58.870Z
+- Target: https://efcc-auth-ui04.efcc-ggc.workers.dev/
+- Total assertions: 2 | Passed: 2 | Failed: 0
+
+| Role | Assertion | Result | Detail |
+|------|-----------|--------|--------|
+|  | password login and logout use the locked cookie boundary | PASS |  |
+|  | legacy account upgrade verifies the PIN before issuing cookies | PASS |  |
 
