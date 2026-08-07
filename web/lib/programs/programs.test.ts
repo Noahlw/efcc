@@ -760,7 +760,7 @@ describe("PRG-01: programs", () => {
     );
   });
 
-  test("manager can search active members scoped to the program", async () => {
+  test("manager can search active members", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
       code: "MEMBER-SEARCH-DEPT",
@@ -773,17 +773,6 @@ describe("PRG-01: programs", () => {
       discoverability: "Unlisted",
       enrollment_mode: "ManagerOnly",
     });
-    // ponytail: alice (U001) is the only grant-eligible actor and cannot grant
-    // herself via the API (SelfDelegationError); seed the leader row directly
-    // (same shape as DLG-3) to give Alice a program relationship.
-    await testDb()
-      .prepare(
-        `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
-         VALUES (?, 'U001', 'U001', '2026-08-06T00:00:00Z')`
-      )
-      .bind(program.program_id)
-      .run();
-
     const search = async (
       q: string
     ): Promise<{ user_id: string; name: string; username: string }[]> => {
@@ -811,11 +800,9 @@ describe("PRG-01: programs", () => {
     assert.deepStrictEqual(await search("Alice"), [
       { user_id: "U001", name: "Alice Chan", username: "alice" },
     ]);
-    assert.deepStrictEqual(
-      await search("Bob"),
-      [],
-      "U002 has no relationship to this program and must not appear"
-    );
+    assert.deepStrictEqual(await search("Bob"), [
+      { user_id: "U002", name: "Bob Lee", username: "bob" },
+    ]);
   });
 
   test("Member cannot create a program", async () => {

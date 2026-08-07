@@ -328,7 +328,6 @@ export interface WorkspaceStore {
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
   searchActiveMembers: (
-    programId: string,
     query: string,
     limit: number
   ) => Promise<MemberOptionRow[]>;

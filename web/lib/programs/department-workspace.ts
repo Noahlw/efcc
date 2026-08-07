@@ -1075,11 +1075,10 @@ export class DepartmentWorkspace {
   }
 
   searchActiveMembers(
-    programId: string,
     query: string,
     limit: number
   ): Promise<MemberOptionRow[]> {
-    return this.store.searchActiveMembers(programId, query, limit);
+    return this.store.searchActiveMembers(query, limit);
   }
 
   getEnrollment(

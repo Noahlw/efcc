@@ -735,7 +735,7 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const members = await workspace.searchActiveMembers(programId, query, 20);
+  const members = await workspace.searchActiveMembers(query, 20);
   return jsonResponse(200, { members }, requestId);
 }
 

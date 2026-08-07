@@ -328,7 +328,7 @@ const ProgramsManager = () => {
     setBusy(true);
     setActionError(null);
     try {
-      await createDepartment({ code, name });
+      await createDepartment({ code, name, lifecycle: "Draft" });
       announce(COPY.programs.created);
       setNotice(COPY.programs.created);
       form.reset();

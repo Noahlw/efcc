@@ -247,7 +247,6 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   }
 
   async searchActiveMembers(
-    programId: string,
     query: string,
     limit: number
   ): Promise<MemberOptionRow[]> {
@@ -259,13 +258,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            FROM accounts
           WHERE account_status = 'Active'
             AND (name LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
-            AND (EXISTS (SELECT 1 FROM enrollments e WHERE e.program_id = ? AND e.member_user_id = accounts.user_id)
-              OR EXISTS (SELECT 1 FROM enrollment_requests r WHERE r.program_id = ? AND r.member_user_id = accounts.user_id)
-              OR EXISTS (SELECT 1 FROM program_leaders pl WHERE pl.program_id = ? AND pl.user_id = accounts.user_id))
           ORDER BY name ASC, username ASC
           LIMIT ?`
       )
-      .bind(pattern, pattern, programId, programId, programId, limit)
+      .bind(pattern, pattern, limit)
       .all<MemberOptionRow>();
     return result.results ?? [];
   }
