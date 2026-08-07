@@ -173,7 +173,7 @@ export const LeadersPanel = ({
                     <button
                       type="button"
                       disabled={busy}
-                      className={styles.actionButton}
+                      className={styles.dangerButton}
                       onClick={() => confirmRevoke(leader.user_id)}
                     >
                       {COPY.programs.confirmRevoke}

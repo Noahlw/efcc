@@ -124,6 +124,14 @@
   padding: 1rem;
 }
 
+.detail .sectionLabel {
+  margin-top: 1rem;
+}
+
+.detail .sectionLabel:first-child {
+  margin-top: 0;
+}
+
 .moduleRow {
   display: flex;
   align-items: center;
@@ -167,7 +175,9 @@
 .taskButton:focus-visible,
 .actionButton:focus-visible,
 .dangerButton:focus-visible,
-.secondaryButton:focus-visible {
+.secondaryButton:focus-visible,
+.dangerOutline:focus-visible,
+.successOutline:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
@@ -292,9 +302,16 @@
 
 .input:focus-visible,
 .select:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-color: var(--focus);
+}
+
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .button {
@@ -357,6 +374,10 @@
   gap: 0.625rem;
 }
 
+.eventsPanel > .panelHeading:first-child {
+  margin-top: 0.25rem;
+}
+
 .panelHeading {
   font: inherit;
   font-weight: 700;
@@ -368,13 +389,31 @@
 .panelNotice {
   display: block;
   font-size: 0.875rem;
-  color: var(--accent);
+  color: var(--ink);
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  background: var(--success-surface);
 }
 
 .panelError {
   display: block;
   font-size: 0.875rem;
   color: var(--error);
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+}
+
+.ruleField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 130px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-muted);
 }
 
 .ruleForm,
@@ -400,10 +439,10 @@
 
 .ruleForm input:focus-visible,
 .ruleForm select:focus-visible,
-.cancelForm input:focus-visible,
-.actionButton:focus-visible {
-  outline: 2px solid var(--accent);
+.cancelForm input:focus-visible {
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
+  border-color: var(--focus);
 }
 
 .actionButton {
@@ -460,6 +499,19 @@
   font-size: 0.875rem;
 }
 
+.confirmRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
 .dangerButton,
 .secondaryButton {
   min-height: 44px;
@@ -483,6 +535,51 @@
   color: var(--ink);
 }
 
+/* Outline variants for the per-event exception controls: 改期/取消該次 stay
+   neutral or accent, 取消聚會 (permanent) is error-tinted, 恢復該次 (undo)
+   is success-tinted. */
+.dangerOutline {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--error);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dangerOutline:hover:not(:disabled) {
+  background: var(--error);
+  color: var(--surface-raised);
+}
+
+.successOutline {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--success);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.successOutline:hover:not(:disabled) {
+  background: var(--success);
+  color: var(--surface-raised);
+}
+
+.dangerOutline:disabled,
+.successOutline:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .ruleList,
 .eventList {
   list-style: none;
@@ -500,6 +597,7 @@
   align-items: center;
   font-size: 0.875rem;
   padding: 0.375rem 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .eventDate {
@@ -559,7 +657,7 @@
 }
 
 .textarea:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-color: var(--focus);
 }
@@ -585,13 +683,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
-}
-
-.confirmRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
 }
 
 .clearSelection {
@@ -664,6 +755,10 @@
     flex-direction: column;
   }
 
+  .cancelForm {
+    width: 100%;
+  }
+
   .field,
   .picker {
     flex-basis: auto;
@@ -675,6 +770,9 @@
   .taskButton,
   .dangerButton,
   .secondaryButton,
+  .dangerOutline,
+  .successOutline,
+  .clearSelection,
   .retry {
     width: 100%;
   }

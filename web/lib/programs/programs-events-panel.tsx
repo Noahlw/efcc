@@ -128,6 +128,31 @@ export const EventsPanel = ({
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
 
+  // Inline confirmations replace the control that opened them; hand focus to
+  // the first control of the replacement so keyboard users land on the new
+  // affordance instead of losing focus to the body.
+  const rescheduleFormRef = useRef<HTMLFormElement>(null);
+  const confirmOccurrenceRef = useRef<HTMLDivElement>(null);
+  const confirmEventRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (reschedulingEventId !== null) {
+      rescheduleFormRef.current?.querySelector("input")?.focus();
+    }
+  }, [reschedulingEventId]);
+
+  useEffect(() => {
+    if (confirmingCancelId !== null) {
+      confirmOccurrenceRef.current?.querySelector("button")?.focus();
+    }
+  }, [confirmingCancelId]);
+
+  useEffect(() => {
+    if (confirmingEventId !== null) {
+      confirmEventRef.current?.querySelector("button")?.focus();
+    }
+  }, [confirmingEventId]);
+
   useEffect(
     () => () => {
       mounted.current = false;
@@ -350,6 +375,7 @@ export const EventsPanel = ({
 
   return (
     <section className={styles.eventsPanel} aria-label={COPY.programs.events}>
+      <h3 className={styles.panelHeading}>{COPY.programs.events}</h3>
       {notice !== null && (
         <output className={styles.panelNotice}>{notice}</output>
       )}
@@ -395,46 +421,60 @@ export const EventsPanel = ({
 
       {canManage && program.behavior_type === "Recurring" && (
         <>
-          <h3 className={styles.panelHeading}>{COPY.programs.events}</h3>
           <form className={styles.ruleForm} onSubmit={submitRule}>
-            <select
-              name="recurrence"
-              defaultValue="weekly"
-              aria-label={COPY.programs.behaviorType}
-            >
-              <option value="weekly">{COPY.programs.ruleWeekly}</option>
-              <option value="monthly">{COPY.programs.ruleMonthly}</option>
-            </select>
-            <select
-              name="day_of_week"
-              defaultValue={2}
-              aria-label={COPY.programs.dayOfWeekLabel}
-            >
-              {WEEKDAY_LABELS.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              name="month_day"
-              min={1}
-              max={31}
-              aria-label={COPY.programs.monthDayLabel}
-            />
-            <input
-              type="time"
-              name="start_time"
-              required
-              aria-label={COPY.programs.startTime}
-            />
-            <input
-              type="time"
-              name="end_time"
-              required
-              aria-label={COPY.programs.endTime}
-            />
+            <label className={styles.ruleField}>
+              <span>{COPY.programs.behaviorType}</span>
+              <select
+                name="recurrence"
+                defaultValue="weekly"
+                aria-label={COPY.programs.behaviorType}
+              >
+                <option value="weekly">{COPY.programs.ruleWeekly}</option>
+                <option value="monthly">{COPY.programs.ruleMonthly}</option>
+              </select>
+            </label>
+            <label className={styles.ruleField}>
+              <span>{COPY.programs.dayOfWeekLabel}</span>
+              <select
+                name="day_of_week"
+                defaultValue={2}
+                aria-label={COPY.programs.dayOfWeekLabel}
+              >
+                {WEEKDAY_LABELS.map((label, index) => (
+                  <option key={label} value={index}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.ruleField}>
+              <span>{COPY.programs.monthDayLabel}</span>
+              <input
+                type="number"
+                name="month_day"
+                min={1}
+                max={31}
+                aria-label={COPY.programs.monthDayLabel}
+              />
+            </label>
+            <label className={styles.ruleField}>
+              <span>{COPY.programs.startTime}</span>
+              <input
+                type="time"
+                name="start_time"
+                required
+                aria-label={COPY.programs.startTime}
+              />
+            </label>
+            <label className={styles.ruleField}>
+              <span>{COPY.programs.endTime}</span>
+              <input
+                type="time"
+                name="end_time"
+                required
+                aria-label={COPY.programs.endTime}
+              />
+            </label>
             <button
               type="submit"
               disabled={busy}
@@ -457,18 +497,24 @@ export const EventsPanel = ({
 
       {canManage && program.behavior_type === "OneOff" && (
         <form className={styles.ruleForm} onSubmit={submitManualEvent}>
-          <input
-            type="datetime-local"
-            name="starts_at"
-            required
-            aria-label={COPY.programs.eventStart}
-          />
-          <input
-            type="datetime-local"
-            name="ends_at"
-            required
-            aria-label={COPY.programs.eventEnd}
-          />
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventStart}</span>
+            <input
+              type="datetime-local"
+              name="starts_at"
+              required
+              aria-label={COPY.programs.eventStart}
+            />
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventEnd}</span>
+            <input
+              type="datetime-local"
+              name="ends_at"
+              required
+              aria-label={COPY.programs.eventEnd}
+            />
+          </label>
           <button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.createEvent}
           </button>
@@ -513,6 +559,7 @@ export const EventsPanel = ({
                     {reschedulingEventId === event.event_id ? (
                       <form
                         className={styles.ruleForm}
+                        ref={rescheduleFormRef}
                         onSubmit={submitReschedule(rule, wall.date)}
                       >
                         <input
@@ -547,7 +594,7 @@ export const EventsPanel = ({
                       <button
                         type="button"
                         disabled={busy}
-                        className={styles.actionButton}
+                        className={styles.secondaryButton}
                         onClick={() => setReschedulingEventId(event.event_id)}
                       >
                         {COPY.programs.rescheduleEvent}
@@ -566,7 +613,11 @@ export const EventsPanel = ({
                           {COPY.programs.cancelOccurrence}
                         </button>
                       ) : (
-                        <div className={styles.confirmation} role="alert">
+                        <div
+                          className={styles.confirmation}
+                          role="alert"
+                          ref={confirmOccurrenceRef}
+                        >
                           <span>{COPY.programs.cancelOccurrenceConfirm}</span>
                           <button
                             type="submit"
@@ -591,7 +642,7 @@ export const EventsPanel = ({
                   <button
                     type="button"
                     disabled={busy}
-                    className={styles.secondaryButton}
+                    className={styles.successOutline}
                     onClick={() => removeException(exception!)}
                   >
                     {COPY.programs.restoreOccurrence}
@@ -621,13 +672,17 @@ export const EventsPanel = ({
                     <button
                       type="submit"
                       disabled={busy}
-                      className={styles.actionButton}
+                      className={styles.dangerOutline}
                     >
                       {COPY.programs.cancelEvent}
                     </button>
                   )}
                   {confirmingEventId === event.event_id && (
-                    <div className={styles.confirmation} role="alert">
+                    <div
+                      className={styles.confirmation}
+                      role="alert"
+                      ref={confirmEventRef}
+                    >
                       <span>{COPY.programs.cancelEventConfirm}</span>
                       <button
                         type="submit"
