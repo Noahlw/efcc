@@ -27,7 +27,7 @@ Session goal: **phase 1** E2E completeness → **phase 2** UI/UX → **phase 3**
 
 | Timestamp (UTC) | Workstream | Branch | Commit (short) | Contains | Known-good state |
 |-----------------|------------|--------|----------------|----------|------------------|
-| 2026-08-08 | live-ui E2E + glossary | `rebase/prg-05-201` | `e6289d5` | Two live-ui mutation tests (registration submit/reject, admin password rotation round-trip), seed reset handles `registration_requests`, CONTEXT.md glossary rows (Guest Check-in, Check-in Sheet, dev-testing worker), session-fallback doc | `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` against `efcc-auth-test`: 26/26 PASS; trace appended to `docs/omp-plans/2026-08-07-ui-04-release-stack.md` |
+| 2026-08-08 | live-ui E2E + glossary | `rebase/prg-05-201` | `aadef18` | Two live-ui mutation tests (registration submit/reject, admin password rotation round-trip), seed reset handles `registration_requests`, CONTEXT.md glossary rows (Guest Check-in, Check-in Sheet, dev-testing worker), session-fallback doc | `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` against `efcc-auth-test`: 26/26 PASS; trace appended to `docs/omp-plans/2026-08-07-ui-04-release-stack.md` |
 
 ## Restore recipes
 
