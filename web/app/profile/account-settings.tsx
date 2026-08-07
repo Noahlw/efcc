@@ -266,15 +266,26 @@ export function AccountSettings() {
             name="username"
             className={styles.input}
             autoComplete="username"
+            required
+            aria-invalid={usernameState.kind === "error" ? true : undefined}
+            aria-describedby={
+              usernameState.kind === "error"
+                ? "account-settings-username-hint account-settings-username-error"
+                : "account-settings-username-hint"
+            }
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             disabled={usernameState.kind === "submitting"}
           />
-          <p className={styles.fieldHint}>{ACCOUNT_SETTINGS_COPY.usernameHint}</p>
+          <p id="account-settings-username-hint" className={styles.fieldHint}>
+            {ACCOUNT_SETTINGS_COPY.usernameHint}
+          </p>
         </div>
         {usernameState.kind === "error" && (
           <div role="alert" className={styles.errorBlock}>
-            <p className={styles.error}>{usernameState.message}</p>
+            <p id="account-settings-username-error" className={styles.error}>
+              {usernameState.message}
+            </p>
             {usernameState.retryable && (
               <button
                 type="button"
@@ -326,6 +337,13 @@ export function AccountSettings() {
             type="password"
             className={styles.input}
             autoComplete="current-password"
+            required
+            aria-invalid={passwordState.kind === "error" ? true : undefined}
+            aria-describedby={
+              passwordState.kind === "error"
+                ? "account-settings-password-error"
+                : undefined
+            }
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             disabled={passwordState.kind === "submitting"}
@@ -344,15 +362,27 @@ export function AccountSettings() {
             type="password"
             className={styles.input}
             autoComplete="new-password"
+            required
+            minLength={8}
+            aria-invalid={passwordState.kind === "error" ? true : undefined}
+            aria-describedby={
+              passwordState.kind === "error"
+                ? "account-settings-password-hint account-settings-password-error"
+                : "account-settings-password-hint"
+            }
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             disabled={passwordState.kind === "submitting"}
           />
-          <p className={styles.fieldHint}>{ACCOUNT_SETTINGS_COPY.passwordHint}</p>
+          <p id="account-settings-password-hint" className={styles.fieldHint}>
+            {ACCOUNT_SETTINGS_COPY.passwordHint}
+          </p>
         </div>
         {passwordState.kind === "error" && (
           <div role="alert" className={styles.errorBlock}>
-            <p className={styles.error}>{passwordState.message}</p>
+            <p id="account-settings-password-error" className={styles.error}>
+              {passwordState.message}
+            </p>
             {passwordState.retryable && (
               <button
                 type="button"

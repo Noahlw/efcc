@@ -12,10 +12,14 @@ import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { firstSection } from "@/lib/sections";
 import {
   buildBootstrap,
+  buildLocalDemoBootstrap,
   clearAuthHint,
+  clearLocalDemoAuth,
   hasAuthHint,
+  isLocalDemoCredentials,
   restoreBootstrap,
   setAuthHint,
+  setLocalDemoAuth,
 } from "@/lib/session";
 
 import styles from "./page.module.css";
@@ -24,13 +28,8 @@ const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 
-/* The four capacities the system actually ships (Spec 000 / Spec 074). */
-const REGISTER_FEATURES = [
-  { name: LANDING.featurePrograms, desc: LANDING.featureProgramsDesc },
-  { name: LANDING.featureEvents, desc: LANDING.featureEventsDesc },
-  { name: LANDING.featureScanner, desc: LANDING.featureScannerDesc },
-  { name: LANDING.featureCare, desc: LANDING.featureCareDesc },
-] as const;
+/* Minimal civic system copy for the signed-out shell (Variant A, Issue #178). */
+const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
 
 /** Squar-cut seal mark (恩) — the brand's carved-stamp identity. */
 function SealMark({ size = 28 }: { size?: number }) {
@@ -175,6 +174,14 @@ export default function LoginPage() {
     setView({ kind: "AUTHENTICATING" });
     announce(COPY.login.submitting);
     setNotice(null);
+    if (isLocalDemoCredentials(username, password)) {
+      setLocalDemoAuth();
+      setAuthHint();
+      announce(COPY.login.success);
+      navigateAfterLogin(buildLocalDemoBootstrap());
+      return;
+    }
+    clearLocalDemoAuth();
     try {
       const result = await authLogin(username, password);
       if (result.mustSetNewCredential) {
@@ -318,80 +325,31 @@ export default function LoginPage() {
         {LANDING.skipToLogin}
       </a>
 
+      {/* Minimal civic shell — seal mark + official church title. */}
       <header className={styles.header}>
-        <a className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
+        <div className={styles.brand} aria-label={LANDING.homeLabel}>
           <SealMark />
           <span>{LANDING.brandFull}</span>
-        </a>
-        <nav className={styles.nav} aria-label={LANDING.navLabel}>
-          <a className={styles.navLink} href="#features">
-            {LANDING.featuresNav}
-          </a>
-          <a className={`${styles.navLink} ${styles.navCta}`} href="#login">
-            {LANDING.loginNav}
-          </a>
-        </nav>
+        </div>
       </header>
 
       <main className={styles.main}>
-        <section
-          className={`${styles.section} ${styles.hero}`}
-          aria-labelledby="hero-title"
-        >
-          <div className={styles.heroInner}>
-            <h1 id="hero-title" className={styles.heroTitle}>
-              {LANDING.heroTitle}
-            </h1>
-            <p className={styles.heroSub}>{LANDING.heroSub}</p>
-            <div className={styles.heroActions}>
-              <a className={styles.primaryAction} href="#login">
-                {LANDING.primaryCta}
-              </a>
-              <a className={styles.secondaryAction} href="#features">
-                {LANDING.secondaryCta}
-              </a>
-            </div>
-          </div>
-        </section>
-
-        <section
-          id="features"
-          className={styles.section}
-          aria-labelledby="register-title"
-        >
-          <div className={styles.split}>
-            <div className={styles.register}>
-              <div className={styles.registerHead}>
-                <h2 id="register-title" className={styles.registerTitle}>
-                  {LANDING.registerTitle}
-                </h2>
-                <p className={styles.registerLead}>{LANDING.registerLead}</p>
-              </div>
-              <div className={styles.registerRows}>
-                {REGISTER_FEATURES.map((feature) => (
-                  <div className={styles.registerRow} key={feature.name}>
-                    <span className={styles.rowMark} aria-hidden="true" />
-                    <div>
-                      <span className={styles.rowName}>{feature.name}</span>
-                      <span className={styles.rowDesc}>{feature.desc}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
+        <div className={styles.bodyCenter}>
+          <div className={styles.splitLogin}>
             <section
               id="login"
-              className={styles.loginPanel}
+              className={styles.formCard}
               aria-labelledby="login-title"
             >
-              <div className={styles.loginTitleWrap}>
-                <SealMark size={22} />
-                <h2 id="login-title" className={styles.loginTitle}>
+              <div className={styles.cardHead}>
+                <span className={styles.cardSeal}>
+                  <SealMark size={22} />
+                </span>
+                <h2 id="login-title" className={styles.cardTitle}>
                   {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
                 </h2>
               </div>
-              <p className={styles.loginLead}>{LANDING.loginPanelLead}</p>
+              <p className={styles.cardLead}>{LANDING.loginPanelLead}</p>
               {notice && (
                 <p role="alert" className={styles.notice}>
                   {notice}
@@ -410,59 +368,67 @@ export default function LoginPage() {
                   }
                 }}
               >
-                <label className={styles.field}>
+                <label className={styles.field} htmlFor="login-username">
                   <span className={styles.fieldLabel}>
                     {COPY.login.usernameLabel}
                   </span>
                   <input
+                    id="login-username"
                     className={styles.input}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     disabled={busy || upgradeMode}
                     autoComplete="username"
+                    required
                   />
                 </label>
                 {upgradeMode ? (
                   <>
-                    <label className={styles.field}>
+                    <label className={styles.field} htmlFor="upgrade-pin">
                       <span className={styles.fieldLabel}>
                         {COPY.login.legacyPasswordLabel}
                       </span>
                       <input
+                        id="upgrade-pin"
                         className={styles.input}
                         type="password"
                         value={legacyPin}
                         onChange={(e) => setLegacyPin(e.target.value)}
                         disabled={busy}
                         autoComplete="current-password"
+                        required
                       />
                     </label>
-                    <label className={styles.field}>
+                    <label className={styles.field} htmlFor="upgrade-password">
                       <span className={styles.fieldLabel}>
                         {COPY.login.newPasswordLabel}
                       </span>
                       <input
+                        id="upgrade-password"
                         className={styles.input}
                         type="password"
                         value={newCredential}
                         onChange={(e) => setNewCredential(e.target.value)}
                         disabled={busy}
                         autoComplete="new-password"
+                        required
                       />
                     </label>
                   </>
                 ) : (
-                  <label className={styles.field}>
+                  <label className={styles.field} htmlFor="login-password">
                     <span className={styles.fieldLabel}>
                       {COPY.login.passwordLabel}
                     </span>
                     <input
+                      id="login-password"
                       className={styles.input}
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={busy}
                       autoComplete="current-password"
+                      required
                     />
                   </label>
                 )}
@@ -486,16 +452,17 @@ export default function LoginPage() {
                 </p>
               )}
             </section>
-          </div>
-        </section>
-      </main>
 
-      <footer className={styles.footer}>
-        <div className={styles.footerInner}>
-          <p className={styles.footerMotto}>{LANDING.footerMotto}</p>
-          <p className={styles.footerNote}>{LANDING.footerNote}</p>
+            <div className={styles.loginCopy}>
+              <span className={styles.copySeal}>
+                <SealMark size={44} />
+              </span>
+              <h1>{LANDING.brandFull}</h1>
+              <p>{SYSTEM_DESCRIPTION}</p>
+            </div>
+          </div>
         </div>
-      </footer>
+      </main>
     </div>
   );
 }

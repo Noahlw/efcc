@@ -79,12 +79,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const mountRef = useRef(true);
   const [tick, setTick] = useState(0);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountRef.current = true;
+    return () => {
       mountRef.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {

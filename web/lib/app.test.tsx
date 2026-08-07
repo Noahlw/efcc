@@ -263,6 +263,41 @@ describe("Shell", () => {
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
     });
 
+    test("real login clears any local demo marker before restore can reuse it", async () => {
+      localStorage.setItem("efcc_local_demo_auth", "1");
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
+      await user.type(
+        screen.getByLabelText(COPY.login.passwordLabel),
+        "pw-pass"
+      );
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
+    });
+
+    test("local development login accepts noah/6883 without calling the auth API", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "noah");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "6883");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+      expect(authCalls).not.toContain("/api/v1/auth/login");
+      expect(authCalls).not.toContain("/api/v1/auth/me");
+      expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBe("1");
+    });
+
     test("stores no credential/token/session identifier in browser storage", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);

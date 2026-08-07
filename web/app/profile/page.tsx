@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+
 import { AppShell } from "@/lib/app-shell";
 import { useApp } from "@/lib/app-context";
-import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
 import { COPY } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
 import { QrCode } from "@/lib/qr-code";
@@ -63,11 +63,13 @@ function ProfileContent() {
         )}
       </div>
 
-      <Link
-        href="/profile/settings"
-        className={styles.settingsLink}
-      >
-        {ACCOUNT_SETTINGS_COPY.sectionTitle}
+      <Link href="/profile/settings" className={styles.settingsAction}>
+        <span className={styles.settingsActionTitle}>
+          {COPY.profile.accountSettings}
+        </span>
+        <span className={styles.settingsActionHint}>
+          {COPY.profile.accountSettingsHint}
+        </span>
       </Link>
     </div>
   );

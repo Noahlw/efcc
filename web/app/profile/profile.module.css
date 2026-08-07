@@ -102,37 +102,61 @@
 }
 
 .qrSquare {
+  box-sizing: content-box;
   width: 220px;
   height: 220px;
   aspect-ratio: 1 / 1;
   background: #ffffff;
   color: var(--ink, #171a1d);
   border: 2px solid var(--line, #d6dcde);
-  border-radius: 16px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem;
+  padding: 0;
   overflow: hidden;
 }
 
 /* 帳戶資料 entry — a 44px-tall full-width target linking to /profile/settings. */
-.settingsLink {
+/* Account Settings action — card-style link to the dedicated /profile/settings
+   route (removed the inline 帳戶資料 form from this surface). Keyboard-focused
+   like any link: real navigation, 3px #176a87 ring. */
+.settingsAction {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  width: 100%;
-  padding: 0.6rem 1rem;
-  font-weight: 700;
-  color: var(--ink, #171a1d);
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.125rem;
   background: var(--surface-raised, #ffffff);
   border: 1px solid var(--line, #d6dcde);
   border-radius: 12px;
   text-decoration: none;
+  color: var(--ink, #171a1d);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.settingsLink:focus-visible {
-  outline: 2px solid var(--focus, #176a87);
+.settingsAction:hover {
+  border-color: var(--accent, #9c302c);
+  background: var(--surface, #f4f5f3);
+}
+
+.settingsAction:focus-visible {
+  outline: 3px solid #176a87;
   outline-offset: 2px;
+}
+
+.settingsActionTitle {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--accent, #9c302c);
+}
+
+.settingsActionHint {
+  font-size: 0.875rem;
+  color: var(--ink-muted, #59636a);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settingsAction {
+    transition: none;
+  }
 }
