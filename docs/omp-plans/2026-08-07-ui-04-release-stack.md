@@ -321,6 +321,25 @@ Authenticated route
 - [ ] Append the `/exec` URL, Next UI target URL, D1 workflow run, test counts, and artifact references to the plan; never append secret values. The role fixture names may be recorded, but their values must never be recorded.
 - [ ] Only then change disposition from merge-ready to `READY` for the release scope.
 
+## Verification Record
+
+**Observed:** 2026-08-07, target worktree `~/.omp/wt/ui-04-196`, commit `80bb7eb` plus this evidence append.
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | PASS — root TypeScript and `tests/e2e/tsconfig.json` emit no diagnostics. |
+| `pnpm --dir web typecheck` | PASS — Next app and Worker TypeScript configs emit no diagnostics. |
+| `pnpm test` | PASS — 17 files, 278 tests. |
+| `pnpm --dir web test` | PASS — 10 files, 170 tests. |
+| `pnpm --dir web test:components` | PASS — 9 files, 139 tests. |
+| `pnpm test:shell-responsive` | PASS — 25 passed, 1 expected desktop-only skip. |
+| Impeccable detector (`--scope type,layout`) | PASS — `[]` findings for the selected landing, Profile, registration, approval, and prototype paths. |
+| `pnpm --dir web build` | PASS — 14 static routes generated, including `/profile/settings` and `/prototype`. |
+| Local browser smoke | PASS — cleared storage, `noah`/`6883` reached `/profile` with visible `Noah`, `Staff`, and all six navigation labels; reloading `/profile` announced `工作階段已還原。`; logout returned `/` and showed the safe local-session-clear notice. |
+| Acceptance appender redaction smoke | PASS — `https://example.test/exec?token=secret#frag` recorded as `https://example.test/exec` with no secret. |
+
+Known non-failing output: root recovery tests intentionally log simulated render errors; Next reports the repository's multiple-lockfile workspace-root warning during build/responsive runs. No deployed `/exec`, Next UI, or D1 acceptance gate was run; those remain operator-gated by fresh targets, role fixtures, and out-of-band credentials. Disposition remains **merge-ready locally**, not `READY`.
+
 ## Plan Self-Review
 
 - **Spec coverage:** L1–L6 cover the minimal landing and shared-shell acceptance; P1–P2 cover Profile/Account Settings; A1 covers approval; S1 covers remaining placeholder Sections; V1–V2 cover the prototype roles and production guard; R1 covers deterministic/visual verification; R2 covers both policy `/exec` acceptance and executable Next UI acceptance; R3 covers fresh D1 auth acceptance.
