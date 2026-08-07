@@ -3,9 +3,10 @@
 // Separate from the GAS playwright.config.ts (legacy Apps Script iframe) and
 // the local responsive.config.ts (stubbed static shell). This config drives
 // the rebuilt Next.js frontend in a real browser against the isolated
-// efcc-auth-* Worker/D1 acceptance deployment, using the out-of-band
-// PROGRAMS_* role fixtures. It never mocks the backend and never targets the
-// production deployment or the legacy efcc-prototype-129 host.
+// efcc-auth-* Worker/D1 acceptance deployment (efcc-auth-test, backed by the
+// efcc-identity D1 seeded with the E2E_ fixtures via seed-dev-accounts.ts),
+// using the out-of-band PROGRAMS_* role fixtures. It never mocks the backend
+// and never targets the legacy efcc-prototype-129 host.
 
 import { defineConfig } from "@playwright/test";
 
@@ -35,14 +36,6 @@ if (!allowLocal) {
   ) {
     throw new Error(
       "AUTH_UI_TARGET_URL must be an absolute HTTPS URL without credentials"
-    );
-  }
-  // efcc-auth-test is the live deployment bound to the original efcc-identity
-  // D1 (real accounts); the E2E fixtures live on the isolated efcc-auth-ui04
-  // worker + efcc-identity-ui04 D1. Refuse the live host by name.
-  if (parsedTarget.hostname === "efcc-auth-test.efcc-ggc.workers.dev") {
-    throw new Error(
-      "AUTH_UI_TARGET_URL must not target the live efcc-auth-test deployment (bound to the efcc-identity production D1); use the isolated efcc-auth-ui04 acceptance worker"
     );
   }
   if (

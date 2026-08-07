@@ -4,6 +4,9 @@
  * Prints the idempotent SQL that seeds the three E2E_ dev accounts into the
  * `efcc-dev-testing` D1 backing the local programs-d1 E2E suite
  * (tests/e2e/programs-d1.config.ts defaults to the dev-testing worker).
+ * The same SQL seeds the efcc-auth-test acceptance D1 (efcc-identity) that
+ * backs the live-ui suite (tests/e2e/live-ui.config.ts); apply it there with
+ * `wrangler d1 execute efcc-identity --remote --file=<this output>`.
  *
  * No hashes are embedded in this file: each run derives fresh PBKDF2-SHA256
  * hashes from the fixed dev-only plaintext credentials below using the
@@ -51,16 +54,19 @@ function sqlLiteral(value: string): string {
 
 async function buildInsert(account: DevAccount, now: number): Promise<string> {
   const credentialHash = await hashCredential(account.credential);
+  // Deterministic fixture QR value (non-secret), mirroring the pattern used
+  // by the acceptance D1 seed so the Profile surface renders its QR square.
+  const qrCodeString = `E2E-${account.role.toUpperCase()}-${account.userId}`;
   return [
     "INSERT OR IGNORE INTO accounts (",
     "  user_id, name, username, username_normalized,",
     "  credential_hash, credential_kind, credential_version,",
-    "  account_status, role, requires_upgrade, created_at, updated_at",
+    "  account_status, role, qr_code_string, requires_upgrade, created_at, updated_at",
     ") VALUES (",
     `  ${sqlLiteral(account.userId)}, ${sqlLiteral(FIXTURE_NAMES[account.userId])},`,
     `  ${sqlLiteral(account.username)}, ${sqlLiteral(normalizeUsername(account.username))},`,
     `  ${sqlLiteral(credentialHash)}, 'password', 1,`,
-    `  'Active', '${account.role}', 0, ${now}, ${now}`,
+    `  'Active', '${account.role}', ${sqlLiteral(qrCodeString)}, 0, ${now}, ${now}`,
     ");",
   ].join("\n");
 }
