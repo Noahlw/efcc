@@ -97,7 +97,7 @@ Strictly sequential, one worktree, one commit per task — the repo runs one eng
 - Consumes: `isDepartmentLifecycle(value)` (exists, same file); `problem(422, "VALIDATION", "Validation failed", detail, requestId)` helper (exists)
 - Produces: unchanged signatures; new 422 behavior only
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Test intent: department create must reject invalid/missing `lifecycle` and non-numeric `display_order` with 422 instead of silently defaulting.
 Framework: vitest, worker suite. File: `web/lib/programs/programs.test.ts`, inside the PRG-01 department describe block (next to the existing department create tests — find `createDepartment` tests, e.g. the one at ~line 300 using `accessCookieFor("alice", "alice-secret")` + `createDepartment`).
@@ -107,12 +107,12 @@ Add one test `test("department create rejects invalid or missing lifecycle and b
 3. body `{ code: "STRICT-DEPT-3", name: "Strict Dept", lifecycle: "Active", display_order: "1" }` → expect `res.status === 422`
 Also assert a valid create (lifecycle `"Active"`, display_order `3`) still returns 201 in the same test.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --dir web test` (optionally `-t "department create rejects invalid"`).
 Expected: the new test FAILS — the first two requests return 201 today (silent default), case 3 returns 201 too.
 
-- [ ] **Step 3: Implement the strict validation**
+- [x] **Step 3: Implement the strict validation**
 
 Location: `web/lib/programs/program-handlers.ts`, inside `handleCreateDepartment` (after the existing `code`/`name` required check, before `workspace.createDepartment`):
 - If `body.lifecycle === undefined` OR `typeof body.lifecycle !== "string"` OR `!isDepartmentLifecycle(body.lifecycle)` → return `problem(422, "VALIDATION", "Validation failed", "lifecycle must be Draft, PendingDevelopment, Active, or Archived.", requestId)`.
@@ -120,12 +120,12 @@ Location: `web/lib/programs/program-handlers.ts`, inside `handleCreateDepartment
 - Then build the command with `lifecycle: body.lifecycle` (typed `as DepartmentLifecycle` — match how `createProgram` casts; check the existing `isDepartmentLifecycle` import/usage) and keep `display_order` as-is (number).
 Do NOT change `code`/`name` handling or any other field.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --dir web test`.
 Expected: new test PASSES; all other tests still pass (no behavior change for valid inputs).
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — expected clean. Stage: `web/lib/programs/program-handlers.ts` and `web/lib/programs/programs.test.ts`.
 Commit message: `fix(programs): department create rejects invalid lifecycle/display_order (422)`.
@@ -140,7 +140,7 @@ Commit message: `fix(programs): department create rejects invalid lifecycle/disp
 - Consumes: `MemberOptionRow` (`{ user_id: string; name: string; username: string }`, exists)
 - Produces: `WorkspaceStore.searchActiveMembers(programId: string, query: string, limit: number): Promise<MemberOptionRow[]>` — scoped to accounts with any row in `enrollments`, `enrollment_requests`, or `program_leaders` for that program, `account_status = 'Active'` only
 
-- [ ] **Step 1: Check the interface, then write the failing test**
+- [x] **Step 1: Check the interface, then write the failing test**
 
 First check whether `WorkspaceStore` already declares `searchActiveMembers` (grep `workspace-store.ts`). If it does, skip the interface change in Step 3.
 Test intent: member search returns only active accounts with a relationship to the program.
@@ -149,12 +149,12 @@ Change the test to first give Alice a relationship to the program: call `workspa
 1. `q=Alice` → 200, members deep-equals `[{ user_id: "U001", name: "Alice Chan", username: "alice" }]` (unchanged assertion — proves she still appears).
 2. `q=Bob` → 200, members deep-equals `[]` (Bob U002 has no relationship to this program — proves program scoping).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --dir web test -t "member-options"`.
 Expected: assertion 2 FAILS — today Bob appears (unscoped search).
 
-- [ ] **Step 3: Implement the scoping**
+- [x] **Step 3: Implement the scoping**
 
 - `d1-workspace-store.ts`: change `searchActiveMembers(query, limit)` → `searchActiveMembers(programId: string, query: string, limit: number)` and add to the SQL `WHERE` clause, after `account_status = 'Active'`:
   `AND (EXISTS (SELECT 1 FROM enrollments e WHERE e.program_id = ? AND e.member_user_id = accounts.user_id) OR EXISTS (SELECT 1 FROM enrollment_requests r WHERE r.program_id = ? AND r.member_user_id = accounts.user_id) OR EXISTS (SELECT 1 FROM program_leaders pl WHERE pl.program_id = ? AND pl.user_id = accounts.user_id))`
@@ -163,12 +163,12 @@ Expected: assertion 2 FAILS — today Bob appears (unscoped search).
 - `department-workspace.ts`: add the pass-through delegating to `this.store.searchActiveMembers(programId, query, limit)`.
 - `program-handlers.ts` `handleSearchMemberOptions`: replace `new D1WorkspaceStore(env.DB).searchActiveMembers(query, 20)` with `workspace.searchActiveMembers(programId, query, 20)` (remove the now-unused `D1WorkspaceStore` import if nothing else uses it — check).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm --dir web test -t "member-options"` then full `pnpm --dir web test`.
 Expected: both assertions PASS; full suite green.
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — expected clean. Stage the four source files + test.
 Commit message: `fix(programs): scope active-member search to the program (ADR-0027)`.
@@ -183,7 +183,7 @@ Commit message: `fix(programs): scope active-member search to the program (ADR-0
 - Consumes: `RequestNotDecidableError` (exists, department-workspace.ts ~205); `audit(ctx, action, entityType, entityId, outcome, oldValue, newValue, correlationId)` (exists)
 - Produces: repeat `decideEnrollmentRequest` / `withdrawEnrollmentRequest` / `cancelEvent` / `cancelEnrollment` calls return the current row (HTTP 200) and write a `DUPLICATE` audit row
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Model on `DLG-4b` (programs.test.ts ~2720) — same audit-row SQL assertion pattern (`SELECT ... FROM audit_events WHERE action = ... AND outcome = 'DUPLICATE'`).
 Add four tests (place near the existing enrollment/event tests; use existing helpers `accessCookieFor`, `createDepartment`, `createProgram`; copy the request shapes from the nearest existing REQ/EVT tests — the endpoints are `POST /api/v1/programs/:id/requests` (member submit), `POST /api/v1/programs/:id/requests/:requestId/decide` (admin approve/reject), `POST /api/v1/programs/:id/requests/:requestId/withdraw` (member), `POST /api/v1/programs/:id/events` (create event), `POST /api/v1/programs/:id/events/:eventId/cancel` (cancel event), `POST /api/v1/programs/:id/enrollments/:enrollmentId/cancel` (cancel enrollment); confirm exact paths from the nearest existing test):
@@ -192,12 +192,12 @@ Add four tests (place near the existing enrollment/event tests; use existing hel
 3. `test("EVT-x cancel-on-cancelled is a quiet 200 with a DUPLICATE audit row", ...)`: admin creates dept+program, staff creates an event (must be `Active`), cancels with a reason (200), cancels again → 200 + `EVENT_CANCEL`/`DUPLICATE` row exists AND the event's stored `status` is still `'Cancelled'` and `cancel_reason` unchanged (assert via the GET program events response).
 4. `test("REQ-x cancel-on-cancelled enrollment is a quiet 200 with a DUPLICATE audit row", ...)`: member requests, admin approves (enrollment Active), member (or admin) cancels the enrollment (200), cancels the same enrollment again → 200 + `ENROLLMENT_CANCEL`/`DUPLICATE` row exists AND the enrollment's `status` is still `'Cancelled'`.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm --dir web test -t "DUPLICATE"` (plus the four new names).
 Expected: all four FAIL — today the repeat calls return 409 (decide/withdraw/cancel-enrollment) or re-write + 200 with SUCCESS audit (cancel-event).
 
-- [ ] **Step 3: Implement the DUPLICATE paths**
+- [x] **Step 3: Implement the DUPLICATE paths**
 
 `d1-workspace-store.ts` `cancelEvent`: add `AND status = 'Active'` to the UPDATE's WHERE clause (bind order unchanged: `reason, updatedBy, updatedAt, id`). `cancelEnrollment` already has its `AND status = 'Active'` guard — no store change needed there.
 `department-workspace.ts`:
@@ -207,12 +207,12 @@ Expected: all four FAIL — today the repeat calls return 409 (decide/withdraw/c
 - `cancelEnrollment` (~1417): when `cancelled === null` — audit `"ENROLLMENT_CANCEL"` outcome `"DUPLICATE"`, newValue `{ ...enrollment, reason: "already_cancelled" }`, and `return enrollment;` (the row fetched at line ~1400). Keep the not-found/`AuthorizationDeniedError` paths unchanged.
 After all four changes, if `RequestNotDecidableError` has no remaining throw sites, delete the class and its import; otherwise leave it (grep to confirm).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --dir web test`.
 Expected: the three new tests PASS; the full suite stays green (no existing test asserted the 409s — verify by the run).
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — clean. Stage changed files.
 Commit message: `fix(programs): repeat decide/withdraw/cancel audit DUPLICATE (ADR-0027)`.
@@ -230,19 +230,19 @@ Commit message: `fix(programs): repeat decide/withdraw/cancel audit DUPLICATE (A
   - `decideRequest(id, decision, decidedBy, decidedAt, note)` gains a 6th param `audit: AuditInput` — D1 impl batches `[UPDATE, INSERT audit]`
   - `findActiveEnrollment(programId: string, memberUserId: string): Promise<EnrollmentRow | null>` (new store method)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Two tests (place near REQ-3/REQ-7 which cover approval atomicity — find the request/approve API shapes there):
 1. `test("REQ-x approval race loser audits CONFLICT with the existing enrollment", ...)`: deterministic race — seed an Active enrollment for `(program, U001)` created by a DIFFERENT user, plus a Pending request for the same pair, then approve: 
    - Setup via API where possible: have member U001 request enrollment in program P (MemberRequest mode) → admin approves → an Active enrollment + Approved request exist. Then have the SAME member submit a second request? Blocked by `findPendingRequestByMember`… Instead: seed via a second program path — simplest is direct SQL through the test DB helpers used by other tests (find how existing tests write raw rows, e.g. the `audit` assertions use `testDb()`; use `testDb().prepare("INSERT INTO enrollments ...")` to seed an enrollment for `(programB, U001)` with `created_by = 'U002'`, then use the API to create a Pending request for `(programB, U001)` — the request-submit API only blocks when an ACTIVE enrollment exists for that member+program, so seed the enrollment AFTER the request is created, or seed with the request via direct SQL. Concretely: (a) member submits request via API (no enrollment yet); (b) direct SQL insert the Active enrollment with `created_by = 'U002'`, `status = 'Active'`; (c) admin approves the request → expect HTTP 409 `DuplicateEnrollmentError`; (d) assert an `audit_events` row `action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'CONFLICT'` exists.
 2. `test("REQ-x approval success writes DECIDE+CREATE audits in the commit", ...)`: member submits, admin approves → 200; assert BOTH `ENROLLMENT_CREATE`/`SUCCESS` and `ENROLLMENT_REQUEST_DECIDE`/`SUCCESS` rows exist (this likely duplicates existing REQ-7 assertions — check first; if REQ-7 already asserts both rows, this test's value is the race case only and it may be skipped).
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm --dir web test -t "approval race"`.
 Expected: test 1 FAILS — today the race catch throws 409 with NO audit row.
 
-- [ ] **Step 3: Implement transaction placement + race audit**
+- [x] **Step 3: Implement transaction placement + race audit**
 
 `d1-workspace-store.ts`:
 - Extract a private helper `auditInsertStatement(input: AuditInput)` returning `this.db.prepare(<the existing audit_events INSERT SQL with input binds>)` — refactor `audit()` to use it.
@@ -259,12 +259,12 @@ Expected: test 1 FAILS — today the race catch throws 409 with NO audit row.
 - Reject path: build `auditDecide` = buildAuditRow(ctx, "ENROLLMENT_REQUEST_DECIDE", "enrollment_request", requestId, "SUCCESS", `{ status: "Pending" }`, `{ ...request, status: "Rejected", decided_by: ctx.actorUserId, decided_at: now, note: cmd.note }`, correlationId) and pass it as the new 6th argument to `decideRequest`. After both paths carry their audits in-batch, DELETE the shared post-if/else DECIDE audit block (lines ~1235-1240). The DUPLICATE-on-null returns from Task 3 exit before that block and keep their own plain `audit()` calls (no-op paths write no mutation, so no transaction is needed).
 - Race catch: replace the `hasActiveEnrollment` boolean check with: `const existing = await this.store.findActiveEnrollment(programId, request.member_user_id); if (existing) { const outcome = existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT"; await this.audit(ctx, "ENROLLMENT_REQUEST_DECIDE", "enrollment_request", requestId, outcome, null, { status: "Pending", enrollment_id: existing.enrollment_id, reason: "active_enrollment_exists" }, correlationId); throw new DuplicateEnrollmentError(programId, request.member_user_id); } throw error;`
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --dir web test`.
 Expected: race test PASSES (409 + CONFLICT audit row); all existing approval tests (REQ-3/REQ-7 etc.) still PASS — if REQ-3/REQ-7 assert exactly-one-DECIDE-audit or no-orphan, they must remain green; fix the new AuditInput construction until they are.
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — clean. Stage the four files + tests.
 Commit message: `fix(programs): approval audits commit in-transaction; race loser audits CONFLICT`.
@@ -279,30 +279,30 @@ Commit message: `fix(programs): approval audits commit in-transaction; race lose
 - Consumes: `parseProgramFields(body, required)` (exists); `PROGRAM_FIELD_PARSERS` (exists)
 - Produces: `handleCreateProgram` accepts create bodies missing `discoverability`/`enrollment_mode`/`display_order`, defaulting to `"Listed"`/`"MemberRequest"`/`0`; present-but-invalid values still 422
 
-- [ ] **Step 1: Verify no existing test asserts 422 for omitted optionals, then write the failing test**
+- [x] **Step 1: Verify no existing test asserts 422 for omitted optionals, then write the failing test**
 
 Grep `programs.test.ts` for create bodies missing `discoverability` or `enrollment_mode` — confirm every 422-create test omits at least one REQUIRED field (name/behavior_type/lifecycle). If any asserts 422 for missing-only-optional, that test must be updated in Step 4.
 Test intent: create with only the three required fields succeeds with documented defaults.
 Add `test("program create defaults discoverability/enrollment_mode/display_order", ...)`: admin creates dept; POST `/api/v1/programs/departments/:id/programs` with body `{ name: "Defaulted Program", behavior_type: "Recurring", lifecycle: "Draft" }` → expect 201, and the response `program.discoverability === "Listed"`, `program.enrollment_mode === "MemberRequest"`, `program.display_order === 0`. Also keep one invalid-enum check in the same test: body with `discoverability: "Public"` → 422.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --dir web test -t "defaults discoverability"`.
 Expected: FAILS with 422 (today the three fields are required).
 
-- [ ] **Step 3: Implement the defaults**
+- [x] **Step 3: Implement the defaults**
 
 `program-handlers.ts` `handleCreateProgram`:
 - Change the `parseProgramFields(body, [...])` required list from `["name", "behavior_type", "lifecycle", "discoverability", "enrollment_mode"]` to `["name", "behavior_type", "lifecycle"]`.
 - After the parse, when building the `createProgram` input, replace `fields.discoverability as ...` with `(fields.discoverability ?? "Listed") as "Listed" | "Unlisted"`, `fields.enrollment_mode ?? "MemberRequest"` cast similarly, `fields.display_order` stays `typeof fields.display_order === "number" ? fields.display_order : 0`.
 - Leave `handleUpdateProgram` (required list `[]`) untouched.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --dir web test`.
 Expected: new test PASSES; all existing strict-create 422 tests still PASS (they omit required fields); update any test found in Step 1 if it asserted 422 for omitted-only-optional (change it to expect 201 with defaults).
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — clean. Stage changed files.
 Commit message: `fix(programs): program create defaults optional settings per fix-plan ruling`.
@@ -316,7 +316,7 @@ Commit message: `fix(programs): program create defaults optional settings per fi
 **Interfaces:**
 - Produces: `DepartmentWorkspace.submitEnrollmentRequest(ctx, programId, correlationId)` (no command param); `AssistedEnrollCommand` = `{ memberUserId: string }` only; no `DEFAULT_ROLE_POLICIES` export; no `requestId2` identifiers
 
-- [ ] **Step 1: Confirm removals are safe (grep), then implement**
+- [x] **Step 1: Confirm removals are safe (grep), then implement**
 
 For each of the four removals, first grep for every reference outside the definition:
 1. `DEFAULT_ROLE_POLICIES` — grep `web/` (exclude node_modules). If only the definition in `capabilities.ts` matches, delete the constant (its ~60-line block). If a test references it, remove the test reference too.
@@ -325,12 +325,12 @@ For each of the four removals, first grep for every reference outside the defini
 4. `AssistedEnrollCommand.programId` — remove the field from the interface; update the handler construction `{ programId, memberUserId }` → `{ memberUserId }` (~line 1501); grep tests for `{ programId, memberUserId }` constructions and update.
 No behavior changes — these are mechanical removals.
 
-- [ ] **Step 2: Run the suite (regression gate)**
+- [x] **Step 2: Run the suite (regression gate)**
 
 Run: `pnpm --dir web typecheck` then `pnpm --dir web test`.
 Expected: clean typecheck; all tests pass (any test updated in Step 1 must still pass).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Stage all changed files.
 Commit message: `refactor(programs): drop dead role policies, dead command params, requestId2 rename`.
@@ -345,28 +345,28 @@ Commit message: `refactor(programs): drop dead role policies, dead command param
 - Consumes: the `Idempotency-Key` header the client already sends (`program-api.ts` `idempotencyHeaders`)
 - Produces: every mutating handler derives `const correlationId = request.headers.get("Idempotency-Key") ?? requestId;` and passes `correlationId` (not `requestId`) as the correlationId argument into workspace calls
 
-- [ ] **Step 1: Enumerate the call sites, then write the failing test**
+- [x] **Step 1: Enumerate the call sites, then write the failing test**
 
 Grep `program-handlers.ts` for every handler that calls a mutating workspace method with `requestId` as the last argument (create/update department, create/update program, create/update/delete schedule rule, generateEvents, create/update/cancel event, submit/decide/withdraw enrollment request, assistedEnroll, grant/revoke leader, module enable/disable). List them in a comment in the test? No — list them in the plan as the change set.
 Test intent: a mutating request carrying `Idempotency-Key` records that value as the audit `correlation_id`.
 Add `test("mutations correlate audits to the client Idempotency-Key", ...)`: admin creates dept+program via the API with an extra header `"Idempotency-Key": "client-key-abc"` on the create-program request → 201; then assert via `testDb()` SQL: an `audit_events` row exists with `correlation_id = 'client-key-abc'` (use the `PROGRAM_CREATE` action — find the audit action name by checking what the create-program audit writes, e.g. grep `"PROGRAM_CREATE"` in department-workspace.ts).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm --dir web test -t "Idempotency-Key"`.
 Expected: FAILS — today the correlation_id is the server-random requestId.
 
-- [ ] **Step 3: Implement the derivation**
+- [x] **Step 3: Implement the derivation**
 
 In each mutating handler enumerated in Step 1, immediately after `const requestId = crypto.randomUUID();` add `const correlationId = request.headers.get("Idempotency-Key") ?? requestId;` and change the workspace call's final argument from `requestId` to `correlationId`. Leave all `problem(...)`/`jsonResponse(...)` calls using `requestId` unchanged (the response requestId stays server-generated; existing `assertCorrelated` tests send no header, so `correlationId === requestId` and stay green).
 Read-only handlers (`handleList*`, `handleGet*`, `handleSearchMemberOptions`) are unchanged — they take no correlationId.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --dir web test`.
 Expected: new test PASSES; full suite green (headerless tests unaffected).
 
-- [ ] **Step 5: Gate + commit**
+- [x] **Step 5: Gate + commit**
 
 Run: `pnpm --dir web typecheck` — clean.
 Commit message: `fix(programs): honor client Idempotency-Key as audit correlation id`.
