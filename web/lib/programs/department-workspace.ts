@@ -1021,7 +1021,17 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
-      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+      await this.audit(
+        ctx,
+        "EVENT_CANCEL",
+        "event",
+        eventId,
+        "DUPLICATE",
+        null,
+        { ...event, reason: "already_cancelled" },
+        correlationId
+      );
+      return event;
     }
     await this.audit(
       ctx,
@@ -1223,7 +1233,17 @@ export class DepartmentWorkspace {
       );
     }
     if (!decided) {
-      throw new RequestNotDecidableError(requestId);
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "DUPLICATE",
+        null,
+        { ...request, reason: "already_decided" },
+        correlationId
+      );
+      return request;
     }
     if (enrollment !== null) {
       await this.audit(
@@ -1278,7 +1298,17 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!withdrawn) {
-      throw new RequestNotDecidableError(requestId);
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_WITHDRAW",
+        "enrollment_request",
+        requestId,
+        "DUPLICATE",
+        null,
+        { ...request, reason: "already_withdrawn" },
+        correlationId
+      );
+      return request;
     }
     await this.audit(
       ctx,
@@ -1424,7 +1454,17 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!cancelled) {
-      throw new RequestNotDecidableError(enrollmentId);
+      await this.audit(
+        ctx,
+        "ENROLLMENT_CANCEL",
+        "enrollment",
+        enrollmentId,
+        "DUPLICATE",
+        null,
+        { ...enrollment, reason: "already_cancelled" },
+        correlationId
+      );
+      return enrollment;
     }
     await this.audit(
       ctx,

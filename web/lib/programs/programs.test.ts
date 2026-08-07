@@ -2256,7 +2256,7 @@ describe("PRG-03: enrollment requests", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(afterWithdraw.status, 409);
+    assert.strictEqual(afterWithdraw.status, 200);
 
     const carolRequest = await submitRequest(carolAccess, programId);
     const crossActor = await worker.fetch(
@@ -2285,7 +2285,7 @@ describe("PRG-03: enrollment requests", () => {
       decideRequest(adminAccess, programId, request.request_id, "Approved"),
     ]);
     const statuses = [first.status, second.status].sort();
-    assert.deepStrictEqual(statuses, [200, 409]);
+    assert.deepStrictEqual(statuses, [200, 200]);
     const enrollments = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE request_id = ? AND status = 'Active'"
@@ -2309,12 +2309,21 @@ describe("PRG-03: enrollment requests", () => {
 
     const decides = await testDb()
       .prepare(
-        `SELECT COUNT(*) AS n FROM audit_events
-         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ?`
+        `SELECT outcome, COUNT(*) AS n FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ?
+         GROUP BY outcome`
       )
       .bind(request.request_id)
-      .first<{ n: number }>();
-    assert.strictEqual(decides?.n, 1, "DECIDE audits once, on commit only");
+      .all<{ outcome: string; n: number }>();
+    const byOutcome = new Map(
+      (decides.results ?? []).map((r) => [r.outcome, r.n])
+    );
+    assert.strictEqual(byOutcome.get("SUCCESS"), 1, "one committed decision");
+    assert.strictEqual(
+      byOutcome.get("DUPLICATE"),
+      1,
+      "repeat decision audits DUPLICATE"
+    );
   });
 
   test("REQ-8 no credential material leaks in request responses", async () => {
@@ -2508,7 +2517,7 @@ describe("PRG-03: enrollments", () => {
       managerOnlyId,
       cancelledId
     );
-    assert.strictEqual(secondCancel.status, 409);
+    assert.strictEqual(secondCancel.status, 200);
 
     const reenroll = await assistedEnrollFor(
       adminAccess,
@@ -2599,6 +2608,244 @@ describe("PRG-03: enrollments", () => {
         text
       )
     );
+  });
+
+  test("REQ-9 decide-on-decided is a quiet 200 with a DUPLICATE audit row", async () => {
+    const programId = (await createProgram(adminAccess, deptId, {
+      name: "Decide Repeat Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    })).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(first.status, 200);
+    const again = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(again.status, 200);
+    const row = await testDb()
+      .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
+      .bind(request.request_id)
+      .first<{ status: string }>();
+    assert.strictEqual(row?.status, "Approved", "request state must not change");
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
+      )
+      .bind(request.request_id)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "decide-on-decided must write a DUPLICATE audit row");
+  });
+
+  test("REQ-10 withdraw-on-withdrawn is a quiet 200 with a DUPLICATE audit row", async () => {
+    const programId = (await createProgram(adminAccess, deptId, {
+      name: "Withdraw Repeat Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    })).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(first.status, 200);
+    const again = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(again.status, 200);
+    const row = await testDb()
+      .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
+      .bind(request.request_id)
+      .first<{ status: string }>();
+    assert.strictEqual(
+      row?.status,
+      "Withdrawn",
+      "request state must not change"
+    );
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_WITHDRAW' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
+      )
+      .bind(request.request_id)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "withdraw-on-withdrawn must write a DUPLICATE audit row");
+  });
+
+  test("EVT-9 cancel-on-cancelled is a quiet 200 with a DUPLICATE audit row", async () => {
+    const programId = (await createProgram(adminAccess, deptId, {
+      name: "Cancel Repeat Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    })).program_id;
+    const created = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2026-12-01T10:00:00.000Z",
+          ends_at: "2026-12-01T11:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+    const {
+      data: { event },
+    } = (await assertCorrelated(created)) as {
+      data: { event: { event_id: string; status: string } };
+    };
+    assert.strictEqual(event.status, "Active");
+    const first = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { reason: "repeat-cancel" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(first.status, 200);
+    const again = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { reason: "repeat-cancel" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(again.status, 200);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'EVENT_CANCEL' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "cancel-on-cancelled must write a DUPLICATE audit row");
+    const listed = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(listed.status, 200);
+    const listedBody = (await assertCorrelated(listed)) as {
+      data: {
+        events: {
+          event_id: string;
+          status: string;
+          cancel_reason: string | null;
+        }[];
+      };
+    };
+    const stored = listedBody.data.events.find(
+      (e) => e.event_id === event.event_id
+    );
+    assert.strictEqual(stored?.status, "Cancelled");
+    assert.strictEqual(stored?.cancel_reason, "repeat-cancel");
+  });
+
+  test("REQ-11 cancel-on-cancelled enrollment is a quiet 200 with a DUPLICATE audit row", async () => {
+    const programId = (await createProgram(adminAccess, deptId, {
+      name: "Enrollment Cancel Repeat Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    })).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const decided = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(decided.status, 200);
+    const enrollment = await testDb()
+      .prepare(
+        "SELECT enrollment_id, status FROM enrollments WHERE request_id = ?"
+      )
+      .bind(request.request_id)
+      .first<{ enrollment_id: string; status: string }>();
+    assert.ok(enrollment, "approved request must produce an enrollment");
+    assert.strictEqual(enrollment.status, "Active");
+    const first = await cancelEnrollmentFor(
+      memberAccess,
+      programId,
+      enrollment.enrollment_id
+    );
+    assert.strictEqual(first.status, 200);
+    const again = await cancelEnrollmentFor(
+      memberAccess,
+      programId,
+      enrollment.enrollment_id
+    );
+    assert.strictEqual(again.status, 200);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'ENROLLMENT_CANCEL' AND outcome = 'DUPLICATE'
+           AND entity_id = ?`
+      )
+      .bind(enrollment.enrollment_id)
+      .first<{ outcome: string }>();
+    assert.ok(audit, "cancel-on-cancelled must write a DUPLICATE audit row");
+    const stored = await testDb()
+      .prepare("SELECT status FROM enrollments WHERE enrollment_id = ?")
+      .bind(enrollment.enrollment_id)
+      .first<{ status: string }>();
+    assert.strictEqual(stored?.status, "Cancelled", "state must not change");
   });
 });
 

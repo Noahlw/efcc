@@ -607,7 +607,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .prepare(
         `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
            updated_by = ?, updated_at = ?
-         WHERE event_id = ?`
+         WHERE event_id = ? AND status = 'Active'`
       )
       .bind(reason, updatedBy, updatedAt, id)
       .run();
