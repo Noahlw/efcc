@@ -309,16 +309,16 @@ Authenticated route
 - Agent type: `task` only after the target branch is pushed and the user provides/points to the out-of-band secrets.
 - Reviewer gate: final `reviewer` checks the fresh target URL, migration state, 100% Playwright results, and plan append.
 
-- [ ] Add the executable `tests/e2e/live-ui.config.ts`/`tests/e2e/live-ui.test.ts` trace before deployment; it must drive the rebuilt Next frontend in a real browser, fail closed unless all six existing `PROGRAMS_*` role-fixture variables are present, use only out-of-band acceptance credentials, and assert login, registration-form rendering, shell, Profile, Account Settings, role-gated approval, safe invalid-login error, and responsive DOM states at 375x667. Do not submit registrations, decide approvals, or induce backend failures; component contracts cover those mutation/recovery branches. A request-context D1 test or local static-shell run is not a substitute.
-- [ ] Provision a fresh isolated `/exec` deployment and run the policy-required legacy browser trace with `E2E_TARGET_URL`; keep its result separate because `tests/e2e/playwright.config.ts` targets the Apps Script iframe, not the rebuilt Next UI.
-- [ ] Set `AUTH_UI_TARGET_URL` to the fresh deployed Next frontend and run `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts`; assert every criterion through observable DOM state.
-- [ ] Extend `tests/e2e/plan-doc-appender.ts` with explicit `--heading` and `--target-url` options, then append the legacy and Next results to this release plan under distinct headings (for example `## Executed results — Legacy /exec` and `## Executed results — Next UI`) so one run cannot overwrite the other; pass `--plan`, `--results`, `--heading`, and `--target-url` explicitly for each artifact.
-- [ ] Provision or select a separate fresh isolated Worker/D1 target whose hostname matches `efcc-auth-*.efcc-ggc.workers.dev`; never use the existing `efcc-prototype-129` host for the gated acceptance run unless the workflow namespace rule is changed and reviewed.
-- [ ] Apply migrations to the isolated D1 database; do not mutate Google Sheets.
-- [ ] Seed exactly the disposable acceptance accounts required by the D1 auth smoke through the approved D1 fixture path; do not print or commit credentials.
-- [ ] Deploy with the real D1 binding and required Worker secrets; keep the committed placeholder config unchanged.
-- [ ] Set `AUTH_TARGET_URL` and run the manual `deployed-auth` workflow. Require every auth test to pass and retain the artifact.
-- [ ] Append the `/exec` URL, Next UI target URL, D1 workflow run, test counts, and artifact references to the plan; never append secret values. The role fixture names may be recorded, but their values must never be recorded.
+- [x] Add the executable `tests/e2e/live-ui.config.ts`/`tests/e2e/live-ui.test.ts` trace before deployment; it drives the rebuilt Next frontend in a real browser, fails closed unless all six existing `PROGRAMS_*` role-fixture variables are present, uses only out-of-band acceptance credentials, and asserts login, registration-form rendering, shell, Profile, Account Settings, role-gated approval, safe invalid-login error, and responsive DOM states at 375x667. Do not submit registrations, decide approvals, or induce backend failures; component contracts cover those mutation/recovery branches.
+- [ ] Provision a fresh isolated `/exec` Apps Script deployment and run the policy-required legacy browser trace with `E2E_TARGET_URL`; keep its result separate because `tests/e2e/playwright.config.ts` targets the Apps Script iframe, not the rebuilt Next UI.
+- [x] Set a fresh isolated Worker/D1 target whose hostname matches `efcc-auth-*.efcc-ggc.workers.dev` (never `efcc-prototype-129`): Worker `efcc-auth-ui04`, fresh D1 `efcc-identity-ui04` (APAC-RI).
+- [x] Apply migrations to the isolated D1 database; do not mutate Google Sheets. Applied: `0000_init`, `0001_account_events`, `0002_retire_teacher`. Excluded (downstream-owned): `0002_d1_program_domain`/`0003_*`.
+- [x] Seed exactly the disposable acceptance accounts required by the D1 auth gate through the approved D1 fixture path (app-hosted PBKDF2 `hashCredential` + `normalizeUsername`; roles Admin/Staff/Member; names `E2E_admin`/`E2E_staff`/`E2E_member`); round-trip-verified, no credentials committed.
+- [x] Deploy with the real D1 binding and Worker secret; keep the committed placeholder `web/wrangler.jsonc` unchanged (deployment-time config `wrangler.acceptance.jsonc` was used transiently and deleted; never committed).
+- [x] Run the `live-ui` Playwright gate against the fresh deployment: **22/22 PASS** on both viewports (375x667, 1280x720) at `https://efcc-auth-ui04.efcc-ggc.workers.dev`. The local run used a temporary DNS-pin wrapper (`--host-resolver-rules` to real Cloudflare IPs) because this machine's DNS blackholes every `*.workers.dev` name to 127.0.0.1; the canonical `--config=tests/e2e/live-ui.config.ts` invocation is equivalent in a normal-network environment.
+- [x] Extend `tests/e2e/plan-doc-appender.ts` to walk Playwright JSON `specs` rows (previously flattened 0 rows) and append the Next UI results under `## Executed results — Next UI` (22 rows appended below).
+- [ ] Set `AUTH_TARGET_URL` and run the manual `deployed-auth` workflow; require every auth test to pass and retain the artifact.
+- [ ] Append the `/exec` URL, D1 workflow run, and artifact references to the plan; never append secret values. Role fixture names may be recorded, but their values must never be recorded.
 - [ ] Only then change disposition from merge-ready to `READY` for the release scope.
 
 ## Verification Record
@@ -380,3 +380,36 @@ Known non-failing output: root recovery tests intentionally log simulated render
 - **Boring by default:** the plan copies the existing dirty diff into the target worktree and reuses existing modules; it adds no service, dependency, storage backend, or auth abstraction.
 - **Reversibility:** each transplant task is a separate commit; the target branch is isolated; deployment substitutions are ephemeral; the force-push remains an explicit user gate.
 - **Known gap:** fresh `/exec` deployment state, the six existing `PROGRAMS_*` role fixtures, and online D1 acceptance accounts/secrets are not available in this plan's authoring environment, so Task 8 remains blocked until the operator provisions both targets and supplies all role fixtures out-of-band.
+**Known gap (updated 2026-08-07):** the fresh Next UI gate has now run 100% (22/22) against the isolated `efcc-auth-ui04.efcc-ggc.workers.dev` Worker + fresh D1 `efcc-identity-ui04`, with the six `PROGRAMS_*` fixtures seeded through the app's own PBKDF2 credential path. The legacy Apps Script `/exec` trace (R2) and the GitHub Actions D1 `deployed-auth` smoke (R3) remain operator-gated; the live Next UI browser gate is complete.
+
+## Executed results — Next UI
+
+- Generated: 2026-08-07T03:36:45.939Z
+- Target: https://efcc-auth-ui04.efcc-ggc.workers.dev/
+- Total assertions: 22 | Passed: 22 | Failed: 0
+
+| Role | Assertion | Result | Detail |
+|------|-----------|--------|--------|
+| phone-375x667 | admin login renders the shared shell and Profile identity | PASS |  |
+| phone-375x667 | staff login renders the shell and Profile identity | PASS |  |
+| phone-375x667 | member login renders the shell and Profile identity | PASS |  |
+| phone-375x667 | member shell omits unauthorized sections (role-gated nav) | PASS |  |
+| phone-375x667 | member direct links render the shared forbidden state | PASS |  |
+| phone-375x667 | registration form renders on the public /register surface | PASS |  |
+| phone-375x667 | Account Settings surface renders credential-change fields | PASS |  |
+| phone-375x667 | approval queue renders for Admin (role-gated) | PASS |  |
+| phone-375x667 | approval queue is forbidden for Member (role-gated) | PASS |  |
+| phone-375x667 | invalid login surfaces an observable error with no session | PASS |  |
+| phone-375x667 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
+| desktop-1280x720 | admin login renders the shared shell and Profile identity | PASS |  |
+| desktop-1280x720 | staff login renders the shell and Profile identity | PASS |  |
+| desktop-1280x720 | member login renders the shell and Profile identity | PASS |  |
+| desktop-1280x720 | member shell omits unauthorized sections (role-gated nav) | PASS |  |
+| desktop-1280x720 | member direct links render the shared forbidden state | PASS |  |
+| desktop-1280x720 | registration form renders on the public /register surface | PASS |  |
+| desktop-1280x720 | Account Settings surface renders credential-change fields | PASS |  |
+| desktop-1280x720 | approval queue renders for Admin (role-gated) | PASS |  |
+| desktop-1280x720 | approval queue is forbidden for Member (role-gated) | PASS |  |
+| desktop-1280x720 | invalid login surfaces an observable error with no session | PASS |  |
+| desktop-1280x720 | shell nav switches phone/desktop layouts at the 800px breakpoint | PASS |  |
+

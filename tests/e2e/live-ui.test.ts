@@ -242,7 +242,11 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       "/registrations",
     ]) {
       await page.goto(appPath(path));
-      await expect(page.getByRole("alert")).toContainText(COPY.forbidden);
+      await expect(
+        page
+          .getByRole("alert")
+          .filter({ hasText: COPY.forbidden })
+      ).toContainText(COPY.forbidden);
     }
   });
 
@@ -315,7 +319,9 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/registrations"));
-    await expect(page.getByRole("alert")).toContainText(COPY.forbidden);
+    await expect(
+      page.getByRole("alert").filter({ hasText: COPY.forbidden })
+    ).toContainText(COPY.forbidden);
   });
 
   test("invalid login surfaces an observable error with no session", async ({
@@ -331,7 +337,9 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       .locator('input[autocomplete="current-password"]')
       .fill("wrong-password");
     await page.getByRole("button", { name: COPY.loginSubmit }).click();
-    await expect(page.getByRole("alert")).toContainText(COPY.loginError);
+    await expect(
+      page.getByRole("alert").filter({ hasText: COPY.loginError })
+    ).toContainText(COPY.loginError);
   });
 
   test("shell nav switches phone/desktop layouts at the 800px breakpoint", async ({

@@ -39,6 +39,7 @@ const DEFAULT_SECTION_HEADER = "## Executed results";
 
 interface JsonReporterSpec {
   title?: string;
+  specs?: JsonReporterSpec[];
   suites?: JsonReporterSpec[];
   tests?: {
     projectName?: string;
@@ -161,6 +162,9 @@ function flattenResults(root: JsonReporterRoot): FlatRow[] {
   };
   const walkSuite = (suite: JsonReporterSpec): void => {
     walkSpec(suite);
+    for (const spec of suite.specs ?? []) {
+      walkSpec(spec);
+    }
     for (const child of suite.suites ?? []) {
       walkSuite(child);
     }
