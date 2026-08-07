@@ -635,8 +635,8 @@
 }
 
 .qrSquare {
-  width: min(220px, 55vw);
-  height: min(220px, 55vw);
+  width: 220px;
+  height: 220px;
   aspect-ratio: 1 / 1;
   background: #ffffff;
   border: 2px solid var(--border);

@@ -26,6 +26,27 @@ const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL;
 const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME;
 const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL;
 
+const ROLE_FIXTURES = [
+  {
+    usernameName: "PROGRAMS_ADMIN_USERNAME",
+    username: ADMIN_USER,
+    credentialName: "PROGRAMS_ADMIN_CREDENTIAL",
+    credential: ADMIN_CRED,
+  },
+  {
+    usernameName: "PROGRAMS_STAFF_USERNAME",
+    username: STAFF_USER,
+    credentialName: "PROGRAMS_STAFF_CREDENTIAL",
+    credential: STAFF_CRED,
+  },
+  {
+    usernameName: "PROGRAMS_MEMBER_USERNAME",
+    username: MEMBER_USER,
+    credentialName: "PROGRAMS_MEMBER_CREDENTIAL",
+    credential: MEMBER_CRED,
+  },
+] as const;
+
 const COPY = {
   appFullName: "中國基督教播道會顯恩堂",
   loginSubmit: "登入",
@@ -38,9 +59,25 @@ const COPY = {
   accountSettingsTitle: "帳戶資料",
   currentPassword: "目前密碼",
   newPassword: "新密碼",
-  approvalTitle: "註冊審批",
-  forbidden: "您沒有權限執行此操作。",
+  settingsUsername: "新用戶名稱",
+  passwordHint: "密碼須至少 8 個字元。",
+  confirmationPassword: "確認密碼",
+  qrCode: "QR Code",
+  phone: "電話",
+  registrationPhone: "電話（選填）",
+  status: "狀態",
+  profileSection: "個人檔案",
+  programsSection: "課程與活動",
+  eventsSection: "聚會管理",
   scannerSection: "掃描簽到",
+  careSection: "關懷儀表板",
+  permissionsSection: "權限管理",
+  approvalTitle: "註冊審批",
+  approvalCount: /\d+ 筆待審核/,
+  approvalEmpty: "目前沒有待審批的申請。",
+  approve: "批准",
+  reject: "拒絕",
+  forbidden: "您沒有權限執行此操作。",
 } as const;
 
 function required(name: string, value: string | undefined): string {
@@ -64,27 +101,36 @@ async function loginAs(
 }
 
 test.beforeAll(() => {
-  for (const [name, value] of [
-    ["PROGRAMS_ADMIN_USERNAME", ADMIN_USER],
-    ["PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED],
-    ["PROGRAMS_STAFF_USERNAME", STAFF_USER],
-    ["PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED],
-    ["PROGRAMS_MEMBER_USERNAME", MEMBER_USER],
-    ["PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED],
-  ]) {
-    if (!value) {
-      throw new Error(`${name} is required`);
+  const usernames = new Set<string>();
+  const credentials = new Set<string>();
+  for (const fixture of ROLE_FIXTURES) {
+    if (!fixture.username) {
+      throw new Error(`${fixture.usernameName} is required`);
     }
+    if (!fixture.credential) {
+      throw new Error(`${fixture.credentialName} is required`);
+    }
+    if (!/^E2E_[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(fixture.username)) {
+      throw new Error(
+        `${fixture.usernameName} must be a distinct disposable E2E_* username`
+      );
+    }
+    if (fixture.credential.trim().length < 8) {
+      throw new Error(
+        `${fixture.credentialName} must contain at least 8 non-whitespace characters`
+      );
+    }
+    const normalizedUsername = fixture.username.toLowerCase();
+    if (usernames.has(normalizedUsername)) {
+      throw new Error("PROGRAMS_*_USERNAME values must be distinct");
+    }
+    usernames.add(normalizedUsername);
+    if (credentials.has(fixture.credential)) {
+      throw new Error("PROGRAMS_*_CREDENTIAL values must be distinct");
+    }
+    credentials.add(fixture.credential);
   }
-  if (
-    ![ADMIN_USER, STAFF_USER, MEMBER_USER].every((user) =>
-      user?.startsWith("E2E_")
-    )
-  ) {
-    throw new Error(
-      "PROGRAMS_*_USERNAME must start with E2E_; deployed suites require disposable acceptance accounts"
-    );
-  }
+  // Each claimed canonical role is verified by its corresponding login test.
 });
 
 test.describe("UI-04 deployed Next frontend trace", () => {
@@ -104,6 +150,13 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       })
     ).toBeVisible();
     await expect(page.getByText("Admin", { exact: true })).toBeVisible();
+    const qr = page.getByRole("img", { name: COPY.qrCode });
+    await expect(qr).toBeVisible();
+    await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
+    await expect(qr).toHaveCSS("width", "220px");
+    await expect(qr).toHaveCSS("height", "220px");
+    await expect(page.getByText(COPY.phone, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.status, { exact: true })).toBeVisible();
   });
 
   test("staff login renders the shell and Profile identity", async ({
@@ -117,6 +170,16 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await page.goto("/profile");
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
     await expect(page.getByText("Staff", { exact: true })).toBeVisible();
+    for (const section of [
+      COPY.profileSection,
+      COPY.programsSection,
+      COPY.eventsSection,
+      COPY.scannerSection,
+      COPY.careSection,
+      COPY.permissionsSection,
+    ]) {
+      await expect(page.getByRole("link", { name: section })).toBeVisible();
+    }
   });
 
   test("member login renders the shell and Profile identity", async ({
@@ -132,7 +195,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(page.getByText("Member", { exact: true })).toBeVisible();
   });
 
-  test("member shell omits the scanner section (role-gated nav)", async ({
+  test("member shell omits unauthorized sections (role-gated nav)", async ({
     page,
   }) => {
     await loginAs(
@@ -141,7 +204,34 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto("/profile");
-    await expect(page.getByText(COPY.scannerSection)).toHaveCount(0);
+    for (const section of [
+      COPY.eventsSection,
+      COPY.scannerSection,
+      COPY.careSection,
+      COPY.permissionsSection,
+    ]) {
+      await expect(page.getByRole("link", { name: section })).toHaveCount(0);
+    }
+  });
+
+  test("member direct links render the shared forbidden state", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    for (const path of [
+      "/events",
+      "/scanner",
+      "/care",
+      "/permissions",
+      "/registrations",
+    ]) {
+      await page.goto(path);
+      await expect(page.getByRole("alert")).toContainText(COPY.forbidden);
+    }
   });
 
   test("registration form renders on the public /register surface", async ({
@@ -154,6 +244,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(page.getByLabel(COPY.registerUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.registerPassword)).toBeVisible();
     await expect(page.getByLabel(COPY.registerName)).toBeVisible();
+    await expect(page.getByLabel(COPY.registrationPhone)).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.registerSubmit })
     ).toBeVisible();
@@ -171,8 +262,12 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.accountSettingsTitle })
     ).toBeVisible();
+    await expect(page.getByLabel(COPY.settingsUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.currentPassword)).toBeVisible();
     await expect(page.getByLabel(COPY.newPassword)).toBeVisible();
+    await expect(page.getByText(COPY.passwordHint, { exact: true })).toBeVisible();
+    await expect(page.getByLabel(COPY.confirmationPassword)).toHaveCount(0);
+    await expect(page.locator("form")).toHaveCount(2);
   });
 
   test("approval queue renders for Admin (role-gated)", async ({ page }) => {
@@ -185,6 +280,14 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.approvalTitle })
     ).toBeVisible();
+    await expect(page.getByText(COPY.approvalCount)).toBeVisible();
+    const approveButtons = page.getByRole("button", { name: COPY.approve });
+    const rejectButtons = page.getByRole("button", { name: COPY.reject });
+    if ((await approveButtons.count()) > 0) {
+      await expect(rejectButtons).toHaveCount(await approveButtons.count());
+    } else {
+      await expect(page.getByText(COPY.approvalEmpty)).toBeVisible();
+    }
   });
 
   test("approval queue is forbidden for Member (role-gated)", async ({
@@ -203,6 +306,8 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     page,
   }) => {
     await page.goto("/");
+    await expect(page.getByLabel(COPY.registerUsername)).toBeVisible();
+    await expect(page.getByLabel(COPY.registerPassword)).toBeVisible();
     await page
       .locator('input[autocomplete="username"]')
       .fill("E2E_no_such_user");

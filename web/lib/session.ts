@@ -108,6 +108,11 @@ export function buildLocalDemoBootstrap(): Bootstrap {
   };
 }
 
+/** Keep local-demo sign-out from calling the production auth API. */
+export function isLocalDemoBootstrap(bootstrap: Bootstrap): boolean {
+  return localDemoEnabled() && bootstrap.profile.userId === "local-noah";
+}
+
 /**
  * Assemble the shell's Bootstrap from a cookie-verified public user,
  * authorizing the shell sections by the user's role (S15).

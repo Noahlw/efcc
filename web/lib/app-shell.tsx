@@ -11,7 +11,11 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
-import { clearAuthHint, restoreBootstrap } from "@/lib/session";
+import {
+  clearAuthHint,
+  isLocalDemoBootstrap,
+  restoreBootstrap,
+} from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 import styles from "./auth-shell.module.css";
@@ -27,13 +31,16 @@ function ShellFrame({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const localDemo = isLocalDemoBootstrap(bootstrap);
 
   const handleSignOut = useCallback(async () => {
     let rpcFailed = false;
-    try {
-      await authLogout();
-    } catch {
-      rpcFailed = true;
+    if (!localDemo) {
+      try {
+        await authLogout();
+      } catch {
+        rpcFailed = true;
+      }
     }
     clearAuthHint();
     sessionStorage.removeItem(DEEP_LINK_KEY);
@@ -42,7 +49,7 @@ function ShellFrame({
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
     }
     router.replace("/");
-  }, [router]);
+  }, [localDemo, router]);
 
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>

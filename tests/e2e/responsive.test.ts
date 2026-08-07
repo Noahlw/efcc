@@ -157,7 +157,11 @@ test("shell header brand sits beside the desktop side rail, not under it", async
 });
 
 test("no horizontal overflow at the target viewport", async ({ page }) => {
-  for (const path of ["/profile.html", "/care.html"] as const) {
+  for (const path of [
+    "/profile.html",
+    "/profile/settings.html",
+    "/care.html",
+  ] as const) {
     await page.goto(path);
     const fits = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth

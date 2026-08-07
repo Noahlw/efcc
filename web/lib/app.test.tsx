@@ -36,7 +36,7 @@ import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { sectionsForRole } from "@/lib/sections";
-import { setAuthHint } from "@/lib/session";
+import { setAuthHint, setLocalDemoAuth } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 const mocks = vi.hoisted(() => {
@@ -951,6 +951,25 @@ describe("Shell", () => {
       cleanup();
       render(<LoginPage />);
       expect(screen.getByText(COPY.logout.failedNotice)).toBeInTheDocument();
+      expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
+    });
+
+    test("local demo logout clears local state without calling the auth API", async () => {
+      pathnameMock.mockReturnValue("/profile");
+      setLocalDemoAuth();
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+
+      const signOutButton = await screen.findByRole("button", {
+        name: COPY.logout.submit,
+      });
+      await user.click(signOutButton);
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(authCalls).not.toContain("/api/v1/auth/logout");
+      expect(localStorage.getItem("efcc_local_demo_auth")).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
     });
   });

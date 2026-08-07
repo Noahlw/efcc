@@ -81,7 +81,7 @@ The following criteria must be asserted against observable DOM/state before the 
 |---|---|---|
 | L1 | Signed-out landing uses the approved minimal civic Variant A composition, with no SaaS hero or invented claims. | Desktop and 375px browser screenshots plus DOM heading/form inventory. |
 | L2 | Login inputs, submit button, upgrade fields, error states, recovery states, registration link, focus ring, and 44px controls remain accessible. | `web/lib/app.test.tsx`, responsive Playwright, keyboard/focus assertions. |
-| L3 | `noah`/`6883` accepts only in development, writes only non-secret local demo state, and routes to `/profile` without `/api/v1/auth/login` or `/api/v1/auth/me`. | Component regression test plus localhost browser flow. |
+| L3 | `noah`/`6883` accepts only in development, writes only non-secret local demo state, routes to `/profile` without `/api/v1/auth/login` or `/api/v1/auth/me`, and local-demo logout clears the marker without calling `/api/v1/auth/logout`. | Component regression test plus localhost browser flow. |
 | L4 | Any other development credential and every production credential follow the existing Worker API path; invalid credentials keep the existing safe error behavior. | Existing auth component/API tests and production-build inspection of the guard. |
 | L5 | Local demo restoration produces a Staff bootstrap with Profile, Programs, Events, Scanner, Care, and Permissions sections; logout clears the demo state. | `restoreBootstrap`/shell component tests and `/profile` browser DOM. |
 | L6 | AppShell does not remain in `正在還原工作階段…` under Next.js development Strict Mode; ready, error, forbidden, retry, and deep-link transitions remain intact. | AppShell component tests and live `/profile` browser reload. |
@@ -179,7 +179,7 @@ Authenticated route
 
 - [ ] Apply only the intended landing/session/shell diff from the current source worktree; preserve the existing normal API login, forced-upgrade, expiry, forbidden, recovery, deep-link, and logout branches.
 - [ ] Keep `noah/6883` behind the development guard; production builds must fall through to `authLogin`.
-- [ ] Assert the local fixture never calls auth endpoints and sets no token/session identifier; assert wrong credentials still render the existing safe error.
+- [ ] Assert the local fixture never calls auth endpoints on login or logout and sets no token/session identifier; assert wrong credentials still render the existing safe error.
 - [ ] Assert a development shell reload resolves to the local Staff bootstrap and that logout clears both presence/demo flags.
 - [ ] Run `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/app.test.tsx`.
 - [ ] Commit message: `feat(web): align live landing and local shell demo`.
@@ -339,6 +339,24 @@ Authenticated route
 | Acceptance appender redaction smoke | PASS — `https://example.test/exec?token=secret#frag` recorded as `https://example.test/exec` with no secret. |
 
 Known non-failing output: root recovery tests intentionally log simulated render errors; Next reports the repository's multiple-lockfile workspace-root warning during build/responsive runs. No deployed `/exec`, Next UI, or D1 acceptance gate was run; those remain operator-gated by fresh targets, role fixtures, and out-of-band credentials. Disposition remains **merge-ready locally**, not `READY`.
+
+## Follow-up Verification — 2026-08-07
+
+Observed after the final responsive, local-demo logout, and deployed-fixture validation fixes in target worktree `~/.omp/wt/ui-04-196`:
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | PASS — root TypeScript and `tests/e2e/tsconfig.json` emit no diagnostics. |
+| `pnpm --dir web typecheck` | PASS — Next app and Worker TypeScript configs emit no diagnostics. |
+| `pnpm test` | PASS — 17 files, 278 tests. |
+| `pnpm --dir web test` | PASS — 10 files, 170 tests. |
+| `pnpm --dir web test:components` | PASS — 9 files, 140 tests, including local-demo logout API-boundary coverage. |
+| `pnpm test:shell-responsive` | PASS — 38 passed, 1 expected desktop-only skip across `mobile-375x812`, `mobile-375x667`, and `desktop-1280x800`; no-overflow coverage includes `/profile/settings.html`. |
+| Impeccable detector (`--scope type,layout`) | PASS — `[]` findings for the selected landing, Profile, registration, approval, and prototype paths. |
+| `pnpm --dir web build` | PASS — 14 static routes generated, including `/profile/settings` and `/prototype`. |
+| Local browser smoke | PASS — `noah`/`6883` reached `/profile` with visible Noah/Staff identity and six navigation labels; reload preserved the local session and announced `工作階段已還原。`; `/profile/settings` rendered `帳戶資料` with all three labels and no horizontal overflow; 375x667 Profile fit its shell scroll box; logout returned `/` and cleared both local markers. |
+
+Known non-failing output: root recovery tests intentionally log simulated render errors; Next reports the repository's multiple-lockfile workspace-root warning during build/responsive runs. The deployed `/exec`, deployed Next UI, and D1 acceptance gates remain unrun because fresh targets, role fixtures, and operator-held credentials are unavailable. Disposition remains **merge-ready locally**, not **READY**.
 
 ## Plan Self-Review
 
