@@ -7,6 +7,13 @@
 
 import type { ModuleKey } from "./capabilities";
 
+// Domain vocabulary lives in the pure recurrence module; rows and commands
+// reuse it so there is one definition (no drift risk).
+import type {
+  RecurrenceKind,
+  ScheduleExceptionAction,
+} from "./recurrence";
+
 export interface DepartmentInput {
   code: string;
   name: string;
@@ -112,8 +119,6 @@ export interface MemberOptionRow {
   username: string;
 }
 
-export type RecurrenceKind = "WEEKLY" | "MONTHLY";
-export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
 export type EventStatus = "Active" | "Cancelled";
 export type EventSource = "SCHEDULE" | "MANUAL";
 
@@ -322,9 +327,6 @@ export interface WorkspaceStore {
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
-  listListedProgramsForDepartment: (
-    departmentId: string
-  ) => Promise<ProgramRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
   searchActiveMembers: (
@@ -438,7 +440,6 @@ export interface WorkspaceStore {
   ) => Promise<ProgramLeaderRow | null>;
   isAccountActive: (userId: string) => Promise<boolean>;
   listProgramLeaders: (programId: string) => Promise<ProgramLeaderRow[]>;
-  listProgramLeaderHistory: (programId: string) => Promise<ProgramLeaderRow[]>;
   assignProgramLeader: (
     input: ProgramLeaderGrantInput
   ) => Promise<ProgramLeaderRow>;

@@ -435,6 +435,60 @@ describe("PRG-01: departments", () => {
     };
     assert.strictEqual(body.data.department.lifecycle, "Active");
   });
+
+  test("department PATCH rejects invalid provided values with 422", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PATCH-STRICT",
+      name: "Patch Strict",
+    });
+    const invalidBodies = [
+      { lifecycle: "Published" },
+      { name: 42 },
+      { display_order: "1" },
+      { description: 7 },
+    ];
+    const results = await Promise.all(
+      invalidBodies.map((body) =>
+        worker.fetch(
+          programsRequest(
+            `/api/v1/programs/departments/${dept.department_id}`,
+            {
+              method: "PATCH",
+              headers: {
+                Origin: HOST,
+                Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+                "Content-Type": "application/json",
+              },
+              body,
+            }
+          ),
+          testEnv()
+        )
+      )
+    );
+    for (const [index, res] of results.entries()) {
+      assert.strictEqual(res.status, 422, JSON.stringify(invalidBodies[index]));
+    }
+    const problems = await Promise.all(results.map((res) => problemOf(res)));
+    for (const problem of problems) {
+      assert.strictEqual(problem.code, "VALIDATION");
+    }
+    // A valid partial PATCH still succeeds.
+    const valid = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${dept.department_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { description: "新描述" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(valid.status, 200);
+  });
 });
 
 describe("PRG-01: programs", () => {
@@ -1331,6 +1385,73 @@ describe("PRG-02: schedule rules", () => {
       assert.deepStrictEqual(row, (before.results ?? [])[index]);
     }
   });
+
+  test("PATCH rule enforces recurrence cross-field invariants", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const weekly = await createRule(adminAccess, recurringId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const patch = async (body: Record<string, unknown>) => {
+      const res = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${weekly.rule_id}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      return res.status;
+    };
+    // Switching to MONTHLY without a month_day would leave a rule that
+    // generates nothing — rejected like create would.
+    assert.strictEqual(await patch({ recurrence: "MONTHLY" }), 422);
+    // Out-of-range values for a provided field must not silently no-op.
+    assert.strictEqual(await patch({ day_of_week: 9 }), 422);
+    assert.strictEqual(await patch({ month_day: 32 }), 422);
+    // A complete, valid transition still succeeds.
+    assert.strictEqual(
+      await patch({ recurrence: "MONTHLY", month_day: 15 }),
+      200
+    );
+    // And a valid day_of_week-only change on a WEEKLY rule succeeds.
+    const another = await createRule(adminAccess, recurringId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const dayPatch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${recurringId}/schedule-rules/${another.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { day_of_week: 1 },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(dayPatch.status, 200);
+    const rule = (await assertCorrelated(dayPatch)) as {
+      data: { rule: { recurrence: string; day_of_week: number | null } };
+    };
+    assert.strictEqual(rule.data.rule.recurrence, "WEEKLY");
+    assert.strictEqual(rule.data.rule.day_of_week, 1);
+  });
 });
 
 describe("PRG-02: generation", () => {
@@ -1538,6 +1659,40 @@ describe("PRG-02: generation", () => {
       restored.some((e) => e.starts_at === `${rescheduleDate}T11:30:00.000Z`),
       "rule-time occurrence reappears after exception removal"
     );
+  });
+
+  test("RESCHEDULE exception with backwards new times returns 422", async () => {
+    const programId = await freshProgram("RESCHEDULE Backwards Program");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const today = hkTodayWallDate();
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            override_date: today,
+            action: "RESCHEDULE",
+            new_start_time: "22:00",
+            new_end_time: "20:30",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const problem = await problemOf(res);
+    assert.strictEqual(problem.code, "VALIDATION");
   });
 
   test("generation on a OneOff program returns 422; generation is audited", async () => {
@@ -2486,6 +2641,38 @@ describe("PRG-03: enrollment requests", () => {
         text
       )
     );
+  });
+
+  test("REQ-10 X-Request-Id is a fresh per-request id, never the Idempotency-Key", async () => {
+    const programId = await freshRequestProgram("REQ-10 Program");
+    const request = await submitRequest(memberAccess, programId);
+    const idempotencyKey = "idem-key-req10";
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/decision`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: { action: "Approved" },
+        }
+      ),
+      testEnv()
+    );
+     assert.strictEqual(res.status, 200);
+     const header = res.headers.get("X-Request-Id");
+     assert.ok(header);
+     assert.notStrictEqual(
+       header,
+       idempotencyKey,
+       "X-Request-Id must not echo the caller-supplied Idempotency-Key"
+     );
+     const body = (await res.json()) as { requestId?: string };
+     assert.strictEqual(body.requestId, header);
   });
 });
 

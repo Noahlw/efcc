@@ -229,9 +229,9 @@ async function requireActor(
   return { account };
 }
 
-async function getModule(
+function getModule(
   env: ProgramEnv
-): Promise<{ workspace: DepartmentWorkspace }> {
+): { workspace: DepartmentWorkspace } {
   const store = new D1WorkspaceStore(env.DB);
   const authorizer = new D1CapabilityAuthorizer(store);
   return { workspace: new DepartmentWorkspace(store, authorizer) };
@@ -411,6 +411,53 @@ export async function handleUpdateDepartment(
       "VALIDATION",
       "Validation failed",
       "Body must be JSON.",
+      requestId
+    );
+  }
+  // Provided fields must be valid — mirror create's strictness so a typo'd
+  // value cannot silently no-op (updateProgram already validates this way).
+  if (body.name !== undefined && typeof body.name !== "string") {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "name must be a string.",
+      requestId
+    );
+  }
+  if (
+    body.description !== undefined &&
+    typeof body.description !== "string"
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "description must be a string.",
+      requestId
+    );
+  }
+  if (
+    body.lifecycle !== undefined &&
+    !isDepartmentLifecycle(body.lifecycle)
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "lifecycle must be Draft, PendingDevelopment, Active, or Archived.",
+      requestId
+    );
+  }
+  if (
+    body.display_order !== undefined &&
+    typeof body.display_order !== "number"
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "display_order must be a number.",
       requestId
     );
   }
@@ -830,6 +877,33 @@ function isMonthDayValue(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31;
 }
 
+/**
+ * The rule resolved from `update` over `existing` must satisfy the same
+ * cross-field invariants as create: the field matching the effective
+ * recurrence kind is required. Returns an error detail, or null when valid.
+ */
+function resolvedRuleInvariantError(
+  update: UpdateScheduleRuleCommand,
+  existing: ScheduleRuleRow
+): string | null {
+  const resolvedRecurrence = update.recurrence ?? existing.recurrence;
+  const resolvedDayOfWeek = update.day_of_week ?? existing.day_of_week;
+  const resolvedMonthDay = update.month_day ?? existing.month_day;
+  if (
+    resolvedRecurrence === "WEEKLY" &&
+    (resolvedDayOfWeek === null || !isDayOfWeekValue(resolvedDayOfWeek))
+  ) {
+    return "day_of_week (0-6) is required for WEEKLY.";
+  }
+  if (
+    resolvedRecurrence === "MONTHLY" &&
+    (resolvedMonthDay === null || !isMonthDayValue(resolvedMonthDay))
+  ) {
+    return "month_day (1-31) is required for MONTHLY.";
+  }
+  return null;
+}
+
 type RuleBodyResult =
   | { ok: false; detail: string }
   | { ok: true; value: CreateScheduleRuleCommand };
@@ -963,8 +1037,14 @@ function parseRulePatch(
   if (isRecurrenceKind(body.recurrence)) {
     update.recurrence = body.recurrence;
   }
+  if (body.day_of_week !== undefined && !isDayOfWeekValue(body.day_of_week)) {
+    return { ok: false, detail: "day_of_week must be an integer 0-6." };
+  }
   if (isDayOfWeekValue(body.day_of_week)) {
     update.day_of_week = body.day_of_week;
+  }
+  if (body.month_day !== undefined && !isMonthDayValue(body.month_day)) {
+    return { ok: false, detail: "month_day must be an integer 1-31." };
   }
   if (isMonthDayValue(body.month_day)) {
     update.month_day = body.month_day;
@@ -988,6 +1068,10 @@ function parseRulePatch(
   const resolvedEnd = update.end_time ?? existing.end_time;
   if (resolvedEnd <= resolvedStart) {
     return { ok: false, detail: "end_time must be after start_time." };
+  }
+  const invariantError = resolvedRuleInvariantError(update, existing);
+  if (invariantError !== null) {
+    return { ok: false, detail: invariantError };
   }
   return { ok: true, update };
 }
@@ -1096,6 +1180,17 @@ export async function handleCreateScheduleException(
   }
   if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
     return validation(requestId, "CANCEL must not include new times.");
+  }
+  if (
+    body.action === "RESCHEDULE" &&
+    newStart !== null &&
+    newEnd !== null &&
+    newEnd <= newStart
+  ) {
+    return validation(
+      requestId,
+      "new_end_time must be after new_start_time."
+    );
   }
 
   const { workspace } = await getModule(env);
@@ -1408,47 +1503,48 @@ export async function handleDecideEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
   programId: string,
-  requestId: string
+  enrollmentRequestId: string
 ): Promise<Response> {
-  const correlationId = request.headers.get("Idempotency-Key") ?? crypto.randomUUID();
-  const auth = await requireActor(request, env, correlationId);
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
   const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
   if (body === null) {
-    return validation(correlationId, "Body must be JSON.");
+    return validation(requestId, "Body must be JSON.");
   }
   if (body.action !== "Approved" && body.action !== "Rejected") {
-    return validation(correlationId, "action must be Approved or Rejected.");
+    return validation(requestId, "action must be Approved or Rejected.");
   }
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     ctxFrom(auth.account),
-    requestId
+    enrollmentRequestId
   );
   if (!existing) {
-    return notFound(correlationId, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
   }
   if (existing.program_id !== programId) {
-    return notFound(correlationId, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.decideEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
-      requestId,
+      enrollmentRequestId,
       { action: body.action, note },
       correlationId
     );
-    return jsonResponse(200, { request: row }, correlationId);
+    return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, correlationId);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     if (error instanceof DuplicateEnrollmentError) {
       return problem(
@@ -1456,7 +1552,7 @@ export async function handleDecideEnrollmentRequest(
         "ENROLLMENT_DUPLICATE",
         "Conflict",
         error.message,
-        correlationId
+        requestId
       );
     }
     throw error;
@@ -1468,38 +1564,39 @@ export async function handleWithdrawEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
   programId: string,
-  requestId: string
+  enrollmentRequestId: string
 ): Promise<Response> {
-  const correlationId = request.headers.get("Idempotency-Key") ?? crypto.randomUUID();
-  const auth = await requireActor(request, env, correlationId);
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     ctxFrom(auth.account),
-    requestId
+    enrollmentRequestId
   );
   if (!existing) {
-    return notFound(correlationId, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
   }
   if (existing.program_id !== programId) {
-    return notFound(correlationId, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.withdrawEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
-      requestId,
+      enrollmentRequestId,
       correlationId
     );
-    return jsonResponse(200, { request: row }, correlationId);
+    return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, correlationId);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, correlationId);
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }

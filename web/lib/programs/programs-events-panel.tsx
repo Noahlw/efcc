@@ -16,6 +16,7 @@ import {
   listScheduleRules,
 } from "@/lib/programs/program-api";
 import type {
+  GenerateResult,
   Program,
   ProgramEvent,
   ScheduleException,
@@ -191,9 +192,9 @@ export const EventsPanel = ({
   }, [load]);
 
   const runAction = useCallback(
-    async (
-      fn: () => Promise<unknown>,
-      successCopy: string | ((result: unknown) => string)
+    async <T,>(
+      fn: () => Promise<T>,
+      successCopy: string | ((result: T) => string)
     ) => {
       setBusy(true);
       setActionError(null);
@@ -283,8 +284,10 @@ export const EventsPanel = ({
       setConfirmingEventId(null);
     };
 
-  const rememberException = (result: unknown): void => {
-    const { exception } = result as { exception: ScheduleException };
+  const rememberException = (result: {
+    exception: ScheduleException;
+  }): void => {
+    const { exception } = result;
     setExceptions((previous) => ({
       ...previous,
       [exception.override_date]: exception,
@@ -361,11 +364,7 @@ export const EventsPanel = ({
         const { generated } = await generateEvents(program.program_id);
         return generated;
       },
-      (result) => {
-        const generated = result as {
-          created: number;
-          skipped: number;
-        };
+      (generated: GenerateResult) => {
         return COPY.programs.generated
           .replace("{created}", String(generated.created))
           .replace("{skipped}", String(generated.skipped));
@@ -535,7 +534,7 @@ export const EventsPanel = ({
             const rule = ruleForEvent(event, rules ?? []);
             const exception = exceptions[wall.date];
             return (
-            <li key={event.event_id} className={styles.eventRow}>
+              <li key={event.event_id} className={styles.eventRow}>
               <span className={styles.eventDate}>
                 {hkWallLabel(event.starts_at)}
               </span>
@@ -643,7 +642,7 @@ export const EventsPanel = ({
                     type="button"
                     disabled={busy}
                     className={styles.successOutline}
-                    onClick={() => removeException(exception!)}
+                    onClick={() => removeException(exception)}
                   >
                     {COPY.programs.restoreOccurrence}
                   </button>
@@ -703,7 +702,7 @@ export const EventsPanel = ({
                   )}
                 </form>
               )}
-            </li>
+              </li>
             );
           })
         )}

@@ -220,20 +220,6 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async listListedProgramsForDepartment(
-    departmentId: string
-  ): Promise<ProgramRow[]> {
-    const result = await this.db
-      .prepare(
-        `SELECT * FROM programs
-         WHERE department_id = ? AND discoverability = 'Listed'
-         ORDER BY display_order ASC, created_at ASC`
-      )
-      .bind(departmentId)
-      .all<ProgramRow>();
-    return result.results ?? [];
-  }
-
   async findProgramById(id: string): Promise<ProgramRow | null> {
     if (!id) {
       return null;
@@ -926,19 +912,6 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            LEFT JOIN accounts ON accounts.user_id = program_leaders.user_id
           WHERE program_leaders.program_id = ? AND program_leaders.revoked_at IS NULL
           ORDER BY program_leaders.granted_at`
-      )
-      .bind(programId)
-      .all<ProgramLeaderRow>()
-      .then((r) => r.results);
-  }
-
-  listProgramLeaderHistory(programId: string): Promise<ProgramLeaderRow[]> {
-    return this.db
-      .prepare(
-        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-         FROM program_leaders
-         WHERE program_id = ?
-         ORDER BY granted_at`
       )
       .bind(programId)
       .all<ProgramLeaderRow>()

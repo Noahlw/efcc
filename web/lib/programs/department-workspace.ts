@@ -15,6 +15,10 @@ import type {
 } from "./capability-authorizer";
 import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
 import type {
+  RecurrenceKind,
+  ScheduleExceptionAction,
+} from "./recurrence";
+import type {
   AuditInput,
   AuditOutcome,
   DepartmentLifecycle,
@@ -30,8 +34,6 @@ import type {
   ProgramRow,
   ProgramLeaderRow,
   ProgramUpdate,
-  RecurrenceKind,
-  ScheduleExceptionAction,
   ScheduleExceptionRow,
   ScheduleRuleRow,
   WorkspaceStore,
