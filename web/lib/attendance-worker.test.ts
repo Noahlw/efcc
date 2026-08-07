@@ -575,4 +575,77 @@ describe("attendance Worker routes", () => {
     const body = await json(response);
     assert.strictEqual(body.code, "INVALID_CHECK_IN_ENTRY");
   });
+
+  test("bare typed entry resolves and checks in (self + guest), wrong entry 403s", async () => {
+    // The panel sends the ambiguous typed value as `entry` with no explicit
+    // manual_code/program_token: the server must resolve it against this
+    // Event and use the resolved credential, not reject it (regression:
+    // entry-only submits used to 403 INVALID_CHECK_IN_ENTRY).
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const self = await worker.fetch(
+      request("/api/v1/attendance/self", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        body: JSON.stringify({
+          event_id: LONG_CODE_EVENT,
+          method: "self_manual_code",
+          entry: "ATTLONGCODE",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(self.status, 201);
+
+    const guest = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          entry: "ATT1234",
+          name: "訪客四",
+          phone: "6333 3333",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(guest.status, 201);
+
+    const wrong = await worker.fetch(
+      request("/api/v1/attendance/self", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "self_manual_code",
+          entry: "WRONGCODE",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(wrong.status, 403);
+    const wrongBody = await json(wrong);
+    assert.strictEqual(wrongBody.code, "INVALID_CHECK_IN_ENTRY");
+  });
+
+  test("entry status lookup: cancelled manual code 410s, closed manual code 409s", async () => {
+    // A typed entry that matches a cancelled/closed Event's manual code must
+    // surface that Event's status (regression: the token-column fallback
+    // used to 404 a cancelled manual code instead of 410).
+    const cancelled = await worker.fetch(
+      request("/api/v1/attendance/resolve?entry=ATTCANCEL"),
+      testEnv()
+    );
+    assert.strictEqual(cancelled.status, 410);
+    const cancelledBody = await json(cancelled);
+    assert.strictEqual(cancelledBody.code, "EVENT_CANCELLED");
+
+    const closed = await worker.fetch(
+      request("/api/v1/attendance/resolve?entry=ATTCLOSED"),
+      testEnv()
+    );
+    assert.strictEqual(closed.status, 409);
+    const closedBody = await json(closed);
+    assert.strictEqual(closedBody.code, "CHECK_IN_CLOSED");
+  });
 });

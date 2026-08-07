@@ -19,12 +19,13 @@
  * The operator pipes the SQL into wrangler:
  *
  *   # two-step (recommended):
- *   pnpm exec tsx tests/e2e/seed-dev-accounts.ts > /tmp/seed-dev.sql
- *   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=/tmp/seed-dev.sql
+ *   SEED=/tmp/seed-dev-$(date +%s%N).sql
+ *   ./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts > "$SEED"
+ *   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file="$SEED"
  *
  *   # single-shot (bash; command substitution pipes the stdout into wrangler):
  *   pnpm exec wrangler d1 execute efcc-dev-testing --remote \
- *     --command="$(pnpm exec tsx tests/e2e/seed-dev-accounts.ts)"
+ *     --command="$(./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts)"
  *
  * Re-runs are safe: `INSERT OR IGNORE` skips rows already present under the
  * fixed user_ids / normalized usernames. To rotate a credential, delete the
@@ -39,10 +40,7 @@ import {
   hashCredential,
   normalizeUsername,
 } from "../../web/lib/auth/credentials";
-import {
-  DEV_ACCOUNTS,
-  type DevFixtureAccount,
-} from "./dev-fixtures";
+import { DEV_ACCOUNTS, type DevFixtureAccount } from "./dev-fixtures";
 
 const FIXTURE_NAMES: Record<string, string> = {
   "U-E2E-ADMIN": "E2E Admin",
@@ -55,10 +53,7 @@ function sqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-async function buildInsert(
-  account: DevFixtureAccount,
-  now: number
-): Promise<string> {
+async function buildInsert(account: DevFixtureAccount, now: number): Promise<string> {
   const credentialHash = await hashCredential(account.credential);
   // Deterministic fixture QR value (non-secret), mirroring the pattern used
   // by the acceptance D1 seed so the Profile surface renders its QR square.

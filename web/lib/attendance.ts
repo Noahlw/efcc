@@ -284,14 +284,29 @@ async function deriveCheckInMethod<M extends AttendanceMethod>(
         qrMethod
       )) ?? method;
   }
+  // The typed-entry path (the panel sends a bare `entry`) carries no
+  // explicit credential param: once `entry` resolved to a method above, that
+  // entry IS the credential for the final re-check. Feeding undefined
+  // credentials here made every entry-only check-in 403 even though
+  // resolveEntryMethod had just validated the entry against this Event.
+  const entryCredential =
+    typeof input.entry === "string" && input.entry ? input.entry : undefined;
   if (
     resolved === undefined ||
     !(await eventMatchesEntry(
       env.DB,
       event.event_id,
       resolved,
-      typeof input.program_token === "string" ? input.program_token : undefined,
-      typeof input.manual_code === "string" ? input.manual_code : undefined
+      typeof input.program_token === "string"
+        ? input.program_token
+        : resolved === qrMethod
+          ? entryCredential
+          : undefined,
+      typeof input.manual_code === "string"
+        ? input.manual_code
+        : resolved === manualMethod
+          ? entryCredential
+          : undefined
     ))
   ) {
     return {
@@ -412,18 +427,31 @@ export async function handleResolve(
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
   let events: AttendanceEvent[];
-  let matchedToken = Boolean(token);
+  let status: AttendanceEvent["status"] | null = null;
   if (token || code) {
-    events = await openEvents(env.DB, Boolean(token), value);
+    const byToken = Boolean(token);
+    events = await openEvents(env.DB, byToken, value);
+    if (events.length === 0) {
+      status = await matchingEventStatus(env.DB, byToken, value);
+    }
   } else {
     events = await openEvents(env.DB, false, entry ?? "");
     if (events.length === 0) {
-      events = await openEvents(env.DB, true, entry ?? "");
-      matchedToken = true;
+      // Same disambiguation order as resolveEntryMethod: the typed value may
+      // be a cancelled/closed Event's manual code, so check the manual
+      // column's status before falling back to the Program token column
+      // (previously the token fallback erased the manual identity and a
+      // cancelled Event's manual code 404'd instead of 410 EVENT_CANCELLED).
+      status = await matchingEventStatus(env.DB, false, entry ?? "");
+      if (status === null) {
+        events = await openEvents(env.DB, true, entry ?? "");
+        if (events.length === 0) {
+          status = await matchingEventStatus(env.DB, true, entry ?? "");
+        }
+      }
     }
   }
   if (events.length === 0) {
-    const status = await matchingEventStatus(env.DB, matchedToken, value);
     if (status === "Cancelled") {
       return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
     }

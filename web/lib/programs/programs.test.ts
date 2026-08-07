@@ -170,7 +170,11 @@ async function createProgram(
     discoverability?: "Listed" | "Unlisted";
     enrollment_mode?: "MemberRequest" | "ManagerOnly";
   }
-): Promise<{ program_id: string; name: string }> {
+): Promise<{
+  program_id: string;
+  name: string;
+  check_in_token: string | null;
+}> {
   const res = await worker.fetch(
     programsRequest(`/api/v1/programs/departments/${departmentId}/programs`, {
       method: "POST",
@@ -190,7 +194,7 @@ async function createProgram(
   );
   assert.strictEqual(res.status, 201);
   const result = (await assertCorrelated(res)) as {
-    data: { program: { program_id: string; name: string } };
+    data: { program: { program_id: string; name: string; check_in_token: string | null } };
   };
   return result.data.program;
 }
@@ -1139,8 +1143,6 @@ async function listEventsFor(
   {
     event_id: string;
     starts_at: string;
-    status: string;
-    source: string;
     exception: {
       exception_id: string;
       rule_id: string;
@@ -1149,6 +1151,12 @@ async function listEventsFor(
       new_start_time: string | null;
       new_end_time: string | null;
     } | null;
+    ends_at: string;
+    status: string;
+    source: string;
+    manual_check_in_code: string | null;
+    check_in_window_opens_at: string | null;
+    check_in_window_closes_at: string | null;
   }[]
 > {
   const res = await worker.fetch(
@@ -1166,6 +1174,7 @@ async function listEventsFor(
       events: {
         event_id: string;
         starts_at: string;
+        ends_at: string;
         status: string;
         source: string;
         exception: {
@@ -1176,6 +1185,9 @@ async function listEventsFor(
           new_start_time: string | null;
           new_end_time: string | null;
         } | null;
+        manual_check_in_code: string | null;
+        check_in_window_opens_at: string | null;
+        check_in_window_closes_at: string | null;
       }[];
     };
   };
@@ -1494,6 +1506,9 @@ describe("PRG-02: generation", () => {
       behavior_type: "Recurring",
       discoverability: "Listed",
     });
+    // Attendance readiness (0004): created Programs mint a 32-hex
+    // check-in token (the sheet QR embeds it as program_token).
+    assert.match(program.check_in_token ?? "", /^[0-9a-f]{32}$/u);
     return program.program_id;
   }
 
@@ -1529,6 +1544,19 @@ describe("PRG-02: generation", () => {
       assert.strictEqual(
         event.starts_at,
         `${expectedDates[index]}T11:30:00.000Z`
+      );
+    }
+    // Attendance readiness (0004): generated Events carry a never-reused
+    // 8-hex manual code and a window derived from the Program's minutes.
+    for (const event of events) {
+      assert.match(event.manual_check_in_code ?? "", /^[0-9A-F]{8}$/u);
+      assert.ok(
+        event.check_in_window_opens_at &&
+          event.check_in_window_opens_at < event.starts_at
+      );
+      assert.ok(
+        event.check_in_window_closes_at &&
+          event.check_in_window_closes_at > event.ends_at
       );
     }
   });
