@@ -22,6 +22,7 @@ Session goal: **phase 1** E2E completeness → **phase 2** UI/UX → **phase 3**
 | `efcc-dev-testing` | Worker + D1 `efcc-dev-testing` (`edb464d2-d142-4c51-aa50-c5b800112756`) | programs-d1 / attendance-d1 suites. |
 | `efcc-auth-test` | D1 `efcc-identity` (`ae437eac-c6ef-4835-bfe8-13c61b5cf586`) | live-ui suite; fixtures `U-E2E-ADMIN` / `U-E2E-STAFF` / `U-E2E-MEMBER`, credentials `E2E_<role>!dev`. |
 | `efcc-auth-ui04` | D1 `efcc-identity-ui04` (`3c1eaf4b-cba6-4f14-a9dc-860765cf598c`) | Prior UI-04 gate host. |
+Note: the efcc-dev-testing worker now serves the att-qr head (attendance + programs), NOT the plain prg-05 head — the programs-d1 suite still passes against it (104/104 with per-engine reset).
 
 ## Milestones
 
@@ -30,6 +31,7 @@ Session goal: **phase 1** E2E completeness → **phase 2** UI/UX → **phase 3**
 | 2026-08-08 | live-ui E2E + glossary | `rebase/prg-05-201` | `aadef18` | Two live-ui mutation tests (registration submit/reject, admin password rotation round-trip), seed reset handles `registration_requests`, CONTEXT.md glossary rows (Guest Check-in, Check-in Sheet, dev-testing worker), session-fallback doc | `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` against `efcc-auth-test`: 26/26 PASS; trace appended to `docs/omp-plans/2026-08-07-ui-04-release-stack.md` |
 | 2026-08-07T19:02Z | events-panel UI slice (WS-A) | `rebase/prg-05-201` | `e00c99f` | Red acceptance trace E2E-18..22 (MONTHLY rule, member picker, per-event 改期/取消該次/恢復該次, cancel-with-reason) — red run recorded: 75/29, new tests failed on 4 engines as intended | red baseline proving the missing controls |
 | 2026-08-07T19:05Z | events-panel UI slice (WS-A) | `rebase/prg-05-201` | `58e9ed1` | Per-event exception controls implemented (capability-gated), cancel reason display, copy.ts strings, panel unit tests U8-U11 | 104/104 across 4 engines (per-engine reset+seed discipline), unit 253/253 + 162/162, worker deployed Version 21609297-4a3f-4e62-879d-2efd7e82021e |
+| 2026-08-07T19:32Z | attendance E2E (WS-B) | `att-qr-213-215` | `bd065e5` | attendance-d1 suite (9 tests A-I) + seed port (DevFixtureAccount fix) + product fixes: mint check_in_token/manual codes at program/event create (migration 0004 backfills only pre-existing rows), bare-entry check-in 403 fix (deriveCheckInMethod), cancelled-event resolve 410 fix; #216 acceptance-trace plan doc with executed results | 18/18 PASS (2 viewports) on efcc-dev-testing (worker version 268e8930), unit 270/270 web + 158/158 components, migration 0004 applied |
 
 Run discipline: a single 4-project invocation accumulates D1 state and times out later engines — reset+seed before EACH engine run is now the required procedure for programs-d1 (recorded in the ticket-201 trace).
 
