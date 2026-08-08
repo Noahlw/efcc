@@ -11,6 +11,12 @@ colors:
   accent: "#9c302c"
   accent-deep: "#76231f"
   focus: "#176a87"
+  success: "#2e6b37"
+  success-surface: "#eef4ef"
+  success-border: "#b9cfbe"
+  error: "#b3261e"
+  error-surface: "#fbeeed"
+  error-border: "#e5b4b0"
 typography:
   display:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif"
@@ -29,9 +35,18 @@ typography:
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.6
+  label:
+    fontSize: "0.875rem"
+    fontWeight: 700
+    lineHeight: 1.4
+  caption:
+    fontSize: "0.75rem"
+    fontWeight: 400
+    lineHeight: 1.4
 rounded:
   sm: "8px"
   md: "12px"
+  pill: "999px"
 spacing:
   sm: "0.75rem"
   md: "1.25rem"
@@ -90,6 +105,8 @@ The palette uses civic neutral surfaces with high-contrast ink and a restrained 
 - **Ink Muted Slate** (#59636a): Secondary text, field labels, and metadata.
 - **Hairline Line** (#d6dcde / strong #aeb8bc): Structural section dividers and panel boundaries.
 - **Focus Teal** (#176a87): High-contrast focus-visible indicator ring.
+- **Success Green** (#2e6b37): Positive confirmation and enabled state.
+- **Error Red** (#b3261e): Error, warning, and destructive confirmation state.
 
 ### Named Rules
 
@@ -105,7 +122,7 @@ The palette uses civic neutral surfaces with high-contrast ink and a restrained 
 - **Title** (800, 1.5rem, 1.25): Panel and modal headings.
 - **Subtitle** (800, 1.35rem, 1.35): Section and capacity group headings.
 - **Body** (400, 1rem, 1.6): Standard narrative text.
-- **Label** (700, 0.9rem, 1.4): Field labels and metadata.
+- **Label** (700, 0.875rem, 1.4): Field labels and metadata.
 
 ## Layout
 
@@ -121,6 +138,7 @@ Flat civic surfaces with hairline borders (`1px solid #d6dcde`). Depth is convey
 
 - **Inputs & Buttons:** 8px border-radius (`rounded-sm`), min-height ≥44px.
 - **Panels & Cards:** 12px border-radius (`rounded-md`).
+- **Pills & Tags:** `rounded-pill` is reserved for compact status and metadata tags.
 - **Mark Slot:** 6px border-radius squar-cut seal container, structured as a clean replaceable component slot for the official church icon.
 
 ## Components

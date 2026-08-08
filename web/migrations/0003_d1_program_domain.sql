@@ -1,4 +1,4 @@
--- Migration number: 0002 	 2026-08-06T00:00:00.000Z
+-- Migration number: 0003 	 2026-08-06T00:00:00.000Z
 -- EFCC D1 Program/Enrollment domain foundation (PRG-01 #197 / Spec #190).
 --
 -- Deploys the authoritative relational schema from docs/specs/080-d1-relational-schema.md
@@ -166,7 +166,7 @@ CREATE TABLE departments (
 CREATE TABLE department_modules (
   department_id TEXT NOT NULL,
   module_key    TEXT NOT NULL CHECK (module_key IN ('program_catalog','enrollment','events','attendance','custom_forms')),
-  enabled       INTEGER NOT NULL DEFAULT 1,
+  enabled       INTEGER NOT NULL DEFAULT 0,
   enabled_by    TEXT,
   enabled_at    TEXT NOT NULL,
   PRIMARY KEY (department_id, module_key),
@@ -232,7 +232,10 @@ CREATE TABLE program_schedule_exceptions (
   FOREIGN KEY (created_by) REFERENCES accounts(user_id)                  ON DELETE RESTRICT
 ) STRICT;
 
-CREATE INDEX schedule_exceptions_rule_idx ON program_schedule_exceptions(rule_id);
+-- One override per (rule, HK wall date); the app maps the constraint
+-- violation to a 409 Conflict before the DB race-guard fires.
+CREATE UNIQUE INDEX schedule_exceptions_rule_date_idx
+  ON program_schedule_exceptions(rule_id, override_date);
 
 -- ---------------------------------------------------------------------------
 -- 5. Events (§7)
@@ -385,5 +388,36 @@ VALUES
   ('018f3b8a-0000-7000-8000-000000000001', '青區', '青區', '青少年事工部門', 'Active', 0, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z'),
   ('018f3b8a-0000-7000-8000-000000000002', '成區', '成區', '成人事工部門', 'PendingDevelopment', 1, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z'),
   ('018f3b8a-0000-7000-8000-000000000003', '兒區', '兒區', '兒童事工部門', 'PendingDevelopment', 2, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z');
+
+-- ---------------------------------------------------------------------------
+-- 9. Seed role policies and disabled module rows. The migration is the single
+-- source of seeding; there is no runtime per-request seeding fan-out.
+-- ---------------------------------------------------------------------------
+
+INSERT OR IGNORE INTO role_capabilities (role, capability, granted_by, granted_at) VALUES
+  ('Admin',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
+  ('Admin',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
+  ('Staff',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
+  ('Member', 'program.enroll',              NULL, '2026-08-06T00:00:00Z');
+
+INSERT OR IGNORE INTO department_modules (department_id, module_key, enabled, enabled_by, enabled_at)
+SELECT d.department_id, m.module_key, 0, NULL, '2026-08-06T00:00:00Z'
+  FROM departments d
+ CROSS JOIN (
+   SELECT 'program_catalog' AS module_key
+   UNION ALL SELECT 'enrollment'
+   UNION ALL SELECT 'events'
+   UNION ALL SELECT 'attendance'
+   UNION ALL SELECT 'custom_forms'
+ ) AS m;
 
 -- Migration ends here

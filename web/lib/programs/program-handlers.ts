@@ -10,7 +10,6 @@ import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { verifyAccessToken } from "../auth/sessions";
-import { DEFAULT_ROLE_POLICIES } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
 import {
   AuthorizationDeniedError,
@@ -24,9 +23,13 @@ import {
   DuplicateEnrollmentError,
   DuplicateEventError,
   DuplicateProgramNameError,
+  DuplicateScheduleExceptionError,
   EnrollmentNotAllowedError,
   InvalidModuleKeyError,
+  InvalidProgramLifecycleError,
+  LeaderAccountInactiveError,
   LeaderNotAssignedError,
+  NoScheduleRulesError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
@@ -74,6 +77,49 @@ function isProgramEnrollmentMode(
   v: unknown
 ): v is "MemberRequest" | "ManagerOnly" {
   return v === "MemberRequest" || v === "ManagerOnly";
+}
+
+const INVALID_PROGRAM_VALUE = Symbol("invalid program value");
+const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
+  name: (value) =>
+    typeof value === "string" && value.trim()
+      ? value.trim()
+      : INVALID_PROGRAM_VALUE,
+  description: (value) =>
+    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+  category: (value) =>
+    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+  behavior_type: (value) =>
+    isProgramBehaviorType(value) ? value : INVALID_PROGRAM_VALUE,
+  lifecycle: (value) =>
+    isProgramLifecycle(value) ? value : INVALID_PROGRAM_VALUE,
+  discoverability: (value) =>
+    isProgramDiscoverability(value) ? value : INVALID_PROGRAM_VALUE,
+  enrollment_mode: (value) =>
+    isProgramEnrollmentMode(value) ? value : INVALID_PROGRAM_VALUE,
+  display_order: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
+};
+
+function parseProgramFields(
+  body: Record<string, unknown>,
+  required: readonly string[]
+): Record<string, unknown> | null {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body)) {
+    const parser = PROGRAM_FIELD_PARSERS[key];
+    if (!parser) {
+      return null;
+    }
+    const parsed = parser(value);
+    if (parsed === INVALID_PROGRAM_VALUE) {
+      return null;
+    }
+    fields[key] = parsed;
+  }
+  return required.every((key) => key in fields) ? fields : null;
 }
 
 function problem(
@@ -184,11 +230,10 @@ async function requireActor(
   return { account };
 }
 
-async function getModule(
+function getModule(
   env: ProgramEnv
-): Promise<{ workspace: DepartmentWorkspace }> {
+): { workspace: DepartmentWorkspace } {
   const store = new D1WorkspaceStore(env.DB);
-  await store.seedRolePolicies(DEFAULT_ROLE_POLICIES);
   const authorizer = new D1CapabilityAuthorizer(store);
   return { workspace: new DepartmentWorkspace(store, authorizer) };
 }
@@ -211,6 +256,7 @@ export async function handleCreateDepartment(
   env: ProgramEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -243,6 +289,27 @@ export async function handleCreateDepartment(
       requestId
     );
   }
+  if (
+    typeof body.lifecycle !== "string" ||
+    !isDepartmentLifecycle(body.lifecycle)
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "lifecycle must be Draft, PendingDevelopment, Active, or Archived.",
+      requestId
+    );
+  }
+  if (body.display_order !== undefined && typeof body.display_order !== "number") {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "display_order must be a number.",
+      requestId
+    );
+  }
 
   const { workspace } = await getModule(env);
   try {
@@ -253,13 +320,11 @@ export async function handleCreateDepartment(
         name,
         description:
           typeof body.description === "string" ? body.description : undefined,
-        lifecycle: isDepartmentLifecycle(body.lifecycle)
-          ? body.lifecycle
-          : "Draft",
+        lifecycle: body.lifecycle,
         display_order:
           typeof body.display_order === "number" ? body.display_order : 0,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { department: row }, requestId);
   } catch (error) {
@@ -329,6 +394,7 @@ export async function handleUpdateDepartment(
   departmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -346,6 +412,53 @@ export async function handleUpdateDepartment(
       "VALIDATION",
       "Validation failed",
       "Body must be JSON.",
+      requestId
+    );
+  }
+  // Provided fields must be valid — mirror create's strictness so a typo'd
+  // value cannot silently no-op (updateProgram already validates this way).
+  if (body.name !== undefined && typeof body.name !== "string") {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "name must be a string.",
+      requestId
+    );
+  }
+  if (
+    body.description !== undefined &&
+    typeof body.description !== "string"
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "description must be a string.",
+      requestId
+    );
+  }
+  if (
+    body.lifecycle !== undefined &&
+    !isDepartmentLifecycle(body.lifecycle)
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "lifecycle must be Draft, PendingDevelopment, Active, or Archived.",
+      requestId
+    );
+  }
+  if (
+    body.display_order !== undefined &&
+    typeof body.display_order !== "number"
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "display_order must be a number.",
       requestId
     );
   }
@@ -372,7 +485,7 @@ export async function handleUpdateDepartment(
       ctxFrom(auth.account),
       departmentId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { department: row }, requestId);
   } catch (error) {
@@ -399,6 +512,7 @@ export async function handleCreateProgram(
   departmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -423,16 +537,17 @@ export async function handleCreateProgram(
       requestId
     );
   }
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const behaviorType = isProgramBehaviorType(body.behavior_type)
-    ? body.behavior_type
-    : "";
-  if (!name || !behaviorType) {
+  const fields = parseProgramFields(body, [
+    "name",
+    "behavior_type",
+    "lifecycle",
+  ]);
+  if (!fields) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name and behavior_type are required.",
+      "name, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -443,24 +558,25 @@ export async function handleCreateProgram(
       ctxFrom(auth.account),
       {
         department_id: departmentId,
-        name,
+        name: fields.name as string,
         description:
-          typeof body.description === "string" ? body.description : undefined,
-        category: typeof body.category === "string" ? body.category : undefined,
-        behavior_type: behaviorType,
-        lifecycle: isProgramLifecycle(body.lifecycle)
-          ? body.lifecycle
-          : "Draft",
-        discoverability: isProgramDiscoverability(body.discoverability)
-          ? body.discoverability
-          : "Unlisted",
-        enrollment_mode: isProgramEnrollmentMode(body.enrollment_mode)
-          ? body.enrollment_mode
-          : "MemberRequest",
+          typeof fields.description === "string"
+            ? fields.description
+            : undefined,
+        category:
+          typeof fields.category === "string" ? fields.category : undefined,
+        behavior_type: fields.behavior_type as "Recurring" | "OneOff",
+        lifecycle: fields.lifecycle as "Draft" | "Active" | "Archived",
+        discoverability: (fields.discoverability ?? "Listed") as
+          | "Listed"
+          | "Unlisted",
+        enrollment_mode: (fields.enrollment_mode ?? "MemberRequest") as
+          | "MemberRequest"
+          | "ManagerOnly",
         display_order:
-          typeof body.display_order === "number" ? body.display_order : 0,
+          typeof fields.display_order === "number" ? fields.display_order : 0,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { program: row }, requestId);
   } catch (error) {
@@ -478,6 +594,15 @@ export async function handleCreateProgram(
     }
     if (error instanceof DuplicateProgramNameError) {
       return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof InvalidProgramLifecycleError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -536,6 +661,7 @@ export async function handleUpdateProgram(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -560,34 +686,32 @@ export async function handleUpdateProgram(
       requestId
     );
   }
+  if (Object.keys(body).length === 0) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "At least one program field is required.",
+      requestId
+    );
+  }
+  const fields = parseProgramFields(body, []);
+  if (!fields) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Program fields must be valid and known.",
+      requestId
+    );
+  }
   const { workspace } = await getModule(env);
   const update: ProgramUpdate = {
     updated_by: auth.account.user_id,
     updated_at: new Date().toISOString(),
   };
-  if (typeof body.name === "string") {
-    update.name = body.name.trim();
-  }
-  if (typeof body.description === "string") {
-    update.description = body.description;
-  }
-  if (typeof body.category === "string") {
-    update.category = body.category;
-  }
-  if (isProgramBehaviorType(body.behavior_type)) {
-    update.behavior_type = body.behavior_type;
-  }
-  if (isProgramLifecycle(body.lifecycle)) {
-    update.lifecycle = body.lifecycle;
-  }
-  if (isProgramDiscoverability(body.discoverability)) {
-    update.discoverability = body.discoverability;
-  }
-  if (isProgramEnrollmentMode(body.enrollment_mode)) {
-    update.enrollment_mode = body.enrollment_mode;
-  }
-  if (typeof body.display_order === "number") {
-    update.display_order = body.display_order;
+  for (const [key, value] of Object.entries(fields)) {
+    (update as unknown as Record<string, unknown>)[key] = value;
   }
 
   try {
@@ -595,7 +719,7 @@ export async function handleUpdateProgram(
       ctxFrom(auth.account),
       programId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { program: row }, requestId);
   } catch (error) {
@@ -611,8 +735,56 @@ export async function handleUpdateProgram(
         requestId
       );
     }
+    if (error instanceof DuplicateProgramNameError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof InvalidProgramLifecycleError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
+    }
     throw error;
   }
+}
+
+/** GET /api/v1/programs/:id/member-options?q=... */
+export async function handleSearchMemberOptions(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program || !program.capabilities.manage) {
+    return problem(
+      404,
+      "NOT_FOUND",
+      "Not found",
+      "Unknown program.",
+      requestId
+    );
+  }
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Search requires at least two characters.",
+      requestId
+    );
+  }
+  const members = await workspace.searchActiveMembers(query, 20);
+  return jsonResponse(200, { members }, requestId);
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:moduleKey/(enable|disable) */
@@ -624,6 +796,7 @@ export async function handleSetModule(
   enabled: boolean
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -631,16 +804,16 @@ export async function handleSetModule(
 
   const { workspace } = await getModule(env);
   try {
-    await workspace.setDepartmentModule(
+    const module = await workspace.setDepartmentModule(
       ctxFrom(auth.account),
       {
         department_id: departmentId,
         module_key: moduleKey as ModuleKey,
         enabled,
       },
-      requestId
+      correlationId
     );
-    return jsonResponse(200, { enabled }, requestId);
+    return jsonResponse(200, { module }, requestId);
   } catch (error) {
     if (error instanceof InvalidModuleKeyError) {
       return problem(
@@ -703,6 +876,33 @@ function isDayOfWeekValue(v: unknown): v is number {
 
 function isMonthDayValue(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31;
+}
+
+/**
+ * The rule resolved from `update` over `existing` must satisfy the same
+ * cross-field invariants as create: the field matching the effective
+ * recurrence kind is required. Returns an error detail, or null when valid.
+ */
+function resolvedRuleInvariantError(
+  update: UpdateScheduleRuleCommand,
+  existing: ScheduleRuleRow
+): string | null {
+  const resolvedRecurrence = update.recurrence ?? existing.recurrence;
+  const resolvedDayOfWeek = update.day_of_week ?? existing.day_of_week;
+  const resolvedMonthDay = update.month_day ?? existing.month_day;
+  if (
+    resolvedRecurrence === "WEEKLY" &&
+    (resolvedDayOfWeek === null || !isDayOfWeekValue(resolvedDayOfWeek))
+  ) {
+    return "day_of_week (0-6) is required for WEEKLY.";
+  }
+  if (
+    resolvedRecurrence === "MONTHLY" &&
+    (resolvedMonthDay === null || !isMonthDayValue(resolvedMonthDay))
+  ) {
+    return "month_day (1-31) is required for MONTHLY.";
+  }
+  return null;
 }
 
 type RuleBodyResult =
@@ -775,6 +975,7 @@ export async function handleCreateScheduleRule(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -805,7 +1006,7 @@ export async function handleCreateScheduleRule(
       ctxFrom(auth.account),
       programId,
       value,
-      requestId
+      correlationId
     );
     return jsonResponse(201, { rule: row }, requestId);
   } catch (error) {
@@ -837,8 +1038,14 @@ function parseRulePatch(
   if (isRecurrenceKind(body.recurrence)) {
     update.recurrence = body.recurrence;
   }
+  if (body.day_of_week !== undefined && !isDayOfWeekValue(body.day_of_week)) {
+    return { ok: false, detail: "day_of_week must be an integer 0-6." };
+  }
   if (isDayOfWeekValue(body.day_of_week)) {
     update.day_of_week = body.day_of_week;
+  }
+  if (body.month_day !== undefined && !isMonthDayValue(body.month_day)) {
+    return { ok: false, detail: "month_day must be an integer 1-31." };
   }
   if (isMonthDayValue(body.month_day)) {
     update.month_day = body.month_day;
@@ -863,6 +1070,10 @@ function parseRulePatch(
   if (resolvedEnd <= resolvedStart) {
     return { ok: false, detail: "end_time must be after start_time." };
   }
+  const invariantError = resolvedRuleInvariantError(update, existing);
+  if (invariantError !== null) {
+    return { ok: false, detail: invariantError };
+  }
   return { ok: true, update };
 }
 
@@ -870,9 +1081,11 @@ function parseRulePatch(
 export async function handleUpdateScheduleRule(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -896,6 +1109,9 @@ export async function handleUpdateScheduleRule(
   if (!existing) {
     return notFound(requestId, "Unknown schedule rule.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
   const parsed = parseRulePatch(body, existing);
   if (!parsed.ok) {
     return validation(requestId, parsed.detail);
@@ -907,7 +1123,7 @@ export async function handleUpdateScheduleRule(
       ctxFrom(auth.account),
       ruleId,
       update,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { rule: row }, requestId);
   } catch (error) {
@@ -919,12 +1135,15 @@ export async function handleUpdateScheduleRule(
 }
 
 /** POST /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
+// oxlint-disable-next-line eslint/complexity
 export async function handleCreateScheduleException(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   ruleId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -963,10 +1182,24 @@ export async function handleCreateScheduleException(
   if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
     return validation(requestId, "CANCEL must not include new times.");
   }
+  if (
+    body.action === "RESCHEDULE" &&
+    newStart !== null &&
+    newEnd !== null &&
+    newEnd <= newStart
+  ) {
+    return validation(
+      requestId,
+      "new_end_time must be after new_start_time."
+    );
+  }
 
   const { workspace } = await getModule(env);
   const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
   if (!rule) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  if (rule.program_id !== programId) {
     return notFound(requestId, "Unknown schedule rule.");
   }
   try {
@@ -979,12 +1212,15 @@ export async function handleCreateScheduleException(
         new_start_time: newStart,
         new_end_time: newEnd,
       },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { exception: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof DuplicateScheduleExceptionError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }
@@ -994,9 +1230,11 @@ export async function handleCreateScheduleException(
 export async function handleDeleteScheduleException(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   exceptionId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1009,11 +1247,18 @@ export async function handleDeleteScheduleException(
   if (!exists) {
     return notFound(requestId, "Unknown schedule exception.");
   }
+  const rule = await workspace.getScheduleRule(
+    ctxFrom(auth.account),
+    exists.rule_id
+  );
+  if (!rule || rule.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule exception.");
+  }
   try {
     await workspace.deleteScheduleException(
       ctxFrom(auth.account),
       exceptionId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { deleted: true }, requestId);
   } catch (error) {
@@ -1031,6 +1276,7 @@ export async function handleGenerateEvents(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1060,7 +1306,7 @@ export async function handleGenerateEvents(
       ctxFrom(auth.account),
       programId,
       horizonDays,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { generated: result }, requestId);
   } catch (error) {
@@ -1068,6 +1314,9 @@ export async function handleGenerateEvents(
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof ScheduleRuleNotApplicableError) {
+      return validation(requestId, error.message);
+    }
+    if (error instanceof NoScheduleRulesError) {
       return validation(requestId, error.message);
     }
     throw error;
@@ -1081,6 +1330,7 @@ export async function handleCreateEvent(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1108,7 +1358,7 @@ export async function handleCreateEvent(
       ctxFrom(auth.account),
       programId,
       { starts_at: body.starts_at, ends_at: body.ends_at },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { event: row }, requestId);
   } catch (error) {
@@ -1145,9 +1395,11 @@ export async function handleListEvents(
 export async function handleCancelEvent(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   eventId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1165,12 +1417,15 @@ export async function handleCancelEvent(
   if (!existing) {
     return notFound(requestId, "Unknown event.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown event.");
+  }
   try {
     const row = await workspace.cancelEvent(
       ctxFrom(auth.account),
       eventId,
       { reason },
-      requestId
+      correlationId
     );
     return jsonResponse(200, { event: row }, requestId);
   } catch (error) {
@@ -1188,6 +1443,7 @@ export async function handleCreateEnrollmentRequest(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1201,8 +1457,7 @@ export async function handleCreateEnrollmentRequest(
     const row = await workspace.submitEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
-      { programId },
-      requestId
+      correlationId
     );
     return jsonResponse(201, { request: row }, requestId);
   } catch (error) {
@@ -1213,7 +1468,13 @@ export async function handleCreateEnrollmentRequest(
       return validation(requestId, error.message);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1245,47 +1506,58 @@ export async function handleListEnrollmentRequests(
 export async function handleDecideEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
-  requestId: string
+  programId: string,
+  enrollmentRequestId: string
 ): Promise<Response> {
-  const requestId2 = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId2);
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
   const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
   if (body === null) {
-    return validation(requestId2, "Body must be JSON.");
+    return validation(requestId, "Body must be JSON.");
   }
   if (body.action !== "Approved" && body.action !== "Rejected") {
-    return validation(requestId2, "action must be Approved or Rejected.");
+    return validation(requestId, "action must be Approved or Rejected.");
   }
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     ctxFrom(auth.account),
-    requestId
+    enrollmentRequestId
   );
   if (!existing) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
+  }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.decideEnrollmentRequest(
       ctxFrom(auth.account),
-      existing.program_id,
-      requestId,
+      programId,
+      enrollmentRequestId,
       { action: body.action, note },
-      requestId2
+      correlationId
     );
-    return jsonResponse(200, { request: row }, requestId2);
+    return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1295,35 +1567,40 @@ export async function handleDecideEnrollmentRequest(
 export async function handleWithdrawEnrollmentRequest(
   request: Request,
   env: ProgramEnv,
-  requestId: string
+  programId: string,
+  enrollmentRequestId: string
 ): Promise<Response> {
-  const requestId2 = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId2);
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     ctxFrom(auth.account),
-    requestId
+    enrollmentRequestId
   );
   if (!existing) {
-    return notFound(requestId2, "Unknown enrollment request.");
+    return notFound(requestId, "Unknown enrollment request.");
+  }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown enrollment request.");
   }
   try {
     const row = await workspace.withdrawEnrollmentRequest(
       ctxFrom(auth.account),
-      existing.program_id,
-      requestId,
-      requestId2
+      programId,
+      enrollmentRequestId,
+      correlationId
     );
-    return jsonResponse(200, { request: row }, requestId2);
+    return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId2);
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId2);
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }
@@ -1336,6 +1613,7 @@ export async function handleAssistedEnroll(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1362,8 +1640,8 @@ export async function handleAssistedEnroll(
     const row = await workspace.assistedEnroll(
       ctxFrom(auth.account),
       programId,
-      { programId, memberUserId },
-      requestId
+      { memberUserId },
+      correlationId
     );
     return jsonResponse(201, { enrollment: row }, requestId);
   } catch (error) {
@@ -1374,7 +1652,13 @@ export async function handleAssistedEnroll(
       return validation(requestId, error.message);
     }
     if (error instanceof DuplicateEnrollmentError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+      return problem(
+        409,
+        "ENROLLMENT_DUPLICATE",
+        "Conflict",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1406,9 +1690,11 @@ export async function handleListEnrollments(
 export async function handleCancelEnrollment(
   request: Request,
   env: ProgramEnv,
+  programId: string,
   enrollmentId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1421,12 +1707,15 @@ export async function handleCancelEnrollment(
   if (!existing) {
     return notFound(requestId, "Unknown enrollment.");
   }
+  if (existing.program_id !== programId) {
+    return notFound(requestId, "Unknown enrollment.");
+  }
   try {
     const row = await workspace.cancelEnrollment(
       ctxFrom(auth.account),
-      existing.program_id,
+      programId,
       enrollmentId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { enrollment: row }, requestId);
   } catch (error) {
@@ -1447,6 +1736,7 @@ export async function handleAssignProgramLeader(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1469,7 +1759,7 @@ export async function handleAssignProgramLeader(
       ctxFrom(auth.account),
       programId,
       userId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {
@@ -1478,6 +1768,15 @@ export async function handleAssignProgramLeader(
     }
     if (error instanceof SelfDelegationError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof LeaderAccountInactiveError) {
+      return problem(
+        422,
+        "ACCOUNT_INACTIVE",
+        "Validation failed",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }
@@ -1491,6 +1790,7 @@ export async function handleRevokeProgramLeader(
   userId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1501,7 +1801,7 @@ export async function handleRevokeProgramLeader(
       ctxFrom(auth.account),
       programId,
       userId,
-      requestId
+      correlationId
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {

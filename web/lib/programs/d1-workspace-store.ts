@@ -2,6 +2,7 @@
  * EFCC Programs domain — D1 persistence adapter (WorkspaceStore).
  */
 
+import { MODULE_KEYS } from "./capabilities";
 import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
@@ -22,6 +23,7 @@ import type {
   ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
+  MemberOptionRow,
   ScheduleExceptionInput,
   ScheduleExceptionRow,
   ScheduleRuleInput,
@@ -62,44 +64,47 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return row;
   }
 
-  async seedRolePolicies(
-    policies: Record<string, { capability: string; granted_at: string }[]>
-  ): Promise<void> {
-    const statements = Object.entries(policies).flatMap(([role, caps]) =>
-      caps.map(({ capability, granted_at }) =>
-        this.db
-          .prepare(
-            `INSERT OR IGNORE INTO role_capabilities (role, capability, granted_at)
-             VALUES (?, ?, ?)`
-          )
-          .bind(role, capability, granted_at)
-          .run()
+  async isAccountActive(userId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        "SELECT 1 FROM accounts WHERE user_id = ? AND account_status = 'Active'"
       )
-    );
-    await Promise.all(statements);
+      .bind(userId)
+      .first<{ _: 1 }>();
+    return row !== null;
   }
 
   async createDepartment(input: DepartmentInput): Promise<DepartmentRow> {
     const id = crypto.randomUUID();
-    await this.db
-      .prepare(
-        `INSERT INTO departments (department_id, code, name, description, lifecycle,
-           display_order, created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        id,
-        input.code,
-        input.name,
-        input.description ?? null,
-        input.lifecycle,
-        input.display_order ?? 0,
-        input.created_by,
-        input.created_at,
-        input.updated_by,
-        input.updated_at
-      )
-      .run();
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO departments (department_id, code, name, description, lifecycle,
+             display_order, created_by, created_at, updated_by, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          id,
+          input.code,
+          input.name,
+          input.description ?? null,
+          input.lifecycle,
+          input.display_order ?? 0,
+          input.created_by,
+          input.created_at,
+          input.updated_by,
+          input.updated_at
+        ),
+      ...MODULE_KEYS.map((moduleKey) =>
+        this.db
+          .prepare(
+            `INSERT INTO department_modules
+               (department_id, module_key, enabled, enabled_by, enabled_at)
+             VALUES (?, ?, 0, NULL, ?)`
+          )
+          .bind(id, moduleKey, input.created_at)
+      ),
+    ]);
     return this.requireDepartment(id);
   }
 
@@ -215,20 +220,6 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async listListedProgramsForDepartment(
-    departmentId: string
-  ): Promise<ProgramRow[]> {
-    const result = await this.db
-      .prepare(
-        `SELECT * FROM programs
-         WHERE department_id = ? AND discoverability = 'Listed'
-         ORDER BY display_order ASC, created_at ASC`
-      )
-      .bind(departmentId)
-      .all<ProgramRow>();
-    return result.results ?? [];
-  }
-
   async findProgramById(id: string): Promise<ProgramRow | null> {
     if (!id) {
       return null;
@@ -239,6 +230,26 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         .bind(id)
         .first<ProgramRow>()) ?? null
     );
+  }
+
+  async searchActiveMembers(
+    query: string,
+    limit: number
+  ): Promise<MemberOptionRow[]> {
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const result = await this.db
+      .prepare(
+        `SELECT user_id, name, username
+           FROM accounts
+          WHERE account_status = 'Active'
+            AND (name LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
+          ORDER BY name ASC, username ASC
+          LIMIT ?`
+      )
+      .bind(pattern, pattern, limit)
+      .all<MemberOptionRow>();
+    return result.results ?? [];
   }
 
   async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
@@ -578,7 +589,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .prepare(
         `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
            updated_by = ?, updated_at = ?
-         WHERE event_id = ?`
+         WHERE event_id = ? AND status = 'Active'`
       )
       .bind(reason, updatedBy, updatedAt, id)
       .run();
@@ -643,8 +654,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   ): Promise<EnrollmentRequestRow[]> {
     const result = await this.db
       .prepare(
-        `SELECT * FROM enrollment_requests
-         WHERE program_id = ? ORDER BY submitted_at ASC`
+        `SELECT enrollment_requests.*, accounts.name AS member_name,
+                accounts.username AS member_username
+           FROM enrollment_requests
+           LEFT JOIN accounts ON accounts.user_id = enrollment_requests.member_user_id
+          WHERE enrollment_requests.program_id = ?
+          ORDER BY enrollment_requests.submitted_at ASC`
       )
       .bind(programId)
       .all<EnrollmentRequestRow>();
@@ -656,20 +671,108 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     decision: "Approved" | "Rejected",
     decidedBy: string,
     decidedAt: string,
-    note: string | null
+    note: string | null,
+    audit: AuditInput
   ): Promise<EnrollmentRequestRow | null> {
-    const result = await this.db
-      .prepare(
-        `UPDATE enrollment_requests
-         SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
-         WHERE request_id = ? AND status = 'Pending'`
-      )
-      .bind(decision, decidedBy, decidedAt, note, id)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) {
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE enrollment_requests
+           SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
+           WHERE request_id = ? AND status = 'Pending'`
+        )
+        .bind(decision, decidedBy, decidedAt, note, id),
+      // ponytail: gate the audit on the same decided-state the UPDATE just
+      // wrote, so a no-op decision (0 changes) inserts no audit row.
+      this.db
+        .prepare(
+          `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
+             entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
+             correlation_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+             FROM enrollment_requests r
+            WHERE r.request_id = ? AND r.status = ? AND r.decided_by = ? AND r.decided_at = ?`
+        )
+        .bind(
+          audit.audit_id,
+          audit.inserted_at,
+          audit.actor_user_id,
+          audit.action,
+          audit.entity_type,
+          audit.entity_id,
+          audit.old_value_json,
+          audit.new_value_json,
+          audit.reason,
+          audit.outcome,
+          audit.correlation_id,
+          id,
+          decision,
+          decidedBy,
+          decidedAt
+        ),
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) === 0) {
       return null;
     }
     return this.findEnrollmentRequestById(id);
+  }
+
+  async approveEnrollmentRequest(input: {
+    request_id: string;
+    program_id: string;
+    member_user_id: string;
+    enrollment_id: string;
+    decided_by: string;
+    decided_at: string;
+    note: string | null;
+    auditCreate: AuditInput;
+    auditDecide: AuditInput;
+  }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+             request_id, status, enrolled_at, created_by, created_at)
+           SELECT ?, r.program_id, r.member_user_id, ?, 'Active', ?, ?, ?
+             FROM enrollment_requests r
+            WHERE r.request_id = ? AND r.status = 'Pending'`
+        )
+        .bind(
+          input.enrollment_id,
+          input.request_id,
+          input.decided_at,
+          input.decided_by,
+          input.decided_at,
+          input.request_id
+        ),
+      this.db
+        .prepare(
+          `UPDATE enrollment_requests
+           SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
+           WHERE request_id = ? AND status = 'Pending'`
+        )
+        .bind(
+          input.decided_by,
+          input.decided_at,
+          input.note,
+          input.request_id
+        ),
+      // ponytail: gate both audits on the enrollment row the INSERT..SELECT
+      // just created, so a no-op batch (0-row select) inserts no audit rows.
+      this.auditInsertGated(input.auditCreate, input.enrollment_id),
+      this.auditInsertGated(input.auditDecide, input.enrollment_id),
+    ]);
+    if ((results[1]?.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    const [request, enrollment] = await Promise.all([
+      this.findEnrollmentRequestById(input.request_id),
+      this.findEnrollmentById(input.enrollment_id),
+    ]);
+    if (!request || !enrollment) {
+      throw new WorkspaceNotFoundError("enrollment", input.enrollment_id);
+    }
+    return { request, enrollment };
   }
 
   async withdrawRequest(
@@ -730,6 +833,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return row !== null;
   }
 
+  async findActiveEnrollment(
+    programId: string,
+    memberUserId: string
+  ): Promise<EnrollmentRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM enrollments
+         WHERE program_id = ? AND member_user_id = ? AND status = 'Active'`
+      )
+      .bind(programId, memberUserId)
+      .first<EnrollmentRow>();
+    return row ?? null;
+  }
+
   async findEnrollmentById(id: string): Promise<EnrollmentRow | null> {
     const row = await this.db
       .prepare("SELECT * FROM enrollments WHERE enrollment_id = ?")
@@ -741,8 +858,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   async listEnrollments(programId: string): Promise<EnrollmentRow[]> {
     const result = await this.db
       .prepare(
-        `SELECT * FROM enrollments WHERE program_id = ?
-         ORDER BY enrolled_at ASC`
+        `SELECT enrollments.*, accounts.name AS member_name,
+                accounts.username AS member_username
+           FROM enrollments
+           LEFT JOIN accounts ON accounts.user_id = enrollments.member_user_id
+          WHERE enrollments.program_id = ?
+          ORDER BY enrollments.enrolled_at ASC`
       )
       .bind(programId)
       .all<EnrollmentRow>();
@@ -785,23 +906,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   listProgramLeaders(programId: string): Promise<ProgramLeaderRow[]> {
     return this.db
       .prepare(
-        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-         FROM program_leaders
-         WHERE program_id = ? AND revoked_at IS NULL
-         ORDER BY granted_at`
-      )
-      .bind(programId)
-      .all<ProgramLeaderRow>()
-      .then((r) => r.results);
-  }
-
-  listProgramLeaderHistory(programId: string): Promise<ProgramLeaderRow[]> {
-    return this.db
-      .prepare(
-        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-         FROM program_leaders
-         WHERE program_id = ?
-         ORDER BY granted_at`
+        `SELECT program_leaders.*, accounts.name AS user_name,
+                accounts.username
+           FROM program_leaders
+           LEFT JOIN accounts ON accounts.user_id = program_leaders.user_id
+          WHERE program_leaders.program_id = ? AND program_leaders.revoked_at IS NULL
+          ORDER BY program_leaders.granted_at`
       )
       .bind(programId)
       .all<ProgramLeaderRow>()
@@ -849,8 +959,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.findProgramLeader(input.program_id, input.user_id);
   }
 
-  async audit(input: AuditInput): Promise<void> {
-    await this.db
+  private auditInsertStatement(input: AuditInput): D1PreparedStatement {
+    return this.db
       .prepare(
         `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
            entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
@@ -869,8 +979,40 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.reason,
         input.outcome,
         input.correlation_id
+      );
+  }
+
+  private auditInsertGated(
+    input: AuditInput,
+    enrollmentId: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
+           entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
+           correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           FROM enrollments e
+          WHERE e.enrollment_id = ?`
       )
-      .run();
+      .bind(
+        input.audit_id,
+        input.inserted_at,
+        input.actor_user_id,
+        input.action,
+        input.entity_type,
+        input.entity_id,
+        input.old_value_json,
+        input.new_value_json,
+        input.reason,
+        input.outcome,
+        input.correlation_id,
+        enrollmentId
+      );
+  }
+
+  async audit(input: AuditInput): Promise<void> {
+    await this.auditInsertStatement(input).run();
   }
 
   async hasCapability(role: string, capability: Capability): Promise<boolean> {

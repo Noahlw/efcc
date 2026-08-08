@@ -30,6 +30,12 @@ const MEMBER_REQUEST_PROGRAM: Program = {
   display_order: 1,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  capabilities: {
+    manage: true,
+    publish: true,
+    enroll: false,
+    leader_assign: true,
+  },
 };
 
 const MANAGER_ONLY_PROGRAM: Program = {
@@ -80,6 +86,14 @@ function requestHandlers(
     ),
     http.get(`/api/v1/programs/${programId}/enrollments`, () =>
       HttpResponse.json({ requestId: "rid-2", data: { enrollments } })
+    ),
+    http.get(`/api/v1/programs/${programId}/member-options`, () =>
+      HttpResponse.json({
+        requestId: "rid-members",
+        data: {
+          members: [{ user_id: "U002", name: "Bob Lee", username: "bob" }],
+        },
+      })
     ),
   ];
 }
@@ -254,6 +268,9 @@ describe("PRG-03 enrollment panel", () => {
     await screen.findByText(COPY.programs.noEnrollments);
     await user.type(screen.getByLabelText(COPY.programs.memberId), "U002");
     await user.click(
+      await screen.findByRole("button", { name: /Bob Lee.*bob/u })
+    );
+    await user.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
     await expect(
@@ -305,7 +322,7 @@ describe("PRG-03 enrollment panel", () => {
             type: "about:blank",
             title: "Conflict",
             status: 409,
-            code: "CONFLICT",
+            code: "ENROLLMENT_DUPLICATE",
             detail: "Member U002 already has an open request.",
             requestId: "rid-3",
           },
@@ -326,7 +343,7 @@ describe("PRG-03 enrollment panel", () => {
       screen.getByRole("button", { name: COPY.programs.requestEnroll })
     );
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      errorCopyFor("CONFLICT")
+      errorCopyFor("ENROLLMENT_DUPLICATE")
     );
   });
 });

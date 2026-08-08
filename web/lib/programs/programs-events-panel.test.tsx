@@ -11,6 +11,7 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import type {
   Program,
   ProgramEvent,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { EventsPanel } from "@/lib/programs/programs-events-panel";
@@ -30,6 +31,12 @@ const RECURRING: Program = {
   display_order: 1,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  capabilities: {
+    manage: true,
+    publish: true,
+    enroll: false,
+    leader_assign: true,
+  },
 };
 
 const ONE_OFF: Program = {
@@ -60,6 +67,25 @@ const ACTIVE_EVENT: ProgramEvent = {
   cancel_reason: null,
   created_at: "2026-08-01T00:00:00.000Z",
   updated_at: "2026-08-01T00:00:00.000Z",
+};
+
+// A SCHEDULE event on the WEEKLY_RULE's weekday (2026-08-11 is a Tuesday):
+// 2026-08-11T11:30Z == 19:30 HK wall, matching rule-1's start_time.
+const TUESDAY_EVENT: ProgramEvent = {
+  ...ACTIVE_EVENT,
+  event_id: "evt-tue",
+  starts_at: "2026-08-11T11:30:00.000Z",
+  ends_at: "2026-08-11T13:00:00.000Z",
+};
+
+const CANCEL_EXCEPTION: ScheduleException = {
+  exception_id: "exc-1",
+  rule_id: "rule-1",
+  override_date: "2026-08-11",
+  action: "CANCEL",
+  new_start_time: null,
+  new_end_time: null,
+  created_at: "2026-08-01T00:00:00.000Z",
 };
 
 function normalized(text: string): string {
@@ -93,7 +119,7 @@ describe("PRG-02 events panel", () => {
     render(<EventsPanel program={RECURRING} canManage={false} />);
     await expect(
       screen.findByText((text) =>
-        text.includes(`${COPY.programs.ruleWeekly} 2`)
+        text.includes(`${COPY.programs.ruleWeekly} 星期二`)
       )
     ).resolves.toBeInTheDocument();
     const matches = await screen.findAllByText(
@@ -194,8 +220,10 @@ describe("PRG-02 events panel", () => {
     const user = userEvent.setup();
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.noRules);
-    await user.clear(screen.getByLabelText(COPY.programs.dayOfWeekLabel));
-    await user.type(screen.getByLabelText(COPY.programs.dayOfWeekLabel), "3");
+    await user.selectOptions(
+      screen.getByLabelText(COPY.programs.dayOfWeekLabel),
+      "3"
+    );
     await user.type(screen.getByLabelText(COPY.programs.startTime), "19:30");
     await user.type(screen.getByLabelText(COPY.programs.endTime), "21:00");
     await user.click(
@@ -206,7 +234,7 @@ describe("PRG-02 events panel", () => {
     ).resolves.toBeInTheDocument();
     await expect(
       screen.findByText((text) =>
-        text.includes(`${COPY.programs.ruleWeekly} 3`)
+        text.includes(`${COPY.programs.ruleWeekly} 星期三`)
       )
     ).resolves.toBeInTheDocument();
   });
@@ -246,6 +274,9 @@ describe("PRG-02 events panel", () => {
     await user.type(cancelReasonInput, "惡劣天氣");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEvent })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmCancelEvent })
     );
     await expect(
       screen.findByText(COPY.programs.eventCancelledNotice)
@@ -288,5 +319,329 @@ describe("PRG-02 events panel", () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       errorCopyFor("VALIDATION")
     );
+  });
+
+  test("U7 generation notice reports created and skipped counts", async () => {
+    let callCount = 0;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+      ),
+      http.post("/api/v1/programs/prog-1/events/generate", () => {
+        callCount += 1;
+        return HttpResponse.json({
+          requestId: `rid-${callCount + 2}`,
+          data: {
+            generated: {
+              created: callCount === 1 ? 2 : 0,
+              skipped: callCount === 1 ? 0 : 2,
+              rule_count: 1,
+            },
+          },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await screen.findByText(COPY.programs.noRules);
+    const generate = screen.getByRole("button", {
+      name: COPY.programs.generateEvents,
+    });
+    await user.click(generate);
+    await expect(
+      screen.findByText("已產生 2 場聚會，跳過 0 場重複。")
+    ).resolves.toBeInTheDocument();
+    await user.click(generate);
+    await expect(
+      screen.findByText("已產生 0 場聚會，跳過 2 場重複。")
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U8 rescheduling posts a RESCHEDULE exception for the event's wall date", async () => {
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [TUESDAY_EVENT] } })
+      ),
+      http.post(
+        "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            override_date: string;
+            action: string;
+            new_start_time: string;
+            new_end_time: string;
+          };
+          expect(body).toEqual({
+            override_date: "2026-08-11",
+            action: "RESCHEDULE",
+            new_start_time: "20:30",
+            new_end_time: "22:00",
+          });
+          return HttpResponse.json({
+            requestId: "rid-3",
+            data: {
+              exception: {
+                ...CANCEL_EXCEPTION,
+                exception_id: "exc-r",
+                action: "RESCHEDULE",
+                new_start_time: "20:30",
+                new_end_time: "22:00",
+              },
+            },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await screen.findByText(COPY.programs.eventActive);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.rescheduleEvent })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleStart),
+      "20:30"
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleEnd),
+      "22:00"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
+    );
+    await expect(
+      screen.findByText(COPY.programs.exceptionUpdatedNotice)
+    ).resolves.toBeInTheDocument();
+    // The session exception surfaces the restore affordance on the row.
+    await expect(
+      screen.findByRole("button", { name: COPY.programs.restoreOccurrence })
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U9 取消該次 posts a CANCEL exception; 恢復該次 deletes it", async () => {
+    const events: ProgramEvent[] = [{ ...TUESDAY_EVENT }];
+    let deleted = false;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events } })
+      ),
+      http.post(
+        "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            override_date: string;
+            action: string;
+          };
+          expect(body).toEqual({
+            override_date: "2026-08-11",
+            action: "CANCEL",
+          });
+          return HttpResponse.json({
+            requestId: "rid-3",
+            data: { exception: CANCEL_EXCEPTION },
+          });
+        }
+      ),
+      http.delete(
+        "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions/exc-1",
+        () => {
+          deleted = true;
+          return HttpResponse.json({
+            requestId: "rid-4",
+            data: { deleted: true },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await screen.findByText(COPY.programs.eventActive);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.cancelOccurrence })
+    );
+    // The confirm step replaces the trigger until confirmed.
+    await expect(
+      screen.getByText(COPY.programs.cancelOccurrenceConfirm)
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmCancelOccurrence })
+    );
+    await expect(
+      screen.findByText(COPY.programs.exceptionUpdatedNotice)
+    ).resolves.toBeInTheDocument();
+    const restore = await screen.findByRole("button", {
+      name: COPY.programs.restoreOccurrence,
+    });
+    await user.click(restore);
+    await expect(
+      screen.findByText(COPY.programs.exceptionRemovedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(deleted).toBe(true);
+    await expect(
+      screen.findByRole("button", { name: COPY.programs.cancelOccurrence })
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U10 exception controls are capability- and source-gated", async () => {
+    const cancelled: ProgramEvent = {
+      ...TUESDAY_EVENT,
+      event_id: "evt-x",
+      status: "Cancelled",
+      cancel_reason: "惡劣天氣",
+    };
+    const manual: ProgramEvent = {
+      ...TUESDAY_EVENT,
+      event_id: "evt-m",
+      source: "MANUAL",
+    };
+    const events = [TUESDAY_EVENT, cancelled, manual];
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events } })
+      )
+    );
+    // Member: no exception controls at all.
+    render(<EventsPanel program={RECURRING} canManage={false} />);
+    await screen.findAllByText(COPY.programs.eventActive);
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.rescheduleEvent })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cancelOccurrence })
+    ).not.toBeInTheDocument();
+    cleanup();
+    server.resetHandlers();
+    // Manager: the SCHEDULE Active row gets controls; Cancelled and MANUAL
+    // rows do not (the cancelled row shows its reason instead).
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events } })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await screen.findAllByText(COPY.programs.eventActive);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.rescheduleEvent })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cancelOccurrence })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.restoreOccurrence })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        COPY.programs.cancelledReason.replace("{reason}", "惡劣天氣")
+      )
+    ).toBeInTheDocument();
+    // One MANUAL Active event shares the date; controls render per row, so
+    // count the SCHEDULE row's affordances (2 rows with 取消該次 would be a
+    // gating leak — the MANUAL row must not render one).
+    expect(
+      screen.getAllByRole("button", { name: COPY.programs.rescheduleEvent })
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: COPY.programs.cancelOccurrence })
+    ).toHaveLength(1);
+  });
+
+  test("U11 a cancelled event surfaces its reason in the row", async () => {
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: {
+            events: [
+              {
+                ...TUESDAY_EVENT,
+                status: "Cancelled",
+                cancel_reason: "天氣惡劣",
+              },
+            ],
+          },
+        })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(
+      screen.findByText(
+        COPY.programs.cancelledReason.replace("{reason}", "天氣惡劣")
+      )
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U12 a RESCHEDULE exception renders the 已改期 badge on the row", async () => {
+    const RESCHEDULE_EXCEPTION: ScheduleException = {
+      exception_id: "exc-2",
+      rule_id: "rule-1",
+      override_date: "2026-08-11",
+      action: "RESCHEDULE",
+      new_start_time: "08:30",
+      new_end_time: "10:00",
+      created_at: "2026-08-01T00:00:00.000Z",
+    };
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: {
+            events: [{ ...TUESDAY_EVENT, exception: RESCHEDULE_EXCEPTION }],
+          },
+        })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(
+      screen.findByText(
+        COPY.programs.eventRescheduledBadge.replace("{time}", "08:30")
+      )
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U13 a CANCEL exception renders the 本次已取消 badge, and no exception renders none", async () => {
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: {
+            events: [
+              { ...TUESDAY_EVENT, exception: CANCEL_EXCEPTION },
+              { ...ACTIVE_EVENT, event_id: "evt-2" },
+            ],
+          },
+        })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(
+      screen.findByText(COPY.programs.eventCancelledBadge)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getAllByText(COPY.programs.eventCancelledBadge)
+    ).toHaveLength(1);
   });
 });

@@ -40,6 +40,7 @@ export function ApprovalQueue() {
   const [state, setState] = useState<QueueState>({ kind: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeKind, setNoticeKind] = useState<"success" | "error">("success");
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -81,6 +82,7 @@ export function ApprovalQueue() {
       if (!mounted.current) return;
       announce(QUEUE_COPY.done);
       setNotice(QUEUE_COPY.done);
+      setNoticeKind("success");
       await load();
     } catch (err) {
       if (!mounted.current) return;
@@ -96,6 +98,7 @@ export function ApprovalQueue() {
           ? registrationErrorCopy(err.code)
           : QUEUE_COPY.networkError;
       setNotice(message);
+      setNoticeKind("error");
     } finally {
       if (mounted.current) setBusyId(null);
     }
@@ -135,7 +138,14 @@ export function ApprovalQueue() {
       </div>
 
       {notice && (
-        <p role="status" className={styles.notice}>
+        <p
+          role="status"
+          className={`${styles.notice} ${
+            noticeKind === "success"
+              ? styles.noticeSuccess
+              : styles.noticeError
+          }`}
+        >
           {notice}
         </p>
       )}

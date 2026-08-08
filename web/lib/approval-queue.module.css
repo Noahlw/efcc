@@ -78,17 +78,29 @@
   margin: 0 0 1rem;
   padding: 0.75rem 0.875rem;
   border-radius: var(--radius-sm, 8px);
-  background: rgba(156, 48, 44, 0.09);
-  color: var(--accent-deep, #76231f);
+  border: 1px solid var(--line, #d6dcde);
   font-size: 0.9375rem;
+}
+
+.noticeSuccess {
+  background: var(--success-surface, #eef4ef);
+  border-color: var(--success-border, #b9cfbe);
+  color: var(--ink, #171a1d);
+}
+
+.noticeError {
+  background: var(--error-surface, #fbeeed);
+  border-color: var(--error-border, #e5b4b0);
+  color: var(--error, #b3261e);
 }
 
 .error {
   margin: 0;
   padding: 1rem;
   border-radius: var(--radius-md, 12px);
-  background: rgba(156, 48, 44, 0.09);
-  color: var(--accent-deep, #76231f);
+  background: var(--error-surface, #fbeeed);
+  border: 1px solid var(--error-border, #e5b4b0);
+  color: var(--error, #b3261e);
   font-size: 0.9375rem;
   line-height: 1.6;
 }
@@ -162,7 +174,7 @@
   padding: 0 1rem;
   border: none;
   border-radius: var(--radius-sm, 8px);
-  background: #15803d;
+  background: var(--success, #2e6b37);
   color: #fff;
   font-size: 0.875rem;
   font-weight: 700;
@@ -171,7 +183,7 @@
 }
 
 .approve:hover:not(:disabled) {
-  background: #166534;
+  background: #245d2b;
 }
 
 .approve:disabled {

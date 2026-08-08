@@ -7,6 +7,13 @@
 
 import type { ModuleKey } from "./capabilities";
 
+// Domain vocabulary lives in the pure recurrence module; rows and commands
+// reuse it so there is one definition (no drift risk).
+import type {
+  RecurrenceKind,
+  ScheduleExceptionAction,
+} from "./recurrence";
+
 export interface DepartmentInput {
   code: string;
   name: string;
@@ -65,8 +72,8 @@ export interface ProgramInput {
 
 export interface ProgramUpdate {
   name?: string;
-  description?: string;
-  category?: string;
+  description?: string | null;
+  category?: string | null;
   behavior_type?: ProgramBehaviorType;
   lifecycle?: ProgramLifecycle;
   discoverability?: ProgramDiscoverability;
@@ -106,8 +113,12 @@ export interface DepartmentModuleRow {
   enabled_at: string;
 }
 
-export type RecurrenceKind = "WEEKLY" | "MONTHLY";
-export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
+export interface MemberOptionRow {
+  user_id: string;
+  name: string;
+  username: string;
+}
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventSource = "SCHEDULE" | "MANUAL";
 
@@ -194,6 +205,8 @@ export interface EventRow {
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+  /** Matching schedule exception (attributed rule + HK wall date), if any. */
+  exception?: ScheduleExceptionRow | null;
 }
 
 export interface GenerateResult {
@@ -219,6 +232,8 @@ export interface EnrollmentRequestRow {
   decided_at: string | null;
   decision_note: string | null;
   request_version: number;
+  member_name?: string;
+  member_username?: string;
 }
 
 export interface EnrollmentRow {
@@ -232,6 +247,8 @@ export interface EnrollmentRow {
   cancelled_by: string | null;
   created_by: string | null;
   created_at: string;
+  member_name?: string;
+  member_username?: string;
 }
 
 export interface EnrollmentRequestInput {
@@ -261,6 +278,8 @@ export interface ProgramLeaderRow {
   granted_at: string;
   revoked_by: string | null;
   revoked_at: string | null;
+  user_name?: string;
+  username?: string;
 }
 
 export interface ProgramLeaderGrantInput {
@@ -299,10 +318,6 @@ export type AuditOutcome =
   | "FAILED";
 
 export interface WorkspaceStore {
-  seedRolePolicies: (
-    policies: Record<string, { capability: string; granted_at: string }[]>
-  ) => Promise<void>;
-
   createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
   listDepartments: () => Promise<DepartmentRow[]>;
   findDepartmentById: (id: string) => Promise<DepartmentRow | null>;
@@ -314,11 +329,12 @@ export interface WorkspaceStore {
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
-  listListedProgramsForDepartment: (
-    departmentId: string
-  ) => Promise<ProgramRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  searchActiveMembers: (
+    query: string,
+    limit: number
+  ) => Promise<MemberOptionRow[]>;
 
   setDepartmentModule: (
     departmentId: string,
@@ -383,8 +399,20 @@ export interface WorkspaceStore {
     decision: "Approved" | "Rejected",
     decidedBy: string,
     decidedAt: string,
-    note: string | null
+    note: string | null,
+    audit: AuditInput
   ) => Promise<EnrollmentRequestRow | null>;
+  approveEnrollmentRequest: (input: {
+    request_id: string;
+    program_id: string;
+    member_user_id: string;
+    enrollment_id: string;
+    decided_by: string;
+    decided_at: string;
+    note: string | null;
+    auditCreate: AuditInput;
+    auditDecide: AuditInput;
+  }) => Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null>;
   withdrawRequest: (
     id: string,
     memberUserId: string,
@@ -396,6 +424,10 @@ export interface WorkspaceStore {
     programId: string,
     memberUserId: string
   ) => Promise<boolean>;
+  findActiveEnrollment: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<EnrollmentRow | null>;
   findEnrollmentById: (id: string) => Promise<EnrollmentRow | null>;
   listEnrollments: (programId: string) => Promise<EnrollmentRow[]>;
   cancelEnrollment: (
@@ -408,8 +440,8 @@ export interface WorkspaceStore {
     programId: string,
     userId: string
   ) => Promise<ProgramLeaderRow | null>;
+  isAccountActive: (userId: string) => Promise<boolean>;
   listProgramLeaders: (programId: string) => Promise<ProgramLeaderRow[]>;
-  listProgramLeaderHistory: (programId: string) => Promise<ProgramLeaderRow[]>;
   assignProgramLeader: (
     input: ProgramLeaderGrantInput
   ) => Promise<ProgramLeaderRow>;

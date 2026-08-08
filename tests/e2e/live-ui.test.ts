@@ -8,9 +8,12 @@
 // only the out-of-band PROGRAMS_* role fixtures and never mocks the backend;
 // every assertion reads observable DOM state.
 //
+// Mutation coverage (PRG-05 #201): the suite also exercises both end-to-end
+// mutation flows while keeping the acceptance fixtures pristine — a
+// registration is submitted and then rejected from the Admin queue, and the
+// admin credential is rotated to a throwaway value and changed back, so the
+// fixture ends exactly as it started.
 // Deliberately out of scope (would invent or mutate backend behavior):
-//   - submitting the registration form / deciding real registrations
-//     (creates or mutates target rows),
 //   - inducing a network failure to render the RecoveryView error path.
 // Acceptance trace: docs/omp-plans/2026-08-07-ui-04-release-stack.md Task 8.
 // Copy strings below mirror web/lib/copy.ts / registration-copy.ts /
@@ -78,6 +81,9 @@ const COPY = {
   approve: "批准",
   reject: "拒絕",
   forbidden: "您沒有權限執行此操作。",
+  registerDone: "申請已提交",
+  passwordSubmit: "更新密碼",
+  accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
 } as const;
 
 const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
@@ -362,5 +368,80 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       await expect(desktopNav).toBeVisible();
       await expect(phoneNav).toBeHidden();
     }
+  });
+
+  test("registration submit creates a new request the admin queue can reject", async ({
+    page,
+  }) => {
+    // Unique per run: a decided request still reserves its normalized
+    // username (registration conflicts with any existing request row), so a
+    // fixed value would collide across runs/projects.
+    const username = `E2E_reg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await page.goto(appPath("/register"));
+    await page.getByLabel(COPY.registerUsername).fill(username);
+    await page.getByLabel(COPY.registerPassword).fill("register-pw-123");
+    await page.getByLabel(COPY.registerName).fill("E2E Registration");
+    await page.getByRole("button", { name: COPY.registerSubmit }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.registerDone })
+    ).toBeVisible();
+
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto(appPath("/registrations"));
+    await expect(
+      page.getByRole("cell", { name: username, exact: true })
+    ).toBeVisible();
+    await page
+      .locator("tr")
+      .filter({ hasText: username })
+      .getByRole("button", { name: COPY.reject })
+      .click();
+    await expect(
+      page.locator("tr").filter({ hasText: username })
+    ).toHaveCount(0);
+  });
+
+  test("admin password rotation revokes the session and restores the fixture", async ({
+    page,
+  }) => {
+    const rotationPassword = "E2E_admin!devRot";
+    const fixturePassword = required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED);
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      fixturePassword
+    );
+    await page.goto(appPath("/profile/settings"));
+
+    // Rotate to the throwaway value; success revokes every session and
+    // routes to the login surface with the one-time notice.
+    await page.getByLabel(COPY.currentPassword).fill(fixturePassword);
+    await page.getByLabel(COPY.newPassword).fill(rotationPassword);
+    await page.getByRole("button", { name: COPY.passwordSubmit }).click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })
+    ).toBeVisible();
+    await expect(page).toHaveURL((url) => url.pathname === SIGNED_OUT_PATH);
+
+    // The rotated password is now the accepted credential; the revoked
+    // session cannot be reused.
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      rotationPassword
+    );
+    await page.goto(appPath("/profile/settings"));
+
+    // Change back so the fixture ends exactly as it started.
+    await page.getByLabel(COPY.currentPassword).fill(rotationPassword);
+    await page.getByLabel(COPY.newPassword).fill(fixturePassword);
+    await page.getByRole("button", { name: COPY.passwordSubmit }).click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })
+    ).toBeVisible();
   });
 });

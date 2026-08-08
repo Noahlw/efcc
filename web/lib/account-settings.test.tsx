@@ -46,7 +46,6 @@ const sessionMocks = vi.hoisted(() => ({
 
 vi.mock(import("@/lib/session"), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
-  isLocalDemoBootstrap: () => false,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
   restoreBootstrap: sessionMocks.restoreBootstrapMock,

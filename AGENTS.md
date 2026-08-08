@@ -8,7 +8,7 @@
 ## Headless-Gate (Verification)
 
 - Web app changes require an acceptance trace written BEFORE implementation (mechanical edits exempt).
-- Authenticated flows use Playwright pipeline (`tests/e2e/`). Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
+- Authenticated E2E = Playwright vs the standing dev-testing worker (local, no secrets; ask the user before building E2E at spec completion). Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
 - 100% pass on a fresh `/exec` deployment is required before `READY`. The rebuilt Next/D1 release also requires its authenticated E2E to run against a fresh reserved `efcc-auth-*` `*.workers.dev` URL (`AUTH_TARGET_URL`) via the Playwright `auth-d1` pipeline; never reuse the stale `efcc-prototype-129` host. Assert every criterion via observable DOM state (never assume a click worked). Pipeline appends results to ticket plan (per `ADR-0012`).
 
 ## Sheet-Immutable (Database Safety)

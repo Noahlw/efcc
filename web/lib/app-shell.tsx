@@ -13,7 +13,6 @@ import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
-  isLocalDemoBootstrap,
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
@@ -31,16 +30,13 @@ function ShellFrame({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const localDemo = isLocalDemoBootstrap(bootstrap);
 
   const handleSignOut = useCallback(async () => {
     let rpcFailed = false;
-    if (!localDemo) {
-      try {
-        await authLogout();
-      } catch {
-        rpcFailed = true;
-      }
+    try {
+      await authLogout();
+    } catch {
+      rpcFailed = true;
     }
     clearAuthHint();
     sessionStorage.removeItem(DEEP_LINK_KEY);
@@ -49,14 +45,19 @@ function ShellFrame({
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
     }
     router.replace("/");
-  }, [localDemo, router]);
+  }, [router]);
 
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
+        <a className={styles.skipLink} href="#shell-content">
+          {COPY.skipToContent}
+        </a>
         <ShellHeader />
         <NavBar />
-        <main className="shell-content">{children}</main>
+        <main id="shell-content" className="shell-content">
+          {children}
+        </main>
       </div>
     </AppProvider>
   );

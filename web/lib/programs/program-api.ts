@@ -18,6 +18,11 @@ export interface Department {
   display_order: number;
   created_at: string;
   updated_at: string;
+  capabilities: {
+    manage: boolean;
+    publish: boolean;
+    module_configure: boolean;
+  };
 }
 
 export interface DepartmentModule {
@@ -45,6 +50,12 @@ export interface Program {
   display_order: number;
   created_at: string;
   updated_at: string;
+  capabilities: {
+    manage: boolean;
+    publish: boolean;
+    enroll: boolean;
+    leader_assign: boolean;
+  };
 }
 
 export interface DepartmentDetail {
@@ -91,6 +102,8 @@ export interface ProgramEvent {
   cancel_reason: string | null;
   created_at: string;
   updated_at: string;
+  /** Matching schedule exception (attributed rule + HK wall date), if any. */
+  exception?: ScheduleException | null;
 }
 
 export interface EnrollmentRequest {
@@ -103,6 +116,8 @@ export interface EnrollmentRequest {
   decided_at: string | null;
   decision_note: string | null;
   request_version: number;
+  member_name?: string;
+  member_username?: string;
 }
 
 export interface Enrollment {
@@ -116,6 +131,8 @@ export interface Enrollment {
   cancelled_by: string | null;
   created_by: string | null;
   created_at: string;
+  member_name?: string;
+  member_username?: string;
 }
 
 export type EnrollmentDecision = "Approved" | "Rejected";
@@ -127,6 +144,14 @@ export interface ProgramLeader {
   granted_at: string;
   revoked_by: string | null;
   revoked_at: string | null;
+  user_name?: string;
+  username?: string;
+}
+
+export interface MemberOption {
+  user_id: string;
+  name: string;
+  username: string;
 }
 
 export interface GenerateResult {
@@ -148,24 +173,50 @@ export interface ProgramInput {
   description?: string;
   behavior_type: Program["behavior_type"];
   discoverability?: Program["discoverability"];
+  lifecycle: Program["lifecycle"];
+  enrollment_mode: Program["enrollment_mode"];
+  category?: string;
+  display_order?: number;
 }
+
+export type ProgramPatch = Omit<
+  Partial<ProgramInput>,
+  "description" | "category"
+> & {
+  description?: string | null;
+  category?: string | null;
+};
 
 interface ProgramsSuccess<T> {
   requestId: string;
   data: T;
 }
 
+function idempotencyHeaders(
+  method: "POST" | "GET" | "PATCH" | "DELETE",
+  key: string | null | undefined
+): Record<string, string> {
+  if (method === "GET" || key === null) {
+    return {};
+  }
+  return { "Idempotency-Key": key ?? crypto.randomUUID() };
+}
+
 /** One fetch to the cookie-only programs surface. Never builds auth headers. */
 async function programsFetch<T>(
   path: string,
   method: "POST" | "GET" | "PATCH" | "DELETE",
-  body?: unknown
+  body?: unknown,
+  options: { idempotencyKey?: string | null } = {}
 ): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...idempotencyHeaders(method, options.idempotencyKey),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -312,9 +363,12 @@ export function assignProgramLeader(
   programId: string,
   userId: string
 ): Promise<{ leader: ProgramLeader }> {
-  return programsFetch(`/api/v1/programs/${programId}/leaders`, "POST", {
-    user_id: userId,
-  });
+  return programsFetch(
+    `/api/v1/programs/${programId}/leaders`,
+    "POST",
+    { user_id: userId },
+    { idempotencyKey: null }
+  );
 }
 
 /** POST /api/v1/programs/:programId/leaders/:userId/revoke */
@@ -325,7 +379,8 @@ export function revokeProgramLeader(
   return programsFetch(
     `/api/v1/programs/${programId}/leaders/${userId}/revoke`,
     "POST",
-    {}
+    {},
+    { idempotencyKey: null }
   );
 }
 
@@ -385,12 +440,35 @@ export function createProgram(
   );
 }
 
+/** PATCH /api/v1/programs/:id */
+export function updateProgram(
+  programId: string,
+  patch: ProgramPatch
+): Promise<{ program: Program }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}`,
+    "PATCH",
+    patch
+  );
+}
+
+/** GET /api/v1/programs/:id/member-options?q=... */
+export function searchMemberOptions(
+  programId: string,
+  query: string
+): Promise<{ members: MemberOption[] }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/member-options?q=${encodeURIComponent(query)}`,
+    "GET"
+  );
+}
+
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */
 export function setDepartmentModule(
   departmentId: string,
   moduleKey: string,
   enabled: boolean
-): Promise<{ enabled: boolean }> {
+): Promise<{ module: DepartmentModule }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
     "POST"

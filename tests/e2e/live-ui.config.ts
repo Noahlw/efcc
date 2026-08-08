@@ -3,9 +3,10 @@
 // Separate from the GAS playwright.config.ts (legacy Apps Script iframe) and
 // the local responsive.config.ts (stubbed static shell). This config drives
 // the rebuilt Next.js frontend in a real browser against the isolated
-// efcc-auth-* Worker/D1 acceptance deployment, using the out-of-band
-// PROGRAMS_* role fixtures. It never mocks the backend and never targets the
-// production deployment or the legacy efcc-prototype-129 host.
+// efcc-auth-* Worker/D1 acceptance deployment (efcc-auth-test, backed by the
+// efcc-identity D1 seeded with the E2E_ fixtures via seed-dev-accounts.ts),
+// using the out-of-band PROGRAMS_* role fixtures. It never mocks the backend
+// and never targets the legacy efcc-prototype-129 host.
 
 import { defineConfig } from "@playwright/test";
 

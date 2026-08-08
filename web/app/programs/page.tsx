@@ -14,9 +14,9 @@ import styles from "./programs.module.css";
 export default function ProgramsPage() {
   return (
     <AppShell>
-      <main className={styles.page}>
+      <div className={styles.page}>
         <ProgramsManager />
-      </main>
+      </div>
     </AppShell>
   );
 }

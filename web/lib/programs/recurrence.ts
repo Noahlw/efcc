@@ -37,6 +37,21 @@ export interface Occurrence {
   ends_at: string;
 }
 
+/** HK wall date ("YYYY-MM-DD") of an ISO-8601 UTC instant. */
+export function hkWallDateOf(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: HK_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(iso));
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
 /** "YYYY-MM-DD" (HK wall) + "HH:MM" (HK wall) -> ISO-8601 UTC instant. */
 export function hkWallToUtc(wallDate: string, wallTime: string): string {
   return new Date(`${wallDate}T${wallTime}:00+08:00`).toISOString();
@@ -55,17 +70,7 @@ export function isWallTime(v: unknown): v is string {
 
 /** Today's HK wall date, "YYYY-MM-DD". */
 export function hkTodayWallDate(now: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: HK_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const map: Record<string, string> = {};
-  for (const p of parts) {
-    map[p.type] = p.value;
-  }
-  return `${map.year}-${map.month}-${map.day}`;
+  return hkWallDateOf(now.toISOString());
 }
 
 /** Shift a HK wall date by whole days (DST-free wall arithmetic). */
@@ -115,4 +120,65 @@ export function occurrencesForRule(
     });
   }
   return result;
+}
+
+export interface EventLike {
+  starts_at: string;
+  source: string;
+}
+
+/**
+ * The schedule exception overriding an event row, when attribution is
+ * unambiguous: the rule whose schedule produced the event (same attribution
+ * rule as the events panel) with an exception on the event's HK wall date.
+ * CANCEL exceptions normally suppress generation, so a match here means the
+ * exception was created after the row was materialized. Returns null for
+ * MANUAL events and for rows with no matching exception.
+ */
+export function exceptionForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[],
+  exceptions: ScheduleExceptionLike[]
+): ScheduleExceptionLike | null {
+  if (event.source !== "SCHEDULE") {
+    return null;
+  }
+  const date = hkWallDateOf(event.starts_at);
+  const time = new Date(
+    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  )
+    .toISOString()
+    .slice(11, 16);
+  const byDate = rules.filter((rule) =>
+    rule.recurrence === "WEEKLY"
+      ? rule.day_of_week === wallWeekday(date)
+      : rule.month_day === Number(date.slice(8, 10))
+  );
+  const rule =
+    byDate.length === 1
+      ? byDate[0]
+      : (byDate.find((r) => r.start_time === time) ?? null);
+  if (!rule) {
+    return null;
+  }
+  return (
+    exceptions.find(
+      (e) => e.rule_id === rule.rule_id && e.override_date === date
+    ) ?? null
+  );
+}
+
+const HK_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-Hant", {
+  timeZone: HK_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** HK wall date+time label ("2026/08/06 08:00") for an ISO-8601 UTC instant. */
+export function hkWallDateTimeLabel(iso: string): string {
+  return HK_DATE_TIME_FORMATTER.format(new Date(iso));
 }

@@ -145,7 +145,7 @@
 
 .formCard {
   background: var(--paper-raised);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 1.75rem;
   width: 100%;
@@ -176,11 +176,23 @@
   margin: 0 0 1rem;
   padding: 0.75rem 0.875rem;
   border-radius: 8px;
-  background: rgba(185, 28, 28, 0.1);
-  border: 1px solid rgba(185, 28, 28, 0.3);
-  color: #b91c1c;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
   font-size: 0.92rem;
   line-height: 1.5;
+}
+
+.noticeError {
+  background: var(--error-surface, #fbeeed);
+  border-color: var(--error-border, #e5b4b0);
+  color: var(--error, #b3261e);
+}
+
+.noticeSuccess {
+  background: var(--success-surface, #eef4ef);
+  border-color: var(--success-border, #b9cfbe);
+  color: var(--ink);
 }
 
 .form {
@@ -198,6 +210,7 @@
 .fieldLabel {
   font-size: 0.88rem;
   font-weight: 700;
+  color: var(--ink-soft);
 }
 
 .input {
@@ -208,7 +221,7 @@
   border-radius: 8px;
   background: var(--paper-raised);
   color: var(--ink);
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-family: inherit;
 }
 
@@ -227,7 +240,7 @@
   border-radius: 8px;
   background: var(--accent);
   color: #fff;
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 800;
   font-family: inherit;
   cursor: pointer;

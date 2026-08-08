@@ -12,14 +12,10 @@ import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { firstSection } from "@/lib/sections";
 import {
   buildBootstrap,
-  buildLocalDemoBootstrap,
   clearAuthHint,
-  clearLocalDemoAuth,
   hasAuthHint,
-  isLocalDemoCredentials,
   restoreBootstrap,
   setAuthHint,
-  setLocalDemoAuth,
 } from "@/lib/session";
 
 import styles from "./page.module.css";
@@ -48,6 +44,12 @@ export default function LoginPage() {
   const [legacyPin, setLegacyPin] = useState("");
   const [newCredential, setNewCredential] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  // Flash notices carry different tones: errors (expiry, failed logout,
+  // login failure) vs success (account updated) vs neutral instructions
+  // (legacy-PIN upgrade gate). All keep role="alert" for announcement.
+  const [noticeKind, setNoticeKind] = useState<
+    "error" | "info" | "success"
+  >("info");
   const mountRef = useRef(true);
 
   useEffect(
@@ -61,6 +63,7 @@ export default function LoginPage() {
     clearAuthHint();
     announce(message);
     setNotice(message);
+    setNoticeKind("error");
     setView({ kind: "SIGNED_OUT" });
   }, []);
 
@@ -120,16 +123,19 @@ export default function LoginPage() {
     if (sessionStorage.getItem("efcc_session_expired") === "1") {
       announce(COPY.restore.expired);
       setNotice(COPY.restore.expired);
+      setNoticeKind("error");
       sessionStorage.removeItem("efcc_session_expired");
     }
     if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
       announce(COPY.logout.failedNotice);
       setNotice(COPY.logout.failedNotice);
+      setNoticeKind("error");
       sessionStorage.removeItem(LOGOUT_FAILED_KEY);
     }
     if (sessionStorage.getItem(ACCOUNT_UPDATED_KEY) === "1") {
       announce(COPY.account.updatedNotice);
       setNotice(COPY.account.updatedNotice);
+      setNoticeKind("success");
       sessionStorage.removeItem(ACCOUNT_UPDATED_KEY);
     }
   }, []);
@@ -138,14 +144,6 @@ export default function LoginPage() {
     setView({ kind: "AUTHENTICATING" });
     announce(COPY.login.submitting);
     setNotice(null);
-    if (isLocalDemoCredentials(username, password)) {
-      setLocalDemoAuth();
-      setAuthHint();
-      announce(COPY.login.success);
-      navigateAfterLogin(buildLocalDemoBootstrap());
-      return;
-    }
-    clearLocalDemoAuth();
     try {
       const result = await authLogin(username, password);
       if (result.mustSetNewCredential) {
@@ -158,6 +156,7 @@ export default function LoginPage() {
         setNewCredential("");
         setView({ kind: "UPGRADE" });
         setNotice(COPY.login.upgradeRequired);
+        setNoticeKind("info");
         announce(COPY.login.upgradeRequired);
         return;
       }
@@ -311,7 +310,16 @@ export default function LoginPage() {
               </div>
               <p className={styles.cardLead}>{LANDING.loginPanelLead}</p>
               {notice && (
-                <p role="alert" className={styles.notice}>
+                <p
+                  role="alert"
+                  className={`${styles.notice} ${
+                    noticeKind === "error"
+                      ? styles.noticeError
+                      : noticeKind === "success"
+                        ? styles.noticeSuccess
+                        : ""
+                  }`}
+                >
                   {notice}
                 </p>
               )}
@@ -407,7 +415,10 @@ export default function LoginPage() {
                 </p>
               </form>
               {view.kind === "ERROR" && (
-                <p role="alert" className={styles.notice}>
+                <p
+                  role="alert"
+                  className={`${styles.notice} ${styles.noticeError}`}
+                >
                   {view.error}
                 </p>
               )}

@@ -27,7 +27,7 @@
 
 .cardLead {
   margin: 0 0 1.5rem;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: var(--ink-muted);
 }
@@ -36,25 +36,25 @@
   margin: 0 0 1.25rem;
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  background: #eef4ef;
-  border: 1px solid #b9cfbe;
+  background: var(--success-surface);
+  border: 1px solid var(--success-border);
   color: var(--ink);
-  font-size: 0.9375rem;
+  font-size: 1rem;
 }
 
 .error {
   margin: 0 0 1.25rem;
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  background: #fbeeed;
-  border: 1px solid #e5b4b0;
-  color: var(--accent-deep);
-  font-size: 0.9375rem;
+  background: var(--error-surface);
+  border: 1px solid var(--error-border);
+  color: var(--error);
+  font-size: 1rem;
 }
 
 .sectionLabel {
   margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -86,13 +86,13 @@
 
 .deptName {
   margin: 0;
-  font-size: 1.0625rem;
+  font-size: 1rem;
   font-weight: 800;
 }
 
 .deptCode {
   margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   color: var(--ink-muted);
 }
 
@@ -106,7 +106,7 @@
 .badge {
   display: inline-block;
   padding: 0.1875rem 0.5625rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line-strong);
   font-size: 0.75rem;
   font-weight: 700;
@@ -114,14 +114,22 @@
 }
 
 .badgeActive {
-  border-color: #b9cfbe;
-  color: #2e6b37;
-  background: #eef4ef;
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-surface);
 }
 
 .detail {
   border-top: 1px solid var(--line);
   padding: 1rem;
+}
+
+.detail .sectionLabel {
+  margin-top: 1rem;
+}
+
+.detail .sectionLabel:first-child {
+  margin-top: 0;
 }
 
 .moduleRow {
@@ -137,13 +145,14 @@
 }
 
 .toggle {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--ink);
   padding: 0.3125rem 0.75rem;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -153,9 +162,24 @@
 }
 
 .toggleOn {
-  border-color: #b9cfbe;
-  color: #2e6b37;
-  background: #eef4ef;
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-surface);
+}
+
+.toggle:focus-visible,
+.retry:focus-visible,
+.button:focus-visible,
+.clearSelection:focus-visible,
+.memberOption:focus-visible,
+.taskButton:focus-visible,
+.actionButton:focus-visible,
+.dangerButton:focus-visible,
+.secondaryButton:focus-visible,
+.dangerOutline:focus-visible,
+.successOutline:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .programList {
@@ -169,8 +193,8 @@
 
 .programItem {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.75rem;
   padding: 0.625rem 0.875rem;
   background: var(--surface);
@@ -178,14 +202,54 @@
   border-radius: var(--radius-sm);
 }
 
+.programSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.programDetail {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.taskNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.taskButton {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.taskButton[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface-raised);
+}
+
 .programName {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .programMeta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
@@ -194,7 +258,7 @@
 .tag {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-raised);
   border: 1px solid var(--line);
   font-size: 0.75rem;
@@ -219,7 +283,7 @@
 }
 
 .fieldLabel {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--ink-muted);
 }
@@ -227,32 +291,39 @@
 .input,
 .select {
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   color: var(--ink);
   background: var(--surface-raised);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   padding: 0.5625rem 0.75rem;
-  min-height: 42px;
+  min-height: 44px;
 }
 
 .input:focus-visible,
 .select:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-color: var(--focus);
 }
 
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .button {
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--surface-raised);
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
   padding: 0.6875rem 1.25rem;
-  min-height: 42px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -277,19 +348,20 @@
 
 .retry {
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--accent);
   background: none;
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   padding: 0.5625rem 1.125rem;
+  min-height: 44px;
   cursor: pointer;
 }
 
 .retry:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--surface-raised);
 }
 
 /* ---- PRG-02 events panel ---- */
@@ -297,9 +369,13 @@
 .eventsPanel {
   margin-top: 0.75rem;
   padding: 0.75rem 0 0 1rem;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--line);
   display: grid;
   gap: 0.625rem;
+}
+
+.eventsPanel > .panelHeading:first-child {
+  margin-top: 0.25rem;
 }
 
 .panelHeading {
@@ -313,13 +389,31 @@
 .panelNotice {
   display: block;
   font-size: 0.875rem;
-  color: var(--seal);
+  color: var(--ink);
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  background: var(--success-surface);
 }
 
 .panelError {
   display: block;
   font-size: 0.875rem;
-  color: var(--danger, #b3261e);
+  color: var(--error);
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+}
+
+.ruleField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 130px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-muted);
 }
 
 .ruleForm,
@@ -334,21 +428,21 @@
 .ruleForm select,
 .cancelForm input {
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   padding: 0.5rem 0.625rem;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: var(--surface-raised);
   color: var(--ink);
   min-height: 44px;
 }
 
 .ruleForm input:focus-visible,
 .ruleForm select:focus-visible,
-.cancelForm input:focus-visible,
-.actionButton:focus-visible {
-  outline: 2px solid var(--accent);
+.cancelForm input:focus-visible {
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
+  border-color: var(--focus);
 }
 
 .actionButton {
@@ -366,7 +460,7 @@
 
 .actionButton:hover:not(:disabled) {
   background: var(--accent);
-  color: #fff;
+  color: var(--surface-raised);
 }
 
 .actionButton:disabled {
@@ -378,6 +472,112 @@
   margin: 0;
   font-size: 0.75rem;
   color: var(--ink-muted);
+}
+
+.programOverview {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.programOverviewMeta {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.confirmation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
+.dangerButton,
+.secondaryButton {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dangerButton {
+  border: 1px solid var(--error);
+  background: var(--error);
+  color: var(--surface-raised);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* Outline variants for the per-event exception controls: 改期/取消該次 stay
+   neutral or accent, 取消聚會 (permanent) is error-tinted, 恢復該次 (undo)
+   is success-tinted. */
+.dangerOutline {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--error);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dangerOutline:hover:not(:disabled) {
+  background: var(--error);
+  color: var(--surface-raised);
+}
+
+.successOutline {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--success);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.successOutline:hover:not(:disabled) {
+  background: var(--success);
+  color: var(--surface-raised);
+}
+
+.dangerOutline:disabled,
+.successOutline:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .ruleList,
@@ -397,6 +597,7 @@
   align-items: center;
   font-size: 0.875rem;
   padding: 0.375rem 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .eventDate {
@@ -410,7 +611,7 @@
 }
 
 .eventActive {
-  color: var(--seal);
+  color: var(--accent);
 }
 
 .eventCancelled {
@@ -418,9 +619,172 @@
   text-decoration: line-through;
 }
 
+.exceptionBadge {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+}
+
+.eventActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex-basis: 100%;
+}
+
+.eventReason {
+  flex-basis: 100%;
+  color: var(--ink-muted);
+}
+
 .emptyLine {
   font-size: 0.875rem;
   color: var(--ink-muted);
+}
+
+.moduleSection {
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.textarea {
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.5625rem 0.75rem;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-color: var(--focus);
+}
+
+.fieldHint {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.picker {
+  position: relative;
+  flex: 1 1 220px;
+}
+
+.selectedMember {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.clearSelection {
+  min-height: 44px;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.memberOptions {
+  position: absolute;
+  z-index: 2;
+  inset: calc(100% - 0.5rem) 0 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 12px rgb(23 26 29 / 12%);
+}
+
+.memberOption {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+}
+
+.memberOption:hover {
+  background: var(--surface);
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding-inline: 0.75rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .deptRow,
+  .programSummary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .deptActions {
+    flex-wrap: wrap;
+  }
+
+  .form,
+  .ruleForm,
+  .cancelForm,
+  .eventActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cancelForm {
+    width: 100%;
+  }
+
+  .field,
+  .picker {
+    flex-basis: auto;
+  }
+
+  .actionButton,
+  .button,
+  .toggle,
+  .taskButton,
+  .dangerButton,
+  .secondaryButton,
+  .dangerOutline,
+  .successOutline,
+  .clearSelection,
+  .retry {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
