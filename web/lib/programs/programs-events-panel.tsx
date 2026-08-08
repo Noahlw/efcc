@@ -347,6 +347,7 @@ export const EventsPanel = ({
         return COPY.programs.exceptionRemovedNotice;
       }
     );
+  };
   const printSheet = (event: ProgramEvent) => {
     const token = program.check_in_token;
     const code = event.manual_check_in_code;
@@ -360,7 +361,7 @@ export const EventsPanel = ({
     void (async () => {
       const sheet = await buildCheckInSheet({
         programName: program.name,
-        startsAtLabel: hkWallLabel(event.starts_at),
+        startsAtLabel: hkWallDateTimeLabel(event.starts_at),
         checkInUrl: `${window.location.origin}/guest-check-in?program_token=${encodeURIComponent(token)}`,
         manualCode: code,
         renderQr: qrDataUrl,
