@@ -291,3 +291,140 @@
   background: var(--accent);
   color: #fff;
 }
+
+/* ---- PRG-02 events panel ---- */
+
+.eventsPanel {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0 0 1rem;
+  border-top: 1px solid var(--hairline);
+  display: grid;
+  gap: 0.625rem;
+}
+
+.panelHeading {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.875rem;
+  margin: 0;
+  color: var(--ink);
+}
+
+.panelNotice {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--seal);
+}
+
+.panelError {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--danger, #b3261e);
+}
+
+.ruleForm,
+.cancelForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ruleForm input,
+.ruleForm select,
+.cancelForm input {
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 44px;
+}
+
+.ruleForm input:focus-visible,
+.ruleForm select:focus-visible,
+.cancelForm input:focus-visible,
+.actionButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.actionButton {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.actionButton:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.timeMarker {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+.ruleList,
+.eventList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.375rem;
+}
+
+.ruleRow,
+.eventRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.875rem;
+  padding: 0.375rem 0;
+}
+
+.eventDate {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.eventSource {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+.eventActive {
+  color: var(--seal);
+}
+
+.eventCancelled {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
+.emptyLine {
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actionButton {
+    transition: none;
+  }
+}

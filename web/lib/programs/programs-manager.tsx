@@ -20,6 +20,7 @@ import type {
   DepartmentModule,
   Program,
 } from "@/lib/programs/program-api";
+import { EventsPanel } from "@/lib/programs/programs-events-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -434,6 +435,10 @@ const ProgramsManager = () => {
                                   : COPY.programs.discoverabilityUnlisted}
                               </span>
                             </div>
+                            <EventsPanel
+                              program={program}
+                              canManage={canManage}
+                            />
                           </li>
                         ))}
                       </ul>
