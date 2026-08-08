@@ -375,9 +375,19 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(duplicate.status, 409);
+    // Guests share the member duplicate shape (200 + outcome) so the panel
+    // renders the neutral already-done notice, not an error (regression:
+    // the guest path used to throw 409 DUPLICATE_ATTENDANCE).
+    assert.strictEqual(duplicate.status, 200);
     const duplicateBody = await json(duplicate);
-    assert.match(String(duplicateBody.detail), /聚會負責人/u);
+    const duplicateData = duplicateBody.data as {
+      outcome: string;
+      attendance_id: string;
+    };
+    assert.strictEqual(duplicateData.outcome, "duplicate");
+    // The duplicate points at the original row, so voiding it releases the
+    // phone for a genuine re-check-in below.
+    assert.strictEqual(duplicateData.attendance_id, attendanceId);
 
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const voided = await worker.fetch(
@@ -773,5 +783,68 @@ describe("attendance Worker routes", () => {
       .bind(attendance_id)
       .first<{ status: string }>();
     assert.strictEqual(row?.status, "Active");
+  });
+
+  test("guest check-in name over 80 chars is rejected (422 VALIDATION)", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪".repeat(81),
+          phone: "6999 9999",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+    const body = await json(response);
+    assert.strictEqual(body.code, "VALIDATION");
+    assert.match(String(body.detail), /80/u);
+    const row = await testDb()
+      .prepare(
+        `SELECT 1 FROM attendances WHERE event_id = ? AND guest_phone_normalized = ?`
+      )
+      .bind(EVENT, "hk:85269999999")
+      .first();
+    assert.strictEqual(row, null);
+  });
+
+  test("guest correction name over 80 chars is rejected (422 VALIDATION)", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客更正上限",
+          phone: "6888 8887",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 201);
+    const { attendance_id } = (await json(checkIn)).data as {
+      attendance_id: string;
+    };
+    const corrected = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          name: "超".repeat(81),
+          phone: "6888 8887",
+          reason: "更正測試",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(corrected.status, 422);
+    const body = await json(corrected);
+    assert.strictEqual(body.code, "VALIDATION");
   });
 });

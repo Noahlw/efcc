@@ -61,4 +61,22 @@ describe("attendance error copy mapping", () => {
       COPY.attendance.guestDuplicate
     );
   });
+
+  test("VALIDATION surfaces the server detail when present", () => {
+    expect(errorCopyFor("VALIDATION", "請輸入有效電話號碼。")).toBe(
+      "請輸入有效電話號碼。"
+    );
+    // Whitespace-only detail falls back to the generic validation copy.
+    expect(errorCopyFor("VALIDATION", "   ")).toBe(COPY.error.validation);
+    expect(errorCopyFor("VALIDATION")).toBe(COPY.error.validation);
+  });
+
+  test("other codes never leak the raw detail", () => {
+    expect(errorCopyFor("FORBIDDEN", "secret internal reason")).toBe(
+      COPY.error.forbidden
+    );
+    expect(errorCopyFor("INTERNAL_ERROR", "secret internal reason")).toBe(
+      COPY.error.serverError
+    );
+  });
 });

@@ -39,7 +39,7 @@
 
 .lead {
   margin: -0.375rem 0 0;
-  font-size: 0.95rem;
+  font-size: 1rem;
   line-height: 1.6;
 }
 
@@ -84,7 +84,7 @@
 }
 
 .fieldHint {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 400;
   line-height: 1.5;
   color: var(--ink-muted);
@@ -267,7 +267,7 @@
   margin-top: 0.25rem;
   color: var(--accent-deep);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 /* Roster rows — flat rows with a hairline, not nested cards. */
@@ -282,14 +282,20 @@
 
 .rowName {
   font-weight: 800;
+  /* A long guest name must wrap inside the row, never push the status pill
+     off the card or occlude the sibling controls. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 /* Compact status/metadata tags (rounded-pill reserved for tags). */
 .pill {
   justify-self: start;
+  flex-shrink: 0;
   padding: 0.15rem 0.6rem;
   border-radius: var(--radius-pill);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.4;
 }

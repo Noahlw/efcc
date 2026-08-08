@@ -12,6 +12,7 @@ import {
   selfCheckIn,
 } from "@/lib/programs/program-api";
 import type { AttendanceEvent } from "@/lib/programs/program-api";
+import { hkWallLabel } from "@/lib/hk-time";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
@@ -19,7 +20,7 @@ import styles from "./attendance-panel.module.css";
 type StatusTone = "info" | "success" | "error";
 
 function eventLabel(event: AttendanceEvent): string {
-  return `${event.program_name} · ${new Date(event.starts_at).toLocaleString("zh-HK")}`;
+  return `${event.program_name} · ${hkWallLabel(event.starts_at)}`;
 }
 
 function entryFromValue(value: string): { value: string; fromQr: boolean } {
@@ -170,7 +171,7 @@ export const AttendancePanel = ({
   }
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
         <h1 id="attendance-title" className={styles.title}>
           {title ??
@@ -249,7 +250,7 @@ export const AttendancePanel = ({
                   >
                     <strong>{event.program_name}</strong>
                     <span className={styles.eventMeta}>
-                      {new Date(event.starts_at).toLocaleString("zh-HK")}
+                      {hkWallLabel(event.starts_at)}
                     </span>
                   </button>
                 </li>
@@ -258,7 +259,14 @@ export const AttendancePanel = ({
           </div>
         )}
         {guest && selected && (
-          <div className={styles.group} aria-labelledby="guest-fields-title">
+          <form
+            className={styles.group}
+            aria-labelledby="guest-fields-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
             <h2 id="guest-fields-title" className={styles.sectionTitle}>
               {COPY.attendance.guestFields}
             </h2>
@@ -273,6 +281,7 @@ export const AttendancePanel = ({
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   autoComplete="name"
+                  maxLength={80}
                   required
                 />
               </label>
@@ -295,14 +304,22 @@ export const AttendancePanel = ({
                 </span>
               </label>
             </div>
-          </div>
+            <button
+              className={styles.button}
+              type="submit"
+              disabled={busy}
+              aria-busy={busy}
+            >
+              {COPY.attendance.guestSubmit}
+            </button>
+          </form>
         )}
         {selected && (
           <p className={styles.hint}>
             {COPY.attendance.eventTime}: {eventLabel(selected)}
           </p>
         )}
-        {selected && (
+        {selected && !guest && (
           <button
             className={styles.button}
             type="button"
@@ -310,7 +327,7 @@ export const AttendancePanel = ({
             aria-busy={busy}
             onClick={() => void submit()}
           >
-            {guest ? COPY.attendance.guestSubmit : COPY.attendance.memberSubmit}
+            {COPY.attendance.memberSubmit}
           </button>
         )}
         <output
@@ -344,6 +361,6 @@ export const AttendancePanel = ({
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 };

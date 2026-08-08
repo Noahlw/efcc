@@ -11,6 +11,9 @@ export type AttendanceMethod =
   | "guest_qr_scan"
   | "guest_manual_code";
 
+/** Guest-name cap shared by check-in and guest correction (UI maxLength). */
+export const GUEST_NAME_MAX_LENGTH = 80;
+
 export interface AttendanceEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
@@ -584,7 +587,15 @@ async function insertAttendance(
         )
           .bind(event.event_id, input.memberUserId)
           .first<{ attendance_id: string }>()
-      : null;
+      : input.guestPhoneNormalized
+        ? await env.DB.prepare(
+            `SELECT attendance_id FROM attendances
+              WHERE event_id = ? AND guest_phone_normalized = ? AND status = 'Active'
+                AND member_user_id IS NULL`
+          )
+            .bind(event.event_id, input.guestPhoneNormalized)
+            .first<{ attendance_id: string }>()
+        : null;
     await audit(env.DB, {
       actorUserId: input.actor?.user_id ?? null,
       action: "attendance.check_in",
@@ -594,7 +605,11 @@ async function insertAttendance(
       reason: "ACTIVE_ATTENDANCE_EXISTS",
       correlationId: id,
     });
-    if (input.memberUserId && existing) {
+    if (existing) {
+      // Members and guests share one duplicate shape (200 + outcome) so the
+      // client treats both as neutral already-done notices; only the
+      // un-look-up-able case (no normalized phone on a guest insert) stays a
+      // problem+json 409.
       return json(
         200,
         {
@@ -790,6 +805,14 @@ export async function handleGuestCheckIn(
     !input.name.trim()
   ) {
     return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  }
+  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
+    return problem(
+      422,
+      "VALIDATION",
+      `姓名不可超過 ${GUEST_NAME_MAX_LENGTH} 個字元。`,
+      id
+    );
   }
   const normalized = normalizeGuestPhone(input.phone);
   if (!normalized) {
@@ -1064,6 +1087,14 @@ export async function handleCorrectGuest(
     !input.reason.trim()
   ) {
     return problem(422, "VALIDATION", "姓名、電話和原因都是必填資料。", id);
+  }
+  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
+    return problem(
+      422,
+      "VALIDATION",
+      `姓名不可超過 ${GUEST_NAME_MAX_LENGTH} 個字元。`,
+      id
+    );
   }
   const normalized = normalizeGuestPhone(input.phone);
   if (!normalized) {

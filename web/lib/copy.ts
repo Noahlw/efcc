@@ -67,6 +67,21 @@ export const COPY = {
     cameraRetry: "重試相機",
     cameraUnavailable: "相機不可用，請使用手動代碼。",
     assistedOpen: "開協助簽到",
+    status: {
+      Active: "有效",
+      Voided: "已作廢",
+    },
+    method: {
+      self_qr_scan: "成員掃描 QR",
+      self_manual_code: "成員手動代碼",
+      leader_qr_scan: "負責人掃描 QR",
+      leader_manual_search: "負責人手動搜尋",
+      guest_qr_scan: "訪客掃描 QR",
+      guest_manual_code: "訪客手動代碼",
+    },
+    sheetMethod: "簽到方法",
+    sheetScanInstruction: "請使用手機相機掃描 QR 碼以簽到",
+    sheetManualCode: "聚會手動代碼",
   },
   profile: {
     title: "個人檔案",
@@ -302,7 +317,9 @@ export const COPY = {
 
 export function errorCopyFor(
   code?: string,
-  // _detail reserved for future fallback; centralized copy is the sole user-facing source.
+  // _detail is surfaced only for VALIDATION problems, whose server detail is
+  // a specific user-facing Cantonese sentence; every other code keeps
+  // centralized copy as the sole user-facing source.
   _detail?: string
 ): string {
   if (code === "NETWORK_ERROR") {
@@ -315,7 +332,11 @@ export function errorCopyFor(
     return COPY.error.forbidden;
   }
   if (code === "VALIDATION") {
-    return COPY.error.validation;
+    // Server VALIDATION problems carry a specific, user-facing Cantonese
+    // detail (e.g. 請輸入有效電話號碼。); surface it instead of the generic
+    // catch-all so the guest/member panels show why the submit was refused.
+    // Other codes keep the centralized copy as the sole user-facing source.
+    return _detail?.trim() ? _detail : COPY.error.validation;
   }
   if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND"))) {
     return COPY.error.notFound;

@@ -1311,6 +1311,22 @@ describe("Shell", () => {
       });
     });
 
+    test("events page gates the operator panel behind the events section", async () => {
+      // A Member's bootstrap has no events section (sectionsForRole), so
+      // GuardedSection must render ForbiddenView instead of the panel.
+      withAuthRestore(PUBLIC_USER);
+      setAuthHint();
+      render(<EventsPage />);
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          COPY.error.forbidden
+        );
+      });
+      expect(
+        screen.queryByRole("heading", { name: COPY.sections.events })
+      ).not.toBeInTheDocument();
+    });
+
     test("scanner page renders COPY.sections.scanner title", async () => {
       withAuthRestore(STAFF_USER);
       setAuthHint();

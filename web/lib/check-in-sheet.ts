@@ -5,6 +5,8 @@
  * a thin DOM wrapper and the QR rendering is unit-testable.
  */
 
+import { COPY } from "./copy";
+
 export interface CheckInSheetRow {
   label: string;
   value: string | null;
@@ -14,7 +16,9 @@ export interface CheckInSheet {
   programName: string;
   startsAtLabel: string;
   rows: CheckInSheetRow[];
-  /** QR data URL for the guest check-in deep link. */
+  /** QR data URL for the guest check-in deep link (the only place the full
+   * URL appears on the sheet; the printed plaintext rows carry the
+   * human-enterable manual code instead so a long URL cannot wrap ugly). */
   qrDataUrl: string;
   manualCode: string;
 }
@@ -27,14 +31,18 @@ export async function buildCheckInSheet(input: {
   renderQr: (text: string) => string | Promise<string>;
 }): Promise<CheckInSheet> {
   const qr = await input.renderQr(input.checkInUrl);
+  const { attendance } = COPY;
   return {
     programName: input.programName,
     startsAtLabel: input.startsAtLabel,
     rows: [
       { label: input.programName, value: null },
       { label: input.startsAtLabel, value: null },
-      { label: "Program QR URL", value: input.checkInUrl },
-      { label: "Event Manual Code", value: input.manualCode },
+      {
+        label: attendance.sheetMethod,
+        value: attendance.sheetScanInstruction,
+      },
+      { label: attendance.sheetManualCode, value: input.manualCode },
     ],
     qrDataUrl: qr,
     manualCode: input.manualCode,

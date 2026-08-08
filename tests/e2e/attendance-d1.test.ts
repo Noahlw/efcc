@@ -85,15 +85,20 @@ const COPY = {
   memberDuplicate: "你已完成此聚會簽到。",
   guestDuplicate: "此電話已簽到。如需協助，請聯絡聚會負責人。",
   eventCancelled: "此聚會已取消，不能簽到。",
+  eventCancelledBadge: "已取消",
+  camera: "使用相機掃描 QR",
   invalidEntry: "請從有效的 QR 或聚會代碼進入簽到。",
   enrollmentRequired: "報名狀態不符合簽到條件。",
   notFound: "找不到請求的資料。",
+  invalidPhoneDetail: "請輸入有效電話號碼。",
   memberSearch: "搜尋已報名成員",
   search: "搜尋",
   checkInMember: "替成員簽到",
   roster: "簽到名單",
   void: "取消簽到",
   voidReason: "取消原因",
+  statusActive: "有效",
+  statusVoided: "已作廢",
   printSheet: "列印聚會簽到表",
   programEvents: "聚會與時間表",
   programDetails: "查看課程詳情",
@@ -490,7 +495,7 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     await expect(statusText(page, COPY.success)).toBeVisible();
   });
 
-  test("B guest duplicate: same phone 409 DUPLICATE_ATTENDANCE + neutral notice", async ({
+  test("B guest same phone 200 {outcome duplicate} + neutral notice", async ({
     page,
     playwright,
   }) => {
@@ -509,6 +514,8 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
       );
       expect(first.status).toBe(201);
       expect((first.body.data as { outcome: string }).outcome).toBe("success");
+       const firstId = (first.body.data as { attendance_id: string })
+         .attendance_id;
 
       const second = await guestCheckIn(
         api,
@@ -517,10 +524,17 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         name,
         phone
       );
-      expect(second.status).toBe(409);
-      expect((second.body as { code: string }).code).toBe(
-        "DUPLICATE_ATTENDANCE"
-      );
+      // Guests share the member duplicate shape (200 + outcome) instead
+      // of the old 409 problem; the client renders an invariant
+      // already-done notice rather than an error.
+      expect(second.status).toBe(200);
+      const duplicateData = second.body.data as {
+        outcome: string;
+        attendance_id: string;
+      };
+      expect(duplicateData.outcome).toBe("duplicate");
+      // The duplicate points at the ORIGINAL row, not a fresh insert.
+      expect(duplicateData.attendance_id).toBe(firstId);
 
       // UI: same event manual code + same phone surfaces the neutral notice.
       await guestPanelCheckIn(
@@ -530,6 +544,10 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         phone
       );
       await expect(statusText(page, COPY.guestDuplicate)).toBeVisible();
+      // …with the neutral tone of the panel output.
+      await expect(page.locator("main output[data-tone='info']")).toContainText(
+        COPY.guestDuplicate
+      );
     } finally {
       await api.dispose();
     }
@@ -571,7 +589,7 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         await expect(row.getByText(COPY.voidReason)).toBeVisible();
         await row.locator(`#void-${attendanceId}`).fill("E2E 重複簽到，作廢重簽");
         await row.getByRole("button", { name: COPY.void }).click();
-        await expect(row.getByText("Voided")).toBeVisible();
+        await expect(row.getByText(COPY.statusVoided)).toBeVisible();
         await expect(
           row.getByRole("button", { name: COPY.void })
         ).toHaveCount(0);
@@ -702,7 +720,11 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         has: page.getByText(MEMBER_USER_ID, { exact: true }),
       });
       await expect(memberRow).toBeVisible();
-      await expect(memberRow.getByText("Active")).toBeVisible();
+      await expect(memberRow.getByText(COPY.statusActive)).toBeVisible();
+      // The assisted check-in success notice stays visible: the roster
+      // reload after checkIn is silent (ATT regression: it used to
+      // overwrite the success flash with the roster count).
+      await expect(statusText(page, COPY.success)).toBeVisible();
     } finally {
       await adminContext.close();
     }
@@ -842,5 +864,87 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     } finally {
       await adminContext.close();
     }
+});
+
+  test("J cancelled event on the operator panel: badge, notice, and no check-in controls", async ({
+    browser,
+  }) => {
+    const adminContext = await browser.newContext({
+      storageState: fixtures.adminState,
+  });
+    const page = await adminContext.newPage();
+    try {
+      await page.goto(
+        `/events?eventId=${encodeURIComponent(fixtures.cancelledEvent.event_id)}`
+      );
+      // The chooser marks the cancelled option.
+      await expect(
+        page
+          .locator("#event-chooser option")
+          .filter({ hasText: `（${COPY.eventCancelledBadge}）` })
+      ).toHaveCount(1);
+      // The roster is still readable, so operators can see who had checked
+      // in before the cancellation.
+      await expect(
+        page.getByRole("heading", { name: COPY.roster })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.eventCancelled, { exact: true })
+      ).toBeVisible();
+      // None of the check-in tools apply to a cancelled event.
+      await expect(
+        page.getByRole("button", { name: COPY.camera })
+      ).toHaveCount(0);
+      await expect(page.locator("#member-search")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: COPY.printSheet })
+      ).toHaveCount(0);
+    } finally {
+      await adminContext.close();
+    }
+  });
+
+  test("K empty guest submit: native validation blocks the request", async ({
+    page,
+  }) => {
+    await page.goto("/guest-check-in");
+    await page
+      .locator("#attendance-code")
+      .fill(fixtures.eventA.manual_check_in_code);
+    await page.getByRole("button", { name: COPY.resolve }).click();
+    await expect(page.locator("#guest-name")).toBeVisible();
+
+    let guestPostCount = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/v1/attendance/guest"
+      ) {
+        guestPostCount += 1;
+    }
+});
+    await page.getByRole("button", { name: COPY.guestSubmit }).click();
+    await page.waitForTimeout(300);
+    expect(guestPostCount).toBe(0);
+    // The required inputs keep their browser state; name caps at 80.
+    await expect(page.locator("#guest-phone")).toBeVisible();
+    await expect(page.locator("#guest-name")).toHaveAttribute("maxlength", "80");
+  });
+
+  test("L invalid phone surfaces the server VALIDATION detail with the error tone", async ({
+    page,
+  }) => {
+    await page.goto("/guest-check-in");
+    await page
+      .locator("#attendance-code")
+      .fill(fixtures.eventA.manual_check_in_code);
+    await page.getByRole("button", { name: COPY.resolve }).click();
+    await expect(page.locator("#guest-name")).toBeVisible();
+    await page.locator("#guest-name").fill(`E2E訪客 ${fresh("L")}`);
+    await page.locator("#guest-phone").fill("not-a-phone");
+    await page.getByRole("button", { name: COPY.guestSubmit }).click();
+    await expect(
+      page.locator("main output[data-tone='error']")
+    ).toContainText(COPY.invalidPhoneDetail);
   });
 });

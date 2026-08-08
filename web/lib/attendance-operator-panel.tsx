@@ -18,6 +18,7 @@ import type {
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/programs/program-api";
+import { hkWallLabel } from "@/lib/hk-time";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
@@ -55,7 +56,7 @@ export const AttendanceOperatorPanel = () => {
     announce(message);
   }
 
-  async function loadRoster(eventIdInput = eventId) {
+  async function loadRoster(eventIdInput = eventId, silent = false) {
     if (!eventIdInput.trim()) {
       showStatus(COPY.attendance.eventId);
       return;
@@ -65,14 +66,19 @@ export const AttendanceOperatorPanel = () => {
       const result = await listAttendanceRoster(eventIdInput.trim());
       setEvent(result.event);
       setRows(result.attendances);
-      showStatus(`${result.attendances.length} ${COPY.attendance.roster}`);
+      // After a successful assisted check-in the caller reloads silently so
+      // the roster count does not overwrite the visible success notice
+      // within the same render pass.
+      if (!silent) {
+        showStatus(`${result.attendances.length} ${COPY.attendance.roster}`);
+      }
     } catch (error) {
       showError(error);
     } finally {
       setBusy(false);
     }
   }
-
+  
   async function searchMembers() {
     setBusy(true);
     try {
@@ -96,8 +102,12 @@ export const AttendanceOperatorPanel = () => {
     setBusy(true);
     try {
       await assistedCheckIn(eventId.trim(), member.user_id, method);
-      showStatus(COPY.attendance.success, "success");
-      await loadRoster();
+      const message = COPY.attendance.success;
+      showStatus(message, "success");
+      // Screen readers get the success even though the roster reload below
+      // leaves the visible status alone (silent reload keeps the notice up).
+      announce(message);
+      await loadRoster(undefined, true);
     } catch (error) {
       showError(error);
     } finally {
@@ -192,7 +202,7 @@ export const AttendanceOperatorPanel = () => {
   }
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <section className={styles.card} aria-labelledby="operator-title">
         <h1 id="operator-title" className={styles.title}>
           {COPY.sections.events}
@@ -220,7 +230,9 @@ export const AttendanceOperatorPanel = () => {
                     value={chooserEvent.event_id}
                   >
                     {chooserEvent.program_name} ·{" "}
-                    {new Date(chooserEvent.starts_at).toLocaleString("zh-HK")}
+                    {hkWallLabel(chooserEvent.starts_at)}
+                    {chooserEvent.status === "Cancelled" &&
+                      `（${COPY.programs.eventCancelled}）`}
                   </option>
                 ))}
               </select>
@@ -249,10 +261,15 @@ export const AttendanceOperatorPanel = () => {
         {event && (
           <p className={styles.hint}>
             {event.program_name} ·{" "}
-            {new Date(event.starts_at).toLocaleString("zh-HK")}
+            {hkWallLabel(event.starts_at)}
           </p>
         )}
-        {event && (
+        {event?.status === "Cancelled" && (
+          <p className={styles.hint} role="alert">
+            {COPY.attendance.eventCancelled}
+          </p>
+        )}
+        {event && event.status === "Active" && (
           <div className={styles.group}>
             <div className={styles.actionsRow}>
               <button
@@ -286,6 +303,7 @@ export const AttendanceOperatorPanel = () => {
             aria-label={COPY.attendance.camera}
           />
         )}
+        {event && event.status === "Active" && (
         <div className={styles.group}>
           <div className={styles.inputRow}>
             <label className={styles.field} htmlFor="member-search">
@@ -331,6 +349,7 @@ export const AttendanceOperatorPanel = () => {
             </ul>
           )}
         </div>
+        )}
         {rows.length > 0 && (
           <div className={styles.group}>
             <h2 className={styles.sectionTitle}>{COPY.attendance.roster}</h2>
@@ -347,11 +366,11 @@ export const AttendanceOperatorPanel = () => {
                         : `${styles.pill} ${styles.pillMuted}`
                     }
                   >
-                    {row.status}
+                    {COPY.attendance.status[row.status]}
                   </span>
                 </div>
                 <span className={styles.eventMeta}>
-                  {row.guest_phone ?? row.method}
+                  {row.guest_phone ?? COPY.attendance.method[row.method]}
                 </span>
                 {row.status === "Active" && (
                   <>
@@ -406,6 +425,7 @@ export const AttendanceOperatorPanel = () => {
                         className={styles.input}
                         value={correctionName}
                         onChange={(e) => setCorrectionName(e.target.value)}
+                        maxLength={80}
                       />
                     </label>
                     <label className={styles.field} htmlFor="correction-phone">
@@ -444,7 +464,7 @@ export const AttendanceOperatorPanel = () => {
             ))}
           </div>
         )}
-        {event && (
+        {event && event.status === "Active" && (
           <button
             className={styles.buttonSecondary}
             type="button"
@@ -462,6 +482,6 @@ export const AttendanceOperatorPanel = () => {
           {status}
         </output>
       </section>
-    </main>
+    </div>
   );
 };

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { COPY } from "./copy";
 import { buildCheckInSheet } from "./check-in-sheet";
 
 describe(buildCheckInSheet, () => {
@@ -16,11 +17,14 @@ describe(buildCheckInSheet, () => {
       { label: "青崇", value: null },
       { label: "2026-08-07 19:00", value: null },
       {
-        label: "Program QR URL",
-        value: "https://efcc.example/guest-check-in?program_token=tok-1",
+        label: COPY.attendance.sheetMethod,
+        value: COPY.attendance.sheetScanInstruction,
       },
-      { label: "Event Manual Code", value: "A7B9C2" },
+      { label: COPY.attendance.sheetManualCode, value: "A7B9C2" },
     ]);
+    // The full deep-link URL only lives in the scannable QR image; the
+    // printed plaintext rows carry the human-enterable manual code instead.
+    expect(JSON.stringify(sheet.rows)).not.toContain("guest-check-in");
   });
 
   test("renders a real QR data URL through the qrcode encoder", async () => {
