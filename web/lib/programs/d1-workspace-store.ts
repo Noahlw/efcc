@@ -10,6 +10,10 @@ import type {
   DepartmentModuleRow,
   DepartmentRow,
   DepartmentUpdate,
+  EnrollmentInput,
+  EnrollmentRequestInput,
+  EnrollmentRequestRow,
+  EnrollmentRow,
   EventInput,
   EventRow,
   ProgramInput,
@@ -583,6 +587,188 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       return null;
     }
     return this.findEventById(id);
+  }
+
+  async createEnrollmentRequest(
+    input: EnrollmentRequestInput
+  ): Promise<EnrollmentRequestRow> {
+    await this.db
+      .prepare(
+        `INSERT INTO enrollment_requests (request_id, program_id, member_user_id,
+           status, submitted_at, request_version)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        input.request_id,
+        input.program_id,
+        input.member_user_id,
+        input.status,
+        input.submitted_at,
+        input.request_version
+      )
+      .run();
+    const row = await this.findEnrollmentRequestById(input.request_id);
+    if (!row) {
+      throw new WorkspaceNotFoundError("enrollment_request", input.request_id);
+    }
+    return row;
+  }
+
+  async findEnrollmentRequestById(
+    id: string
+  ): Promise<EnrollmentRequestRow | null> {
+    const row = await this.db
+      .prepare(
+        "SELECT * FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(id)
+      .first<EnrollmentRequestRow>();
+    return row ?? null;
+  }
+
+  async findPendingRequestByMember(
+    programId: string,
+    memberUserId: string
+  ): Promise<EnrollmentRequestRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM enrollment_requests
+         WHERE program_id = ? AND member_user_id = ? AND status = 'Pending'
+         ORDER BY submitted_at ASC`
+      )
+      .bind(programId, memberUserId)
+      .first<EnrollmentRequestRow>();
+    return row ?? null;
+  }
+
+  async listEnrollmentRequests(
+    programId: string
+  ): Promise<EnrollmentRequestRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM enrollment_requests
+         WHERE program_id = ? ORDER BY submitted_at ASC`
+      )
+      .bind(programId)
+      .all<EnrollmentRequestRow>();
+    return result.results ?? [];
+  }
+
+  async decideRequest(
+    id: string,
+    decision: "Approved" | "Rejected",
+    decidedBy: string,
+    decidedAt: string,
+    note: string | null
+  ): Promise<EnrollmentRequestRow | null> {
+    const result = await this.db
+      .prepare(
+        `UPDATE enrollment_requests
+         SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
+         WHERE request_id = ? AND status = 'Pending'`
+      )
+      .bind(decision, decidedBy, decidedAt, note, id)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    return this.findEnrollmentRequestById(id);
+  }
+
+  async withdrawRequest(
+    id: string,
+    memberUserId: string,
+    withdrawnAt: string
+  ): Promise<EnrollmentRequestRow | null> {
+    const result = await this.db
+      .prepare(
+        `UPDATE enrollment_requests
+         SET status = 'Withdrawn', decided_by = ?, decided_at = ?
+         WHERE request_id = ? AND status = 'Pending' AND member_user_id = ?`
+      )
+      .bind(memberUserId, withdrawnAt, id, memberUserId)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    return this.findEnrollmentRequestById(id);
+  }
+
+  async createEnrollment(input: EnrollmentInput): Promise<EnrollmentRow> {
+    await this.db
+      .prepare(
+        `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+           request_id, status, enrolled_at, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        input.enrollment_id,
+        input.program_id,
+        input.member_user_id,
+        input.request_id,
+        input.status,
+        input.enrolled_at,
+        input.created_by,
+        input.created_at
+      )
+      .run();
+    const row = await this.findEnrollmentById(input.enrollment_id);
+    if (!row) {
+      throw new WorkspaceNotFoundError("enrollment", input.enrollment_id);
+    }
+    return row;
+  }
+
+  async hasActiveEnrollment(
+    programId: string,
+    memberUserId: string
+  ): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        `SELECT enrollment_id FROM enrollments
+         WHERE program_id = ? AND member_user_id = ? AND status = 'Active'`
+      )
+      .bind(programId, memberUserId)
+      .first<{ enrollment_id: string }>();
+    return row !== null;
+  }
+
+  async findEnrollmentById(id: string): Promise<EnrollmentRow | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM enrollments WHERE enrollment_id = ?")
+      .bind(id)
+      .first<EnrollmentRow>();
+    return row ?? null;
+  }
+
+  async listEnrollments(programId: string): Promise<EnrollmentRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM enrollments WHERE program_id = ?
+         ORDER BY enrolled_at ASC`
+      )
+      .bind(programId)
+      .all<EnrollmentRow>();
+    return result.results ?? [];
+  }
+
+  async cancelEnrollment(
+    id: string,
+    cancelledBy: string,
+    cancelledAt: string
+  ): Promise<EnrollmentRow | null> {
+    const result = await this.db
+      .prepare(
+        `UPDATE enrollments
+         SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?
+         WHERE enrollment_id = ? AND status = 'Active'`
+      )
+      .bind(cancelledBy, cancelledAt, id)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
+    return this.findEnrollmentById(id);
   }
 
   async audit(input: AuditInput): Promise<void> {

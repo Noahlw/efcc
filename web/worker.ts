@@ -392,6 +392,13 @@ export default {
         handleCreateEvent,
         handleListEvents,
         handleCancelEvent,
+        handleCreateEnrollmentRequest,
+        handleListEnrollmentRequests,
+        handleDecideEnrollmentRequest,
+        handleWithdrawEnrollmentRequest,
+        handleAssistedEnroll,
+        handleListEnrollments,
+        handleCancelEnrollment,
       } = await import("./lib/programs/program-handlers");
 
       if (url.pathname === "/api/v1/programs/departments" && request.method === "POST") {
@@ -518,6 +525,67 @@ export default {
       );
       if (event && request.method === "PATCH") {
         return handleCancelEvent(request, programEnv, event.groups?.eventId ?? "");
+      }
+      const enrollmentRequests = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests$/u
+      );
+      if (enrollmentRequests && request.method === "POST") {
+        return handleCreateEnrollmentRequest(
+          request,
+          programEnv,
+          enrollmentRequests.groups?.id ?? ""
+        );
+      }
+      if (enrollmentRequests && request.method === "GET") {
+        return handleListEnrollmentRequests(
+          request,
+          programEnv,
+          enrollmentRequests.groups?.id ?? ""
+        );
+      }
+      const enrollmentRequest = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u
+      );
+      if (enrollmentRequest && request.method === "POST") {
+        if (enrollmentRequest.groups?.action === "decision") {
+          return handleDecideEnrollmentRequest(
+            request,
+            programEnv,
+            enrollmentRequest.groups?.requestId ?? ""
+          );
+        }
+        return handleWithdrawEnrollmentRequest(
+          request,
+          programEnv,
+          enrollmentRequest.groups?.requestId ?? ""
+        );
+      }
+      const enrollments = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments$/u
+      );
+      if (enrollments && request.method === "POST") {
+        return handleAssistedEnroll(
+          request,
+          programEnv,
+          enrollments.groups?.id ?? ""
+        );
+      }
+      if (enrollments && request.method === "GET") {
+        return handleListEnrollments(
+          request,
+          programEnv,
+          enrollments.groups?.id ?? ""
+        );
+      }
+      const enrollment = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments\/(?<enrollmentId>[^/]+)\/cancel$/u
+      );
+      if (enrollment && request.method === "POST") {
+        return handleCancelEnrollment(
+          request,
+          programEnv,
+          enrollment.groups?.enrollmentId ?? ""
+        );
       }
       return authProblemResponse(
         404,

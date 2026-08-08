@@ -21,6 +21,7 @@ import type {
   Program,
 } from "@/lib/programs/program-api";
 import { EventsPanel } from "@/lib/programs/programs-events-panel";
+import { EnrollmentPanel } from "@/lib/programs/programs-enrollment-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -438,6 +439,11 @@ const ProgramsManager = () => {
                             <EventsPanel
                               program={program}
                               canManage={canManage}
+                            />
+                            <EnrollmentPanel
+                              program={program}
+                              canManage={canManage}
+                              currentUserId={bootstrap.profile.userId}
                             />
                           </li>
                         ))}

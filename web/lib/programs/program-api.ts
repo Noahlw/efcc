@@ -93,6 +93,33 @@ export interface ProgramEvent {
   updated_at: string;
 }
 
+export interface EnrollmentRequest {
+  request_id: string;
+  program_id: string;
+  member_user_id: string;
+  status: "Pending" | "Approved" | "Rejected" | "Withdrawn";
+  submitted_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  request_version: number;
+}
+
+export interface Enrollment {
+  enrollment_id: string;
+  program_id: string;
+  member_user_id: string;
+  request_id: string | null;
+  status: "Active" | "Cancelled";
+  enrolled_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type EnrollmentDecision = "Approved" | "Rejected";
+
 export interface GenerateResult {
   created: number;
   skipped: number;
@@ -186,6 +213,82 @@ async function programsFetch<T>(
     problem.requestId = requestId;
   }
   throw new RpcError(problem);
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests */
+export function submitEnrollmentRequest(
+  programId: string
+): Promise<{ request: EnrollmentRequest }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-requests`,
+    "POST",
+    {}
+  );
+}
+
+/** GET /api/v1/programs/:programId/enrollment-requests */
+export function listEnrollmentRequests(
+  programId: string
+): Promise<{ requests: EnrollmentRequest[] }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-requests`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
+export function decideEnrollmentRequest(
+  programId: string,
+  requestId: string,
+  action: EnrollmentDecision,
+  note?: string
+): Promise<{ request: EnrollmentRequest }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+    "POST",
+    { action, note: note?.trim() ? note.trim() : null }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-requests/:requestId/withdraw */
+export function withdrawEnrollmentRequest(
+  programId: string,
+  requestId: string
+): Promise<{ request: EnrollmentRequest }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-requests/${requestId}/withdraw`,
+    "POST",
+    {}
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollments (assisted, ManagerOnly) */
+export function assistedEnroll(
+  programId: string,
+  memberUserId: string
+): Promise<{ enrollment: Enrollment }> {
+  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "POST", {
+    member_user_id: memberUserId,
+  });
+}
+
+/** GET /api/v1/programs/:programId/enrollments */
+export function listEnrollments(
+  programId: string
+): Promise<{ enrollments: Enrollment[] }> {
+  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "GET");
+}
+
+/** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
+export function cancelEnrollment(
+  programId: string,
+  enrollmentId: string
+): Promise<{ enrollment: Enrollment }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
+    "POST",
+    {}
+  );
 }
 
 /** GET /api/v1/programs/departments */

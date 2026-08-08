@@ -143,6 +143,7 @@ async function createProgram(
     name: string;
     behavior_type: "Recurring" | "OneOff";
     discoverability?: "Listed" | "Unlisted";
+    enrollment_mode?: "MemberRequest" | "ManagerOnly";
   }
 ): Promise<{ program_id: string; name: string }> {
   const res = await worker.fetch(
@@ -1291,5 +1292,692 @@ describe("PRG-02: events", () => {
     );
     const listedText = await listed.text();
     assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(listedText));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PRG-03 (#199): enrollment requests and enrollments.
+// ---------------------------------------------------------------------------
+
+async function submitRequest(
+  access: string,
+  programId: string
+): Promise<{ request_id: string; status: string }> {
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/enrollment-requests`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body: {},
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 201);
+  const result = (await assertCorrelated(res)) as {
+    data: { request: { request_id: string; status: string } };
+  };
+  return result.data.request;
+}
+
+async function decideRequest(
+  access: string,
+  programId: string,
+  requestId: string,
+  action: "Approved" | "Rejected"
+): Promise<Response> {
+  return worker.fetch(
+    programsRequest(
+      `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+      {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          "Content-Type": "application/json",
+        },
+        body: { action },
+      }
+    ),
+    testEnv()
+  );
+}
+
+async function assistedEnrollFor(
+  access: string,
+  programId: string,
+  memberUserId: string
+): Promise<Response> {
+  return worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/enrollments`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body: { member_user_id: memberUserId },
+    }),
+    testEnv()
+  );
+}
+
+async function listRequestsFor(
+  access: string,
+  programId: string
+): Promise<{ request_id: string; member_user_id: string; status: string }[]> {
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/enrollment-requests`, {
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+      },
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 200);
+  const result = (await assertCorrelated(res)) as {
+    data: {
+      requests: { request_id: string; member_user_id: string; status: string }[];
+    };
+  };
+  return result.data.requests;
+}
+
+async function listEnrollmentsFor(
+  access: string,
+  programId: string
+): Promise<{ enrollment_id: string; member_user_id: string; status: string }[]> {
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/enrollments`, {
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+      },
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 200);
+  const result = (await assertCorrelated(res)) as {
+    data: {
+      enrollments: {
+        enrollment_id: string;
+        member_user_id: string;
+        status: string;
+      }[];
+    };
+  };
+  return result.data.enrollments;
+}
+
+async function cancelEnrollmentFor(
+  access: string,
+  programId: string,
+  enrollmentId: string
+): Promise<Response> {
+  return worker.fetch(
+    programsRequest(
+      `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }
+    ),
+    testEnv()
+  );
+}
+
+describe("PRG-03: enrollment requests", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let carolAccess = "";
+  let deptId = "";
+  let requestProgramId = "";
+  let managerOnlyId = "";
+
+  beforeAll(async () => {
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      ["U003", "Carol Wong", "carol", "9012", "Member", "Active"],
+    ]);
+    await completeCredentialUpgrade(testDb(), {
+      userId: "U003",
+      legacyPin: "9012",
+      newCredential: "carol-secret",
+    });
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    carolAccess = await accessCookieFor("carol", "carol-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PRG-03",
+      name: "Enrollment Test Department",
+    });
+    deptId = dept.department_id;
+    const requestProgram = await createProgram(adminAccess, deptId, {
+      name: "Request Enrollment Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    requestProgramId = requestProgram.program_id;
+    const managerOnly = await createProgram(adminAccess, deptId, {
+      name: "Managed Enrollment Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    managerOnlyId = managerOnly.program_id;
+  });
+
+  test("REQ-1/2 a member submits a Pending request; ManagerOnly and unknown programs are rejected", async () => {
+    const request = await submitRequest(memberAccess, requestProgramId);
+    assert.strictEqual(request.status, "Pending");
+
+    const row = await testDb()
+      .prepare(
+        "SELECT status, request_version FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(request.request_id)
+      .first<{ status: string; request_version: number }>();
+    assert.strictEqual(row?.status, "Pending");
+    assert.strictEqual(row?.request_version, 1);
+
+    const managerOnly = await worker.fetch(
+      programsRequest(`/api/v1/programs/${managerOnlyId}/enrollment-requests`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(managerOnly.status, 422);
+
+    const unknown = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${crypto.randomUUID()}/enrollment-requests`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unknown.status, 404);
+  });
+
+  test("REQ-2 an Admin actor without program.enroll is denied 403", async () => {
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${requestProgramId}/enrollment-requests`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 403);
+  });
+
+  async function freshRequestProgram(name: string): Promise<string> {
+    const program = await createProgram(adminAccess, deptId, {
+      name,
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    return program.program_id;
+  }
+
+  test("REQ-3 duplicate Pending request and existing Active enrollment are 409", async () => {
+    const programId = await freshRequestProgram("REQ-3 Program");
+    const first = await submitRequest(carolAccess, programId);
+    const duplicate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/enrollment-requests`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(duplicate.status, 409);
+
+    const approved = await decideRequest(
+      adminAccess,
+      programId,
+      first.request_id,
+      "Approved"
+    );
+    assert.strictEqual(approved.status, 200);
+
+    const afterActive = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/enrollment-requests`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(afterActive.status, 409);
+
+    const conflictAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_CREATE' AND outcome = 'CONFLICT'"
+      )
+      .all<{ outcome: string }>();
+    assert.ok(conflictAudit.results && conflictAudit.results.length > 0);
+  });
+
+  test("REQ-4 approval creates an Active enrollment tied to the request", async () => {
+    const programId = await freshRequestProgram("REQ-4 Program");
+    const request = await submitRequest(memberAccess, programId);
+    const res = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(res.status, 200);
+
+    const requestRow = await testDb()
+      .prepare(
+        "SELECT status, decided_by, decided_at FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(request.request_id)
+      .first<{ status: string; decided_by: string; decided_at: string }>();
+    assert.strictEqual(requestRow?.status, "Approved");
+    assert.strictEqual(requestRow?.decided_by, "U001");
+    assert.ok(requestRow?.decided_at);
+
+    const enrollmentRow = await testDb()
+      .prepare(
+        "SELECT enrollment_id, member_user_id, request_id, status FROM enrollments WHERE request_id = ?"
+      )
+      .bind(request.request_id)
+      .first<{
+        enrollment_id: string;
+        member_user_id: string;
+        request_id: string;
+        status: string;
+      }>();
+    assert.strictEqual(enrollmentRow?.status, "Active");
+    assert.strictEqual(enrollmentRow?.member_user_id, "U002");
+    assert.strictEqual(enrollmentRow?.request_id, request.request_id);
+
+    const audits = await testDb()
+      .prepare(
+        "SELECT action FROM audit_events WHERE action IN ('ENROLLMENT_REQUEST_DECIDE', 'ENROLLMENT_CREATE')"
+      )
+      .all<{ action: string }>();
+    const actions = new Set((audits.results ?? []).map((r) => r.action));
+    assert.ok(actions.has("ENROLLMENT_REQUEST_DECIDE"));
+    assert.ok(actions.has("ENROLLMENT_CREATE"));
+  });
+
+  test("REQ-5 rejection leaves the request Rejected and no enrollment", async () => {
+    const programId = await freshRequestProgram("REQ-5 Program");
+    const request = await submitRequest(carolAccess, programId);
+    const res = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(res.status, 200);
+    const row = await testDb()
+      .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
+      .bind(request.request_id)
+      .first<{ status: string }>();
+    assert.strictEqual(row?.status, "Rejected");
+    const enrollments = await testDb()
+      .prepare("SELECT enrollment_id FROM enrollments WHERE request_id = ?")
+      .bind(request.request_id)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(enrollments.results?.length, 0);
+  });
+
+  test("REQ-6 withdrawal is self-service, only while Pending", async () => {
+    const programId = await freshRequestProgram("REQ-6 Program");
+    const request = await submitRequest(memberAccess, programId);
+    const withdrawn = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(withdrawn.status, 200);
+    const row = await testDb()
+      .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
+      .bind(request.request_id)
+      .first<{ status: string }>();
+    assert.strictEqual(row?.status, "Withdrawn");
+
+    const afterWithdraw = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(afterWithdraw.status, 409);
+
+    const carolRequest = await submitRequest(carolAccess, programId);
+    const crossActor = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/enrollment-requests/${carolRequest.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(crossActor.status, 403);
+  });
+
+  test("REQ-7 concurrent decisions yield one success and exactly one enrollment", async () => {
+    const programId = await freshRequestProgram("REQ-7 Program");
+    const request = await submitRequest(memberAccess, programId);
+    const [first, second] = await Promise.all([
+      decideRequest(adminAccess, programId, request.request_id, "Approved"),
+      decideRequest(adminAccess, programId, request.request_id, "Approved"),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409]);
+    const enrollments = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE request_id = ? AND status = 'Active'"
+      )
+      .bind(request.request_id)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(enrollments.results?.length, 1);
+  });
+
+  test("REQ-8 no credential material leaks in request responses", async () => {
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${requestProgramId}/enrollment-requests`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    const text = await res.text();
+    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(text));
+  });
+});
+
+describe("PRG-03: enrollments", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let deptId = "";
+  let requestProgramId = "";
+  let managerOnlyId = "";
+  let unlistedId = "";
+
+  beforeAll(async () => {
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PRG-03-ENR",
+      name: "Enrollment State Department",
+    });
+    deptId = dept.department_id;
+    const requestProgram = await createProgram(adminAccess, deptId, {
+      name: "Enrollment State Request Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    requestProgramId = requestProgram.program_id;
+    const managerOnly = await createProgram(adminAccess, deptId, {
+      name: "Enrollment State Managed Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    managerOnlyId = managerOnly.program_id;
+    const unlisted = await createProgram(adminAccess, deptId, {
+      name: "Enrollment State Unlisted Program",
+      behavior_type: "Recurring",
+      discoverability: "Unlisted",
+      enrollment_mode: "MemberRequest",
+    });
+    unlistedId = unlisted.program_id;
+  });
+
+  test("ENR-1 assisted enrollment creates an Active record with no fake request", async () => {
+    const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
+    assert.strictEqual(res.status, 201);
+    const result = (await assertCorrelated(res)) as {
+      data: { enrollment: { enrollment_id: string; request_id: string | null; status: string } };
+    };
+    assert.strictEqual(result.data.enrollment.status, "Active");
+    assert.strictEqual(result.data.enrollment.request_id, null);
+
+    const requests = await testDb()
+      .prepare(
+        "SELECT request_id FROM enrollment_requests WHERE program_id = ?"
+      )
+      .bind(managerOnlyId)
+      .all<{ request_id: string }>();
+    assert.strictEqual(requests.results?.length, 0, "no fake request row");
+
+    const wrongMode = await assistedEnrollFor(adminAccess, requestProgramId, "U002");
+    assert.strictEqual(wrongMode.status, 422);
+  });
+
+  test("ENR-2 assisted enrollment for an unknown member is 422", async () => {
+    const res = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      crypto.randomUUID()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("ENR-3 concurrent assisted enrollment yields at most one Active row", async () => {
+    const [first, second] = await Promise.all([
+      assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
+      assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepStrictEqual(statuses, [201, 409]);
+    const rows = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
+      )
+      .bind(managerOnlyId)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(rows.results?.length, 1);
+  });
+
+  test("ENR-4 members cancel their own enrollment; managers cancel in scope; cross-member is 403", async () => {
+    const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
+    assert.strictEqual(res.status, 409, "U002 already active from ENR-1");
+    const bobEnrollment = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+      )
+      .bind(managerOnlyId)
+      .first<{ enrollment_id: string }>();
+    assert.ok(bobEnrollment);
+
+    const ownCancel = await cancelEnrollmentFor(
+      memberAccess,
+      managerOnlyId,
+      bobEnrollment.enrollment_id
+    );
+    assert.strictEqual(ownCancel.status, 200);
+    const cancelled = (await assertCorrelated(ownCancel)) as {
+      data: { enrollment: { status: string; cancelled_by: string; cancelled_at: string } };
+    };
+    assert.strictEqual(cancelled.data.enrollment.status, "Cancelled");
+    assert.strictEqual(cancelled.data.enrollment.cancelled_by, "U002");
+    assert.ok(cancelled.data.enrollment.cancelled_at);
+
+    const thirdParty = await assistedEnrollFor(adminAccess, managerOnlyId, "U003");
+    assert.strictEqual(thirdParty.status, 409, "U003 active from ENR-3");
+    const carolEnrollment = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
+      )
+      .bind(managerOnlyId)
+      .first<{ enrollment_id: string }>();
+    assert.ok(carolEnrollment);
+    const crossMember = await cancelEnrollmentFor(
+      memberAccess,
+      managerOnlyId,
+      carolEnrollment.enrollment_id
+    );
+    assert.strictEqual(crossMember.status, 403);
+
+    const managerCancel = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      carolEnrollment.enrollment_id
+    );
+    assert.strictEqual(managerCancel.status, 200);
+  });
+
+  test("ENR-5 cancellation never reopens; re-enrollment creates a new record", async () => {
+    const rows = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' ORDER BY created_at ASC"
+      )
+      .bind(managerOnlyId)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(rows.results?.length, 1);
+    const cancelledId = rows.results?.[0]?.enrollment_id;
+    assert.ok(cancelledId);
+
+    const secondCancel = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      cancelledId
+    );
+    assert.strictEqual(secondCancel.status, 409);
+
+    const reenroll = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
+    assert.strictEqual(reenroll.status, 201);
+    const reenrolled = (await assertCorrelated(reenroll)) as {
+      data: { enrollment: { enrollment_id: string; status: string } };
+    };
+    assert.notStrictEqual(reenrolled.data.enrollment.enrollment_id, cancelledId);
+
+    const oldRow = await testDb()
+      .prepare("SELECT status FROM enrollments WHERE enrollment_id = ?")
+      .bind(cancelledId)
+      .first<{ status: string }>();
+    assert.strictEqual(oldRow?.status, "Cancelled", "old record never reopens");
+  });
+
+  test("ENR-6 members see their own rows; managers see all; Unlisted is invisible to members", async () => {
+    const memberRequests = await listRequestsFor(memberAccess, requestProgramId);
+    const otherMemberSeen = memberRequests.some(
+      (r) => r.member_user_id !== "U002"
+    );
+    assert.ok(!otherMemberSeen, "member must only see own requests");
+
+    const adminRequests = await listRequestsFor(adminAccess, requestProgramId);
+    assert.ok(adminRequests.length >= memberRequests.length);
+
+    const memberEnrollments = await listEnrollmentsFor(memberAccess, requestProgramId);
+    const otherSeen = memberEnrollments.some(
+      (e) => e.member_user_id !== "U002"
+    );
+    assert.ok(!otherSeen, "member must only see own enrollments");
+
+    const unlisted = await worker.fetch(
+      programsRequest(`/api/v1/programs/${unlistedId}/enrollment-requests`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unlisted.status, 404);
+  });
+
+  test("ENR-7 enrollment lifecycle is fully audited", async () => {
+    const actions = await testDb()
+      .prepare(
+        "SELECT action FROM audit_events WHERE action IN ('ENROLLMENT_REQUEST_CREATE', 'ENROLLMENT_REQUEST_DECIDE', 'ENROLLMENT_REQUEST_WITHDRAW', 'ENROLLMENT_CREATE', 'ENROLLMENT_CANCEL')"
+      )
+      .all<{ action: string }>();
+    const found = new Set((actions.results ?? []).map((r) => r.action));
+    for (const expected of [
+      "ENROLLMENT_REQUEST_CREATE",
+      "ENROLLMENT_REQUEST_DECIDE",
+      "ENROLLMENT_REQUEST_WITHDRAW",
+      "ENROLLMENT_CREATE",
+      "ENROLLMENT_CANCEL",
+    ]) {
+      assert.ok(found.has(expected), `${expected} audit row must exist`);
+    }
+  });
+
+  test("ENR-8 no credential material leaks in enrollment responses", async () => {
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${managerOnlyId}/enrollments`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    const text = await res.text();
+    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(text));
   });
 });
