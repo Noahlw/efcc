@@ -13,6 +13,13 @@ Thumbs.db
 .idea/
 .vscode/
 
+# AI coding tooling local state (per-project config/caches, not repo content)
+.codex/
+.cursor/
+
+# Local scratch notes (never commit)
+local/
+
 # Test / coverage output
 coverage/
 .nyc_output/
