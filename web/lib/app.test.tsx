@@ -1414,6 +1414,23 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
+    test("the authenticated shell leads with a skip link to the main content landmark", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+      await screen.findByRole("button", { name: COPY.logout.submit });
+      const link = screen.getByRole("link", { name: COPY.skipToContent });
+      expect(link).toHaveAttribute("href", "#shell-content");
+      // The skip target is the single main landmark of the shell.
+      const mains = screen.getAllByRole("main");
+      expect(mains).toHaveLength(1);
+      expect(mains[0]).toHaveAttribute("id", "shell-content");
+    });
+
     test("no session hint redirects to / and records the deep link", async () => {
       pathnameMock.mockReturnValue("/programs");
       render(

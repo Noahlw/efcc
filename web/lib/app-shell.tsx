@@ -50,9 +50,14 @@ function ShellFrame({
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
+        <a className={styles.skipLink} href="#shell-content">
+          {COPY.skipToContent}
+        </a>
         <ShellHeader />
         <NavBar />
-        <main className="shell-content">{children}</main>
+        <main id="shell-content" className="shell-content">
+          {children}
+        </main>
       </div>
     </AppProvider>
   );

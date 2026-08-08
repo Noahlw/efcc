@@ -25,6 +25,7 @@ import type {
 import {
   HK_TIME_ZONE,
   HK_UTC_OFFSET_MINUTES,
+  hkWallDateTimeLabel,
   wallWeekday,
 } from "@/lib/programs/recurrence";
 
@@ -40,18 +41,6 @@ const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
 };
-
-function hkWallLabel(iso: string): string {
-  return new Intl.DateTimeFormat("zh-Hant", {
-    timeZone: HK_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
 
 const WEEKDAY_LABELS = [
   COPY.programs.weekdaySunday,
@@ -536,7 +525,7 @@ export const EventsPanel = ({
             return (
               <li key={event.event_id} className={styles.eventRow}>
               <span className={styles.eventDate}>
-                {hkWallLabel(event.starts_at)}
+                {hkWallDateTimeLabel(event.starts_at)}
               </span>
               <span className={styles.eventSource}>
                 {event.source === "SCHEDULE"
@@ -552,6 +541,16 @@ export const EventsPanel = ({
               >
                 {STATUS_LABEL[event.status]}
               </span>
+              {event.exception !== null && event.exception !== undefined && (
+                <span className={styles.exceptionBadge}>
+                  {event.exception.action === "RESCHEDULE"
+                    ? COPY.programs.eventRescheduledBadge.replace(
+                        "{time}",
+                        event.exception.new_start_time ?? ""
+                      )
+                    : COPY.programs.eventCancelledBadge}
+                </span>
+              )}
               {canManage && event.status === "Active" && rule !== null &&
                 (exception === undefined ? (
                   <div className={styles.eventActions}>

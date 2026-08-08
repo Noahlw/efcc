@@ -102,6 +102,8 @@ export interface ProgramEvent {
   cancel_reason: string | null;
   created_at: string;
   updated_at: string;
+  /** Matching schedule exception (attributed rule + HK wall date), if any. */
+  exception?: ScheduleException | null;
 }
 
 export interface EnrollmentRequest {

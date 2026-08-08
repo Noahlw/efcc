@@ -23,6 +23,7 @@ import {
   DuplicateEnrollmentError,
   DuplicateEventError,
   DuplicateProgramNameError,
+  DuplicateScheduleExceptionError,
   EnrollmentNotAllowedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
@@ -1217,6 +1218,9 @@ export async function handleCreateScheduleException(
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof DuplicateScheduleExceptionError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }

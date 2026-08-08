@@ -2,6 +2,33 @@
    Tokens reference `.impeccable/design.json` names with literal fallbacks so
    the module renders before and after Ui01Shell's globals.css token merge. */
 
+/* Skip link — reachable, visually hidden until focused */
+.skipLink {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface-raised, #ffffff);
+  color: var(--accent, #9c302c);
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 8px;
+  font-weight: 600;
+  transition: top 0.15s ease;
+}
+
+.skipLink:focus-visible {
+  top: 1rem;
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skipLink {
+    transition: none;
+  }
+}
+
 .header {
   flex-shrink: 0;
   display: flex;

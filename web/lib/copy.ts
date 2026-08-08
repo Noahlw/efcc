@@ -5,6 +5,7 @@ export const COPY = {
   // Official full church title used as the primary brand string in headers
   // (Spec 079 §1: shorter marks are legacy shorthand only).
   appFullName: "中國基督教播道會顯恩堂",
+  skipToContent: "跳到主要內容",
   login: {
     title: "登入",
     upgradeTitle: "設定新密碼",
@@ -192,6 +193,8 @@ export const COPY = {
     restoreOccurrence: "恢復該次",
     exceptionUpdatedNotice: "已更新例外。",
     exceptionRemovedNotice: "已移除例外。",
+    eventRescheduledBadge: "已改期至 {time}",
+    eventCancelledBadge: "本次已取消",
     eventsLoadError: "無法載入聚會資料，請稍後再試。",
     ruleCreateError: "無法新增時間表。",
     exceptionCreateError: "無法更新例外。",

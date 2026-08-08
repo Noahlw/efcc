@@ -14,6 +14,7 @@ import type {
   CapabilityAuthorizer,
 } from "./capability-authorizer";
 import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
+import { exceptionForEvent } from "./recurrence";
 import type {
   RecurrenceKind,
   ScheduleExceptionAction,
@@ -180,6 +181,14 @@ export class DuplicateEventError extends Error {
   constructor(startsAt: string) {
     super(`An event already exists for this start time: ${startsAt}`);
     this.name = "DuplicateEventError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class DuplicateScheduleExceptionError extends Error {
+  constructor(ruleId: string, overrideDate: string) {
+    super(`Schedule exception already exists for rule ${ruleId} on ${overrideDate}`);
+    this.name = "DuplicateScheduleExceptionError";
   }
 }
 
@@ -798,12 +807,42 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const row = await this.store.createScheduleException({
-      rule_id: ruleId,
-      ...cmd,
-      created_by: ctx.actorUserId,
-      created_at: new Date().toISOString(),
-    });
+    const existing = (await this.store.listScheduleExceptions([ruleId])).find(
+      (e) => e.override_date === cmd.override_date
+    );
+    if (existing) {
+      await this.audit(
+        ctx,
+        "SCHEDULE_EXCEPTION_CREATE",
+        "schedule_exception",
+        existing.exception_id,
+        "CONFLICT",
+        null,
+        { rule_id: ruleId, override_date: cmd.override_date },
+        correlationId
+      );
+      throw new DuplicateScheduleExceptionError(ruleId, cmd.override_date);
+    }
+    let row: ScheduleExceptionRow;
+    try {
+      row = await this.store.createScheduleException({
+        rule_id: ruleId,
+        ...cmd,
+        created_by: ctx.actorUserId,
+        created_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      // ponytail: the (rule_id, override_date) unique index is the race
+      // guard; on constraint violation the exception already exists.
+      if (
+        (await this.store.listScheduleExceptions([ruleId])).some(
+          (e) => e.override_date === cmd.override_date
+        )
+      ) {
+        throw new DuplicateScheduleExceptionError(ruleId, cmd.override_date);
+      }
+      throw error;
+    }
     await this.audit(
       ctx,
       "SCHEDULE_EXCEPTION_CREATE",
@@ -1012,13 +1051,41 @@ export class DepartmentWorkspace {
       }
     );
     const rows = await this.store.listEvents(programId);
+    const decorated =
+      rows.length === 0
+        ? rows
+        : await this.decorateEventsWithExceptions(rows);
     if (canManage) {
-      return rows;
+      return decorated;
     }
     if (program.discoverability === "Unlisted") {
       return null;
     }
-    return rows.filter((r) => r.status === "Active");
+    return decorated.filter((r) => r.status === "Active");
+  }
+
+  /**
+   * Attach the schedule exception (attributed rule + HK wall date) to each
+   * materialized event row, so the UI can badge 已改期/本次已取消. The
+   * server contract that un-materialized future occurrences carry no state
+   * until generate-time is unchanged.
+   */
+  private async decorateEventsWithExceptions(
+    rows: EventRow[]
+  ): Promise<EventRow[]> {
+    const rules = await this.store.listScheduleRules(rows[0].program_id);
+    const exceptions = await this.store.listScheduleExceptions(
+      rules.map((r) => r.rule_id)
+    );
+    return rows.map((row) => ({
+      ...row,
+      // The attributed exception is a read-only projection: provenance
+      // columns (created_by/created_at) are not carried on this decoration
+      // path, matching the client's ScheduleException shape.
+      exception:
+        (exceptionForEvent(row, rules, exceptions) as
+          ScheduleExceptionRow | null) ?? null,
+    }));
   }
 
   async cancelEvent(

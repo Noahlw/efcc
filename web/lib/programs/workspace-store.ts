@@ -205,6 +205,8 @@ export interface EventRow {
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+  /** Matching schedule exception (attributed rule + HK wall date), if any. */
+  exception?: ScheduleExceptionRow | null;
 }
 
 export interface GenerateResult {

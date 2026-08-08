@@ -21,6 +21,7 @@ export default defineProject({
       "lib/programs/programs-events-panel.test.tsx",
       "lib/programs/programs-enrollment-panel.test.tsx",
       "lib/programs/programs-leaders-panel.test.tsx",
+      "lib/programs/member-picker.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

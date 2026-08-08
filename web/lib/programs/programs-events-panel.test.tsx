@@ -587,4 +587,61 @@ describe("PRG-02 events panel", () => {
       )
     ).resolves.toBeInTheDocument();
   });
+
+  test("U12 a RESCHEDULE exception renders the 已改期 badge on the row", async () => {
+    const RESCHEDULE_EXCEPTION: ScheduleException = {
+      exception_id: "exc-2",
+      rule_id: "rule-1",
+      override_date: "2026-08-11",
+      action: "RESCHEDULE",
+      new_start_time: "08:30",
+      new_end_time: "10:00",
+      created_at: "2026-08-01T00:00:00.000Z",
+    };
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: {
+            events: [{ ...TUESDAY_EVENT, exception: RESCHEDULE_EXCEPTION }],
+          },
+        })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(
+      screen.findByText(
+        COPY.programs.eventRescheduledBadge.replace("{time}", "08:30")
+      )
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("U13 a CANCEL exception renders the 本次已取消 badge, and no exception renders none", async () => {
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: {
+            events: [
+              { ...TUESDAY_EVENT, exception: CANCEL_EXCEPTION },
+              { ...ACTIVE_EVENT, event_id: "evt-2" },
+            ],
+          },
+        })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(
+      screen.findByText(COPY.programs.eventCancelledBadge)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getAllByText(COPY.programs.eventCancelledBadge)
+    ).toHaveLength(1);
+  });
 });

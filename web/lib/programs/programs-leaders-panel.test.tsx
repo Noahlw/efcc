@@ -129,6 +129,22 @@ describe("PRG-04 leaders panel", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("UI-1b the granted time renders as an HK wall label, not a raw ISO instant", async () => {
+    const leaders: ProgramLeader[] = [{ ...LEADER_BOB }];
+    server.use(...leadersHandlers(leaders));
+    render(<LeadersPanel program={PROGRAM} canManage />);
+    await screen.findByText("U002");
+    // 2026-08-01T00:00:00Z == 2026/08/01 08:00 HK wall.
+    const normalized = (text: string) =>
+      text.replaceAll(/[\u202F\u00A0\u2009]/gu, " ");
+    expect(
+      screen.getByText((text) => normalized(text) === "2026/08/01 08:00")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("2026-08-01T00:00:00.000Z")
+    ).toBeNull();
+  });
+
   test("UI-3 assigning an inactive account shows the friendly popup, not a raw code", async () => {
     server.use(
       ...leadersHandlers([]),

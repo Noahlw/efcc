@@ -83,3 +83,7 @@ An internal system built specifically for this church’s roles, workflows, and 
 - Primary interaction context for Members, Program Leaders, and Staff is the phone interface (touch targets, safe areas, readable type, and recoverable errors matter in real gathering conditions).
 - PC is the management context for Admin (and heavier Staff) workflows; desktop layouts must support those tasks without forcing phone compromises onto management density.
 - Existing shell accessibility baseline from product specs remains in force unless explicitly revised: phone-first below 768px with bottom nav, desktop side rail at ≥768px, ≥44×44px interactive targets, semantic navigation, and announced busy/error states.
+
+  (The implemented breakpoint is 800px — DESIGN.md and globals.css — which is
+  the authoritative value for layout; the 768px figure above is historical
+  spec wording.)

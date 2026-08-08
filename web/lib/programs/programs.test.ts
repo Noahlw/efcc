@@ -1136,7 +1136,20 @@ async function listEventsFor(
   access: string,
   programId: string
 ): Promise<
-  { event_id: string; starts_at: string; status: string; source: string }[]
+  {
+    event_id: string;
+    starts_at: string;
+    status: string;
+    source: string;
+    exception: {
+      exception_id: string;
+      rule_id: string;
+      override_date: string;
+      action: string;
+      new_start_time: string | null;
+      new_end_time: string | null;
+    } | null;
+  }[]
 > {
   const res = await worker.fetch(
     programsRequest(`/api/v1/programs/${programId}/events`, {
@@ -1155,6 +1168,14 @@ async function listEventsFor(
         starts_at: string;
         status: string;
         source: string;
+        exception: {
+          exception_id: string;
+          rule_id: string;
+          override_date: string;
+          action: string;
+          new_start_time: string | null;
+          new_end_time: string | null;
+        } | null;
       }[];
     };
   };
@@ -1753,6 +1774,92 @@ describe("PRG-02: generation", () => {
       .bind(noRules.program_id)
       .first<{ outcome: string }>();
     assert.ok(audit, "zero-rule generation must write a FAILED audit row");
+  });
+
+  test("exception created after materialization is attached to the event row", async () => {
+    const programId = await freshProgram("Late Exception Program");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const result = await generate(adminAccess, programId, 14);
+    assert.strictEqual(result.created, 2);
+
+    const before = await listEventsFor(adminAccess, programId);
+    assert.strictEqual(before.length, 2);
+    for (const event of before) {
+      assert.strictEqual(event.exception, null, "no exception yet");
+    }
+    const targetDate = before[0].starts_at.slice(0, 10);
+
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            override_date: targetDate,
+            action: "RESCHEDULE",
+            new_start_time: "08:30",
+            new_end_time: "10:00",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 201);
+
+    const after = await listEventsFor(adminAccess, programId);
+    const hit = after.find((e) => e.starts_at === before[0].starts_at);
+    assert.ok(hit, "materialized event must still be listed");
+    assert.strictEqual(hit.exception?.action, "RESCHEDULE");
+    assert.strictEqual(hit.exception?.new_start_time, "08:30");
+    const miss = after.find((e) => e.starts_at !== before[0].starts_at);
+    assert.ok(miss, "second materialized event must still be listed");
+    assert.strictEqual(miss.exception, null, "unrelated event carries no exception");
+  });
+
+  test("duplicate schedule exception returns 409 CONFLICT", async () => {
+    const programId = await freshProgram("Duplicate Exception Program");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const targetDate = addWallDays(hkTodayWallDate(), 3);
+
+    const post = (body: Record<string, unknown>) =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+
+    const first = await post({ override_date: targetDate, action: "CANCEL" });
+    assert.strictEqual(first.status, 201);
+
+    const second = await post({ override_date: targetDate, action: "CANCEL" });
+    assert.strictEqual(second.status, 409);
+    const body = await problemOf(second);
+    assert.strictEqual(body.code, "CONFLICT");
   });
 });
 

@@ -12,6 +12,7 @@ import {
   revokeProgramLeader,
 } from "@/lib/programs/program-api";
 import type { Program, ProgramLeader } from "@/lib/programs/program-api";
+import { hkWallDateTimeLabel } from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -165,7 +166,9 @@ export const LeadersPanel = ({
                 {leader.user_name ?? leader.user_id}
                 {leader.username ? ` (${leader.username})` : ""}
               </span>
-              <span className={styles.eventSource}>{leader.granted_at}</span>
+              <span className={styles.eventSource}>
+                {hkWallDateTimeLabel(leader.granted_at)}
+              </span>
               {canManage &&
                 (confirmingUserId === leader.user_id ? (
                   <div className={styles.confirmRow}>

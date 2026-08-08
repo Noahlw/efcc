@@ -232,7 +232,10 @@ CREATE TABLE program_schedule_exceptions (
   FOREIGN KEY (created_by) REFERENCES accounts(user_id)                  ON DELETE RESTRICT
 ) STRICT;
 
-CREATE INDEX schedule_exceptions_rule_idx ON program_schedule_exceptions(rule_id);
+-- One override per (rule, HK wall date); the app maps the constraint
+-- violation to a 409 Conflict before the DB race-guard fires.
+CREATE UNIQUE INDEX schedule_exceptions_rule_date_idx
+  ON program_schedule_exceptions(rule_id, override_date);
 
 -- ---------------------------------------------------------------------------
 -- 5. Events (§7)

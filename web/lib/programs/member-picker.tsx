@@ -26,6 +26,42 @@ export const MemberPicker = ({
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const pick = (member: MemberOption) => {
+    setSelected(member);
+    setQuery(`${member.name} (${member.username})`);
+    setOptions([]);
+    setActiveIndex(-1);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (options.length === 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((value) =>
+        Math.min(value + 1, options.length - 1)
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((value) => Math.max(value - 1, -1));
+    } else if (event.key === "Enter" && activeIndex >= 0) {
+      event.preventDefault();
+      pick(options[activeIndex]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setOptions([]);
+      setActiveIndex(-1);
+    }
+  };
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSelected(null);
+    setActiveIndex(-1);
+    setQuery(event.target.value);
+  };
 
   useEffect(() => {
     const value = query.trim();
@@ -82,10 +118,11 @@ export const MemberPicker = ({
           aria-describedby={`${name}-hint`}
           aria-controls={`${name}-options`}
           aria-expanded={options.length > 0}
-          onChange={(event) => {
-            setSelected(null);
-            setQuery(event.target.value);
-          }}
+          onKeyDown={handleKeyDown}
+          aria-activedescendant={
+            activeIndex >= 0 ? `${name}-option-${activeIndex}` : undefined
+          }
+          onChange={handleChange}
         />
       </label>
       <input type="hidden" name={name} value={selected?.user_id ?? ""} />
@@ -129,16 +166,20 @@ export const MemberPicker = ({
           id={`${name}-options`}
           className={styles.memberOptions}
           aria-label={label}
+          role="listbox"
         >
-          {options.map((member) => (
-            <li key={member.user_id}>
+          {options.map((member, index) => (
+            <li
+              key={member.user_id}
+              id={`${name}-option-${index}`}
+              role="option"
+              aria-selected={activeIndex === index}
+            >
               <button
                 type="button"
                 className={styles.memberOption}
                 onClick={() => {
-                  setSelected(member);
-                  setQuery(`${member.name} (${member.username})`);
-                  setOptions([]);
+                  pick(member);
                 }}
               >
                 <strong>{member.name}</strong>
