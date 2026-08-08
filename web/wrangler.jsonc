@@ -30,7 +30,7 @@
     {
       "binding": "DB",
       "database_name": "efcc-identity",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "ae437eac-c6ef-4835-bfe8-13c61b5cf586",
       "migrations_dir": "migrations",
     },
   ],

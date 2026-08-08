@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f4f5f3" />
+    <title>EFCC 簽到原型</title>
+    <link rel="stylesheet" href="./civic.css" />
+  </head>
+  <body>
+    <main class="app" style="justify-content: center">
+      <div class="text-center" style="margin-bottom: var(--space-xl)">
+        <h1 class="app__title" style="font-size: 1.5rem">EFCC 簽到原型</h1>
+        <p class="app__subtitle">會員自助、訪客、事工負責人協助簽到</p>
+      </div>
+
+      <div class="stack">
+        <a class="btn btn--primary btn--block" href="./check-in.html"
+          >會員自助簽到</a
+        >
+        <a
+          class="btn btn--block"
+          href="./guest-check-in.html"
+          style="border-color: var(--civic-line-strong)"
+          >訪客簽到</a
+        >
+        <a
+          class="btn btn--block"
+          href="./event-manage.html"
+          style="border-color: var(--civic-line-strong)"
+          >事工負責人 · 聚會管理</a
+        >
+      </div>
+
+      <div class="panel" style="margin-top: var(--space-xl)">
+        <p class="panel__title">測試資料</p>
+        <ul
+          class="app__subtitle"
+          style="padding-left: 1.2rem; line-height: 1.7"
+        >
+          <li>Program QR token: <code>efcc-qr-qingchong</code></li>
+          <li>Event manual code: <code>A7B9C2</code></li>
+          <li>
+            Member QR codes: <code>GC-MEM-0001</code>, <code>GC-MEM-0002</code>,
+            <code>GC-MEM-0003</code>
+          </li>
+          <li>Leader QR code: <code>GC-LEAD-001</code></li>
+          <li>GC-MEM-0003 is not enrolled and will be rejected.</li>
+        </ul>
+      </div>
+    </main>
+  </body>
+</html>

@@ -27,20 +27,29 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Program Leader | 事工負責人 *(proposed — confirm translation)* | A member granted `program.manage` and `program.publish` for one or more specific Programs, tracked in the `Program_Leaders` relationship under the Program domain. A Program Leader may manage that Program's content, schedules, events, enrollment decisions, and publishing, but cannot configure the Department, assign or revoke leaders, or widen their own scope unless separately granted. A Program Leader is always an Active Account at assignment time. Independent of the member's global `Role`; it belongs in the Program detail/management model, not the account Role column. |
 | Program Delegation | 事工權限委派 | The explicit capability-gated assignment or revocation of Department managers, Program managers, or Program Leaders. Content management does not imply delegation; every delegation change is scoped, server-authorized, and audited. |
 | Custom Application Form | 自訂申請表 | A future modular form definition that a permitted user can create, version, publish, and attach to a Department, Program, or activity. It is roadmap scope only; its schema, permissions, responses, and integrations require a separate research and specification ticket. |
-| Event | 聚會 | One dated occurrence belonging to exactly one Program. Both `Recurring` and `OneOff` Programs may own Events. Recurring Events are produced from editable schedule rules with per-occurrence exceptions; OneOff Events are manually added by permitted users. Attendance records target this concrete Event. |
+| Event | 聚會 | One dated occurrence belonging to exactly one Program. Both `Recurring` and `OneOff` Programs may own Events. Recurring Events are produced from editable schedule rules with per-occurrence exceptions; OneOff Events are manually added by permitted users. Attendance records target this concrete Event. Once active Attendance exists, its schedule cannot be rescheduled; a new Event preserves the original attendance history. |
 | Recurrence Tag | 重複標記 | Informational Event metadata (`NONE`, `WEEKLY`, or `MONTHLY`) describing an expected schedule pattern. It does not create, link, update, or cancel any other Event. |
 | Event Cancellation | 聚會取消 | A soft status change from Active to Cancelled. It never deletes the Event or Attendance history and is rejected once active Attendance exists. |
-| Attendance | 出席 | A member checking in at a specific event instance via QR scan or manual search. |
-| Attendance Void | 出席作廢 | A correction that changes an active Attendance record to `Voided` without deleting it. It requires an authorized actor and reason, is audited, leaves history intact, and permits a later new check-in. |
-| Guest Check-in | 訪客簽到 | A signed-out check-in by a non-member at a specific Event using a manual entry code or QR code, capturing a name and a normalized phone. It creates an Attendance row identified by `member_user_id IS NULL` and `guest_phone_normalized NOT NULL`; at most one active guest check-in per normalized phone per Event (partial unique index). Guests never see other attendees' data. |
+| Attendance | 出席 | A member or visitor checking in at a specific Event instance. Recorded via **Self Check-In** (logged-in user scans or types the check-in token), **Assisted Check-In** (authorized leader scans or searches for a member), or **Guest Check-In** (an unlinked guest attendance, optionally submitted by an authenticated actor). |
+| Attendance Void | 出席作廢 | A correction that changes an active Attendance record to `Voided` without deleting it. It requires an authorized actor and reason, is audited, leaves history intact, and permits a later new member or guest check-in for the same Event. |
+| Guest Attendance Correction | 訪客出席更正 | A correction by Admin/Staff or the active Program Leader for that Event's Program to a guest Attendance's name or phone. It preserves the attendance row, records old/new values and a reason in audit history, and does not change the Event or check-in time. |
+| Self Check-In | 自助簽到 | Any logged-in user opens the Check-In page, scans the Program Check-In QR with the app scanner, or types the Event Manual Check-In Code. The server resolves the token to the Program's current Event and records attendance only if the user is actively enrolled and the Event Check-In Window is open. |
+| Assisted Check-In | 協助簽到 | An authorized actor (Staff, Admin, or active Program Leader) recording attendance for a member from the Event detail page by scanning the Member's QR or using manual search. The scanner is scoped to one specific Event. |
+| Guest Check-In | 訪客簽到 | A visitor, or an account holder explicitly choosing guest mode, checks in through the public Guest Check-In Entry by scanning the Program QR or typing the Event Manual Code, then enters a name and required phone number. The attendance record is not linked to an `accounts` row; an authenticated actor may still be retained in `checked_in_by` and audit history. A normalized phone may create at most one active guest attendance for the same Event. Full guest contact details are visible only to Admin/Staff and the relevant Program Leader. |
+| Guest Check-In Entry | 訪客簽到入口 | The public attendance entry available from the signed-out login surface or a Program Check-In QR deep link. It does not issue a Session. An authenticated account may explicitly choose this mode, but a later authenticated Self Check-In remains a separate attendance record; the system never auto-merges the two records. |
+| Program Check-In Token | 課程簽到令牌 | A permanent, public, program-scoped token assigned to an Active Program. It is used to build the Program Check-In QR URL and the Check-In page deep link. It is never the opaque D1 `program_id`. |
+| Program Check-In QR | 課程簽到 QR 碼 | A printable/downloadable QR code containing the Program Check-In Token URL. It is stable for the life of the Program and may be printed as the permanent venue marker. At scan time it resolves directly when one Event Check-In Window is open; if multiple Events are open, it presents an Event chooser. It is not a secret. |
+| Event Manual Check-In Code | 聚會手動簽到碼 | A short, globally unique, never-reused code assigned to one Event (e.g. `A7B9C2`) and shown digitally by the Event page or leader device rather than treated as permanent printed material. Members or guests can type it into the Check-In page when scanning fails. It resolves to exactly that Event but is valid only while that Event's Check-In Window is open; cancellation invalidates it immediately, while rescheduling the same Event keeps the code and moves the window. |
+| Event Check-In Sheet | 聚會簽到單 | A fresh printable/downloadable Event-specific sheet containing the permanent Program Check-In QR and the current Event Manual Check-In Code. Program/Event managers may generate it; it must not be treated as reusable after the Event is cancelled or its schedule changes. |
+| Event Check-In Window | 聚會簽到時段 | The time interval during which Self Check-In and Guest Check-In are accepted for an Event. Derived from the Program's window configuration and the Event's `starts_at`/`ends_at`. No check-in is accepted when no active Event has an open window. |
+| Current Event (for check-in) | 當前簽到聚會 | An active, non-cancelled Event of a Program whose Event Check-In Window includes the current time. The Program Check-In Token resolves directly when exactly one exists; when multiple exist, the Program QR presents those Events for explicit selection. |
 | Care Dashboard | 關懷儀表板 | A church-wide Staff/Admin-only view of member inactivity, contact details, program participation, attendance-derived activity, and pastoral follow-up context. Program Leader grants do not provide access. |
-| QR Code | QR 碼 | Auto-generated hex string serving as the member's check-in identifier (same value as User_ID by default). |
-| Check-in Sheet | 簽到表 | The printable attendance roster for one Event, embedding each enrolled member's QR URL plus manual entry codes, exported from the Events surface for scan-free check-in. |
+| QR Code (Member QR) | 會員 QR 碼 | The member's personal check-in identifier, historically the same value as `User_ID` by default. It is displayed on the member's phone (usually in the Profile or a dedicated "My QR" view) for leaders to scan during Assisted Check-In. It is not a secret — identity and authorization are resolved server-side. |
 | Login Username | 登入用戶名稱 | The mutable login identifier displayed to and chosen by an account holder. It may change without changing the established User_ID or QR identity. D1 stores the display value plus a trimmed, lowercased `username_normalized` key; that normalized key is unique across active accounts and registration reservations, including concurrent changes. A username change revokes all refresh sessions and requires sign-in again. |
 | Password Credential | 密碼憑證 | The current user-selected login secret after legacy upgrade or new registration. Only a salted PBKDF2 hash is stored. A normal self-service password change requires the current password, revokes all refresh sessions, requires sign-in again, and never changes User_ID. |
 | PIN (legacy) | PIN 碼 | 4-digit numeric credential used with username for member login on the legacy Apps Script surface; in D1 it survives only as the one-time migration proof. |
 | Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported D1 account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Staff unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
-| Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner, Care, and Permissions. Use **Section** instead of the ambiguous product terms “page” or “screen”; legacy implementation files may still use `.html` fragment names. |
+| Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Care, and Permissions. The Scanner Section is a legacy Apps Script concept; assisted check-in now lives on the Event detail page. Use **Section** instead of the ambiguous product terms “page” or “screen”; legacy implementation files may still use `.html` fragment names. |
 | Auth Surface | 身份驗證介面 | A signed-out or identity-transition area that handles Login, Legacy-PIN upgrade, self-service Registration, or Approval. An Auth Surface is not a Section because it does not represent an authenticated church-management capability. |
 | Shared Shell | 共用外殼 | The authenticated application layout and navigation that surrounds Sections. It owns shared header, responsive navigation, active Section indication, focus behavior, and recoverable shell states; it is not itself a Section. |
 | Minimal Product Design | 極簡產品設計 | The shared frontend design contract for EFCC's Auth Surfaces, Shared Shell, and Sections: official church identity, direct operational clarity, Cantonese-first copy, phone-first ministry workflows, desktop management density, and restrained civic visual language. |
@@ -64,6 +73,8 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
 | dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the default local E2E target for the programs-d1 and attendance-d1 suites (live-ui targets the efcc-auth-* acceptance host). |
 | E2E acceptance |  | Deterministic Playwright run against the dev-testing worker asserting observable DOM state + same-origin server responses; visual evidence via trace/screenshot artifacts. |
+| Audit Event | 審計記錄 | One immutable, append-only relational record of a domain mutation on D1: actor, action, entity type and id, old/new value snapshots, reason, outcome, and correlation id. It is the D1 successor to the legacy Sheet `Audit_Log` (ADR-0023) but rebuilt generically: one stream covers Department, Program, Enrollment, Event, and Attendance actions, with no per-entity columns. Rows can never be updated or deleted. |
+| Department Lifecycle | 部門狀態 | The editorial state of a Department, distinct from Program lifecycle: `Draft`, `PendingDevelopment`, `Active`, or `Archived`. Publishing a Department to `Active` is a separate capability-gated action. |
 
 ---
 
@@ -107,6 +118,32 @@ User_ID | Username | Name | Email | Phone | Date of Birth | Age | PIN_Code | QR_
 - `QR_Code_String` defaults to the `User_ID` when empty (the QR code is the same as the user ID).
 
 See ADR-0001 for the rationale behind Google Sheets as the database layer.
+
+---
+
+## D1 Relational Schema
+
+The authoritative D1 relational schema (identity, authorization, Departments,
+Programs, Events, EnrollmentRequests, Enrollments, Program Leaders, Attendances,
+and the rebuilt audit stream) is defined in
+[`docs/specs/080-d1-relational-schema.md`](docs/specs/080-d1-relational-schema.md),
+parented to Spec #190. It supersedes the identity-tables portion of
+`web/migrations/0000_init.sql` going forward and is the source that PRG-01 turns
+into the next D1 migration.
+
+- **Development database**: the same D1 database is used for development as for
+  production unless a concrete need to split appears. The new Programs/Enrollment
+  domain starts **fresh from the latest `main` branch database** — no xlsx import,
+  no legacy Sheet adapter, no dual-write path.
+- **Timestamps**: ISO-8601 UTC TEXT for all new domain tables. The existing
+  identity tables (`0000_init.sql`) still use epoch-millis INTEGER; converting them
+  is a separate table-rebuild migration, so a dual-format transitional state
+  exists until then. Dates display in `Asia/Hong_Kong` (see Church Time).
+- **Foreign keys**: `ON DELETE RESTRICT` everywhere. D1 enforces foreign keys by
+  default (equivalent to `PRAGMA foreign_keys = on` per transaction) — no
+  per-connection pragma is required.
+- **Constrained values**: every closed vocabulary (lifecycle, status, mode,
+  outcome, recurrence) is enforced with a CHECK constraint.
 
 ---
 
@@ -180,7 +217,7 @@ backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023
 
 ## Architecture Decisions
 
-The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0023) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0026) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
 
 ### D1 era (current)
 
@@ -194,8 +231,10 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 | 0022 | Staged Worker/D1 Platform Migration | Accepted |
 | 0023 | Single-Lock Mutation and Audit Contract | Proposed — official Apps Script API support verified; deployed `/exec` proof pending (renumbered from 0015, 2026-08-06) |
 | 0024 | D1 Platform Restart: Relationship to the Apps Script/Google Sheets Backend | Accepted |
+| 0025 | Staff Role Vocabulary and Frontend Specification Boundary | Accepted — domain decision; implementation migration pending (`Teacher`→`Staff` migration handled in current PR stack) |
 | 0026 | Programs Module State and Scoped Management UI | Proposed |
 | 0027 | D1 Programs Domain: Audit Outcomes and Atomic Approval | Proposed |
+| 0028 | Public Guest Check-In Entry | Proposed — decision locked via grilling; public entry, authenticated handoff, and guest identity rules require implementation and acceptance proof |
 
 ### Apps Script era (historical)
 

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f4f5f3" />
+    <title>EFCC 聚會管理</title>
+    <link rel="stylesheet" href="./civic.css" />
+    <script src="./vendor/html5-qrcode.min.js"></script>
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <button
+          class="app__back"
+          type="button"
+          aria-label="返回"
+          onclick="history.back()"
+        >
+          ←
+        </button>
+        <div>
+          <h1 class="app__title">聚會管理</h1>
+          <p class="app__subtitle" id="actor-label">載入中…</p>
+        </div>
+      </header>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="row row--spread">
+            <div>
+              <p class="panel__title" id="event-title">青崇崇拜</p>
+              <p class="app__subtitle" id="event-time">--</p>
+            </div>
+            <div class="text-center">
+              <p
+                style="font-size: 2rem; font-weight: 800; margin: 0"
+                id="count"
+              >
+                0
+              </p>
+              <p class="app__subtitle" style="margin: 0">已簽到</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <p class="panel__title">協助簽到</p>
+          <div class="stack" style="gap: var(--space-md)">
+            <button
+              class="btn btn--primary btn--block"
+              id="open-scanner"
+              type="button"
+            >
+              掃描會員 QR 碼
+            </button>
+            <div class="field">
+              <label class="field__label" for="search">手動搜尋會員</label>
+              <input
+                class="field__input"
+                id="search"
+                type="text"
+                placeholder="姓名或電話"
+              />
+            </div>
+            <div id="search-results"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <p class="panel__title">簽到名單</p>
+          <ul class="roster" id="roster">
+            <li class="roster__empty">暫無簽到記錄</li>
+          </ul>
+        </div>
+      </div>
+
+      <div
+        class="dialog-backdrop hidden"
+        id="scanner-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="dialog">
+          <div class="dialog__header">
+            <h2 class="dialog__title">掃描會員 QR 碼</h2>
+            <button class="btn btn--ghost" id="close-scanner" type="button">
+              關閉
+            </button>
+          </div>
+          <div class="dialog__body">
+            <div class="viewfinder" style="aspect-ratio: 1 / 1">
+              <div id="leader-scanner-reader" class="viewfinder__reader"></div>
+              <div class="viewfinder__reticle">
+                <div class="viewfinder__box">
+                  <span
+                    class="viewfinder__corner viewfinder__corner--tl"
+                  ></span>
+                  <span
+                    class="viewfinder__corner viewfinder__corner--tr"
+                  ></span>
+                  <span
+                    class="viewfinder__corner viewfinder__corner--bl"
+                  ></span>
+                  <span
+                    class="viewfinder__corner viewfinder__corner--br"
+                  ></span>
+                </div>
+                <p class="viewfinder__hint">對準會員電話上的 QR 碼</p>
+              </div>
+            </div>
+            <div
+              class="result hidden"
+              id="scan-result"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="result__glyph" aria-hidden="true"></span>
+              <div>
+                <p class="result__title"></p>
+                <p class="result__text"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="result hidden" id="result" role="status" aria-live="polite">
+        <span class="result__glyph" aria-hidden="true"></span>
+        <div>
+          <p class="result__title"></p>
+          <p class="result__text"></p>
+        </div>
+      </div>
+    </main>
+
+    <script src="./mock-backend.js"></script>
+    <script src="./check-in-ui.js"></script>
+    <script>
+      const mockBackend = window.MOCK;
+      const ui = window.UI;
+      const actorId = mockBackend.loggedInUserId;
+      const actor = mockBackend.members.find((m) => m.userId === actorId);
+      const eventId = "evt-2026-001";
+      const event = mockBackend.events.find((e) => e.eventId === eventId);
+      const program = mockBackend.programs.find(
+        (p) => p.programId === event.programId
+      );
+
+      if (!mockBackend.canAssistCheckIn(actorId)) {
+        alert("你沒有權限管理此聚會。");
+      }
+
+      ui.q("#actor-label").textContent =
+        `登入用戶：${actor.name}（${actor.role}）`;
+      ui.q("#event-title").textContent = `${program.name} · ${event.name}`;
+      ui.q("#event-time").textContent =
+        `${ui.formatTime(event.startsAt)} – ${ui.formatTime(event.endsAt)} · 簽到碼 ${event.manualCode}`;
+
+      const scannerDialog = ui.q("#scanner-dialog");
+      const scanResultEl = ui.q("#scan-result");
+      let leaderScanner = null;
+
+      function renderRoster() {
+        const list = ui.q("#roster");
+        const records = mockBackend.getEventAttendance(eventId);
+        ui.q("#count").textContent = records.length;
+
+        if (records.length === 0) {
+          list.innerHTML = '<li class="roster__empty">暫無簽到記錄</li>';
+          return;
+        }
+
+        list.innerHTML = records
+          .map((a) => {
+            const name = a.memberUserId
+              ? ui.displayName(a.memberUserId)
+              : a.guestName;
+            const meta = a.memberUserId
+              ? ui.formatTime(a.checkedInAt)
+              : `${a.guestPhone || "無電話"} · 訪客`;
+            return `
+              <li class="roster__item">
+                <div class="roster__main">
+                  <span class="roster__name">${name}</span>
+                  <span class="roster__meta">${meta}</span>
+                </div>
+                <button class="btn btn--ghost" type="button" data-void="${a.attendanceId}">
+                  作廢
+                </button>
+              </li>
+            `;
+          })
+          .join("");
+
+        ui.qa("[data-void]", list).forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const reason = prompt("作廢原因（簡短）");
+            if (!reason) return;
+            const outcome = mockBackend.voidAttendance({
+              attendanceId: btn.dataset.void,
+              actorUserId: actorId,
+              reason,
+            });
+            if (outcome.ok) renderRoster();
+          });
+        });
+      }
+
+      function showScanResult(tone, glyph, title, text) {
+        ui.setResult(scanResultEl, { tone, glyph, title, text });
+      }
+
+      function handleMemberQr(qr) {
+        const member = mockBackend.findMemberByQr(qr);
+        if (!member) {
+          showScanResult(
+            "error",
+            "✗",
+            "無效會員碼",
+            "掃描到的 QR 碼不屬於系統內會員。"
+          );
+          return;
+        }
+        const outcome = mockBackend.recordAssistedCheckIn({
+          actorUserId: actorId,
+          eventId,
+          targetUserId: member.userId,
+          method: "leader_qr_scan",
+        });
+        if (!outcome.ok) {
+          showScanResult(
+            "error",
+            "✗",
+            outcome.error === "NOT_ENROLLED" ? "會員未報名" : "簽到失敗",
+            outcome.error === "NOT_ENROLLED"
+              ? `${member.name} 未報名此課程。`
+              : "請再試一次。"
+          );
+          return;
+        }
+        if (outcome.duplicate) {
+          showScanResult(
+            "warning",
+            "!",
+            "已簽到",
+            `${member.name} 已於 ${ui.formatTime(outcome.attendance.checkedInAt)} 完成簽到。`
+          );
+          return;
+        }
+        showScanResult(
+          "success",
+          "✓",
+          `${member.name} 已簽到`,
+          `${ui.formatTime(outcome.attendance.checkedInAt)}`
+        );
+        renderRoster();
+      }
+
+      function handleManualSearch(query) {
+        const results = mockBackend.findMemberByQuery(query);
+        const container = ui.q("#search-results");
+        if (!query.trim()) {
+          container.innerHTML = "";
+          return;
+        }
+        if (results.length === 0) {
+          container.innerHTML = '<p class="app__subtitle">找不到會員</p>';
+          return;
+        }
+        container.innerHTML = results
+          .map(
+            (m) => `
+              <div class="roster__item">
+                <div class="roster__main">
+                  <span class="roster__name">${m.name}</span>
+                  <span class="roster__meta">${m.phone}</span>
+                </div>
+                <button class="btn btn--primary" type="button" data-checkin="${m.userId}">
+                  簽到
+                </button>
+              </div>
+            `
+          )
+          .join("");
+
+        ui.qa("[data-checkin]", container).forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const outcome = mockBackend.recordAssistedCheckIn({
+              actorUserId: actorId,
+              eventId,
+              targetUserId: btn.dataset.checkin,
+              method: "manual_search",
+            });
+            if (outcome.ok) {
+              ui.q("#search").value = "";
+              container.innerHTML = "";
+              renderRoster();
+            } else {
+              alert(
+                outcome.error === "NOT_ENROLLED"
+                  ? "會員未報名此課程"
+                  : "簽到失敗"
+              );
+            }
+          });
+        });
+      }
+
+      ui.q("#open-scanner").addEventListener("click", () => {
+        ui.show(scannerDialog, true);
+        ui.clearResult(scanResultEl);
+        leaderScanner = new InlineScanner(
+          "leader-scanner-reader",
+          handleMemberQr
+        );
+        leaderScanner.start().catch(() => {
+          showScanResult("error", "✗", "相機無法啟動", "請檢查相機權限。");
+        });
+      });
+
+      ui.q("#close-scanner").addEventListener("click", () => {
+        if (leaderScanner) leaderScanner.stop();
+        ui.show(scannerDialog, false);
+      });
+
+      ui.q("#search").addEventListener("input", (e) =>
+        handleManualSearch(e.target.value)
+      );
+
+      renderRoster();
+    </script>
+  </body>
+</html>

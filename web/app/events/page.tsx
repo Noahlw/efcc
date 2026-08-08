@@ -1,13 +1,15 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
-import { SectionView } from "@/app/_sections/section-view";
+import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
+import { GuardedSection } from "@/lib/guarded-section";
 
-export default function EventsPage() {
-  return (
-    <AppShell>
-      <SectionView sectionKey="events" title={COPY.sections.events} />
-    </AppShell>
-  );
-}
+const EventsPage = () => (
+  <AppShell>
+    <GuardedSection sectionKey="events">
+      <AttendanceOperatorPanel />
+    </GuardedSection>
+  </AppShell>
+);
+
+export default EventsPage;

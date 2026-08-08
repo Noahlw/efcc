@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EFCC 簽到設計展示</title>
+    <link rel="stylesheet" href="./civic.css" />
+    <style>
+      /* Showcase chrome — desktop dashboard surface that frames the app */
+      .showcase {
+        min-height: 100vh;
+        background: #e8e9e7;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .showcase__header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--civic-surface-raised);
+        border-bottom: 1px solid var(--civic-line);
+        padding: var(--space-md) var(--space-lg);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-md);
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .showcase__title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        margin: 0;
+      }
+
+      .showcase__controls {
+        display: flex;
+        gap: var(--space-sm);
+        flex-wrap: wrap;
+      }
+
+      .showcase__controls .btn {
+        padding: 8px 16px;
+        min-height: 36px;
+        font-size: 0.9rem;
+      }
+
+      .showcase__controls .btn.is-active {
+        background: var(--civic-ink);
+        border-color: var(--civic-ink);
+        color: var(--civic-surface-raised);
+      }
+
+      .showcase__main {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--space-xl);
+        padding: var(--space-xl);
+        align-items: start;
+        flex: 1;
+      }
+
+      .showcase__panel {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+        min-width: 0;
+      }
+
+      .showcase__label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--civic-ink-muted);
+        letter-spacing: 0.06em;
+      }
+
+      .showcase__frame {
+        border: 1px solid var(--civic-line-strong);
+        background: var(--civic-surface-raised);
+        overflow: hidden;
+      }
+
+      .showcase__frame--desktop {
+        width: 100%;
+        height: calc(100vh - 140px);
+        min-height: 600px;
+        border-radius: var(--radius-md);
+      }
+
+      .showcase__device {
+        background: var(--civic-ink);
+        padding: 10px;
+        border-radius: 28px;
+        display: inline-block;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+      }
+
+      .showcase__frame--phone {
+        width: 390px;
+        height: 844px;
+        border-radius: 20px;
+        border: none;
+      }
+
+      @media (max-width: 1100px) {
+        .showcase__main {
+          grid-template-columns: 1fr;
+        }
+
+        .showcase__device {
+          margin: 0 auto;
+        }
+      }
+    </style>
+  </head>
+  <body class="showcase">
+    <header class="showcase__header">
+      <h1 class="showcase__title">EFCC 簽到設計展示</h1>
+      <nav class="showcase__controls" id="flow-nav">
+        <button
+          class="btn is-active"
+          data-flow="prototype-index.html"
+          type="button"
+        >
+          首頁
+        </button>
+        <button class="btn" data-flow="check-in.html" type="button">
+          會員簽到
+        </button>
+        <button class="btn" data-flow="guest-check-in.html" type="button">
+          訪客簽到
+        </button>
+        <button class="btn" data-flow="event-manage.html" type="button">
+          聚會管理
+        </button>
+      </nav>
+    </header>
+
+    <main class="showcase__main">
+      <div class="showcase__panel">
+        <span class="showcase__label">Desktop</span>
+        <iframe
+          class="showcase__frame showcase__frame--desktop"
+          id="desktop-frame"
+          src="./prototype-index.html"
+          title="Desktop preview"
+        ></iframe>
+      </div>
+
+      <div class="showcase__panel">
+        <span class="showcase__label">Phone</span>
+        <div class="showcase__device">
+          <iframe
+            class="showcase__frame showcase__frame--phone"
+            id="phone-frame"
+            src="./prototype-index.html"
+            title="Phone preview"
+          ></iframe>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const flows = [...document.querySelectorAll("[data-flow]")];
+      const desktop = document.getElementById("desktop-frame");
+      const phone = document.getElementById("phone-frame");
+
+      flows.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const f = btn.dataset.flow;
+          desktop.src = "./" + f;
+          phone.src = "./" + f;
+          flows.forEach((b) => b.classList.remove("is-active"));
+          btn.classList.add("is-active");
+        });
+      });
+    </script>
+  </body>
+</html>

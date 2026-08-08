@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f4f5f3" />
+    <title>EFCC 簽到</title>
+    <link rel="stylesheet" href="./civic.css" />
+    <script src="./vendor/html5-qrcode.min.js"></script>
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <button
+          class="app__back"
+          type="button"
+          aria-label="返回"
+          onclick="history.back()"
+        >
+          ←
+        </button>
+        <div>
+          <h1 class="app__title">簽到</h1>
+          <p class="app__subtitle" id="actor-label">載入中…</p>
+        </div>
+      </header>
+
+      <div class="stack" id="scanner-panel">
+        <div class="panel">
+          <p class="panel__title">掃描課程 QR 碼</p>
+          <div class="viewfinder" id="viewfinder">
+            <div id="scanner-reader" class="viewfinder__reader"></div>
+            <div class="viewfinder__reticle">
+              <div class="viewfinder__box">
+                <span class="viewfinder__corner viewfinder__corner--tl"></span>
+                <span class="viewfinder__corner viewfinder__corner--tr"></span>
+                <span class="viewfinder__corner viewfinder__corner--bl"></span>
+                <span class="viewfinder__corner viewfinder__corner--br"></span>
+              </div>
+              <p class="viewfinder__hint">對準 Program QR Code</p>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn--block" id="toggle-manual" type="button">
+          輸入簽到碼
+        </button>
+      </div>
+
+      <div class="stack hidden" id="manual-panel">
+        <div class="panel">
+          <p class="panel__title">輸入 6 位簽到碼</p>
+          <form class="code-form" id="manual-form" onsubmit="return false;">
+            <div class="code-form__fields">
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 1 位"
+              />
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 2 位"
+              />
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 3 位"
+              />
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 4 位"
+              />
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 5 位"
+              />
+              <input
+                class="code-char"
+                inputmode="text"
+                maxlength="1"
+                autocomplete="off"
+                aria-label="簽到碼第 6 位"
+              />
+            </div>
+            <button class="btn btn--block" type="button" id="manual-submit">
+              確認簽到
+            </button>
+          </form>
+        </div>
+        <button class="btn btn--ghost" id="toggle-scanner" type="button">
+          返回掃描
+        </button>
+      </div>
+
+      <div class="result hidden" id="result" role="status" aria-live="polite">
+        <span class="result__glyph" aria-hidden="true"></span>
+        <div>
+          <p class="result__title"></p>
+          <p class="result__text"></p>
+        </div>
+      </div>
+    </main>
+
+    <script src="./mock-backend.js"></script>
+    <script src="./check-in-ui.js"></script>
+    <script>
+      const mockBackend = window.MOCK;
+      const ui = window.UI;
+      const actorId = mockBackend.loggedInUserId;
+      const actor = mockBackend.members.find((m) => m.userId === actorId);
+
+      ui.q("#actor-label").textContent = `登入用戶：${actor.name}`;
+
+      const scannerPanel = ui.q("#scanner-panel");
+      const manualPanel = ui.q("#manual-panel");
+      const resultEl = ui.q("#result");
+      const readerId = "scanner-reader";
+      const scanner = new InlineScanner(readerId, handleToken);
+
+      function showResult(tone, glyph, title, text) {
+        ui.setResult(resultEl, { tone, glyph, title, text });
+      }
+
+      function handleToken(tokenOrCode) {
+        const outcome = mockBackend.recordSelfCheckIn({
+          actorUserId: actorId,
+          tokenOrCode,
+        });
+        if (!outcome.ok) {
+          showResult(
+            "error",
+            "✗",
+            outcome.error === "NOT_ENROLLED" ? "未報名此課程" : "簽到無法進行",
+            outcome.error === "NOT_ENROLLED"
+              ? "你還未報名此課程。請聯絡事工負責人協助報名。"
+              : "目前沒有開放簽到的聚會，或簽到碼已過期。"
+          );
+          return;
+        }
+        if (outcome.duplicate) {
+          showResult(
+            "warning",
+            "!",
+            "已簽到",
+            `${outcome.attendance.memberUserId === actorId ? "你" : ui.displayName(outcome.attendance.memberUserId)}已於 ${ui.formatTime(outcome.attendance.checkedInAt)} 完成簽到。`
+          );
+          return;
+        }
+        showResult(
+          "success",
+          "✓",
+          "簽到成功",
+          `${outcome.program.name} · ${outcome.event.name} · ${ui.formatTime(outcome.attendance.checkedInAt)}`
+        );
+      }
+
+      ui.q("#toggle-manual").addEventListener("click", () => {
+        scanner.stop();
+        ui.show(scannerPanel, false);
+        ui.show(manualPanel, true);
+        ui.clearResult(resultEl);
+        ui.q("#manual-form .code-char").focus();
+      });
+
+      ui.q("#toggle-scanner").addEventListener("click", () => {
+        ui.show(manualPanel, false);
+        ui.show(scannerPanel, true);
+        ui.clearResult(resultEl);
+        scanner.start().catch(() => {
+          showResult(
+            "error",
+            "✗",
+            "相機無法啟動",
+            "請檢查相機權限，或改用輸入簽到碼。"
+          );
+        });
+      });
+
+      const manual = wireManualCodeForm(ui.q("#manual-form"), (code) => {
+        handleToken(code);
+      });
+
+      ui.q("#manual-submit").addEventListener("click", () => {
+        const code = manual.value();
+        if (code.length === 6) handleToken(code);
+      });
+
+      scanner.start().catch(() => {
+        showResult(
+          "error",
+          "✗",
+          "相機無法啟動",
+          "請檢查相機權限，或改用輸入簽到碼。"
+        );
+      });
+    </script>
+  </body>
+</html>

@@ -225,7 +225,7 @@ function authTransportGuard(request: Request): Response | null {
 
 export default {
   // The explicit route matrix is the locked auth contract; complexity is intentional.
-  // oxlint-disable-next-line eslint/complexity
+  // oxlint-disable-next-line complexity
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
@@ -392,7 +392,7 @@ export default {
         handleGenerateEvents,
         handleCreateEvent,
         handleListEvents,
-        handleCancelEvent,
+        handleEventUpdate,
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
         handleDecideEnrollmentRequest,
@@ -567,7 +567,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
       );
       if (event && request.method === "PATCH") {
-        return handleCancelEvent(
+        return handleEventUpdate(
           request,
           programEnv,
           event.groups?.id ?? "",
@@ -673,6 +673,123 @@ export default {
         "Unknown programs route."
       );
     }
+
+    if (url.pathname.startsWith("/api/v1/attendance")) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const attendanceEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+        RPC_RATE_LIMITER: env.RPC_RATE_LIMITER,
+      } as const;
+      const {
+        handleAssistedCheckIn,
+        handleCorrectGuest,
+        handleGuestCheckIn,
+        handleListManageableEvents,
+        handleListRoster,
+        handleSearchMembers,
+        handleResolve,
+        handleSelfCheckIn,
+        handleVoidAttendance,
+      } = await import("./lib/attendance");
+
+      if (
+        url.pathname === "/api/v1/attendance/events" &&
+        request.method === "GET"
+      ) {
+        return handleListManageableEvents(request, attendanceEnv);
+      }
+
+      if (
+        url.pathname === "/api/v1/attendance/resolve" &&
+        request.method === "GET"
+      ) {
+        return handleResolve(request, attendanceEnv);
+      }
+      if (
+        url.pathname === "/api/v1/attendance/self" &&
+        request.method === "POST"
+      ) {
+        return handleSelfCheckIn(request, attendanceEnv);
+      }
+      if (
+        url.pathname === "/api/v1/attendance/guest" &&
+        request.method === "POST"
+      ) {
+        return handleGuestCheckIn(request, attendanceEnv);
+      }
+      const eventAttendance = url.pathname.match(
+        /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members)$/u
+      );
+      if (
+        eventAttendance?.groups?.action === "roster" &&
+        request.method === "GET"
+      ) {
+        return handleListRoster(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "members" &&
+        request.method === "GET"
+      ) {
+        return handleSearchMembers(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "check-in" &&
+        request.method === "POST"
+      ) {
+        return handleAssistedCheckIn(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      const attendanceAction = url.pathname.match(
+        /^\/api\/v1\/attendance\/(?<attendanceId>[^/]+)\/(?<action>void|guest-correction)$/u
+      );
+      if (
+        attendanceAction?.groups?.action === "void" &&
+        request.method === "POST"
+      ) {
+        return handleVoidAttendance(
+          request,
+          attendanceEnv,
+          attendanceAction.groups.attendanceId ?? ""
+        );
+      }
+      if (
+        attendanceAction?.groups?.action === "guest-correction" &&
+        request.method === "PATCH"
+      ) {
+        return handleCorrectGuest(
+          request,
+          attendanceEnv,
+          attendanceAction.groups.attendanceId ?? ""
+        );
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown attendance route."
+      );
+    }
+
+    // ---- Static assets fallthrough -------------------------------------
 
     // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {

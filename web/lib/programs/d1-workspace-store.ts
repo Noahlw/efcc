@@ -186,8 +186,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .prepare(
         `INSERT INTO programs (program_id, department_id, name, description,
            category, behavior_type, lifecycle, discoverability, enrollment_mode,
-           display_order, created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           display_order, created_by, created_at, updated_by, updated_at,
+           check_in_token)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           lower(hex(randomblob(16))))`
       )
       .bind(
         id,
@@ -500,9 +502,23 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const eventId = crypto.randomUUID();
     await this.db
       .prepare(
+        // Attendance readiness (migration 0004): every Event gets a never-
+        // reused manual code plus a check-in window derived from the
+        // Program's minutes-before/after config, exactly like the migration
+        // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           source, cancel_reason, created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           source, cancel_reason, manual_check_in_code,
+           check_in_window_opens_at, check_in_window_closes_at,
+           created_by, created_at, updated_by, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?,
+           upper(substr(hex(randomblob(4)), 1, 8)),
+           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+             printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
+               FROM programs WHERE programs.program_id = ?))),
+           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+             printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
+               FROM programs WHERE programs.program_id = ?))),
+           ?, ?, ?, ?`
       )
       .bind(
         eventId,
@@ -512,6 +528,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.status,
         input.source,
         input.cancel_reason,
+        input.starts_at,
+        input.program_id,
+        input.ends_at,
+        input.program_id,
         input.created_by,
         input.created_at,
         input.updated_by,
@@ -529,9 +549,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-           status, source, cancel_reason, created_by, created_at, updated_by,
-           updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           status, source, cancel_reason, manual_check_in_code,
+           check_in_window_opens_at, check_in_window_closes_at,
+           created_by, created_at, updated_by, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?,
+           upper(substr(hex(randomblob(4)), 1, 8)),
+           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+             printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
+               FROM programs WHERE programs.program_id = ?))),
+           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+             printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
+               FROM programs WHERE programs.program_id = ?))),
+           ?, ?, ?, ?`
       )
       .bind(
         crypto.randomUUID(),
@@ -541,6 +570,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.status,
         input.source,
         input.cancel_reason,
+        input.starts_at,
+        input.program_id,
+        input.ends_at,
+        input.program_id,
         input.created_by,
         input.created_at,
         input.updated_by,

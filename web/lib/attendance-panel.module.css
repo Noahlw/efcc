@@ -1,0 +1,412 @@
+/* ============================================================================
+   Attendance panels (self/guest + operator) — Variant A: Official Civic Minimal
+   ----------------------------------------------------------------------------
+   Shared module for AttendancePanel (guest + member self check-in, /scanner)
+   and AttendanceOperatorPanel (/events). Civic neutrals with a restrained
+   cinnabar accent reserved for primary submission and active selection;
+   input borders hairline-strong, focus rings teal, destructive actions
+   outlined error red. Phone-first: 44px targets, stacked groups, the guest
+   card held to one column.
+   ========================================================================== */
+
+.page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+.card {
+  display: grid;
+  gap: 1.125rem;
+  padding: 1.25rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.lead,
+.hint,
+.eventMeta {
+  color: var(--ink-muted);
+}
+
+.lead {
+  margin: -0.375rem 0 0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* Section heading inside the panel (Subtitle tier: 1.35rem/800). */
+.sectionTitle {
+  margin: 0.375rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+/* Grouped block (camera actions, roster rows): rhythm below the previous
+   section instead of a uniform 1rem card gap. */
+.group {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.form,
+.fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Entry + action on one line where the viewport allows (resolve/search). */
+.inputRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.fieldHint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.input {
+  min-height: 2.75rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+}
+
+.input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 120ms ease-out;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-deep);
+}
+
+.button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.55;
+}
+
+/* Supporting actions (camera close, load roster, search, print, correct):
+   hairline ink-strong border, raised surface on hover — cinnabar stays
+   reserved for the primary/submit and the featured scan action. */
+.buttonSecondary {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.buttonSecondary:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--ink);
+}
+
+.buttonSecondary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.buttonSecondary:disabled {
+  opacity: 0.55;
+}
+
+/* Destructive (void attendance): outlined error, filled on hover. */
+.buttonDanger {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--error);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.buttonDanger:hover:not(:disabled) {
+  background: var(--error-surface);
+}
+
+.buttonDanger:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.buttonDanger:disabled {
+  opacity: 0.55;
+}
+
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.inputRow .button,
+.inputRow .buttonSecondary {
+  min-height: 2.75rem;
+}
+
+.events {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.eventButton {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+
+.eventButton:hover {
+  border-color: var(--accent);
+}
+
+.eventButton:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Selected chooser row (aria-pressed from the panel): cinnabar border +
+   tinted surface mark the active selection without another control. */
+.eventButton[aria-pressed="true"] {
+  border-color: var(--accent);
+  border-width: 2px;
+  padding: calc(0.875rem - 1px) calc(0.9rem - 1px);
+  background: var(--surface);
+}
+
+.eventButton[aria-pressed="true"] strong {
+  color: var(--accent-deep);
+}
+
+/* Per-row primary action affordance inside a list button. */
+.rowAction {
+  margin-top: 0.25rem;
+  color: var(--accent-deep);
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+/* Roster rows — flat rows with a hairline, not nested cards. */
+.rowCard {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 0.9rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.rowName {
+  font-weight: 800;
+  /* A long guest name must wrap inside the row, never push the status pill
+     off the card or occlude the sibling controls. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Compact status/metadata tags (rounded-pill reserved for tags). */
+.pill {
+  justify-self: start;
+  flex-shrink: 0;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pillActive {
+  color: var(--success);
+  background: var(--success-surface);
+  border: 1px solid var(--success-border);
+}
+
+.pillMuted {
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* Inline guest-correction form: recessed panel to separate it from the
+   row it edits, so the edit scope is visually unambiguous. */
+.correctionPanel {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+/* Status output: a quiet spacer until a message lands; tone variants
+   (set via data-tone only while text exists) box the message so
+   success/error read at a glance — and to screen readers via aria-live. */
+.status {
+  min-height: 1.5rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.status[data-tone] {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+.status[data-tone="success"] {
+  color: var(--success);
+  background: var(--success-surface);
+  border-color: var(--success-border);
+}
+
+.status[data-tone="error"] {
+  color: var(--error);
+  background: var(--error-surface);
+  border-color: var(--error-border);
+}
+
+.status[data-tone="info"] {
+  color: var(--ink-muted);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.video {
+  width: 100%;
+  max-height: 320px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: #111;
+}
+
+.back {
+  justify-self: start;
+  color: var(--accent-deep);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.back:hover {
+  color: var(--accent);
+}
+
+.back:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .buttonSecondary,
+  .buttonDanger,
+  .eventButton {
+    transition: none;
+  }
+}
+
+@media (min-width: 560px) {
+  /* Entry + search rows: input fills, action sits beside it. */
+  .inputRow {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+}
+
+@media (min-width: 800px) {
+  .page {
+    padding-top: 3rem;
+  }
+
+  .card {
+    padding: 2rem;
+  }
+}

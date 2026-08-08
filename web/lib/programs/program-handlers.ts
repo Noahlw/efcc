@@ -1392,7 +1392,7 @@ export async function handleListEvents(
 }
 
 /** PATCH /api/v1/programs/:programId/events/:eventId */
-export async function handleCancelEvent(
+export async function handleEventUpdate(
   request: Request,
   env: ProgramEnv,
   programId: string,

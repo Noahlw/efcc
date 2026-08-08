@@ -1,13 +1,13 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
+import { AttendancePanel } from "@/lib/attendance-panel";
 import { COPY } from "@/lib/copy";
-import { SectionView } from "@/app/_sections/section-view";
 
-export default function ScannerPage() {
-  return (
-    <AppShell>
-      <SectionView sectionKey="scanner" title={COPY.sections.scanner} />
-    </AppShell>
-  );
-}
+const ScannerPage = () => (
+  <AppShell>
+    <AttendancePanel title={COPY.sections.scanner} />
+  </AppShell>
+);
+
+export default ScannerPage;

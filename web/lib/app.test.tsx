@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { act, StrictMode } from "react";
@@ -335,7 +336,7 @@ describe("Shell", () => {
           };
           expect(body).toStrictEqual({
             username: "legacy",
-            legacyPin: "pin",
+            legacyPin: "1234",
             newCredential: "new-password",
           });
           return HttpResponse.json({
@@ -350,7 +351,7 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.usernameLabel),
         "legacy"
       );
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
 
       await waitFor(() => {
@@ -367,7 +368,7 @@ describe("Shell", () => {
         screen.getByRole("heading", { name: COPY.login.upgradeTitle })
       ).toBeInTheDocument();
       expect(screen.getByLabelText(COPY.login.legacyPasswordLabel)).toHaveValue(
-        "pin"
+        "1234"
       );
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
@@ -438,7 +439,7 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.usernameLabel),
         "legacy"
       );
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
         expect(
@@ -513,7 +514,7 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.usernameLabel),
         "legacy"
       );
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
         expect(
@@ -582,7 +583,7 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.usernameLabel),
         "legacy"
       );
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
         expect(
@@ -658,7 +659,7 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.usernameLabel),
         "legacy"
       );
-      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "pin");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
         expect(
@@ -963,10 +964,13 @@ describe("Shell", () => {
       // The QR slot is a fixed 220px square — no proportional min() clamp
       // that would shrink the code below scannable size on narrow phones (S5).
       const css = readFileSync(
-        resolve(process.cwd(), "app/profile/profile.module.css"),
-        "utf8"
+        path.resolve(process.cwd(), "app/profile/profile.module.css"),
+        "utf-8"
       );
-      const qrSquare = css.match(/\.qrSquare\s*{[^}]*}/)?.[0] ?? "";
+      const qrSquare =
+        css
+          .split(".qrSquare")[1]
+          ?.slice(0, css.split(".qrSquare")[1]?.indexOf("}") ?? 0) ?? "";
       expect(qrSquare).not.toContain("min(");
     });
 
@@ -994,7 +998,9 @@ describe("Shell", () => {
       renderRestoredProfile();
       await screen.findByRole("button", { name: COPY.logout.submit });
       expect(screen.getByText(COPY.profile.qrEmpty)).toBeInTheDocument();
-      expect(screen.queryByRole("img", { name: COPY.profile.qrCode })).toBeNull();
+      expect(
+        screen.queryByRole("img", { name: COPY.profile.qrCode })
+      ).toBeNull();
     });
   });
 
@@ -1023,11 +1029,19 @@ describe("Shell", () => {
 
     test("Member nav omits events, scanner, care, and permissions (S15)", () => {
       renderWithProvider(sectionsForRole("Member"), "/profile");
-      expect(screen.getAllByText(COPY.sections.profile).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText(COPY.sections.programs).length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText(COPY.sections.profile).length
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText(COPY.sections.programs).length
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.queryAllByText(COPY.sections.events)).toHaveLength(0);
       expect(screen.queryAllByText(COPY.sections.scanner)).toHaveLength(0);
       expect(screen.queryAllByText(COPY.sections.care)).toHaveLength(0);
+    });
+
+    test("renders no permissions section for member nav", () => {
+      renderWithProvider(MEMBER_SECTIONS, "/profile");
       expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
@@ -1213,7 +1227,7 @@ describe("Shell", () => {
     });
 
     test("renders a visible sign-out action when onSignOut is provided", async () => {
-      const onSignOut = vi.fn();
+      const onSignOut = vi.fn<() => void>();
       const user = userEvent.setup();
       render(<ForbiddenView safeHref="/profile" onSignOut={onSignOut} />);
       const action = screen.getByRole("button", {
@@ -1221,7 +1235,7 @@ describe("Shell", () => {
       });
       expect(action).toBeInTheDocument();
       await user.click(action);
-      expect(onSignOut).toHaveBeenCalledTimes(1);
+      expect(onSignOut).toHaveBeenCalledOnce();
     });
   });
 
@@ -1239,7 +1253,7 @@ describe("Shell", () => {
     });
 
     test("sign-out control invokes the context signOut", async () => {
-      const onSignOut = vi.fn();
+      const onSignOut = vi.fn<() => void>();
       const user = userEvent.setup();
       render(
         <AppProvider bootstrap={BOOTSTRAP} onSignOut={onSignOut}>
@@ -1249,7 +1263,7 @@ describe("Shell", () => {
       await user.click(
         screen.getByRole("button", { name: COPY.logout.submit })
       );
-      expect(onSignOut).toHaveBeenCalledTimes(1);
+      expect(onSignOut).toHaveBeenCalledOnce();
     });
   });
 
@@ -1297,6 +1311,22 @@ describe("Shell", () => {
       });
     });
 
+    test("events page gates the operator panel behind the events section", async () => {
+      // A Member's bootstrap has no events section (sectionsForRole), so
+      // GuardedSection must render ForbiddenView instead of the panel.
+      withAuthRestore(PUBLIC_USER);
+      setAuthHint();
+      render(<EventsPage />);
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          COPY.error.forbidden
+        );
+      });
+      expect(
+        screen.queryByRole("heading", { name: COPY.sections.events })
+      ).not.toBeInTheDocument();
+    });
+
     test("scanner page renders COPY.sections.scanner title", async () => {
       withAuthRestore(STAFF_USER);
       setAuthHint();
@@ -1325,7 +1355,9 @@ describe("Shell", () => {
       render(<PermissionsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.permissionsHeading })
+          screen.getByRole("heading", {
+            name: COPY.sections.permissionsHeading,
+          })
         ).toBeInTheDocument();
       });
     });
@@ -1409,9 +1441,9 @@ describe("Shell", () => {
       expect(screen.getByText(COPY.restore.loading)).toBeInTheDocument();
       expect(container.querySelector("[aria-hidden='true']")).not.toBeNull();
       // The restore resolves to the authenticated shell.
-      expect(
-        await screen.findByRole("button", { name: COPY.logout.submit })
-      ).toBeInTheDocument();
+      await expect(
+        screen.findByRole("button", { name: COPY.logout.submit })
+      ).resolves.toBeInTheDocument();
     });
 
     test("the authenticated shell leads with a skip link to the main content landmark", async () => {
@@ -1590,6 +1622,7 @@ describe("Shell", () => {
             // The first (stale) run hangs until after the fresh run lands,
             // then fails — the ordering that used to let run #1 overwrite
             // run #2's ready state via the shared mountRef boolean.
+            // eslint-disable-next-line promise/avoid-new -- deferred release handle in a test mock
             await new Promise<void>((resolve) => {
               releaseStale = resolve;
             });
@@ -1625,6 +1658,7 @@ describe("Shell", () => {
         name: COPY.logout.submit,
       });
       // Release the stale 503 only after the fresh result already landed.
+      // eslint-disable-next-line require-await -- act wrapper; no await inside
       await act(async () => {
         releaseStale?.();
       });

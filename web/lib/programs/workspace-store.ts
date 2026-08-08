@@ -103,6 +103,9 @@ export interface ProgramRow {
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+  check_in_token: string | null;
+  check_in_opens_at_minutes_before_start: number;
+  check_in_closes_at_minutes_after_end: number;
 }
 
 export interface DepartmentModuleRow {
@@ -207,6 +210,9 @@ export interface EventRow {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleExceptionRow | null;
+  manual_check_in_code: string | null;
+  check_in_window_opens_at: string | null;
+  check_in_window_closes_at: string | null;
 }
 
 export interface GenerateResult {

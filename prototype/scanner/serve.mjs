@@ -117,6 +117,17 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`  App Document harness:  https://${ip}:${PORT}/opener.html`);
   console.log(`  Direct scanner page:   https://${ip}:${PORT}/index.html`);
   console.log(`  Test QR (laptop):      https://${ip}:${PORT}/test-qr.html`);
+  console.log(
+    `  New prototype flows:   https://${ip}:${PORT}/prototype-index.html`
+  );
+  console.log(`  Member self check-in:  https://${ip}:${PORT}/check-in.html`);
+  console.log(
+    `  Guest check-in:        https://${ip}:${PORT}/guest-check-in.html`
+  );
+  console.log(
+    `  Event management:      https://${ip}:${PORT}/event-manage.html`
+  );
+  console.log(`  Design showcase:       https://${ip}:${PORT}/showcase.html`);
   console.log(`\nServing: ${__dirname}`);
   console.log("Ctrl-C to stop.\n");
 });
