@@ -53,7 +53,9 @@ const GuestCheckInPage = () => (
         <span>{LANDING.brandFull}</span>
       </div>
     </header>
-    <AttendancePanel guest />
+    <main>
+      <AttendancePanel guest />
+    </main>
   </div>
 );
 

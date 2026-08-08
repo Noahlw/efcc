@@ -43,8 +43,9 @@
   border-radius: 6px;
 }
 
-/* The panel's own <main> is the only main on the page; hold it to a
-   single-form column so the guest's flow stays focused at the door. */
+/* The page provides the only <main> landmark (no app shell on this
+   surface); hold it to a single-form column so the guest's flow stays
+   focused at the door. */
 .page main {
   width: min(100%, 480px);
 }
