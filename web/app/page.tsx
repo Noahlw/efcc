@@ -62,6 +62,8 @@ const SealMark = ({ size = 28 }: { size?: number }) => (
     </text>
   </svg>
 );
+/* Minimal civic system copy for the signed-out shell (Variant A, Issue #178). */
+const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
 
 type View =
   | { kind: "SIGNED_OUT" }
@@ -330,10 +332,9 @@ const LoginPage = () => {
         {LANDING.skipToLogin}
       </a>
 
-      {/* Minimal civic shell — seal mark + official church title. */}
+      {/* Minimal civic shell — official church title. */}
       <header className={styles.header}>
         <div className={styles.brand} aria-label={LANDING.homeLabel}>
-          <SealMark />
           <span>{LANDING.brandFull}</span>
         </div>
       </header>
@@ -347,9 +348,6 @@ const LoginPage = () => {
               aria-labelledby="login-title"
             >
               <div className={styles.cardHead}>
-                <span className={styles.cardSeal}>
-                  <SealMark size={22} />
-                </span>
                 <h2 id="login-title" className={styles.cardTitle}>
                   {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
                 </h2>
@@ -474,9 +472,6 @@ const LoginPage = () => {
             </section>
 
             <div className={styles.loginCopy}>
-              <span className={styles.copySeal}>
-                <SealMark size={44} />
-              </span>
               <h1>{LANDING.brandFull}</h1>
               <p>{LANDING.systemDescription}</p>
             </div>

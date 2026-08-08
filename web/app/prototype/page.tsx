@@ -11,7 +11,7 @@ const SYSTEM_TITLE = "中國基督教播道會顯恩堂";
  * THESIS: a minimal civic-operational shell for one congregation; refuses the
  * SaaS marketing hero, slogans, and decorative cheer.
  * OWN-WORLD: off-white surface, ink type, hairline rules, one cinnabar accent
- * for submission + active state, squar-cut seal (恩) mark.
+ * for submission and active state.
  * STORY: every surface the product actually ships, mockable in one artifact,
  * so the live codebase rebuilds onto this record rather than the reverse.
  * FIRST VIEWPORT: login — 2-col on desktop (minimal system copy left, form
@@ -366,7 +366,6 @@ function RenderSurface({
             >
               <div className={styles.formCard}>
                 <div className={styles.cardHead}>
-                  <SealSlot />
                   <h3>登入系統</h3>
                 </div>
                 <p className={styles.cardLead}>使用你的用戶名稱與密碼。</p>
@@ -405,7 +404,6 @@ function RenderSurface({
                 </form>
               </div>
               <div className={styles.loginCopy}>
-                <SealSlot large />
                 <h2>{SYSTEM_TITLE}</h2>
                 <p>{SYSTEM_DESCRIPTION}</p>
               </div>
@@ -421,7 +419,6 @@ function RenderSurface({
           <div className={styles.mockBody}>
             <div className={styles.formCardSingle}>
               <div className={styles.cardHead}>
-                <SealSlot />
                 <h3>設定新密碼</h3>
               </div>
               <div className={styles.noticeAlert} role="alert">
@@ -857,7 +854,6 @@ function MockHeader({
   return (
     <header className={styles.shellHeader}>
       <div className={styles.shellBrand}>
-        <SealSlot />
         <span className={styles.shellTitle}>{title}</span>
       </div>
       {authenticated && (
@@ -905,16 +901,5 @@ function MockNav({
         </button>
       ))}
     </nav>
-  );
-}
-
-function SealSlot({ large = false }: { large?: boolean }) {
-  return (
-    <div
-      className={large ? styles.sealSlotLarge : styles.sealSlot}
-      title="Replaceable mark slot (Interim 恩 seal)"
-    >
-      恩
-    </div>
   );
 }
