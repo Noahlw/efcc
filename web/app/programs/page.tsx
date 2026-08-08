@@ -1,21 +1,21 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
+import { ProgramsManager } from "@/lib/programs/programs-manager";
 
+import styles from "./programs.module.css";
+
+/**
+ * Programs surface (PRG-01 #197). Authenticated, cookie-only: the Worker
+ * enforces capability authorization on every /api/v1/programs/* call; this
+ * page renders departments, their modules, and (for Members) only the
+ * server-filtered Listed programs.
+ */
 export default function ProgramsPage() {
   return (
     <AppShell>
-      <main
-        style={{
-          maxWidth: 600,
-          margin: "2rem auto",
-          padding: "0 1rem",
-          fontFamily: "sans-serif",
-        }}
-      >
-        <h1 style={{ marginBottom: "1.5rem" }}>{COPY.sections.programs}</h1>
-        <p>{COPY.sections.placeholder}</p>
+      <main className={styles.page}>
+        <ProgramsManager />
       </main>
     </AppShell>
   );

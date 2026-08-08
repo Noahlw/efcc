@@ -121,7 +121,7 @@ export function assertNotLocked(account: AccountRow, now: number): void {
     throw new LegacyUpgradeLockedError(
       3,
       null,
-      "Account is locked pending credential-upgrade review. Contact an Admin or Teacher to unlock."
+      "Account is locked pending credential-upgrade review. Contact an Admin or Staff to unlock."
     );
   }
   throw new LegacyUpgradeLockedError(

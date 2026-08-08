@@ -92,7 +92,7 @@ export async function submitRegistration(
 
 /**
  * GET /api/v1/auth/registrations — lists Pending registration requests.
- * Requires an Admin/Teacher session (403 otherwise). Returns safe metadata
+ * Requires an Admin/Staff session (403 otherwise). Returns safe metadata
  * only; never credential material.
  */
 export async function fetchPendingRegistrations(): Promise<
@@ -108,7 +108,7 @@ export async function fetchPendingRegistrations(): Promise<
 }
 
 /**
- * POST /api/v1/auth/registrations/:id/{approve|reject} — Teacher/Admin
+ * POST /api/v1/auth/registrations/:id/{approve|reject} — Staff/Admin
  * resolves a Pending request. Idempotent server-side against a repeated
  * action; opposite/redundant transitions are deterministic errors.
  */

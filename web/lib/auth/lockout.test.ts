@@ -7,7 +7,7 @@
  *   - After the 5-minute lock expires, a fresh round of 5 failures escalates
  *     to a 15-minute lock (stage 2).
  *   - After the 15-minute lock expires, a fresh round of 5 failures escalates
- *     to a permanent lock requiring Admin/Teacher intervention (stage 3).
+ *     to a permanent lock requiring Admin/Staff intervention (stage 3).
  *   - adminUnlockLegacyUpgrade() clears the lock so the upgrade can proceed;
  *     the legacy pin hash / requires_upgrade gate is preserved.
  *   - A successful upgrade clears the whole lockout state.
@@ -159,7 +159,7 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
     let acct = await findAccountByUserId(testDb(), "L103");
     expect(acct!.lock_level).toBe(3);
 
-    // Admin/Teacher unlocks.
+    // Admin/Staff unlocks.
     await adminUnlockLegacyUpgrade(testDb(), "L103", start + 1_000_000);
     acct = await findAccountByUserId(testDb(), "L103");
     expect(acct!.lock_level).toBe(0);
