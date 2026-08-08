@@ -12,6 +12,7 @@
  */
 import assert from "node:assert/strict";
 
+import type { D1Database } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, test } from "vitest";
 /* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans the suites. */
@@ -22,6 +23,8 @@ import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
+import { D1CapabilityAuthorizer } from "./capability-authorizer";
+import { D1WorkspaceStore } from "./d1-workspace-store";
 import { addWallDays, hkTodayWallDate, wallWeekday } from "./recurrence";
 
 const SECRET = "test-access-token-secret";
@@ -565,7 +568,9 @@ async function generate(
   );
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
-    data: { generated: { created: number; skipped: number; rule_count: number } };
+    data: {
+      generated: { created: number; skipped: number; rule_count: number };
+    };
   };
   return result.data.generated;
 }
@@ -588,7 +593,12 @@ async function listEventsFor(
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
     data: {
-      events: { event_id: string; starts_at: string; status: string; source: string }[];
+      events: {
+        event_id: string;
+        starts_at: string;
+        status: string;
+        source: string;
+      }[];
     };
   };
   return result.data.events;
@@ -656,10 +666,25 @@ describe("PRG-02: schedule rules", () => {
   test("invalid rule bodies return 422", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const cases: unknown[] = [
-      { recurrence: "DAILY", day_of_week: 1, start_time: "19:30", end_time: "21:00" },
+      {
+        recurrence: "DAILY",
+        day_of_week: 1,
+        start_time: "19:30",
+        end_time: "21:00",
+      },
       { recurrence: "WEEKLY", start_time: "19:30", end_time: "21:00" },
-      { recurrence: "WEEKLY", day_of_week: 1, start_time: "25:00", end_time: "21:00" },
-      { recurrence: "WEEKLY", day_of_week: 1, start_time: "21:00", end_time: "19:30" },
+      {
+        recurrence: "WEEKLY",
+        day_of_week: 1,
+        start_time: "25:00",
+        end_time: "21:00",
+      },
+      {
+        recurrence: "WEEKLY",
+        day_of_week: 1,
+        start_time: "21:00",
+        end_time: "19:30",
+      },
       { recurrence: "MONTHLY", start_time: "19:30", end_time: "21:00" },
     ];
     const results = await Promise.all(
@@ -743,7 +768,12 @@ describe("PRG-02: schedule rules", () => {
         "SELECT action, entity_type, entity_id, outcome FROM audit_events WHERE entity_id = ?"
       )
       .bind(rule.rule_id)
-      .all<{ action: string; entity_type: string; entity_id: string; outcome: string }>();
+      .all<{
+        action: string;
+        entity_type: string;
+        entity_id: string;
+        outcome: string;
+      }>();
     const row = rows.results?.find((r) => r.action === "SCHEDULE_RULE_CREATE");
     assert.ok(row, "audit row must exist for rule creation");
     assert.strictEqual(row.entity_type, "schedule_rule");
@@ -761,7 +791,12 @@ describe("PRG-02: schedule rules", () => {
     await generate(adminAccess, recurringId);
     const before = await testDb()
       .prepare("SELECT event_id, starts_at, ends_at, status FROM events")
-      .all<{ event_id: string; starts_at: string; ends_at: string; status: string }>();
+      .all<{
+        event_id: string;
+        starts_at: string;
+        ends_at: string;
+        status: string;
+      }>();
 
     const res = await worker.fetch(
       programsRequest(
@@ -782,7 +817,12 @@ describe("PRG-02: schedule rules", () => {
 
     const after = await testDb()
       .prepare("SELECT event_id, starts_at, ends_at, status FROM events")
-      .all<{ event_id: string; starts_at: string; ends_at: string; status: string }>();
+      .all<{
+        event_id: string;
+        starts_at: string;
+        ends_at: string;
+        status: string;
+      }>();
     assert.strictEqual(after.results?.length, before.results?.length);
     for (const [index, row] of (after.results ?? []).entries()) {
       assert.deepStrictEqual(row, (before.results ?? [])[index]);
@@ -841,7 +881,10 @@ describe("PRG-02: generation", () => {
     for (const [index, event] of events.entries()) {
       assert.strictEqual(event.status, "Active");
       assert.strictEqual(event.source, "SCHEDULE");
-      assert.strictEqual(event.starts_at, `${expectedDates[index]}T11:30:00.000Z`);
+      assert.strictEqual(
+        event.starts_at,
+        `${expectedDates[index]}T11:30:00.000Z`
+      );
     }
   });
 
@@ -977,7 +1020,11 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(removed.status, 200);
 
     const regenerated = await generate(adminAccess, programId, 14);
-    assert.strictEqual(regenerated.created, 1, "rule-time occurrence regenerates after exception removal");
+    assert.strictEqual(
+      regenerated.created,
+      1,
+      "rule-time occurrence regenerates after exception removal"
+    );
     const restored = await listEventsFor(adminAccess, programId);
     assert.strictEqual(restored.length, 3);
     assert.ok(
@@ -1010,7 +1057,9 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(res.status, 422);
 
     const rows = await testDb()
-      .prepare("SELECT action, outcome FROM audit_events WHERE action = 'EVENT_GENERATE'")
+      .prepare(
+        "SELECT action, outcome FROM audit_events WHERE action = 'EVENT_GENERATE'"
+      )
       .all<{ action: string; outcome: string }>();
     const row = rows.results?.find((r) => r.outcome === "SUCCESS");
     assert.ok(row, "EVENT_GENERATE audit row must exist");
@@ -1162,15 +1211,18 @@ describe("PRG-02: events", () => {
       .run();
 
     const cancelled = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "惡劣天氣" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "惡劣天氣" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(cancelled.status, 200);
@@ -1205,43 +1257,56 @@ describe("PRG-02: events", () => {
     const memberAccess = await accessCookieFor("bob", "bob-secret");
     const memberView = await listEventsFor(memberAccess, programId);
     const activeCount = memberView.filter((e) => e.status === "Active").length;
-    assert.strictEqual(memberView.length, activeCount, "Member must not see Cancelled events");
+    assert.strictEqual(
+      memberView.length,
+      activeCount,
+      "Member must not see Cancelled events"
+    );
     const adminView = await listEventsFor(adminAccess, programId);
-    assert.ok(adminView.some((e) => e.status === "Cancelled"), "Admin sees Cancelled events");
+    assert.ok(
+      adminView.some((e) => e.status === "Cancelled"),
+      "Admin sees Cancelled events"
+    );
   });
 
   test("cancel requires a reason; unknown event 404; empty reason 422", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const noReason = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${crypto.randomUUID()}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${crypto.randomUUID()}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(noReason.status, 422);
 
     const unknown = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${crypto.randomUUID()}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "測試" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${crypto.randomUUID()}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "測試" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(unknown.status, 404);
   });
 
-    test("no credential material leaks in events responses", async () => {
+  test("no credential material leaks in events responses", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const created = await worker.fetch(
       programsRequest(`/api/v1/programs/${programId}/events`, {
@@ -1266,20 +1331,27 @@ describe("PRG-02: events", () => {
     };
 
     const res = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "審計測試" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "審計測試" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 200);
     const text = await res.text();
-    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(text));
+    assert.ok(
+      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
+        text
+      )
+    );
 
     const listed = await worker.fetch(
       programsRequest(`/api/v1/programs/${programId}/events`, {
@@ -1291,7 +1363,11 @@ describe("PRG-02: events", () => {
       testEnv()
     );
     const listedText = await listed.text();
-    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(listedText));
+    assert.ok(
+      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
+        listedText
+      )
+    );
   });
 });
 
@@ -1322,7 +1398,7 @@ async function submitRequest(
   return result.data.request;
 }
 
-async function decideRequest(
+function decideRequest(
   access: string,
   programId: string,
   requestId: string,
@@ -1345,7 +1421,7 @@ async function decideRequest(
   );
 }
 
-async function assistedEnrollFor(
+function assistedEnrollFor(
   access: string,
   programId: string,
   memberUserId: string
@@ -1380,7 +1456,11 @@ async function listRequestsFor(
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
     data: {
-      requests: { request_id: string; member_user_id: string; status: string }[];
+      requests: {
+        request_id: string;
+        member_user_id: string;
+        status: string;
+      }[];
     };
   };
   return result.data.requests;
@@ -1389,7 +1469,9 @@ async function listRequestsFor(
 async function listEnrollmentsFor(
   access: string,
   programId: string
-): Promise<{ enrollment_id: string; member_user_id: string; status: string }[]> {
+): Promise<
+  { enrollment_id: string; member_user_id: string; status: string }[]
+> {
   const res = await worker.fetch(
     programsRequest(`/api/v1/programs/${programId}/enrollments`, {
       headers: {
@@ -1412,7 +1494,7 @@ async function listEnrollmentsFor(
   return result.data.enrollments;
 }
 
-async function cancelEnrollmentFor(
+function cancelEnrollmentFor(
   access: string,
   programId: string,
   enrollmentId: string
@@ -1523,15 +1605,18 @@ describe("PRG-03: enrollment requests", () => {
 
   test("REQ-2 an Admin actor without program.enroll is denied 403", async () => {
     const res = await worker.fetch(
-      programsRequest(`/api/v1/programs/${requestProgramId}/enrollment-requests`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: {},
-      }),
+      programsRequest(
+        `/api/v1/programs/${requestProgramId}/enrollment-requests`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(res.status, 403);
@@ -1743,16 +1828,23 @@ describe("PRG-03: enrollment requests", () => {
 
   test("REQ-8 no credential material leaks in request responses", async () => {
     const res = await worker.fetch(
-      programsRequest(`/api/v1/programs/${requestProgramId}/enrollment-requests`, {
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-        },
-      }),
+      programsRequest(
+        `/api/v1/programs/${requestProgramId}/enrollment-requests`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
       testEnv()
     );
     const text = await res.text();
-    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(text));
+    assert.ok(
+      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
+        text
+      )
+    );
   });
 });
 
@@ -1799,7 +1891,13 @@ describe("PRG-03: enrollments", () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
     assert.strictEqual(res.status, 201);
     const result = (await assertCorrelated(res)) as {
-      data: { enrollment: { enrollment_id: string; request_id: string | null; status: string } };
+      data: {
+        enrollment: {
+          enrollment_id: string;
+          request_id: string | null;
+          status: string;
+        };
+      };
     };
     assert.strictEqual(result.data.enrollment.status, "Active");
     assert.strictEqual(result.data.enrollment.request_id, null);
@@ -1812,7 +1910,11 @@ describe("PRG-03: enrollments", () => {
       .all<{ request_id: string }>();
     assert.strictEqual(requests.results?.length, 0, "no fake request row");
 
-    const wrongMode = await assistedEnrollFor(adminAccess, requestProgramId, "U002");
+    const wrongMode = await assistedEnrollFor(
+      adminAccess,
+      requestProgramId,
+      "U002"
+    );
     assert.strictEqual(wrongMode.status, 422);
   });
 
@@ -1859,13 +1961,23 @@ describe("PRG-03: enrollments", () => {
     );
     assert.strictEqual(ownCancel.status, 200);
     const cancelled = (await assertCorrelated(ownCancel)) as {
-      data: { enrollment: { status: string; cancelled_by: string; cancelled_at: string } };
+      data: {
+        enrollment: {
+          status: string;
+          cancelled_by: string;
+          cancelled_at: string;
+        };
+      };
     };
     assert.strictEqual(cancelled.data.enrollment.status, "Cancelled");
     assert.strictEqual(cancelled.data.enrollment.cancelled_by, "U002");
     assert.ok(cancelled.data.enrollment.cancelled_at);
 
-    const thirdParty = await assistedEnrollFor(adminAccess, managerOnlyId, "U003");
+    const thirdParty = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U003"
+    );
     assert.strictEqual(thirdParty.status, 409, "U003 active from ENR-3");
     const carolEnrollment = await testDb()
       .prepare(
@@ -1907,12 +2019,19 @@ describe("PRG-03: enrollments", () => {
     );
     assert.strictEqual(secondCancel.status, 409);
 
-    const reenroll = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
+    const reenroll = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U002"
+    );
     assert.strictEqual(reenroll.status, 201);
     const reenrolled = (await assertCorrelated(reenroll)) as {
       data: { enrollment: { enrollment_id: string; status: string } };
     };
-    assert.notStrictEqual(reenrolled.data.enrollment.enrollment_id, cancelledId);
+    assert.notStrictEqual(
+      reenrolled.data.enrollment.enrollment_id,
+      cancelledId
+    );
 
     const oldRow = await testDb()
       .prepare("SELECT status FROM enrollments WHERE enrollment_id = ?")
@@ -1922,7 +2041,10 @@ describe("PRG-03: enrollments", () => {
   });
 
   test("ENR-6 members see their own rows; managers see all; Unlisted is invisible to members", async () => {
-    const memberRequests = await listRequestsFor(memberAccess, requestProgramId);
+    const memberRequests = await listRequestsFor(
+      memberAccess,
+      requestProgramId
+    );
     const otherMemberSeen = memberRequests.some(
       (r) => r.member_user_id !== "U002"
     );
@@ -1931,7 +2053,10 @@ describe("PRG-03: enrollments", () => {
     const adminRequests = await listRequestsFor(adminAccess, requestProgramId);
     assert.ok(adminRequests.length >= memberRequests.length);
 
-    const memberEnrollments = await listEnrollmentsFor(memberAccess, requestProgramId);
+    const memberEnrollments = await listEnrollmentsFor(
+      memberAccess,
+      requestProgramId
+    );
     const otherSeen = memberEnrollments.some(
       (e) => e.member_user_id !== "U002"
     );
@@ -1978,6 +2103,458 @@ describe("PRG-03: enrollments", () => {
       testEnv()
     );
     const text = await res.text();
-    assert.ok(!/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(text));
+    assert.ok(
+      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
+        text
+      )
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PRG-04 (#200): Program Leader & delegation.
+// ---------------------------------------------------------------------------
+
+function assignLeader(
+  access: string,
+  programId: string,
+  userId: string
+): Promise<Response> {
+  return worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/leaders`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body: { user_id: userId },
+    }),
+    testEnv()
+  );
+}
+
+function revokeLeader(
+  access: string,
+  programId: string,
+  userId: string
+): Promise<Response> {
+  return worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/leaders/${userId}/revoke`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body: {},
+    }),
+    testEnv()
+  );
+}
+
+async function listLeadersFor(
+  access: string,
+  programId: string
+): Promise<{ user_id: string; revoked_at: string | null }[]> {
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/leaders`, {
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+      },
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 200);
+  const body = (await assertCorrelated(res)) as {
+    data: { leaders: { user_id: string; revoked_at: string | null }[] };
+  };
+  return body.data.leaders;
+}
+
+async function countLeaderAudits(): Promise<number> {
+  const row = await testDb()
+    .prepare(
+      "SELECT COUNT(*) AS n FROM audit_events WHERE action IN ('PROGRAM_LEADER_GRANT', 'PROGRAM_LEADER_REVOKE')"
+    )
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+function getStoreFor(db: D1Database) {
+  return new D1WorkspaceStore(db);
+}
+
+describe("PRG-04: program leaders", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let carolAccess = "";
+  let leaderDeptId = "";
+  let leaderProgramId = "";
+  let otherProgramId = "";
+
+  beforeAll(async () => {
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    carolAccess = await accessCookieFor("carol", "carol-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PRG-04",
+      name: "Leader Test Department",
+    });
+    leaderDeptId = dept.department_id;
+    const program = await createProgram(adminAccess, leaderDeptId, {
+      name: "Leader Test Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    leaderProgramId = program.program_id;
+    const other = await createProgram(adminAccess, leaderDeptId, {
+      name: "Leader Other Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    otherProgramId = other.program_id;
+  });
+
+  test("AUTH-1 leader.assign capability is Admin/Staff only", async () => {
+    const rows = await testDb()
+      .prepare(
+        "SELECT role FROM role_capabilities WHERE capability = 'program.leader.assign'"
+      )
+      .all<{ role: string }>();
+    const roles = new Set((rows.results ?? []).map((r) => r.role));
+    assert.ok(roles.has("Admin"), "Admin must hold leader.assign");
+    assert.ok(roles.has("Staff"), "Staff must hold leader.assign");
+    assert.ok(!roles.has("Member"), "Member must not hold leader.assign");
+  });
+
+  test("DLG-1 staff assigns an active leader with grant audit", async () => {
+    const res = await assignLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { leader: { user_id: string; revoked_at: string | null } };
+    };
+    assert.strictEqual(body.data.leader.user_id, "U002");
+    assert.strictEqual(body.data.leader.revoked_at, null);
+
+    const audit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, entity_id, new_value_json, correlation_id
+         FROM audit_events WHERE action = 'PROGRAM_LEADER_GRANT'
+         ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .first<{
+        actor_user_id: string;
+        entity_id: string;
+        new_value_json: string;
+        correlation_id: string;
+      }>();
+    assert.ok(audit, "grant audit row must exist");
+    assert.strictEqual(audit.actor_user_id, "U001");
+    assert.strictEqual(audit.entity_id, leaderProgramId);
+    assert.ok(audit.correlation_id, "correlation id must be present");
+    const value = JSON.parse(audit.new_value_json) as { user_id?: string };
+    assert.strictEqual(value.user_id, "U002");
+  });
+
+  test("DLG-2 re-assigning an active pair is idempotent (one active row)", async () => {
+    const res = await assignLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(res.status, 200);
+    const leaders = await listLeadersFor(adminAccess, leaderProgramId);
+    const active = leaders.filter((l) => l.user_id === "U002");
+    assert.strictEqual(active.length, 1, "exactly one active U002 row");
+    const dupAudit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'DUPLICATE'
+         ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .first<{ outcome: string }>();
+    assert.ok(dupAudit, "duplicate grant must be audited as DUPLICATE");
+  });
+
+  test("DLG-3 partial unique index forbids duplicate active pairs", async () => {
+    await assert.rejects(
+      testDb()
+        .prepare(
+          `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
+           VALUES (?, ?, 'U001', '2026-08-06T00:00:00Z')`
+        )
+        .bind(leaderProgramId, "U002")
+        .run(),
+      /UNIQUE constraint failed/u
+    );
+  });
+
+  test("DLG-4 revoke then re-assign reactivates the pair", async () => {
+    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(revoke.status, 200);
+    const revokedBody = (await assertCorrelated(revoke)) as {
+      data: { leader: { revoked_at: string | null } };
+    };
+    assert.ok(revokedBody.data.leader.revoked_at, "revoked_at must be set");
+
+    const reAssign = await assignLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(reAssign.status, 200);
+    const body = (await assertCorrelated(reAssign)) as {
+      data: { leader: { revoked_at: string | null } };
+    };
+    assert.strictEqual(body.data.leader.revoked_at, null);
+    const history = await testDb()
+      .prepare(
+        `SELECT user_id FROM program_leaders WHERE program_id = ? AND user_id = 'U002'`
+      )
+      .bind(leaderProgramId)
+      .all();
+    assert.strictEqual(
+      (history.results ?? []).length,
+      1,
+      "single persisted row"
+    );
+  });
+
+  test("DLG-5 unknown target user is rejected with no audit", async () => {
+    const before = await countLeaderAudits();
+    const res = await assignLeader(adminAccess, leaderProgramId, "ghost-user");
+    assert.strictEqual(res.status, 422);
+    const after = await countLeaderAudits();
+    assert.strictEqual(after, before, "no grant audit for unknown target");
+    const rows = await testDb()
+      .prepare("SELECT 1 FROM program_leaders WHERE user_id = 'ghost-user'")
+      .all();
+    assert.strictEqual((rows.results ?? []).length, 0);
+  });
+
+  test("DLG-6 unknown program does not leak existence (403)", async () => {
+    const res = await assignLeader(adminAccess, "no-such-program", "U002");
+    assert.strictEqual(res.status, 403);
+  });
+
+  test("DLG-7 member cannot assign leaders", async () => {
+    const res = await assignLeader(memberAccess, leaderProgramId, "U003");
+    assert.strictEqual(res.status, 403);
+    const rows = await testDb()
+      .prepare(
+        "SELECT 1 FROM program_leaders WHERE program_id = ? AND user_id = 'U003'"
+      )
+      .bind(leaderProgramId)
+      .all();
+    assert.strictEqual((rows.results ?? []).length, 0);
+  });
+
+  test("DLG-8 scoped program leader cannot assign (leadership never implies delegation)", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const res = await assignLeader(carolAccess, leaderProgramId, "U002");
+    assert.strictEqual(res.status, 403, "leader must not hold leader.assign");
+  });
+
+  test("DLG-9 caller cannot self-grant", async () => {
+    const res = await assignLeader(adminAccess, leaderProgramId, "U001");
+    assert.strictEqual(res.status, 403);
+  });
+
+  test("DLG-10 leader of A cannot delegate into B", async () => {
+    const res = await assignLeader(carolAccess, otherProgramId, "U002");
+    assert.strictEqual(res.status, 403);
+  });
+
+  test("DLG-11 revoke removes operational grants (leader loses manage)", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(revoke.status, 200);
+    const audit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, new_value_json, correlation_id
+         FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'
+         ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .first<{
+        actor_user_id: string;
+        new_value_json: string;
+        correlation_id: string;
+      }>();
+    assert.ok(audit, "revoke audit row must exist");
+    assert.strictEqual(audit.actor_user_id, "U001");
+    const value = JSON.parse(audit.new_value_json) as {
+      user_id?: string;
+      revoked_at?: string;
+    };
+    assert.strictEqual(value.user_id, "U003");
+    assert.ok(value.revoked_at, "revoked_at must be audited");
+
+    const rule = await worker.fetch(
+      programsRequest(`/api/v1/programs/${leaderProgramId}/schedule-rules`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 2,
+          month_day: null,
+          start_time: "19:30",
+          end_time: "21:00",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(rule.status, 403, "revoked leader must lose manage");
+  });
+
+  test("DLG-12 revoking a user who was never a leader is 404", async () => {
+    const res = await revokeLeader(adminAccess, leaderProgramId, "U001");
+    assert.strictEqual(res.status, 404);
+  });
+
+  test("DLG-13 revoking an already-revoked pair is a no-op 200 with no new audit", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const first = await revokeLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(first.status, 200);
+    const before = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'"
+      )
+      .first<{ n: number }>();
+    const second = await revokeLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(second.status, 200);
+    const after = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'"
+      )
+      .first<{ n: number }>();
+    assert.strictEqual(after?.n, before?.n, "no second revoke audit");
+  });
+
+  test("DLG-14 member and scoped leader cannot revoke", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const byMember = await revokeLeader(memberAccess, leaderProgramId, "U003");
+    assert.strictEqual(byMember.status, 403);
+    const byLeader = await revokeLeader(carolAccess, leaderProgramId, "U002");
+    assert.strictEqual(byLeader.status, 403);
+  });
+
+  test("DLG-15 revocation persists and audit rows are immutable", async () => {
+    const audit = await testDb()
+      .prepare(
+        `SELECT audit_id FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'
+         ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .first<{ audit_id: string }>();
+    assert.ok(audit, "revoke audit row must exist");
+    await assert.rejects(
+      testDb()
+        .prepare("DELETE FROM audit_events WHERE audit_id = ?")
+        .bind(audit.audit_id)
+        .run(),
+      /audit_events is immutable/u
+    );
+  });
+
+  test("DLG-16 list returns active leaders only", async () => {
+    const leaders = await listLeadersFor(adminAccess, leaderProgramId);
+    for (const leader of leaders) {
+      assert.strictEqual(leader.revoked_at, null);
+    }
+  });
+
+  test("DLG-17 scoped leader can view their own program's leaders", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const leaders = await listLeadersFor(carolAccess, leaderProgramId);
+    assert.ok(leaders.length > 0);
+  });
+
+  test("DLG-18 member and cross-program leader are denied listing (404 masks)", async () => {
+    const undo = await revokeLeader(adminAccess, leaderProgramId, "U002");
+    assert.strictEqual(
+      undo.status,
+      200,
+      "teardown: U002 must not remain a leader"
+    );
+    const byMember = await worker.fetch(
+      programsRequest(`/api/v1/programs/${leaderProgramId}/leaders`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(byMember.status, 404);
+    const byCrossLeader = await worker.fetch(
+      programsRequest(`/api/v1/programs/${otherProgramId}/leaders`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(byCrossLeader.status, 404);
+  });
+
+  test("AUTH-2 leadership grants operational but never delegation capability", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const can = await new D1CapabilityAuthorizer(getStoreFor(testDb())).can(
+      { actorUserId: "U003", actorRole: "Member" },
+      "program.leader.assign" as never,
+      { programId: leaderProgramId }
+    );
+    assert.strictEqual(can, false, "leadership must not imply delegation");
+  });
+
+  test("AUTH-3 leader remains operational on their own program", async () => {
+    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
+    assert.strictEqual(grant.status, 200);
+    const rule = await worker.fetch(
+      programsRequest(`/api/v1/programs/${leaderProgramId}/schedule-rules`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 2,
+          month_day: null,
+          start_time: "19:30",
+          end_time: "21:00",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(rule.status, 201, "leader must manage own program");
+  });
+
+  test("AUD-2 no credential material enters leader audit records", async () => {
+    const rows = await testDb()
+      .prepare(
+        `SELECT old_value_json, new_value_json FROM audit_events
+         WHERE action IN ('PROGRAM_LEADER_GRANT', 'PROGRAM_LEADER_REVOKE')`
+      )
+      .all<{ old_value_json: string | null; new_value_json: string | null }>();
+    for (const row of rows.results ?? []) {
+      for (const json of [row.old_value_json, row.new_value_json]) {
+        if (json === null) {
+          continue;
+        }
+        const text = JSON.stringify(JSON.parse(json));
+        assert.ok(
+          !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
+            text
+          ),
+          "no credential material in audit JSON"
+        );
+      }
+    }
   });
 });

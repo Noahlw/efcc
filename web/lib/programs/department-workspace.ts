@@ -24,6 +24,7 @@ import type {
   GenerateResult,
   ProgramLifecycle,
   ProgramRow,
+  ProgramLeaderRow,
   ProgramUpdate,
   RecurrenceKind,
   ScheduleExceptionAction,
@@ -147,9 +148,7 @@ export class DuplicateEventError extends Error {
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class EnrollmentNotAllowedError extends Error {
   constructor(programId: string, expected: string) {
-    super(
-      `Program ${programId} does not accept enrollment mode ${expected}.`
-    );
+    super(`Program ${programId} does not accept enrollment mode ${expected}.`);
     this.name = "EnrollmentNotAllowedError";
   }
 }
@@ -169,6 +168,22 @@ export class RequestNotDecidableError extends Error {
   constructor(requestId: string) {
     super(`Enrollment request ${requestId} is not in a decidable state.`);
     this.name = "RequestNotDecidableError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class SelfDelegationError extends Error {
+  constructor(userId: string) {
+    super(`A user cannot grant Program Leader to themselves: ${userId}`);
+    this.name = "SelfDelegationError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class LeaderNotAssignedError extends Error {
+  constructor(programId: string, userId: string) {
+    super(`User ${userId} is not an active Program Leader of ${programId}.`);
+    this.name = "LeaderNotAssignedError";
   }
 }
 
@@ -507,7 +522,10 @@ export class DepartmentWorkspace {
     return this.store.findScheduleException(exceptionId);
   }
 
-  getEvent(_ctx: AuthorizationContext, eventId: string): Promise<EventRow | null> {
+  getEvent(
+    _ctx: AuthorizationContext,
+    eventId: string
+  ): Promise<EventRow | null> {
     return this.store.findEventById(eventId);
   }
 
@@ -516,7 +534,8 @@ export class DepartmentWorkspace {
     programId: string,
     cmd: CreateScheduleRuleCommand,
     correlationId: string | null
-  ): Promise<ScheduleRuleRow> {    const program = await this.requireProgramFor(
+  ): Promise<ScheduleRuleRow> {
+    const program = await this.requireProgramFor(
       ctx,
       programId,
       CAPABILITY.PROGRAM_MANAGE
@@ -702,7 +721,11 @@ export class DepartmentWorkspace {
         skipped += 1;
       }
     }
-    const result: GenerateResult = { created, skipped, rule_count: rules.length };
+    const result: GenerateResult = {
+      created,
+      skipped,
+      rule_count: rules.length,
+    };
     await this.audit(
       ctx,
       "EVENT_GENERATE",
@@ -976,7 +999,12 @@ export class DepartmentWorkspace {
       } catch (error) {
         // ponytail: partial unique index is the race guard; on constraint
         // violation the member already has an Active enrollment.
-        if (await this.store.hasActiveEnrollment(programId, request.member_user_id)) {
+        if (
+          await this.store.hasActiveEnrollment(
+            programId,
+            request.member_user_id
+          )
+        ) {
           throw new DuplicateEnrollmentError(programId, request.member_user_id);
         }
         throw error;
@@ -1062,7 +1090,10 @@ export class DepartmentWorkspace {
         programId,
         "CONFLICT",
         null,
-        { member_user_id: cmd.memberUserId, reason: "active_enrollment_exists" },
+        {
+          member_user_id: cmd.memberUserId,
+          reason: "active_enrollment_exists",
+        },
         correlationId
       );
       throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
@@ -1142,11 +1173,11 @@ export class DepartmentWorkspace {
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_ENROLL);
     }
     const isOwner = enrollment.member_user_id === ctx.actorUserId;
-    if (isOwner) {
-      await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_ENROLL);
-    } else {
-      await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_MANAGE);
-    }
+    await this.requireProgramFor(
+      ctx,
+      programId,
+      isOwner ? CAPABILITY.PROGRAM_ENROLL : CAPABILITY.PROGRAM_MANAGE
+    );
     const cancelled = await this.store.cancelEnrollment(
       enrollmentId,
       ctx.actorUserId,
@@ -1166,5 +1197,111 @@ export class DepartmentWorkspace {
       correlationId
     );
     return cancelled;
+  }
+
+  async assignProgramLeader(
+    ctx: AuthorizationContext,
+    programId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<ProgramLeaderRow> {
+    await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_LEADER_ASSIGN
+    );
+    if (userId === ctx.actorUserId) {
+      throw new SelfDelegationError(userId);
+    }
+    const existing = await this.store.findProgramLeader(programId, userId);
+    if (existing && existing.revoked_at === null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "DUPLICATE",
+        existing,
+        existing,
+        correlationId
+      );
+      return existing;
+    }
+    const now = new Date().toISOString();
+    const row = await this.store.assignProgramLeader({
+      program_id: programId,
+      user_id: userId,
+      granted_by: ctx.actorUserId,
+      granted_at: now,
+    });
+    await this.audit(
+      ctx,
+      "PROGRAM_LEADER_GRANT",
+      "program_leader",
+      programId,
+      "SUCCESS",
+      existing,
+      row,
+      correlationId
+    );
+    return row;
+  }
+
+  async revokeProgramLeader(
+    ctx: AuthorizationContext,
+    programId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<ProgramLeaderRow | null> {
+    await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_LEADER_ASSIGN
+    );
+    const existing = await this.store.findProgramLeader(programId, userId);
+    if (!existing) {
+      throw new LeaderNotAssignedError(programId, userId);
+    }
+    if (existing.revoked_at !== null) {
+      return existing;
+    }
+    const revoked = await this.store.revokeProgramLeader({
+      program_id: programId,
+      user_id: userId,
+      revoked_by: ctx.actorUserId,
+      revoked_at: new Date().toISOString(),
+    });
+    if (!revoked) {
+      throw new LeaderNotAssignedError(programId, userId);
+    }
+    await this.audit(
+      ctx,
+      "PROGRAM_LEADER_REVOKE",
+      "program_leader",
+      programId,
+      "SUCCESS",
+      existing,
+      revoked,
+      correlationId
+    );
+    return revoked;
+  }
+
+  async listProgramLeaders(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<ProgramLeaderRow[] | null> {
+    const program = await this.store.findProgramById(programId);
+    if (!program) {
+      return null;
+    }
+    const canView = await this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, {
+      departmentId: program.department_id,
+      programId: program.program_id,
+    });
+    if (!canView) {
+      return null;
+    }
+    return this.store.listProgramLeaders(programId);
   }
 }

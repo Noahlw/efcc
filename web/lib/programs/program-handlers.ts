@@ -6,14 +6,17 @@
  * format RFC 9457 Problem Details on failures.
  */
 
-import { findAccountByUserId } from '../auth/accounts';
-import type { AccountRow } from '../auth/accounts';
+import { findAccountByUserId } from "../auth/accounts";
+import type { AccountRow } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { verifyAccessToken } from "../auth/sessions";
-import { DEFAULT_ROLE_POLICIES } from './capabilities';
-import type { ModuleKey } from './capabilities';
-import { AuthorizationDeniedError, D1CapabilityAuthorizer } from './capability-authorizer';
-import type { AuthorizationContext } from './capability-authorizer';
+import { DEFAULT_ROLE_POLICIES } from "./capabilities";
+import type { ModuleKey } from "./capabilities";
+import {
+  AuthorizationDeniedError,
+  D1CapabilityAuthorizer,
+} from "./capability-authorizer";
+import type { AuthorizationContext } from "./capability-authorizer";
 import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import {
   DepartmentWorkspace,
@@ -23,8 +26,10 @@ import {
   DuplicateProgramNameError,
   EnrollmentNotAllowedError,
   InvalidModuleKeyError,
+  LeaderNotAssignedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
+  SelfDelegationError,
 } from "./department-workspace";
 import type {
   CreateScheduleRuleCommand,
@@ -678,18 +683,13 @@ function isIsoInstant(v: unknown): v is string {
   if (typeof v !== "string") {
     return false;
   }
-  if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u.test(v)
-  ) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u.test(v)) {
     return false;
   }
   return !Number.isNaN(Date.parse(v));
 }
 
-function validation(
-  requestId: string,
-  detail: string
-): Response {
+function validation(requestId: string, detail: string): Response {
   return problem(422, "VALIDATION", "Validation failed", detail, requestId);
 }
 
@@ -698,21 +698,11 @@ function notFound(requestId: string, detail: string): Response {
 }
 
 function isDayOfWeekValue(v: unknown): v is number {
-  return (
-    typeof v === "number" &&
-    Number.isInteger(v) &&
-    v >= 0 &&
-    v <= 6
-  );
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 6;
 }
 
 function isMonthDayValue(v: unknown): v is number {
-  return (
-    typeof v === "number" &&
-    Number.isInteger(v) &&
-    v >= 1 &&
-    v <= 31
-  );
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31;
 }
 
 type RuleBodyResult =
@@ -747,9 +737,7 @@ function parseRuleBody(body: {
     ok: true,
     value: {
       recurrence: body.recurrence,
-      day_of_week: isDayOfWeekValue(body.day_of_week)
-        ? body.day_of_week
-        : null,
+      day_of_week: isDayOfWeekValue(body.day_of_week) ? body.day_of_week : null,
       month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
       start_time: body.start_time,
       end_time: body.end_time,
@@ -855,7 +843,8 @@ function parseRulePatch(
   if (isMonthDayValue(body.month_day)) {
     update.month_day = body.month_day;
   }
-  const startTime = typeof body.start_time === "string" ? body.start_time : null;
+  const startTime =
+    typeof body.start_time === "string" ? body.start_time : null;
   const endTime = typeof body.end_time === "string" ? body.end_time : null;
   if (startTime !== null && !isWallTime(startTime)) {
     return { ok: false, detail: "start_time must be HH:MM." };
@@ -972,10 +961,7 @@ export async function handleCreateScheduleException(
     );
   }
   if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
-    return validation(
-      requestId,
-      "CANCEL must not include new times."
-    );
+    return validation(requestId, "CANCEL must not include new times.");
   }
 
   const { workspace } = await getModule(env);
@@ -1053,7 +1039,12 @@ export async function handleGenerateEvents(
   let horizonDays = 90;
   if (body !== null) {
     const raw = body.horizon_days;
-    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 1 && raw <= 365) {
+    if (
+      typeof raw === "number" &&
+      Number.isInteger(raw) &&
+      raw >= 1 &&
+      raw <= 365
+    ) {
       horizonDays = raw;
     } else if (raw !== undefined) {
       return validation(requestId, "horizon_days must be an integer 1-365.");
@@ -1401,7 +1392,10 @@ export async function handleListEnrollments(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rows = await workspace.listEnrollments(ctxFrom(auth.account), programId);
+  const rows = await workspace.listEnrollments(
+    ctxFrom(auth.account),
+    programId
+  );
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
@@ -1444,4 +1438,101 @@ export async function handleCancelEnrollment(
     }
     throw error;
   }
+}
+
+/** POST /api/v1/programs/:programId/leaders */
+export async function handleAssignProgramLeader(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ user_id?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const userId = typeof body.user_id === "string" ? body.user_id : "";
+  if (!userId) {
+    return validation(requestId, "user_id is required.");
+  }
+  const target = await findAccountByUserId(env.DB, userId);
+  if (!target) {
+    return validation(requestId, "Unknown user_id.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const row = await workspace.assignProgramLeader(
+      ctxFrom(auth.account),
+      programId,
+      userId,
+      requestId
+    );
+    return jsonResponse(200, { leader: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof SelfDelegationError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/leaders/:userId/revoke */
+export async function handleRevokeProgramLeader(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  userId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const row = await workspace.revokeProgramLeader(
+      ctxFrom(auth.account),
+      programId,
+      userId,
+      requestId
+    );
+    return jsonResponse(200, { leader: row }, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof LeaderNotAssignedError) {
+      return notFound(requestId, error.message);
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/leaders */
+export async function handleListProgramLeaders(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const leaders = await workspace.listProgramLeaders(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (leaders === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { leaders }, requestId);
 }

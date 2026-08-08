@@ -17,6 +17,9 @@ import type {
   EventInput,
   EventRow,
   ProgramInput,
+  ProgramLeaderGrantInput,
+  ProgramLeaderRevokeInput,
+  ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
   ScheduleExceptionInput,
@@ -329,9 +332,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async createScheduleRule(
-    input: ScheduleRuleInput
-  ): Promise<ScheduleRuleRow> {
+  async createScheduleRule(input: ScheduleRuleInput): Promise<ScheduleRuleRow> {
     const ruleId = crypto.randomUUID();
     await this.db
       .prepare(
@@ -543,9 +544,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     startsAt: string
   ): Promise<EventRow | null> {
     const row = await this.db
-      .prepare(
-        "SELECT * FROM events WHERE program_id = ? AND starts_at = ?"
-      )
+      .prepare("SELECT * FROM events WHERE program_id = ? AND starts_at = ?")
       .bind(programId, startsAt)
       .first<EventRow>();
     return row ?? null;
@@ -618,9 +617,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     id: string
   ): Promise<EnrollmentRequestRow | null> {
     const row = await this.db
-      .prepare(
-        "SELECT * FROM enrollment_requests WHERE request_id = ?"
-      )
+      .prepare("SELECT * FROM enrollment_requests WHERE request_id = ?")
       .bind(id)
       .first<EnrollmentRequestRow>();
     return row ?? null;
@@ -769,6 +766,87 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       return null;
     }
     return this.findEnrollmentById(id);
+  }
+
+  findProgramLeader(
+    programId: string,
+    userId: string
+  ): Promise<ProgramLeaderRow | null> {
+    return this.db
+      .prepare(
+        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
+         FROM program_leaders
+         WHERE program_id = ? AND user_id = ?`
+      )
+      .bind(programId, userId)
+      .first<ProgramLeaderRow>();
+  }
+
+  listProgramLeaders(programId: string): Promise<ProgramLeaderRow[]> {
+    return this.db
+      .prepare(
+        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
+         FROM program_leaders
+         WHERE program_id = ? AND revoked_at IS NULL
+         ORDER BY granted_at`
+      )
+      .bind(programId)
+      .all<ProgramLeaderRow>()
+      .then((r) => r.results);
+  }
+
+  listProgramLeaderHistory(programId: string): Promise<ProgramLeaderRow[]> {
+    return this.db
+      .prepare(
+        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
+         FROM program_leaders
+         WHERE program_id = ?
+         ORDER BY granted_at`
+      )
+      .bind(programId)
+      .all<ProgramLeaderRow>()
+      .then((r) => r.results);
+  }
+
+  async assignProgramLeader(
+    input: ProgramLeaderGrantInput
+  ): Promise<ProgramLeaderRow> {
+    const existing = await this.findProgramLeader(
+      input.program_id,
+      input.user_id
+    );
+    const sql = existing
+      ? `UPDATE program_leaders
+         SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
+         WHERE program_id = ? AND user_id = ?`
+      : `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`;
+    const args = existing
+      ? [input.granted_by, input.granted_at, input.program_id, input.user_id]
+      : [input.program_id, input.user_id, input.granted_by, input.granted_at];
+    await this.db
+      .prepare(sql)
+      .bind(...args)
+      .run();
+    const row = await this.findProgramLeader(input.program_id, input.user_id);
+    if (!row) {
+      throw new Error("program leader row missing after assign");
+    }
+    return row;
+  }
+
+  async revokeProgramLeader(
+    input: ProgramLeaderRevokeInput
+  ): Promise<ProgramLeaderRow | null> {
+    await this.db
+      .prepare(
+        `UPDATE program_leaders
+         SET revoked_by = ?, revoked_at = ?
+         WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(input.revoked_by, input.revoked_at, input.program_id, input.user_id)
+      .run();
+    return this.findProgramLeader(input.program_id, input.user_id);
   }
 
   async audit(input: AuditInput): Promise<void> {

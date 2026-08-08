@@ -177,7 +177,8 @@ export interface EventInput {
   source: EventSource;
   cancel_reason: string | null;
   created_by: string | null;
-  created_at: string;  updated_by: string | null;
+  created_at: string;
+  updated_by: string | null;
   updated_at: string;
 }
 
@@ -253,6 +254,29 @@ export interface EnrollmentInput {
   created_at: string;
 }
 
+export interface ProgramLeaderRow {
+  program_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+}
+
+export interface ProgramLeaderGrantInput {
+  program_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+}
+
+export interface ProgramLeaderRevokeInput {
+  program_id: string;
+  user_id: string;
+  revoked_by: string;
+  revoked_at: string;
+}
+
 export interface AuditInput {
   audit_id: string;
   inserted_at: string;
@@ -319,15 +343,15 @@ export interface WorkspaceStore {
     input: ScheduleExceptionInput
   ) => Promise<ScheduleExceptionRow>;
   deleteScheduleException: (exceptionId: string) => Promise<boolean>;
-  findScheduleException: (exceptionId: string) => Promise<ScheduleExceptionRow | null>;
+  findScheduleException: (
+    exceptionId: string
+  ) => Promise<ScheduleExceptionRow | null>;
   listScheduleExceptions: (
     ruleIds: string[]
   ) => Promise<ScheduleExceptionRow[]>;
 
   createEvent: (input: EventInput) => Promise<EventRow>;
-  insertGeneratedEvent: (
-    input: EventInput
-  ) => Promise<boolean>;
+  insertGeneratedEvent: (input: EventInput) => Promise<boolean>;
   findEventByStart: (
     programId: string,
     startsAt: string
@@ -379,6 +403,19 @@ export interface WorkspaceStore {
     cancelledBy: string,
     cancelledAt: string
   ) => Promise<EnrollmentRow | null>;
+
+  findProgramLeader: (
+    programId: string,
+    userId: string
+  ) => Promise<ProgramLeaderRow | null>;
+  listProgramLeaders: (programId: string) => Promise<ProgramLeaderRow[]>;
+  listProgramLeaderHistory: (programId: string) => Promise<ProgramLeaderRow[]>;
+  assignProgramLeader: (
+    input: ProgramLeaderGrantInput
+  ) => Promise<ProgramLeaderRow>;
+  revokeProgramLeader: (
+    input: ProgramLeaderRevokeInput
+  ) => Promise<ProgramLeaderRow | null>;
 
   audit: (input: AuditInput) => Promise<void>;
 }
