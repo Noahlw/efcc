@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Shared dev-testing worker (see .github/CI-SECRETS.md). Overridable via
-// PROGRAMS_TARGET_URL; everything else stays fail-closed below.
-const DEFAULT_TARGET_URL = "https://efcc-dev-testing.efcc-ggc.workers.dev";
+// Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
+// local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
+// dev-testing worker (see .github/CI-SECRETS.md) or another
+// efcc-auth-*/efcc-dev-*.efcc-ggc.workers.dev acceptance host.
+const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;
 
@@ -11,22 +13,23 @@ try {
   parsedTarget = new URL(targetUrl);
 } catch {
   throw new Error(
-    `PROGRAMS_TARGET_URL must be an absolute HTTPS URL (default: ${DEFAULT_TARGET_URL})`
+    `PROGRAMS_TARGET_URL must be an absolute URL (default: ${DEFAULT_TARGET_URL})`
   );
 }
 
-const allowLocal =
-  process.env.PROGRAMS_ALLOW_LOCAL === "1" &&
-  (parsedTarget.hostname === "localhost" ||
-    parsedTarget.hostname === "127.0.0.1");
-if (!allowLocal) {
+const isLocal =
+  parsedTarget.protocol === "http:" &&
+  !parsedTarget.username &&
+  !parsedTarget.password &&
+  ["localhost", "127.0.0.1"].includes(parsedTarget.hostname);
+if (!isLocal) {
   if (
     parsedTarget.protocol !== "https:" ||
     parsedTarget.username ||
     parsedTarget.password
   ) {
     throw new Error(
-      "PROGRAMS_TARGET_URL must be an absolute HTTPS URL without credentials"
+      "PROGRAMS_TARGET_URL must be an absolute HTTP loopback URL or an absolute HTTPS URL without credentials"
     );
   }
   if (

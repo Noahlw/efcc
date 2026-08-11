@@ -1,11 +1,12 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
-// ATT-04 (#216) — deployed end-to-end proof of QR attendance
+// ATT-04 (#216) — local/deployed D1 end-to-end proof of QR attendance
 // (self / guest / assisted check-in, ATT-01/02/03 #213/#214/#215).
 //
 // Drives the real browser UI (Next.js static export served by the Worker
 // ASSETS binding) plus same-origin `/api/v1/attendance/*` and
 // `/api/v1/programs/*` RPCs at phone-375x667 and desktop-1280x720 widths
-// against the shared efcc-dev-testing.efcc-ggc.workers.dev Worker/D1.
+// against the local Worker/D1 by default, or an explicitly isolated remote
+// target when `PROGRAMS_TARGET_URL` is supplied.
 // Acceptance trace: docs/omp-plans/2026-08-07-att-04-ticket-216.md.
 // Copy strings below mirror web/lib/copy.ts; the suite asserts observable
 // DOM state and server responses (RFC 9457 problem codes), never
@@ -20,11 +21,9 @@
 //     resolve. The seeded E2E-MEMBER-U-E2E-MEMBER value is exercised via
 //     the operator member search (exact qr_code_string match) instead.
 import { expect, test } from "@playwright/test";
-import type {
-  APIRequestContext,
-  Browser,
-  Page,
-} from "@playwright/test";
+import type { APIRequestContext, Browser, Page } from "@playwright/test";
+
+import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
 // @playwright/test does not export named `Playwright`/`StorageState` types;
 // the helpers below only need the request-context surface and the cookie
@@ -34,12 +33,13 @@ interface RequestFactory {
     newContext(options?: {
       baseURL?: string;
       storageState?: unknown;
+      extraHTTPHeaders?: Record<string, string>;
     }): Promise<APIRequestContext>;
   };
 }
 
 interface StorageState {
-  cookies: Array<{
+  cookies: {
     name: string;
     value: string;
     domain: string;
@@ -48,16 +48,14 @@ interface StorageState {
     httpOnly: boolean;
     secure: boolean;
     sameSite: "Strict" | "Lax" | "None";
-  }>;
-  origins: Array<{
+  }[];
+  origins: {
     origin: string;
     localStorage: Array<{ name: string; value: string }>;
-  }>;
+  }[];
 }
 
-const TARGET_URL =
-  process.env.PROGRAMS_TARGET_URL ??
-  "https://efcc-dev-testing.efcc-ggc.workers.dev";
+const TARGET_URL = process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787";
 
 // Non-secret presence flag the shell requires before it re-verifies cookies
 // (web/lib/session.ts AUTH_HINT_KEY). Login normally sets it in browser
@@ -65,12 +63,28 @@ const TARGET_URL =
 // storageState origins, or the shell cold-boots to the login surface.
 const AUTH_HINT_KEY = "efcc_auth_active";
 
-const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME;
-const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL;
-const STAFF_USER = process.env.PROGRAMS_STAFF_USERNAME;
-const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL;
-const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME;
-const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL;
+const configuredTarget = process.env.PROGRAMS_TARGET_URL;
+const localTarget =
+  !configuredTarget ||
+  ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
+const ADMIN_USER =
+  process.env.PROGRAMS_ADMIN_USERNAME ??
+  (localTarget ? DEV_ADMIN.username : undefined);
+const ADMIN_CRED =
+  process.env.PROGRAMS_ADMIN_CREDENTIAL ??
+  (localTarget ? DEV_ADMIN.credential : undefined);
+const STAFF_USER =
+  process.env.PROGRAMS_STAFF_USERNAME ??
+  (localTarget ? DEV_STAFF.username : undefined);
+const STAFF_CRED =
+  process.env.PROGRAMS_STAFF_CREDENTIAL ??
+  (localTarget ? DEV_STAFF.credential : undefined);
+const MEMBER_USER =
+  process.env.PROGRAMS_MEMBER_USERNAME ??
+  (localTarget ? DEV_MEMBER.username : undefined);
+const MEMBER_CRED =
+  process.env.PROGRAMS_MEMBER_CREDENTIAL ??
+  (localTarget ? DEV_MEMBER.credential : undefined);
 
 // Copy strings mirrored from web/lib/copy.ts (asserted as observable DOM).
 const COPY = {
@@ -99,10 +113,6 @@ const COPY = {
   statusActive: "有效",
   statusVoided: "已作廢",
   printSheet: "列印聚會簽到表",
-  programEvents: "聚會與時間表",
-  programDetails: "查看課程詳情",
-  expand: "展開",
-  collapse: "收合",
 };
 
 // Seeded fixture identities (tests/e2e/seed-dev-accounts.ts). The member QR
@@ -119,8 +129,6 @@ interface AttendanceEventFixture {
 
 interface Fixtures {
   checkInToken: string;
-  deptCode: string;
-  programName: string;
   eventA: AttendanceEventFixture;
   eventB: AttendanceEventFixture;
   cancelledEvent: AttendanceEventFixture;
@@ -146,7 +154,7 @@ function fresh(prefix: string): string {
 
 /** 8-digit HK mobile (normalizes to `hk:852...`). */
 function freshPhone(): string {
-  return String(10000000 + Math.floor(Math.random() * 89999999));
+  return String(10_000_000 + Math.floor(Math.random() * 89_999_999));
 }
 
 function minutesFromNow(minutes: number): string {
@@ -158,22 +166,25 @@ async function loginApi(
   username: string,
   credential: string
 ): Promise<{ api: APIRequestContext; storageState: StorageState }> {
-  const api = await playwright.request.newContext({ baseURL: TARGET_URL });
-  const response = await api.post("/api/v1/auth/login", {
+  const loginContext = await playwright.request.newContext({
+    baseURL: TARGET_URL,
+  });
+  const response = await loginContext.post("/api/v1/auth/login", {
     headers: { Origin: new URL(TARGET_URL).origin },
     data: { username, password: credential },
   });
   expect(response.status()).toBe(200);
-  // APIRequestContext does not expose cookies(); derive the browser
-  // storageState from the login Set-Cookie headers instead.
+  // APIRequestContext does not expose cookies(); derive both the browser
+  // storageState and an explicit request Cookie header from Set-Cookie. The
+  // explicit header keeps local HTTP runs equivalent to remote HTTPS runs
+  // when the auth cookies carry the Secure attribute.
   const setCookieHeaders = response
     .headersArray()
     .filter(({ name }) => name.toLowerCase() === "set-cookie")
     .map(({ value }) => value);
-  expect(setCookieHeaders.map((header) => header.split("=", 1)[0]).sort()).toEqual([
-    "efcc_access",
-    "efcc_refresh",
-  ]);
+  expect(
+    setCookieHeaders.map((header) => header.split("=", 1)[0]).sort()
+  ).toEqual(["efcc_access", "efcc_refresh"]);
   const storageState: StorageState = storageStateFromCookies(
     setCookieHeaders,
     new URL(TARGET_URL).hostname
@@ -184,6 +195,14 @@ async function loginApi(
       localStorage: [{ name: AUTH_HINT_KEY, value: "1" }],
     },
   ];
+  const cookieHeader = setCookieHeaders
+    .map((header) => header.split(";", 1)[0])
+    .join("; ");
+  await loginContext.dispose();
+  const api = await playwright.request.newContext({
+    baseURL: TARGET_URL,
+    extraHTTPHeaders: { Cookie: cookieHeader },
+  });
   return { api, storageState };
 }
 
@@ -215,9 +234,11 @@ function storageStateFromCookies(
       expires: maxAge ? Math.floor(Date.now() / 1000) + Number(maxAge) : -1,
       httpOnly: attrs.has("httponly"),
       secure: attrs.has("secure"),
-      sameSite: sameSite === "Lax" ? "Lax" : sameSite === "None" ? "None" : "Strict",
+      sameSite:
+        sameSite === "Lax" ? "Lax" : sameSite === "None" ? "None" : "Strict",
     } as const satisfies {
       name: string;
+
       value: string;
       domain: string;
       path: string;
@@ -229,13 +250,16 @@ function storageStateFromCookies(
   });
   return { cookies, origins: [] };
 }
+function cookieHeaderFromStorageState(state: StorageState): string {
+  return state.cookies.map(({ name, value }) => `${name}=${value}`).join("; ");
+}
 
 /** Status messages render twice: the panel output and the app's sr-only
  *  live region (announce). Scope to the page's <main> so assertions are
  *  unambiguous. */
 function statusText(page: Page, text: string) {
   return page.locator("main").getByText(text, { exact: true });
- }
+}
 
 async function postJson(
   api: APIRequestContext,
@@ -297,7 +321,7 @@ async function resolveAndChoose(
 ): Promise<void> {
   await page.locator("#attendance-code").fill(entry);
   await page.getByRole("button", { name: COPY.resolve }).click();
-  const chooser = page.locator('button[aria-pressed]');
+  const chooser = page.locator("button[aria-pressed]");
   await expect(chooser).toHaveCount(2);
   await chooser.nth(index).click();
   await expect(chooser.nth(index)).toHaveAttribute("aria-pressed", "true");
@@ -322,7 +346,7 @@ test.beforeAll(async ({ playwright }) => {
     )
   ) {
     throw new Error(
-      "PROGRAMS_*_USERNAME must start with E2E_; deployed suites require disposable acceptance accounts"
+      "PROGRAMS_*_USERNAME must start with E2E_; remote runs require disposable acceptance accounts"
     );
   }
 
@@ -340,8 +364,9 @@ test.beforeAll(async ({ playwright }) => {
       lifecycle: "Active",
     });
     expect(dept.status).toBe(201);
-    const departmentId = (dept.body.data as { department: { department_id: string } })
-      .department.department_id;
+    const departmentId = (
+      dept.body.data as { department: { department_id: string } }
+    ).department.department_id;
 
     for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
       const module = await postJson(
@@ -378,7 +403,7 @@ test.beforeAll(async ({ playwright }) => {
         // A weekday that is never "today" (HK): a generated event whose
         // check-in window is live right now would join the chooser and break
         // the deterministic two-event resolution the suite asserts.
-        day_of_week: (new Date(Date.now() + 8 * 3600_000).getUTCDay() + 2) % 7,
+        day_of_week: (new Date(Date.now() + 8 * 3_600_000).getUTCDay() + 2) % 7,
         start_time: "10:00",
         end_time: "11:00",
       }
@@ -401,10 +426,13 @@ test.beforeAll(async ({ playwright }) => {
       const created = await postJson(
         admin.api,
         `/api/v1/programs/${programId}/events`,
-        { starts_at: minutesFromNow(startsMinutes), ends_at: minutesFromNow(endsMinutes) }
+        {
+          starts_at: minutesFromNow(startsMinutes),
+          ends_at: minutesFromNow(endsMinutes),
+        }
       );
       expect(created.status).toBe(201);
-      const event = (created.body.data as { event: AttendanceEventFixture }).event;
+      const {event} = (created.body.data as { event: AttendanceEventFixture });
       expect(event.manual_check_in_code).toMatch(/^[0-9A-F]{8}$/u);
       return event;
     };
@@ -451,8 +479,6 @@ test.beforeAll(async ({ playwright }) => {
     staff = await loginApi(playwright, STAFF_USER!, STAFF_CRED!);
     fixtures = {
       checkInToken: checkInToken!,
-      deptCode,
-      programName: (program.body.data as { program: { name: string } }).program.name,
       eventA,
       eventB,
       cancelledEvent,
@@ -467,14 +493,12 @@ test.beforeAll(async ({ playwright }) => {
   }
 });
 
-test.describe("ATT-04 deployed QR attendance proof", () => {
+test.describe("ATT-04 QR attendance proof", () => {
   test("A guest check-in happy path: entry → chooser → name/phone → success", async ({
     page,
   }) => {
     await page.goto("/guest-check-in");
-    await expect(
-      page.getByLabel(COPY.inputLabel)
-    ).toBeVisible();
+    await expect(page.getByLabel(COPY.inputLabel)).toBeVisible();
     // Program token resolves to the two overlapping open events (manual
     // codes never match the token, so this is unambiguously the QR path).
     await resolveAndChoose(page, fixtures.checkInToken, 0);
@@ -510,8 +534,8 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     playwright,
   }) => {
     const api = await playwright.request.newContext({ baseURL: TARGET_URL });
-    let member: Awaited<ReturnType<typeof loginApi>> | null = null;
-    let staff: Awaited<ReturnType<typeof loginApi>> | null = null;
+    const member: Awaited<ReturnType<typeof loginApi>> | null = null;
+    const staff: Awaited<ReturnType<typeof loginApi>> | null = null;
     try {
       const name = `E2E訪客 ${fresh("B")}`;
       const phone = freshPhone();
@@ -524,8 +548,8 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
       );
       expect(first.status).toBe(201);
       expect((first.body.data as { outcome: string }).outcome).toBe("success");
-       const firstId = (first.body.data as { attendance_id: string })
-         .attendance_id;
+      const firstId = (first.body.data as { attendance_id: string })
+        .attendance_id;
 
       const second = await guestCheckIn(
         api,
@@ -579,9 +603,8 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         phone
       );
       expect(first.status).toBe(201);
-      const attendanceId = (
-        first.body.data as { attendance_id: string }
-      ).attendance_id;
+      const attendanceId = (first.body.data as { attendance_id: string })
+        .attendance_id;
 
       // Operator voids the guest row (with a reason) on /events.
       const adminContext = await browser.newContext({
@@ -597,12 +620,14 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         });
         await expect(row).toBeVisible();
         await expect(row.getByText(COPY.voidReason)).toBeVisible();
-        await row.locator(`#void-${attendanceId}`).fill("E2E 重複簽到，作廢重簽");
+        await row
+          .locator(`#void-${attendanceId}`)
+          .fill("E2E 重複簽到，作廢重簽");
         await row.getByRole("button", { name: COPY.void }).click();
         await expect(row.getByText(COPY.statusVoided)).toBeVisible();
-        await expect(
-          row.getByRole("button", { name: COPY.void })
-        ).toHaveCount(0);
+        await expect(row.getByRole("button", { name: COPY.void })).toHaveCount(
+          0
+        );
       } finally {
         await adminContext.close();
       }
@@ -645,7 +670,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     // duplicate outcome for the same member.
     const api = await playwright.request.newContext({
       baseURL: TARGET_URL,
-      storageState: fixtures.memberState,
+      extraHTTPHeaders: {
+        Cookie: cookieHeaderFromStorageState(fixtures.memberState),
+      },
     });
     try {
       const selfCheckIn = (manualCode: string) =>
@@ -692,7 +719,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
       );
       await page.getByRole("button", { name: COPY.roster }).click();
       await rosterLoad;
-      await expect(page.locator("#event-id")).toHaveValue(fixtures.eventB.event_id);
+      await expect(page.locator("#event-id")).toHaveValue(
+        fixtures.eventB.event_id
+      );
 
       // Search by enrolled member name.
       await page.locator("#member-search").fill("E2E Member");
@@ -706,7 +735,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
       const memberResult = page
         .locator("li")
         .filter({ has: page.getByText("E2E Member", { exact: true }) });
-      await expect(memberResult.getByRole("button", { name: COPY.checkInMember })).toBeVisible();
+      await expect(
+        memberResult.getByRole("button", { name: COPY.checkInMember })
+      ).toBeVisible();
       // The panel overwrites its status with the roster count right after a
       // successful assist (checkIn -> loadRoster), so assert the request
       // outcome instead of the transient success flash.
@@ -758,7 +789,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     playwright,
   }) => {
     await page.goto("/guest-check-in");
-    await page.locator("#attendance-code").fill(fixtures.cancelledEvent.manual_check_in_code);
+    await page
+      .locator("#attendance-code")
+      .fill(fixtures.cancelledEvent.manual_check_in_code);
     await page.getByRole("button", { name: COPY.resolve }).click();
     await expect(statusText(page, COPY.eventCancelled)).toBeVisible();
 
@@ -823,7 +856,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
 
     const api = await playwright.request.newContext({
       baseURL: TARGET_URL,
-      storageState: fixtures.staffState,
+      extraHTTPHeaders: {
+        Cookie: cookieHeaderFromStorageState(fixtures.staffState),
+      },
     });
     try {
       const self = await api.post("/api/v1/attendance/self", {
@@ -842,7 +877,7 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     }
   });
 
-  test("I check-in sheet export controls render (operator + program event rows)", async ({
+  test("I check-in sheet export controls render for the operator panel", async ({
     browser,
   }) => {
     const adminContext = await browser.newContext({
@@ -850,51 +885,23 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     });
     const page = await adminContext.newPage();
     try {
-      // Operator panel: sheet export control appears once an event is loaded.
       await page.goto(
         `/events?eventId=${encodeURIComponent(fixtures.eventA.event_id)}`
       );
       await expect(
         page.getByRole("button", { name: COPY.printSheet })
       ).toBeVisible();
-
-      // Programs events panel: per-event sheet export button (the QR+manual
-      // code sheet builder) renders for the fixture program's Active events.
-      await page.goto("/programs");
-      const deptRow = page
-        .locator("li")
-        .filter({ has: page.getByText(fixtures.deptCode, { exact: true }) });
-      await expect(deptRow).toBeVisible();
-      const expand = deptRow.getByRole("button", { name: COPY.expand });
-      if (await expand.count()) {
-        await expand.click();
-      }
-      // The expanded department row CONTAINS its program rows, so the
-      // department <li> also matches a program-name text filter; scope the
-      // program lookup to the department row's child list items.
-      const programRow = deptRow
-        .locator("li")
-        .filter({ has: page.getByText(fixtures.programName, { exact: true }) });
-      await expect(programRow).toBeVisible();
-      const details = programRow.getByRole("button", { name: COPY.programDetails });
-      if (await details.count()) {
-        await details.click();
-      }
-      await programRow.getByRole("button", { name: COPY.programEvents }).click();
-      await expect(
-        page.getByRole("button", { name: COPY.printSheet }).first()
-      ).toBeVisible();
     } finally {
       await adminContext.close();
     }
-});
+  });
 
   test("J cancelled event on the operator panel: notice, readable roster, and no check-in controls", async ({
     browser,
   }) => {
     const adminContext = await browser.newContext({
       storageState: fixtures.adminState,
-  });
+    });
     const page = await adminContext.newPage();
     try {
       await page.goto(
@@ -915,9 +922,9 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         page.getByText(COPY.eventCancelled, { exact: true })
       ).toBeVisible();
       // None of the check-in tools apply to a cancelled event.
-      await expect(
-        page.getByRole("button", { name: COPY.camera })
-      ).toHaveCount(0);
+      await expect(page.getByRole("button", { name: COPY.camera })).toHaveCount(
+        0
+      );
       await expect(page.locator("#member-search")).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: COPY.printSheet })
@@ -944,14 +951,17 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
         new URL(request.url()).pathname === "/api/v1/attendance/guest"
       ) {
         guestPostCount += 1;
-    }
-});
+      }
+    });
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
     await page.waitForTimeout(300);
     expect(guestPostCount).toBe(0);
     // The required inputs keep their browser state; name caps at 80.
     await expect(page.locator("#guest-phone")).toBeVisible();
-    await expect(page.locator("#guest-name")).toHaveAttribute("maxlength", "80");
+    await expect(page.locator("#guest-name")).toHaveAttribute(
+      "maxlength",
+      "80"
+    );
   });
 
   test("L invalid phone surfaces the server VALIDATION detail with the error tone", async ({
@@ -966,8 +976,8 @@ test.describe("ATT-04 deployed QR attendance proof", () => {
     await page.locator("#guest-name").fill(`E2E訪客 ${fresh("L")}`);
     await page.locator("#guest-phone").fill("not-a-phone");
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
-    await expect(
-      page.locator("main output[data-tone='error']")
-    ).toContainText(COPY.invalidPhoneDetail);
+    await expect(page.locator("main output[data-tone='error']")).toContainText(
+      COPY.invalidPhoneDetail
+    );
   });
 });

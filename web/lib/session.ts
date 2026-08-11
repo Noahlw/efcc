@@ -13,10 +13,52 @@
 import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import type { Section } from "@/lib/api";
-import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
+export const DEEP_LINK_KEY = "efcc_deep_link";
 
+/** Persist a same-origin path/query/hash for the post-login handoff. */
+export function rememberDeepLink(value: string): void {
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return;
+  }
+  try {
+    sessionStorage.setItem(DEEP_LINK_KEY, value);
+  } catch {
+    // Storage unavailable — the current URL remains the safe fallback.
+  }
+}
+
+/** Consume and validate the post-login path/query/hash handoff. */
+export function consumeDeepLink(): string | null {
+  try {
+    const value = sessionStorage.getItem(DEEP_LINK_KEY);
+    sessionStorage.removeItem(DEEP_LINK_KEY);
+    if (
+      value &&
+      value.startsWith("/") &&
+      !value.startsWith("//") &&
+      !value.includes("\\")
+    ) {
+      return value;
+    }
+  } catch {
+    // Storage unavailable — the caller falls back to the first shell section.
+  }
+  return null;
+}
+
+export function clearDeepLink(): void {
+  try {
+    sessionStorage.removeItem(DEEP_LINK_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
 /** True when a cookie-authenticated session was last known to be active. */
 export function hasAuthHint(): boolean {
   try {
@@ -45,20 +87,19 @@ export function clearAuthHint(): void {
 }
 
 /**
- * Assemble the shell's Bootstrap from a cookie-verified public user,
- * authorizing the shell sections by the user's role (S15).
+ * Assemble the shell Bootstrap from cookie-verified user data and the two
+ * server projections. Missing or malformed projections fail closed; the
+ * browser never derives authorization or navigation from `user.role`.
  */
 export function buildBootstrap(
   user: PublicUser,
-  serverSections?: Section[]
+  serverSections?: Section[],
+  serverNavigation?: Section[]
 ): Bootstrap {
-  // S15: the server authorizes the section list. /api/v1/auth/me returns the
-  // role-appropriate `sections` (computed with the canonical stored role);
-  // the client consumes them verbatim. `sectionsForRole` is only a
-  // resilience fallback for servers that do not send the list yet.
   return {
     profile: user,
-    sections: serverSections ?? sectionsForRole(user.role),
+    sections: Array.isArray(serverSections) ? serverSections : [],
+    navigation: Array.isArray(serverNavigation) ? serverNavigation : [],
   };
 }
 
@@ -71,6 +112,7 @@ export function buildBootstrap(
 async function currentUser(): Promise<{
   user: PublicUser;
   sections: Section[];
+  navigation: Section[];
 }> {
   try {
     return await authMe();
@@ -94,6 +136,6 @@ export async function restoreBootstrap(): Promise<Bootstrap | null> {
     clearAuthHint();
     return null;
   }
-  const { user, sections } = await currentUser();
-  return buildBootstrap(user, sections);
+  const { user, sections, navigation } = await currentUser();
+  return buildBootstrap(user, sections, navigation);
 }

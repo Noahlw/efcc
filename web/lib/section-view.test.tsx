@@ -18,12 +18,13 @@ afterEach(() => cleanup());
 function bootstrapWith(...sections: Section[]): Bootstrap {
   return {
     sections,
+    navigation: [],
     profile: {
       userId: "U-test",
       name: "測試用",
       username: "test",
       phone: "00000000",
-  role: "Staff",
+      role: "Staff",
       status: "Active",
       qrCodeString: "qr-placeholder",
     },

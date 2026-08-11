@@ -297,6 +297,91 @@ describe("PRG-01: departments", () => {
     assert.ok(found, "created department must appear in list");
   });
 
+  test("Programs access returns a capability-only projection", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-01-ACCESS",
+      name: "Programs Access Dept",
+    });
+    const program = await createProgram(adminAccess, dept.department_id, {
+      name: "Programs Access Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const memberResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/access", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberResponse.status, 200);
+    const memberBody = (await assertCorrelated(memberResponse)) as {
+      data: Record<string, unknown>;
+    };
+    assert.deepStrictEqual(Object.keys(memberBody.data).sort(), [
+      "departmentScopes",
+      "hasManagementCapability",
+      "programScopes",
+    ]);
+    assert.strictEqual(memberBody.data.hasManagementCapability, false);
+    assert.ok(!("check_in_token" in memberBody.data));
+
+    const adminResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/access", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(adminResponse.status, 200);
+    const adminBody = (await assertCorrelated(adminResponse)) as {
+      data: {
+        hasManagementCapability: boolean;
+        departmentScopes: number;
+        programScopes: number;
+      };
+    };
+    assert.strictEqual(adminBody.data.hasManagementCapability, true);
+    assert.ok(adminBody.data.departmentScopes >= 1);
+
+    const grantLeader = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/leaders`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { user_id: "U002" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(grantLeader.status, 200);
+
+    const leaderResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/access", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(leaderResponse.status, 200);
+    const leaderBody = (await assertCorrelated(leaderResponse)) as {
+      data: { hasManagementCapability: boolean; programScopes: number };
+    };
+    assert.strictEqual(leaderBody.data.hasManagementCapability, true);
+    assert.ok(leaderBody.data.programScopes >= 1);
+  });
+
   test("duplicate department code returns 409", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     await createDepartment(adminAccess, {

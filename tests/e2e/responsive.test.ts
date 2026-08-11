@@ -12,7 +12,7 @@ import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 import { LANDING } from "../../web/lib/copy";
-import { sectionsForRole } from "../../web/lib/sections";
+import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -58,9 +58,11 @@ async function stubAuth(route: Route) {
         requestId: "r-me",
         data: {
           user: PUBLIC_USER,
-          // R1 contract: /auth/me returns role-authorized sections, not a
-          // client-side derivation from the role.
-          sections: sectionsForRole(PUBLIC_USER.role),
+          // R1 contract: /auth/me returns separate server-shaped content and
+          // stable navigation projections; this fixture does not derive either
+          // from the profile role.
+          sections: defaultSections(),
+          navigation: stableNavigationSections(),
         },
       }),
     });
@@ -278,10 +280,10 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
 test("active section exposes aria-current and the nav has an accessible label", async ({
   page,
 }, testInfo) => {
-  // Clean URL — the production worker serves /care; the static test server
+  // Clean URL — the production worker serves /home; the static test server
   // maps extensionless paths to *.html. The app derives the active section
   // from the pathname, so a .html suffix would break aria-current detection.
-  await page.goto("/care");
+  await page.goto("/home");
 
   const nav = page.locator(`nav[aria-label="${COPY.nav.label}"]:visible`);
   await expect(nav).toBeVisible();
@@ -292,7 +294,7 @@ test("active section exposes aria-current and the nav has an accessible label", 
     .locator('[aria-current="page"]')
     .first()
     .getAttribute("href");
-  expect(activeHref).toBe("/care");
+  expect(activeHref).toBe("/home");
 
   // Both rails render the same sections; the hidden one must also carry a
   // single aria-current=page marker (proves the conditional render uses

@@ -13,13 +13,14 @@ import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
+  clearDeepLink,
+  rememberDeepLink,
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 import styles from "./auth-shell.module.css";
 
-const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 
 function ShellFrame({
@@ -39,7 +40,7 @@ function ShellFrame({
       rpcFailed = true;
     }
     clearAuthHint();
-    sessionStorage.removeItem(DEEP_LINK_KEY);
+    clearDeepLink();
     announce(rpcFailed ? COPY.logout.failedNotice : COPY.logout.success);
     if (rpcFailed) {
       sessionStorage.setItem(LOGOUT_FAILED_KEY, "1");
@@ -96,7 +97,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
         if (bootstrap === null) {
           // No stored session — cold boot straight to login, no restore call.
-          sessionStorage.setItem(DEEP_LINK_KEY, pathname);
+          rememberDeepLink(
+            `${pathname}${window.location.search}${window.location.hash}`
+          );
           router.replace("/");
           return;
         }
@@ -114,7 +117,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const code = error instanceof RpcError ? error.problem.code : undefined;
         if (code === "AUTH_REQUIRED") {
           clearAuthHint();
-          sessionStorage.setItem(DEEP_LINK_KEY, pathname);
+          rememberDeepLink(
+            `${pathname}${window.location.search}${window.location.hash}`
+          );
           sessionStorage.setItem("efcc_session_expired", "1");
           router.replace("/");
           return;

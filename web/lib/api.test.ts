@@ -369,17 +369,22 @@ describe("api.ts: AUTH-04 cookie surface", () => {
     }
   });
 
-  test("authMe GETs /api/v1/auth/me and returns the user + server-authorized sections (S15)", async () => {
+  test("authMe GETs /api/v1/auth/me and returns user plus server projections", async () => {
     const fetchMock = installFetch(() =>
       makeResponse(200, {
         requestId: "r-me",
-        data: { user: PUBLIC_USER, sections: [{ key: "profile" }] },
+        data: {
+          user: PUBLIC_USER,
+          sections: [{ key: "profile" }],
+          navigation: [{ key: "home" }, { key: "profile" }],
+        },
       })
     );
     try {
       const me = await authMe();
       assert.deepEqual(me.user, PUBLIC_USER);
       assert.deepEqual(me.sections, [{ key: "profile" }]);
+      assert.deepEqual(me.navigation, [{ key: "home" }, { key: "profile" }]);
       const [call] = fetchMock.calls;
       assert.equal(call.method, "GET");
       assert.equal(call.url, "/api/v1/auth/me");
@@ -477,7 +482,10 @@ describe("api.ts: Idempotency-Key on mutating auth calls (ADR-0018 §8)", () => 
 
   test("authMe (read) sends no Idempotency-Key", async () => {
     const fetchMock = installFetch(() =>
-      makeResponse(200, { requestId: "r-me", data: { user: PUBLIC_USER } })
+      makeResponse(200, {
+        requestId: "r-me",
+        data: { user: PUBLIC_USER, sections: [], navigation: [] },
+      })
     );
     try {
       await authMe();

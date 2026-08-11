@@ -8,7 +8,6 @@ import { useApp } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
-  createDepartment,
   createProgram,
   getDepartment,
   listDepartments,
@@ -229,8 +228,6 @@ const ProgramForm = ({
 
 const ProgramsManager = () => {
   const { bootstrap } = useApp();
-  const canCreateDepartment =
-    bootstrap.profile.role === "Admin" || bootstrap.profile.role === "Staff";
   const [view, setView] = useState<View>({ kind: "loading" });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [modules, setModules] = useState<
@@ -313,36 +310,6 @@ const ProgramsManager = () => {
     [expanded, loadDepartment, modules, programs]
   );
 
-  const handleCreateDepartment = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (busy) {
-      return;
-    }
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const code = String(data.get("code") ?? "").trim();
-    const name = String(data.get("name") ?? "").trim();
-    if (!code || !name) {
-      return;
-    }
-    setBusy(true);
-    setActionError(null);
-    try {
-      await createDepartment({ code, name, lifecycle: "Draft" });
-      announce(COPY.programs.created);
-      setNotice(COPY.programs.created);
-      form.reset();
-      await load();
-    } catch (error) {
-      if (mounted.current) {
-        setActionError(errorMessage(error));
-      }
-    } finally {
-      if (mounted.current) {
-        setBusy(false);
-      }
-    }
-  };
 
   const handleCreateProgram = async (
     departmentId: string,
@@ -834,38 +801,6 @@ const ProgramsManager = () => {
         </ul>
       )}
 
-      {canCreateDepartment && (
-        <form
-          className={styles.form}
-          onSubmit={(event) => void handleCreateDepartment(event)}
-        >
-          <div className={styles.field}>
-            <label className={styles.fieldLabel}>
-              {COPY.programs.deptCode}
-              <input
-                name="code"
-                className={styles.input}
-                placeholder={COPY.programs.deptCodePlaceholder}
-                required
-              />
-            </label>
-          </div>
-          <div className={styles.field}>
-            <label className={styles.fieldLabel}>
-              {COPY.programs.deptName}
-              <input
-                name="name"
-                className={styles.input}
-                placeholder={COPY.programs.deptNamePlaceholder}
-                required
-              />
-            </label>
-          </div>
-          <button className={styles.button} type="submit" disabled={busy}>
-            {busy ? COPY.programs.submitting : COPY.programs.createDepartment}
-          </button>
-        </form>
-      )}
     </section>
   );
 };

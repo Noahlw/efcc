@@ -18,6 +18,7 @@ import { firstSection } from "@/lib/sections";
 import {
   buildBootstrap,
   clearAuthHint,
+  consumeDeepLink,
   hasAuthHint,
   restoreBootstrap,
   setAuthHint,
@@ -25,7 +26,6 @@ import {
 
 import styles from "./page.module.css";
 
-const DEEP_LINK_KEY = "efcc_deep_link";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
 
@@ -113,8 +113,7 @@ const LoginPage = () => {
         router.replace(scannerEntryPath(guestCredential));
         return;
       }
-      const deepLink = sessionStorage.getItem(DEEP_LINK_KEY);
-      sessionStorage.removeItem(DEEP_LINK_KEY);
+      const deepLink = consumeDeepLink();
       router.replace(deepLink || `/${firstSection(bootstrap.sections)}`);
     },
     [router]
@@ -208,7 +207,7 @@ const LoginPage = () => {
       // Login sets the cookies; /me resolves the full profile from the
       // access cookie to assemble the shell bootstrap.
       const me = await authMe();
-      const bootstrap = buildBootstrap(me.user, me.sections);
+      const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -230,7 +229,7 @@ const LoginPage = () => {
   const finishUpgrade = useCallback(async () => {
     try {
       const me = await authMe();
-      const bootstrap = buildBootstrap(me.user, me.sections);
+      const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -273,7 +272,7 @@ const LoginPage = () => {
       // session (Spec 077 U5).
       try {
         const me = await authMe();
-        const bootstrap = buildBootstrap(me.user, me.sections);
+        const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
         setAuthHint();
         announce(COPY.login.success);
         navigateAfterLogin(bootstrap);

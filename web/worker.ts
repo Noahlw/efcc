@@ -376,6 +376,7 @@ export default {
       const {
         handleCreateDepartment,
         handleListDepartments,
+        handleListManagementAccess,
         handleGetDepartment,
         handleUpdateDepartment,
         handleCreateProgram,
@@ -405,6 +406,12 @@ export default {
         handleListProgramLeaders,
       } = await import("./lib/programs/program-handlers");
 
+      if (
+        url.pathname === "/api/v1/programs/access" &&
+        request.method === "GET"
+      ) {
+        return handleListManagementAccess(request, programEnv);
+      }
       if (
         url.pathname === "/api/v1/programs/departments" &&
         request.method === "POST"

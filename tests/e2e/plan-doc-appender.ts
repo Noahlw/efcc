@@ -1,39 +1,18 @@
 /**
- * EFCC acceptance-plan appender (ADR-0012 §Decision-4).
+ * EFCC acceptance-plan appender.
  *
- * Reads the JSON reporter artifact written by Playwright at
- * `test-results/e2e-results.json` and appends (or replaces) a
- * `## Executed results` section in the configured acceptance plan
- * markdown doc with a per-assertion pass/fail table.
+ * Reads a Playwright JSON reporter artifact and appends (or replaces) a
+ * `## Executed results` section in an explicitly selected acceptance plan
+ * with a per-assertion pass/fail table. This is a manual utility; no test
+ * command invokes it automatically.
  *
- * Wired as an npm `posttest:e2e` script (see package.json) so:
- *   - no `globalTeardown` field needs to be added to
- *     `tests/e2e/playwright.config.ts` (that file's baseline was
- *     locked in Wave 1 and we keep it touch-free);
- *   - the appender runs as a plain tsx script with no Playwright
- *     test-runner coupling, which makes it independently debuggable
- *     (`npx tsx tests/e2e/plan-doc-appender.ts --plan=…`).
- *
- * Output target, JSON input, the markdown section heading, and the
- * recorded target URL are CLI-configurable so future tickets can reuse the
- * same utility against their own plan docs / evidence sections without
- * code changes here. `--heading` lets two acceptance runs (for example the
- * legacy `/exec` gate and the rebuilt Next UI gate) append their results to
- * the same plan doc under distinct headings so one run cannot overwrite the
- * other's evidence; `--target-url` records the deployment under test.
- *
- * Defaults preserve the Wave-1 behavior: `--plan` and `--results` alone
- * append a `## Executed results` section and read the target URL from the
- * `E2E_TARGET_URL` environment variable.
- *
- * Match the import style of sibling `auth.ts` (node: protocol, no
- * `@types/node` dependency in this repo's baseline).
+ * `--plan`, `--results`, `--heading`, and `--target-url` are CLI-configurable
+ * so each local or optional deployed run records evidence in the correct
+ * ticket plan. Credentials and query-string tokens are removed from URLs.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { argv, env } from "node:process";
 
-/** Defaults per ADR-0012 §Decision-4 and the current ticket. */
-const DEFAULT_PLAN_DOC = "docs/specs/067-role-nav-acceptance-plan.md";
 const DEFAULT_RESULTS_JSON = "test-results/e2e-results.json";
 const DEFAULT_SECTION_HEADER = "## Executed results";
 
@@ -86,10 +65,11 @@ function parseArgs(): {
       args.push(raw);
     }
   }
-  let planDoc = DEFAULT_PLAN_DOC;
+  let planDoc: string | undefined;
   let resultsJson = DEFAULT_RESULTS_JSON;
   let heading = DEFAULT_SECTION_HEADER;
-  let targetUrl = env.E2E_TARGET_URL;
+  let targetUrl =
+    env.AUTH_TARGET_URL ?? env.AUTH_UI_TARGET_URL ?? env.PROGRAMS_TARGET_URL;
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
     if (a === "--plan" && i + 1 < args.length) {
@@ -107,13 +87,16 @@ function parseArgs(): {
     } else if (a === "--help" || a === "-h") {
       process.stdout.write(
         "usage: tsx tests/e2e/plan-doc-appender.ts " +
-          "[--plan <plan.md>] [--results <e2e-results.json>] " +
+          "--plan <plan.md> [--results <e2e-results.json>] " +
           "[--heading <\"## Executed results\">] [--target-url <url>]\n"
       );
       process.exit(0);
     } else {
       die(`unrecognized argument: ${a}`);
     }
+  }
+  if (!planDoc) {
+    die("--plan is required; acceptance evidence must name its ticket plan");
   }
   return { planDoc, resultsJson, targetUrl, heading };
 }

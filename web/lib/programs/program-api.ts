@@ -13,6 +13,7 @@ import type {
   AttendanceMember as AttendanceMemberType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
+import type { ProgramsManagementAccess } from "./programs-access";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
@@ -78,6 +79,8 @@ export interface DepartmentDetail {
   department: Department;
   modules: DepartmentModule[];
 }
+
+export type { ProgramsManagementAccess } from "./programs-access";
 
 export interface DepartmentInput {
   code: string;
@@ -408,6 +411,11 @@ export function listDepartments(): Promise<{
   departments: Department[];
 }> {
   return programsFetch("/api/v1/programs/departments", "GET");
+}
+
+/** GET /api/v1/programs/access — capability-only entry projection. */
+export function getManagementAccess(): Promise<ProgramsManagementAccess> {
+  return programsFetch("/api/v1/programs/access", "GET");
 }
 
 /** POST /api/v1/programs/departments */

@@ -7,6 +7,7 @@ import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
   AuditInput,
+  ProgramAccessRow,
   DepartmentInput,
   DepartmentModuleRow,
   DepartmentRow,
@@ -219,6 +220,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .bind(departmentId)
       .all<ProgramRow>();
+    return result.results ?? [];
+  }
+
+  async listProgramAccessRows(
+    departmentId: string
+  ): Promise<ProgramAccessRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT program_id, department_id FROM programs
+         WHERE department_id = ?
+         ORDER BY display_order ASC, created_at ASC`
+      )
+      .bind(departmentId)
+      .all<ProgramAccessRow>();
     return result.results ?? [];
   }
 

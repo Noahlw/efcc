@@ -2,69 +2,76 @@ import type { Section } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 
 /**
- * Role → Section authorization matrix (ADR-0005/0006/067).
+ * Stable authenticated navigation destinations (Issue #241/#242).
  *
- * Derived from the ADRs, not from 079: a Member sees profile + programs;
- * Staff adds events, scanner, care; Admin sees all six. The map holds the
- * section keys, and `sectionsForRole` filters `defaultSections()` so the
- * canonical shell baseline (labels, ordering, capability) stays the single
- * source of truth.
+ * Navigation is a server-shaped presentation projection, not section
+ * authorization. Events remains a stable destination while Member accounts
+ * continue to receive no Events authorization in `sections[]`.
  */
-const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
-  // Canonical ADR-0025 values (title-case): D1 stores and the API expose
-  // Admin / Staff / Member — NOT uppercase. Uppercase keys here silently
-  // fell back to the Member set for every Staff/Admin account.
-  Member: ["profile", "programs"],
-  // Staff reads permissions data (067-follow-up §2: STAFF ->
-  // api_getPermissionsData success; role-matrix.test.ts bob set).
-  Staff: [
-    "profile",
-    "programs",
-    "events",
-    "scanner",
-    "care",
-    "permissions",
-  ],
-  Admin: [
-    "profile",
-    "programs",
-    "events",
-    "scanner",
-    "care",
-    "permissions",
-  ],
-};
+const STABLE_NAVIGATION_KEYS: Section["key"][] = [
+  "home",
+  "programs",
+  "events",
+  "scanner",
+  "profile",
+];
 
 /**
- * Sections authorized for a role. Unknown or absent roles fall back to the
- * Member set (profile + programs) — the least-privilege default.
+ * Server-authorized section projection.
+ *
+ * Home is a safe authenticated shell placeholder for every account. Events,
+ * Scanner, Care, and Permissions remain capability/role-authorized sections;
+ * the browser must not infer those permissions from the profile role.
  */
-export function sectionsForRole(role: string): Section[] {
-  // hasOwn: a "constructor"/"toString"-shaped role must not resolve an
-  // inherited prototype member (which is not an array and would throw in
-  // .includes) — falls back like any unknown role.
-  const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
-    ? ROLE_SECTION_KEYS[role]
-    : undefined;
-  const keys = allowed ?? ROLE_SECTION_KEYS.Member;
-  return defaultSections().filter((s) => keys.includes(s.key));
+const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
+  Member: ["home", "profile", "programs"],
+  Staff: ["home", "profile", "programs", "events", "scanner", "care", "permissions"],
+  Admin: ["home", "profile", "programs", "events", "scanner", "care", "permissions"],
+};
+
+function materializeSections(keys: Section["key"][]): Section[] {
+  const sections = defaultSections();
+  return keys.flatMap((key) => {
+    const section = sections.find((candidate) => candidate.key === key);
+    return section ? [section] : [];
+  });
+}
+
+/** Server-projected stable nav metadata consumed verbatim by the shell. */
+export function stableNavigationSections(): Section[] {
+  return materializeSections(STABLE_NAVIGATION_KEYS);
 }
 
 /**
- * Shell section baseline shown to any authenticated user.
+ * Sections authorized for a role. Unknown or absent roles use the stable
+ * Member-safe base (Home, Profile, Programs).
+ */
+export function sectionsForRole(role: string): Section[] {
+  // hasOwn keeps inherited Object keys such as "constructor" and "toString"
+  // from becoming role projections; unknown values use the Member-safe set.
+  const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
+    ? ROLE_SECTION_KEYS[role]
+    : undefined;
+  return materializeSections(allowed ?? ROLE_SECTION_KEYS.Member);
+}
+
+/**
+ * Canonical section catalog used to materialize the server projection.
  *
- * ponytail: this is a temporary client-side stand-in until CF0-04 (#145)
- * ships server-authoritative Section visibility from the bootstrap's
- * `sections[]`. The client never hardcodes a role→Section map here (Spec
- * 074 user story 13); every section is listed with `requiresServerAuth:
- * false` so the shell renders after the cookie-boundary login, and the
- * per-section authorization gate is deferred to CF0-04.
+ * Visibility and order come from `sectionsForRole`; this catalog only owns
+ * stable labels and capability metadata.
  */
 export function defaultSections(): Section[] {
   return [
     {
       key: "profile",
       label: COPY.sections.profile,
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "home",
+      label: COPY.sections.home,
       capability: "READ",
       requiresServerAuth: false,
     },
@@ -102,7 +109,11 @@ export function defaultSections(): Section[] {
 }
 
 export function firstSection(sections: Section[]): string {
-  return sections.length > 0 ? sections[0].key : "profile";
+  // The stable shell presents Home first, but Profile remains the deterministic
+  // login/recovery destination for every non-empty projection.
+  return sections.find((section) => section.key === "profile")?.key ??
+    sections[0]?.key ??
+    "profile";
 }
 
 export function isPermitted(sections: Section[], key: string): boolean {

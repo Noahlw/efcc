@@ -1,12 +1,36 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 
-const TEST_USERNAME = process.env.AUTH_TEST_USERNAME;
-const TEST_CREDENTIAL = process.env.AUTH_TEST_CREDENTIAL;
-const LEGACY_USERNAME = process.env.AUTH_LEGACY_USERNAME;
-const LEGACY_PIN = process.env.AUTH_LEGACY_PIN;
-const NEW_CREDENTIAL = process.env.AUTH_NEW_CREDENTIAL;
+import { DEV_ADMIN, DEV_LEGACY } from "./dev-fixtures";
 
+const localTarget = (() => {
+  const target = process.env.AUTH_TARGET_URL;
+  if (!target) {
+    return true;
+  }
+  try {
+    const { hostname } = new URL(target);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+})();
+
+const TEST_USERNAME =
+  process.env.AUTH_TEST_USERNAME ??
+  (localTarget ? DEV_ADMIN.username : undefined);
+const TEST_CREDENTIAL =
+  process.env.AUTH_TEST_CREDENTIAL ??
+  (localTarget ? DEV_ADMIN.credential : undefined);
+const LEGACY_USERNAME =
+  process.env.AUTH_LEGACY_USERNAME ??
+  (localTarget ? DEV_LEGACY.username : undefined);
+const LEGACY_PIN =
+  process.env.AUTH_LEGACY_PIN ??
+  (localTarget ? DEV_LEGACY.legacyPin : undefined);
+const NEW_CREDENTIAL =
+  process.env.AUTH_NEW_CREDENTIAL ??
+  (localTarget ? DEV_LEGACY.newCredential : undefined);
 function originFor(baseURL: string | undefined): string {
   if (!baseURL) {
     throw new Error("AUTH_TARGET_URL is required");
@@ -69,13 +93,15 @@ test.beforeAll(() => {
       throw new Error(`${name} is required`);
     }
   }
-  if (
-    typeof LEGACY_USERNAME !== "string" ||
-    !LEGACY_USERNAME.startsWith("E2E_")
-  ) {
-    throw new Error(
-      "AUTH_LEGACY_USERNAME must start with E2E_; destructive upgrades require a disposable fixture"
-    );
+  for (const [name, value] of [
+    ["AUTH_TEST_USERNAME", TEST_USERNAME],
+    ["AUTH_LEGACY_USERNAME", LEGACY_USERNAME],
+  ]) {
+    if (typeof value !== "string" || !value.startsWith("E2E_")) {
+      throw new Error(
+        `${name} must start with E2E_; destructive auth runs require disposable fixtures`
+      );
+    }
   }
 });
 

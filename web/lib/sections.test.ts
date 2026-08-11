@@ -8,11 +8,18 @@ import {
   getSection,
   recoverySection,
   sectionsForRole,
+  stableNavigationSections,
 } from "./sections";
 
 const profile: Section = {
   key: "profile",
   label: "個人資料",
+  capability: "READ",
+  requiresServerAuth: false,
+};
+const home: Section = {
+  key: "home",
+  label: "首頁",
   capability: "READ",
   requiresServerAuth: false,
 };
@@ -47,8 +54,14 @@ const permissions: Section = {
   requiresServerAuth: true,
 };
 
-const MEMBER_SECTIONS = [profile, programs, events];
-const STAFF_SECTIONS = [profile, programs, events, scanner, care, permissions];
+const MEMBER_SECTIONS = [home, profile, programs];
+const STAFF_SECTIONS = [
+  ...MEMBER_SECTIONS,
+  events,
+  scanner,
+  care,
+  permissions,
+];
 
 describe(firstSection, () => {
   test("returns first section key for MEMBER", () => {
@@ -61,6 +74,10 @@ describe(firstSection, () => {
 
   test("falls back to 'profile' for empty list", () => {
     expect(firstSection([])).toBe("profile");
+  });
+
+  test("keeps Profile as the restore target when Home is first", () => {
+    expect(firstSection(sectionsForRole("Member"))).toBe("profile");
   });
 });
 
@@ -77,8 +94,8 @@ describe(isPermitted, () => {
     expect(isPermitted(STAFF_SECTIONS, "scanner")).toBeTruthy();
   });
 
-  test("denies unknown key", () => {
-    expect(isPermitted(MEMBER_SECTIONS, "unknown")).toBeFalsy();
+  test("denies permissions for MEMBER", () => {
+    expect(isPermitted(MEMBER_SECTIONS, "permissions")).toBeFalsy();
   });
 });
 
@@ -99,10 +116,11 @@ describe(recoverySection, () => {
 });
 
 describe(defaultSections, () => {
-  test("returns the six shell sections with profile first (CF0-04 stand-in)", () => {
+  test("returns the canonical section catalog with profile first", () => {
     const sections = defaultSections();
     expect(sections.map((s) => s.key)).toStrictEqual([
       "profile",
+      "home",
       "programs",
       "events",
       "scanner",
@@ -110,63 +128,64 @@ describe(defaultSections, () => {
       "permissions",
     ]);
     expect(firstSection(sections)).toBe("profile");
-    // No section requires a server-auth RPC in this slice (deferred to CF0-04).
     expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
   });
 });
 
+describe(stableNavigationSections, () => {
+  test("projects the stable five in the approved order", () => {
+    expect(stableNavigationSections().map((s) => s.key)).toStrictEqual([
+      "home",
+      "programs",
+      "events",
+      "scanner",
+      "profile",
+    ]);
+  });
+});
+
 describe(sectionsForRole, () => {
-  test("Admin sees all six sections", () => {
-    expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-      "events",
-      "scanner",
-      "care",
-      "permissions",
-    ]);
+  const memberKeys = ["home", "profile", "programs"];
+  const staffKeys = [
+    ...memberKeys,
+    "events",
+    "scanner",
+    "care",
+    "permissions",
+  ];
+
+  test("Admin receives authorized sections, with permissions server-projected", () => {
+    expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual(staffKeys);
   });
 
-  test("Staff sees all six sections (067-follow-up: STAFF -> api_getPermissionsData success)", () => {
-    expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-      "events",
-      "scanner",
-      "care",
-      "permissions",
-    ]);
+  test("Staff receives authorized sections, with permissions server-projected", () => {
+    expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual(staffKeys);
   });
 
-  test("Member sees two sections (profile, programs)", () => {
-    expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-    ]);
+  test("Member receives Home, Profile, and Programs only", () => {
+    expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
   });
 
-  test("unknown role falls back to the Member set", () => {
-    expect(sectionsForRole("UNKNOWN").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-    ]);
+  test("unknown role falls back to the Member authorization set", () => {
+    expect(sectionsForRole("UNKNOWN").map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
   });
 
-  test("uppercase legacy spellings are NOT accepted (canonical ADR-0025 values)", () => {
-    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-    ]);
+  test("uppercase legacy spellings fall back to the Member authorization set", () => {
+    expect(sectionsForRole("STAFF").map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
   });
 
-  test("inherited Object keys (toString/constructor) fall back like unknown roles", () => {
-    expect(sectionsForRole("toString").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-    ]);
-    expect(sectionsForRole("constructor").map((s) => s.key)).toStrictEqual([
-      "profile",
-      "programs",
-    ]);
+  test("inherited Object keys fall back to the Member authorization set", () => {
+    expect(sectionsForRole("toString").map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
+    expect(sectionsForRole("constructor").map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
   });
 });

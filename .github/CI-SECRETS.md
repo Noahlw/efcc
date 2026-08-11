@@ -1,14 +1,14 @@
-# CI credentials — D1 auth acceptance gate
+# CI credentials — optional D1 deployment smoke
 
-The rebuilt login boundary is the Cloudflare Worker `/api/auth/*` surface backed by D1. The deployed gate (`.github/workflows/e2e.yml`) no longer uses the retired Apps Script `/exec` role-nav suite or Google storage-state cookies.
+The rebuilt login boundary is the Cloudflare Worker `/api/v1/auth/*` surface backed by D1. Local `wrangler dev` + local D1 is the required repository `READY` gate; the workflow below is an optional operator-run smoke against a disposable deployed Worker. It never uses the retired Apps Script `/exec` role-nav suite or Google storage-state cookies.
 
 ## How the checks behave
 
 - **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root GAS/prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
 - **D1 auth contract check** (`e2e.yml`, `auth-contract` job) also needs no secrets or deployment. It runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool and covers the cookie-only transport, legacy-PIN upgrade, session lifecycle, and forbidden header/CORS paths.
-- **Deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is not a deployment and never writes to a production database.
+- **Optional deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is operational evidence only; it is not required for repository `READY` and never writes to a production database.
 
-The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` path; it is not presented as the rebuilt D1 login. The deployed smoke therefore targets `/api/auth/*` directly with Playwright's request context until the browser client is rewired in the follow-up login/UI work.
+The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` path; it is not presented as the rebuilt D1 login. The optional deployed smoke therefore targets `/api/v1/auth/*` directly with Playwright's request context until the browser client is fully rewired in the follow-up login/UI work.
 
 ## Repository variable
 
@@ -22,7 +22,7 @@ Rotate the target whenever the auth contract or D1 migration changes:
 4. Update `AUTH_TARGET_URL` to the new deployment URL.
 5. Run `D1 auth acceptance gate` with `workflow_dispatch` and retain the Playwright artifact.
 
-The deployed result is evidence for the fresh deployment only. A missing manual run must never be described as a passing production smoke.
+The deployed result is evidence for that fresh deployment only. A missing manual run never blocks repository `READY` and must never be described as a passing production smoke.
 
 ## Repository secrets
 
@@ -44,19 +44,24 @@ The deployed Next UI gate (`tests/e2e/live-ui.config.ts`) also requires six out-
 - `PROGRAMS_STAFF_USERNAME` / `PROGRAMS_STAFF_CREDENTIAL` — disposable Staff account.
 - `PROGRAMS_MEMBER_USERNAME` / `PROGRAMS_MEMBER_CREDENTIAL` — disposable Member account.
 
-Each username must be distinct and start with `E2E_`; each credential must contain at least eight non-whitespace characters. Seed the three accounts in the isolated acceptance D1/database before running `pnpm exec playwright test -c tests/e2e/live-ui.config.ts`. These values are never printed or committed and must not be reused for production or the D1 auth smoke fixtures above.
+Each username must be distinct and start with `E2E_`; each credential must contain at least eight non-whitespace characters. Seed the three active accounts in the isolated acceptance D1/database before running `pnpm exec playwright test -c tests/e2e/live-ui.config.ts`; the legacy account is only for the auth upgrade smoke. These values are never printed or committed and must not be reused for production or the D1 auth smoke fixtures above.
 
-## Dev-testing worker (local E2E)
+## Local-first E2E (default target)
 
-The programs-d1 suite (`tests/e2e/programs-d1.test.ts`) runs **locally**, not in CI, against the shared dev-testing worker: `https://efcc-dev-testing.efcc-ggc.workers.dev`. `tests/e2e/programs-d1.config.ts` defaults to that URL; `PROGRAMS_TARGET_URL` overrides it. Either way the config stays fail-closed: HTTPS-only, no embedded credentials, and only the reserved `efcc-auth-*.efcc-ggc.workers.dev` (acceptance) / `efcc-dev-*.efcc-ggc.workers.dev` (dev-testing) hostnames.
+The D1 suites target `wrangler dev` on `http://127.0.0.1:8787` by default (AGENTS.md local-first policy — zero Cloudflare account touched). Bring up the stack with `pnpm dev:local` (builds, applies local D1 migrations, serves on :8787), seed accounts with `pnpm db:seed:local` (rerunnable; restores active fixture credentials), and seed the walkthrough with `pnpm db:seed:demo`. The local auth suite uses the active and legacy fixtures; the Programs, attendance, and live UI suites use the three active fixtures.
 
-The dev worker is backed by the `efcc-dev-testing` D1, seeded with three **dev-only** fixture accounts. These are NOT GitHub secrets: they are plaintext in the repo (`tests/e2e/seed-dev-accounts.ts` + this doc) and hashed with the real PBKDF2 hasher at seed time. Never reuse them for production or the CI acceptance gate.
+Any `*_TARGET_URL` override must stay fail-closed: use HTTP only for loopback local testing, or HTTPS without embedded credentials for the reserved `efcc-auth-*.efcc-ggc.workers.dev` (acceptance) / `efcc-dev-*.efcc-ggc.workers.dev` (dev-testing) hostnames.
+
+## Shared dev-testing worker (opt-in, deployed E2E)
+
+To run the D1 suites against the shared dev-testing worker instead: `https://efcc-dev-testing.efcc-ggc.workers.dev`, backed by the `efcc-dev-testing` D1 seeded with dev-only fixtures. These are NOT GitHub secrets: they are plaintext in the repo (`tests/e2e/seed-dev-accounts.ts` + this doc) and hashed with the real PBKDF2 hasher at seed time. Never reuse them for production or the CI acceptance gate.
 
 | username     | role   | credential       |
 | ------------ | ------ | ---------------- |
 | `E2E_admin`  | Admin  | `E2E_admin!dev`  |
 | `E2E_staff`  | Staff  | `E2E_staff!dev`  |
-| `E2E_member` | Member | `E2E_member!dev` |
+| `E2E_member` | Member  | `E2E_member!dev` |
+| `E2E_legacy` | Member | PIN `1234`        |
 
 One-time provisioning runbook (all wrangler commands from `web/`):
 
@@ -64,12 +69,10 @@ One-time provisioning runbook (all wrangler commands from `web/`):
 2. Apply migrations: `wrangler d1 migrations apply efcc-dev-testing --remote`.
 3. Deploy the worker with the dev D1 override: `wrangler deploy --d1 DB=<database_id>`.
 4. Set a dev-only secret: `wrangler secret put EFCC_ACCESS_TOKEN_SECRET`.
-5. Seed the three accounts (idempotent — safe to re-run): `pnpm exec tsx tests/e2e/seed-dev-accounts.ts > /tmp/seed-dev.sql && wrangler d1 execute efcc-dev-testing --remote --file=/tmp/seed-dev.sql` (or single-shot: `wrangler d1 execute efcc-dev-testing --remote --command="$(pnpm exec tsx tests/e2e/seed-dev-accounts.ts)"`)
+5. Seed the four fixtures (the legacy account is needed only by the auth upgrade smoke; all are idempotent): `./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts --reset-legacy > /tmp/seed-dev.sql && wrangler d1 execute efcc-dev-testing --remote --file=/tmp/seed-dev.sql` (or single-shot: `wrangler d1 execute efcc-dev-testing --remote --command="$(./node_modules/.bin/tsx tests/e2e/seed-dev-accounts.ts --reset-legacy)"`)
 
-Then run the suite locally: `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts`.
+Then run the suite against that worker: `PROGRAMS_TARGET_URL=https://efcc-dev-testing.efcc-ggc.workers.dev pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` (omit the override to run local-first against `wrangler dev`).
 
-## Legacy Apps Script gate
+## Legacy Apps Script suite
 
-The old `E2E_TARGET_URL`, `ALICE_STORAGE_STATE`, `BOB_STORAGE_STATE`, and `NOAH_STORAGE_STATE` inputs are intentionally no longer consumed by this branch's PR workflows. The retained `/api/v1/rpc` domain proxy remains covered by deterministic Worker regression tests; a separate Apps Script role-navigation deployment gate can be restored only when that legacy UI is deliberately brought back into scope.
-
-The AGENTS.md fresh `/exec` headless-gate requirement still applies whenever the legacy Apps Script UI/domain flow is in scope. This D1 auth gate is a separate Worker boundary proof and must not be used as a substitute for that legacy UI smoke.
+The deployed Apps Script `/exec` Playwright suite, Google storage-state fixtures, and clasp deployment helper are retired. `tests/gas/` remains the deterministic VM-harness coverage for transitional Apps Script code. A future Apps Script browser trace would require an explicit new scope and operator decision; it is not part of the D1 `READY` gate.

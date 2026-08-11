@@ -1,16 +1,19 @@
-import { defineConfig } from "@playwright/test";
-
-// ATT-04 (#216) — deployed QR-attendance end-to-end proof.
+// ATT-04 (#216) — local/deployed D1 QR-attendance end-to-end proof.
 //
-// Mirrors programs-d1.config.ts: same shared dev-testing worker default,
-// same PROGRAMS_TARGET_URL override, same six PROGRAMS_* role fixtures,
-// same fail-closed host validation. Test list is attendance-only; runs on
-// the phone-375x667 and desktop-1280x720 viewport projects like live-ui.
+// Mirrors programs-d1.config.ts: local Worker/D1 by default, with an
+// explicit PROGRAMS_TARGET_URL override for an isolated remote smoke and
+// the same six PROGRAMS_* role fixtures and fail-closed host validation.
+// The test list is attendance-only; runs use phone-375x667 and
+// desktop-1280x720 viewport projects like live-ui.
 // Traces stay off (UI traces would capture credential request bodies).
 
-// Shared dev-testing worker (see .github/CI-SECRETS.md). Overridable via
-// PROGRAMS_TARGET_URL; everything else stays fail-closed below.
-const DEFAULT_TARGET_URL = "https://efcc-dev-testing.efcc-ggc.workers.dev";
+import { defineConfig } from "@playwright/test";
+
+// Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
+// local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
+// dev-testing worker (see .github/CI-SECRETS.md) or another
+// efcc-auth-*/efcc-dev-*.efcc-ggc.workers.dev acceptance host.
+const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;
 
@@ -19,22 +22,23 @@ try {
   parsedTarget = new URL(targetUrl);
 } catch {
   throw new Error(
-    `PROGRAMS_TARGET_URL must be an absolute HTTPS URL (default: ${DEFAULT_TARGET_URL})`
+    `PROGRAMS_TARGET_URL must be an absolute URL (default: ${DEFAULT_TARGET_URL})`
   );
 }
 
-const allowLocal =
-  process.env.PROGRAMS_ALLOW_LOCAL === "1" &&
-  (parsedTarget.hostname === "localhost" ||
-    parsedTarget.hostname === "127.0.0.1");
-if (!allowLocal) {
+const isLocal =
+  parsedTarget.protocol === "http:" &&
+  !parsedTarget.username &&
+  !parsedTarget.password &&
+  ["localhost", "127.0.0.1"].includes(parsedTarget.hostname);
+if (!isLocal) {
   if (
     parsedTarget.protocol !== "https:" ||
     parsedTarget.username ||
     parsedTarget.password
   ) {
     throw new Error(
-      "PROGRAMS_TARGET_URL must be an absolute HTTPS URL without credentials"
+      "PROGRAMS_TARGET_URL must be an absolute HTTP loopback URL or an absolute HTTPS URL without credentials"
     );
   }
   if (

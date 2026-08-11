@@ -79,13 +79,16 @@ Run only the relevant suite when iterating locally:
 - **Responsive/accessibility shell:** `pnpm test:shell-responsive`
 - **Static/lint checks (optional, not part of the CI gate):** `pnpm check`
 
-### Deterministic CI vs deployed acceptance
+### Local-first implementation gate vs optional deployment smoke
 
-Local and CI-precheck results prove the code is deterministic and self-contained. They do **not** prove a deployed target works.
+The required `READY` evidence is deterministic checks plus the relevant Playwright suite against local `wrangler dev` and local D1 at `http://127.0.0.1:8787`. This exercises the Worker, static assets, cookies, and database without touching a Cloudflare account.
 
-- **Deployed-authority rule:** the official D1 deployed acceptance gate is the `e2e.yml` **`workflow_dispatch`** job. It runs only when an operator manually dispatches it, requires the `AUTH_TARGET_URL` Actions variable and the five `AUTH_*` Actions secrets, and fails closed if any are missing. Its Playwright artifact is the retained deployed-evidence authority.
-- The workflow validates that `AUTH_TARGET_URL` is an HTTPS URL without embedded credentials; it cannot mechanically prove that the target or accounts are non-production. The operator must verify the isolated Worker/D1 ownership and disposable fixtures before dispatching.
-- Developing against a deployed Worker locally is not a substitute for the official gate. See [`.github/CI-SECRETS.md`](.github/CI-SECRETS.md) for how the isolated target and acceptance fixtures are provisioned and rotated.
+- Start the stack with `pnpm dev:local`.
+- Seed disposable accounts with `pnpm db:seed:local`.
+- Seed the walkthrough dataset with `pnpm db:seed:demo`.
+- Run the suite named by the changed capability under `tests/e2e/`.
+
+Cloudflare deployment is optional/manual production-promotion evidence. If an operator runs it, use a fresh reserved `efcc-auth-*`/`efcc-dev-*` host and disposable `E2E_` fixtures; the workflow remains fail-closed. A deployed result never replaces the local gate and a missing manual run does not block repository `READY`.
 
 ## Local environment and secrets
 
@@ -114,7 +117,7 @@ Apps Script / Google Sheets is the **transitional domain backend**, not the prim
 
 - Agents never modify the production Google Sheet.
 - Every Apps Script API, manifest key, clasp directive, or deployment requires official documentation evidence.
-- A fresh `/exec` deployment must pass the relevant browser/API trace before READY.
+- Apps Script browser deployment is not an automatic gate. The retired `/exec` Playwright suite is deleted; use `tests/gas/` deterministic VM tests for the transitional Apps Script code, and run an operator `/exec` smoke only when a ticket explicitly scopes it.
 
 If your change does not touch `src/gas/`, `tests/gas/`, or the transitional RPC proxy, you do not need `clasp`.
 
@@ -132,5 +135,5 @@ Configure these in GitHub repository settings; committed files cannot enable the
 
 - Protect `main`: require pull requests, conversation resolution, and the four deterministic checks `Root typecheck & unit (gas + prototype)`, `Web typecheck & tests (workerd + components)`, `Shell responsive (static shell, 375px + 1280px)`, and `D1 auth contract (workerd)`; prevent force-pushes and branch deletion.
 - Grant the next developer access through the appropriate GitHub team or repository role. Never share personal access tokens.
-- Configure `AUTH_TARGET_URL` as an Actions variable and the five `AUTH_*` values as Actions secrets. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` acceptance namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
-- Keep Cloudflare and Apps Script deployment ownership separate from repository write access. Dispatch the deployed D1 gate only after rotating the isolated target and acceptance fixtures, then retain its Playwright artifact.
+- Configure `AUTH_TARGET_URL` and the five `AUTH_*` values as Actions inputs only if the optional deployed D1 smoke is needed. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
+- Keep Cloudflare and Apps Script deployment ownership separate from repository write access. Dispatch the optional deployed D1 smoke only after rotating the isolated target and acceptance fixtures; retain its Playwright artifact as operational evidence, not as the local `READY` gate.

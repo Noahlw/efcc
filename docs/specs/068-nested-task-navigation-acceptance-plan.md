@@ -116,4 +116,4 @@ Reuses the three seeded EFCC application-layer users from ADR-0012 / issue
 
 ## Executed results
 
-_(Appended automatically by `pnpm test:e2e` / `posttest:e2e` → `tsx tests/e2e/plan-doc-appender.ts --plan=docs/specs/068-nested-task-navigation-acceptance-plan.md` once the Playwright assertions for this ticket exist and run against a fresh `/exec` deployment. Populated after implementation, not hand-transcribed.)_
+_(Historical record. The retired Apps Script `/exec` Playwright runner and its `pnpm test:e2e`/`posttest:e2e` appender are no longer part of this repository. Current acceptance evidence uses the local Worker/D1 suites documented in `tests/e2e/README.md`.)_

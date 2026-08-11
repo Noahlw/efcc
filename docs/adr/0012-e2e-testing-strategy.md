@@ -1,9 +1,9 @@
 # ADR-0012 — E2E Testing Strategy (Playwright Storage-State Pattern)
 
-- **Status**: Accepted (grill-with-docs session, locked 2026-07-29)
+- **Status**: Superseded by ADR-0029 — historical rationale for the Apps Script `/exec` storage-state pattern, whose deployed suite and credential capture flow are retired. The deterministic `tests/gas/` suite and local Worker/D1 Playwright suites are current.
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-07-29
-- **Related**: issue #67 (role-aware navigation), `docs/specs/009-phone-first-shell-navigation.md` (testing plan section), `docs/specs/067-role-nav-acceptance-plan.md` (the manual plan this pipeline automates), AGENTS.md "Implementation verification workflow — headless browser gate"
+- **Related**: issue #67 (historical role-aware navigation), `docs/specs/009-phone-first-shell-navigation.md` (historical testing plan section), `docs/specs/067-role-nav-acceptance-plan.md` (historical manual plan), ADR-0029 (current local-first testing and readiness gate), AGENTS.md
 - **Research**: primary-sourced via `web_search` (Playwright official docs, Apps Script Web Apps guide, Stack Overflow/community threads on Google Sign-In automation)
 
 ## Context

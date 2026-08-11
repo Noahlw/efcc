@@ -794,3 +794,172 @@
     transition: none;
   }
 }
+
+/* ---- PUI-01 participant-default mode boundary (Issue #245) -------------- */
+.boundary {
+  width: 100%;
+  max-width: 760px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.boundaryHeader {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1.25rem;
+}
+
+.modeSwitch {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding: 0.25rem;
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.modeButton {
+  min-height: 44px;
+  padding: 0.625rem 1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modeButton:hover {
+  color: var(--ink);
+  background: var(--surface-raised);
+}
+
+.modeButton[aria-selected="true"] {
+  color: var(--surface-raised);
+  background: var(--accent);
+}
+
+.modeButton:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.boundaryPanel {
+  min-height: 0;
+  padding-top: 1.5rem;
+}
+
+.boundaryTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.boundaryLead {
+  max-width: 65ch;
+  margin: 0 0 1.25rem;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.boundaryState,
+.boundaryError {
+  max-width: 60ch;
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+}
+
+.boundaryState {
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.boundaryError {
+  background: var(--error-surface);
+  border: 1px solid var(--error-border);
+  color: var(--ink);
+}
+
+.boundaryState p,
+.boundaryError p {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+}
+
+.boundaryStatus {
+  margin: 0 0 1.25rem;
+  color: var(--success);
+  font-weight: 700;
+}
+
+.boundaryHint {
+  max-width: 60ch;
+  margin: -0.5rem 0 1.25rem;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.managementEntry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.managementEntry h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.managementEntry p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.intentNotice {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.intentNotice span {
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 799.98px) {
+  .boundary {
+    padding: 1rem;
+  }
+
+  .modeSwitch {
+    width: 100%;
+  }
+
+  .modeButton {
+    flex: 1;
+  }
+
+  .managementEntry {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .managementEntry .button,
+  .managementEntry .secondaryButton {
+    width: 100%;
+  }
+}

@@ -78,18 +78,21 @@ export interface Section {
 }
 
 export interface Bootstrap {
+  /** Server-authorized content sections used by GuardedSection. */
   sections: Section[];
+  /** Server-shaped stable shell destinations; never derived in the browser. */
+  navigation: Section[];
   profile: PublicUser;
 }
 
 /**
- * GET /api/v1/auth/me response payload — the cookie-verified public user
- * plus the server-authorized section list (S15). The server computes the
- * sections from the canonical stored role; the client renders them verbatim.
+ * GET /api/v1/auth/me response payload — the cookie-verified public user,
+ * server-authorized sections, and the stable navigation projection.
  */
 export interface AuthMeResult {
   user: PublicUser;
   sections: Section[];
+  navigation: Section[];
 }
 
 async function parseProblemDetails(
@@ -283,8 +286,9 @@ export function authLogout(): Promise<void> {
 }
 
 /**
- * GET /api/v1/auth/me — reads the access cookie, returns the public user.
- * The endpoint wraps the user under `data.user`; unwrap it here.
+ * GET /api/v1/auth/me — reads the access cookie and returns the public user,
+ * server-authorized section projection, and stable navigation projection. The
+ * endpoint wraps these fields under `data`; unwrap them here.
  */
 
 export async function authMe(): Promise<AuthMeResult> {
