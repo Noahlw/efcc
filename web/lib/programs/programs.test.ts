@@ -4289,6 +4289,46 @@ describe("PUI-03: participant Program detail", () => {
     assert.ok(!raw.includes("manual_check_in_code"));
     assert.ok(!raw.includes("capabilities"));
   });
+  test("keeps multiple active events for a OneOff participant detail", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-ONEOFF",
+      name: "PUI-03 OneOff Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 OneOff Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    for (const [starts_at, ends_at] of [
+      ["2099-04-01T10:00:00.000Z", "2099-04-01T11:00:00.000Z"],
+      ["2099-04-08T10:00:00.000Z", "2099-04-08T11:00:00.000Z"],
+    ]) {
+      const event = await worker.fetch(
+        programsRequest(`/api/v1/programs/${created.program_id}/events`, {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at, ends_at },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(event.status, 201);
+    }
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(body.data.detail.program.behavior_type, "OneOff");
+    assert.strictEqual(body.data.detail.events.length, 2);
+    assert.ok(
+      body.data.detail.events.every((event) => event.status === "Active")
+    );
+  });
 
   test("keeps hidden Program existence private", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");

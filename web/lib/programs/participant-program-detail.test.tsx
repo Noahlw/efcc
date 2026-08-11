@@ -96,6 +96,14 @@ const detailFixture = (
       status: "Active",
       source: "SCHEDULE",
     },
+    {
+      event_id: "event-2",
+      program_id: "program-1",
+      starts_at: "2099-03-11T11:30:00.000Z",
+      ends_at: "2099-03-11T13:00:00.000Z",
+      status: "Active",
+      source: "SCHEDULE",
+    },
   ],
   ...overrides,
 });
@@ -140,8 +148,11 @@ describe("PUI-03 participant Program detail", () => {
     expect(screen.getByText(/MemberRequest/u)).toBeInTheDocument();
     expect(screen.getByText("青年事工")).toBeInTheDocument();
     expect(screen.getByText("門徒訓練")).toBeInTheDocument();
-    expect(screen.getByText(/19:30/u)).toBeInTheDocument();
-    expect(screen.getByText(/2099/u)).toBeInTheDocument();
+    expect(screen.getByText("每週三 19:30–21:00")).toBeInTheDocument();
+    const events = screen.getByRole("region", { name: "近期活動" });
+    expect(within(events).getByText(/19:30/u)).toBeInTheDocument();
+    expect(within(events).getByText(/2099/u)).toBeInTheDocument();
+    expect(within(events).getAllByRole("listitem")).toHaveLength(1);
     expect(
       screen.queryByText(/check_in_token|manual_check_in_code/iu)
     ).not.toBeInTheDocument();

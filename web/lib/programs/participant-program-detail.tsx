@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
@@ -53,11 +54,6 @@ const participationLabel: Record<
   MemberRequest: COPY.programs.detailParticipationMemberRequest,
   ManagerOnly: COPY.programs.detailParticipationManagerOnly,
 };
-
-const eventTimeFormatter = new Intl.DateTimeFormat("zh-HK", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 function scheduleLabel(rule: ParticipantScheduleRule): string {
   if (rule.recurrence === "WEEKLY") {
@@ -156,10 +152,13 @@ export const ParticipantProgramDetail = ({
     if (state.kind !== "ready") {
       return [];
     }
-    return state.detail.events
+    const events = state.detail.events
       .filter((event) => event.status === "Active")
       .filter((event) => eventIsUpcoming(event.starts_at))
-      .toSorted((a, b) => a.starts_at.localeCompare(b.starts_at));
+      .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+    return state.detail.program.behavior_type === "OneOff"
+      ? events
+      : events.slice(0, 1);
   }, [state]);
 
   if (state.kind === "loading") {
@@ -255,7 +254,7 @@ export const ParticipantProgramDetail = ({
           {COPY.programs.detailPurpose}
         </h3>
         <p className={styles.programDetailDescription}>
-          {program.description ?? COPY.programs.catalogEmptyHint}
+          {program.description ?? COPY.programs.programDescriptionEmpty}
         </p>
       </section>
 
@@ -321,7 +320,7 @@ export const ParticipantProgramDetail = ({
               <li key={event.event_id} className={styles.programDetailEvent}>
                 <span>{COPY.programs.detailEventTime}</span>
                 <time dateTime={event.starts_at}>
-                  {eventTimeFormatter.format(new Date(event.starts_at))}
+                  {hkWallLabel(event.starts_at)}
                 </time>
               </li>
             ))}
