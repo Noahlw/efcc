@@ -149,17 +149,17 @@ test.describe("PUI-01 deployed Programs boundary", () => {
     ).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText(COPY.pageLead)).toBeVisible();
     const hasManagement = await hasProjectedManagementCapability(page);
+    expect(
+      hasManagement,
+      "admin fixture must expose projected management capability"
+    ).toBe(true);
     const managementButton = page.getByRole("button", {
       name: COPY.enterManagement,
     });
-    if (hasManagement) {
-      await expect(managementButton).toBeVisible();
-      await expect(
-        page.getByText(COPY.managementMode, { exact: true })
-      ).toBeVisible();
-    } else {
-      await expect(managementButton).toHaveCount(0);
-    }
+    await expect(managementButton).toBeVisible();
+    await expect(
+      page.getByText(COPY.managementMode, { exact: true })
+    ).toBeVisible();
   });
 
   test("staff also enters Participant mode before any management action", async ({
@@ -207,7 +207,10 @@ test.describe("PUI-01 deployed Programs boundary", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     const hasManagement = await hasProjectedManagementCapability(page);
-    test.skip(!hasManagement, "fixture has no projected management scope");
+    expect(
+      hasManagement,
+      "admin fixture must expose projected management capability"
+    ).toBe(true);
     await page.goto("/programs?program=e2e-intent#overview");
 
     await expect(

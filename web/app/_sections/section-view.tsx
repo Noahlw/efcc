@@ -5,9 +5,9 @@ import { COPY } from "@/lib/copy";
 import styles from "./section-view.module.css";
 
 /**
- * Shared Section presentation for the four Ui03 surfaces (Events, Scanner,
- * Care, Permissions), carbonized from the accepted Minimal prototype (Variant A).
- *
+ * Shared Section presentation for Home and the transitional Ui03 surfaces
+ * (Events, Scanner, Care, Permissions), carbonized from the accepted Minimal
+ * prototype (Variant A).
  * Where no real domain RPC exists yet, each Section renders its authoritative
  * heading plus an honest building/empty state (COPY.sections.placeholder =
  * "內容建置中"). The prototype's "(Events)" / "(Scanner)" English helper suffixes

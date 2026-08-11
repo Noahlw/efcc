@@ -63,6 +63,7 @@ const PROFILE: PublicUser = {
 
 const BOOTSTRAP: Bootstrap = {
   sections: [],
+  navigation: [],
   profile: PROFILE,
 };
 

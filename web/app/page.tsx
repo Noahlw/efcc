@@ -207,7 +207,7 @@ const LoginPage = () => {
       // Login sets the cookies; /me resolves the full profile from the
       // access cookie to assemble the shell bootstrap.
       const me = await authMe();
-      const bootstrap = buildBootstrap(me.user, me.sections);
+      const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -229,7 +229,7 @@ const LoginPage = () => {
   const finishUpgrade = useCallback(async () => {
     try {
       const me = await authMe();
-      const bootstrap = buildBootstrap(me.user, me.sections);
+      const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
     } catch (error) {
@@ -272,7 +272,7 @@ const LoginPage = () => {
       // session (Spec 077 U5).
       try {
         const me = await authMe();
-        const bootstrap = buildBootstrap(me.user, me.sections);
+        const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
         setAuthHint();
         announce(COPY.login.success);
         navigateAfterLogin(bootstrap);

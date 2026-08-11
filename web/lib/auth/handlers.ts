@@ -61,7 +61,7 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
-import { sectionsForRole } from "../sections";
+import { sectionsForRole, stableNavigationSections } from "../sections";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -759,10 +759,8 @@ export async function handleMe(
       requestId
     );
   }
-  // S15: the server authorizes the section list. The sections are computed
-  // here from the canonical stored role (ADR-0025) and shipped inside the
-  // bootstrap response; the client renders them verbatim and treats any
-  // direct link to an absent section as forbidden.
+  // The server emits a separate stable navigation projection. It is
+  // presentation metadata only; `sections` remains the authorization set.
   return jsonResponse(
     200,
     {
@@ -770,6 +768,7 @@ export async function handleMe(
       data: {
         user: secretFreeUser(resolved.account),
         sections: sectionsForRole(resolved.account.role),
+        navigation: stableNavigationSections(),
       },
     },
     requestId

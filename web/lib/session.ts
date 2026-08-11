@@ -87,18 +87,19 @@ export function clearAuthHint(): void {
 }
 
 /**
- * Assemble the shell's Bootstrap from a cookie-verified public user and the
- * server-authorized section projection. Missing or malformed projection data
- * fails closed; the browser never derives section authorization from
- * `user.role`.
+ * Assemble the shell Bootstrap from cookie-verified user data and the two
+ * server projections. Missing or malformed projections fail closed; the
+ * browser never derives authorization or navigation from `user.role`.
  */
 export function buildBootstrap(
   user: PublicUser,
-  serverSections?: Section[]
+  serverSections?: Section[],
+  serverNavigation?: Section[]
 ): Bootstrap {
   return {
     profile: user,
     sections: Array.isArray(serverSections) ? serverSections : [],
+    navigation: Array.isArray(serverNavigation) ? serverNavigation : [],
   };
 }
 
@@ -111,6 +112,7 @@ export function buildBootstrap(
 async function currentUser(): Promise<{
   user: PublicUser;
   sections: Section[];
+  navigation: Section[];
 }> {
   try {
     return await authMe();
@@ -134,6 +136,6 @@ export async function restoreBootstrap(): Promise<Bootstrap | null> {
     clearAuthHint();
     return null;
   }
-  const { user, sections } = await currentUser();
-  return buildBootstrap(user, sections);
+  const { user, sections, navigation } = await currentUser();
+  return buildBootstrap(user, sections, navigation);
 }

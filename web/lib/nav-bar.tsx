@@ -10,14 +10,16 @@ export function NavBar() {
   const { bootstrap } = useApp();
   const pathname = usePathname();
 
+  // Navigation is a server projection separate from authorization sections.
+  // Stable links may lead to a deferred/forbidden surface; this component
+  // never derives destinations from the profile role or section presence.
   // Prefix-aware: /profile/settings (and future sub-routes) still highlight
   // the owning section (review P2 aria-current finding).
   const current = pathname.replace(/^\//u, "").split("/")[0] || "profile";
-
   return (
     <>
       <nav aria-label={COPY.nav.label} className="nav-phone">
-        {bootstrap.sections.map((s) => (
+        {bootstrap.navigation.map((s) => (
           <Link
             key={s.key}
             href={`/${s.key}`}
@@ -29,7 +31,7 @@ export function NavBar() {
         ))}
       </nav>
       <nav aria-label={COPY.nav.label} className="nav-desktop">
-        {bootstrap.sections.map((s) => (
+        {bootstrap.navigation.map((s) => (
           <Link
             key={s.key}
             href={`/${s.key}`}

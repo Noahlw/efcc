@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -19,6 +19,7 @@ import {
 } from "vitest";
 
 import CarePage from "@/app/care/page";
+import HomePage from "@/app/home/page";
 import EventsPage from "@/app/events/page";
 import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
@@ -37,7 +38,7 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
-import { sectionsForRole } from "@/lib/sections";
+import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
@@ -67,6 +68,12 @@ vi.mock(import("next/navigation"), () => ({
 }));
 
 const MEMBER_SECTIONS = [
+  {
+    key: "home",
+    label: "首頁",
+    capability: "READ",
+    requiresServerAuth: false,
+  },
   {
     key: "profile",
     label: "個人資料",
@@ -109,6 +116,8 @@ const STAFF_SECTIONS = [
   },
 ];
 
+const NAVIGATION = stableNavigationSections();
+
 const PUBLIC_USER: PublicUser = {
   userId: "U001",
   name: "測試用",
@@ -125,6 +134,7 @@ const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
 
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
+  navigation: NAVIGATION,
   profile: PUBLIC_USER,
 };
 
@@ -173,7 +183,11 @@ const DEFAULT_HANDLER = [
     authCalls.push("/api/v1/auth/me");
     return HttpResponse.json({
       requestId: "r-me",
-      data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+      data: {
+        user: PUBLIC_USER,
+        sections: MEMBER_SECTIONS,
+        navigation: NAVIGATION,
+      },
     });
   }),
   http.post("/api/v1/auth/logout", () => {
@@ -327,7 +341,11 @@ describe("Shell", () => {
           authCalls.push("/api/v1/auth/me");
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         }),
         http.post("/api/v1/auth/upgrade", async ({ request }) => {
@@ -424,7 +442,11 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         }),
         http.post("/api/v1/auth/upgrade", async ({ request }) => {
@@ -502,7 +524,11 @@ describe("Shell", () => {
           authCalls.push("/api/v1/auth/me");
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         }),
         http.post("/api/v1/auth/upgrade", () => {
@@ -648,7 +674,11 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         }),
         http.post("/api/v1/auth/upgrade", () => {
@@ -737,7 +767,11 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         }),
         http.post("/api/v1/auth/refresh", () => {
@@ -895,7 +929,11 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           })
         ),
         http.post("/api/v1/auth/refresh", () =>
@@ -933,6 +971,7 @@ describe("Shell", () => {
             data: {
               user: { ...PUBLIC_USER, userId: "local-noah" },
               sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
             },
           })
         )
@@ -1000,6 +1039,7 @@ describe("Shell", () => {
             data: {
               user: { ...PUBLIC_USER, qrCodeString: "" },
               sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
             },
           })
         )
@@ -1016,12 +1056,13 @@ describe("Shell", () => {
   describe(NavBar, () => {
     function renderWithProvider(
       sections: Bootstrap["sections"],
-      pathname: string
+      pathname: string,
+      navigation: Bootstrap["navigation"] = NAVIGATION
     ) {
       pathnameMock.mockReturnValue(pathname);
       return render(
         <AppProvider
-          bootstrap={{ ...BOOTSTRAP, sections } as Bootstrap}
+          bootstrap={{ ...BOOTSTRAP, sections, navigation } as Bootstrap}
           onSignOut={() => {}}
         >
           <NavBar />
@@ -1029,53 +1070,67 @@ describe("Shell", () => {
       );
     }
 
-    test("renders all MEMBER sections", () => {
-      renderWithProvider(MEMBER_SECTIONS, "/profile");
-      expect(screen.getAllByText("個人資料").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("課程").length).toBeGreaterThanOrEqual(1);
-    });
-
-    test("Member nav omits events, scanner, care, and permissions (S15)", () => {
-      renderWithProvider(sectionsForRole("Member"), "/profile");
-      expect(
-        screen.getAllByText(COPY.sections.profile).length
-      ).toBeGreaterThanOrEqual(1);
+    test("renders the stable navigation projection for Member", () => {
+      renderWithProvider(sectionsForRole("Member"), "/home");
+      expect(screen.getAllByText(COPY.sections.home).length).toBeGreaterThanOrEqual(
+        1
+      );
       expect(
         screen.getAllByText(COPY.sections.programs).length
       ).toBeGreaterThanOrEqual(1);
-      expect(screen.queryAllByText(COPY.sections.events)).toHaveLength(0);
-      expect(screen.queryAllByText(COPY.sections.scanner)).toHaveLength(0);
-      expect(screen.queryAllByText(COPY.sections.care)).toHaveLength(0);
-    });
-
-    test("renders no permissions section for member nav", () => {
-      renderWithProvider(MEMBER_SECTIONS, "/profile");
+      expect(screen.getAllByText(COPY.sections.events).length).toBeGreaterThanOrEqual(
+        1
+      );
+      expect(
+        screen.getAllByText(COPY.sections.scanner).length
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText(COPY.sections.profile).length
+      ).toBeGreaterThanOrEqual(1);
       expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
-    test("renders all STAFF sections", () => {
-      renderWithProvider(STAFF_SECTIONS, "/profile");
-      expect(screen.getAllByText("掃描").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("關懷").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("權限管理").length).toBeGreaterThanOrEqual(1);
+    test("keeps stable navigation order for Member and Admin", () => {
+      const expected = ["/home", "/programs", "/events", "/scanner", "/profile"];
+      const memberView = renderWithProvider(
+        sectionsForRole("Member"),
+        "/home",
+        stableNavigationSections()
+      );
+      const memberLinks = within(screen.getAllByRole("navigation")[0])
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(memberLinks).toStrictEqual(expected);
+      memberView.unmount();
+
+      const adminView = renderWithProvider(
+        sectionsForRole("Admin"),
+        "/home",
+        stableNavigationSections()
+      );
+      const adminLinks = within(screen.getAllByRole("navigation")[0])
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(adminLinks).toStrictEqual(expected);
+      adminView.unmount();
     });
 
     test("marks active section with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
-      const [active] = screen.getAllByText("課程");
+      const [active] = screen.getAllByText(COPY.sections.programs);
       expect(active).toHaveAttribute("aria-current", "page");
     });
 
     test("does not mark inactive sections with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
-      const [inactive] = screen.getAllByText("個人資料");
+      const [inactive] = screen.getAllByText(COPY.sections.profile);
       expect(inactive).not.toHaveAttribute("aria-current");
     });
 
     test("/profile/settings highlights the profile section (prefix-aware)", () => {
       renderWithProvider(MEMBER_SECTIONS, "/profile/settings");
-      const [profile] = screen.getAllByText("個人資料");
-      const [programs] = screen.getAllByText("課程");
+      const [profile] = screen.getAllByText(COPY.sections.profile);
+      const [programs] = screen.getAllByText(COPY.sections.programs);
       expect(profile).toHaveAttribute("aria-current", "page");
       expect(programs).not.toHaveAttribute("aria-current");
     });
@@ -1173,7 +1228,11 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         })
       );
@@ -1295,11 +1354,22 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user, sections },
+            data: { user, sections, navigation: NAVIGATION },
           })
         )
       );
     }
+
+    test("home page renders COPY.sections.home title for a Member", async () => {
+      withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
+      setAuthHint();
+      render(<HomePage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.home })
+        ).toBeInTheDocument();
+      });
+    });
 
     test("programs page renders COPY.sections.programs title", async () => {
       setAuthHint();
@@ -1376,16 +1446,18 @@ describe("Shell", () => {
 
   describe("server-shaped bootstrap authorization", () => {
     test("uses the server projection instead of deriving sections from role", () => {
-      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS)).toEqual({
+      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)).toEqual({
         profile: ADMIN_USER,
         sections: MEMBER_SECTIONS,
+        navigation: NAVIGATION,
       });
     });
 
-    test("fails closed when the server projection is missing", () => {
+    test("fails closed when a server projection is missing", () => {
       expect(buildBootstrap(STAFF_USER)).toEqual({
         profile: STAFF_USER,
         sections: [],
+        navigation: [],
       });
     });
   });
@@ -1669,7 +1741,11 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
+            data: {
+              user: PUBLIC_USER,
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
           });
         })
       );

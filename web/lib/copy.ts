@@ -111,6 +111,7 @@ export const COPY = {
     updatedNotice: "帳戶資料已更新，請重新登入。",
   },
   sections: {
+    home: "首頁",
     profile: "個人檔案",
     programs: "課程與活動",
     events: "聚會管理",

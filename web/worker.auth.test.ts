@@ -516,7 +516,7 @@ describe("AUTH-06: login", () => {
     assertBodyHasNoTokenKeys(body);
   });
 
-  test("/me returns the server-authorized section list (S15)", async () => {
+  test("/me returns server-authorized sections and stable navigation projections", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const adminRes = await worker.fetch(
       authRequest("/api/v1/auth/me", {
@@ -530,11 +530,18 @@ describe("AUTH-06: login", () => {
     );
     assert.strictEqual(adminRes.status, 200);
     const adminBody = (await assertCorrelated(adminRes)) as {
-      data: { sections: Array<{ key: string }> };
+      data: {
+        sections: Array<{ key: string }>;
+        navigation: Array<{ key: string }>;
+      };
     };
     assert.deepStrictEqual(
       adminBody.data.sections.map((s) => s.key),
-      ["profile", "programs", "events", "scanner", "care", "permissions"]
+      ["home", "profile", "programs", "events", "scanner", "care", "permissions"]
+    );
+    assert.deepStrictEqual(
+      adminBody.data.navigation.map((s) => s.key),
+      ["home", "programs", "events", "scanner", "profile"]
     );
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -550,11 +557,18 @@ describe("AUTH-06: login", () => {
     );
     assert.strictEqual(memberRes.status, 200);
     const memberBody = (await assertCorrelated(memberRes)) as {
-      data: { sections: Array<{ key: string }> };
+      data: {
+        sections: Array<{ key: string }>;
+        navigation: Array<{ key: string }>;
+      };
     };
     assert.deepStrictEqual(
       memberBody.data.sections.map((s) => s.key),
-      ["profile", "programs"]
+      ["home", "profile", "programs"]
+    );
+    assert.deepStrictEqual(
+      memberBody.data.navigation.map((s) => s.key),
+      ["home", "programs", "events", "scanner", "profile"]
     );
   });
 

@@ -264,6 +264,7 @@ describe("Programs boundary", () => {
     expect(mocks.push).toHaveBeenCalledWith(
       "/programs?mode=management&program=program-1#overview"
     );
+    expect(mocks.replace).not.toHaveBeenCalled();
     expect(
       screen.getByRole("heading", { name: "管理模式" })
     ).toBeInTheDocument();
@@ -280,7 +281,11 @@ describe("Programs boundary", () => {
   });
 
   test("follows same-route App Router query changes and restores focus on Back", async () => {
-    mocks.listDepartments.mockResolvedValue({ departments: [] });
+    mocks.listDepartments.mockResolvedValue({
+      departments: [
+        department({ manage: true, publish: true, module_configure: true }),
+      ],
+    });
     const { rerender } = render(<ProgramsBoundary />);
 
     await screen.findByRole("heading", { name: "參與者模式" });
@@ -326,13 +331,18 @@ describe("Programs boundary", () => {
       "/programs?mode=management#details"
     );
   });
-  test("keeps management data out of the loading frame", () => {
+  test("keeps management data and tabs out of the loading frame", () => {
     const { promise } = Promise.withResolvers<{ departments: Department[] }>();
+    window.history.replaceState({}, "", "/programs?mode=management");
     mocks.listDepartments.mockReturnValue(promise);
     render(<ProgramsBoundary />);
 
     expect(screen.getByText("正在確認管理權限…")).toBeInTheDocument();
     expect(screen.queryByText("管理範圍已載入")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: COPY.programs.managementMode })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
   });
 
   test("ignores stale StrictMode access results after a fresh run", async () => {
@@ -375,16 +385,30 @@ describe("Programs boundary", () => {
     expect(
       await screen.findByRole("heading", { name: "沒有管理範圍" })
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: COPY.programs.managementMode })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.enterParticipant })
+    );
+    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(mocks.push).not.toHaveBeenCalled();
     unmount();
 
     mocks.listDepartments.mockRejectedValue(
       new RpcError({ code: "FORBIDDEN", status: 403 })
     );
+    mocks.replace.mockReset();
+    mocks.push.mockReset();
     render(<ProgramsBoundary />);
     expect(
       await screen.findByRole("heading", { name: "無法進入管理模式" })
     ).toBeInTheDocument();
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("tab", { name: COPY.programs.managementMode })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: "返回參與者模式" })
     );
@@ -397,6 +421,8 @@ describe("Programs boundary", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.retryAccess })
     ).toBeInTheDocument();
+    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   test("moves focus to loading status when retry replaces an error", async () => {
@@ -492,6 +518,8 @@ describe("Programs boundary", () => {
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "返回首頁" }));
+    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(mocks.push).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(
       screen.getByRole("tab", { name: "參與者模式" })
     );

@@ -150,15 +150,25 @@ export function ProgramsBoundary() {
     retryFocusPending.current = true;
     void loadAccess();
   };
+  const managementModeReady =
+    access.kind === "ready" && access.projection.hasManagementCapability;
+  const showModeTabs = intent.mode === "participant" || managementModeReady;
 
-  const navigateMode = (mode: "participant" | "management") => {
+  const navigateMode = (
+    mode: "participant" | "management",
+    replace = false
+  ) => {
     const href = buildProgramsHref({
       mode,
       programId: intent.programId,
       hash: intent.hash,
     });
     focusMode.current = mode;
-    router.push(href);
+    if (replace) {
+      router.replace(href);
+    } else {
+      router.push(href);
+    }
     setSearch(href.slice("/programs".length));
     announce(
       mode === "management"
@@ -198,14 +208,18 @@ export function ProgramsBoundary() {
           title={COPY.programs.malformedIntent}
           message={COPY.programs.malformedIntentHint}
           actionLabel={COPY.nav.backToHome}
-          onAction={() => navigateMode("participant")}
+          onAction={() => navigateMode("participant", true)}
         />
       </BoundaryFrame>
     );
   }
 
   return (
-    <BoundaryFrame intent={intent} onModeChange={navigateMode} showModeTabs>
+    <BoundaryFrame
+      intent={intent}
+      onModeChange={navigateMode}
+      showModeTabs={showModeTabs}
+    >
       {access.kind === "loading" && (
         <StatePanel
           id="programs-access-state"
@@ -246,7 +260,7 @@ export function ProgramsBoundary() {
             }
             onAction={
               access.failure === "forbidden"
-                ? () => navigateMode("participant")
+                ? () => navigateMode("participant", true)
                 : retryAccess
             }
           />
@@ -255,6 +269,7 @@ export function ProgramsBoundary() {
         <ManagementPanel
           projection={access.projection}
           onParticipant={() => navigateMode("participant")}
+          onRecoverParticipant={() => navigateMode("participant", true)}
         />
       )}
       {access.kind === "ready" && intent.mode === "participant" && (
@@ -377,9 +392,11 @@ function ParticipantPanel({
 function ManagementPanel({
   projection,
   onParticipant,
+  onRecoverParticipant,
 }: {
   projection: ProgramsManagementAccess;
   onParticipant: () => void;
+  onRecoverParticipant: () => void;
 }) {
   if (!projection.hasManagementCapability) {
     return (
@@ -388,7 +405,7 @@ function ManagementPanel({
         title={COPY.programs.noManagementScope}
         message={COPY.programs.noManagementScopeHint}
         actionLabel={COPY.programs.enterParticipant}
-        onAction={onParticipant}
+        onAction={onRecoverParticipant}
       />
     );
   }
