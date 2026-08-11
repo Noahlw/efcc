@@ -132,10 +132,14 @@ export const ParticipantProgramDetail = ({
   }, [loadDetail]);
 
   useEffect(() => {
-    if (!retryFocusPending.current || state.kind === "loading") {
+    if (state.kind === "loading") {
       return;
     }
-    const panel = document.querySelector<HTMLElement>("#program-detail-state");
+    const targetId =
+      state.kind === "ready"
+        ? "#program-detail-title"
+        : "#program-detail-state";
+    const panel = document.querySelector<HTMLElement>(targetId);
     if (!panel) {
       return;
     }
@@ -241,7 +245,11 @@ export const ParticipantProgramDetail = ({
           {department.name}
           {program.category ? ` · ${program.category}` : ""}
         </p>
-        <h2 id="program-detail-title" className={styles.boundaryTitle}>
+        <h2
+          id="program-detail-title"
+          className={styles.boundaryTitle}
+          tabIndex={-1}
+        >
           {program.name}
         </h2>
       </header>
