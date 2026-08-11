@@ -739,7 +739,8 @@ export async function handleLogout(
 /**
  * GET /api/v1/auth/me (preserved from AUTH-02 #160)
  *
- * Reads the access cookie, verifies statelessly, returns the public user.
+ * Reads the access cookie, verifies statelessly, and returns the public user
+ * alongside server-authorized sections and stable navigation metadata.
  */
 export async function handleMe(
   request: Request,
