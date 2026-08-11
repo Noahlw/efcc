@@ -314,7 +314,7 @@ Reuses the three seeded EFCC application-layer users from ADR-0012 / issue
 
 ## Executed results
 
-_(Appended automatically by `pnpm test:e2e` → `tests/e2e/plan-doc-appender.ts` once the Playwright assertions exist and run against a fresh `/exec` deployment. Not yet run — this is the AC #12 blocker above.)_
+_(Historical record. The retired Apps Script `/exec` Playwright runner and its `pnpm test:e2e` appender are no longer part of this repository. Current acceptance evidence uses the local Worker/D1 suites documented in `tests/e2e/README.md`.)_
 
 ## Rollback
 
