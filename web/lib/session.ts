@@ -13,7 +13,6 @@
 import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import type { Section } from "@/lib/api";
-import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 export const DEEP_LINK_KEY = "efcc_deep_link";
@@ -88,20 +87,18 @@ export function clearAuthHint(): void {
 }
 
 /**
- * Assemble the shell's Bootstrap from a cookie-verified public user,
- * authorizing the shell sections by the user's role (S15).
+ * Assemble the shell's Bootstrap from a cookie-verified public user and the
+ * server-authorized section projection. Missing or malformed projection data
+ * fails closed; the browser never derives section authorization from
+ * `user.role`.
  */
 export function buildBootstrap(
   user: PublicUser,
   serverSections?: Section[]
 ): Bootstrap {
-  // S15: the server authorizes the section list. /api/v1/auth/me returns the
-  // role-appropriate `sections` (computed with the canonical stored role);
-  // the client consumes them verbatim. `sectionsForRole` is only a
-  // resilience fallback for servers that do not send the list yet.
   return {
     profile: user,
-    sections: serverSections ?? sectionsForRole(user.role),
+    sections: Array.isArray(serverSections) ? serverSections : [],
   };
 }
 

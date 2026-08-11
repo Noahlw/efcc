@@ -477,7 +477,10 @@ describe("api.ts: Idempotency-Key on mutating auth calls (ADR-0018 §8)", () => 
 
   test("authMe (read) sends no Idempotency-Key", async () => {
     const fetchMock = installFetch(() =>
-      makeResponse(200, { requestId: "r-me", data: { user: PUBLIC_USER } })
+      makeResponse(200, {
+        requestId: "r-me",
+        data: { user: PUBLIC_USER, sections: [] },
+      })
     );
     try {
       await authMe();

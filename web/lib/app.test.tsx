@@ -38,7 +38,7 @@ import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import { sectionsForRole } from "@/lib/sections";
-import { setAuthHint } from "@/lib/session";
+import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
 const mocks = vi.hoisted(() => {
@@ -79,16 +79,16 @@ const MEMBER_SECTIONS = [
     capability: "READ",
     requiresServerAuth: false,
   },
+];
+
+const STAFF_SECTIONS = [
+  ...MEMBER_SECTIONS,
   {
     key: "events",
     label: "聚會",
     capability: "READ",
     requiresServerAuth: false,
   },
-];
-
-const STAFF_SECTIONS = [
-  ...MEMBER_SECTIONS,
   {
     key: "scanner",
     label: "掃描",
@@ -173,7 +173,7 @@ const DEFAULT_HANDLER = [
     authCalls.push("/api/v1/auth/me");
     return HttpResponse.json({
       requestId: "r-me",
-      data: { user: PUBLIC_USER },
+      data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
     });
   }),
   http.post("/api/v1/auth/logout", () => {
@@ -327,7 +327,7 @@ describe("Shell", () => {
           authCalls.push("/api/v1/auth/me");
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         }),
         http.post("/api/v1/auth/upgrade", async ({ request }) => {
@@ -424,7 +424,7 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         }),
         http.post("/api/v1/auth/upgrade", async ({ request }) => {
@@ -502,7 +502,7 @@ describe("Shell", () => {
           authCalls.push("/api/v1/auth/me");
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         }),
         http.post("/api/v1/auth/upgrade", () => {
@@ -648,7 +648,7 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         }),
         http.post("/api/v1/auth/upgrade", () => {
@@ -737,7 +737,7 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         }),
         http.post("/api/v1/auth/refresh", () => {
@@ -895,7 +895,7 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           })
         ),
         http.post("/api/v1/auth/refresh", () =>
@@ -930,7 +930,10 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me-local-id",
-            data: { user: { ...PUBLIC_USER, userId: "local-noah" } },
+            data: {
+              user: { ...PUBLIC_USER, userId: "local-noah" },
+              sections: MEMBER_SECTIONS,
+            },
           })
         )
       );
@@ -994,7 +997,10 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user: { ...PUBLIC_USER, qrCodeString: "" } },
+            data: {
+              user: { ...PUBLIC_USER, qrCodeString: "" },
+              sections: MEMBER_SECTIONS,
+            },
           })
         )
       );
@@ -1027,7 +1033,6 @@ describe("Shell", () => {
       renderWithProvider(MEMBER_SECTIONS, "/profile");
       expect(screen.getAllByText("個人資料").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("課程").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("聚會").length).toBeGreaterThanOrEqual(1);
     });
 
     test("Member nav omits events, scanner, care, and permissions (S15)", () => {
@@ -1168,7 +1173,7 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         })
       );
@@ -1279,7 +1284,10 @@ describe("Shell", () => {
   });
 
   describe("Section page titles from COPY.sections", () => {
-    function withAuthRestore(user: PublicUser = PUBLIC_USER) {
+    function withAuthRestore(
+      user: PublicUser = PUBLIC_USER,
+      sections: Bootstrap["sections"] = MEMBER_SECTIONS
+    ) {
       server.use(
         http.post("/api/v1/auth/refresh", () =>
           HttpResponse.json({ requestId: "r-refresh", data: {} })
@@ -1287,7 +1295,7 @@ describe("Shell", () => {
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
             requestId: "r-me",
-            data: { user },
+            data: { user, sections },
           })
         )
       );
@@ -1304,7 +1312,7 @@ describe("Shell", () => {
     });
 
     test("events page renders COPY.sections.events title", async () => {
-      withAuthRestore(STAFF_USER);
+      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
@@ -1315,8 +1323,8 @@ describe("Shell", () => {
     });
 
     test("events page gates the operator panel behind the events section", async () => {
-      // A Member's bootstrap has no events section (sectionsForRole), so
-      // GuardedSection must render ForbiddenView instead of the panel.
+      // The server-shaped Member projection omits events, so GuardedSection
+      // must render ForbiddenView instead of the operator panel.
       withAuthRestore(PUBLIC_USER);
       setAuthHint();
       render(<EventsPage />);
@@ -1331,7 +1339,7 @@ describe("Shell", () => {
     });
 
     test("scanner page renders COPY.sections.scanner title", async () => {
-      withAuthRestore(STAFF_USER);
+      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<ScannerPage />);
       await waitFor(() => {
@@ -1342,7 +1350,7 @@ describe("Shell", () => {
     });
 
     test("care page renders COPY.sections.care title", async () => {
-      withAuthRestore(STAFF_USER);
+      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<CarePage />);
       await waitFor(() => {
@@ -1353,7 +1361,7 @@ describe("Shell", () => {
     });
 
     test("permissions page renders the S10 permissionsHeading title", async () => {
-      withAuthRestore(ADMIN_USER);
+      withAuthRestore(ADMIN_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
@@ -1362,6 +1370,22 @@ describe("Shell", () => {
             name: COPY.sections.permissionsHeading,
           })
         ).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("server-shaped bootstrap authorization", () => {
+    test("uses the server projection instead of deriving sections from role", () => {
+      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS)).toEqual({
+        profile: ADMIN_USER,
+        sections: MEMBER_SECTIONS,
+      });
+    });
+
+    test("fails closed when the server projection is missing", () => {
+      expect(buildBootstrap(STAFF_USER)).toEqual({
+        profile: STAFF_USER,
+        sections: [],
       });
     });
   });
@@ -1645,7 +1669,7 @@ describe("Shell", () => {
           }
           return HttpResponse.json({
             requestId: "r-me",
-            data: { user: PUBLIC_USER },
+            data: { user: PUBLIC_USER, sections: MEMBER_SECTIONS },
           });
         })
       );

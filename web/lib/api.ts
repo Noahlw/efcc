@@ -283,8 +283,9 @@ export function authLogout(): Promise<void> {
 }
 
 /**
- * GET /api/v1/auth/me — reads the access cookie, returns the public user.
- * The endpoint wraps the user under `data.user`; unwrap it here.
+ * GET /api/v1/auth/me — reads the access cookie and returns the public user
+ * plus the server-authorized section projection. The endpoint wraps both
+ * fields under `data`; unwrap them here.
  */
 
 export async function authMe(): Promise<AuthMeResult> {
