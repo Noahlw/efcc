@@ -13,6 +13,7 @@ import type {
   AttendanceMember as AttendanceMemberType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
+import type { ProgramsManagementAccess } from "./programs-access";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
@@ -79,11 +80,7 @@ export interface DepartmentDetail {
   modules: DepartmentModule[];
 }
 
-export interface ProgramsManagementAccess {
-  hasManagementCapability: boolean;
-  departmentScopes: number;
-  programScopes: number;
-}
+export type { ProgramsManagementAccess } from "./programs-access";
 
 export interface DepartmentInput {
   code: string;

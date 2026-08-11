@@ -40,6 +40,7 @@ export function ProgramsBoundary() {
   const [locationReady, setLocationReady] = useState(false);
   const [access, setAccess] = useState<AccessState>({ kind: "loading" });
   const mounted = useRef(true);
+  const accessRequestId = useRef(0);
   const previousMode = useRef<ProgramsIntent["mode"] | null>(null);
   const focusMode = useRef<ProgramsIntent["mode"] | null>(null);
   const retryFocusPending = useRef(false);
@@ -66,11 +67,17 @@ export function ProgramsBoundary() {
 
   const loadAccess = useCallback(
     async (request?: { cancelled: boolean }) => {
+      accessRequestId.current += 1;
+      const requestId = accessRequestId.current;
       setAccess({ kind: "loading" });
       announce(COPY.programs.accessLoading);
       try {
         const projection = await getManagementAccess();
-        if (!mounted.current || request?.cancelled) {
+        if (
+          !mounted.current ||
+          request?.cancelled ||
+          accessRequestId.current !== requestId
+        ) {
           return;
         }
         setAccess({ kind: "ready", projection });
@@ -78,7 +85,11 @@ export function ProgramsBoundary() {
           announce(COPY.programs.managementScopeReady);
         }
       } catch (error) {
-        if (!mounted.current || request?.cancelled) {
+        if (
+          !mounted.current ||
+          request?.cancelled ||
+          accessRequestId.current !== requestId
+        ) {
           return;
         }
         if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
