@@ -37,7 +37,7 @@ pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
-`pnpm dev:local` builds the Next static export, applies local migrations, and starts the Worker. `pnpm db:seed:local` is safe to rerun; it seeds these disposable local accounts:
+`pnpm dev:local` builds the Next static export, applies local migrations, and starts the Worker. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, then seeds these local accounts:
 
 | Username | Credential | Role |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 | `E2E_member` | `E2E_member!dev` | Member |
 | `E2E_legacy` | PIN `1234` (upgrade test) | Member |
 
-The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, three programs, and generated events for the recurring program.
+The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, four programs, and generated events for the recurring program.
 
 The local stack reads `web/.dev.vars`. Start from `web/.dev.vars.example`; the local access-token secret is required for protected routes. Never put production credentials, cookies, or tokens in that file.
 

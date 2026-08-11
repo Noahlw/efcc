@@ -171,6 +171,10 @@
 .retry:focus-visible,
 .button:focus-visible,
 .clearSelection:focus-visible,
+.clearButton:focus-visible,
+.filterChip:focus-visible,
+.directoryCard:focus-visible,
+.programDetailBack:focus-visible,
 .memberOption:focus-visible,
 .taskButton:focus-visible,
 .actionButton:focus-visible,
@@ -784,8 +788,14 @@
   .dangerOutline,
   .successOutline,
   .clearSelection,
+  .clearButton,
   .retry {
     width: 100%;
+  }
+
+  .directorySearchRow {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -938,6 +948,292 @@
 .intentNotice span {
   color: var(--ink-muted);
   line-height: 1.5;
+}
+
+/* ---- PUI-02 participant Programs directory (Issue #246) ----------------- */
+.directorySearch {
+  margin: 0 0 1.25rem;
+}
+
+.directorySearchLabel {
+  display: block;
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.directorySearchRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.directorySearchRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.clearButton {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clearButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.directoryFilters {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.directoryFilters legend {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.directoryFilterGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filterChip {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filterChip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filterChip[aria-pressed="true"] {
+  color: var(--surface-raised);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.directoryList {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.directoryItem {
+  margin: 0;
+}
+
+.directoryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.875rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.directoryCard:hover {
+  border-color: var(--accent);
+}
+
+.directoryCardTitle {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.directoryCardDescription {
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.directoryCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+}
+
+.directoryMetaItem {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.directoryStatus {
+  display: inline-block;
+  padding: 0.1875rem 0.5625rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+.directoryStatusDraft {
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
+}
+
+.directoryStatusActive {
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-surface);
+}
+
+.directoryStatusArchived {
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
+  background: var(--surface);
+}
+
+.programDetail {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.programDetailBack {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.programDetailBack:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.programDetailHeader {
+  display: grid;
+  gap: 0.375rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.programDetailEyebrow {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.programDetailSection {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.programDetailHeading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.programDetailDescription,
+.programDetailMuted {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.programDetailFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.programDetailFacts > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.programDetailFacts dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.programDetailFacts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.programDetailList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.programDetailEvent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.programDetailEvent span {
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.programDetailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 799.98px) {
+  .programDetailFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .programDetailActions {
+    flex-direction: column;
+  }
+
+  .programDetailActions > button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 799.98px) {

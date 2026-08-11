@@ -1,22 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { rememberDeepLink } from "@/lib/session";
 import { getManagementAccess } from "@/lib/programs/program-api";
+import { rememberDeepLink } from "@/lib/session";
+
+import { ParticipantDirectory } from "./participant-directory";
+import { ParticipantProgramDetail } from "./participant-program-detail";
+import type { ProgramsManagementAccess } from "./programs-access";
+import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
+import type { ProgramsIntent } from "./programs-intent";
 
 import styles from "@/app/programs/programs.module.css";
-
-import {
-  buildProgramsHref,
-  parseProgramsIntent,
-} from "./programs-intent";
-import type { ProgramsIntent } from "./programs-intent";
-import type { ProgramsManagementAccess } from "./programs-access";
 
 interface ReadyAccess {
   kind: "ready";
@@ -28,13 +27,11 @@ type AccessState =
   | ReadyAccess
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 
-
 export function ProgramsBoundary() {
   const router = useRouter();
   const pathname = usePathname();
   const routeQuery = useSearchParams().toString();
-  const routeHash =
-    typeof window === "undefined" ? "" : window.location.hash;
+  const routeHash = typeof window === "undefined" ? "" : window.location.hash;
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const [locationReady, setLocationReady] = useState(false);
@@ -92,7 +89,10 @@ export function ProgramsBoundary() {
         ) {
           return;
         }
-        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
           rememberDeepLink(
             typeof window === "undefined"
               ? pathname
@@ -140,9 +140,7 @@ export function ProgramsBoundary() {
     if (!retryFocusPending.current && !boundaryStateVisible) {
       return;
     }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-access-state"
-    );
+    const panel = document.querySelector<HTMLElement>("#programs-access-state");
     if (!panel) {
       return;
     }
@@ -155,11 +153,12 @@ export function ProgramsBoundary() {
   };
   const navigateMode = (
     mode: "participant" | "management",
-    replace = false
+    replace = false,
+    programId = intent.programId
   ) => {
     const href = buildProgramsHref({
       mode,
-      programId: intent.programId,
+      programId,
       hash: intent.hash,
     });
     focusMode.current = mode;
@@ -180,6 +179,22 @@ export function ProgramsBoundary() {
         ? COPY.programs.managementMode
         : COPY.programs.participantMode
     );
+  };
+  // PUI-02: row selection hands off through the canonical opaque Program
+  // intent URL — the directory never renders the nested manager.
+  const openProgram = (programId: string) => {
+    const href = buildProgramsHref({
+      mode: "participant",
+      programId,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(COPY.programs.programSelected);
   };
   useEffect(() => {
     const requestedMode = focusMode.current;
@@ -207,7 +222,11 @@ export function ProgramsBoundary() {
 
   if (intent.malformed) {
     return (
-      <BoundaryFrame intent={intent} onModeChange={navigateMode} showModeTabs={false}>
+      <BoundaryFrame
+        intent={intent}
+        onModeChange={navigateMode}
+        showModeTabs={false}
+      >
         <StatePanel
           id="programs-access-state"
           kind="error"
@@ -279,13 +298,23 @@ export function ProgramsBoundary() {
           onRecoverParticipant={() => navigateMode("participant", true)}
         />
       )}
-      {access.kind === "ready" && intent.mode === "participant" && (
-        <ParticipantPanel
-          programId={intent.programId}
-          canManage={access.projection.hasManagementCapability}
-          onManagement={() => navigateMode("management")}
-        />
-      )}
+      {access.kind === "ready" &&
+        intent.mode === "participant" &&
+        (intent.programId ? (
+          <ParticipantProgramDetail
+            programId={intent.programId}
+            canManage={access.projection.hasManagementCapability}
+            onManagement={() => navigateMode("management")}
+            onBack={() => navigateMode("participant", true, null)}
+          />
+        ) : (
+          <ParticipantDirectory
+            programId={null}
+            canManage={access.projection.hasManagementCapability}
+            onManagement={() => navigateMode("management")}
+            onOpenProgram={openProgram}
+          />
+        ))}
     </BoundaryFrame>
   );
 }
@@ -355,44 +384,6 @@ function BoundaryFrame({
         {children}
       </div>
     </section>
-  );
-}
-
-function ParticipantPanel({
-  programId,
-  canManage,
-  onManagement,
-}: {
-  programId: string | null;
-  canManage: boolean;
-  onManagement: () => void;
-}) {
-  return (
-    <>
-      <h2 className={styles.boundaryTitle}>{COPY.programs.participantMode}</h2>
-      <p className={styles.boundaryLead}>{COPY.programs.participantLead}</p>
-      {programId !== null && (
-        <div className={styles.intentNotice} role="status">
-          <strong>{COPY.programs.directProgramIntent}</strong>
-          <span>{COPY.programs.directProgramIntentHint}</span>
-        </div>
-      )}
-      {canManage && (
-        <div className={styles.managementEntry}>
-          <div>
-            <h3>{COPY.programs.managementMode}</h3>
-            <p>{COPY.programs.managementLead}</p>
-          </div>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={onManagement}
-          >
-            {COPY.programs.enterManagement}
-          </button>
-        </div>
-      )}
-    </>
   );
 }
 

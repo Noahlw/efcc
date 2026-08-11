@@ -13,6 +13,7 @@ import type {
   AttendanceMember as AttendanceMemberType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
+
 import type { ProgramsManagementAccess } from "./programs-access";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
@@ -78,6 +79,90 @@ export interface Program {
 export interface DepartmentDetail {
   department: Department;
   modules: DepartmentModule[];
+}
+
+/**
+ * Narrow participant directory projection (PUI-02 / Issue #246): the same
+ * wire contract as the Worker catalog endpoint. Check-in secrets, capability
+ * booleans, and manager DTO breadth never reach the browser here.
+ */
+export interface ProgramSummary {
+  program_id: string;
+  department_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  behavior_type: "Recurring" | "OneOff";
+  lifecycle: "Draft" | "Active" | "Archived";
+  discoverability: "Listed" | "Unlisted";
+  enrollment_mode: "MemberRequest" | "ManagerOnly";
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepartmentSummary {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  lifecycle: "Draft" | "PendingDevelopment" | "Active" | "Archived";
+  display_order: number;
+}
+
+export interface ParticipantCatalogEntry {
+  department: DepartmentSummary;
+  programs: ProgramSummary[];
+}
+export interface ParticipantScheduleRule {
+  rule_id: string;
+  recurrence: "WEEKLY" | "MONTHLY";
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+}
+
+export interface ParticipantEventSummary {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: "Active";
+  source: "SCHEDULE" | "MANUAL";
+}
+
+export interface ParticipantEnrollmentRequest {
+  request_id: string;
+  status: "Pending" | "Approved" | "Rejected" | "Withdrawn";
+  submitted_at: string;
+  decided_at: string | null;
+}
+
+export interface ParticipantEnrollment {
+  enrollment_id: string;
+  status: "Active" | "Cancelled";
+  enrolled_at: string;
+  cancelled_at: string | null;
+}
+
+export interface ParticipantEnrollmentSnapshot {
+  requests: ParticipantEnrollmentRequest[];
+  enrollments: ParticipantEnrollment[];
+}
+
+export type ParticipantEnrollmentAccess =
+  | "Eligible"
+  | "Ineligible"
+  | "Unavailable";
+
+export interface ParticipantProgramDetail {
+  program: ProgramSummary;
+  department: DepartmentSummary;
+  schedule_rules: ParticipantScheduleRule[];
+  events: ParticipantEventSummary[];
+  enrollment: ParticipantEnrollmentSnapshot | null;
+  enrollment_access: ParticipantEnrollmentAccess;
 }
 
 export type { ProgramsManagementAccess } from "./programs-access";
@@ -416,6 +501,22 @@ export function listDepartments(): Promise<{
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   return programsFetch("/api/v1/programs/access", "GET");
+}
+
+/** GET /api/v1/programs/catalog — narrow participant directory projection. */
+export function listParticipantCatalog(): Promise<{
+  catalog: ParticipantCatalogEntry[];
+}> {
+  return programsFetch("/api/v1/programs/catalog", "GET");
+}
+/** GET /api/v1/programs/:id/participant-detail — narrow participant detail. */
+export function getParticipantProgramDetail(
+  programId: string
+): Promise<ParticipantProgramDetail> {
+  return programsFetch<{ detail: ParticipantProgramDetail }>(
+    `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`,
+    "GET"
+  ).then(({ detail }) => detail);
 }
 
 /** POST /api/v1/programs/departments */

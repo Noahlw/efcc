@@ -15,10 +15,7 @@ import type {
 } from "./capability-authorizer";
 import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
 import { exceptionForEvent } from "./recurrence";
-import type {
-  RecurrenceKind,
-  ScheduleExceptionAction,
-} from "./recurrence";
+import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
 import type {
   AuditInput,
   AuditOutcome,
@@ -29,6 +26,9 @@ import type {
   EnrollmentRow,
   EventRow,
   GenerateResult,
+  ProgramBehaviorType,
+  ProgramDiscoverability,
+  ProgramEnrollmentMode,
   ProgramLifecycle,
   DepartmentModuleRow,
   MemberOptionRow,
@@ -65,6 +65,91 @@ export interface ManagementAccessView {
   hasManagementCapability: boolean;
   departmentScopes: number;
   programScopes: number;
+}
+
+/**
+ * Narrow participant directory projection (PUI-02 / Issue #246). Deliberately
+ * omits the manager-facing DTO breadth: check-in secrets, capability booleans,
+ * and audit/operator columns. Lifecycle is surfaced as a status field; the
+ * server never filters Draft/Archived silently.
+ */
+export interface ProgramSummary {
+  program_id: string;
+  department_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  behavior_type: ProgramBehaviorType;
+  lifecycle: ProgramLifecycle;
+  discoverability: ProgramDiscoverability;
+  enrollment_mode: ProgramEnrollmentMode;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepartmentSummary {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  lifecycle: DepartmentLifecycle;
+  display_order: number;
+}
+
+export interface ParticipantCatalogEntry {
+  department: DepartmentSummary;
+  programs: ProgramSummary[];
+}
+export interface ParticipantScheduleRule {
+  rule_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+}
+
+export interface ParticipantEventSummary {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: "Active";
+  source: "SCHEDULE" | "MANUAL";
+}
+
+export interface ParticipantEnrollmentRequest {
+  request_id: string;
+  status: EnrollmentRequestRow["status"];
+  submitted_at: string;
+  decided_at: string | null;
+}
+
+export interface ParticipantEnrollment {
+  enrollment_id: string;
+  status: EnrollmentRow["status"];
+  enrolled_at: string;
+  cancelled_at: string | null;
+}
+
+export interface ParticipantEnrollmentSnapshot {
+  requests: ParticipantEnrollmentRequest[];
+  enrollments: ParticipantEnrollment[];
+}
+
+export type ParticipantEnrollmentAccess =
+  | "Eligible"
+  | "Ineligible"
+  | "Unavailable";
+
+export interface ParticipantProgramDetail {
+  program: ProgramSummary;
+  department: DepartmentSummary;
+  schedule_rules: ParticipantScheduleRule[];
+  events: ParticipantEventSummary[];
+  enrollment: ParticipantEnrollmentSnapshot | null;
+  enrollment_access: ParticipantEnrollmentAccess;
 }
 
 export interface CreateDepartmentCommand {
@@ -177,7 +262,9 @@ export class ScheduleRuleNotApplicableError extends Error {
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class NoScheduleRulesError extends Error {
   constructor(programId: string) {
-    super(`Program ${programId} has no schedule rules to generate events from.`);
+    super(
+      `Program ${programId} has no schedule rules to generate events from.`
+    );
     this.name = "NoScheduleRulesError";
   }
 }
@@ -193,7 +280,9 @@ export class DuplicateEventError extends Error {
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateScheduleExceptionError extends Error {
   constructor(ruleId: string, overrideDate: string) {
-    super(`Schedule exception already exists for rule ${ruleId} on ${overrideDate}`);
+    super(
+      `Schedule exception already exists for rule ${ruleId} on ${overrideDate}`
+    );
     this.name = "DuplicateScheduleExceptionError";
   }
 }
@@ -246,6 +335,14 @@ export class LeaderAccountInactiveError extends Error {
     super(`Cannot assign ${userId} as Program Leader: account is not Active.`);
     this.name = "LeaderAccountInactiveError";
   }
+}
+
+function isPendingEnrollmentConstraint(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("enrollment_requests.program_id") &&
+    message.includes("enrollment_requests.member_user_id")
+  );
 }
 
 export class DepartmentWorkspace {
@@ -549,6 +646,173 @@ export class DepartmentWorkspace {
       return null;
     }
     return { ...row, capabilities };
+  }
+
+  /**
+   * Participant Programs directory (PUI-02 / Issue #246): narrow, grouped
+   * catalog projection over production D1. Visibility keeps the incumbent
+   * server policy — Listed rows are public, Unlisted rows appear only through
+   * scoped `program.manage` effective access — and module-disabled Departments
+   * are excluded. Lifecycle is surfaced as status; Draft/Archived rows are
+   * never silently filtered. Departments with zero visible Programs are
+   * omitted so the landing's empty state means a truly empty catalog.
+   */
+  async listParticipantCatalog(
+    ctx: AuthorizationContext
+  ): Promise<ParticipantCatalogEntry[]> {
+    const departments = await this.store.listDepartments();
+    const entries = await Promise.all(
+      departments.map(async (department) => {
+        if (!(await this.isModuleEnabled(department.department_id))) {
+          return null;
+        }
+        const rows = await this.store.listProgramsForDepartment(
+          department.department_id
+        );
+        const visible = (
+          await Promise.all(
+            rows.map(async (row) => ({
+              row,
+              capabilities: await this.programCapabilities(ctx, row),
+            }))
+          )
+        )
+          .filter(
+            ({ row, capabilities }) =>
+              row.discoverability === "Listed" || capabilities.manage
+          )
+          .map(({ row }) => this.programSummary(row));
+        if (visible.length === 0) {
+          return null;
+        }
+        return {
+          department: this.departmentSummary(department),
+          programs: visible,
+        };
+      })
+    );
+    return entries.filter(
+      (entry): entry is ParticipantCatalogEntry => entry !== null
+    );
+  }
+  /**
+   * Participant Program detail (PUI-03 / Issue #247). Revalidates the same
+   * server visibility policy as `getProgram`, then projects only participant
+   * fields plus safe schedule/event context. Event rows are always active-only
+   * here, including for managers, so check-in and operator data stay private.
+   */
+  async getParticipantProgramDetail(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<ParticipantProgramDetail | null> {
+    const view = await this.getProgram(ctx, programId);
+    if (!view) {
+      return null;
+    }
+    const department = await this.store.findDepartmentById(view.department_id);
+    if (!department) {
+      return null;
+    }
+    const [rules, eventRows, enrollmentState] = await Promise.all([
+      this.listScheduleRules(ctx, programId),
+      this.listEvents(ctx, programId),
+      this.participantEnrollmentSnapshot(ctx, view),
+    ]);
+    return {
+      program: this.programSummary(view),
+      department: this.departmentSummary(department),
+      schedule_rules: rules.map((rule) => ({
+        rule_id: rule.rule_id,
+        recurrence: rule.recurrence,
+        day_of_week: rule.day_of_week,
+        month_day: rule.month_day,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+      })),
+      events: (eventRows ?? [])
+        .filter((event) => event.status === "Active")
+        .map((event) => ({
+          event_id: event.event_id,
+          program_id: event.program_id,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          status: "Active" as const,
+          source: event.source,
+        })),
+      enrollment: enrollmentState.snapshot,
+      enrollment_access: enrollmentState.access,
+    };
+  }
+
+  private async participantEnrollmentSnapshot(
+    ctx: AuthorizationContext,
+    view: ProgramView
+  ): Promise<{
+    access: ParticipantEnrollmentAccess;
+    snapshot: ParticipantEnrollmentSnapshot | null;
+  }> {
+    if (
+      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
+    ) {
+      return { access: "Unavailable", snapshot: null };
+    }
+    if (!view.capabilities.enroll) {
+      return { access: "Ineligible", snapshot: null };
+    }
+    const { requests, enrollments } =
+      await this.store.listParticipantEnrollmentSnapshot(
+        view.program_id,
+        ctx.actorUserId
+      );
+    return {
+      access: "Eligible",
+      snapshot: {
+        requests: requests
+          .filter((request) => request.member_user_id === ctx.actorUserId)
+          .map((request) => ({
+            request_id: request.request_id,
+            status: request.status,
+            submitted_at: request.submitted_at,
+            decided_at: request.decided_at,
+          })),
+        enrollments: enrollments
+          .filter((enrollment) => enrollment.member_user_id === ctx.actorUserId)
+          .map((enrollment) => ({
+            enrollment_id: enrollment.enrollment_id,
+            status: enrollment.status,
+            enrolled_at: enrollment.enrolled_at,
+            cancelled_at: enrollment.cancelled_at,
+          })),
+      },
+    };
+  }
+
+  private programSummary(row: ProgramRow): ProgramSummary {
+    return {
+      program_id: row.program_id,
+      department_id: row.department_id,
+      name: row.name,
+      description: row.description,
+      category: row.category,
+      behavior_type: row.behavior_type,
+      lifecycle: row.lifecycle,
+      discoverability: row.discoverability,
+      enrollment_mode: row.enrollment_mode,
+      display_order: row.display_order,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private departmentSummary(row: DepartmentRow): DepartmentSummary {
+    return {
+      department_id: row.department_id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      lifecycle: row.lifecycle,
+      display_order: row.display_order,
+    };
   }
 
   async updateProgram(
@@ -1112,9 +1376,7 @@ export class DepartmentWorkspace {
     );
     const rows = await this.store.listEvents(programId);
     const decorated =
-      rows.length === 0
-        ? rows
-        : await this.decorateEventsWithExceptions(rows);
+      rows.length === 0 ? rows : await this.decorateEventsWithExceptions(rows);
     if (canManage) {
       return decorated;
     }
@@ -1143,8 +1405,11 @@ export class DepartmentWorkspace {
       // columns (created_by/created_at) are not carried on this decoration
       // path, matching the client's ScheduleException shape.
       exception:
-        (exceptionForEvent(row, rules, exceptions) as
-          ScheduleExceptionRow | null) ?? null,
+        (exceptionForEvent(
+          row,
+          rules,
+          exceptions
+        ) as ScheduleExceptionRow | null) ?? null,
     }));
   }
 
@@ -1263,14 +1528,32 @@ export class DepartmentWorkspace {
       throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
     }
     const now = new Date().toISOString();
-    const row = await this.store.createEnrollmentRequest({
-      request_id: crypto.randomUUID(),
-      program_id: programId,
-      member_user_id: ctx.actorUserId,
-      status: "Pending",
-      submitted_at: now,
-      request_version: 1,
-    });
+    let row: EnrollmentRequestRow;
+    try {
+      row = await this.store.createEnrollmentRequest({
+        request_id: crypto.randomUUID(),
+        program_id: programId,
+        member_user_id: ctx.actorUserId,
+        status: "Pending",
+        submitted_at: now,
+        request_version: 1,
+      });
+    } catch (error) {
+      if (!isPendingEnrollmentConstraint(error)) {
+        throw error;
+      }
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_CREATE",
+        "enrollment_request",
+        programId,
+        "DUPLICATE",
+        null,
+        { member_user_id: ctx.actorUserId, reason: "pending_request_race" },
+        correlationId
+      );
+      throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
+    }
     await this.audit(
       ctx,
       "ENROLLMENT_REQUEST_CREATE",
