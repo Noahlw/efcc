@@ -237,6 +237,20 @@ describe("PUI-04 participant Enrollment", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("explains an ineligible MemberRequest without an action", () => {
+    renderEnrollment({
+      enrollment: null,
+      scheduleRules: [],
+    });
+
+    expect(
+      screen.getByText(COPY.programs.enrollmentIneligibleNote)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
+    ).not.toBeInTheDocument();
+  });
+
   test("recovers from duplicate conflict with centralized ProblemDetails copy", async () => {
     const user = userEvent.setup();
     const onRefresh = vi.fn<() => Promise<void>>().mockResolvedValue();
