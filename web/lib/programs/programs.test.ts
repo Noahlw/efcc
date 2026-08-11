@@ -4299,6 +4299,7 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(detail.enrollment_access, "Eligible");
     assert.strictEqual(detail.schedule_rules[0]?.start_time, "19:30");
     assert.strictEqual(detail.events.length, 1);
+    assert.strictEqual(detail.events[0]?.status, "Active");
     const raw = JSON.stringify(detail);
     assert.ok(!raw.includes("check_in_token"));
     assert.ok(!raw.includes("manual_check_in_code"));

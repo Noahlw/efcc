@@ -253,8 +253,9 @@ describe("PUI-04 participant Enrollment", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("explains an unavailable enrollment module without an action", () => {
+  test("explains an unavailable enrollment module before ManagerOnly copy", () => {
     renderEnrollment({
+      program: program({ enrollment_mode: "ManagerOnly" }),
       enrollment: null,
       enrollmentAccess: "Unavailable",
       scheduleRules: [],

@@ -267,12 +267,12 @@ export const ParticipantEnrollment = ({
         </>
       ) : program.lifecycle !== "Active" ? (
         <p className={styles.emptyLine}>{closedCopy(program.lifecycle)}</p>
-      ) : program.enrollment_mode === "ManagerOnly" ? (
-        <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>
       ) : enrollmentAccess === "Unavailable" ? (
         <p className={styles.emptyLine}>
           {COPY.programs.enrollmentUnavailableNote}
         </p>
+      ) : program.enrollment_mode === "ManagerOnly" ? (
+        <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>
       ) : enrollment === null ? (
         <p className={styles.emptyLine}>
           {COPY.programs.enrollmentIneligibleNote}
