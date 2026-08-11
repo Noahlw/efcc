@@ -15,6 +15,8 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { ParticipantEnrollment } from "./participant-enrollment";
+
 import styles from "@/app/programs/programs.module.css";
 
 export interface ParticipantProgramDetailProps {
@@ -87,45 +89,57 @@ export const ParticipantProgramDetail = ({
     };
   }, []);
 
-  const loadDetail = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    announce(COPY.programs.detailLoading);
-    try {
-      const detail = await getParticipantProgramDetail(programId);
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
+  const loadDetail = useCallback(
+    async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
+      requestId.current += 1;
+      const currentRequest = requestId.current;
+      if (showLoading) {
+        setState({ kind: "loading" });
+        announce(COPY.programs.detailLoading);
       }
-      setState({ kind: "ready", detail });
-    } catch (error) {
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
+      try {
+        const detail = await getParticipantProgramDetail(programId);
+        if (!mounted.current || requestId.current !== currentRequest) {
+          return;
+        }
+        setState({ kind: "ready", detail });
+      } catch (error) {
+        if (!mounted.current || requestId.current !== currentRequest) {
+          return;
+        }
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return;
+        }
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "NOT_FOUND" ||
+            error.problem.code === "FORBIDDEN")
+        ) {
+          setState({ kind: "unavailable" });
+          announce(COPY.programs.detailUnavailable);
+          return;
+        }
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(error.problem.code, error.problem.detail)
+            : COPY.error.networkError;
+        setState({ kind: "error", message });
+        announce(message);
       }
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        router.replace("/");
-        return;
-      }
-      if (
-        error instanceof RpcError &&
-        (error.problem.code === "NOT_FOUND" ||
-          error.problem.code === "FORBIDDEN")
-      ) {
-        setState({ kind: "unavailable" });
-        announce(COPY.programs.detailUnavailable);
-        return;
-      }
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({ kind: "error", message });
-      announce(message);
-    }
-  }, [programId, router]);
+    },
+    [programId, router]
+  );
+  const refreshDetail = useCallback(
+    () => loadDetail({ showLoading: false }),
+    [loadDetail]
+  );
 
   useEffect(() => {
     void loadDetail();
@@ -226,7 +240,12 @@ export const ParticipantProgramDetail = ({
     );
   }
 
-  const { department, program, schedule_rules: scheduleRules } = state.detail;
+  const {
+    department,
+    program,
+    schedule_rules: scheduleRules,
+    enrollment,
+  } = state.detail;
   return (
     <article
       className={styles.programDetail}
@@ -290,6 +309,14 @@ export const ParticipantProgramDetail = ({
           </div>
         )}
       </dl>
+
+      <ParticipantEnrollment
+        program={program}
+        enrollment={enrollment}
+        scheduleRules={scheduleRules}
+        events={state.detail.events}
+        onRefresh={refreshDetail}
+      />
 
       <section
         className={styles.programDetailSection}

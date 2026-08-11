@@ -53,6 +53,15 @@ const COPY = {
   catalogNoMatches: "找不到符合的課程",
   catalogListLabel: "課程目錄",
   filterDraft: "草稿",
+  enrollment: "報名",
+  requestEnroll: "申請報名",
+  requestPendingHint: "申請已送出，等待課程負責人處理。",
+  withdrawRequest: "撤回申請",
+  requestWithdrawnNotice: "申請已撤回。",
+  cancelEnrollment: "取消報名",
+  enrollmentScheduleAdvisory:
+    "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
+  managerOnlyNote: "此課程由管理員安排成員加入。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -509,5 +518,78 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(page.getByText(hiddenProgramId)).toHaveCount(0);
     await page.getByRole("button", { name: COPY.detailBack }).click();
     await expect(page).toHaveURL(/\/programs#overview$/u);
+  });
+});
+
+test.describe("PUI-04 participant Enrollment lifecycle", () => {
+  test("member can submit one request, see Pending, and withdraw it", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    await page.goto(`/programs?program=${programId}#overview`);
+    await expect(
+      page.getByRole("heading", { name: COPY.detailPurpose })
+    ).toBeVisible();
+
+    const enrollmentPanel = page.getByRole("region", { name: COPY.enrollment });
+    const requestButton = enrollmentPanel.getByRole("button", {
+      name: COPY.requestEnroll,
+    });
+    if (await requestButton.count()) {
+      await expect(
+        enrollmentPanel.getByText(COPY.enrollmentScheduleAdvisory)
+      ).toBeVisible();
+      await requestButton.click();
+    }
+    await expect(
+      enrollmentPanel.getByText(COPY.requestPendingHint)
+    ).toBeVisible();
+    await expect(
+      enrollmentPanel.getByRole("button", { name: COPY.withdrawRequest })
+    ).toBeVisible();
+
+    await enrollmentPanel
+      .getByRole("button", { name: COPY.withdrawRequest })
+      .click();
+    await expect(
+      enrollmentPanel.getByText(COPY.requestWithdrawnNotice)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.requestEnroll })
+    ).toBeVisible();
+  });
+
+  test("ManagerOnly detail explains that participants cannot self-enroll", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CRED", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_社區關懷");
+    expect(programId).toBeTruthy();
+
+    await page.goto(`/programs?program=${programId}#overview`);
+    await expect(
+      page.getByRole("heading", { name: COPY.detailPurpose })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.requestEnroll })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.withdrawRequest })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.cancelEnrollment })
+    ).toHaveCount(0);
   });
 });

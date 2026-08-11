@@ -4204,6 +4204,20 @@ describe("PUI-03: participant Program detail", () => {
           check_in_window_opens_at?: unknown;
           check_in_window_closes_at?: unknown;
         }[];
+        enrollment: {
+          requests: {
+            request_id: string;
+            status: string;
+            submitted_at: string;
+            decided_at: string | null;
+          }[];
+          enrollments: {
+            enrollment_id: string;
+            status: string;
+            enrolled_at: string;
+            cancelled_at: string | null;
+          }[];
+        } | null;
       };
     };
   }
@@ -4359,5 +4373,124 @@ describe("PUI-03: participant Program detail", () => {
     const body = await problemOf(res);
     assert.strictEqual(body.code, "NOT_FOUND");
     assert.ok(!JSON.stringify(body).includes("PUI-03 Hidden Program"));
+  });
+});
+
+describe("PUI-04: participant Enrollment lifecycle", () => {
+  interface ParticipantEnrollmentDetailResponse {
+    data: {
+      detail: {
+        enrollment: {
+          requests: {
+            request_id: string;
+            status: string;
+            submitted_at: string;
+            decided_at: string | null;
+          }[];
+          enrollments: {
+            enrollment_id: string;
+            status: string;
+            enrolled_at: string;
+            cancelled_at: string | null;
+          }[];
+        } | null;
+      };
+    };
+  }
+
+  const detailWithEnrollment = async (
+    access: string,
+    programId: string
+  ): Promise<ParticipantEnrollmentDetailResponse> => {
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/participant-detail`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    return (await assertCorrelated(res)) as ParticipantEnrollmentDetailResponse;
+  };
+
+  test("projects actor state and guards concurrent Pending requests", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-04-REQUEST",
+      name: "PUI-04 Request Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-04 Request Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const before = await detailWithEnrollment(memberAccess, created.program_id);
+    assert.deepStrictEqual(before.data.detail.enrollment, {
+      requests: [],
+      enrollments: [],
+    });
+
+    const responses = await Promise.all(
+      [0, 1].map(() =>
+        worker.fetch(
+          programsRequest(
+            `/api/v1/programs/${created.program_id}/enrollment-requests`,
+            {
+              method: "POST",
+              headers: {
+                Origin: HOST,
+                Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+                "Content-Type": "application/json",
+                "Idempotency-Key": crypto.randomUUID(),
+              },
+              body: {},
+            }
+          ),
+          testEnv()
+        )
+      )
+    );
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [201, 409]
+    );
+    const list = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${created.program_id}/enrollment-requests`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(list.status, 200);
+    const listBody = (await assertCorrelated(list)) as {
+      data: {
+        requests: {
+          request_id: string;
+          status: string;
+          submitted_at: string;
+          decided_at: string | null;
+        }[];
+      };
+    };
+    assert.strictEqual(listBody.data.requests.length, 1);
+    assert.strictEqual(listBody.data.requests[0]?.status, "Pending");
+
+    const after = await detailWithEnrollment(memberAccess, created.program_id);
+    const pending = after.data.detail.enrollment?.requests[0];
+    assert.ok(pending);
+    assert.strictEqual(pending.status, "Pending");
+    assert.strictEqual(after.data.detail.enrollment?.requests.length, 1);
+    assert.strictEqual(after.data.detail.enrollment?.enrollments.length, 0);
+    assert.ok(!JSON.stringify(after.data.detail).includes("member_user_id"));
   });
 });

@@ -105,6 +105,7 @@ const detailFixture = (
       source: "SCHEDULE",
     },
   ],
+  enrollment: null,
   ...overrides,
 });
 

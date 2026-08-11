@@ -132,11 +132,31 @@ export interface ParticipantEventSummary {
   source: "SCHEDULE" | "MANUAL";
 }
 
+export interface ParticipantEnrollmentRequest {
+  request_id: string;
+  status: "Pending" | "Approved" | "Rejected" | "Withdrawn";
+  submitted_at: string;
+  decided_at: string | null;
+}
+
+export interface ParticipantEnrollment {
+  enrollment_id: string;
+  status: "Active" | "Cancelled";
+  enrolled_at: string;
+  cancelled_at: string | null;
+}
+
+export interface ParticipantEnrollmentSnapshot {
+  requests: ParticipantEnrollmentRequest[];
+  enrollments: ParticipantEnrollment[];
+}
+
 export interface ParticipantProgramDetail {
   program: ProgramSummary;
   department: DepartmentSummary;
   schedule_rules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
+  enrollment: ParticipantEnrollmentSnapshot | null;
 }
 
 export type { ProgramsManagementAccess } from "./programs-access";

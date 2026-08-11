@@ -119,11 +119,31 @@ export interface ParticipantEventSummary {
   source: "SCHEDULE" | "MANUAL";
 }
 
+export interface ParticipantEnrollmentRequest {
+  request_id: string;
+  status: EnrollmentRequestRow["status"];
+  submitted_at: string;
+  decided_at: string | null;
+}
+
+export interface ParticipantEnrollment {
+  enrollment_id: string;
+  status: EnrollmentRow["status"];
+  enrolled_at: string;
+  cancelled_at: string | null;
+}
+
+export interface ParticipantEnrollmentSnapshot {
+  requests: ParticipantEnrollmentRequest[];
+  enrollments: ParticipantEnrollment[];
+}
+
 export interface ParticipantProgramDetail {
   program: ProgramSummary;
   department: DepartmentSummary;
   schedule_rules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
+  enrollment: ParticipantEnrollmentSnapshot | null;
 }
 
 export interface CreateDepartmentCommand {
@@ -679,9 +699,10 @@ export class DepartmentWorkspace {
     if (!department) {
       return null;
     }
-    const [rules, eventRows] = await Promise.all([
+    const [rules, eventRows, enrollment] = await Promise.all([
       this.listScheduleRules(ctx, programId),
       this.listEvents(ctx, programId),
+      this.participantEnrollmentSnapshot(ctx, view),
     ]);
     return {
       program: this.programSummary(view),
@@ -703,6 +724,41 @@ export class DepartmentWorkspace {
           ends_at: event.ends_at,
           status: "Active" as const,
           source: event.source,
+        })),
+      enrollment,
+    };
+  }
+
+  private async participantEnrollmentSnapshot(
+    ctx: AuthorizationContext,
+    view: ProgramView
+  ): Promise<ParticipantEnrollmentSnapshot | null> {
+    if (
+      !view.capabilities.enroll ||
+      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
+    ) {
+      return null;
+    }
+    const [requests, enrollments] = await Promise.all([
+      this.store.listEnrollmentRequests(view.program_id),
+      this.store.listEnrollments(view.program_id),
+    ]);
+    return {
+      requests: requests
+        .filter((request) => request.member_user_id === ctx.actorUserId)
+        .map((request) => ({
+          request_id: request.request_id,
+          status: request.status,
+          submitted_at: request.submitted_at,
+          decided_at: request.decided_at,
+        })),
+      enrollments: enrollments
+        .filter((enrollment) => enrollment.member_user_id === ctx.actorUserId)
+        .map((enrollment) => ({
+          enrollment_id: enrollment.enrollment_id,
+          status: enrollment.status,
+          enrolled_at: enrollment.enrolled_at,
+          cancelled_at: enrollment.cancelled_at,
         })),
     };
   }
@@ -1448,14 +1504,36 @@ export class DepartmentWorkspace {
       throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
     }
     const now = new Date().toISOString();
-    const row = await this.store.createEnrollmentRequest({
-      request_id: crypto.randomUUID(),
-      program_id: programId,
-      member_user_id: ctx.actorUserId,
-      status: "Pending",
-      submitted_at: now,
-      request_version: 1,
-    });
+    let row: EnrollmentRequestRow;
+    try {
+      row = await this.store.createEnrollmentRequest({
+        request_id: crypto.randomUUID(),
+        program_id: programId,
+        member_user_id: ctx.actorUserId,
+        status: "Pending",
+        submitted_at: now,
+        request_version: 1,
+      });
+    } catch (error) {
+      const pending = await this.store.findPendingRequestByMember(
+        programId,
+        ctx.actorUserId
+      );
+      if (!pending) {
+        throw error;
+      }
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_CREATE",
+        "enrollment_request",
+        programId,
+        "DUPLICATE",
+        null,
+        { member_user_id: ctx.actorUserId, reason: "pending_request_race" },
+        correlationId
+      );
+      throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
+    }
     await this.audit(
       ctx,
       "ENROLLMENT_REQUEST_CREATE",
