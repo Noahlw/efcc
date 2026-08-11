@@ -22,6 +22,8 @@ export default defineProject({
       "lib/programs/programs-enrollment-panel.test.tsx",
       "lib/programs/programs-leaders-panel.test.tsx",
       "lib/programs/member-picker.test.tsx",
+      "lib/programs/programs-boundary.test.tsx",
+      "lib/session-deep-link.test.tsx",
       "lib/attendance-panel.test.tsx",
       "lib/attendance-operator-panel.test.tsx",
     ],

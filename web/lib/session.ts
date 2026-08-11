@@ -16,7 +16,50 @@ import type { Section } from "@/lib/api";
 import { sectionsForRole } from "@/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
+export const DEEP_LINK_KEY = "efcc_deep_link";
 
+/** Persist a same-origin path/query/hash for the post-login handoff. */
+export function rememberDeepLink(value: string): void {
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return;
+  }
+  try {
+    sessionStorage.setItem(DEEP_LINK_KEY, value);
+  } catch {
+    // Storage unavailable — the current URL remains the safe fallback.
+  }
+}
+
+/** Consume and validate the post-login path/query/hash handoff. */
+export function consumeDeepLink(): string | null {
+  try {
+    const value = sessionStorage.getItem(DEEP_LINK_KEY);
+    sessionStorage.removeItem(DEEP_LINK_KEY);
+    if (
+      value &&
+      value.startsWith("/") &&
+      !value.startsWith("//") &&
+      !value.includes("\\")
+    ) {
+      return value;
+    }
+  } catch {
+    // Storage unavailable — the caller falls back to the first shell section.
+  }
+  return null;
+}
+
+export function clearDeepLink(): void {
+  try {
+    sessionStorage.removeItem(DEEP_LINK_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
 /** True when a cookie-authenticated session was last known to be active. */
 export function hasAuthHint(): boolean {
   try {

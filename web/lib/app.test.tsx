@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { act, StrictMode } from "react";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
   describe,
   test,
@@ -61,6 +62,8 @@ const { mockRouter } = mocks;
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
+  useSearchParams: () =>
+    new URLSearchParams(window.location.search) as unknown as ReadonlyURLSearchParams,
 }));
 
 const MEMBER_SECTIONS = [

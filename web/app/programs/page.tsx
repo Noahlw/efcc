@@ -1,21 +1,30 @@
-"use client";
+import { Suspense } from "react";
 
 import { AppShell } from "@/lib/app-shell";
-import { ProgramsManager } from "@/lib/programs/programs-manager";
+import { COPY } from "@/lib/copy";
+import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
 
 import styles from "./programs.module.css";
 
 /**
- * Programs surface (PRG-01 #197). Authenticated, cookie-only: the Worker
- * enforces capability authorization on every /api/v1/programs/* call; this
- * page renders departments, their modules, and (for Members) only the
- * server-filtered Listed programs.
+ * Participant-default Programs boundary (PUI-01 / Issue #245). The browser
+ * consumes only server-shaped scoped capability fields to offer the optional
+ * management mode; directory, detail, enrollment, and workspace surfaces stay
+ * outside this entry slice.
  */
 export default function ProgramsPage() {
   return (
     <AppShell>
       <div className={styles.page}>
-        <ProgramsManager />
+        <Suspense
+          fallback={
+            <div className={styles.boundaryState} role="status" aria-busy="true">
+              {COPY.programs.accessLoading}
+            </div>
+          }
+        >
+          <ProgramsBoundary />
+        </Suspense>
       </div>
     </AppShell>
   );
