@@ -230,9 +230,7 @@ async function requireActor(
   return { account };
 }
 
-function getModule(
-  env: ProgramEnv
-): { workspace: DepartmentWorkspace } {
+function getModule(env: ProgramEnv): { workspace: DepartmentWorkspace } {
   const store = new D1WorkspaceStore(env.DB);
   const authorizer = new D1CapabilityAuthorizer(store);
   return { workspace: new DepartmentWorkspace(store, authorizer) };
@@ -301,7 +299,10 @@ export async function handleCreateDepartment(
       requestId
     );
   }
-  if (body.display_order !== undefined && typeof body.display_order !== "number") {
+  if (
+    body.display_order !== undefined &&
+    typeof body.display_order !== "number"
+  ) {
     return problem(
       422,
       "VALIDATION",
@@ -389,6 +390,30 @@ export async function handleListParticipantCatalog(
   const catalog = await workspace.listParticipantCatalog(ctxFrom(auth.account));
   return jsonResponse(200, { catalog }, requestId);
 }
+/**
+ * GET /api/v1/programs/:id/participant-detail — privacy-preserving detail
+ * projection for the participant Programs surface.
+ */
+export async function handleGetParticipantProgramDetail(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const detail = await workspace.getParticipantProgramDetail(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (!detail) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { detail }, requestId);
+}
 
 /** GET /api/v1/programs/departments/:id */
 export async function handleGetDepartment(
@@ -462,10 +487,7 @@ export async function handleUpdateDepartment(
       requestId
     );
   }
-  if (
-    body.description !== undefined &&
-    typeof body.description !== "string"
-  ) {
+  if (body.description !== undefined && typeof body.description !== "string") {
     return problem(
       422,
       "VALIDATION",
@@ -474,10 +496,7 @@ export async function handleUpdateDepartment(
       requestId
     );
   }
-  if (
-    body.lifecycle !== undefined &&
-    !isDepartmentLifecycle(body.lifecycle)
-  ) {
+  if (body.lifecycle !== undefined && !isDepartmentLifecycle(body.lifecycle)) {
     return problem(
       422,
       "VALIDATION",
@@ -1224,10 +1243,7 @@ export async function handleCreateScheduleException(
     newEnd !== null &&
     newEnd <= newStart
   ) {
-    return validation(
-      requestId,
-      "new_end_time must be after new_start_time."
-    );
+    return validation(requestId, "new_end_time must be after new_start_time.");
   }
 
   const { workspace } = await getModule(env);

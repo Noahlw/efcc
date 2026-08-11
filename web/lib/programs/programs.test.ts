@@ -4175,3 +4175,149 @@ describe("PUI-02: participant catalog", () => {
     );
   });
 });
+describe("PUI-03: participant Program detail", () => {
+  interface ParticipantDetailResponse {
+    data: {
+      detail: {
+        program: {
+          program_id: string;
+          name: string;
+          behavior_type: string;
+          lifecycle: string;
+          enrollment_mode: string;
+          check_in_token?: string;
+          capabilities?: unknown;
+        };
+        department: { name: string };
+        schedule_rules: {
+          recurrence: string;
+          start_time: string;
+          end_time: string;
+        }[];
+        events: {
+          event_id: string;
+          starts_at: string;
+          ends_at: string;
+          status: string;
+          source: string;
+          manual_check_in_code?: unknown;
+          check_in_window_opens_at?: unknown;
+          check_in_window_closes_at?: unknown;
+        }[];
+      };
+    };
+  }
+
+  const detailOf = async (
+    access: string,
+    programId: string
+  ): Promise<ParticipantDetailResponse> => {
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/participant-detail`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    return (await assertCorrelated(res)) as ParticipantDetailResponse;
+  };
+
+  test("requires a cookie-authenticated session", async () => {
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/program-missing/participant-detail", {
+        headers: { Origin: HOST },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 401);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "AUTH_REQUIRED");
+  });
+
+  test("returns narrow participant detail with recurring schedule and active events", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-DETAIL",
+      name: "PUI-03 Detail Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Detail Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    await createRule(adminAccess, created.program_id, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const event = await worker.fetch(
+      programsRequest(`/api/v1/programs/${created.program_id}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2099-03-04T11:30:00.000Z",
+          ends_at: "2099-03-04T13:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(event.status, 201);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await detailOf(memberAccess, created.program_id);
+    const { detail } = body.data;
+    assert.strictEqual(detail.program.name, "PUI-03 Detail Program");
+    assert.strictEqual(detail.program.behavior_type, "Recurring");
+    assert.strictEqual(detail.program.lifecycle, "Active");
+    assert.strictEqual(detail.program.enrollment_mode, "MemberRequest");
+    assert.strictEqual(detail.department.name, "PUI-03 Detail Dept");
+    assert.strictEqual(detail.schedule_rules[0]?.start_time, "19:30");
+    assert.strictEqual(detail.events.length, 1);
+    assert.strictEqual(detail.events[0]?.status, "Active");
+    const raw = JSON.stringify(detail);
+    assert.ok(!raw.includes("check_in_token"));
+    assert.ok(!raw.includes("manual_check_in_code"));
+    assert.ok(!raw.includes("capabilities"));
+  });
+
+  test("keeps hidden Program existence private", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-HIDDEN",
+      name: "PUI-03 Hidden Dept",
+    });
+    const hidden = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Hidden Program",
+      behavior_type: "OneOff",
+      lifecycle: "Draft",
+      discoverability: "Unlisted",
+    });
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${hidden.program_id}/participant-detail`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 404);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "NOT_FOUND");
+    assert.ok(!JSON.stringify(body).includes("PUI-03 Hidden Program"));
+  });
+});

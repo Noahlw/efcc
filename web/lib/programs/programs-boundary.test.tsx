@@ -14,6 +14,7 @@ import { COPY } from "@/lib/copy";
 import type {
   Department,
   ParticipantCatalogEntry,
+  ParticipantProgramDetail,
   Program,
   ProgramSummary,
   ProgramsManagementAccess,
@@ -29,6 +30,7 @@ const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   return {
     getManagementAccess: vi.fn(),
+    getParticipantProgramDetail: vi.fn(),
     listParticipantCatalog: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
@@ -39,6 +41,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/programs/program-api", () => ({
   getManagementAccess: mocks.getManagementAccess,
+  getParticipantProgramDetail: mocks.getParticipantProgramDetail,
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
 
@@ -127,6 +130,22 @@ const catalogFixture = (
     programs,
   },
 ];
+const detailFixture = (): ParticipantProgramDetail => ({
+  program: programSummary("program-1", "查經小組", {
+    description: "週三晚上的門徒訓練查經。",
+    category: "門徒訓練",
+  }),
+  department: {
+    department_id: "dept-1",
+    code: "D1",
+    name: "青年事工",
+    description: null,
+    lifecycle: "Active",
+    display_order: 0,
+  },
+  schedule_rules: [],
+  events: [],
+});
 
 describe("Programs intent", () => {
   test("defaults to participant mode and preserves a valid Program intent", () => {
@@ -237,9 +256,10 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/programs");
   sessionStorage.clear();
   mocks.getManagementAccess.mockReset();
+  mocks.getParticipantProgramDetail.mockReset();
   mocks.listParticipantCatalog.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
-  mocks.pathname.mockReturnValue("/programs");
+  mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
   mocks.push.mockReset();
   mocks.replace.mockReset();
 });
@@ -297,7 +317,7 @@ describe("Programs boundary", () => {
     expect(screen.queryByText("活動")).not.toBeInTheDocument();
   });
   test("preserves an existing Program hash when selecting another directory row", async () => {
-    window.history.replaceState({}, "", "/programs?program=program-1#overview");
+    window.history.replaceState({}, "", "/programs#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
@@ -314,6 +334,26 @@ describe("Programs boundary", () => {
 
     expect(window.location.search).toBe("?program=program-2");
     expect(window.location.hash).toBe("#overview");
+  });
+  test("renders direct Program detail and returns to the directory safely", async () => {
+    window.history.replaceState({}, "", "/programs?program=program-1#overview");
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+
+    render(<ProgramsBoundary />);
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.detailPurpose)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.detailBack })
+    );
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("#overview");
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.participantMode })
+    ).resolves.toBeInTheDocument();
   });
 
   test("shows a compact accessible management entry from server scope and preserves Program intent", async () => {
@@ -348,9 +388,7 @@ describe("Programs boundary", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "參與者模式" }));
     await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.participantMode,
-      })
+      screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
   });
 
@@ -692,31 +730,25 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     ).toBeInTheDocument();
   });
 
-  test("deep-link intent shows preserved-link or unavailable notices by visibility", async () => {
+  test("deep-link intent opens detail or privacy-preserving unavailable state", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
-    mocks.listParticipantCatalog.mockResolvedValue({
-      catalog: catalogFixture(),
-    });
-
     window.history.replaceState({}, "", "/programs?program=program-1#overview");
     const { unmount } = render(<ProgramsBoundary />);
-    const preserved = await screen.findByText(
-      COPY.programs.directProgramIntent
-    );
-    expect(preserved.closest('[role="status"]')).toHaveTextContent("查經小組");
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
     unmount();
 
+    mocks.getParticipantProgramDetail.mockRejectedValueOnce(
+      new RpcError({ code: "NOT_FOUND", status: 404 })
+    );
     window.history.replaceState({}, "", "/programs?program=missing-1");
     render(<ProgramsBoundary />);
-    const unavailable = await screen.findByText(
-      COPY.programs.programUnavailable
-    );
-    expect(unavailable.closest('[role="status"]')).toHaveTextContent(
-      COPY.programs.programUnavailableHint
-    );
     await expect(
-      screen.findByRole("button", { name: /查經小組/u })
+      screen.findByRole("heading", { name: COPY.programs.detailUnavailable })
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("missing-1")).not.toBeInTheDocument();
   });
 
   test("catalog transport failure keeps a recoverable retry inside Programs", async () => {

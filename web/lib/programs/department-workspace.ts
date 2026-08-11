@@ -15,10 +15,7 @@ import type {
 } from "./capability-authorizer";
 import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
 import { exceptionForEvent } from "./recurrence";
-import type {
-  RecurrenceKind,
-  ScheduleExceptionAction,
-} from "./recurrence";
+import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
 import type {
   AuditInput,
   AuditOutcome,
@@ -103,6 +100,30 @@ export interface DepartmentSummary {
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
   programs: ProgramSummary[];
+}
+export interface ParticipantScheduleRule {
+  rule_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+}
+
+export interface ParticipantEventSummary {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: "Active";
+  source: "SCHEDULE" | "MANUAL";
+}
+
+export interface ParticipantProgramDetail {
+  program: ProgramSummary;
+  department: DepartmentSummary;
+  schedule_rules: ParticipantScheduleRule[];
+  events: ParticipantEventSummary[];
 }
 
 export interface CreateDepartmentCommand {
@@ -215,7 +236,9 @@ export class ScheduleRuleNotApplicableError extends Error {
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class NoScheduleRulesError extends Error {
   constructor(programId: string) {
-    super(`Program ${programId} has no schedule rules to generate events from.`);
+    super(
+      `Program ${programId} has no schedule rules to generate events from.`
+    );
     this.name = "NoScheduleRulesError";
   }
 }
@@ -231,7 +254,9 @@ export class DuplicateEventError extends Error {
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateScheduleExceptionError extends Error {
   constructor(ruleId: string, overrideDate: string) {
-    super(`Schedule exception already exists for rule ${ruleId} on ${overrideDate}`);
+    super(
+      `Schedule exception already exists for rule ${ruleId} on ${overrideDate}`
+    );
     this.name = "DuplicateScheduleExceptionError";
   }
 }
@@ -626,12 +651,60 @@ export class DepartmentWorkspace {
         if (visible.length === 0) {
           return null;
         }
-        return { department: this.departmentSummary(department), programs: visible };
+        return {
+          department: this.departmentSummary(department),
+          programs: visible,
+        };
       })
     );
     return entries.filter(
       (entry): entry is ParticipantCatalogEntry => entry !== null
     );
+  }
+  /**
+   * Participant Program detail (PUI-03 / Issue #247). Revalidates the same
+   * server visibility policy as `getProgram`, then projects only participant
+   * fields plus safe schedule/event context. Event rows are always active-only
+   * here, including for managers, so check-in and operator data stay private.
+   */
+  async getParticipantProgramDetail(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<ParticipantProgramDetail | null> {
+    const view = await this.getProgram(ctx, programId);
+    if (!view) {
+      return null;
+    }
+    const department = await this.store.findDepartmentById(view.department_id);
+    if (!department) {
+      return null;
+    }
+    const [rules, eventRows] = await Promise.all([
+      this.listScheduleRules(ctx, programId),
+      this.listEvents(ctx, programId),
+    ]);
+    return {
+      program: this.programSummary(view),
+      department: this.departmentSummary(department),
+      schedule_rules: rules.map((rule) => ({
+        rule_id: rule.rule_id,
+        recurrence: rule.recurrence,
+        day_of_week: rule.day_of_week,
+        month_day: rule.month_day,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+      })),
+      events: (eventRows ?? [])
+        .filter((event) => event.status === "Active")
+        .map((event) => ({
+          event_id: event.event_id,
+          program_id: event.program_id,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          status: "Active" as const,
+          source: event.source,
+        })),
+    };
   }
 
   private programSummary(row: ProgramRow): ProgramSummary {
@@ -1223,9 +1296,7 @@ export class DepartmentWorkspace {
     );
     const rows = await this.store.listEvents(programId);
     const decorated =
-      rows.length === 0
-        ? rows
-        : await this.decorateEventsWithExceptions(rows);
+      rows.length === 0 ? rows : await this.decorateEventsWithExceptions(rows);
     if (canManage) {
       return decorated;
     }
@@ -1254,8 +1325,11 @@ export class DepartmentWorkspace {
       // columns (created_by/created_at) are not carried on this decoration
       // path, matching the client's ScheduleException shape.
       exception:
-        (exceptionForEvent(row, rules, exceptions) as
-          ScheduleExceptionRow | null) ?? null,
+        (exceptionForEvent(
+          row,
+          rules,
+          exceptions
+        ) as ScheduleExceptionRow | null) ?? null,
     }));
   }
 

@@ -13,6 +13,7 @@ import type {
   AttendanceMember as AttendanceMemberType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
+
 import type { ProgramsManagementAccess } from "./programs-access";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
@@ -112,6 +113,30 @@ export interface DepartmentSummary {
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
   programs: ProgramSummary[];
+}
+export interface ParticipantScheduleRule {
+  rule_id: string;
+  recurrence: "WEEKLY" | "MONTHLY";
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+}
+
+export interface ParticipantEventSummary {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: "Active";
+  source: "SCHEDULE" | "MANUAL";
+}
+
+export interface ParticipantProgramDetail {
+  program: ProgramSummary;
+  department: DepartmentSummary;
+  schedule_rules: ParticipantScheduleRule[];
+  events: ParticipantEventSummary[];
 }
 
 export type { ProgramsManagementAccess } from "./programs-access";
@@ -457,6 +482,15 @@ export function listParticipantCatalog(): Promise<{
   catalog: ParticipantCatalogEntry[];
 }> {
   return programsFetch("/api/v1/programs/catalog", "GET");
+}
+/** GET /api/v1/programs/:id/participant-detail — narrow participant detail. */
+export function getParticipantProgramDetail(
+  programId: string
+): Promise<ParticipantProgramDetail> {
+  return programsFetch<{ detail: ParticipantProgramDetail }>(
+    `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`,
+    "GET"
+  ).then(({ detail }) => detail);
 }
 
 /** POST /api/v1/programs/departments */

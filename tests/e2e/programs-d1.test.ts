@@ -44,6 +44,10 @@ const COPY = {
   enterManagement: "進入管理模式",
   malformedIntent: "連結資料無效",
   directProgramIntent: "已保留活動連結",
+  detailPurpose: "課程簡介",
+  detailEvents: "近期活動",
+  detailUnavailable: "無法開啟這個課程",
+  detailBack: "返回課程目錄",
   catalogSearchLabel: "搜尋課程",
   catalogClearSearch: "清除搜尋",
   catalogNoMatches: "找不到符合的課程",
@@ -221,11 +225,8 @@ test.describe("PUI-01 Programs boundary", () => {
       "catalog fixture must expose a visible Program"
     ).toBeTruthy();
     await page.goto(`/programs?program=${programId}#overview`);
-
     await expect(
-      page
-        .locator('[role="status"]')
-        .filter({ hasText: COPY.directProgramIntent })
+      page.getByRole("heading", { name: COPY.detailPurpose })
     ).toBeVisible();
     const panel = page.locator("#programs-mode-panel");
     await expect(panel).toHaveAttribute("role", "region");
@@ -271,7 +272,7 @@ test.describe("PUI-01 Programs boundary", () => {
       new RegExp(`/programs\\?program=${programId}#overview$`, "u")
     );
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.detailPurpose })
     ).toBeVisible();
   });
 
@@ -440,9 +441,73 @@ test.describe("PUI-02 participant Programs directory", () => {
       new RegExp(`/programs\\?program=${programId}$`, "u")
     );
     await expect(
-      page
-        .locator('[role="status"]')
-        .filter({ hasText: COPY.directProgramIntent })
+      page.getByRole("heading", { name: COPY.detailPurpose })
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.detailBack })
+    ).toBeVisible();
+  });
+});
+
+test.describe("PUI-03 participant Program detail", () => {
+  test("direct detail survives refresh and returns to the directory", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    await page.goto(`/programs?program=${programId}#overview`);
+    await expect(
+      page.getByRole("heading", { name: COPY.detailPurpose })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.detailEvents })
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: COPY.detailPurpose })
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await expect(page).toHaveURL(/\/programs#overview$/u);
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+    ).toBeVisible();
+  });
+
+  test("member receives privacy-preserving unavailable state for Unlisted detail", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [hiddenProgramId] = await catalogProgramIds(
+      page,
+      "E2E_DEMO_社區關懷"
+    );
+    expect(hiddenProgramId).toBeTruthy();
+
+    await page.context().clearCookies();
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto(`/programs?program=${hiddenProgramId}#overview`);
+
+    await expect(
+      page.getByRole("heading", { name: COPY.detailUnavailable })
+    ).toBeVisible();
+    await expect(page.getByText(hiddenProgramId)).toHaveCount(0);
+    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await expect(page).toHaveURL(/\/programs#overview$/u);
   });
 });

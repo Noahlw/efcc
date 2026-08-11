@@ -348,7 +348,10 @@ export default {
         // text could expose D1/implementation diagnostics; the requestId in
         // the envelope correlates with the server log line below.
         const requestId = crypto.randomUUID();
-        console.error(`[auth] unhandled route error requestId=${requestId}:`, error);
+        console.error(
+          `[auth] unhandled route error requestId=${requestId}:`,
+          error
+        );
         return authProblemResponse(
           500,
           "INTERNAL_ERROR",
@@ -378,6 +381,7 @@ export default {
         handleListDepartments,
         handleListManagementAccess,
         handleListParticipantCatalog,
+        handleGetParticipantProgramDetail,
         handleGetDepartment,
         handleUpdateDepartment,
         handleCreateProgram,
@@ -418,6 +422,16 @@ export default {
         request.method === "GET"
       ) {
         return handleListParticipantCatalog(request, programEnv);
+      }
+      const participantDetail = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/participant-detail$/u
+      );
+      if (participantDetail && request.method === "GET") {
+        return handleGetParticipantProgramDetail(
+          request,
+          programEnv,
+          participantDetail.groups?.id ?? ""
+        );
       }
       if (
         url.pathname === "/api/v1/programs/departments" &&

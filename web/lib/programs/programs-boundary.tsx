@@ -10,6 +10,7 @@ import { getManagementAccess } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
 import { ParticipantDirectory } from "./participant-directory";
+import { ParticipantProgramDetail } from "./participant-program-detail";
 import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsIntent } from "./programs-intent";
@@ -152,11 +153,12 @@ export function ProgramsBoundary() {
   };
   const navigateMode = (
     mode: "participant" | "management",
-    replace = false
+    replace = false,
+    programId = intent.programId
   ) => {
     const href = buildProgramsHref({
       mode,
-      programId: intent.programId,
+      programId,
       hash: intent.hash,
     });
     focusMode.current = mode;
@@ -296,14 +298,23 @@ export function ProgramsBoundary() {
           onRecoverParticipant={() => navigateMode("participant", true)}
         />
       )}
-      {access.kind === "ready" && intent.mode === "participant" && (
-        <ParticipantDirectory
-          programId={intent.programId}
-          canManage={access.projection.hasManagementCapability}
-          onManagement={() => navigateMode("management")}
-          onOpenProgram={openProgram}
-        />
-      )}
+      {access.kind === "ready" &&
+        intent.mode === "participant" &&
+        (intent.programId ? (
+          <ParticipantProgramDetail
+            programId={intent.programId}
+            canManage={access.projection.hasManagementCapability}
+            onManagement={() => navigateMode("management")}
+            onBack={() => navigateMode("participant", true, null)}
+          />
+        ) : (
+          <ParticipantDirectory
+            programId={null}
+            canManage={access.projection.hasManagementCapability}
+            onManagement={() => navigateMode("management")}
+            onOpenProgram={openProgram}
+          />
+        ))}
     </BoundaryFrame>
   );
 }
