@@ -144,7 +144,7 @@ export const ParticipantEnrollment = ({
     program.enrollment_mode === "MemberRequest" &&
     activeEnrollment === null &&
     pendingRequest === null &&
-    latestRequest?.status !== "Approved";
+    (latestRequest?.status !== "Approved" || cancelledEnrollment !== null);
   const showScheduleAdvisory =
     canRequest && (scheduleRules.length > 0 || events.length > 0);
 
@@ -292,10 +292,6 @@ export const ParticipantEnrollment = ({
             {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
           </button>
         </>
-      ) : latestRequest?.status === "Approved" ? (
-        <p className={styles.emptyLine}>
-          {COPY.programs.enrollmentUnavailableNote}
-        </p>
       ) : cancelledEnrollment ? (
         <>
           <p className={styles.emptyLine}>
@@ -313,6 +309,10 @@ export const ParticipantEnrollment = ({
             {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
           </button>
         </>
+      ) : latestRequest?.status === "Approved" ? (
+        <p className={styles.emptyLine}>
+          {COPY.programs.enrollmentUnavailableNote}
+        </p>
       ) : (
         <button
           type="button"

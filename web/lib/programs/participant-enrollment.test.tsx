@@ -182,6 +182,40 @@ describe("PUI-04 participant Enrollment", () => {
     });
   });
 
+  test("allows a new request after a cancelled Enrollment", () => {
+    renderEnrollment({
+      enrollment: snapshot({
+        requests: [
+          {
+            request_id: "request-1",
+            status: "Approved",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+        enrollments: [
+          {
+            enrollment_id: "enrollment-1",
+            status: "Cancelled",
+            enrolled_at: "2099-03-02T00:00:00.000Z",
+            cancelled_at: "2099-03-03T00:00:00.000Z",
+          },
+        ],
+      }),
+      scheduleRules: [],
+    });
+
+    expect(screen.getAllByText(COPY.programs.enrollmentCancelled)).toHaveLength(
+      2
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.requestApproved)
+    ).not.toBeInTheDocument();
+  });
+
   test.each([
     ["ManagerOnly", "managerOnlyNote"],
     ["Draft", "enrollmentDraftNote"],
