@@ -1,7 +1,7 @@
 // Local-shell responsive Playwright suite (CF0-06 criteria 4-7).
-// Separate from the GAS playwright.config.ts so this suite never depends
-// on E2E_TARGET_URL, storage state, or HtmlService. Builds the Next.js
-// static export on demand and serves it via tests/e2e/serve-static.ts.
+// This suite never depends on a remote target, storage state, or HtmlService.
+// It builds the Next.js static export on demand and serves it via
+// tests/e2e/serve-static.ts.
 //
 // Paths in `webServer.command` are resolved relative to the testDir cwd
 // (tests/e2e/), so `../../web` reaches the workspace root.

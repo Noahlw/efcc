@@ -49,30 +49,31 @@ Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets 
 | Password Credential | 密碼憑證 | The current user-selected login secret after legacy upgrade or new registration. Only a salted PBKDF2 hash is stored. A normal self-service password change requires the current password, revokes all refresh sessions, requires sign-in again, and never changes User_ID. |
 | PIN (legacy) | PIN 碼 | 4-digit numeric credential used with username for member login on the legacy Apps Script surface; in D1 it survives only as the one-time migration proof. |
 | Legacy-PIN upgrade | 舊 PIN 升級 | A one-time identity-proof step for an imported D1 account using a strictly four-digit source PIN and username: five failed verifications trigger a 5-minute lock, five more trigger a 15-minute lock, and the next failure requires Admin/Staff unlock; successful upgrade replaces it with an 8-character-minimum password and clears the legacy proof before a Session is issued. Users without a legacy PIN are not forced through this transition; new registrations and password accounts do not require a PIN. |
-| Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Care, and Permissions. The Scanner Section is a legacy Apps Script concept; assisted check-in now lives on the Event detail page. Use **Section** instead of the ambiguous product terms “page” or “screen”; legacy implementation files may still use `.html` fragment names. |
+| Section | 功能區 | A navigable church-management capability available after authentication, currently Profile, Programs, Events, Scanner (self check-in), Care, and Permissions. The D1 `/scanner` surface is available to every authenticated account; server enrollment and event-window checks authorize the mutation, while assisted check-in lives on the Event detail page. Use **Section** instead of the ambiguous product terms “page” or “screen”; legacy implementation files may still use `.html` fragment names. |
 | Auth Surface | 身份驗證介面 | A signed-out or identity-transition area that handles Login, Legacy-PIN upgrade, self-service Registration, or Approval. An Auth Surface is not a Section because it does not represent an authenticated church-management capability. |
 | Shared Shell | 共用外殼 | The authenticated application layout and navigation that surrounds Sections. It owns shared header, responsive navigation, active Section indication, focus behavior, and recoverable shell states; it is not itself a Section. |
 | Minimal Product Design | 極簡產品設計 | The shared frontend design contract for EFCC's Auth Surfaces, Shared Shell, and Sections: official church identity, direct operational clarity, Cantonese-first copy, phone-first ministry workflows, desktop management density, and restrained civic visual language. |
 | Permission Policy | 權限政策 | The configurable mapping from a global Role (`Admin`, `Staff`, or `Member`) and any scoped Program Leader grant to the effective capabilities and Sections that actor may see or use. Policy editing follows the hierarchy `Admin > Staff > Member`: Admin may edit Admin, Staff, and Member policies; Staff may edit Member policy; Member may edit none. Admin-policy edits must preserve at least one Admin policy editor. Within a Department/Program scope, `program.manage` includes `enrollment.approve` for that same scope unless a narrower policy explicitly governs the action. The browser may use server-projected effective capabilities to shape affordances, but server authorization remains authoritative. A lower Role cannot edit its own or a higher Role's policy, and policy changes must not bypass server authorization or silently change an account's global Role. |
-| Scanner Section (legacy) | 掃描功能區 | The App Document Section (phone-only in the nav) that owns permitted Event selection, opens the external Scanner Window, and runs the check-in RPC. It does NOT run the camera or render per-scan success/error history; it only shows compact recoverable connection/session errors. |
+| Scanner Section | 掃描功能區 | The D1 self-check-in surface at `/scanner`, where any authenticated account resolves its enrolled-event attendance. The Worker owns enrollment and check-in-window authorization; assisted check-in remains on the Event detail page. The legacy Apps Script external Scanner Window remains transitional. |
 | Scanner Window (legacy) | 掃描視窗 | The external HTTPS origin page (`noahwong-hue.github.io/efcc-scanner`) opened via `window.open` that runs the rear camera + QR decode (getUserMedia is blocked in the Apps Script IFRAME - ADR-0015). It decodes an opaque scannedCode, posts it to the Scanner Section, and is the single visual owner of camera/bridge loading, per-scan progress, success, duplicate, validation/error, and retry feedback. Successful and duplicate check-ins briefly show their result, with duplicates remaining neutral and quiet, then return to ready-to-scan without another operator action. |
 | scannedCode (legacy) | 掃描碼 | The opaque, trimmed QR string that crosses the Scanner Window -> Scanner Section bridge via `postMessage`. It is the stable, non-secret `QR_Code_String`; the Scanner Section never grants authority - identity is resolved server-side by `api_qrCheckIn`. |
 | Section Link (legacy) | 功能區連結 | A bookmarkable URL hash that restores one Section after authentication. In v1 it identifies only the Section and never exposes member IDs, event IDs, QR values, credentials, or session tokens. |
 | Session | 登入工作階段 | A server-validated authenticated period for one Member. A Member may hold multiple independent Sessions across devices; revoking one Session does not revoke the others. On D1 each login creates an independent Session row (ADR-0020). |
-| Local Demo Session | 本機示範工作階段 | A development-only walk-through identity with no server-issued credential or production authority. It exists to inspect the local UI shell and must never be presented as a real account. Avoid calling it a demo account or real login. |
+| Local Demo Session | 本機示範工作階段 | A development-only walkthrough session created from the local E2E/demo fixtures. It has a real server-issued credential only inside local D1, has no production authority, and must never be presented as a production account. |
 | Production Session | 生產工作階段 | A Worker/D1 cookie-validated authenticated session with server-issued identity and authorization. It is the only session type accepted by the deployed application. Avoid calling it a demo account or local login. |
 | Merge-ready | 可合併 | A branch state whose scoped implementation, review findings, deterministic checks, and acceptance evidence are complete enough for the declared stacked merge order. It is not deployment readiness. |
-| Release-ready | 可發布 | A merge-ready state that additionally passes the required fresh deployed UI and Worker/D1 acceptance gates for the intended release target. |
+| Release-ready | 可發布 | A merge-ready state that additionally passes the relevant local `wrangler dev` + D1 E2E gate. An optional operator-run deployed smoke records infrastructure evidence but is not required for repository `READY`. |
 | Draft (legacy) | 草稿 | Unsaved form input preserved temporarily within the current browser tab. A Draft is not a submitted Event or server record and is cleared after successful submission, explicit discard, logout, or expiry of its owning tab. |
 | Church Time | 教會時間 | All EFCC schedules and user-facing timestamps are interpreted and displayed in `Asia/Hong_Kong`. Date-only values use the Hong Kong calendar and times use the 24-hour clock. |
-| Storage State (legacy) | 儲存狀態 | A Playwright-captured snapshot of a signed-in browser session (cookies + `localStorage`) for one E2E test role. Persisted to `.auth/<role>.storage.json` (gitignored locally, base64-encoded GitHub secret in CI). See ADR-0012. |
+| Storage State (retired) | 儲存狀態 | Historical Playwright snapshot of a signed-in Google/Apps Script browser session from ADR-0012. The deployed `/exec` suite and its storage-state capture flow are retired; retained documents describe the historical mechanism only. |
 | Identity Authority | 身份權威 | The system that owns member identity, credentials, sessions, and authentication decisions. During the staged migration, Cloudflare D1 is the Identity Authority (ADR-0020). |
 | Domain Backend (legacy) | 領域後端 | The system that owns church-management records and business operations such as Programs, Events, Attendance, and Enrollments. Apps Script + Google Sheets is the transitional Domain Backend. |
 | Staged Migration | 分階段遷移 | The selected migration strategy: move ownership capability by capability to the Worker/D1 platform while keeping the existing Apps Script/Sheets Domain Backend operational until each capability has a replacement and acceptance proof. |
 | Feature State | 功能狀態 | The current delivery state of a capability: Complete, In progress, Planned, or Transitional. Feature State describes what is true now, not the intended future architecture. |
 | Target Owner | 目標擁有者 | The platform that is intended to own a capability after the staged migration: Worker + D1 or Apps Script + Google Sheets while the capability remains transitional. |
-| dev-testing worker |  | Standing Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; the default local E2E target for the programs-d1 and attendance-d1 suites (live-ui targets the efcc-auth-* acceptance host). |
-| E2E acceptance |  | Deterministic Playwright run against the dev-testing worker asserting observable DOM state + same-origin server responses; visual evidence via trace/screenshot artifacts. |
+| dev-testing worker |  | Standing optional Cloudflare Worker (`efcc-dev-testing.efcc-ggc.workers.dev`, D1 `efcc-dev-testing`) serving the current stack; local `wrangler dev` is the default E2E target. |
+| E2E acceptance |  | Required Playwright run against local `wrangler dev` + local D1 asserting observable DOM state and same-origin server responses. A reserved deployed Worker run is optional operational evidence. |
+| Demo seed | 示範種子資料 | Idempotent local-only `E2E_DEMO_` department/program dataset created by `pnpm db:seed:demo`; it includes one recurring program with generated events and never writes a production database. |
 | Audit Event | 審計記錄 | One immutable, append-only relational record of a domain mutation on D1: actor, action, entity type and id, old/new value snapshots, reason, outcome, and correlation id. It is the D1 successor to the legacy Sheet `Audit_Log` (ADR-0023) but rebuilt generically: one stream covers Department, Program, Enrollment, Event, and Attendance actions, with no per-entity columns. Rows can never be updated or deleted. |
 | Department Lifecycle | 部門狀態 | The editorial state of a Department, distinct from Program lifecycle: `Draft`, `PendingDevelopment`, `Active`, or `Archived`. Publishing a Department to `Active` is a separate capability-gated action. |
 
@@ -206,27 +207,30 @@ backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023
 - `pnpm typecheck` — Runs TypeScript compiler (`tsc --noEmit`) sequentially across root `tsconfig.json` and `tests/e2e/tsconfig.json` (ADR-0014).
 - `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. Fast, deterministic unit layer.
 - `pnpm --dir web test` — Vitest in the real Cloudflare workerd pool for the rebuilt D1 cookie-only Worker/auth boundary, D1 migrations, sessions, lockout, and client contracts.
-- `pnpm test:e2e` — retained/manual Playwright suite against the legacy deployed Apps Script `/exec` URL using per-role storage states in `.auth/` (ADR-0012). It is not the rebuilt D1 login gate.
-- `pnpm exec playwright test --config=tests/e2e/auth-d1.config.ts` — manual Playwright request-context smoke against an isolated deployed D1 Worker; requires `AUTH_TARGET_URL` and five disposable acceptance-account secrets. It never uses Google storage state.
+- `pnpm dev:local` — builds the Next static export, applies local D1 migrations, and starts `wrangler dev` on `127.0.0.1:8787`.
+- `pnpm db:seed:local` — seeds disposable local `E2E_` accounts, including the resettable legacy-PIN auth fixture.
+- `pnpm db:seed:demo` — seeds the local `E2E_DEMO_` department, programs, and generated recurring events.
+- `pnpm exec playwright test -c tests/e2e/<relevant-config>.ts` — required local browser acceptance run for the changed capability.
+- `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` — local cookie/auth smoke by default; set the five `AUTH_*` values only when targeting an optional deployed Worker.
 - `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
-- GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes the deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0014).
-- `clasp push && clasp deploy` — pushes `src/gas/` and cuts a new versioned legacy Apps Script deployment; update `E2E_TARGET_URL` only when running the retained `/exec` suite. The rebuilt D1 gate uses `AUTH_TARGET_URL` and a separate Worker deployment. Never targets the production Sheet/project (see the "Google Sheet database — no automatic mutation" rule in `AGENTS.md`).
+- GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes optional deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0029).
+- `clasp push && clasp deploy` — optional transitional Apps Script operation only when a ticket explicitly scopes it; official docs and any operator `/exec` smoke are required for that ticket, never for the default D1 `READY` gate.
 - Full step-by-step workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md) for clone/install/branching, plus `README.md` sections "Build and run the web Worker locally" and "Deploy the transitional Apps Script backend".
 
 ---
 
 ## Architecture Decisions
 
-The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0026) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0029) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
 
 ### D1 era (current)
 
 | #    | Title                                         | Status   |
 | ---- | --------------------------------------------- | -------- |
-| 0017 | Frontend Repository, Rendering, and Cloudflare Deployment Boundary | Proposed — decision locked via grilling on #127 (monorepo, Next.js static export, Workers + static assets); deployed Cloudflare proof pending |
+| 0017 | Frontend Repository, Rendering, and Cloudflare Deployment Boundary | Proposed — decision locked via grilling on #127; local implementation checks are the default gate under ADR-0029, while deployed Cloudflare proof remains optional infrastructure evidence |
 | 0018 | Frontend HTTP Boundary, Authentication, and API Contract | Proposed — decision locked via grilling on #128; CF0/CF1 implementation evidence pending |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
-| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, deployed proof pending |
+| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, optional deployed smoke remains operational evidence for the map goal |
 | 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |
 | 0022 | Staged Worker/D1 Platform Migration | Accepted |
 | 0023 | Single-Lock Mutation and Audit Contract | Proposed — official Apps Script API support verified; deployed `/exec` proof pending (renumbered from 0015, 2026-08-06) |
@@ -235,6 +239,7 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 | 0026 | Programs Module State and Scoped Management UI | Proposed |
 | 0027 | D1 Programs Domain: Audit Outcomes and Atomic Approval | Proposed |
 | 0028 | Public Guest Check-In Entry | Proposed — decision locked via grilling; public entry, authenticated handoff, and guest identity rules require implementation and acceptance proof |
+| 0029 | Local-First Testing and Readiness Gate | Accepted |
 
 ### Apps Script era (historical)
 
@@ -251,7 +256,7 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 | 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded by ADR-0023 — write-pattern shape and schema; non-repudiation principle carried forward |
 | 0010 | Stable App Document and Expandable Sections | Superseded by ADR-0017/ADR-0020 — no HtmlService App Document on the D1 platform |
 | 0011 | One Active Session per Member | Superseded by ADR-0020 — multi-device sessions implemented (PR #166) |
-| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Accepted — historical tooling; storage-state retained only for the legacy `/exec` suite |
+| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Superseded — deployed `/exec` storage-state suite retired; deterministic local Playwright/D1 suites and `tests/gas/` replace it |
 | 0013 | Google Sheets Database Structure | Live domain basis — canonical sheet reference; governs the Sheets side of the migration |
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted — tooling, unchanged by the restart |
 | 0015 | Camera QR Capture (External HTTPS Origin) | Proposed — mechanism flagged for replacement pending #136; trust-boundary rules carry forward |

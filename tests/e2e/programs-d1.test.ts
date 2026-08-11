@@ -1,23 +1,39 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
-// PUI-01 / Issue #245 — bounded deployed proof for the Programs entry boundary.
+// PUI-01 / Issue #245 — bounded local/deployed D1 proof for the Programs entry boundary.
 //
-// This reuses the standing programs-d1 Playwright configuration and its
-// disposable E2E_* fixtures. The former PRG-05 suite drove the nested
-// Department -> Program -> Events/Enrollment/Leaders manager, which is not
-// rendered by Issue #245 and is intentionally covered by later tickets.
-// These checks assert only observable boundary DOM, URL state, accessibility,
-// and server-shaped capability outcomes.
+// This reuses the Programs Playwright configuration and its disposable E2E_*
+// fixtures. The former PRG-05 suite drove the nested Department -> Program ->
+// Events/Enrollment/Leaders manager, which is not rendered by Issue #245 and
+// is intentionally covered by later tickets. These checks assert only
+// observable boundary DOM, URL state, accessibility, and server-shaped
+// capability outcomes.
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
-const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
-const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN.credential;
-const STAFF_USER = process.env.PROGRAMS_STAFF_USERNAME ?? DEV_STAFF.username;
-const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL ?? DEV_STAFF.credential;
-const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username;
-const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential;
+const configuredTarget = process.env.PROGRAMS_TARGET_URL;
+const localTarget =
+  !configuredTarget ||
+  ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
+const ADMIN_USER =
+  process.env.PROGRAMS_ADMIN_USERNAME ??
+  (localTarget ? DEV_ADMIN.username : undefined);
+const ADMIN_CRED =
+  process.env.PROGRAMS_ADMIN_CREDENTIAL ??
+  (localTarget ? DEV_ADMIN.credential : undefined);
+const STAFF_USER =
+  process.env.PROGRAMS_STAFF_USERNAME ??
+  (localTarget ? DEV_STAFF.username : undefined);
+const STAFF_CRED =
+  process.env.PROGRAMS_STAFF_CREDENTIAL ??
+  (localTarget ? DEV_STAFF.credential : undefined);
+const MEMBER_USER =
+  process.env.PROGRAMS_MEMBER_USERNAME ??
+  (localTarget ? DEV_MEMBER.username : undefined);
+const MEMBER_CRED =
+  process.env.PROGRAMS_MEMBER_CREDENTIAL ??
+  (localTarget ? DEV_MEMBER.credential : undefined);
 
 const COPY = {
   login: "登入",
@@ -47,11 +63,12 @@ type ProgramScope = {
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
-  const departmentsResponse = await page.request.get(
-    "/api/v1/programs/departments"
-  );
-  expect(departmentsResponse.status()).toBe(200);
-  const departmentsBody = (await departmentsResponse.json()) as {
+  const departmentsResponse = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/programs/departments");
+    return { status: response.status, body: await response.json() };
+  });
+  expect(departmentsResponse.status).toBe(200);
+  const departmentsBody = departmentsResponse.body as {
     data: { departments: DepartmentScope[] };
   };
   const departments = departmentsBody.data.departments;
@@ -67,11 +84,14 @@ async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
   }
 
   for (const { department_id } of departments) {
-    const programsResponse = await page.request.get(
-      `/api/v1/programs/departments/${encodeURIComponent(department_id)}/programs`
-    );
-    expect(programsResponse.status()).toBe(200);
-    const programsBody = (await programsResponse.json()) as {
+    const programsResponse = await page.evaluate(async (departmentId) => {
+      const response = await fetch(
+        `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`
+      );
+      return { status: response.status, body: await response.json() };
+    }, department_id);
+    expect(programsResponse.status).toBe(200);
+    const programsBody = programsResponse.body as {
       data: { programs: ProgramScope[] };
     };
     if (
@@ -124,14 +144,18 @@ test.beforeAll(() => {
       throw new Error(`${name} is required`);
     }
   }
-  if (![ADMIN_USER, STAFF_USER, MEMBER_USER].every((user) => user?.startsWith("E2E_"))) {
+  if (
+    ![ADMIN_USER, STAFF_USER, MEMBER_USER].every((user) =>
+      user?.startsWith("E2E_")
+    )
+  ) {
     throw new Error(
-      "PROGRAMS_*_USERNAME must start with E2E_; deployed suites require disposable acceptance accounts"
+      "PROGRAMS_*_USERNAME must start with E2E_; remote runs require disposable acceptance accounts"
     );
   }
 });
 
-test.describe("PUI-01 deployed Programs boundary", () => {
+test.describe("PUI-01 Programs boundary", () => {
   test("admin enters Participant mode with capability-shaped Management entry", async ({
     page,
   }) => {

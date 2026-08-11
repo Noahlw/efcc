@@ -164,10 +164,16 @@ export function ProgramsBoundary() {
       hash: intent.hash,
     });
     focusMode.current = mode;
-    if (replace) {
-      router.replace(href);
+    if (typeof window === "undefined") {
+      if (replace) {
+        router.replace(href);
+      } else {
+        router.push(href);
+      }
+    } else if (replace) {
+      window.history.replaceState(null, "", href);
     } else {
-      router.push(href);
+      window.history.pushState(null, "", href);
     }
     setSearch(href.slice("/programs".length));
     announce(
@@ -198,7 +204,7 @@ export function ProgramsBoundary() {
     }
     tab.focus();
     focusMode.current = null;
-  }, [intent.malformed, intent.mode, locationReady]);
+  }, [intent.malformed, intent.mode, locationReady, showModeTabs]);
 
   if (intent.malformed) {
     return (
@@ -224,7 +230,6 @@ export function ProgramsBoundary() {
         <StatePanel
           id="programs-access-state"
           kind="loading"
-          title={COPY.programs.pageTitle}
           message={COPY.programs.accessLoading}
         />
       )}
@@ -428,6 +433,24 @@ function ManagementPanel({
   );
 }
 
+type StatePanelProps =
+  | {
+      id?: string;
+      kind: "loading";
+      title?: never;
+      message: string;
+      actionLabel?: string;
+      onAction?: () => void;
+    }
+  | {
+      id?: string;
+      kind: "error";
+      title: string;
+      message: string;
+      actionLabel?: string;
+      onAction?: () => void;
+    };
+
 function StatePanel({
   id,
   kind,
@@ -435,14 +458,7 @@ function StatePanel({
   message,
   actionLabel,
   onAction,
-}: {
-  id?: string;
-  kind: "loading" | "error";
-  title: string;
-  message: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
+}: StatePanelProps) {
   return (
     <section
       id={id}
@@ -451,7 +467,7 @@ function StatePanel({
       aria-busy={kind === "loading" ? "true" : undefined}
       role={kind === "error" ? "alert" : "status"}
     >
-      <h2 className={styles.boundaryTitle}>{title}</h2>
+      {title && <h2 className={styles.boundaryTitle}>{title}</h2>}
       <p>{message}</p>
       {actionLabel && onAction && (
         <button className={styles.retry} type="button" onClick={onAction}>

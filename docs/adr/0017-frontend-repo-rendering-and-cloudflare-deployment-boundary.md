@@ -1,6 +1,6 @@
 # ADR-0017 — Frontend Repository, Rendering, and Cloudflare Deployment Boundary
 
-- **Status**: Proposed — decision locked via grilling on issue #127, then revised at the user's direction to the same-repository monorepo. Per `AGENTS.md`'s headless/browser gate and the repository's deployed-proof policy, this ADR remains `Proposed` until a fresh deployed Cloudflare Workers + static-assets build, the same-origin `/api/*` proxy round trip, and the preview/promotion/rollback story are all proven against real infrastructure. The ADR below is the decision record; deployed proof is downstream CF0 implementation evidence, not a claim this ADR makes.
+- **Status**: Proposed — decision locked via grilling on issue #127, then revised at the user's direction to the same-repository monorepo. Local implementation checks are the default `READY` evidence under ADR-0029; this ADR remains `Proposed` until the infrastructure-specific preview/promotion/rollback story is proven against real Cloudflare resources. Deployed proof is downstream infrastructure evidence, not a universal feature gate.
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-08-01
 - **Related**: issue [#127](https://github.com/Noahlw/efcc/issues/127) (grilling ticket, decision then revised to same-repository monorepo), issue [#118](https://github.com/Noahlw/efcc/issues/118) (Feature CF0 manifest), issue [#128](https://github.com/Noahlw/efcc/issues/128) (HTTP boundary/auth/API contract — ADR-0018), issue [#129](https://github.com/Noahlw/efcc/issues/129) (prototype, live round trip proven on real Cloudflare + isolated Apps Script infra), issue [#141](https://github.com/Noahlw/efcc/issues/141) (CF0 canonical spec, `docs/specs/074-cloudflare-frontend-shell.md`), ADR-0007 (this ADR supersedes the frontend portion of ADR-0007 — the multi-page `HtmlService` architecture — without reopening the Sheets or Apps Script backend decisions).
@@ -92,7 +92,7 @@ ADR-0018 governs the HTTP wire protocol between the new frontend and the Apps Sc
 
 ## Downstream verification handoff (not #127 implementation)
 
-The following checklist is handed to the CF0 implementation tickets graduating from Spec #141. It is not implementation/deployment work or an acceptance claim for issue #127. Those downstream tickets must prove, locally and against a fresh Cloudflare Workers + static-assets deployment, at minimum:
+The following checklist is handed to the CF0 implementation tickets graduating from Spec #141. It is not implementation/deployment work or an acceptance claim for issue #127. Those downstream tickets must prove locally, and may additionally prove against a fresh Cloudflare Workers + static-assets deployment when infrastructure evidence is explicitly scoped, at minimum:
 
 1. Static export builds produce a deployable bundle that the Worker serves at the same origin as the `/api/*` proxy.
 2. The same-origin `/api/*` proxy round trip works end-to-end (login, session restore, one domain read) against a fresh isolated Apps Script `/exec` deployment, with the proxy remapping HTTP status from the Apps Script `TextOutput` body.
@@ -101,7 +101,7 @@ The following checklist is handed to the CF0 implementation tickets graduating f
 5. Cloudflare's instant rollback restores the previous deployment in one operation and the rolled-back URL is reachable.
 6. Passive dashboard check confirms the deployed Worker is comfortably under the free-tier ceiling on the worst-modeled traffic day.
 
-Only after the official platform claims used by this ADR are verified, a minimal implementation test passes, a headless acceptance trace passes, and a fresh deployed `/exec` IFRAME or Cloudflare preview smoke test passes may the six infrastructure steps move this ADR from `Proposed` to `Accepted`. The deployment URL, version, date, test evidence, headless trace, and observed result must be appended here. Until every gate passes against real infrastructure, the ADR remains `Proposed` per the repository's deployed-proof policy.
+Only after the official platform claims used by this ADR are verified, a minimal implementation test passes, and a local headless acceptance trace passes may the six infrastructure steps move this ADR from `Proposed` to `Accepted`. An optional fresh Cloudflare preview/deployment smoke may supply infrastructure evidence; it is not the repository-wide `READY` gate. The deployment URL, version, date, test evidence, headless trace, and observed result must be appended here when that optional evidence is collected. Until the infrastructure claims are proven against real resources, the ADR remains `Proposed`.
 
 ## Considered options (informational)
 

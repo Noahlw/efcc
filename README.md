@@ -21,16 +21,16 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the tw
 
 ## Feature roadmap
 
-**Feature State** describes what is true today. **Target Owner** describes where the capability should live after migration. "Complete" means the code and local/preview tests exist; a fresh deployed acceptance run on the current deployment is the remaining proof (AGENTS.md headless gate).
+**Feature State** describes what is true today. **Target Owner** describes where the capability should live after migration. "Complete" means the code, local implementation checks, and required local E2E evidence exist; an optional deployed smoke is operational evidence, not the repository `READY` gate (ADR-0029).
 
 | Feature | Current state | Current surface | Target owner | Next milestone |
 | --- | --- | --- | --- | --- |
-| Identity and accounts | Complete (deployed proof pending) | Worker + D1 | Worker + D1 | Fresh deployment acceptance on every auth change |
-| Cookie-only login/session | Complete (deployed proof pending) | `/api/v1/auth/*` | Worker + D1 | Fresh deployment acceptance on every auth change |
-| Legacy-PIN upgrade | Complete (deployed proof pending) | Worker + D1 and login UI | Worker + D1 | Keep destructive tests restricted to `E2E_` fixtures |
-| Self-service registration | Complete (code) — deployed proof pending | Web registration page + D1 | Worker + D1 | Add deployed acceptance coverage for production-like approval data |
-| Admin/Teacher approval | Complete (code) — deployed proof pending | Web approval queue + D1 | Worker + D1 | Expand role and rejection-path acceptance coverage |
-| Member profile | Complete (code) — deployed proof pending | Web profile page + D1 profile DTO | Worker + D1 | Add editable profile requirements when specified |
+| Identity and accounts | Complete (local gate) | Worker + D1 | Worker + D1 | Optional isolated deployed smoke for promotion |
+| Cookie-only login/session | Complete (local gate) | `/api/v1/auth/*` | Worker + D1 | Optional isolated deployed smoke for promotion |
+| Legacy-PIN upgrade | Complete (local gate) | Worker + D1 and login UI | Worker + D1 | Keep destructive tests restricted to `E2E_` fixtures |
+| Self-service registration | Complete (local gate) | Web registration page + D1 | Worker + D1 | Optional isolated deployed smoke for promotion |
+| Admin/Staff approval | Complete (local gate) | Web approval queue + D1 | Worker + D1 | Expand role and rejection-path acceptance coverage |
+| Member profile | Complete (local gate) | Web profile page + D1 profile DTO | Worker + D1 | Add editable profile requirements when specified |
 | Programs | Transitional | Apps Script RPC; new web page is a placeholder | Worker + D1 | Define Worker/D1 read and mutation contracts |
 | Events | Transitional | Apps Script repositories/RPCs; new web page is a placeholder | Worker + D1 | Define event lifecycle and recurrence migration |
 | Attendance/check-in | Transitional | Apps Script check-in RPC and external scanner | Worker + D1 | Migrate event selection, QR resolution, and audited check-in |
@@ -63,14 +63,14 @@ You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The pl
 
 1. **Read the landscape.** [`CONTEXT.md`](CONTEXT.md) (glossary, data model, two-era ADR table) → [`docs/adr/0024-d1-platform-restart-relationship-to-apps-script.md`](docs/adr/0024-d1-platform-restart-relationship-to-apps-script.md) → ADR-0020/0022 for the identity boundary and migration staging. Then [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow.
 2. **Pick the next migration.** Start with the roadmap row marked **In progress** (first one will be a domain capability — Programs or Events), read its linked spec/ADR (D1-era specs under `docs/specs/074`–`078`), write its acceptance trace, then migrate one domain capability without broad deletion.
-3. **Follow the gates.** Every web change needs an acceptance trace written before code (AGENTS.md headless gate); every Apps Script API/clasp claim needs official docs evidence; a fresh deployed run must pass before READY; the production Google Sheet is edited by the operator only.
+3. **Follow the gates.** Every web change needs an acceptance trace written before code (AGENTS.md headless gate); every Apps Script API/clasp claim needs official docs evidence; run the relevant local `wrangler dev` + D1 E2E before `READY`; the production Google Sheet is edited by the operator only.
 
 ## Ground rules
 
 - **Google Sheet safety:** agents must not modify the production Google Sheet. The user performs sheet, column, row, and seed-data changes manually. See [`AGENTS.md`](AGENTS.md).
 - **Apps Script evidence:** Apps Script APIs, manifest keys, clasp behavior, and deployments require official documentation evidence before implementation.
 - **Acceptance before implementation:** web changes require a written acceptance trace before code changes. The current migration trace is [`docs/specs/078-staged-platform-migration-acceptance-plan.md`](docs/specs/078-staged-platform-migration-acceptance-plan.md).
-- **Fresh deployment gate:** local tests are necessary but not sufficient. A fresh `/exec` or isolated Worker deployment must pass the relevant browser/API trace before READY.
+- **Local-first gate:** local tests plus a fresh local `wrangler dev`/D1 browser trace are required for `READY`; a fresh `/exec` or isolated Worker deployment is an optional operator smoke, never an automatic repository gate.
 - **Secret safety:** never commit credentials, PINs, cookies, tokens, storage states, or deployment secrets.
 - **Disposable E2E data:** destructive upgrade tests must use explicitly marked usernames beginning with `E2E_`; never run them against a real member.
 

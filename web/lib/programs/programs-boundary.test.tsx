@@ -261,9 +261,10 @@ describe("Programs boundary", () => {
 
     await userEvent.click(managementButton);
 
-    expect(mocks.push).toHaveBeenCalledWith(
-      "/programs?mode=management&program=program-1#overview"
-    );
+    expect(window.location.pathname).toBe("/programs");
+    expect(window.location.search).toBe("?mode=management&program=program-1");
+    expect(window.location.hash).toBe("#overview");
+    expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(
       screen.getByRole("heading", { name: "管理模式" })
@@ -327,9 +328,10 @@ describe("Programs boundary", () => {
     rerender(<ProgramsBoundary />);
     await userEvent.click(managementButton);
 
-    expect(mocks.push).toHaveBeenCalledWith(
-      "/programs?mode=management#details"
-    );
+    expect(window.location.pathname).toBe("/programs");
+    expect(window.location.search).toBe("?mode=management");
+    expect(window.location.hash).toBe("#details");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
   test("keeps management data and tabs out of the loading frame", () => {
     const { promise } = Promise.withResolvers<{ departments: Department[] }>();
@@ -392,7 +394,10 @@ describe("Programs boundary", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.enterParticipant })
     );
-    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(window.location.pathname).toBe("/programs");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
+    expect(mocks.replace).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
     unmount();
 
@@ -401,6 +406,7 @@ describe("Programs boundary", () => {
     );
     mocks.replace.mockReset();
     mocks.push.mockReset();
+    window.history.replaceState({}, "", "/programs?mode=management");
     render(<ProgramsBoundary />);
     expect(
       await screen.findByRole("heading", { name: "無法進入管理模式" })
@@ -421,7 +427,10 @@ describe("Programs boundary", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.retryAccess })
     ).toBeInTheDocument();
-    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(window.location.pathname).toBe("/programs");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
+    expect(mocks.replace).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
@@ -518,11 +527,16 @@ describe("Programs boundary", () => {
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "返回首頁" }));
-    expect(mocks.replace).toHaveBeenCalledWith("/programs");
+    expect(window.location.pathname).toBe("/programs");
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("");
+    expect(mocks.replace).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "參與者模式" })
-    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("tab", { name: "參與者模式" })
+      );
+    });
   });
   test("stores the full Programs URL before expired-session recovery", async () => {
     window.history.replaceState(

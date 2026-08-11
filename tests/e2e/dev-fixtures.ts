@@ -34,6 +34,22 @@ export const DEV_ACCOUNTS: DevFixtureAccount[] = [
   },
 ];
 
+export interface DevLegacyFixture {
+  userId: string;
+  username: string;
+  legacyPin: string;
+  newCredential: string;
+  role: "Member";
+}
+
+export const DEV_LEGACY: DevLegacyFixture = {
+  userId: "U-E2E-LEGACY",
+  username: "E2E_legacy",
+  legacyPin: "1234",
+  newCredential: "E2E_legacy!upgrade",
+  role: "Member",
+};
+
 export const DEV_ADMIN = DEV_ACCOUNTS[0];
 export const DEV_STAFF = DEV_ACCOUNTS[1];
 export const DEV_MEMBER = DEV_ACCOUNTS[2];

@@ -1,6 +1,6 @@
 # ADR-0020 — Cloudflare D1 Identity, Session, and Auth Boundary
 
-- **Status**: Proposed — decision locked via grilling and the AUTH-01 (#159) / AUTH-02 (#160) implementation. Local and preview D1 proof is AUTH-01/AUTH-02 implementation evidence; the map goal (deployed D1 auth behind the login landing page, AUTH-04/CF0-08) is the acceptance that flips this ADR to Accepted under `AGENTS.md`.
+- **Status**: Proposed — decision locked via grilling and the AUTH-01 (#159) / AUTH-02 (#160) implementation. Local and preview D1 proof is AUTH-01/AUTH-02 implementation evidence; the map goal (deployed D1 auth behind the login landing page, AUTH-04/CF0-08) is the acceptance that flips this ADR to Accepted. A deployed smoke is optional operational evidence under ADR-0029, not the repository-wide `READY` gate.
 - **Deciders**: Noah Wong, OMP planner (grilling)
 - **Date**: 2026-08-05
 - **Related**: [Map #158 — EFCC Cloudflare D1 Identity, Login & Registration Foundation](https://github.com/Noahlw/efcc/issues/158), [AUTH-01 #159](https://github.com/Noahlw/efcc/issues/159), [AUTH-02 #160](https://github.com/Noahlw/efcc/issues/160), [AUTH-04 #162](https://github.com/Noahlw/efcc/issues/162), [ADR-0002](0002-pin-based-authentication.md), [ADR-0011](0011-one-active-session-per-member.md) (deferred — superseded here), [ADR-0017](0017-frontend-repo-rendering-and-cloudflare-deployment-boundary.md), [ADR-0018](0018-frontend-http-boundary-auth-and-api-contract.md), [AGENTS.md](../../AGENTS.md) (Sheet-Immutable rule).

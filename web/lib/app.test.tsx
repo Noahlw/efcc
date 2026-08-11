@@ -1,12 +1,18 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { act, StrictMode } from "react";
 import type { ReadonlyURLSearchParams } from "next/navigation";
+import { act, StrictMode } from "react";
 import {
   describe,
   test,
@@ -19,8 +25,8 @@ import {
 } from "vitest";
 
 import CarePage from "@/app/care/page";
-import HomePage from "@/app/home/page";
 import EventsPage from "@/app/events/page";
+import HomePage from "@/app/home/page";
 import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
 import LoginPage from "@/app/page";
@@ -64,7 +70,9 @@ vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () =>
-    new URLSearchParams(window.location.search) as unknown as ReadonlyURLSearchParams,
+    new URLSearchParams(
+      window.location.search
+    ) as unknown as ReadonlyURLSearchParams,
 }));
 
 const MEMBER_SECTIONS = [
@@ -1072,15 +1080,15 @@ describe("Shell", () => {
 
     test("renders the stable navigation projection for Member", () => {
       renderWithProvider(sectionsForRole("Member"), "/home");
-      expect(screen.getAllByText(COPY.sections.home).length).toBeGreaterThanOrEqual(
-        1
-      );
+      expect(
+        screen.getAllByText(COPY.sections.home).length
+      ).toBeGreaterThanOrEqual(1);
       expect(
         screen.getAllByText(COPY.sections.programs).length
       ).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText(COPY.sections.events).length).toBeGreaterThanOrEqual(
-        1
-      );
+      expect(
+        screen.getAllByText(COPY.sections.events).length
+      ).toBeGreaterThanOrEqual(1);
       expect(
         screen.getAllByText(COPY.sections.scanner).length
       ).toBeGreaterThanOrEqual(1);
@@ -1091,7 +1099,13 @@ describe("Shell", () => {
     });
 
     test("keeps stable navigation order for Member and Admin", () => {
-      const expected = ["/home", "/programs", "/events", "/scanner", "/profile"];
+      const expected = [
+        "/home",
+        "/programs",
+        "/events",
+        "/scanner",
+        "/profile",
+      ];
       const memberView = renderWithProvider(
         sectionsForRole("Member"),
         "/home",
@@ -1419,6 +1433,17 @@ describe("Shell", () => {
       });
     });
 
+    test("scanner page renders self check-in for a Member", async () => {
+      withAuthRestore(PUBLIC_USER);
+      setAuthHint();
+      render(<ScannerPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.scanner })
+        ).toBeInTheDocument();
+      });
+    });
+
     test("care page renders COPY.sections.care title", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
@@ -1446,7 +1471,7 @@ describe("Shell", () => {
 
   describe("server-shaped bootstrap authorization", () => {
     test("uses the server projection instead of deriving sections from role", () => {
-      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)).toEqual({
+      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)).toStrictEqual({
         profile: ADMIN_USER,
         sections: MEMBER_SECTIONS,
         navigation: NAVIGATION,
@@ -1454,7 +1479,7 @@ describe("Shell", () => {
     });
 
     test("fails closed when a server projection is missing", () => {
-      expect(buildBootstrap(STAFF_USER)).toEqual({
+      expect(buildBootstrap(STAFF_USER)).toStrictEqual({
         profile: STAFF_USER,
         sections: [],
         navigation: [],

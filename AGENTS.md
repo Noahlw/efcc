@@ -2,16 +2,14 @@
 
 ## Docs-Backed (Apps Script)
 
-- Ground every Apps Script call, manifest key, or clasp directive in official docs via Context7 (`/websites/developers_google_apps-script`) → `developers.google.com` → clasp docs. Community sources banned as primary evidence.
-- Surface missing official docs as blocking question. Status stays `Proposed` until verified + minimal test + fresh deployed `/exec` IFRAME smoke test pass.
+- Surface missing official docs as blocking question. Status stays `Proposed` until official docs, the smallest local VM/API check, and any explicitly scoped operator `/exec` smoke are complete; `/exec` is not the default `READY` gate.
 
 ## Headless-Gate (Verification)
 
 - Web app changes require an acceptance trace written BEFORE implementation (mechanical edits exempt).
-- Authenticated E2E = Playwright vs the standing dev-testing worker (local, no secrets; ask the user before building E2E at spec completion). Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
-- 100% pass on a fresh `/exec` deployment is required before `READY`. The rebuilt Next/D1 release also requires its authenticated E2E to run against a fresh reserved `efcc-auth-*` `*.workers.dev` URL (`AUTH_TARGET_URL`) via the Playwright `auth-d1` pipeline; never reuse the stale `efcc-prototype-129` host. Assert every criterion via observable DOM state (never assume a click worked). Pipeline appends results to ticket plan (per `ADR-0012`).
+- Authenticated E2E = Playwright versus `wrangler dev` on `127.0.0.1:8787` by default (zero Cloudflare account touched). `pnpm dev:local` builds, migrates, and starts it; `pnpm db:seed:local` seeds the disposable `E2E_` account fixtures and `pnpm db:seed:demo` seeds the `E2E_DEMO_` domain walkthrough. Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
+- The local run is the required `READY` gate (ADR-0029): relevant Playwright suites must pass 100% against local `wrangler dev` + local D1, with every criterion asserted through observable DOM or response state. Cloudflare deployment is optional/manual production-promotion evidence only; if run, use a fresh reserved `efcc-auth-*` or `efcc-dev-*` host, never the stale `efcc-prototype-129` host. Pipeline results append to the ticket plan when an appender command is explicitly run.
 
-## Sheet-Immutable (Database Safety)
+## Database Safety
 
-- Google Sheet DB is read-only for agents. State exact sheet/columns/rows; ask user to edit manually.
-- E2E Exception: CI may reset `E2E_` prefixed rows in `Programs`/`Program_Leaders` via Sheets API per `ADR-0013`. Snapshot before write, restore after; fail-closed on missing/duplicate `E2E_` IDs. `Users` tab is strictly immutable.
+- Local/CI E2E may reset only explicitly disposable `E2E_`/`E2E_DEMO_` D1 fixtures through the checked-in seed scripts. Apps Script and Google Sheets are never mutated by automated tests; the `Users` tab remains immutable.

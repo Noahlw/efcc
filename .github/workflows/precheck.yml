@@ -1,9 +1,8 @@
-# GitHub Actions: Deterministic PR gate for the rebuilt auth boundary.
+# CI precheck: deterministic checks only.
 #
-# Required merge gate per ADR-0014 (docs/adr/0014-precheck-and-precommit-workflow.md).
-# Runs on every push/PR to main/master. It exercises ONLY deterministic,
-# self-contained checks against the code on the branch: no deployment, no
-# network-harnessed Apps Script, no Google session state, no E2E_TARGET_URL.
+# These jobs are self-contained checks against the code on the branch: no
+# deployment, network-harnessed Apps Script, Google session state, or remote
+# E2E target.
 #
 # The root and `web/` trees are SEPARATE pnpm workspaces with their own
 # lockfiles, so the gate splits into two jobs and each installs only its own
@@ -21,10 +20,9 @@
 #                                    contract (lib/app.test.tsx)
 #   shell-responsive
 #     pnpm test:shell-responsive      local static-shell Playwright suite
-#                                    (responsive/accessibility invariants at
-#                                    375px + 1280px; builds the Next static
-#                                    export, serves on 127.0.0.1:4173; no
-#                                    E2E_TARGET_URL, storage states, or Sheet)
+#   shell-responsive                      -> builds the static export, serves
+#                                          on 127.0.0.1:4173; no remote
+#                                          target, storage states, or Sheets
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`.
 #

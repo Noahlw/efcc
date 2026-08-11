@@ -1,12 +1,13 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
-// UI-04 (#196) — deployed Next frontend browser trace.
+// UI-04 (#196) — local/deployed Next frontend browser trace.
 //
 // Drives the rebuilt Next.js frontend (served by the Worker ASSETS binding)
-// in a real browser against the isolated efcc-auth-* acceptance deployment,
-// asserting login, registration, shell, Profile, Account Settings, the
-// role-gated approval queue, and responsive DOM states at 375x667. It uses
-// only the out-of-band PROGRAMS_* role fixtures and never mocks the backend;
-// every assertion reads observable DOM state.
+// in a real browser against the local Worker/D1 by default, or an explicitly
+// isolated efcc-auth-* acceptance deployment, asserting login, registration,
+// shell, Profile, Account Settings, the role-gated approval queue, and
+// responsive DOM states at 375x667. It uses only the out-of-band
+// PROGRAMS_* role fixtures and never mocks the backend; every assertion reads
+// observable DOM state.
 //
 // Mutation coverage (PRG-05 #201): the suite also exercises both end-to-end
 // mutation flows while keeping the acceptance fixtures pristine — a
@@ -22,12 +23,30 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME;
-const ADMIN_CRED = process.env.PROGRAMS_ADMIN_CREDENTIAL;
-const STAFF_USER = process.env.PROGRAMS_STAFF_USERNAME;
-const STAFF_CRED = process.env.PROGRAMS_STAFF_CREDENTIAL;
-const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME;
-const MEMBER_CRED = process.env.PROGRAMS_MEMBER_CREDENTIAL;
+import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
+
+const configuredTarget = process.env.AUTH_UI_TARGET_URL;
+const localTarget =
+  !configuredTarget ||
+  ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
+const ADMIN_USER =
+  process.env.PROGRAMS_ADMIN_USERNAME ??
+  (localTarget ? DEV_ADMIN.username : undefined);
+const ADMIN_CRED =
+  process.env.PROGRAMS_ADMIN_CREDENTIAL ??
+  (localTarget ? DEV_ADMIN.credential : undefined);
+const STAFF_USER =
+  process.env.PROGRAMS_STAFF_USERNAME ??
+  (localTarget ? DEV_STAFF.username : undefined);
+const STAFF_CRED =
+  process.env.PROGRAMS_STAFF_CREDENTIAL ??
+  (localTarget ? DEV_STAFF.credential : undefined);
+const MEMBER_USER =
+  process.env.PROGRAMS_MEMBER_USERNAME ??
+  (localTarget ? DEV_MEMBER.username : undefined);
+const MEMBER_CRED =
+  process.env.PROGRAMS_MEMBER_CREDENTIAL ??
+  (localTarget ? DEV_MEMBER.credential : undefined);
 
 const ROLE_FIXTURES = [
   {
@@ -148,7 +167,7 @@ test.beforeAll(() => {
   // Each claimed canonical role is verified by its corresponding login test.
 });
 
-test.describe("UI-04 deployed Next frontend trace", () => {
+test.describe("UI-04 Next frontend trace", () => {
   test("admin login renders the shared shell and Profile identity", async ({
     page,
   }) => {
@@ -193,8 +212,6 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       COPY.programsSection,
       COPY.eventsSection,
       COPY.scannerSection,
-      COPY.careSection,
-      COPY.permissionsSection,
     ]) {
       await expect(page.getByRole("link", { name: section })).toBeVisible();
     }
@@ -213,7 +230,7 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(page.getByText("Member", { exact: true })).toBeVisible();
   });
 
-  test("member shell omits unauthorized sections (role-gated nav)", async ({
+  test("member shell keeps stable navigation and omits unauthorized sections", async ({
     page,
   }) => {
     await loginAs(
@@ -222,36 +239,26 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    for (const section of [
-      COPY.eventsSection,
-      COPY.scannerSection,
-      COPY.careSection,
-      COPY.permissionsSection,
-    ]) {
+    for (const section of [COPY.eventsSection, COPY.scannerSection]) {
+      await expect(page.getByRole("link", { name: section })).toBeVisible();
+    }
+    for (const section of [COPY.careSection, COPY.permissionsSection]) {
       await expect(page.getByRole("link", { name: section })).toHaveCount(0);
     }
   });
 
-  test("member direct links render the shared forbidden state", async ({
+  test("member direct links to restricted sections render the shared forbidden state", async ({
     page,
   }) => {
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      required("PROGRAMS_MEMBER_CRED", MEMBER_CRED)
     );
-    for (const path of [
-      "/events",
-      "/scanner",
-      "/care",
-      "/permissions",
-      "/registrations",
-    ]) {
+    for (const path of ["/events", "/care", "/permissions", "/registrations"]) {
       await page.goto(appPath(path));
       await expect(
-        page
-          .getByRole("alert")
-          .filter({ hasText: COPY.forbidden })
+        page.getByRole("alert").filter({ hasText: COPY.forbidden })
       ).toContainText(COPY.forbidden);
     }
   });
@@ -287,7 +294,9 @@ test.describe("UI-04 deployed Next frontend trace", () => {
     await expect(page.getByLabel(COPY.settingsUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.currentPassword)).toBeVisible();
     await expect(page.getByLabel(COPY.newPassword)).toBeVisible();
-    await expect(page.getByText(COPY.passwordHint, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(COPY.passwordHint, { exact: true })
+    ).toBeVisible();
     await expect(page.getByLabel(COPY.confirmationPassword)).toHaveCount(0);
     await expect(page.locator("form")).toHaveCount(2);
   });
@@ -400,9 +409,9 @@ test.describe("UI-04 deployed Next frontend trace", () => {
       .filter({ hasText: username })
       .getByRole("button", { name: COPY.reject })
       .click();
-    await expect(
-      page.locator("tr").filter({ hasText: username })
-    ).toHaveCount(0);
+    await expect(page.locator("tr").filter({ hasText: username })).toHaveCount(
+      0
+    );
   });
 
   test("admin password rotation revokes the session and restores the fixture", async ({

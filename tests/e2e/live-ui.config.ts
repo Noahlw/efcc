@@ -1,41 +1,43 @@
-// UI-04 (#196) — deployed Next frontend browser trace.
+// UI-04 (#196) — local/deployed Next frontend browser trace.
 //
-// Separate from the GAS playwright.config.ts (legacy Apps Script iframe) and
-// the local responsive.config.ts (stubbed static shell). This config drives
-// the rebuilt Next.js frontend in a real browser against the isolated
-// efcc-auth-* Worker/D1 acceptance deployment (efcc-auth-test, backed by the
-// efcc-identity D1 seeded with the E2E_ fixtures via seed-dev-accounts.ts),
-// using the out-of-band PROGRAMS_* role fixtures. It never mocks the backend
-// and never targets the legacy efcc-prototype-129 host.
+// This config drives the rebuilt Next.js frontend in a real browser against
+// the local Worker/D1 by default, or an isolated efcc-auth-* acceptance
+// deployment when explicitly overridden. It uses the out-of-band PROGRAMS_*
+// role fixtures, never mocks the backend, and never targets the retired
+// Apps Script suite or the legacy efcc-prototype-129 host.
 
 import { defineConfig } from "@playwright/test";
 
-const targetUrl = process.env.AUTH_UI_TARGET_URL;
-if (!targetUrl) {
-  throw new Error(
-    "AUTH_UI_TARGET_URL is required (deployed Next frontend root on the isolated efcc-auth-*.efcc-ggc.workers.dev acceptance host)"
-  );
-}
+// Local-first default (see AGENTS.md): `wrangler dev` serves the built
+// static export + Worker on this origin. Override AUTH_UI_TARGET_URL for
+// the isolated efcc-auth-*.efcc-ggc.workers.dev acceptance host described
+// above to prove production-bound behavior.
+const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
+
+const targetUrl = process.env.AUTH_UI_TARGET_URL ?? DEFAULT_TARGET_URL;
 
 let parsedTarget: URL;
 try {
   parsedTarget = new URL(targetUrl);
 } catch {
-  throw new Error("AUTH_UI_TARGET_URL must be an absolute HTTPS URL");
+  throw new Error(
+    `AUTH_UI_TARGET_URL must be an absolute URL (default: ${DEFAULT_TARGET_URL})`
+  );
 }
 
-const allowLocal =
-  process.env.AUTH_UI_ALLOW_LOCAL === "1" &&
-  (parsedTarget.hostname === "localhost" ||
-    parsedTarget.hostname === "127.0.0.1");
-if (!allowLocal) {
+const isLocal =
+  parsedTarget.protocol === "http:" &&
+  !parsedTarget.username &&
+  !parsedTarget.password &&
+  ["localhost", "127.0.0.1"].includes(parsedTarget.hostname);
+if (!isLocal) {
   if (
     parsedTarget.protocol !== "https:" ||
     parsedTarget.username ||
     parsedTarget.password
   ) {
     throw new Error(
-      "AUTH_UI_TARGET_URL must be an absolute HTTPS URL without credentials"
+      "AUTH_UI_TARGET_URL must be an absolute HTTP loopback URL or an absolute HTTPS URL without credentials"
     );
   }
   if (
