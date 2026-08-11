@@ -245,6 +245,7 @@ export const ParticipantProgramDetail = ({
     program,
     schedule_rules: scheduleRules,
     enrollment,
+    enrollment_access: enrollmentAccess,
   } = state.detail;
   return (
     <article
@@ -313,6 +314,7 @@ export const ParticipantProgramDetail = ({
       <ParticipantEnrollment
         program={program}
         enrollment={enrollment}
+        enrollmentAccess={enrollmentAccess}
         scheduleRules={scheduleRules}
         events={state.detail.events}
         onRefresh={refreshDetail}

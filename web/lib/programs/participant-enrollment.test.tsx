@@ -57,6 +57,7 @@ function renderEnrollment(
       enrollment={
         overrides.enrollment === undefined ? snapshot() : overrides.enrollment
       }
+      enrollmentAccess={overrides.enrollmentAccess ?? "Eligible"}
       scheduleRules={
         overrides.scheduleRules ?? [
           {
@@ -240,11 +241,27 @@ describe("PUI-04 participant Enrollment", () => {
   test("explains an ineligible MemberRequest without an action", () => {
     renderEnrollment({
       enrollment: null,
+      enrollmentAccess: "Ineligible",
       scheduleRules: [],
     });
 
     expect(
       screen.getByText(COPY.programs.enrollmentIneligibleNote)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
+    ).not.toBeInTheDocument();
+  });
+
+  test("explains an unavailable enrollment module without an action", () => {
+    renderEnrollment({
+      enrollment: null,
+      enrollmentAccess: "Unavailable",
+      scheduleRules: [],
+    });
+
+    expect(
+      screen.getByText(COPY.programs.enrollmentUnavailableNote)
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.requestEnroll })
@@ -267,6 +284,31 @@ describe("PUI-04 participant Enrollment", () => {
         COPY.programs.enrollmentDuplicate
       );
       expect(onRefresh).toHaveBeenCalledOnce();
+    });
+  });
+
+  test("keeps stale enrollment-mode errors on localized copy", async () => {
+    const user = userEvent.setup();
+    mocks.submitEnrollmentRequest.mockRejectedValue(
+      new RpcError({
+        code: "VALIDATION",
+        status: 422,
+        detail:
+          "Program internal-program-id does not accept enrollment mode MemberRequest.",
+      })
+    );
+    renderEnrollment();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        COPY.programs.enrollmentUnavailableNote
+      );
+      expect(
+        screen.queryByText(/internal-program-id/u)
+      ).not.toBeInTheDocument();
     });
   });
 });

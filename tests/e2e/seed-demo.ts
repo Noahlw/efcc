@@ -49,6 +49,16 @@ const PROGRAMS = [
     enrollment_mode: "ManagerOnly" as const,
     display_order: 3,
   },
+  {
+    name: "E2E_DEMO_管理安排",
+    description: "由管理者安排成員加入的本機示範課程。",
+    category: "事工安排",
+    behavior_type: "Recurring" as const,
+    lifecycle: "Active" as const,
+    discoverability: "Listed" as const,
+    enrollment_mode: "ManagerOnly" as const,
+    display_order: 4,
+  },
 ] as const;
 
 const REQUIRED_MODULES = ["program_catalog", "events", "enrollment"] as const;

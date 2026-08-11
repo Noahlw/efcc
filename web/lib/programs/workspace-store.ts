@@ -6,13 +6,9 @@
  */
 
 import type { ModuleKey } from "./capabilities";
-
 // Domain vocabulary lives in the pure recurrence module; rows and commands
 // reuse it so there is one definition (no drift risk).
-import type {
-  RecurrenceKind,
-  ScheduleExceptionAction,
-} from "./recurrence";
+import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
 
 export interface DepartmentInput {
   code: string;
@@ -407,6 +403,13 @@ export interface WorkspaceStore {
   listEnrollmentRequests: (
     programId: string
   ) => Promise<EnrollmentRequestRow[]>;
+  listParticipantEnrollmentSnapshot: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }>;
   decideRequest: (
     id: string,
     decision: "Approved" | "Rejected",
@@ -425,7 +428,10 @@ export interface WorkspaceStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
-  }) => Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null>;
+  }) => Promise<{
+    request: EnrollmentRequestRow;
+    enrollment: EnrollmentRow;
+  } | null>;
   withdrawRequest: (
     id: string,
     memberUserId: string,

@@ -151,12 +151,18 @@ export interface ParticipantEnrollmentSnapshot {
   enrollments: ParticipantEnrollment[];
 }
 
+export type ParticipantEnrollmentAccess =
+  | "Eligible"
+  | "Ineligible"
+  | "Unavailable";
+
 export interface ParticipantProgramDetail {
   program: ProgramSummary;
   department: DepartmentSummary;
   schedule_rules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
   enrollment: ParticipantEnrollmentSnapshot | null;
+  enrollment_access: ParticipantEnrollmentAccess;
 }
 
 export type { ProgramsManagementAccess } from "./programs-access";

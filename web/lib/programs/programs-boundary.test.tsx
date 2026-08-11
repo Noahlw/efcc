@@ -146,6 +146,7 @@ const detailFixture = (): ParticipantProgramDetail => ({
   schedule_rules: [],
   events: [],
   enrollment: null,
+  enrollment_access: "Eligible",
 });
 
 describe("Programs intent", () => {

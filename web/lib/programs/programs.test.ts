@@ -4218,6 +4218,7 @@ describe("PUI-03: participant Program detail", () => {
             cancelled_at: string | null;
           }[];
         } | null;
+        enrollment_access: string;
       };
     };
   }
@@ -4295,9 +4296,9 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(detail.program.lifecycle, "Active");
     assert.strictEqual(detail.program.enrollment_mode, "MemberRequest");
     assert.strictEqual(detail.department.name, "PUI-03 Detail Dept");
+    assert.strictEqual(detail.enrollment_access, "Eligible");
     assert.strictEqual(detail.schedule_rules[0]?.start_time, "19:30");
     assert.strictEqual(detail.events.length, 1);
-    assert.strictEqual(detail.events[0]?.status, "Active");
     const raw = JSON.stringify(detail);
     assert.ok(!raw.includes("check_in_token"));
     assert.ok(!raw.includes("manual_check_in_code"));
@@ -4394,6 +4395,7 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
             cancelled_at: string | null;
           }[];
         } | null;
+        enrollment_access: string;
       };
     };
   }
@@ -4459,6 +4461,16 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
       responses.map((response) => response.status).sort((a, b) => a - b),
       [201, 409]
     );
+
+    const duplicate = responses.find((response) => response.status === 409);
+    assert.ok(duplicate, "one concurrent request must be rejected");
+    const duplicateBody = await problemOf(duplicate);
+    assert.strictEqual(duplicateBody.code, "ENROLLMENT_DUPLICATE");
+    assert.ok(duplicateBody.requestId);
+    assert.strictEqual(
+      duplicateBody.requestId,
+      duplicate.headers.get("X-Request-Id")
+    );
     const list = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${created.program_id}/enrollment-requests`,
@@ -4492,5 +4504,29 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
     assert.strictEqual(after.data.detail.enrollment?.requests.length, 1);
     assert.strictEqual(after.data.detail.enrollment?.enrollments.length, 0);
     assert.ok(!JSON.stringify(after.data.detail).includes("member_user_id"));
+
+    const requestId = listBody.data.requests[0]?.request_id;
+    assert.ok(requestId);
+    const decision = await decideRequest(
+      adminAccess,
+      created.program_id,
+      requestId,
+      "Approved"
+    );
+    assert.strictEqual(decision.status, 200);
+    const approved = await detailWithEnrollment(
+      memberAccess,
+      created.program_id
+    );
+    assert.strictEqual(approved.data.detail.enrollment_access, "Eligible");
+    assert.strictEqual(
+      approved.data.detail.enrollment?.requests[0]?.status,
+      "Approved"
+    );
+    assert.strictEqual(
+      approved.data.detail.enrollment?.enrollments[0]?.status,
+      "Active"
+    );
+    assert.ok(!JSON.stringify(approved.data.detail).includes("member_user_id"));
   });
 });

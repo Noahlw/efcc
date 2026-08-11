@@ -12,6 +12,7 @@ import {
   withdrawEnrollmentRequest,
 } from "@/lib/programs/program-api";
 import type {
+  ParticipantEnrollmentAccess,
   ParticipantEnrollmentRequest,
   ParticipantEnrollmentSnapshot,
   ParticipantEventSummary,
@@ -24,6 +25,7 @@ import styles from "@/app/programs/programs.module.css";
 export interface ParticipantEnrollmentProps {
   program: ProgramSummary;
   enrollment: ParticipantEnrollmentSnapshot | null;
+  enrollmentAccess: ParticipantEnrollmentAccess;
   scheduleRules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
   onRefresh: () => Promise<void>;
@@ -36,9 +38,16 @@ type HistoryItem = {
 };
 
 function errorMessage(error: unknown): string {
-  return error instanceof RpcError
-    ? errorCopyFor(error.problem.code, error.problem.detail)
-    : COPY.error.networkError;
+  if (!(error instanceof RpcError)) {
+    return COPY.error.networkError;
+  }
+  if (
+    error.problem.code === "VALIDATION" &&
+    error.problem.detail?.includes("does not accept enrollment mode")
+  ) {
+    return COPY.programs.enrollmentUnavailableNote;
+  }
+  return errorCopyFor(error.problem.code, error.problem.detail);
 }
 
 function requestStatusLabel(
@@ -65,6 +74,7 @@ function closedCopy(lifecycle: ProgramSummary["lifecycle"]): string {
 export const ParticipantEnrollment = ({
   program,
   enrollment,
+  enrollmentAccess,
   scheduleRules,
   events,
   onRefresh,
@@ -74,12 +84,12 @@ export const ParticipantEnrollment = ({
   const [actionError, setActionError] = useState<string | null>(null);
   const mounted = useRef(true);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   const runAction = useCallback(
     async (action: () => Promise<unknown>, successCopy: string) => {
@@ -139,6 +149,7 @@ export const ParticipantEnrollment = ({
     [enrollment]
   );
   const canRequest =
+    enrollmentAccess === "Eligible" &&
     enrollment !== null &&
     program.lifecycle === "Active" &&
     program.enrollment_mode === "MemberRequest" &&
@@ -161,7 +172,7 @@ export const ParticipantEnrollment = ({
               {
                 id: `request-${request.request_id}`,
                 label,
-                at: request.submitted_at,
+                at: request.decided_at ?? request.submitted_at,
               },
             ];
       }),
@@ -258,6 +269,10 @@ export const ParticipantEnrollment = ({
         <p className={styles.emptyLine}>{closedCopy(program.lifecycle)}</p>
       ) : program.enrollment_mode === "ManagerOnly" ? (
         <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>
+      ) : enrollmentAccess === "Unavailable" ? (
+        <p className={styles.emptyLine}>
+          {COPY.programs.enrollmentUnavailableNote}
+        </p>
       ) : enrollment === null ? (
         <p className={styles.emptyLine}>
           {COPY.programs.enrollmentIneligibleNote}

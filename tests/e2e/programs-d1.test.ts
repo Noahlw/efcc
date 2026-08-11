@@ -542,12 +542,11 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     const requestButton = enrollmentPanel.getByRole("button", {
       name: COPY.requestEnroll,
     });
-    if (await requestButton.count()) {
-      await expect(
-        enrollmentPanel.getByText(COPY.enrollmentScheduleAdvisory)
-      ).toBeVisible();
-      await requestButton.click();
-    }
+    await expect(requestButton).toBeVisible();
+    await expect(
+      enrollmentPanel.getByText(COPY.enrollmentScheduleAdvisory)
+    ).toBeVisible();
+    await requestButton.click();
     await expect(
       enrollmentPanel.getByText(COPY.requestPendingHint)
     ).toBeVisible();
@@ -571,10 +570,10 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
   }) => {
     await loginAs(
       page,
-      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-      required("PROGRAMS_ADMIN_CRED", ADMIN_CRED)
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
-    const [programId] = await catalogProgramIds(page, "E2E_DEMO_社區關懷");
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_管理安排");
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);

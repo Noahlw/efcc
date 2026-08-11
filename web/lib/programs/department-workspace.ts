@@ -138,12 +138,18 @@ export interface ParticipantEnrollmentSnapshot {
   enrollments: ParticipantEnrollment[];
 }
 
+export type ParticipantEnrollmentAccess =
+  | "Eligible"
+  | "Ineligible"
+  | "Unavailable";
+
 export interface ParticipantProgramDetail {
   program: ProgramSummary;
   department: DepartmentSummary;
   schedule_rules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
   enrollment: ParticipantEnrollmentSnapshot | null;
+  enrollment_access: ParticipantEnrollmentAccess;
 }
 
 export interface CreateDepartmentCommand {
@@ -329,6 +335,14 @@ export class LeaderAccountInactiveError extends Error {
     super(`Cannot assign ${userId} as Program Leader: account is not Active.`);
     this.name = "LeaderAccountInactiveError";
   }
+}
+
+function isPendingEnrollmentConstraint(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("enrollment_requests.program_id") &&
+    message.includes("enrollment_requests.member_user_id")
+  );
 }
 
 export class DepartmentWorkspace {
@@ -699,7 +713,7 @@ export class DepartmentWorkspace {
     if (!department) {
       return null;
     }
-    const [rules, eventRows, enrollment] = await Promise.all([
+    const [rules, eventRows, enrollmentState] = await Promise.all([
       this.listScheduleRules(ctx, programId),
       this.listEvents(ctx, programId),
       this.participantEnrollmentSnapshot(ctx, view),
@@ -725,41 +739,51 @@ export class DepartmentWorkspace {
           status: "Active" as const,
           source: event.source,
         })),
-      enrollment,
+      enrollment: enrollmentState.snapshot,
+      enrollment_access: enrollmentState.access,
     };
   }
 
   private async participantEnrollmentSnapshot(
     ctx: AuthorizationContext,
     view: ProgramView
-  ): Promise<ParticipantEnrollmentSnapshot | null> {
+  ): Promise<{
+    access: ParticipantEnrollmentAccess;
+    snapshot: ParticipantEnrollmentSnapshot | null;
+  }> {
     if (
-      !view.capabilities.enroll ||
       !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
     ) {
-      return null;
+      return { access: "Unavailable", snapshot: null };
     }
-    const [requests, enrollments] = await Promise.all([
-      this.store.listEnrollmentRequests(view.program_id),
-      this.store.listEnrollments(view.program_id),
-    ]);
+    if (!view.capabilities.enroll) {
+      return { access: "Ineligible", snapshot: null };
+    }
+    const { requests, enrollments } =
+      await this.store.listParticipantEnrollmentSnapshot(
+        view.program_id,
+        ctx.actorUserId
+      );
     return {
-      requests: requests
-        .filter((request) => request.member_user_id === ctx.actorUserId)
-        .map((request) => ({
-          request_id: request.request_id,
-          status: request.status,
-          submitted_at: request.submitted_at,
-          decided_at: request.decided_at,
-        })),
-      enrollments: enrollments
-        .filter((enrollment) => enrollment.member_user_id === ctx.actorUserId)
-        .map((enrollment) => ({
-          enrollment_id: enrollment.enrollment_id,
-          status: enrollment.status,
-          enrolled_at: enrollment.enrolled_at,
-          cancelled_at: enrollment.cancelled_at,
-        })),
+      access: "Eligible",
+      snapshot: {
+        requests: requests
+          .filter((request) => request.member_user_id === ctx.actorUserId)
+          .map((request) => ({
+            request_id: request.request_id,
+            status: request.status,
+            submitted_at: request.submitted_at,
+            decided_at: request.decided_at,
+          })),
+        enrollments: enrollments
+          .filter((enrollment) => enrollment.member_user_id === ctx.actorUserId)
+          .map((enrollment) => ({
+            enrollment_id: enrollment.enrollment_id,
+            status: enrollment.status,
+            enrolled_at: enrollment.enrolled_at,
+            cancelled_at: enrollment.cancelled_at,
+          })),
+      },
     };
   }
 
@@ -1515,6 +1539,9 @@ export class DepartmentWorkspace {
         request_version: 1,
       });
     } catch (error) {
+      if (!isPendingEnrollmentConstraint(error)) {
+        throw error;
+      }
       const pending = await this.store.findPendingRequestByMember(
         programId,
         ctx.actorUserId

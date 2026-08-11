@@ -106,6 +106,7 @@ const detailFixture = (
     },
   ],
   enrollment: null,
+  enrollment_access: "Eligible",
   ...overrides,
 });
 

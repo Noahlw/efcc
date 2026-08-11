@@ -714,6 +714,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
+  async listParticipantEnrollmentSnapshot(
+    programId: string,
+    memberUserId: string
+  ): Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }> {
+    const [requests, enrollments] = await this.db.batch([
+      this.db
+        .prepare(
+          `SELECT * FROM enrollment_requests
+           WHERE program_id = ? AND member_user_id = ?
+           ORDER BY submitted_at ASC`
+        )
+        .bind(programId, memberUserId),
+      this.db
+        .prepare(
+          `SELECT * FROM enrollments
+           WHERE program_id = ? AND member_user_id = ?
+           ORDER BY enrolled_at ASC`
+        )
+        .bind(programId, memberUserId),
+    ]);
+    return {
+      requests: (requests.results ?? []) as EnrollmentRequestRow[],
+      enrollments: (enrollments.results ?? []) as EnrollmentRow[],
+    };
+  }
+
   async decideRequest(
     id: string,
     decision: "Approved" | "Rejected",
