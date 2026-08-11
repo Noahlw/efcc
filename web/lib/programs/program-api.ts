@@ -79,6 +79,12 @@ export interface DepartmentDetail {
   modules: DepartmentModule[];
 }
 
+export interface ProgramsManagementAccess {
+  hasManagementCapability: boolean;
+  departmentScopes: number;
+  programScopes: number;
+}
+
 export interface DepartmentInput {
   code: string;
   name: string;
@@ -408,6 +414,11 @@ export function listDepartments(): Promise<{
   departments: Department[];
 }> {
   return programsFetch("/api/v1/programs/departments", "GET");
+}
+
+/** GET /api/v1/programs/access — capability-only entry projection. */
+export function getManagementAccess(): Promise<ProgramsManagementAccess> {
+  return programsFetch("/api/v1/programs/access", "GET");
 }
 
 /** POST /api/v1/programs/departments */

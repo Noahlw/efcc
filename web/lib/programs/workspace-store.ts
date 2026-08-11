@@ -108,6 +108,12 @@ export interface ProgramRow {
   check_in_closes_at_minutes_after_end: number;
 }
 
+/** Minimal server-side identity used for capability projection only. */
+export interface ProgramAccessRow {
+  program_id: string;
+  department_id: string;
+}
+
 export interface DepartmentModuleRow {
   department_id: string;
   module_key: ModuleKey;
@@ -335,6 +341,7 @@ export interface WorkspaceStore {
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
+  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
   searchActiveMembers: (

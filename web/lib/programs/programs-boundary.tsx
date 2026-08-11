@@ -7,7 +7,7 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { rememberDeepLink } from "@/lib/session";
-import { listDepartments, listPrograms } from "@/lib/programs/program-api";
+import { getManagementAccess } from "@/lib/programs/program-api";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -16,7 +16,6 @@ import {
   parseProgramsIntent,
 } from "./programs-intent";
 import type { ProgramsIntent } from "./programs-intent";
-import { projectManagementAccess } from "./programs-access";
 import type { ProgramsManagementAccess } from "./programs-access";
 
 interface ReadyAccess {
@@ -70,27 +69,10 @@ export function ProgramsBoundary() {
       setAccess({ kind: "loading" });
       announce(COPY.programs.accessLoading);
       try {
-        const { departments } = await listDepartments();
+        const projection = await getManagementAccess();
         if (!mounted.current || request?.cancelled) {
           return;
         }
-        const departmentAccess = projectManagementAccess(departments, []);
-        if (departmentAccess.hasManagementCapability) {
-          setAccess({ kind: "ready", projection: departmentAccess });
-          announce(COPY.programs.managementScopeReady);
-          return;
-        }
-
-        const programResponses = await Promise.all(
-          departments.map(({ department_id }) => listPrograms(department_id))
-        );
-        if (!mounted.current || request?.cancelled) {
-          return;
-        }
-        const projection = projectManagementAccess(
-          departments,
-          programResponses.map(({ programs }) => programs)
-        );
         setAccess({ kind: "ready", projection });
         if (projection.hasManagementCapability) {
           announce(COPY.programs.managementScopeReady);
@@ -135,25 +117,31 @@ export function ProgramsBoundary() {
     };
   }, [intent.malformed, loadAccess, locationReady]);
 
+  const managementModeReady =
+    access.kind === "ready" && access.projection.hasManagementCapability;
+  const boundaryStateVisible =
+    intent.malformed ||
+    access.kind !== "ready" ||
+    (intent.mode === "management" && !managementModeReady);
+  const showModeTabs = intent.mode === "management" && managementModeReady;
+
   useEffect(() => {
-    if (!retryFocusPending.current || access.kind !== "loading") {
+    if (!retryFocusPending.current && !boundaryStateVisible) {
       return;
     }
-    const panel = document.getElementById("programs-access-state");
+    const panel = document.querySelector<HTMLElement>(
+      "#programs-access-state"
+    );
     if (!panel) {
       return;
     }
     panel.focus();
     retryFocusPending.current = false;
-  }, [access.kind]);
+  }, [access.kind, boundaryStateVisible]);
   const retryAccess = () => {
     retryFocusPending.current = true;
     void loadAccess();
   };
-  const managementModeReady =
-    access.kind === "ready" && access.projection.hasManagementCapability;
-  const showModeTabs = intent.mode === "participant" || managementModeReady;
-
   const navigateMode = (
     mode: "participant" | "management",
     replace = false
@@ -194,10 +182,10 @@ export function ProgramsBoundary() {
     if (!locationReady || mode === null) {
       return;
     }
-    const tab = document.getElementById(
+    const tab = document.querySelector<HTMLElement>(
       mode === "management"
-        ? "programs-management-tab"
-        : "programs-participant-tab"
+        ? "#programs-management-tab"
+        : "#programs-participant-tab"
     );
     if (!tab) {
       return;
@@ -210,6 +198,7 @@ export function ProgramsBoundary() {
     return (
       <BoundaryFrame intent={intent} onModeChange={navigateMode} showModeTabs={false}>
         <StatePanel
+          id="programs-access-state"
           kind="error"
           title={COPY.programs.malformedIntent}
           message={COPY.programs.malformedIntentHint}
@@ -237,6 +226,7 @@ export function ProgramsBoundary() {
         access.failure === "forbidden" &&
         intent.mode === "participant" && (
           <StatePanel
+            id="programs-access-state"
             kind="error"
             title={COPY.error.forbidden}
             message={COPY.nav.unauthorized}
@@ -247,6 +237,7 @@ export function ProgramsBoundary() {
       {access.kind === "error" &&
         (intent.mode === "management" || access.failure === "recoverable") && (
           <StatePanel
+            id="programs-access-state"
             kind="error"
             title={
               access.failure === "forbidden"
@@ -308,9 +299,7 @@ function BoundaryFrame({
         <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
         {showModeTabs && (
           <div
-            className={`${styles.modeSwitch} ${
-              intent.mode === "participant" ? styles.modeSwitchSingle : ""
-            }`}
+            className={styles.modeSwitch}
             role="tablist"
             aria-label={COPY.programs.modeLabel}
           >
@@ -408,6 +397,7 @@ function ManagementPanel({
   if (!projection.hasManagementCapability) {
     return (
       <StatePanel
+        id="programs-access-state"
         kind="error"
         title={COPY.programs.noManagementScope}
         message={COPY.programs.noManagementScopeHint}

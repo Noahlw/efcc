@@ -46,66 +46,16 @@ const COPY = {
   directProgramIntent: "已保留活動連結",
 };
 
-type Capability = {
-  manage: boolean;
-  publish: boolean;
-  module_configure?: boolean;
-  leader_assign?: boolean;
-};
-
-type DepartmentScope = {
-  department_id: string;
-  capabilities: Capability;
-};
-
-type ProgramScope = {
-  capabilities: Capability;
-};
-
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
-  const departmentsResponse = await page.evaluate(async () => {
-    const response = await fetch("/api/v1/programs/departments");
+  const response = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/programs/access");
     return { status: response.status, body: await response.json() };
   });
-  expect(departmentsResponse.status).toBe(200);
-  const departmentsBody = departmentsResponse.body as {
-    data: { departments: DepartmentScope[] };
+  expect(response.status).toBe(200);
+  const body = response.body as {
+    data: { hasManagementCapability: boolean };
   };
-  const departments = departmentsBody.data.departments;
-  if (
-    departments.some(
-      ({ capabilities }) =>
-        capabilities.manage ||
-        capabilities.publish ||
-        capabilities.module_configure === true
-    )
-  ) {
-    return true;
-  }
-
-  for (const { department_id } of departments) {
-    const programsResponse = await page.evaluate(async (departmentId) => {
-      const response = await fetch(
-        `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`
-      );
-      return { status: response.status, body: await response.json() };
-    }, department_id);
-    expect(programsResponse.status).toBe(200);
-    const programsBody = programsResponse.body as {
-      data: { programs: ProgramScope[] };
-    };
-    if (
-      programsBody.data.programs.some(
-        ({ capabilities }) =>
-          capabilities.manage ||
-          capabilities.publish ||
-          capabilities.leader_assign === true
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return body.data.hasManagementCapability;
 }
 
 function required(name: string, value: string | undefined): string {
@@ -169,8 +119,8 @@ test.describe("PUI-01 Programs boundary", () => {
       page.getByRole("heading", { name: COPY.participantMode })
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: COPY.participantMode })
-    ).toHaveAttribute("aria-selected", "true");
+      page.locator("#programs-mode-panel")
+    ).toBeVisible();
     await expect(page.getByText(COPY.pageLead)).toBeVisible();
     const hasManagement = await hasProjectedManagementCapability(page);
     expect(
@@ -199,8 +149,8 @@ test.describe("PUI-01 Programs boundary", () => {
       page.getByRole("heading", { name: COPY.participantMode })
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: COPY.participantMode })
-    ).toHaveAttribute("aria-selected", "true");
+      page.locator("#programs-mode-panel")
+    ).toBeVisible();
   });
 
   test("member enters Participant mode without a management gateway", async ({
@@ -240,10 +190,10 @@ test.describe("PUI-01 Programs boundary", () => {
     await expect(
       page.getByRole("status").getByText(COPY.directProgramIntent)
     ).toBeVisible();
-    const panel = page.getByRole("tabpanel");
+    const panel = page.locator("#programs-mode-panel");
     await expect(panel).toHaveAttribute(
-      "aria-labelledby",
-      "programs-participant-tab"
+      "role",
+      "region"
     );
 
     await page.getByRole("button", { name: COPY.enterManagement }).click();
@@ -257,6 +207,24 @@ test.describe("PUI-01 Programs boundary", () => {
       "aria-labelledby",
       "programs-management-tab"
     );
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/programs\?program=e2e-intent#overview$/u);
+    await expect(
+      page.locator("#programs-mode-panel")
+    ).toBeVisible();
+
+    await page.goForward();
+    await expect(page).toHaveURL(
+      /\/programs\?mode=management&program=e2e-intent#overview$/u
+    );
+    await expect(
+      page.getByRole("tab", { name: COPY.managementMode })
+    ).toHaveAttribute("aria-selected", "true");
+    await page.reload();
+    await expect(
+      page.getByRole("tab", { name: COPY.managementMode })
+    ).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: COPY.participantMode }).click();
     await expect(page).toHaveURL(/\/programs\?program=e2e-intent#overview$/u);
@@ -280,5 +248,34 @@ test.describe("PUI-01 Programs boundary", () => {
     ).toBeVisible();
     await expect(page).toHaveURL(/\/programs\?mode=sideways#overview$/u);
     await expect(page.getByRole("link", { name: "返回首頁" })).toHaveCount(0);
+  });
+
+  test("restores a direct Programs intent after session expiry and login", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management&program=e2e-intent#overview");
+    await page.context().clearCookies();
+    await page.reload();
+
+    await expect(page).toHaveURL(/\/$/u);
+    await page.locator('input[autocomplete="username"]').fill(
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER)
+    );
+    await page.locator('input[autocomplete="current-password"]').fill(
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.getByRole("button", { name: COPY.login }).click();
+
+    await expect(page).toHaveURL(
+      /\/programs\?mode=management&program=e2e-intent#overview$/u
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.managementMode })
+    ).toBeVisible();
   });
 });

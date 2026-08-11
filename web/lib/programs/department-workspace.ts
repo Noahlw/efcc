@@ -61,6 +61,12 @@ export type ProgramView = ProgramRow & {
   capabilities: ProgramCapabilities;
 };
 
+export interface ManagementAccessView {
+  hasManagementCapability: boolean;
+  departmentScopes: number;
+  programScopes: number;
+}
+
 export interface CreateDepartmentCommand {
   code: string;
   name: string;
@@ -356,6 +362,60 @@ export class DepartmentWorkspace {
   async listDepartments(ctx: AuthorizationContext): Promise<DepartmentView[]> {
     const rows = await this.store.listDepartments();
     return Promise.all(rows.map((row) => this.departmentView(ctx, row)));
+  }
+
+  async getManagementAccess(
+    ctx: AuthorizationContext
+  ): Promise<ManagementAccessView> {
+    const departments = await this.listDepartments(ctx);
+    const departmentScopes = departments.filter(
+      ({ capabilities }) =>
+        capabilities.manage ||
+        capabilities.publish ||
+        capabilities.module_configure
+    ).length;
+
+    // A department-level grant is enough to expose the entry. Avoid scanning
+    // every Program row for broad operators; the workspace will re-check the
+    // exact scope when the downstream management slice is opened.
+    if (departmentScopes > 0) {
+      return {
+        hasManagementCapability: true,
+        departmentScopes,
+        programScopes: 0,
+      };
+    }
+
+    const programRows = (
+      await Promise.all(
+        departments.map(async ({ department_id }) => {
+          if (!(await this.isModuleEnabled(department_id))) {
+            return [];
+          }
+          return this.store.listProgramAccessRows(department_id);
+        })
+      )
+    ).flat();
+
+    const programScopes = (
+      await Promise.all(
+        programRows.map(async ({ department_id, program_id }) => {
+          const scope = { departmentId: department_id, programId: program_id };
+          const [manage, publish, leaderAssign] = await Promise.all([
+            this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, scope),
+            this.authorizer.can(ctx, CAPABILITY.PROGRAM_PUBLISH, scope),
+            this.authorizer.can(ctx, CAPABILITY.PROGRAM_LEADER_ASSIGN, scope),
+          ]);
+          return manage || publish || leaderAssign;
+        })
+      )
+    ).filter(Boolean).length;
+
+    return {
+      hasManagementCapability: programScopes > 0,
+      departmentScopes,
+      programScopes,
+    };
   }
 
   async getDepartment(

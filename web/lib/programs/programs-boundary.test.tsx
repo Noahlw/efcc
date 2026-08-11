@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { COPY } from "@/lib/copy";
 import { RpcError } from "@/lib/api";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  Program,
+  ProgramsManagementAccess,
+} from "@/lib/programs/program-api";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
 import {
   buildProgramsHref,
@@ -16,8 +20,7 @@ import { projectManagementAccess } from "@/lib/programs/programs-access";
 const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   return {
-    listDepartments: vi.fn(),
-    listPrograms: vi.fn(),
+    getManagementAccess: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
     replace: router.replace,
@@ -26,8 +29,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/programs/program-api", () => ({
-  listDepartments: mocks.listDepartments,
-  listPrograms: mocks.listPrograms,
+  getManagementAccess: mocks.getManagementAccess,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -65,6 +67,17 @@ const program = (capabilities: Program["capabilities"]): Program => ({
   capabilities,
 });
 
+const managementAccess = (
+  hasManagementCapability: boolean,
+  scope: "department" | "program" | "none" = hasManagementCapability
+    ? "department"
+    : "none"
+): ProgramsManagementAccess => ({
+  hasManagementCapability,
+  departmentScopes: scope === "department" ? 1 : 0,
+  programScopes: scope === "program" ? 1 : 0,
+});
+
 describe("Programs intent", () => {
   test("defaults to participant mode and preserves a valid Program intent", () => {
     expect(parseProgramsIntent("?program=program-1#overview")).toEqual({
@@ -94,6 +107,15 @@ describe("Programs intent", () => {
     ).toBe("/programs?mode=management&program=program-1");
     expect(parseProgramsIntent("?mode=sideways").malformed).toBe(true);
     expect(parseProgramsIntent("?program=bad%2Fid").malformed).toBe(true);
+    expect(parseProgramsIntent("?mode=participant&mode=management").malformed).toBe(
+      true
+    );
+    expect(parseProgramsIntent("?program=program-1&program=program-2").malformed).toBe(
+      true
+    );
+    expect(
+      parseProgramsIntent("?program=program-1&programId=program-1").malformed
+    ).toBe(true);
   });
 });
 
@@ -141,8 +163,7 @@ describe("Programs capability projection", () => {
 beforeEach(() => {
   window.history.replaceState({}, "", "/programs");
   sessionStorage.clear();
-  mocks.listDepartments.mockReset();
-  mocks.listPrograms.mockReset();
+  mocks.getManagementAccess.mockReset();
   mocks.pathname.mockReturnValue("/programs");
   mocks.push.mockReset();
   mocks.replace.mockReset();
@@ -156,49 +177,37 @@ afterEach(() => {
     [
       "Member",
       false,
-      { manage: false, publish: false, module_configure: false },
-      { manage: false, publish: false, enroll: true, leader_assign: false },
     ],
     [
       "Program Leader",
       true,
-      { manage: false, publish: false, module_configure: false },
-      { manage: true, publish: true, enroll: false, leader_assign: false },
     ],
     [
       "Department Manager",
       true,
-      { manage: true, publish: true, module_configure: true },
-      { manage: false, publish: false, enroll: false, leader_assign: false },
     ],
     [
       "Staff",
       true,
-      { manage: true, publish: true, module_configure: true },
-      { manage: false, publish: false, enroll: false, leader_assign: false },
     ],
     [
       "Admin",
       true,
-      { manage: true, publish: true, module_configure: true },
-      { manage: false, publish: false, enroll: false, leader_assign: false },
     ],
-  ] as const)("%s enters Participant mode by default", async (_account, hasManagement, departmentCapabilities, programCapabilities) => {
-    mocks.listDepartments.mockResolvedValue({
-      departments: [department(departmentCapabilities)],
-    });
-    mocks.listPrograms.mockResolvedValue({
-      programs: [program(programCapabilities)],
-    });
+  ] as const)("%s enters Participant mode by default", async (_account, hasManagement) => {
+    mocks.getManagementAccess.mockResolvedValue(
+      managementAccess(hasManagement)
+    );
 
     render(<ProgramsBoundary />);
 
     expect(
       await screen.findByRole("heading", { name: "參與者模式" })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: "參與者模式" })
-    ).toHaveAttribute("aria-selected", "true");
+    expect(document.getElementById("programs-mode-panel")).toHaveAttribute(
+      "role",
+      "region"
+    );
     if (hasManagement) {
       expect(
         screen.getByRole("button", { name: "進入管理模式" })
@@ -212,21 +221,7 @@ afterEach(() => {
 
 describe("Programs boundary", () => {
   test("opens in participant mode and hides management without a scoped capability", async () => {
-    mocks.listDepartments.mockResolvedValue({
-      departments: [
-        department({ manage: false, publish: false, module_configure: false }),
-      ],
-    });
-    mocks.listPrograms.mockResolvedValue({
-      programs: [
-        program({
-          manage: false,
-          publish: false,
-          enroll: true,
-          leader_assign: false,
-        }),
-      ],
-    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
 
     render(<ProgramsBoundary />);
 
@@ -245,11 +240,7 @@ describe("Programs boundary", () => {
       "",
       "/programs?program=program-1#overview"
     );
-    mocks.listDepartments.mockResolvedValue({
-      departments: [
-        department({ manage: true, publish: true, module_configure: true }),
-      ],
-    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
 
     render(<ProgramsBoundary />);
 
@@ -257,8 +248,8 @@ describe("Programs boundary", () => {
       name: "進入管理模式",
     });
     expect(
-      screen.getByRole("tab", { name: "參與者模式" })
-    ).toHaveAttribute("aria-selected", "true");
+      screen.queryByRole("tab", { name: "參與者模式" })
+    ).not.toBeInTheDocument();
 
     await userEvent.click(managementButton);
 
@@ -280,17 +271,38 @@ describe("Programs boundary", () => {
     await userEvent.click(
       screen.getByRole("tab", { name: "參與者模式" })
     );
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "參與者模式" })
-    );
+    expect(
+      await screen.findByRole("heading", { name: COPY.programs.participantMode })
+    ).toBeInTheDocument();
+  });
+
+  test("supports keyboard mode entry and return", async () => {
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
+    const user = userEvent.setup();
+    render(<ProgramsBoundary />);
+
+    const managementButton = await screen.findByRole("button", {
+      name: COPY.programs.enterManagement,
+    });
+    managementButton.focus();
+    await user.keyboard("{Enter}");
+
+    expect(
+      await screen.findByRole("tab", { name: COPY.programs.managementMode })
+    ).toHaveAttribute("aria-selected", "true");
+
+    const participantTab = screen.getByRole("tab", {
+      name: COPY.programs.participantMode,
+    });
+    participantTab.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      await screen.findByRole("heading", { name: COPY.programs.participantMode })
+    ).toBeInTheDocument();
   });
 
   test("follows same-route App Router query changes and restores focus on Back", async () => {
-    mocks.listDepartments.mockResolvedValue({
-      departments: [
-        department({ manage: true, publish: true, module_configure: true }),
-      ],
-    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const { rerender } = render(<ProgramsBoundary />);
 
     await screen.findByRole("heading", { name: "參與者模式" });
@@ -308,21 +320,15 @@ describe("Programs boundary", () => {
     window.history.pushState({}, "", "/programs");
     rerender(<ProgramsBoundary />);
     expect(
-      await screen.findByRole("tab", { name: "參與者模式" })
-    ).toHaveAttribute("aria-selected", "true");
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "參與者模式" })
-    );
+      await screen.findByRole("heading", { name: "參與者模式" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
 
   test("preserves hash-only Program intent on route synchronization", async () => {
     window.history.replaceState({}, "", "/programs#overview");
-    mocks.listDepartments.mockResolvedValue({
-      departments: [
-        department({ manage: true, publish: true, module_configure: true }),
-      ],
-    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const { rerender } = render(<ProgramsBoundary />);
 
     const managementButton = await screen.findByRole("button", {
@@ -338,9 +344,9 @@ describe("Programs boundary", () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
   test("keeps management data and tabs out of the loading frame", () => {
-    const { promise } = Promise.withResolvers<{ departments: Department[] }>();
+    const { promise } = Promise.withResolvers<ProgramsManagementAccess>();
     window.history.replaceState({}, "", "/programs?mode=management");
-    mocks.listDepartments.mockReturnValue(promise);
+    mocks.getManagementAccess.mockReturnValue(promise);
     render(<ProgramsBoundary />);
 
     expect(screen.getByText("正在確認管理權限…")).toBeInTheDocument();
@@ -352,8 +358,8 @@ describe("Programs boundary", () => {
   });
 
   test("ignores stale StrictMode access results after a fresh run", async () => {
-    const stale = Promise.withResolvers<{ departments: Department[] }>();
-    mocks.listDepartments.mockReturnValue(stale.promise);
+    const stale = Promise.withResolvers<ProgramsManagementAccess>();
+    mocks.getManagementAccess.mockReturnValue(stale.promise);
 
     const { rerender } = render(
       <StrictMode>
@@ -361,11 +367,7 @@ describe("Programs boundary", () => {
       </StrictMode>
     );
 
-    mocks.listDepartments.mockResolvedValue({
-      departments: [
-        department({ manage: true, publish: true, module_configure: true }),
-      ],
-    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     rerender(
       <StrictMode>
         <ProgramsBoundary key="fresh" />
@@ -375,7 +377,7 @@ describe("Programs boundary", () => {
     const managementEntry = await screen.findByRole("button", {
       name: "進入管理模式",
     });
-    stale.resolve({ departments: [] });
+    stale.resolve(managementAccess(false));
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "進入管理模式" })
@@ -385,7 +387,7 @@ describe("Programs boundary", () => {
 
   test("contains no-scope and forbidden states inside Programs", async () => {
     window.history.replaceState({}, "", "/programs?mode=management");
-    mocks.listDepartments.mockResolvedValue({ departments: [] });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
 
     const { unmount } = render(<ProgramsBoundary />);
     expect(
@@ -405,7 +407,7 @@ describe("Programs boundary", () => {
     expect(mocks.push).not.toHaveBeenCalled();
     unmount();
 
-    mocks.listDepartments.mockRejectedValue(
+    mocks.getManagementAccess.mockRejectedValue(
       new RpcError({ code: "FORBIDDEN", status: 403 })
     );
     mocks.replace.mockReset();
@@ -439,9 +441,9 @@ describe("Programs boundary", () => {
   });
 
   test("moves focus to loading status when retry replaces an error", async () => {
-    const pending = Promise.withResolvers<{ departments: Department[] }>();
+    const pending = Promise.withResolvers<ProgramsManagementAccess>();
     window.history.replaceState({}, "", "/programs?mode=management");
-    mocks.listDepartments
+    mocks.getManagementAccess
       .mockRejectedValueOnce(new Error("offline"))
       .mockReturnValueOnce(pending.promise);
     render(<ProgramsBoundary />);
@@ -458,7 +460,7 @@ describe("Programs boundary", () => {
   });
 
   test("shows participant-mode transport failures with a retry action", async () => {
-    mocks.listDepartments.mockRejectedValue(new Error("offline"));
+    mocks.getManagementAccess.mockRejectedValue(new Error("offline"));
     render(<ProgramsBoundary />);
 
     expect(
@@ -468,9 +470,7 @@ describe("Programs boundary", () => {
       screen.getByRole("button", { name: COPY.programs.retryAccess })
     ).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("tab", { name: COPY.programs.participantMode })
-    );
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: COPY.error.unavailable })
     ).toBeInTheDocument();
@@ -480,7 +480,7 @@ describe("Programs boundary", () => {
   });
 
   test("keeps default participant FORBIDDEN inside Programs with safe recovery", async () => {
-    mocks.listDepartments.mockRejectedValue(
+    mocks.getManagementAccess.mockRejectedValue(
       new RpcError({ code: "FORBIDDEN", status: 403 })
     );
     render(<ProgramsBoundary />);
@@ -500,7 +500,7 @@ describe("Programs boundary", () => {
       screen.getByRole("button", { name: COPY.programs.retryAccess })
     );
     await waitFor(() => {
-      expect(mocks.listDepartments).toHaveBeenCalledTimes(2);
+      expect(mocks.getManagementAccess).toHaveBeenCalledTimes(2);
     });
     expect(
       await screen.findByRole("heading", { name: COPY.error.forbidden })
@@ -516,7 +516,7 @@ describe("Programs boundary", () => {
     expect(
       await screen.findByRole("heading", { name: "連結資料無效" })
     ).toBeInTheDocument();
-    expect(mocks.listDepartments).not.toHaveBeenCalled();
+    expect(mocks.getManagementAccess).not.toHaveBeenCalled();
 
     const malformedPanel = screen
       .getAllByRole("region", { name: COPY.programs.pageTitle })
@@ -530,6 +530,7 @@ describe("Programs boundary", () => {
     );
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.backToEntry })
     );
@@ -539,9 +540,9 @@ describe("Programs boundary", () => {
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(document.activeElement).toBe(
-        screen.getByRole("tab", { name: "參與者模式" })
-      );
+      expect(
+        screen.getByRole("heading", { name: COPY.programs.participantMode })
+      ).toBeInTheDocument();
     });
   });
   test("stores the full Programs URL before expired-session recovery", async () => {
@@ -550,7 +551,7 @@ describe("Programs boundary", () => {
       "",
       "/programs?mode=management&program=program-1#overview"
     );
-    mocks.listDepartments.mockRejectedValue(
+    mocks.getManagementAccess.mockRejectedValue(
       new RpcError({ code: "AUTH_REQUIRED", status: 401 })
     );
 

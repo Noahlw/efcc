@@ -354,6 +354,22 @@ export async function handleListDepartments(
   return jsonResponse(200, { departments: rows }, requestId);
 }
 
+/** GET /api/v1/programs/access — capability-only Programs entry projection. */
+export async function handleListManagementAccess(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const { workspace } = await getModule(env);
+  const access = await workspace.getManagementAccess(ctxFrom(auth.account));
+  return jsonResponse(200, access, requestId);
+}
+
 /** GET /api/v1/programs/departments/:id */
 export async function handleGetDepartment(
   request: Request,

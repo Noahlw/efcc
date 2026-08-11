@@ -821,17 +821,6 @@
   background: var(--surface);
 }
 
-.modeSwitchSingle {
-  width: fit-content;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-}
-
-.modeSwitchSingle .modeButton {
-  padding-inline: 0.875rem;
-}
-
 .modeButton {
   min-height: 44px;
   padding: 0.625rem 1rem;
@@ -850,7 +839,7 @@
 }
 
 .modeButton[aria-selected="true"] {
-  color: #ffffff;
+  color: var(--surface-raised);
   background: var(--accent);
 }
 
@@ -958,10 +947,6 @@
 
   .modeSwitch {
     width: 100%;
-  }
-
-  .modeSwitchSingle {
-    width: fit-content;
   }
 
   .modeButton {

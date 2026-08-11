@@ -22,9 +22,12 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const query = hashIndex === -1 ? search : search.slice(0, hashIndex);
   const rawHash = hashIndex === -1 ? null : search.slice(hashIndex);
   const params = new URLSearchParams(query);
-  const rawMode = params.get("mode");
-  const rawProgram = params.get("program");
-  const rawProgramId = params.get("programId");
+  const rawModes = params.getAll("mode");
+  const rawPrograms = params.getAll("program");
+  const rawProgramIds = params.getAll("programId");
+  const rawMode = rawModes[0] ?? null;
+  const rawProgram = rawPrograms[0] ?? null;
+  const rawProgramId = rawProgramIds[0] ?? null;
 
   const mode: ProgramsMode = rawMode === "management" ? "management" : "participant";
   const malformedMode =
@@ -33,6 +36,11 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     rawMode !== "management";
   const hasConflictingProgram =
     rawProgram !== null && rawProgramId !== null && rawProgram !== rawProgramId;
+  const hasDuplicateIntent =
+    rawModes.length > 1 ||
+    rawPrograms.length > 1 ||
+    rawProgramIds.length > 1 ||
+    (rawProgram !== null && rawProgramId !== null);
   const suppliedProgram = rawProgram ?? rawProgramId;
   const programId =
     suppliedProgram === null || suppliedProgram === ""
@@ -49,6 +57,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     malformed:
       malformedMode ||
       hasConflictingProgram ||
+      hasDuplicateIntent ||
       (suppliedProgram !== null && programId === null) ||
       (rawHash !== null && hash === null),
   };
