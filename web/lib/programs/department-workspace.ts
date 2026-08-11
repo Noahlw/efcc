@@ -1542,13 +1542,6 @@ export class DepartmentWorkspace {
       if (!isPendingEnrollmentConstraint(error)) {
         throw error;
       }
-      const pending = await this.store.findPendingRequestByMember(
-        programId,
-        ctx.actorUserId
-      );
-      if (!pending) {
-        throw error;
-      }
       await this.audit(
         ctx,
         "ENROLLMENT_REQUEST_CREATE",
