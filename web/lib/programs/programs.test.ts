@@ -194,7 +194,13 @@ async function createProgram(
   );
   assert.strictEqual(res.status, 201);
   const result = (await assertCorrelated(res)) as {
-    data: { program: { program_id: string; name: string; check_in_token: string | null } };
+    data: {
+      program: {
+        program_id: string;
+        name: string;
+        check_in_token: string | null;
+      };
+    };
   };
   return result.data.program;
 }
@@ -416,7 +422,11 @@ describe("PRG-01: departments", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
           "Content-Type": "application/json",
         },
-        body: { code: "STRICT-DEPT-1", name: "Strict Dept", lifecycle: "Published" },
+        body: {
+          code: "STRICT-DEPT-1",
+          name: "Strict Dept",
+          lifecycle: "Published",
+        },
       }),
       testEnv()
     );
@@ -1936,7 +1946,11 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(hit.exception?.new_start_time, "08:30");
     const miss = after.find((e) => e.starts_at !== before[0].starts_at);
     assert.ok(miss, "second materialized event must still be listed");
-    assert.strictEqual(miss.exception, null, "unrelated event carries no exception");
+    assert.strictEqual(
+      miss.exception,
+      null,
+      "unrelated event carries no exception"
+    );
   });
 
   test("duplicate schedule exception returns 409 CONFLICT", async () => {
@@ -2812,14 +2826,7 @@ describe("PRG-03: enrollment requests", () => {
            request_id, status, enrolled_at, created_by, created_at)
          VALUES (?, ?, 'U003', ?, 'Active', ?, ?, ?)`
       )
-      .bind(
-        crypto.randomUUID(),
-        programId,
-        otherRequestId,
-        now,
-        "U002",
-        now
-      )
+      .bind(crypto.randomUUID(), programId, otherRequestId, now, "U002", now)
       .run();
     const res = await decideRequest(
       adminAccess,
@@ -2883,16 +2890,16 @@ describe("PRG-03: enrollment requests", () => {
       ),
       testEnv()
     );
-     assert.strictEqual(res.status, 200);
-     const header = res.headers.get("X-Request-Id");
-     assert.ok(header);
-     assert.notStrictEqual(
-       header,
-       idempotencyKey,
-       "X-Request-Id must not echo the caller-supplied Idempotency-Key"
-     );
-     const body = (await res.json()) as { requestId?: string };
-     assert.strictEqual(body.requestId, header);
+    assert.strictEqual(res.status, 200);
+    const header = res.headers.get("X-Request-Id");
+    assert.ok(header);
+    assert.notStrictEqual(
+      header,
+      idempotencyKey,
+      "X-Request-Id must not echo the caller-supplied Idempotency-Key"
+    );
+    const body = (await res.json()) as { requestId?: string };
+    assert.strictEqual(body.requestId, header);
   });
 });
 
@@ -3161,12 +3168,14 @@ describe("PRG-03: enrollments", () => {
   });
 
   test("REQ-9 decide-on-decided is a quiet 200 with a DUPLICATE audit row", async () => {
-    const programId = (await createProgram(adminAccess, deptId, {
-      name: "Decide Repeat Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
-    })).program_id;
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Decide Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
     const request = await submitRequest(memberAccess, programId);
     const first = await decideRequest(
       adminAccess,
@@ -3186,7 +3195,11 @@ describe("PRG-03: enrollments", () => {
       .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
       .bind(request.request_id)
       .first<{ status: string }>();
-    assert.strictEqual(row?.status, "Approved", "request state must not change");
+    assert.strictEqual(
+      row?.status,
+      "Approved",
+      "request state must not change"
+    );
     const audit = await testDb()
       .prepare(
         `SELECT outcome FROM audit_events
@@ -3199,12 +3212,14 @@ describe("PRG-03: enrollments", () => {
   });
 
   test("REQ-10 withdraw-on-withdrawn is a quiet 200 with a DUPLICATE audit row", async () => {
-    const programId = (await createProgram(adminAccess, deptId, {
-      name: "Withdraw Repeat Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
-    })).program_id;
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Withdraw Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
     const request = await submitRequest(memberAccess, programId);
     const first = await worker.fetch(
       programsRequest(
@@ -3259,11 +3274,13 @@ describe("PRG-03: enrollments", () => {
   });
 
   test("EVT-9 cancel-on-cancelled is a quiet 200 with a DUPLICATE audit row", async () => {
-    const programId = (await createProgram(adminAccess, deptId, {
-      name: "Cancel Repeat Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-    })).program_id;
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Cancel Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+      })
+    ).program_id;
     const created = await worker.fetch(
       programsRequest(`/api/v1/programs/${programId}/events`, {
         method: "POST",
@@ -3287,28 +3304,34 @@ describe("PRG-03: enrollments", () => {
     };
     assert.strictEqual(event.status, "Active");
     const first = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "repeat-cancel" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "repeat-cancel" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(first.status, 200);
     const again = await worker.fetch(
-      programsRequest(`/api/v1/programs/${programId}/events/${event.event_id}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { reason: "repeat-cancel" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "repeat-cancel" },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(again.status, 200);
@@ -3348,12 +3371,14 @@ describe("PRG-03: enrollments", () => {
   });
 
   test("REQ-11 cancel-on-cancelled enrollment is a quiet 200 with a DUPLICATE audit row", async () => {
-    const programId = (await createProgram(adminAccess, deptId, {
-      name: "Enrollment Cancel Repeat Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
-    })).program_id;
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Enrollment Cancel Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
     const request = await submitRequest(memberAccess, programId);
     const decided = await decideRequest(
       adminAccess,
@@ -3928,5 +3953,225 @@ describe("PRG-04: program leaders", () => {
         );
       }
     }
+  });
+});
+
+describe("PUI-02: participant catalog", () => {
+  const catalogRequest = (access: string) =>
+    worker.fetch(
+      programsRequest("/api/v1/programs/catalog", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        },
+      }),
+      testEnv()
+    );
+
+  interface CatalogEntry {
+    department: { department_id: string };
+    programs: {
+      program_id: string;
+      name: string;
+      lifecycle: string;
+      discoverability: string;
+    }[];
+  }
+
+  const catalogOf = async (
+    access: string
+  ): Promise<{ data: { catalog: CatalogEntry[] } }> => {
+    const res = await catalogRequest(access);
+    assert.strictEqual(res.status, 200);
+    return (await assertCorrelated(res)) as {
+      data: { catalog: CatalogEntry[] };
+    };
+  };
+
+  test("requires a cookie-authenticated session", async () => {
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/catalog", {
+        headers: { Origin: HOST },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 401);
+    const body = await problemOf(res);
+    assert.strictEqual(body.code, "AUTH_REQUIRED");
+  });
+
+  test("member sees Listed rows across lifecycles as status, never Unlisted; no check-in secrets or DTO breadth", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-LISTED",
+      name: "PUI-02 Listed Dept",
+    });
+    await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Draft Listed",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Active Listed",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const archived = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Archived Listed",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const promote = await worker.fetch(
+      programsRequest(`/api/v1/programs/${archived.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(promote.status, 200);
+    const archive = await worker.fetch(
+      programsRequest(`/api/v1/programs/${archived.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(archive.status, 200);
+    await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Unlisted Hidden",
+      behavior_type: "Recurring",
+      discoverability: "Unlisted",
+    });
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await catalogOf(memberAccess);
+    const entry = body.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(entry, "department with visible Programs must appear");
+    const names = entry.programs.map((program) => program.name);
+    assert.ok(names.includes("PUI-02 Draft Listed"));
+    assert.ok(names.includes("PUI-02 Active Listed"));
+    assert.ok(names.includes("PUI-02 Archived Listed"));
+    assert.ok(!names.includes("PUI-02 Unlisted Hidden"));
+    const byName = new Map(
+      entry.programs.map((program) => [program.name, program.lifecycle])
+    );
+    assert.strictEqual(byName.get("PUI-02 Draft Listed"), "Draft");
+    assert.strictEqual(byName.get("PUI-02 Active Listed"), "Active");
+    assert.strictEqual(byName.get("PUI-02 Archived Listed"), "Archived");
+    const raw = JSON.stringify(body.data);
+    assert.ok(
+      !raw.includes("check_in_token"),
+      "check-in token must be stripped"
+    );
+    assert.ok(
+      !raw.includes("check_in_opens_at_minutes_before_start"),
+      "check-in window secret must be stripped"
+    );
+    assert.ok(
+      !raw.includes("check_in_closes_at_minutes_after_end"),
+      "check-in window secret must be stripped"
+    );
+    assert.ok(
+      !raw.includes("capabilities"),
+      "capability DTO breadth must be stripped"
+    );
+  });
+
+  test("Unlisted rows appear only through scoped program.manage effective access", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-UNLISTED",
+      name: "PUI-02 Unlisted Dept",
+    });
+    await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Listed",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const unlisted = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Unlisted",
+      behavior_type: "Recurring",
+      discoverability: "Unlisted",
+    });
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const memberBody = await catalogOf(memberAccess);
+    const memberEntry = memberBody.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(
+      memberEntry,
+      "department with a visible Listed Program must appear"
+    );
+    const memberNames = memberEntry.programs.map((program) => program.name);
+    assert.ok(memberNames.includes("PUI-02 Listed"));
+    assert.ok(!memberNames.includes("PUI-02 Unlisted"));
+
+    const grant = await assignLeader(adminAccess, unlisted.program_id, "U002");
+    assert.strictEqual(grant.status, 200);
+    const leaderBody = await catalogOf(memberAccess);
+    const leaderEntry = leaderBody.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(
+      leaderEntry,
+      "department must remain visible for the scoped leader"
+    );
+    const leaderNames = leaderEntry.programs.map((program) => program.name);
+    assert.ok(
+      leaderNames.includes("PUI-02 Unlisted"),
+      "scoped program.manage must expose the Unlisted row"
+    );
+    assert.ok(leaderNames.includes("PUI-02 Listed"));
+  });
+
+  test("module-disabled Departments are excluded from the catalog", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-DISABLED",
+      name: "PUI-02 Disabled Dept",
+    });
+    await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Disabled Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const disable = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${dept.department_id}/modules/program_catalog/disable`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(disable.status, 200);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await catalogOf(memberAccess);
+    assert.ok(
+      !body.data.catalog.some(
+        (candidate) => candidate.department.department_id === dept.department_id
+      ),
+      "module-disabled Department must be omitted"
+    );
   });
 });

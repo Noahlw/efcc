@@ -80,6 +80,40 @@ export interface DepartmentDetail {
   modules: DepartmentModule[];
 }
 
+/**
+ * Narrow participant directory projection (PUI-02 / Issue #246): the same
+ * wire contract as the Worker catalog endpoint. Check-in secrets, capability
+ * booleans, and manager DTO breadth never reach the browser here.
+ */
+export interface ProgramSummary {
+  program_id: string;
+  department_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  behavior_type: "Recurring" | "OneOff";
+  lifecycle: "Draft" | "Active" | "Archived";
+  discoverability: "Listed" | "Unlisted";
+  enrollment_mode: "MemberRequest" | "ManagerOnly";
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepartmentSummary {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  lifecycle: "Draft" | "PendingDevelopment" | "Active" | "Archived";
+  display_order: number;
+}
+
+export interface ParticipantCatalogEntry {
+  department: DepartmentSummary;
+  programs: ProgramSummary[];
+}
+
 export type { ProgramsManagementAccess } from "./programs-access";
 
 export interface DepartmentInput {
@@ -416,6 +450,13 @@ export function listDepartments(): Promise<{
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   return programsFetch("/api/v1/programs/access", "GET");
+}
+
+/** GET /api/v1/programs/catalog — narrow participant directory projection. */
+export function listParticipantCatalog(): Promise<{
+  catalog: ParticipantCatalogEntry[];
+}> {
+  return programsFetch("/api/v1/programs/catalog", "GET");
 }
 
 /** POST /api/v1/programs/departments */

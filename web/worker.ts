@@ -377,6 +377,7 @@ export default {
         handleCreateDepartment,
         handleListDepartments,
         handleListManagementAccess,
+        handleListParticipantCatalog,
         handleGetDepartment,
         handleUpdateDepartment,
         handleCreateProgram,
@@ -411,6 +412,12 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementAccess(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/catalog" &&
+        request.method === "GET"
+      ) {
+        return handleListParticipantCatalog(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/departments" &&

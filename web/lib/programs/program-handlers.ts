@@ -370,6 +370,26 @@ export async function handleListManagementAccess(
   return jsonResponse(200, access, requestId);
 }
 
+/**
+ * GET /api/v1/programs/catalog — narrow participant Programs directory
+ * (PUI-02 / Issue #246). Server projects visibility and strips check-in
+ * secrets; the browser never sees manager DTO breadth.
+ */
+export async function handleListParticipantCatalog(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const { workspace } = await getModule(env);
+  const catalog = await workspace.listParticipantCatalog(ctxFrom(auth.account));
+  return jsonResponse(200, { catalog }, requestId);
+}
+
 /** GET /api/v1/programs/departments/:id */
 export async function handleGetDepartment(
   request: Request,

@@ -29,6 +29,9 @@ import type {
   EnrollmentRow,
   EventRow,
   GenerateResult,
+  ProgramBehaviorType,
+  ProgramDiscoverability,
+  ProgramEnrollmentMode,
   ProgramLifecycle,
   DepartmentModuleRow,
   MemberOptionRow,
@@ -65,6 +68,41 @@ export interface ManagementAccessView {
   hasManagementCapability: boolean;
   departmentScopes: number;
   programScopes: number;
+}
+
+/**
+ * Narrow participant directory projection (PUI-02 / Issue #246). Deliberately
+ * omits the manager-facing DTO breadth: check-in secrets, capability booleans,
+ * and audit/operator columns. Lifecycle is surfaced as a status field; the
+ * server never filters Draft/Archived silently.
+ */
+export interface ProgramSummary {
+  program_id: string;
+  department_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  behavior_type: ProgramBehaviorType;
+  lifecycle: ProgramLifecycle;
+  discoverability: ProgramDiscoverability;
+  enrollment_mode: ProgramEnrollmentMode;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepartmentSummary {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  lifecycle: DepartmentLifecycle;
+  display_order: number;
+}
+
+export interface ParticipantCatalogEntry {
+  department: DepartmentSummary;
+  programs: ProgramSummary[];
 }
 
 export interface CreateDepartmentCommand {
@@ -549,6 +587,79 @@ export class DepartmentWorkspace {
       return null;
     }
     return { ...row, capabilities };
+  }
+
+  /**
+   * Participant Programs directory (PUI-02 / Issue #246): narrow, grouped
+   * catalog projection over production D1. Visibility keeps the incumbent
+   * server policy — Listed rows are public, Unlisted rows appear only through
+   * scoped `program.manage` effective access — and module-disabled Departments
+   * are excluded. Lifecycle is surfaced as status; Draft/Archived rows are
+   * never silently filtered. Departments with zero visible Programs are
+   * omitted so the landing's empty state means a truly empty catalog.
+   */
+  async listParticipantCatalog(
+    ctx: AuthorizationContext
+  ): Promise<ParticipantCatalogEntry[]> {
+    const departments = await this.store.listDepartments();
+    const entries = await Promise.all(
+      departments.map(async (department) => {
+        if (!(await this.isModuleEnabled(department.department_id))) {
+          return null;
+        }
+        const rows = await this.store.listProgramsForDepartment(
+          department.department_id
+        );
+        const visible = (
+          await Promise.all(
+            rows.map(async (row) => ({
+              row,
+              capabilities: await this.programCapabilities(ctx, row),
+            }))
+          )
+        )
+          .filter(
+            ({ row, capabilities }) =>
+              row.discoverability === "Listed" || capabilities.manage
+          )
+          .map(({ row }) => this.programSummary(row));
+        if (visible.length === 0) {
+          return null;
+        }
+        return { department: this.departmentSummary(department), programs: visible };
+      })
+    );
+    return entries.filter(
+      (entry): entry is ParticipantCatalogEntry => entry !== null
+    );
+  }
+
+  private programSummary(row: ProgramRow): ProgramSummary {
+    return {
+      program_id: row.program_id,
+      department_id: row.department_id,
+      name: row.name,
+      description: row.description,
+      category: row.category,
+      behavior_type: row.behavior_type,
+      lifecycle: row.lifecycle,
+      discoverability: row.discoverability,
+      enrollment_mode: row.enrollment_mode,
+      display_order: row.display_order,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private departmentSummary(row: DepartmentRow): DepartmentSummary {
+    return {
+      department_id: row.department_id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      lifecycle: row.lifecycle,
+      display_order: row.display_order,
+    };
   }
 
   async updateProgram(

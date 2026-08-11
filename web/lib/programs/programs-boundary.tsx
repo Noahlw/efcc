@@ -11,6 +11,7 @@ import { getManagementAccess } from "@/lib/programs/program-api";
 
 import styles from "@/app/programs/programs.module.css";
 
+import { ParticipantDirectory } from "./participant-directory";
 import {
   buildProgramsHref,
   parseProgramsIntent,
@@ -181,6 +182,18 @@ export function ProgramsBoundary() {
         : COPY.programs.participantMode
     );
   };
+  // PUI-02: row selection hands off through the canonical opaque Program
+  // intent URL — the directory never renders the nested manager.
+  const openProgram = (programId: string) => {
+    const href = buildProgramsHref({ mode: "participant", programId });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(COPY.programs.programSelected);
+  };
   useEffect(() => {
     const requestedMode = focusMode.current;
     const mode =
@@ -280,10 +293,11 @@ export function ProgramsBoundary() {
         />
       )}
       {access.kind === "ready" && intent.mode === "participant" && (
-        <ParticipantPanel
+        <ParticipantDirectory
           programId={intent.programId}
           canManage={access.projection.hasManagementCapability}
           onManagement={() => navigateMode("management")}
+          onOpenProgram={openProgram}
         />
       )}
     </BoundaryFrame>
@@ -355,44 +369,6 @@ function BoundaryFrame({
         {children}
       </div>
     </section>
-  );
-}
-
-function ParticipantPanel({
-  programId,
-  canManage,
-  onManagement,
-}: {
-  programId: string | null;
-  canManage: boolean;
-  onManagement: () => void;
-}) {
-  return (
-    <>
-      <h2 className={styles.boundaryTitle}>{COPY.programs.participantMode}</h2>
-      <p className={styles.boundaryLead}>{COPY.programs.participantLead}</p>
-      {programId !== null && (
-        <div className={styles.intentNotice} role="status">
-          <strong>{COPY.programs.directProgramIntent}</strong>
-          <span>{COPY.programs.directProgramIntentHint}</span>
-        </div>
-      )}
-      {canManage && (
-        <div className={styles.managementEntry}>
-          <div>
-            <h3>{COPY.programs.managementMode}</h3>
-            <p>{COPY.programs.managementLead}</p>
-          </div>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={onManagement}
-          >
-            {COPY.programs.enterManagement}
-          </button>
-        </div>
-      )}
-    </>
   );
 }
 
