@@ -101,6 +101,7 @@ describe("Programs boundary copy", () => {
   test("entry lead describes the boundary without promising deferred manager tasks", () => {
     expect(COPY.programs.entryLead).toContain("集中於此");
     expect(COPY.programs.entryLead).not.toContain("先選部門");
+    expect(COPY.programs.malformedIntentHint).toContain("課程入口");
   });
 });
 
@@ -268,6 +269,9 @@ describe("Programs boundary", () => {
     expect(mocks.replace).not.toHaveBeenCalled();
     expect(
       screen.getByRole("heading", { name: "管理模式" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.managementBoundaryHint)
     ).toBeInTheDocument();
     expect(document.activeElement).toBe(
       screen.getByRole("tab", { name: "管理模式" })
@@ -526,7 +530,9 @@ describe("Programs boundary", () => {
     );
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "返回首頁" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.backToEntry })
+    );
     expect(window.location.pathname).toBe("/programs");
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("");

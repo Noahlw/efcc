@@ -213,7 +213,7 @@ export function ProgramsBoundary() {
           kind="error"
           title={COPY.programs.malformedIntent}
           message={COPY.programs.malformedIntentHint}
-          actionLabel={COPY.nav.backToHome}
+          actionLabel={COPY.programs.backToEntry}
           onAction={() => navigateMode("participant", true)}
         />
       </BoundaryFrame>
@@ -308,7 +308,9 @@ function BoundaryFrame({
         <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
         {showModeTabs && (
           <div
-            className={styles.modeSwitch}
+            className={`${styles.modeSwitch} ${
+              intent.mode === "participant" ? styles.modeSwitchSingle : ""
+            }`}
             role="tablist"
             aria-label={COPY.programs.modeLabel}
           >
@@ -421,6 +423,9 @@ function ManagementPanel({
       <p className={styles.boundaryLead}>{COPY.programs.managementLead}</p>
       <p className={styles.boundaryStatus} role="status">
         {COPY.programs.managementScopeReady}
+      </p>
+      <p className={styles.boundaryHint}>
+        {COPY.programs.managementBoundaryHint}
       </p>
       <button
         className={styles.secondaryButton}

@@ -798,7 +798,7 @@
 /* ---- PUI-01 participant-default mode boundary (Issue #245) -------------- */
 .boundary {
   width: 100%;
-  max-width: 880px;
+  max-width: 760px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -819,6 +819,17 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
+}
+
+.modeSwitchSingle {
+  width: fit-content;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.modeSwitchSingle .modeButton {
+  padding-inline: 0.875rem;
 }
 
 .modeButton {
@@ -849,7 +860,7 @@
 }
 
 .boundaryPanel {
-  min-height: 14rem;
+  min-height: 0;
   padding-top: 1.5rem;
 }
 
@@ -897,6 +908,13 @@
   font-weight: 700;
 }
 
+.boundaryHint {
+  max-width: 60ch;
+  margin: -0.5rem 0 1.25rem;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
 .managementEntry {
   display: flex;
   align-items: center;
@@ -940,6 +958,10 @@
 
   .modeSwitch {
     width: 100%;
+  }
+
+  .modeSwitchSingle {
+    width: fit-content;
   }
 
   .modeButton {
