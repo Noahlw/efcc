@@ -185,6 +185,9 @@ export const COPY = {
     catalogClearSearch: "清除搜尋",
     catalogNoMatches: "找不到符合的課程",
     catalogNoMatchesHint: "試試其他關鍵字，或清除搜尋回到完整目錄。",
+    catalogNoFilterMatchesHint:
+      "目前的篩選沒有符合課程。清除篩選後可回到完整目錄。",
+    catalogClearFilters: "清除篩選",
     catalogListLabel: "課程目錄",
     catalogFilterLifecycle: "課程狀態",
     catalogFilterParticipation: "參與方式",
@@ -195,7 +198,8 @@ export const COPY = {
     filterMemberRequest: "可報名",
     filterManagerOnly: "僅限負責人",
     programUnavailable: "無法開啟這個課程",
-    programUnavailableHint: "這個課程目前不可用，或你未有權限查看。你可以繼續瀏覽其他課程。",
+    programUnavailableHint:
+      "這個課程目前不可用，或你未有權限查看。你可以繼續瀏覽其他課程。",
     programSelected: "已保留課程連結。",
     departments: "部門",
     programs: "課程與活動",
@@ -358,7 +362,8 @@ export const COPY = {
     leaderUserIdPlaceholder: "輸入姓名或用戶名稱",
     leaderAssignedNotice: "已新增事工負責人。",
     leaderRevokedNotice: "已移除事工負責人。",
-    leaderAccountInactive: "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
+    leaderAccountInactive:
+      "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
     enrollmentDuplicate: "此會友已報名此課程。",
   },
 } as const;

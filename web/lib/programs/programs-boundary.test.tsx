@@ -263,7 +263,9 @@ test.each([
 
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", { name: "參與者模式" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "參與者模式" })
+    ).resolves.toBeInTheDocument();
     expect(document.querySelector("#programs-mode-panel")).toHaveAttribute(
       "role",
       "region"
@@ -286,11 +288,32 @@ describe("Programs boundary", () => {
 
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", { name: "參與者模式" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "參與者模式" })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "進入管理模式" })
     ).not.toBeInTheDocument();
     expect(screen.queryByText("活動")).not.toBeInTheDocument();
+  });
+  test("preserves an existing Program hash when selecting another directory row", async () => {
+    window.history.replaceState({}, "", "/programs?program=program-1#overview");
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        programSummary("program-1", "查經小組"),
+        programSummary("program-2", "青年團契"),
+      ]),
+    });
+
+    render(<ProgramsBoundary />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /青年團契/u })
+    );
+
+    expect(window.location.search).toBe("?program=program-2");
+    expect(window.location.hash).toBe("#overview");
   });
 
   test("shows a compact accessible management entry from server scope and preserves Program intent", async () => {
@@ -324,9 +347,11 @@ describe("Programs boundary", () => {
     );
 
     await userEvent.click(screen.getByRole("tab", { name: "參與者模式" }));
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.participantMode,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("supports keyboard mode entry and return", async () => {
@@ -340,16 +365,20 @@ describe("Programs boundary", () => {
     managementButton.focus();
     await user.keyboard("{Enter}");
 
-    await expect(screen.findByRole("tab", { name: COPY.programs.managementMode })).resolves.toHaveAttribute("aria-selected", "true");
+    await expect(
+      screen.findByRole("tab", { name: COPY.programs.managementMode })
+    ).resolves.toHaveAttribute("aria-selected", "true");
 
     const participantTab = screen.getByRole("tab", {
       name: COPY.programs.participantMode,
     });
     participantTab.focus();
     await user.keyboard("{Enter}");
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.participantMode,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("follows same-route App Router query changes and restores focus on Back", async () => {
@@ -361,14 +390,18 @@ describe("Programs boundary", () => {
     mocks.pathname.mockReturnValue("/programs");
     rerender(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("tab", { name: "管理模式" })).resolves.toHaveAttribute("aria-selected", "true");
+    await expect(
+      screen.findByRole("tab", { name: "管理模式" })
+    ).resolves.toHaveAttribute("aria-selected", "true");
     expect(document.activeElement).toBe(
       screen.getByRole("tab", { name: "管理模式" })
     );
 
     window.history.pushState({}, "", "/programs");
     rerender(<ProgramsBoundary />);
-    await expect(screen.findByRole("heading", { name: "參與者模式" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "參與者模式" })
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
@@ -437,7 +470,9 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
 
     const { unmount } = render(<ProgramsBoundary />);
-    await expect(screen.findByRole("heading", { name: "沒有管理範圍" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "沒有管理範圍" })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: COPY.programs.managementMode })
     ).not.toBeInTheDocument();
@@ -459,7 +494,9 @@ describe("Programs boundary", () => {
     mocks.push.mockReset();
     window.history.replaceState({}, "", "/programs?mode=management");
     render(<ProgramsBoundary />);
-    await expect(screen.findByRole("heading", { name: "無法進入管理模式" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "無法進入管理模式" })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: COPY.programs.managementMode })
     ).not.toBeInTheDocument();
@@ -467,7 +504,9 @@ describe("Programs boundary", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "返回參與者模式" })
     );
-    await expect(screen.findByRole("heading", { name: COPY.error.forbidden })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: COPY.error.forbidden })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "參與者模式" })
     ).not.toBeInTheDocument();
@@ -504,7 +543,9 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockRejectedValue(new Error("offline"));
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", { name: COPY.error.unavailable })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: COPY.error.unavailable })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: COPY.programs.retryAccess })
     ).toBeInTheDocument();
@@ -524,7 +565,9 @@ describe("Programs boundary", () => {
     );
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", { name: COPY.error.forbidden })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: COPY.error.forbidden })
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.nav.unauthorized)).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: COPY.programs.participantMode })
@@ -539,7 +582,9 @@ describe("Programs boundary", () => {
     await waitFor(() => {
       expect(mocks.getManagementAccess).toHaveBeenCalledTimes(2);
     });
-    await expect(screen.findByRole("heading", { name: COPY.error.forbidden })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: COPY.error.forbidden })
+    ).resolves.toBeInTheDocument();
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
@@ -548,7 +593,9 @@ describe("Programs boundary", () => {
 
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", { name: "連結資料無效" })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "連結資料無效" })
+    ).resolves.toBeInTheDocument();
     expect(mocks.getManagementAccess).not.toHaveBeenCalled();
 
     const malformedPanel = screen
@@ -667,7 +714,9 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     expect(unavailable.closest('[role="status"]')).toHaveTextContent(
       COPY.programs.programUnavailableHint
     );
-    await expect(screen.findByRole("button", { name: /查經小組/u })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("button", { name: /查經小組/u })
+    ).resolves.toBeInTheDocument();
   });
 
   test("catalog transport failure keeps a recoverable retry inside Programs", async () => {
@@ -678,9 +727,11 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
 
     render(<ProgramsBoundary />);
 
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.catalogLoadError,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: COPY.programs.catalogRetry })
     ).toBeInTheDocument();
@@ -688,6 +739,8 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.catalogRetry })
     );
-    await expect(screen.findByRole("button", { name: /查經小組/u })).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("button", { name: /查經小組/u })
+    ).resolves.toBeInTheDocument();
   });
 });

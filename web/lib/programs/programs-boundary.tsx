@@ -1,23 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { rememberDeepLink } from "@/lib/session";
 import { getManagementAccess } from "@/lib/programs/program-api";
-
-import styles from "@/app/programs/programs.module.css";
+import { rememberDeepLink } from "@/lib/session";
 
 import { ParticipantDirectory } from "./participant-directory";
-import {
-  buildProgramsHref,
-  parseProgramsIntent,
-} from "./programs-intent";
-import type { ProgramsIntent } from "./programs-intent";
 import type { ProgramsManagementAccess } from "./programs-access";
+import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
+import type { ProgramsIntent } from "./programs-intent";
+
+import styles from "@/app/programs/programs.module.css";
 
 interface ReadyAccess {
   kind: "ready";
@@ -29,13 +26,11 @@ type AccessState =
   | ReadyAccess
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 
-
 export function ProgramsBoundary() {
   const router = useRouter();
   const pathname = usePathname();
   const routeQuery = useSearchParams().toString();
-  const routeHash =
-    typeof window === "undefined" ? "" : window.location.hash;
+  const routeHash = typeof window === "undefined" ? "" : window.location.hash;
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const [locationReady, setLocationReady] = useState(false);
@@ -93,7 +88,10 @@ export function ProgramsBoundary() {
         ) {
           return;
         }
-        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
           rememberDeepLink(
             typeof window === "undefined"
               ? pathname
@@ -141,9 +139,7 @@ export function ProgramsBoundary() {
     if (!retryFocusPending.current && !boundaryStateVisible) {
       return;
     }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-access-state"
-    );
+    const panel = document.querySelector<HTMLElement>("#programs-access-state");
     if (!panel) {
       return;
     }
@@ -185,7 +181,11 @@ export function ProgramsBoundary() {
   // PUI-02: row selection hands off through the canonical opaque Program
   // intent URL — the directory never renders the nested manager.
   const openProgram = (programId: string) => {
-    const href = buildProgramsHref({ mode: "participant", programId });
+    const href = buildProgramsHref({
+      mode: "participant",
+      programId,
+      hash: intent.hash,
+    });
     if (typeof window === "undefined") {
       router.push(href);
     } else {
@@ -220,7 +220,11 @@ export function ProgramsBoundary() {
 
   if (intent.malformed) {
     return (
-      <BoundaryFrame intent={intent} onModeChange={navigateMode} showModeTabs={false}>
+      <BoundaryFrame
+        intent={intent}
+        onModeChange={navigateMode}
+        showModeTabs={false}
+      >
         <StatePanel
           id="programs-access-state"
           kind="error"

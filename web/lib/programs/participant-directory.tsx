@@ -206,6 +206,7 @@ export const ParticipantDirectory = ({
   }, [programId, ready]);
 
   const searching = query.trim() !== "";
+  const filtering = lifecycle !== "All" || participation !== "All";
 
   return (
     <>
@@ -346,15 +347,29 @@ export const ParticipantDirectory = ({
               className={styles.boundaryState}
             >
               <h3 className={styles.boundaryTitle}>
-                {COPY.programs.catalogNoMatches}「{query.trim()}」
+                {searching
+                  ? `${COPY.programs.catalogNoMatches}「${query.trim()}」`
+                  : COPY.programs.catalogNoMatches}
               </h3>
-              <p>{COPY.programs.catalogNoMatchesHint}</p>
+              <p>
+                {searching
+                  ? COPY.programs.catalogNoMatchesHint
+                  : COPY.programs.catalogNoFilterMatchesHint}
+              </p>
               <button
                 className={styles.retry}
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => {
+                  setQuery("");
+                  if (filtering) {
+                    setLifecycle("All");
+                    setParticipation("All");
+                  }
+                }}
               >
-                {COPY.programs.catalogClearSearch}
+                {searching
+                  ? COPY.programs.catalogClearSearch
+                  : COPY.programs.catalogClearFilters}
               </button>
             </section>
           )}

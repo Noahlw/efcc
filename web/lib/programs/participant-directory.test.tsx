@@ -275,6 +275,32 @@ describe("PUI-02 participant directory search and filters", () => {
     );
     expect(rowNames()).toHaveLength(3);
   });
+  test("filter-only no-match state explains and clears active filters", async () => {
+    const user = userEvent.setup();
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([programSummary("program-1", "查經小組")]),
+    });
+    renderDirectory();
+
+    await screen.findByRole("button", { name: /查經小組/u });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.filterDraft })
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.catalogNoMatches })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.catalogNoFilterMatchesHint)
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.catalogClearFilters })
+    );
+    await expect(
+      screen.findByRole("button", { name: /查經小組/u })
+    ).resolves.toBeInTheDocument();
+  });
 
   test("empty search result is distinct and recoverable by clearing", async () => {
     const user = userEvent.setup();
