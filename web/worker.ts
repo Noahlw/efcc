@@ -380,8 +380,10 @@ export default {
         handleCreateDepartment,
         handleListDepartments,
         handleListManagementAccess,
+        handleListManagementDirectory,
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
+        handleGetManagementProgram,
         handleGetDepartment,
         handleUpdateDepartment,
         handleCreateProgram,
@@ -418,10 +420,26 @@ export default {
         return handleListManagementAccess(request, programEnv);
       }
       if (
+        url.pathname === "/api/v1/programs/management-directory" &&
+        request.method === "GET"
+      ) {
+        return handleListManagementDirectory(request, programEnv);
+      }
+      if (
         url.pathname === "/api/v1/programs/catalog" &&
         request.method === "GET"
       ) {
         return handleListParticipantCatalog(request, programEnv);
+      }
+      const managementProgram = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/management$/u
+      );
+      if (managementProgram && request.method === "GET") {
+        return handleGetManagementProgram(
+          request,
+          programEnv,
+          managementProgram.groups?.id ?? ""
+        );
       }
       const participantDetail = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/participant-detail$/u

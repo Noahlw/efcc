@@ -62,6 +62,18 @@ const COPY = {
   enrollmentScheduleAdvisory:
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
   managerOnlyNote: "此課程由管理員安排成員加入。",
+  managementDirectoryTitle: "管理課程目錄",
+  managementDirectorySearchLabel: "搜尋可管理課程",
+  managementScopeDepartment: "部門範圍",
+  workspaceIdentity: "課程資料",
+  workspaceNearestEvent: "最近聚會",
+  workspaceTaskEvents: "聚會",
+  workspaceTaskParticipants: "參與者",
+  workspaceTaskSettings: "課程設定",
+  workspaceUnavailable: "課程管理範圍已失效",
+  noManagementScope: "沒有管理範圍",
+  workspaceBack: "返回管理課程目錄",
+  workspaceTitle: "課程工作區",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -126,6 +138,36 @@ async function loginAs(
   await expect(
     page.getByRole("heading", { name: COPY.pageTitle })
   ).toBeVisible();
+}
+
+async function postProgramLeader(
+  page: Page,
+  programId: string,
+  userId: string,
+  action: "assign" | "revoke"
+): Promise<number> {
+  const path =
+    action === "assign"
+      ? `/api/v1/programs/${encodeURIComponent(programId)}/leaders`
+      : `/api/v1/programs/${encodeURIComponent(programId)}/leaders/${encodeURIComponent(userId)}/revoke`;
+  return page.evaluate(
+    async ({
+      path: requestPath,
+      action: requestAction,
+      userId: requestUserId,
+    }) => {
+      const response = await fetch(requestPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body:
+          requestAction === "assign"
+            ? JSON.stringify({ user_id: requestUserId })
+            : "{}",
+      });
+      return response.status;
+    },
+    { path, action, userId }
+  );
 }
 
 test.beforeAll(() => {
@@ -590,5 +632,249 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     await expect(
       page.getByRole("button", { name: COPY.cancelEnrollment })
     ).toHaveCount(0);
+  });
+});
+test.describe("MUI-01 management Directory and Workspace", () => {
+  test("admin searches the scoped Directory and navigates focused Workspace tasks", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await expect(page).toHaveURL(/\/programs\?mode=management$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    const directory = page.getByRole("list", { name: "可管理課程" });
+    await expect(directory.getByRole("button")).toHaveCount(4);
+    await expect(directory.getByText("E2E_DEMO_MINISTRY")).toHaveCount(4);
+
+    const search = page.getByRole("searchbox", {
+      name: COPY.managementDirectorySearchLabel,
+    });
+    await search.fill("成人查經");
+    await expect(directory.getByRole("button")).toHaveCount(1);
+    await directory.getByRole("button", { name: /E2E_DEMO_成人查經/u }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceIdentity })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceNearestEvent })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: COPY.workspaceTitle })
+    ).toHaveAttribute("aria-current", "page");
+
+    await page
+      .getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${programId}&task=events$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
+    ).toHaveAttribute("aria-current", "page");
+
+    await page
+      .getByRole("link", { name: COPY.workspaceTaskParticipants, exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${programId}&task=participants$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskParticipants })
+    ).toBeVisible();
+
+    await page
+      .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskSettings })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
+    ).toHaveAttribute("aria-current", "page");
+  });
+  test("keeps Directory and Workspace entry points keyboard-operable", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const enterManagement = page.getByRole("button", {
+      name: COPY.enterManagement,
+    });
+    await enterManagement.focus();
+    await enterManagement.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    const firstProgram = page
+      .getByRole("list", { name: "可管理課程" })
+      .getByRole("button")
+      .first();
+    await firstProgram.focus();
+    await firstProgram.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceIdentity })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
+    ).toBeVisible();
+  });
+
+  test("member direct management links stay out of scope", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+    await page.goto(
+      `/programs?mode=management&program=${programId}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(page.getByText(programId)).toHaveCount(0);
+  });
+  test("staff uses the same capability-shaped Directory information architecture", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    await expect(page.getByRole("list", { name: "可管理課程" })).toBeVisible();
+  });
+
+  test("leader exact scope and manager inheritance stay distinct", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [targetId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(targetId).toBeTruthy();
+    const programId = required("target program", targetId);
+    const staleRevoke = await postProgramLeader(
+      page,
+      programId,
+      DEV_MEMBER.userId,
+      "revoke"
+    );
+    expect([200, 404]).toContain(staleRevoke);
+    expect(
+      await postProgramLeader(page, programId, DEV_MEMBER.userId, "assign")
+    ).toBe(200);
+
+    try {
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      const leaderDirectory = page.getByRole("list", { name: "可管理課程" });
+      await expect(leaderDirectory.getByRole("button")).toHaveCount(1);
+      await expect(
+        leaderDirectory.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      ).toBeVisible();
+      await expect(page.getByText("E2E_DEMO_青年團契")).toHaveCount(0);
+      await leaderDirectory
+        .getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
+      ).toBeVisible();
+
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+        required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      const inheritedDirectory = page.getByRole("list", {
+        name: "可管理課程",
+      });
+      await expect(inheritedDirectory.getByRole("button")).toHaveCount(4);
+      await expect(
+        inheritedDirectory.getByRole("button", {
+          name: /E2E_DEMO_青年團契/u,
+        })
+      ).toBeVisible();
+    } finally {
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      expect(
+        await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
+      ).toBe(200);
+    }
+
+    await page.context().clearCookies();
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto(`/programs?mode=management&program=${programId}`);
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(page.getByText("E2E_DEMO_成人查經")).toHaveCount(0);
+  });
+
+  test("a revoked or unknown direct management link stays generic", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto(
+      "/programs?mode=management&program=E2E_REVOKED_PROGRAM&task=events"
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceUnavailable })
+    ).toBeVisible();
+    await expect(page.getByText("E2E_REVOKED_PROGRAM")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.workspaceBack })
+    ).toBeVisible();
   });
 });

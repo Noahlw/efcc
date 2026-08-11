@@ -13,8 +13,11 @@ import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
-import { hkTodayWallDate, occurrencesForRule } from "./recurrence";
-import { exceptionForEvent } from "./recurrence";
+import {
+  exceptionForEvent,
+  hkTodayWallDate,
+  occurrencesForRule,
+} from "./recurrence";
 import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
 import type {
   AuditInput,
@@ -57,9 +60,48 @@ export type DepartmentView = DepartmentRow & {
   capabilities: DepartmentCapabilities;
 };
 
-export type ProgramView = ProgramRow & {
+export type ProgramView = (ProgramRow | ProgramSummary) & {
   capabilities: ProgramCapabilities;
 };
+export type ManagementDepartmentView = Omit<
+  DepartmentView,
+  "created_by" | "updated_by"
+>;
+export type ManagementProgramView = ProgramSummary & {
+  capabilities: ProgramCapabilities;
+};
+export type ManagementDepartmentModuleView = Omit<
+  DepartmentModuleRow,
+  "enabled_by"
+>;
+
+export interface ManagementDirectoryView {
+  departments: ManagementDepartmentView[];
+  programs: ManagementProgramView[];
+}
+export interface ManagementProgramWorkspaceView {
+  program: ManagementProgramView;
+  department: ManagementDepartmentView;
+  modules: ManagementDepartmentModuleView[];
+}
+
+function hasDepartmentManagementScope(department: DepartmentView): boolean {
+  return (
+    department.capabilities.manage ||
+    department.capabilities.publish ||
+    department.capabilities.module_configure
+  );
+}
+
+function hasProgramManagementScope(
+  program: Pick<ManagementProgramView, "capabilities">
+): boolean {
+  return (
+    program.capabilities.manage ||
+    program.capabilities.publish ||
+    program.capabilities.leader_assign
+  );
+}
 
 export interface ManagementAccessView {
   hasManagementCapability: boolean;
@@ -460,6 +502,86 @@ export class DepartmentWorkspace {
     const rows = await this.store.listDepartments();
     return Promise.all(rows.map((row) => this.departmentView(ctx, row)));
   }
+  async listManagementDirectory(
+    ctx: AuthorizationContext
+  ): Promise<ManagementDirectoryView> {
+    const allDepartments = await this.listDepartments(ctx);
+    const departmentPrograms = await Promise.all(
+      allDepartments.map(async (department) => {
+        if (!(await this.isModuleEnabled(department.department_id))) {
+          return [];
+        }
+        const rows = await this.store.listProgramsForDepartment(
+          department.department_id
+        );
+        const departmentScope = hasDepartmentManagementScope(department);
+        const views = await Promise.all(
+          rows.map(async (row) => ({
+            row,
+            capabilities: await this.programCapabilities(ctx, row),
+          }))
+        );
+        return views
+          .filter(
+            ({ capabilities }) =>
+              departmentScope || hasProgramManagementScope({ capabilities })
+          )
+          .map(({ row, capabilities }) =>
+            this.managementProgram(row, capabilities)
+          );
+      })
+    );
+    const scopedPrograms = departmentPrograms.flat();
+    const scopedDepartmentIds = new Set(
+      scopedPrograms.map(({ department_id }) => department_id)
+    );
+    return {
+      departments: allDepartments
+        .filter(({ department_id }) => scopedDepartmentIds.has(department_id))
+        .map((department) => this.managementDepartment(department)),
+      programs: scopedPrograms,
+    };
+  }
+
+  async getManagementProgram(
+    ctx: AuthorizationContext,
+    id: string
+  ): Promise<ManagementProgramWorkspaceView | null> {
+    const row = await this.store.findProgramById(id);
+    if (!row || !(await this.isModuleEnabled(row.department_id))) {
+      return null;
+    }
+    const departmentRow = await this.store.findDepartmentById(
+      row.department_id
+    );
+    if (!departmentRow) {
+      return null;
+    }
+    const department = await this.departmentView(ctx, departmentRow);
+    const modules = (
+      await this.store.listDepartmentModules(row.department_id)
+    ).map(({ department_id, module_key, enabled, enabled_at }) => ({
+      department_id,
+      module_key,
+      enabled,
+      enabled_at,
+    }));
+    const program = this.managementProgram(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
+    if (
+      !hasDepartmentManagementScope(department) &&
+      !hasProgramManagementScope(program)
+    ) {
+      return null;
+    }
+    return {
+      program,
+      department: this.managementDepartment(department),
+      modules,
+    };
+  }
 
   async getManagementAccess(
     ctx: AuthorizationContext
@@ -630,7 +752,7 @@ export class DepartmentWorkspace {
         ({ row, capabilities }) =>
           row.discoverability === "Listed" || capabilities.manage
       )
-      .map(({ row, capabilities }) => ({ ...row, capabilities }));
+      .map(({ row, capabilities }) => this.programView(row, capabilities));
   }
 
   async getProgram(
@@ -645,7 +767,7 @@ export class DepartmentWorkspace {
     if (row.discoverability === "Unlisted" && !capabilities.manage) {
       return null;
     }
-    return { ...row, capabilities };
+    return this.programView(row, capabilities);
   }
 
   /**
@@ -787,7 +909,9 @@ export class DepartmentWorkspace {
     };
   }
 
-  private programSummary(row: ProgramRow): ProgramSummary {
+  private programSummary(
+    row: Pick<ProgramRow, keyof ProgramSummary>
+  ): ProgramSummary {
     return {
       program_id: row.program_id,
       department_id: row.department_id,
@@ -801,6 +925,33 @@ export class DepartmentWorkspace {
       display_order: row.display_order,
       created_at: row.created_at,
       updated_at: row.updated_at,
+    };
+  }
+  private programView(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ProgramView {
+    return capabilities.manage
+      ? { ...row, capabilities }
+      : { ...this.programSummary(row), capabilities };
+  }
+  private managementProgram(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramView {
+    return { ...this.programSummary(row), capabilities };
+  }
+  private managementDepartment(view: DepartmentView): ManagementDepartmentView {
+    return {
+      department_id: view.department_id,
+      code: view.code,
+      name: view.name,
+      description: view.description,
+      lifecycle: view.lifecycle,
+      display_order: view.display_order,
+      created_at: view.created_at,
+      updated_at: view.updated_at,
+      capabilities: view.capabilities,
     };
   }
 

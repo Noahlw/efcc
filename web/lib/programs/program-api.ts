@@ -75,6 +75,17 @@ export interface Program {
     leader_assign: boolean;
   };
 }
+export type ManagementProgram = Omit<
+  Program,
+  | "check_in_token"
+  | "check_in_opens_at_minutes_before_start"
+  | "check_in_closes_at_minutes_after_end"
+>;
+/** Server-filtered and secret-redacted Programs management projection. */
+export interface ManagementDirectory {
+  departments: Department[];
+  programs: ManagementProgram[];
+}
 
 export interface DepartmentDetail {
   department: Department;
@@ -497,6 +508,10 @@ export function listDepartments(): Promise<{
 }> {
   return programsFetch("/api/v1/programs/departments", "GET");
 }
+/** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
+export function getManagementDirectory(): Promise<ManagementDirectory> {
+  return programsFetch("/api/v1/programs/management-directory", "GET");
+}
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
@@ -556,6 +571,17 @@ export function listPrograms(
   );
 }
 
+/** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
+export function getManagementProgram(programId: string): Promise<{
+  program: ManagementProgram;
+  department: Department;
+  modules: DepartmentModule[];
+}> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/management`,
+    "GET"
+  );
+}
 /** POST /api/v1/programs/departments/:id/programs */
 export function createProgram(
   departmentId: string,
