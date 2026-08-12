@@ -3870,7 +3870,7 @@ describe("PRG-04: program leaders", () => {
     assert.ok(audit, "revoke-revoked must write a DUPLICATE audit row");
   });
 
-  test("DLG-1b Pending target account is rejected with 422 and a FAILED audit row", async () => {
+  test("DLG-1b Pending target account is rejected with 422 and a DENIED audit row", async () => {
     const res = await assignLeader(adminAccess, leaderProgramId, "U004");
     assert.strictEqual(res.status, 422);
     const inactiveBody = await problemOf(res);
@@ -3882,12 +3882,12 @@ describe("PRG-04: program leaders", () => {
     const audit = await testDb()
       .prepare(
         `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'FAILED'
+         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'DENIED'
            AND entity_id = ?`
       )
       .bind(leaderProgramId)
       .first<{ outcome: string }>();
-    assert.ok(audit, "inactive target must write a FAILED grant audit row");
+    assert.ok(audit, "inactive target must write a DENIED grant audit row");
   });
 
   test("DLG-6 unknown program does not leak existence (403)", async () => {

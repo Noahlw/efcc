@@ -2233,7 +2233,7 @@ export class DepartmentWorkspace {
         "PROGRAM_LEADER_GRANT",
         "program_leader",
         programId,
-        "FAILED",
+        "DENIED",
         null,
         { user_id: userId, reason: "target_account_not_active" },
         correlationId
@@ -2452,7 +2452,7 @@ export class DepartmentWorkspace {
         "DEPARTMENT_MANAGER_GRANT",
         "department_manager",
         `${departmentId}:${userId}`,
-        "FAILED",
+        "DENIED",
         null,
         {
           department_id: departmentId,

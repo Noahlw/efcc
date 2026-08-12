@@ -491,7 +491,7 @@ describe("AUTH-01: Department Manager scope", () => {
       await auditOutcome(
         "DEPARTMENT_MANAGER_GRANT",
         `${departmentId}:U004`,
-        "FAILED"
+        "DENIED"
       ),
       true
     );
