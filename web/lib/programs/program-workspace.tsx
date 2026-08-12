@@ -23,11 +23,7 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
-import {
-  EventDetail,
-  hkWallInputToIso,
-  hkWallInputValue,
-} from "./event-detail";
+import { EventDetail, hkWallInputToIso } from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
 
 import styles from "@/app/programs/programs.module.css";
@@ -438,7 +434,7 @@ const EventsTask = ({
     void load();
   }, [load]);
 
-  const submitCreate = (formEvent: FormEvent<HTMLFormElement>) => {
+  const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
     const startsAt = hkWallInputToIso(String(form.get("starts_at") ?? ""));
@@ -453,33 +449,31 @@ const EventsTask = ({
     }
     setCreateBusy(true);
     setCreateError(null);
-    void createEvent(programId, {
-      name: String(form.get("name") ?? "").trim() || null,
-      location: String(form.get("location") ?? "").trim() || null,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      check_in_window_opens_at: opensAt,
-      check_in_window_closes_at: closesAt,
-    })
-      .then(({ event }) => {
-        announce(COPY.programs.eventCreatedNotice);
-        setCreateOpen(false);
-        onOpenEvent?.(event.event_id);
-      })
-      .catch((error: unknown) => {
-        if (redirectToLoginIfRequired(error)) {
-          return;
-        }
-        const message =
-          error instanceof RpcError
-            ? errorCopyFor(error.problem.code, error.problem.detail)
-            : COPY.error.networkError;
-        setCreateError(message);
-        announce(message);
-      })
-      .finally(() => {
-        setCreateBusy(false);
+    try {
+      const { event } = await createEvent(programId, {
+        name: String(form.get("name") ?? "").trim() || null,
+        location: String(form.get("location") ?? "").trim() || null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        check_in_window_opens_at: opensAt,
+        check_in_window_closes_at: closesAt,
       });
+      announce(COPY.programs.eventCreatedNotice);
+      setCreateOpen(false);
+      onOpenEvent?.(event.event_id);
+    } catch (error: unknown) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setCreateError(message);
+      announce(message);
+    } finally {
+      setCreateBusy(false);
+    }
   };
 
   return (

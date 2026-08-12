@@ -150,7 +150,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
       programId: program.id,
       hash: hash.value,
       task: task.value,
-      ...(event.value !== undefined ? { eventId: event.value } : {}),
+      ...(event.value === undefined ? {} : { eventId: event.value }),
       malformed,
     };
   }
