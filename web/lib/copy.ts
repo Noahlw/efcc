@@ -495,7 +495,7 @@ export const COPY = {
     eventAvailabilityActivate: "恢復開放",
     eventAvailabilityConfirmTitle: "暫停此聚會？",
     eventAvailabilityConfirmBody:
-      "暫停後，已報名成員將不能簽到（{count} 項進行中的報名／簽到會受影響）。",
+      "暫停後，此聚會將停止開放簽到（{count} 項進行中的簽到會受影響）。",
     eventAvailabilityConfirmProceed: "確定暫停",
     eventAvailabilityNotice: "聚會已暫停開放。",
     eventAvailabilityRestoredNotice: "聚會已恢復開放。",
@@ -506,7 +506,7 @@ export const COPY = {
     eventSavedNotice: "聚會資料已更新。",
     eventCreatedNotice: "聚會已建立。",
     eventAvailabilityConfirmRequired:
-      "此聚會有進行中的報名或簽到，需確認後才能暫停。",
+      "此聚會有進行中的簽到，需確認後才能暫停。",
     eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
     eventCheckInWindow: "簽到時間",
     eventCheckInWindowOpensAt: "開放簽到",

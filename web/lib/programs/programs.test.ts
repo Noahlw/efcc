@@ -2784,6 +2784,40 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
+          body: { name: "僅改名" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(identityOnly.status, 200);
+    const kept = (await assertCorrelated(identityOnly)) as {
+      data: {
+        event: {
+          check_in_window_opens_at: string | null;
+          check_in_window_closes_at: string | null;
+        };
+      };
+    };
+    assert.strictEqual(
+      kept.data.event.check_in_window_opens_at,
+      before.check_in_window_opens_at
+    );
+    assert.strictEqual(
+      kept.data.event.check_in_window_closes_at,
+      before.check_in_window_closes_at
+    );
+
+    // An explicit null must clear the window, not silently keep it.
+    const cleared = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
           body: {
             check_in_window_opens_at: null,
             check_in_window_closes_at: null,
@@ -2792,40 +2826,41 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(response.status, 200);
-    const result = (await assertCorrelated(response)) as {
+    assert.strictEqual(cleared.status, 200);
+    const result = (await assertCorrelated(cleared)) as {
       data: {
         event: {
-          check_in_window_opens_at: string;
-          check_in_window_closes_at: string;
+          check_in_window_opens_at: string | null;
+          check_in_window_closes_at: string | null;
         };
       };
     };
-    assert.strictEqual(
-      result.data.event.check_in_window_opens_at,
-      before.check_in_window_opens_at
-    );
-    assert.strictEqual(
-      result.data.event.check_in_window_closes_at,
-      before.check_in_window_closes_at
-    );
+    assert.strictEqual(result.data.event.check_in_window_opens_at, null);
+    assert.strictEqual(result.data.event.check_in_window_closes_at, null);
+
+    const after = await testDb()
+      .prepare(
+        "SELECT check_in_window_opens_at, check_in_window_closes_at FROM events WHERE event_id = ?"
+      )
+      .bind(event.event_id)
+      .first<{
+        check_in_window_opens_at: string | null;
+        check_in_window_closes_at: string | null;
+      }>();
+    assert.strictEqual(after?.check_in_window_opens_at, null);
+    assert.strictEqual(after?.check_in_window_closes_at, null);
   });
 
-  test("availability: deactivation with open operations requires confirmation; confirmed toggle audits SUCCESS", async () => {
+  test("availability: deactivation with event check-ins requires confirmation; confirmed toggle audits SUCCESS", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-14T10:00:00.000Z",
       ends_at: "2026-09-14T11:00:00.000Z",
     });
     await testDb()
       .prepare(
-        "INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at) VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)"
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
       )
-      .bind(
-        crypto.randomUUID(),
-        programId,
-        new Date().toISOString(),
-        new Date().toISOString()
-      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
       .run();
 
     const unconfirmed = await worker.fetch(
@@ -2892,14 +2927,70 @@ describe("EVT-01: event operations (#251)", () => {
       .first<{ outcome: string }>();
     assert.strictEqual(audit?.outcome, "SUCCESS");
 
-    // Teardown: remove the seeded enrollment so later tests can deactivate
+    // Teardown: remove the seeded attendance so later tests can deactivate
     // without tripping the confirmation gate.
     await testDb()
-      .prepare(
-        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
-      )
-      .bind(programId)
+      .prepare("DELETE FROM attendances WHERE event_id = ?")
+      .bind(event.event_id)
       .run();
+  });
+
+  test("availability: program-wide enrollments alone do not gate this event's deactivation", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-14T12:00:00.000Z",
+      ends_at: "2026-09-14T13:00:00.000Z",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at) VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)"
+      )
+      .bind(
+        crypto.randomUUID(),
+        programId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      )
+      .run();
+    try {
+      const deactivate = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${programId}/events/${event.event_id}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { availability: "Inactive" },
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(
+        deactivate.status,
+        200,
+        "unrelated Program enrollments must not demand confirmation for this Event"
+      );
+      const result = (await assertCorrelated(deactivate)) as {
+        data: { event: { availability: string } };
+      };
+      assert.strictEqual(result.data.event.availability, "Inactive");
+      const audit = await testDb()
+        .prepare(
+          "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+        )
+        .bind(event.event_id)
+        .first<{ outcome: string }>();
+      assert.strictEqual(audit?.outcome, "SUCCESS");
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+        )
+        .bind(programId)
+        .run();
+    }
   });
 
   test("availability: member listing hides Inactive events; repeat toggle is a quiet DUPLICATE", async () => {

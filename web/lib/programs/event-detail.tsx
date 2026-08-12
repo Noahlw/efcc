@@ -233,10 +233,7 @@ export const EventDetail = ({
           setDeactivateImpact(
             typeof problem.open_operations === "number"
               ? problem.open_operations
-              : Math.max(
-                  detail?.participant_summary.active_enrollments ?? 0,
-                  detail?.participant_summary.checked_in ?? 0
-                )
+              : detail?.participant_summary.checked_in ?? 0
           );
           setConfirmingDeactivate(true);
           return true;
@@ -482,18 +479,12 @@ export const EventDetail = ({
                     // AC-4: safe (zero affected operations) deactivation is
                     // immediate with Undo; only consequential deactivation
                     // requires the inline confirm naming the open operations.
-                    if (
-                      participant_summary.active_enrollments === 0 &&
-                      participant_summary.checked_in === 0
-                    ) {
+                    // Enrollments are Program-scoped; this Event's own open
+                    // operations are its active check-ins alone.
+                    if (participant_summary.checked_in === 0) {
                       submitDeactivate(false);
                     } else {
-                      setDeactivateImpact(
-                        Math.max(
-                          participant_summary.active_enrollments,
-                          participant_summary.checked_in
-                        )
-                      );
+                      setDeactivateImpact(participant_summary.checked_in);
                       setConfirmingDeactivate(true);
                     }
                   }}

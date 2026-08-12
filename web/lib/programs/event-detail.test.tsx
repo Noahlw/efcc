@@ -210,11 +210,18 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.eventAvailabilityDeactivate,
     });
     await user.click(deactivate);
-    // Inline confirmation replaces the button and takes focus.
+    // Inline confirmation replaces the button and takes focus. The count
+    // names THIS event's open operations (active check-ins), not the
+    // Program-wide enrollment count (3 in the fixture).
     const confirm = await screen.findByRole("button", {
       name: COPY.programs.eventAvailabilityConfirmProceed,
     });
     expect(document.activeElement).toBe(confirm);
+    expect(
+      screen.getByText(
+        COPY.programs.eventAvailabilityConfirmBody.replace("{count}", "2")
+      )
+    ).toBeInTheDocument();
     await user.click(confirm);
     await expect(
       screen.findByText(COPY.programs.eventAvailabilityNotice)
@@ -238,10 +245,13 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.eventAvailabilityRestoredNotice)
     ).resolves.toBeInTheDocument();
   });
-  test("deactivates immediately with Undo when no operations are affected", async () => {
+  test("deactivates immediately with Undo when no event operations are affected", async () => {
+    // Program-wide enrollments are NOT this event's operations: with zero
+    // event check-ins the deactivation is immediate even when the Program
+    // has unrelated active enrollments.
     mocks.getEvent.mockResolvedValue(
       detailFixture({
-        participant_summary: { active_enrollments: 0, checked_in: 0 },
+        participant_summary: { active_enrollments: 3, checked_in: 0 },
       })
     );
     mocks.setEventAvailability.mockResolvedValue({
