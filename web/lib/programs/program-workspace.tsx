@@ -504,7 +504,7 @@ const EventsTask = ({
           </button>
           {createOpen && (
             <form
-              className={styles.ruleForm}
+              className={`${styles.ruleForm} ${styles.eventCreateForm}`}
               aria-labelledby="programs-workspace-event-create-title"
               onSubmit={submitCreate}
             >
@@ -573,7 +573,7 @@ const EventsTask = ({
                   aria-label={COPY.programs.eventCheckInWindowClosesAt}
                 />
               </label>
-              <div className={styles.confirmRow}>
+              <div className={styles.formActions}>
                 <button
                   type="submit"
                   className={styles.button}

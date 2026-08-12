@@ -472,7 +472,7 @@ export const COPY = {
     enrollmentDuplicate: "此會友已報名此課程。",
     // EVT-01 (#251): event operational detail and independent availability.
     eventCreate: "新增聚會",
-    eventCreateTitle: "建立聚會",
+    eventCreateTitle: "聚會資料",
     eventCreateSubmit: "建立聚會",
     eventCreateCancel: "取消建立",
     eventDetailOpen: "詳情",
