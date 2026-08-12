@@ -973,6 +973,14 @@ export class DepartmentWorkspace {
         }
       : program;
   }
+  private programMutationView(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    // PATCH responses mirror the management read projection: attendance
+    // defaults for managers, but never the check-in secret.
+    return this.managementProgramSettings(row, capabilities);
+  }
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
@@ -1003,7 +1011,7 @@ export class DepartmentWorkspace {
     id: string,
     update: ProgramUpdate,
     correlationId: string | null
-  ): Promise<ProgramView> {
+  ): Promise<ManagementProgramSettingsView> {
     const old = await this.store.findProgramById(id);
     if (!old) {
       await this.audit(
@@ -1098,10 +1106,10 @@ export class DepartmentWorkspace {
             correlationId
           );
           if (sameActor) {
-            return {
-              ...old,
-              capabilities: await this.programCapabilities(ctx, old),
-            };
+            return this.programMutationView(
+              old,
+              await this.programCapabilities(ctx, old)
+            );
           }
           throw new ProgramArchiveBlockedError(id, ["already_archived"]);
         }
@@ -1132,10 +1140,10 @@ export class DepartmentWorkspace {
               correlationId
             );
             if (sameActor) {
-              return {
-                ...current,
-                capabilities: await this.programCapabilities(ctx, current),
-              };
+              return this.programMutationView(
+                current,
+                await this.programCapabilities(ctx, current)
+              );
             }
             throw new ProgramArchiveBlockedError(id, ["already_archived"]);
           }
@@ -1178,10 +1186,10 @@ export class DepartmentWorkspace {
           row,
           correlationId
         );
-        return {
-          ...row,
-          capabilities: await this.programCapabilities(ctx, row),
-        };
+        return this.programMutationView(
+          row,
+          await this.programCapabilities(ctx, row)
+        );
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -1209,7 +1217,10 @@ export class DepartmentWorkspace {
       row,
       correlationId
     );
-    return { ...row, capabilities: await this.programCapabilities(ctx, row) };
+    return this.programMutationView(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
   }
 
   async setDepartmentModule(

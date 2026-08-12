@@ -592,6 +592,7 @@ describe("CFG-01: scope-owned Program Settings", () => {
         program: {
           check_in_opens_at_minutes_before_start: number;
           check_in_closes_at_minutes_after_end: number;
+          check_in_token?: string;
         };
       };
     };
@@ -603,6 +604,7 @@ describe("CFG-01: scope-owned Program Settings", () => {
       updatedBody.data.program.check_in_closes_at_minutes_after_end,
       10
     );
+    assert.equal("check_in_token" in updatedBody.data.program, false);
 
     const row = await testDb()
       .prepare(
