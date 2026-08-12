@@ -67,7 +67,6 @@ const rule: ScheduleRule = {
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };
-
 function updatedProgram(overrides: Partial<Program> = {}): Program {
   return { ...recurringProgram, ...overrides };
 }
@@ -325,5 +324,71 @@ describe(ProgramSettings, () => {
     expect(
       screen.queryByRole("textbox", { name: COPY.programs.startTime })
     ).not.toBeInTheDocument();
+  });
+
+  test("keeps new-rule input when the schedule-rule mutation fails", async () => {
+    const user = userEvent.setup();
+    mocks.createScheduleRule.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+
+    await user.type(
+      screen.getByLabelText(COPY.programs.startTime),
+      "20:00"
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.endTime),
+      "21:30"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.programConflict
+    );
+    expect(
+      screen.getByLabelText(COPY.programs.startTime)
+    ).toHaveValue("20:00");
+    expect(
+      screen.getByLabelText(COPY.programs.endTime)
+    ).toHaveValue("21:30");
+    expect(
+      screen.queryByText(COPY.programs.settingsSaved)
+    ).not.toBeInTheDocument();
+  });
+
+  test("clears new-rule input only after a confirmed schedule-rule save", async () => {
+    const user = userEvent.setup();
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+
+    await user.type(
+      screen.getByLabelText(COPY.programs.startTime),
+      "19:00"
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.endTime),
+      "20:30"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(COPY.programs.startTime)
+    ).toHaveValue("");
+    expect(
+      screen.getByLabelText(COPY.programs.endTime)
+    ).toHaveValue("");
   });
 });

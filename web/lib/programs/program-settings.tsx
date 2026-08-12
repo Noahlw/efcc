@@ -331,7 +331,11 @@ export const ProgramSettings = ({
   };
 
   const runScheduleMutation = useCallback(
-    async (operation: () => Promise<unknown>, success: string) => {
+    async (
+      operation: () => Promise<unknown>,
+      success: string,
+      afterSuccess?: () => void
+    ) => {
       setBusy(true);
       setActionError(null);
       setRuleError(null);
@@ -342,6 +346,7 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
+        afterSuccess?.();
         setNotice(success);
         announce(success);
       } catch (error) {
@@ -365,9 +370,10 @@ export const ProgramSettings = ({
     void runScheduleMutation(
       () =>
         createScheduleRule(currentProgram.program_id, ruleInputFrom(newRule)),
-      COPY.programs.settingsSaved
+      COPY.programs.settingsSaved,
+      () =>
+        setNewRule((previous) => ({ ...previous, startTime: "", endTime: "" }))
     );
-    setNewRule((previous) => ({ ...previous, startTime: "", endTime: "" }));
   };
 
   const beginRuleEdit = (rule: ScheduleRule) => {
