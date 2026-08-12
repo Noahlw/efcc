@@ -659,5 +659,15 @@ describe("CFG-01: scope-owned Program Settings", () => {
       testEnv()
     );
     assert.equal(denied.status, 403);
+    const deniedAudit = await testDb()
+      .prepare(
+        "SELECT action, outcome FROM audit_events WHERE action = 'PROGRAM_UPDATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(programId)
+      .first<{ action: string; outcome: string }>();
+    assert.deepEqual(deniedAudit, {
+      action: "PROGRAM_UPDATE",
+      outcome: "DENIED",
+    });
   });
 });

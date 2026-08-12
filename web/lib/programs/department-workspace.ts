@@ -1006,15 +1006,51 @@ export class DepartmentWorkspace {
   ): Promise<ProgramView> {
     const old = await this.store.findProgramById(id);
     if (!old) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        null,
+        null,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     if (!(await this.isModuleEnabled(old.department_id))) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        old,
+        old,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
-    await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
-      departmentId: old.department_id,
-      programId: old.program_id,
-    });
+    try {
+      await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
+        departmentId: old.department_id,
+        programId: old.program_id,
+      });
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError) {
+        await this.audit(
+          ctx,
+          "PROGRAM_UPDATE",
+          "program",
+          id,
+          "DENIED",
+          old,
+          old,
+          correlationId
+        );
+      }
+      throw error;
+    }
     if (update.name !== undefined && update.name !== old.name) {
       const existing = await this.store.listProgramsForDepartment(
         old.department_id
