@@ -23,6 +23,7 @@ import type {
   AuditInput,
   AuditOutcome,
   DepartmentLifecycle,
+  DepartmentManagerRow,
   DepartmentRow,
   DepartmentUpdate,
   EnrollmentRequestRow,
@@ -50,6 +51,7 @@ export interface DepartmentCapabilities {
   manage: boolean;
   publish: boolean;
   module_configure: boolean;
+  manager_assign?: boolean;
 }
 
 export interface ProgramCapabilities {
@@ -100,7 +102,8 @@ function hasDepartmentManagementScope(department: DepartmentView): boolean {
   return (
     department.capabilities.manage ||
     department.capabilities.publish ||
-    department.capabilities.module_configure
+    department.capabilities.module_configure ||
+    department.capabilities.manager_assign === true
   );
 }
 
@@ -422,9 +425,43 @@ export class LeaderNotAssignedError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class LeaderAccountInactiveError extends Error {
-  constructor(userId: string) {
-    super(`Cannot assign ${userId} as Program Leader: account is not Active.`);
+  constructor(userId: string, entity = "Program Leader") {
+    super(`Cannot assign ${userId} as ${entity}: account is not Active.`);
     this.name = "LeaderAccountInactiveError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class DepartmentManagerNotAssignedError extends Error {
+  constructor(departmentId: string, userId: string) {
+    super(
+      `User ${userId} is not an active Department Manager of ${departmentId}.`
+    );
+    this.name = "DepartmentManagerNotAssignedError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class DepartmentManagerConflictError extends Error {
+  constructor(departmentId: string, userId: string) {
+    super(
+      `Department Manager change conflicted for ${departmentId}:${userId}.`
+    );
+    this.name = "DepartmentManagerConflictError";
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class ProgramLeaderConflictError extends Error {
+  constructor(programId: string, userId: string) {
+    super(`Program Leader change conflicted for ${programId}:${userId}.`);
+    this.name = "ProgramLeaderConflictError";
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class SelfDepartmentManagerError extends Error {
+  constructor(userId: string) {
+    super(`A user cannot grant Department Manager to themselves: ${userId}`);
+    this.name = "SelfDepartmentManagerError";
   }
 }
 
@@ -555,9 +592,14 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext
   ): Promise<ManagementDirectoryView> {
     const allDepartments = await this.listDepartments(ctx);
-    const departmentScopeIds = new Set<string>();
+    const scopedDepartments = allDepartments.filter((department) =>
+      hasDepartmentManagementScope(department)
+    );
     const departmentPrograms = await Promise.all(
       allDepartments.map(async (department) => {
+        const departmentScope = scopedDepartments.some(
+          ({ department_id }) => department_id === department.department_id
+        );
         if (!(await this.isModuleEnabled(department.department_id))) {
           return [];
         }
@@ -567,7 +609,6 @@ export class DepartmentWorkspace {
         const rows = await this.store.listProgramsForDepartment(
           department.department_id
         );
-        const departmentScope = hasDepartmentManagementScope(department);
         const views = await Promise.all(
           rows.map(async (row) => ({
             row,
@@ -586,7 +627,7 @@ export class DepartmentWorkspace {
     );
     const scopedPrograms = departmentPrograms.flat();
     const scopedDepartmentIds = new Set([
-      ...departmentScopeIds,
+      ...scopedDepartments.map(({ department_id }) => department_id),
       ...scopedPrograms.map(({ department_id }) => department_id),
     ]);
     return {
@@ -696,7 +737,41 @@ export class DepartmentWorkspace {
     id: string
   ): Promise<DepartmentView | null> {
     const row = await this.store.findDepartmentById(id);
-    return row ? this.departmentView(ctx, row) : null;
+    if (!row) {
+      return null;
+    }
+    const [canManage, canConfigureModules, canAssignManagers] =
+      await Promise.all([
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+          departmentId: id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+          departmentId: id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+          departmentId: id,
+        }),
+      ]);
+    if (!(canManage || canConfigureModules || canAssignManagers)) {
+      return null;
+    }
+    return this.departmentView(ctx, row);
+  }
+
+  async listDepartmentManagers(
+    ctx: AuthorizationContext,
+    departmentId: string
+  ): Promise<DepartmentManagerRow[] | null> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (
+      !department ||
+      !(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+        departmentId,
+      }))
+    ) {
+      return null;
+    }
+    return this.store.listDepartmentManagers(departmentId);
   }
 
   async updateDepartment(
@@ -1240,10 +1315,25 @@ export class DepartmentWorkspace {
     return row;
   }
 
-  listDepartmentModules(
+  async listDepartmentModules(
     ctx: AuthorizationContext,
     departmentId: string
-  ): Promise<DepartmentModuleRow[]> {
+  ): Promise<DepartmentModuleRow[] | null> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      return null;
+    }
+    const [canManage, canConfigureModules] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+        departmentId,
+      }),
+    ]);
+    if (!(canManage || canConfigureModules)) {
+      return null;
+    }
     return this.store.listDepartmentModules(departmentId);
   }
 
@@ -1251,23 +1341,29 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     row: DepartmentRow
   ): Promise<DepartmentView> {
-    const [manage, publish, moduleConfigure] = await Promise.all([
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
-        departmentId: row.department_id,
-      }),
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
-        departmentId: row.department_id,
-      }),
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
-        departmentId: row.department_id,
-      }),
-    ]);
+    const [manage, publish, moduleConfigure, managerAssign] = await Promise.all(
+      [
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+          departmentId: row.department_id,
+        }),
+      ]
+    );
     return {
       ...row,
       capabilities: {
         manage,
         publish,
         module_configure: moduleConfigure,
+        manager_assign: managerAssign,
       },
     };
   }
@@ -2454,6 +2550,16 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_LEADER_ASSIGN
     );
     if (userId === ctx.actorUserId) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "DENIED",
+        null,
+        { user_id: userId, reason: "self_delegation" },
+        correlationId
+      );
       throw new SelfDelegationError(userId);
     }
     if (!(await this.store.isAccountActive(userId))) {
@@ -2470,26 +2576,58 @@ export class DepartmentWorkspace {
       throw new LeaderAccountInactiveError(userId);
     }
     const existing = await this.store.findProgramLeader(programId, userId);
-    if (existing && existing.revoked_at === null) {
+    if (existing?.revoked_at === null) {
+      const outcome =
+        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
       await this.audit(
         ctx,
         "PROGRAM_LEADER_GRANT",
         "program_leader",
         programId,
-        "DUPLICATE",
+        outcome,
         existing,
         existing,
         correlationId
       );
+      if (outcome === "CONFLICT") {
+        throw new ProgramLeaderConflictError(programId, userId);
+      }
       return existing;
     }
-    const now = new Date().toISOString();
-    const row = await this.store.assignProgramLeader({
-      program_id: programId,
-      user_id: userId,
-      granted_by: ctx.actorUserId,
-      granted_at: now,
-    });
+    let row: ProgramLeaderRow;
+    try {
+      row = await this.store.assignProgramLeader({
+        program_id: programId,
+        user_id: userId,
+        granted_by: ctx.actorUserId,
+        granted_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
+    }
     await this.audit(
       ctx,
       "PROGRAM_LEADER_GRANT",
@@ -2519,26 +2657,69 @@ export class DepartmentWorkspace {
       throw new LeaderNotAssignedError(programId, userId);
     }
     if (existing.revoked_at !== null) {
+      const outcome =
+        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
       await this.audit(
         ctx,
         "PROGRAM_LEADER_REVOKE",
         "program_leader",
         programId,
-        "DUPLICATE",
+        outcome,
         existing,
         existing,
         correlationId
       );
+      if (outcome === "CONFLICT") {
+        throw new ProgramLeaderConflictError(programId, userId);
+      }
       return existing;
     }
-    const revoked = await this.store.revokeProgramLeader({
-      program_id: programId,
-      user_id: userId,
-      revoked_by: ctx.actorUserId,
-      revoked_at: new Date().toISOString(),
-    });
+    let revoked: ProgramLeaderRow | null;
+    try {
+      revoked = await this.store.revokeProgramLeader({
+        program_id: programId,
+        user_id: userId,
+        revoked_by: ctx.actorUserId,
+        revoked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
     if (!revoked) {
-      throw new LeaderNotAssignedError(programId, userId);
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        null,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
+    }
+    if (revoked.revoked_by !== ctx.actorUserId || revoked.revoked_at === null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        revoked,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
     }
     await this.audit(
       ctx,
@@ -2569,5 +2750,218 @@ export class DepartmentWorkspace {
       return null;
     }
     return this.store.listProgramLeaders(programId);
+  }
+  async assignDepartmentManager(
+    ctx: AuthorizationContext,
+    departmentId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<DepartmentManagerRow> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
+    }
+    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+      departmentId,
+    });
+    if (userId === ctx.actorUserId) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "self_assignment",
+        },
+        correlationId
+      );
+      throw new SelfDepartmentManagerError(userId);
+    }
+    if (!(await this.store.isAccountActive(userId))) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "FAILED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "target_account_not_active",
+        },
+        correlationId
+      );
+      throw new LeaderAccountInactiveError(userId, "Department Manager");
+    }
+    const existing = await this.store.findDepartmentManager(
+      departmentId,
+      userId
+    );
+    if (existing?.revoked_at === null) {
+      const outcome =
+        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        outcome,
+        existing,
+        existing,
+        correlationId
+      );
+      if (outcome === "CONFLICT") {
+        throw new DepartmentManagerConflictError(departmentId, userId);
+      }
+      return existing;
+    }
+    let row: DepartmentManagerRow;
+    try {
+      row = await this.store.assignDepartmentManager({
+        department_id: departmentId,
+        user_id: userId,
+        granted_by: ctx.actorUserId,
+        granted_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    await this.audit(
+      ctx,
+      "DEPARTMENT_MANAGER_GRANT",
+      "department_manager",
+      `${departmentId}:${userId}`,
+      "SUCCESS",
+      existing,
+      row,
+      correlationId
+    );
+    return row;
+  }
+
+  async revokeDepartmentManager(
+    ctx: AuthorizationContext,
+    departmentId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<DepartmentManagerRow> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
+    }
+    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+      departmentId,
+    });
+    const existing = await this.store.findDepartmentManager(
+      departmentId,
+      userId
+    );
+    if (!existing) {
+      throw new DepartmentManagerNotAssignedError(departmentId, userId);
+    }
+    if (existing.revoked_at !== null) {
+      const outcome =
+        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        outcome,
+        existing,
+        existing,
+        correlationId
+      );
+      if (outcome === "CONFLICT") {
+        throw new DepartmentManagerConflictError(departmentId, userId);
+      }
+      return existing;
+    }
+    let row: DepartmentManagerRow | null;
+    try {
+      row = await this.store.revokeDepartmentManager({
+        department_id: departmentId,
+        user_id: userId,
+        revoked_by: ctx.actorUserId,
+        revoked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (!row) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        null,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    if (row.revoked_by !== ctx.actorUserId || row.revoked_at === null) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    await this.audit(
+      ctx,
+      "DEPARTMENT_MANAGER_REVOKE",
+      "department_manager",
+      `${departmentId}:${userId}`,
+      "SUCCESS",
+      existing,
+      row,
+      correlationId
+    );
+    return row;
   }
 }

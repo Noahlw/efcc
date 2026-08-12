@@ -19,10 +19,20 @@ export interface AuthorizationContext {
  * capabilities for that program — never delegation/administration powers.
  * ADR-0006: grant/revoke Program Leader is Admin/Staff only.
  */
-const LEADERSHIP_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>([
-  CAPABILITY.PROGRAM_MANAGE,
-  CAPABILITY.PROGRAM_PUBLISH,
-]);
+const LEADERSHIP_CAPABILITIES: Partial<Record<Capability, true>> = {
+  [CAPABILITY.PROGRAM_MANAGE]: true,
+  [CAPABILITY.PROGRAM_PUBLISH]: true,
+};
+const DEPARTMENT_CAPABILITIES: Partial<Record<Capability, true>> = {
+  [CAPABILITY.DEPARTMENT_MANAGE]: true,
+  [CAPABILITY.DEPARTMENT_PUBLISH]: true,
+  [CAPABILITY.DEPARTMENT_MODULE_CONFIGURE]: true,
+};
+const DEPARTMENT_PROGRAM_CAPABILITIES: Partial<Record<Capability, true>> = {
+  [CAPABILITY.PROGRAM_MANAGE]: true,
+  [CAPABILITY.PROGRAM_PUBLISH]: true,
+  [CAPABILITY.PROGRAM_LEADER_ASSIGN]: true,
+};
 
 export interface CapabilityAuthorizer {
   can: (
@@ -35,6 +45,10 @@ export interface CapabilityAuthorizer {
 export interface RolePolicyStore {
   hasCapability: (role: string, capability: Capability) => Promise<boolean>;
   hasProgramLeadership: (userId: string, programId: string) => Promise<boolean>;
+  hasDepartmentManagement: (
+    userId: string,
+    departmentId: string
+  ) => Promise<boolean>;
 }
 
 export class D1CapabilityAuthorizer implements CapabilityAuthorizer {
@@ -52,8 +66,23 @@ export class D1CapabilityAuthorizer implements CapabilityAuthorizer {
     if (await this.store.hasCapability(ctx.actorRole, capability)) {
       return true;
     }
+    const departmentCapability =
+      DEPARTMENT_CAPABILITIES[capability] === true ||
+      (DEPARTMENT_PROGRAM_CAPABILITIES[capability] === true &&
+        (capability !== CAPABILITY.PROGRAM_LEADER_ASSIGN ||
+          Boolean(scope?.programId)));
     if (
-      LEADERSHIP_CAPABILITIES.has(capability) &&
+      scope?.departmentId &&
+      departmentCapability &&
+      (await this.store.hasDepartmentManagement(
+        ctx.actorUserId,
+        scope.departmentId
+      ))
+    ) {
+      return true;
+    }
+    if (
+      LEADERSHIP_CAPABILITIES[capability] === true &&
       scope?.programId &&
       (await this.store.hasProgramLeadership(ctx.actorUserId, scope.programId))
     ) {

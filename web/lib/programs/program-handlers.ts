@@ -18,6 +18,8 @@ import {
 import type { AuthorizationContext } from "./capability-authorizer";
 import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import {
+  DepartmentManagerConflictError,
+  DepartmentManagerNotAssignedError,
   DepartmentWorkspace,
   DuplicateDepartmentCodeError,
   DuplicateEnrollmentError,
@@ -35,16 +37,20 @@ import {
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
+  SelfDepartmentManagerError,
+  ProgramLeaderConflictError,
 } from "./department-workspace";
 import type {
   CreateEventCommand,
   CreateScheduleRuleCommand,
   EventAvailability,
   UpdateEventCommand,
+  DepartmentView,
   UpdateScheduleRuleCommand,
 } from "./department-workspace";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
+  DepartmentManagerRow,
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
@@ -53,6 +59,33 @@ import type {
 export interface ProgramEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
+}
+
+function departmentManagerDto(row: DepartmentManagerRow) {
+  return {
+    department_id: row.department_id,
+    user_id: row.user_id,
+    granted_by: row.granted_by,
+    granted_at: row.granted_at,
+    revoked_by: row.revoked_by,
+    revoked_at: row.revoked_at,
+    ...(row.user_name === undefined ? {} : { user_name: row.user_name }),
+    ...(row.username === undefined ? {} : { username: row.username }),
+  };
+}
+
+function departmentDto(row: DepartmentView) {
+  return {
+    department_id: row.department_id,
+    code: row.code,
+    name: row.name,
+    description: row.description,
+    lifecycle: row.lifecycle,
+    display_order: row.display_order,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    capabilities: row.capabilities,
+  };
 }
 
 function isDepartmentLifecycle(
@@ -161,6 +194,13 @@ function problem(
   });
 }
 
+function validation(requestId: string, detail: string): Response {
+  return problem(422, "VALIDATION", "Validation failed", detail, requestId);
+}
+
+function notFound(requestId: string, detail: string): Response {
+  return problem(404, "NOT_FOUND", "Not found", detail, requestId);
+}
 function jsonResponse(
   status: number,
   body: unknown,
@@ -496,7 +536,167 @@ export async function handleGetDepartment(
     ctxFrom(auth.account),
     departmentId
   );
-  return jsonResponse(200, { department: row, modules }, requestId);
+  const safeModules = (modules ?? []).map(
+    ({ department_id, module_key, enabled, enabled_at }) => ({
+      department_id,
+      module_key,
+      enabled,
+      enabled_at,
+    })
+  );
+  return jsonResponse(
+    200,
+    { department: departmentDto(row), modules: safeModules },
+    requestId
+  );
+}
+/** GET /api/v1/programs/departments/:id/managers */
+export async function handleListDepartmentManagers(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const managers = await workspace.listDepartmentManagers(
+    ctxFrom(auth.account),
+    departmentId
+  );
+  if (managers === null) {
+    return notFound(requestId, "Unknown department.");
+  }
+  return jsonResponse(
+    200,
+    { managers: managers.map(departmentManagerDto) },
+    requestId
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers */
+export async function handleAssignDepartmentManager(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ user_id?: unknown }>(request);
+  if (body === null || typeof body.user_id !== "string" || !body.user_id) {
+    return validation(requestId, "user_id is required.");
+  }
+  const target = await findAccountByUserId(env.DB, body.user_id);
+  if (!target) {
+    return validation(requestId, "Unknown user_id.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const manager = await workspace.assignDepartmentManager(
+      ctxFrom(auth.account),
+      departmentId,
+      body.user_id,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { manager: departmentManagerDto(manager) },
+      requestId
+    );
+  } catch (error) {
+    if (
+      error instanceof AuthorizationDeniedError ||
+      error instanceof SelfDepartmentManagerError
+    ) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof LeaderAccountInactiveError) {
+      return problem(
+        422,
+        "ACCOUNT_INACTIVE",
+        "Validation failed",
+        error.message,
+        requestId
+      );
+    }
+    if (error instanceof DepartmentManagerConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
+export async function handleRevokeDepartmentManager(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string,
+  userId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const manager = await workspace.revokeDepartmentManager(
+      ctxFrom(auth.account),
+      departmentId,
+      userId,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { manager: departmentManagerDto(manager) },
+      requestId
+    );
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof DepartmentManagerNotAssignedError) {
+      return notFound(requestId, error.message);
+    }
+    if (error instanceof DepartmentManagerConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/departments/:id/member-options?q=... */
+export async function handleSearchDepartmentMemberOptions(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const department = await workspace.getDepartment(
+    ctxFrom(auth.account),
+    departmentId
+  );
+  if (!department || department.capabilities.manager_assign !== true) {
+    return notFound(requestId, "Unknown department.");
+  }
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const members = await workspace.searchActiveMembers(query, 20);
+  return jsonResponse(200, { members }, requestId);
 }
 
 /** PATCH /api/v1/programs/departments/:id */
@@ -976,14 +1176,6 @@ function isIsoInstant(v: unknown): v is string {
     return false;
   }
   return !Number.isNaN(Date.parse(v));
-}
-
-function validation(requestId: string, detail: string): Response {
-  return problem(422, "VALIDATION", "Validation failed", detail, requestId);
-}
-
-function notFound(requestId: string, detail: string): Response {
-  return problem(404, "NOT_FOUND", "Not found", detail, requestId);
 }
 
 function isDayOfWeekValue(v: unknown): v is number {
@@ -2125,6 +2317,9 @@ export async function handleAssignProgramLeader(
         requestId
       );
     }
+    if (error instanceof ProgramLeaderConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
     throw error;
   }
 }
@@ -2154,6 +2349,9 @@ export async function handleRevokeProgramLeader(
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof ProgramLeaderConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     if (error instanceof LeaderNotAssignedError) {
       return notFound(requestId, error.message);

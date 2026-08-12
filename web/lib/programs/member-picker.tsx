@@ -1,4 +1,5 @@
 "use client";
+/* oxlint-disable jsx-a11y/no-noninteractive-element-to-interactive-role, jsx-a11y/prefer-tag-over-role, jsx-a11y/control-has-associated-label -- preserve the accessible combobox/listbox contract */
 
 import { useEffect, useState } from "react";
 
@@ -14,11 +15,13 @@ export const MemberPicker = ({
   name,
   label,
   placeholder,
+  searchOptions,
 }: {
   programId: string;
   name: string;
   label: string;
   placeholder: string;
+  searchOptions?: (query: string) => Promise<{ members: MemberOption[] }>;
 }) => {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<MemberOption | null>(null);
@@ -41,9 +44,7 @@ export const MemberPicker = ({
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((value) =>
-        Math.min(value + 1, options.length - 1)
-      );
+      setActiveIndex((value) => Math.min(value + 1, options.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveIndex((value) => Math.max(value - 1, -1));
@@ -75,7 +76,9 @@ export const MemberPicker = ({
     setSearchError(false);
     void (async () => {
       try {
-        const result = await searchMemberOptions(programId, value);
+        const result = await (searchOptions
+          ? searchOptions(value)
+          : searchMemberOptions(programId, value));
         if (current) {
           setOptions(result.members);
           announce(
@@ -102,12 +105,12 @@ export const MemberPicker = ({
     return () => {
       current = false;
     };
-  }, [programId, query, retryToken, selected]);
+  }, [programId, query, retryToken, searchOptions, selected]);
 
   return (
     <div className={styles.picker}>
-      <label className={styles.fieldLabel}>
-        {label}
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>{label}</span>
         <input
           className={styles.input}
           type="search"

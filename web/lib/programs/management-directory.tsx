@@ -13,6 +13,8 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { DepartmentSettingsPanel } from "./department-settings-panel";
+
 import styles from "@/app/programs/programs.module.css";
 
 export interface ManagementProgram {
@@ -73,6 +75,50 @@ type DirectoryState =
       departments: Department[];
     }
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
+const DepartmentSettingsLauncher = ({
+  department,
+}: {
+  department: Department;
+}) => {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [returnFocusPending, setReturnFocusPending] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      if (returnFocusPending) {
+        triggerRef.current?.focus();
+        setReturnFocusPending(false);
+      }
+      return;
+    }
+    const panel = document.querySelector<HTMLElement>(
+      `#${department.department_id}-settings-panel`
+    );
+    panel?.focus();
+  }, [open, department.department_id, returnFocusPending]);
+
+  const close = () => {
+    setReturnFocusPending(true);
+    setOpen(false);
+  };
+
+  return open ? (
+    <DepartmentSettingsPanel department={department} onClose={close} />
+  ) : (
+    <button
+      ref={triggerRef}
+      className={styles.directoryCard}
+      type="button"
+      onClick={() => setOpen(true)}
+    >
+      <span className={styles.directoryCardTitle}>{department.name}</span>
+      <span className={styles.directoryCardMeta}>
+        {department.code} · {COPY.programs.departmentSettings}
+      </span>
+    </button>
+  );
+};
 
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
@@ -114,6 +160,7 @@ export const ManagementDirectory = ({
         kind: "ready",
         departments,
         rows: projectManagementPrograms(departments, programsByDepartment),
+        departments,
       });
       announce(COPY.programs.managementScopeReady);
     } catch (error) {
@@ -242,6 +289,45 @@ export const ManagementDirectory = ({
           </button>
         </section>
       )}
+      {state.kind === "ready" &&
+        state.departments.some(
+          (department) =>
+            department.capabilities.manage ||
+            department.capabilities.module_configure ||
+            department.capabilities.manager_assign
+        ) && (
+          <section
+            className={styles.moduleSection}
+            aria-labelledby="programs-management-department-settings"
+          >
+            <h3
+              id="programs-management-department-settings"
+              className={styles.sectionLabel}
+            >
+              {COPY.programs.managementScopeDepartment}
+            </h3>
+            <p className={styles.fieldHint}>
+              {COPY.programs.departmentScopeHint}
+            </p>
+            <ul className={styles.deptList}>
+              {state.departments
+                .filter(
+                  (department) =>
+                    department.capabilities.manage ||
+                    department.capabilities.module_configure ||
+                    department.capabilities.manager_assign
+                )
+                .map((department) => (
+                  <li
+                    key={department.department_id}
+                    className={styles.deptItem}
+                  >
+                    <DepartmentSettingsLauncher department={department} />
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
 
       {state.kind === "ready" && state.rows.length === 0 && (
         <section

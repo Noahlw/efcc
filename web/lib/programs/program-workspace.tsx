@@ -26,6 +26,7 @@ import { rememberDeepLink } from "@/lib/session";
 import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
+import { LeadersPanel } from "./programs-leaders-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -902,6 +903,12 @@ const SettingsTask = ({
           </ul>
         )}
       </section>
+      {(program.capabilities.manage || program.capabilities.leader_assign) && (
+        <LeadersPanel
+          program={program}
+          canManage={program.capabilities.leader_assign}
+        />
+      )}
       <button
         className={styles.programDetailBack}
         type="button"

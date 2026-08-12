@@ -749,7 +749,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskParticipants })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskParticipants,
+        exact: true,
+      })
     ).toBeVisible();
 
     await page
