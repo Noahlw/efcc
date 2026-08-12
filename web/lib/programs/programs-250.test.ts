@@ -478,7 +478,13 @@ describe("MUI-02: Program lifecycle and behavior", () => {
         testEnv()
       );
     assert.equal((await archiveBy(admin)).status, 200);
-    assert.equal((await archiveBy(otherAdmin)).status, 409);
+    const second = await archiveBy(otherAdmin);
+    assert.equal(second.status, 409);
+    const body = (await second.json()) as { code: string; detail?: string };
+    assert.equal(body.code, "PROGRAM_ARCHIVE_BLOCKED");
+    // Cross-actor repeat is 'already_archived', NOT an unresolved-commitment
+    // block: the client must not show the future-commitment copy for it.
+    assert.equal(body.detail, "already_archived");
     const audits = await testDb()
       .prepare(
         "SELECT outcome FROM audit_events WHERE action = 'PROGRAM_ARCHIVE' AND entity_id = ? ORDER BY inserted_at ASC"

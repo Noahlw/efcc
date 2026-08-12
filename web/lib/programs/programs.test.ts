@@ -868,6 +868,15 @@ describe("PRG-01: programs", () => {
       testEnv()
     );
     assert.strictEqual(archivedCreate.status, 422);
+    const archivedBody = (await archivedCreate.json()) as {
+      code: string;
+      detail?: string;
+    };
+    assert.strictEqual(archivedBody.code, "VALIDATION");
+    assert.strictEqual(
+      archivedBody.detail,
+      "Programs cannot be created directly in the Archived state."
+    );
 
     await Promise.all(
       [
