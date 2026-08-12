@@ -1029,6 +1029,38 @@ test.describe("MUI-02 scoped Program management", () => {
   });
 
   test("member direct Program mutation is denied server-side", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+
+    await page.context().clearCookies();
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const denied = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "E2E unauthorized rename" }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { code?: string },
+      };
+    }, id);
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
+  });
+});
+
 test.describe("EVT-01 event operational detail and availability", () => {
   // Fresh E2E_DEMO_ fixtures (ADR-0029 reseed) are required: schedule-rule
   // generation only ever creates Wednesdays 19:30, and this suite creates
@@ -1199,27 +1231,6 @@ test.describe("EVT-01 event operational detail and availability", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
-    const id = required("fixture program id", programId);
-
-    await page.context().clearCookies();
-    await loginAs(
-      page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-    );
-    const denied = await page.evaluate(async (programId) => {
-      const response = await fetch(`/api/v1/programs/${programId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "E2E unauthorized rename" }),
-      });
-      return {
-        status: response.status,
-        body: (await response.json()) as { code?: string },
-      };
-    }, id);
-    expect(denied.status).toBe(403);
-    expect(denied.body.code).toBe("FORBIDDEN");
     expect(programId).toBeTruthy();
 
     const name = `E2E_EVT_建立_${Date.now()}`;
