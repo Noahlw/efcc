@@ -175,6 +175,7 @@
 .filterChip:focus-visible,
 .directoryCard:focus-visible,
 .programDetailBack:focus-visible,
+.workspaceTaskLink:focus-visible,
 .memberOption:focus-visible,
 .taskButton:focus-visible,
 .actionButton:focus-visible,
@@ -1222,6 +1223,167 @@
   gap: 0.75rem;
 }
 
+.managementWorkspace {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.workspaceHeader {
+  display: grid;
+  gap: 0.375rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.workspaceHeader .boundaryLead {
+  margin-bottom: 0;
+}
+
+.workspaceTasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspaceTaskLink {
+  min-height: 44px;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.workspaceTaskLink:hover {
+  color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.workspaceTaskLink[aria-current="page"] {
+  color: var(--surface-raised);
+  background: var(--accent);
+}
+
+.workspaceSection,
+.workspaceTask {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspaceHeading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.workspaceSubheading {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+
+.workspaceFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.workspaceFacts > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.workspaceFacts dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.workspaceFacts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.workspaceEventSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.workspaceEventSummary span {
+  color: var(--ink-muted);
+}
+
+.workspaceAttention {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.workspaceAttention > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 10rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspaceAttention dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.workspaceAttention dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.workspaceTaskList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspaceTaskRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspaceParticipantGroups {
+  display: grid;
+  gap: 1rem;
+}
+
+.workspaceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 @media (max-width: 799.98px) {
   .programDetailFacts {
     grid-template-columns: 1fr;
@@ -1257,5 +1419,21 @@
   .managementEntry .button,
   .managementEntry .secondaryButton {
     width: 100%;
+  }
+
+  .workspaceTasks,
+  .workspaceActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .managementWorkspace > .programDetailBack,
+  .workspaceTaskLink,
+  .workspaceActions > button {
+    width: 100%;
+  }
+
+  .workspaceFacts {
+    grid-template-columns: 1fr;
   }
 }

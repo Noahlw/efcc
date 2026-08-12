@@ -370,6 +370,44 @@ export async function handleListManagementAccess(
   const access = await workspace.getManagementAccess(ctxFrom(auth.account));
   return jsonResponse(200, access, requestId);
 }
+/** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
+export async function handleListManagementDirectory(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const directory = await workspace.listManagementDirectory(
+    ctxFrom(auth.account)
+  );
+  return jsonResponse(200, directory, requestId);
+}
+
+/** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
+export async function handleGetManagementProgram(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const result = await workspace.getManagementProgram(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (!result) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, result, requestId);
+}
 
 /**
  * GET /api/v1/programs/catalog — narrow participant Programs directory

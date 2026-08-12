@@ -9,11 +9,13 @@ import { announce } from "@/lib/live-region";
 import { getManagementAccess } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
 import { ParticipantProgramDetail } from "./participant-program-detail";
+import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
-import type { ProgramsIntent } from "./programs-intent";
+import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -180,6 +182,50 @@ export function ProgramsBoundary() {
         : COPY.programs.participantMode
     );
   };
+  const openManagementProgram = (programId: string) => {
+    const href = buildProgramsHref({
+      mode: "management",
+      programId,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(COPY.programs.programSelected);
+  };
+  const navigateManagementTask = (task: ProgramsTask | null) => {
+    if (!intent.programId) {
+      return;
+    }
+    const href = buildProgramsHref({
+      mode: "management",
+      programId: intent.programId,
+      task,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    const taskLabel =
+      task === "events"
+        ? COPY.programs.workspaceTaskEvents
+        : task === "participants"
+          ? COPY.programs.workspaceTaskParticipants
+          : task === "settings"
+            ? COPY.programs.workspaceTaskSettings
+            : null;
+    announce(
+      taskLabel
+        ? `${COPY.programs.workspaceTaskLabel}：${taskLabel}`
+        : COPY.programs.workspaceTitle
+    );
+  };
   // PUI-02: row selection hands off through the canonical opaque Program
   // intent URL — the directory never renders the nested manager.
   const openProgram = (programId: string) => {
@@ -294,8 +340,12 @@ export function ProgramsBoundary() {
       {access.kind === "ready" && intent.mode === "management" && (
         <ManagementPanel
           projection={access.projection}
+          intent={intent}
           onParticipant={() => navigateMode("participant")}
           onRecoverParticipant={() => navigateMode("participant", true)}
+          onOpenProgram={openManagementProgram}
+          onTaskChange={navigateManagementTask}
+          onBackDirectory={() => navigateMode("management", true, null)}
         />
       )}
       {access.kind === "ready" &&
@@ -389,12 +439,20 @@ function BoundaryFrame({
 
 function ManagementPanel({
   projection,
+  intent,
   onParticipant,
   onRecoverParticipant,
+  onOpenProgram,
+  onTaskChange,
+  onBackDirectory,
 }: {
   projection: ProgramsManagementAccess;
+  intent: ProgramsIntent;
   onParticipant: () => void;
   onRecoverParticipant: () => void;
+  onOpenProgram: (programId: string) => void;
+  onTaskChange: (task: ProgramsTask | null) => void;
+  onBackDirectory: () => void;
 }) {
   if (!projection.hasManagementCapability) {
     return (
@@ -426,6 +484,17 @@ function ManagementPanel({
       >
         {COPY.programs.enterParticipant}
       </button>
+      {intent.programId ? (
+        <ProgramWorkspace
+          key={intent.programId}
+          programId={intent.programId}
+          task={intent.task}
+          onBack={onBackDirectory}
+          onTaskChange={onTaskChange}
+        />
+      ) : (
+        <ManagementDirectory onOpenProgram={onOpenProgram} />
+      )}
     </>
   );
 }

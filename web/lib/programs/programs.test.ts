@@ -590,6 +590,211 @@ describe("PRG-01: departments", () => {
   });
 });
 
+describe("MUI-01: capability-aware management reads", () => {
+  test("directory filters to current scope and redacts manager secrets", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "MUI-01-DIRECTORY",
+      name: "MUI Directory Department",
+    });
+    const assigned = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "MUI Assigned Program",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+    const unassigned = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "MUI Unassigned Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+    assert.ok(assigned.check_in_token);
+    assert.ok(unassigned.check_in_token);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const memberResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/management-directory", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberResponse.status, 200);
+    const memberBody = (await assertCorrelated(memberResponse)) as {
+      data: {
+        departments: { department_id: string }[];
+        programs: { program_id: string }[];
+      };
+    };
+    assert.ok(
+      !memberBody.data.programs.some(
+        ({ program_id }) =>
+          program_id === assigned.program_id ||
+          program_id === unassigned.program_id
+      )
+    );
+    const publicProgramResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${unassigned.program_id}`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(publicProgramResponse.status, 200);
+    const publicProgramBody = (await assertCorrelated(
+      publicProgramResponse
+    )) as { data: { program: Record<string, unknown> } };
+    assert.ok(!("check_in_token" in publicProgramBody.data.program));
+
+    assert.ok(
+      !memberBody.data.departments.some(
+        ({ department_id }) => department_id === department.department_id
+      )
+    );
+
+    const grantLeader = await worker.fetch(
+      programsRequest(`/api/v1/programs/${assigned.program_id}/leaders`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+        body: { user_id: "U002" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(grantLeader.status, 200);
+
+    const leaderResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/management-directory", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(leaderResponse.status, 200);
+    const leaderBody = (await assertCorrelated(leaderResponse)) as {
+      data: {
+        departments: Record<string, unknown>[];
+        programs: Record<string, unknown>[];
+      };
+    };
+    assert.ok(
+      leaderBody.data.departments.every(
+        (row) => !("created_by" in row) && !("updated_by" in row)
+      )
+    );
+    const assignedRows = leaderBody.data.programs.filter(
+      (row) => row.program_id === assigned.program_id
+    );
+    assert.strictEqual(assignedRows.length, 1);
+    assert.ok(
+      !leaderBody.data.programs.some(
+        (row) => row.program_id === unassigned.program_id
+      )
+    );
+    const raw = JSON.stringify(leaderBody.data);
+    assert.ok(!raw.includes(assigned.check_in_token));
+    assert.ok(!raw.includes("check_in_opens_at_minutes_before_start"));
+    assert.ok(!raw.includes("check_in_closes_at_minutes_after_end"));
+    const future = await createProgram(adminAccess, department.department_id, {
+      name: "MUI Future Department Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const futureDirectory = await worker.fetch(
+      programsRequest("/api/v1/programs/management-directory", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(futureDirectory.status, 200);
+    const futureBody = (await assertCorrelated(futureDirectory)) as {
+      data: { programs: { program_id: string }[] };
+    };
+    assert.strictEqual(
+      futureBody.data.programs.filter(
+        ({ program_id }) => program_id === future.program_id
+      ).length,
+      1
+    );
+  });
+
+  test("direct workspace reads reauthorize scope without leaking revoked records", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "MUI-01-WORKSPACE",
+      name: "MUI Workspace Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "MUI Workspace Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    assert.ok(program.check_in_token);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const denied = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/management`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(denied.status, 404);
+    const deniedProblem = await problemOf(denied);
+    assert.strictEqual(deniedProblem.code, "NOT_FOUND");
+
+    const allowed = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/management`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(allowed.status, 200);
+    const body = (await assertCorrelated(allowed)) as {
+      data: {
+        program: Record<string, unknown>;
+        modules: { module_key: string; enabled: number }[];
+      };
+    };
+    assert.strictEqual(body.data.program.program_id, program.program_id);
+    assert.ok(!("check_in_token" in body.data.program));
+    assert.ok(body.data.modules.every((module) => !("enabled_by" in module)));
+    assert.ok(
+      body.data.modules.some(
+        ({ module_key, enabled }) => module_key === "events" && enabled === 1
+      )
+    );
+  });
+});
+
 describe("PRG-01: programs", () => {
   test("Admin can create a program under a department", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");

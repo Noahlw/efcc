@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   return {
     getManagementAccess: vi.fn(),
+    getManagementDirectory: vi.fn(),
+    getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
     listParticipantCatalog: vi.fn(),
     pathname: vi.fn(() => "/programs"),
@@ -39,8 +41,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/lib/programs/program-api", () => ({
+vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementAccess: mocks.getManagementAccess,
+  getManagementDirectory: mocks.getManagementDirectory,
+  getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
@@ -188,6 +192,34 @@ describe("Programs intent", () => {
       parseProgramsIntent("?program=program-1&programId=program-1").malformed
     ).toBeTruthy();
   });
+
+  test("preserves management task intent and rejects task links without a Program", () => {
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events#overview"
+      )
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: "#overview",
+      task: "events",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "participants",
+      })
+    ).toBe("/programs?mode=management&program=program-1&task=participants");
+    expect(
+      parseProgramsIntent("?mode=management&task=settings").malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent("?mode=management&program=program-1&task=unknown")
+        .malformed
+    ).toBeTruthy();
+  });
 });
 
 describe("Programs boundary copy", () => {
@@ -258,9 +290,13 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/programs");
   sessionStorage.clear();
   mocks.getManagementAccess.mockReset();
-  mocks.getParticipantProgramDetail.mockReset();
-  mocks.listParticipantCatalog.mockReset();
+  mocks.getManagementDirectory.mockReset();
+  mocks.getManagementProgram.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
+  mocks.getManagementDirectory.mockResolvedValue({
+    departments: [],
+    programs: [],
+  });
   mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
   mocks.push.mockReset();
   mocks.replace.mockReset();
@@ -318,6 +354,7 @@ describe("Programs boundary", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("活動")).not.toBeInTheDocument();
   });
+
   test("preserves an existing Program hash when selecting another directory row", async () => {
     window.history.replaceState({}, "", "/programs#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
@@ -337,6 +374,7 @@ describe("Programs boundary", () => {
     expect(window.location.search).toBe("?program=program-2");
     expect(window.location.hash).toBe("#overview");
   });
+
   test("renders direct Program detail and returns to the directory safely", async () => {
     window.history.replaceState({}, "", "/programs?program=program-1#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
