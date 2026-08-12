@@ -77,6 +77,7 @@ const COPY = {
   createProgram: "新增課程",
   editProgram: "編輯課程",
   saveProgram: "儲存課程",
+  workspaceDepartment: "所屬部門",
   programName: "課程名稱",
   programCategory: "活動類別",
   behaviorType: "形式",
@@ -913,6 +914,13 @@ test.describe("MUI-02 scoped Program management", () => {
     await expect(
       page.getByRole("heading", { name: COPY.createProgram })
     ).toBeVisible();
+    // The department combobox defaults to the first department by
+    // display_order, which is the baseline 青區 — its program_catalog module
+    // is disabled (#250 module gating), so creating a program there is a 403.
+    // Explicitly pick the E2E_DEMO_ demo department (module enabled by seed).
+    await page
+      .getByRole("combobox", { name: COPY.workspaceDepartment })
+      .selectOption({ label: "E2E_DEMO_示範事工 · E2E_DEMO_MINISTRY" });
 
     const originalName = `E2E_MUI250_${Date.now()}`;
     await page
