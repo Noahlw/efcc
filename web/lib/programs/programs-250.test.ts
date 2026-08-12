@@ -241,6 +241,11 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       testEnv()
     );
     assert.equal(archive.status, 409);
+    const body = (await archive.json()) as { code: string; detail?: string };
+    assert.equal(body.code, "PROGRAM_ARCHIVE_BLOCKED");
+    // The commitment reason is machine-carried in detail so the client can
+    // distinguish it from the cross-actor 'already_archived' block.
+    assert.equal(body.detail, "future_active_event");
     const audit = await testDb()
       .prepare(
         "SELECT outcome FROM audit_events WHERE action = 'PROGRAM_ARCHIVE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
@@ -280,6 +285,40 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       testEnv()
     );
     assert.equal(archive.status, 409);
+  });
+
+  test("create with lifecycle Archived is rejected with an honest validation message", async () => {
+    const admin = await access("alice", "alice-secret");
+    const departmentId = await createDepartment(
+      admin,
+      `MUI250-CREATE-${Date.now()}`
+    );
+    const created = await worker.fetch(
+      request(`/api/v1/programs/departments/${departmentId}/programs`, {
+        method: "POST",
+        cookie: admin,
+        body: {
+          name: `NeverArchived-${Date.now()}`,
+          category: "E2E Category",
+          behavior_type: "OneOff",
+          lifecycle: "Archived",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(created.status, 422);
+    const body = (await created.json()) as { code: string; detail?: string };
+    assert.equal(body.code, "VALIDATION");
+    assert.equal(
+      body.detail,
+      "Programs cannot be created directly in the Archived state."
+    );
+    assert.ok(
+      !body.detail?.includes("transition"),
+      "create-time rejection must not be framed as a lifecycle transition"
+    );
   });
 
   test("cross-scope mutation is denied and leaves the Program unchanged", async () => {

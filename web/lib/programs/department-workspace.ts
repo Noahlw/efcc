@@ -287,9 +287,11 @@ export class InvalidProgramLifecycleError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class ProgramArchiveBlockedError extends Error {
+  readonly reasons: readonly string[];
   constructor(programId: string, reasons: readonly string[]) {
     super(`Program ${programId} cannot be archived: ${reasons.join(", ")}.`);
     this.name = "ProgramArchiveBlockedError";
+    this.reasons = reasons;
   }
 }
 

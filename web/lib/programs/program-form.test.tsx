@@ -243,4 +243,36 @@ describe(ProgramForm, () => {
     );
     expect(onSaved).not.toHaveBeenCalled();
   });
+
+  test("shows the already-archived copy when the block reason is already_archived", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn<(programId: string) => void>();
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({
+        code: "PROGRAM_ARCHIVE_BLOCKED",
+        status: 409,
+        detail: "already_archived",
+      })
+    );
+
+    render(<ProgramForm initial={program} onSaved={onSaved} />);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", {
+        name: COPY.programs.programLifecycle,
+      }),
+      "Archived"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.archiveAlreadyArchived
+    );
+    expect(
+      screen.queryByText(COPY.programs.archiveBlocked)
+    ).not.toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
 });
