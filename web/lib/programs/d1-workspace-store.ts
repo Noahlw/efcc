@@ -310,6 +310,14 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       fields.push("display_order = ?");
       values.push(update.display_order);
     }
+    if (update.check_in_opens_at_minutes_before_start !== undefined) {
+      fields.push("check_in_opens_at_minutes_before_start = ?");
+      values.push(update.check_in_opens_at_minutes_before_start);
+    }
+    if (update.check_in_closes_at_minutes_after_end !== undefined) {
+      fields.push("check_in_closes_at_minutes_after_end = ?");
+      values.push(update.check_in_closes_at_minutes_after_end);
+    }
     fields.push("updated_by = ?", "updated_at = ?");
     values.push(update.updated_by, update.updated_at);
     return { fields, values };

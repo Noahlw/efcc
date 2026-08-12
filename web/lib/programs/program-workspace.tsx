@@ -22,6 +22,7 @@ import type {
   ProgramEvent,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+import { ProgramSettings } from "./program-settings";
 
 import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
@@ -830,95 +831,19 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
 
 const SettingsTask = ({
   program,
+  modules,
   onTaskChange,
 }: {
   program: Program;
+  modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
-}) => {
-  const capabilities: string[] = [];
-  if (program.capabilities.manage) {
-    capabilities.push(COPY.programs.workspaceCapabilityManage);
-  }
-  if (program.capabilities.publish) {
-    capabilities.push(COPY.programs.workspaceCapabilityPublish);
-  }
-  if (program.capabilities.leader_assign) {
-    capabilities.push(COPY.programs.workspaceCapabilityLeaderAssign);
-  }
-
-  return (
-    <section
-      className={styles.workspaceTask}
-      aria-labelledby="programs-workspace-settings-title"
-    >
-      <h4
-        id="programs-workspace-settings-title"
-        className={styles.workspaceHeading}
-      >
-        {COPY.programs.workspaceTaskSettings}
-      </h4>
-      <p className={styles.programDetailMuted}>
-        {COPY.programs.workspaceTaskSettingsLead}
-      </p>
-      <dl className={styles.workspaceFacts}>
-        <div>
-          <dt>{COPY.programs.programName}</dt>
-          <dd>{program.name}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceBehavior}</dt>
-          <dd>{behaviorLabel(program.behavior_type)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceLifecycle}</dt>
-          <dd>{lifecycleLabel(program.lifecycle)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceDiscoverability}</dt>
-          <dd>{discoverabilityLabel(program.discoverability)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceEnrollmentMode}</dt>
-          <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-        </div>
-      </dl>
-      <section aria-labelledby="programs-workspace-settings-capabilities">
-        <h5
-          id="programs-workspace-settings-capabilities"
-          className={styles.workspaceSubheading}
-        >
-          {COPY.programs.workspaceTaskSettingsCapabilities}
-        </h5>
-        {capabilities.length === 0 ? (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.workspaceTaskSettingsNoCapabilities}
-          </p>
-        ) : (
-          <ul className={styles.workspaceTaskList}>
-            {capabilities.map((capability) => (
-              <li key={capability} className={styles.workspaceTaskRow}>
-                <span>{capability}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      {(program.capabilities.manage || program.capabilities.leader_assign) && (
-        <LeadersPanel
-          program={program}
-          canManage={program.capabilities.leader_assign}
-        />
-      )}
-      <button
-        className={styles.programDetailBack}
-        type="button"
-        onClick={() => onTaskChange(null)}
-      >
-        {COPY.programs.backToOverview}
-      </button>
-    </section>
-  );
-};
+}) => (
+  <ProgramSettings
+    program={program}
+    eventsEnabled={hasModule(modules, "events")}
+    onTaskChange={onTaskChange}
+  />
+);
 const TaskUnavailable = ({ task }: { task: ProgramsTask }) => (
   <section
     className={styles.workspaceTask}
@@ -966,7 +891,13 @@ const WorkspaceTask = ({
       <TaskUnavailable task={task} />
     );
   }
-  return <SettingsTask program={program} onTaskChange={onTaskChange} />;
+  return (
+    <SettingsTask
+      program={program}
+      modules={modules}
+      onTaskChange={onTaskChange}
+    />
+  );
 };
 
 export const ProgramWorkspace = ({

@@ -81,6 +81,10 @@ export type ManagementDepartmentView = Omit<
 export type ManagementProgramView = ProgramSummary & {
   capabilities: ProgramCapabilities;
 };
+export type ManagementProgramSettingsView = ManagementProgramView & {
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
+};
 export type ManagementDepartmentModuleView = Omit<
   DepartmentModuleRow,
   "enabled_by"
@@ -91,7 +95,7 @@ export interface ManagementDirectoryView {
   programs: ManagementProgramView[];
 }
 export interface ManagementProgramWorkspaceView {
-  program: ManagementProgramView;
+  program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
 }
@@ -661,7 +665,7 @@ export class DepartmentWorkspace {
       enabled,
       enabled_at,
     }));
-    const program = this.managementProgram(
+    const program = this.managementProgramSettings(
       row,
       await this.programCapabilities(ctx, row)
     );
@@ -1076,6 +1080,29 @@ export class DepartmentWorkspace {
   ): ManagementProgramView {
     return { ...this.programSummary(row), capabilities };
   }
+  private managementProgramSettings(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    const program = this.managementProgram(row, capabilities);
+    return capabilities.manage
+      ? {
+          ...program,
+          check_in_opens_at_minutes_before_start:
+            row.check_in_opens_at_minutes_before_start,
+          check_in_closes_at_minutes_after_end:
+            row.check_in_closes_at_minutes_after_end,
+        }
+      : program;
+  }
+  private programMutationView(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    // PATCH responses mirror the management read projection: attendance
+    // defaults for managers, but never the check-in secret.
+    return this.managementProgramSettings(row, capabilities);
+  }
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
@@ -1106,18 +1133,54 @@ export class DepartmentWorkspace {
     id: string,
     update: ProgramUpdate,
     correlationId: string | null
-  ): Promise<ProgramView> {
+  ): Promise<ManagementProgramSettingsView> {
     const old = await this.store.findProgramById(id);
     if (!old) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        null,
+        null,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     if (!(await this.isModuleEnabled(old.department_id))) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        old,
+        old,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
-    await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
-      departmentId: old.department_id,
-      programId: old.program_id,
-    });
+    try {
+      await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
+        departmentId: old.department_id,
+        programId: old.program_id,
+      });
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError) {
+        await this.audit(
+          ctx,
+          "PROGRAM_UPDATE",
+          "program",
+          id,
+          "DENIED",
+          old,
+          old,
+          correlationId
+        );
+      }
+      throw error;
+    }
     if (update.name !== undefined && update.name !== old.name) {
       const existing = await this.store.listProgramsForDepartment(
         old.department_id
@@ -1143,7 +1206,9 @@ export class DepartmentWorkspace {
         update.behavior_type === undefined &&
         update.discoverability === undefined &&
         update.enrollment_mode === undefined &&
-        update.display_order === undefined;
+        update.display_order === undefined &&
+        update.check_in_opens_at_minutes_before_start === undefined &&
+        update.check_in_closes_at_minutes_after_end === undefined;
       if (old.lifecycle === "Archived") {
         if (!onlyLifecycle) {
           // Metadata edits on an archived program are still allowed; fall
@@ -1163,10 +1228,10 @@ export class DepartmentWorkspace {
             correlationId
           );
           if (sameActor) {
-            return {
-              ...old,
-              capabilities: await this.programCapabilities(ctx, old),
-            };
+            return this.programMutationView(
+              old,
+              await this.programCapabilities(ctx, old)
+            );
           }
           throw new ProgramArchiveBlockedError(id, ["already_archived"]);
         }
@@ -1197,10 +1262,10 @@ export class DepartmentWorkspace {
               correlationId
             );
             if (sameActor) {
-              return {
-                ...current,
-                capabilities: await this.programCapabilities(ctx, current),
-              };
+              return this.programMutationView(
+                current,
+                await this.programCapabilities(ctx, current)
+              );
             }
             throw new ProgramArchiveBlockedError(id, ["already_archived"]);
           }
@@ -1243,10 +1308,10 @@ export class DepartmentWorkspace {
           row,
           correlationId
         );
-        return {
-          ...row,
-          capabilities: await this.programCapabilities(ctx, row),
-        };
+        return this.programMutationView(
+          row,
+          await this.programCapabilities(ctx, row)
+        );
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -1274,7 +1339,10 @@ export class DepartmentWorkspace {
       row,
       correlationId
     );
-    return { ...row, capabilities: await this.programCapabilities(ctx, row) };
+    return this.programMutationView(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
   }
 
   async setDepartmentModule(

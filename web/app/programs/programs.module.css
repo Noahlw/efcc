@@ -782,6 +782,7 @@
   }
 
   .form,
+  .settingsForm,
   .ruleForm,
   .cancelForm,
   .eventActions {
@@ -1392,6 +1393,114 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
+}
+
+.settingsSurface {
+  gap: 1rem;
+}
+
+.settingsGroups {
+  display: grid;
+  gap: 1rem;
+}
+
+.settingsGroup {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.settingsGroupLead {
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.settingsForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.settingsForm > .field {
+  min-width: min(100%, 14rem);
+}
+
+.settingsActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+}
+
+.settingsCurrent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.settingsCurrent > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.settingsCurrent dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.settingsCurrent dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.settingsReadonly {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.settingsUnavailable {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.settingsRuleList {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settingsRuleRow {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.settingsRuleSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .workspaceParticipantGroups {

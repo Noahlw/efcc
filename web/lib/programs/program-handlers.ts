@@ -143,6 +143,14 @@ const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0
       ? value
       : INVALID_PROGRAM_VALUE,
+  check_in_opens_at_minutes_before_start: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
+  check_in_closes_at_minutes_after_end: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
 };
 
 function parseProgramFields(
@@ -983,6 +991,8 @@ export async function handleUpdateProgram(
     discoverability?: unknown;
     enrollment_mode?: unknown;
     display_order?: unknown;
+    check_in_opens_at_minutes_before_start?: unknown;
+    check_in_closes_at_minutes_after_end?: unknown;
   }>(request);
   if (body === null) {
     return problem(

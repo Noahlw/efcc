@@ -71,6 +71,18 @@ const COPY = {
   workspaceTaskParticipants: "參與者",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
+  settingsBasics: "基本資料",
+  settingsEnrollment: "報名與可見性",
+  settingsSchedule: "時間表",
+  settingsAttendance: "出席",
+  settingsScheduleOneOff:
+    "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
+  settingsAttendanceOpens: "開始前可簽到分鐘",
+  settingsAttendanceCloses: "結束後仍可簽到分鐘",
+  settingsSaveBasics: "儲存基本資料",
+  settingsSaveAttendance: "儲存出席預設",
+  addRule: "新增時間表",
+  generateEvents: "產生聚會",
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
@@ -934,6 +946,56 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("button", { name: COPY.workspaceBack })
     ).toBeVisible();
+
+  });
+});
+
+test.describe("CFG-01 Program Settings", () => {
+  test("renders all scope-owned groups and omits recurring controls for OneOff", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [recurringId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const [oneOffId] = await catalogProgramIds(page, "E2E_DEMO_青年團契");
+    expect(recurringId).toBeTruthy();
+    expect(oneOffId).toBeTruthy();
+
+    await page.goto(
+      `/programs?mode=management&program=${required("recurring id", recurringId)}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsBasics })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsEnrollment })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsSchedule })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsAttendance })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
+
+    await page.goto(
+      `/programs?mode=management&program=${required("one-off id", oneOffId)}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsSchedule })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.addRule })
+    ).toHaveCount(0);
   });
 });
 

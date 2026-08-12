@@ -82,6 +82,11 @@ export type ManagementProgram = Omit<
   | "check_in_opens_at_minutes_before_start"
   | "check_in_closes_at_minutes_after_end"
 >;
+export type ManagementProgramSettings = ManagementProgram &
+  Pick<
+    Program,
+    "check_in_opens_at_minutes_before_start" | "check_in_closes_at_minutes_after_end"
+  >;
 /** Server-filtered and secret-redacted Programs management projection. */
 export interface ManagementDirectory {
   departments: Department[];
@@ -326,6 +331,8 @@ export type ProgramPatch = Omit<
 > & {
   description?: string | null;
   category?: string | null;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
 };
 
 interface ProgramsSuccess<T> {
@@ -596,7 +603,7 @@ export function listPrograms(
 
 /** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
 export function getManagementProgram(programId: string): Promise<{
-  program: ManagementProgram;
+  program: ManagementProgramSettings;
   department: Department;
   modules: DepartmentModule[];
 }> {

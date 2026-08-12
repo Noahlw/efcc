@@ -75,6 +75,8 @@ export interface ProgramUpdate {
   discoverability?: ProgramDiscoverability;
   enrollment_mode?: ProgramEnrollmentMode;
   display_order?: number;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
   updated_by: string;
   updated_at: string;
 }
