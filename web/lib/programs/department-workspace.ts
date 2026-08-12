@@ -6,8 +6,17 @@
  * this module.
  */
 
-import { CAPABILITY, MODULE_KEY, MODULE_KEYS } from "./capabilities";
-import type { Capability, ModuleKey } from "./capabilities";
+import {
+  CAPABILITY,
+  hasDepartmentManagementScope,
+  MODULE_KEY,
+  MODULE_KEYS,
+} from "./capabilities";
+import type {
+  Capability,
+  DepartmentCapabilities,
+  ModuleKey,
+} from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -44,12 +53,9 @@ import type {
   WorkspaceStore,
 } from "./workspace-store";
 
-export interface DepartmentCapabilities {
-  manage: boolean;
-  publish: boolean;
-  module_configure: boolean;
-  manager_assign?: boolean;
-}
+// Capability flags live in the pure vocabulary module; the domain module
+// re-exports the type so the public surface of this file is unchanged.
+export type { DepartmentCapabilities } from "./capabilities";
 
 export interface ProgramCapabilities {
   manage: boolean;
@@ -85,15 +91,6 @@ export interface ManagementProgramWorkspaceView {
   program: ManagementProgramView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
-}
-
-function hasDepartmentManagementScope(department: DepartmentView): boolean {
-  return (
-    department.capabilities.manage ||
-    department.capabilities.publish ||
-    department.capabilities.module_configure ||
-    department.capabilities.manager_assign === true
-  );
 }
 
 function hasProgramManagementScope(
@@ -631,10 +628,7 @@ export class DepartmentWorkspace {
   ): Promise<ManagementAccessView> {
     const departments = await this.listDepartments(ctx);
     const departmentScopes = departments.filter(
-      ({ capabilities }) =>
-        capabilities.manage ||
-        capabilities.publish ||
-        capabilities.module_configure
+      hasDepartmentManagementScope
     ).length;
 
     // A department-level grant is enough to expose the entry. Avoid scanning
