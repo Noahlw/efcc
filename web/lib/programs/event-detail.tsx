@@ -564,7 +564,7 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="opens_at"
-                    required
+                    required={event.check_in_window_opens_at != null}
                     defaultValue={hkWallInputValue(
                       event.check_in_window_opens_at
                     )}
@@ -576,7 +576,7 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="closes_at"
-                    required
+                    required={event.check_in_window_opens_at != null}
                     defaultValue={hkWallInputValue(
                       event.check_in_window_closes_at
                     )}

@@ -144,6 +144,54 @@ describe("EVT-01 event detail", () => {
     });
   });
 
+  test("a window-less event can be edited without inventing a check-in window", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      })
+    );
+    mocks.updateEvent.mockResolvedValue({
+      event: { ...detailFixture().event, name: "改名聚會" },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.eventEditTitle })
+    );
+    const nameInput = await screen.findByLabelText(COPY.programs.eventName);
+    await user.clear(nameInput);
+    await user.type(nameInput, "改名聚會");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventSavedNotice)
+    ).resolves.toBeInTheDocument();
+    // Empty window inputs submit as an explicit null (clear), not as a
+    // required-field block, so the edit reaches the server.
+    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
+      name: "改名聚會",
+      location: null,
+      starts_at: "2026-09-12T10:00:00.000Z",
+      ends_at: "2026-09-12T11:30:00.000Z",
+      check_in_window_opens_at: null,
+      check_in_window_closes_at: null,
+    });
+  });
+
   test("deactivation requires inline confirmation and offers Undo", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.setEventAvailability.mockResolvedValue({

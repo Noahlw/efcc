@@ -2753,7 +2753,7 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
-  test("PATCH null check-in windows preserve the existing operational window", async () => {
+  test("PATCH absent window fields preserve the window; explicit null clears it", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-20T10:00:00.000Z",
       ends_at: "2026-09-20T11:00:00.000Z",
@@ -2768,8 +2768,13 @@ describe("EVT-01: event operations (#251)", () => {
         check_in_window_closes_at: string;
       }>();
     assert.ok(before);
+    assert.ok(
+      before.check_in_window_opens_at,
+      "created events derive a check-in window"
+    );
 
-    const response = await worker.fetch(
+    // Fields absent from the payload must keep the existing window.
+    const identityOnly = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${programId}/events/${event.event_id}`,
         {

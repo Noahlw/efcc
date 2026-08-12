@@ -677,16 +677,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       ["ends_at", update.ends_at],
       ["name", update.name],
       ["location", update.location],
-      // EVT-01 (#251): a null window is "keep the existing window", never a
-      // literal NULL — isOpen() treats a missing close as permanently closed.
-      [
-        "check_in_window_opens_at",
-        update.check_in_window_opens_at ?? undefined,
-      ],
-      [
-        "check_in_window_closes_at",
-        update.check_in_window_closes_at ?? undefined,
-      ],
+      // EVT-01 (#251): an absent window field keeps the existing window; an
+      // explicit null clears it. Same nullable convention as name/location.
+      ["check_in_window_opens_at", update.check_in_window_opens_at],
+      ["check_in_window_closes_at", update.check_in_window_closes_at],
       ["availability", update.availability],
     ];
     for (const [column, value] of entries) {
