@@ -200,6 +200,9 @@ export const EventDetail = ({
         }),
       () => {
         setEditing(false);
+        // Any successful edit invalidates the prior deactivation's Undo
+        // context; a stale Undo would silently re-open availability.
+        setUndoAvailable(false);
         return COPY.programs.eventSavedNotice;
       }
     );

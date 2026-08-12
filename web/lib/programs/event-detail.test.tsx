@@ -235,6 +235,60 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
   });
 
+  test("an unrelated edit retires a stale availability Undo", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.setEventAvailability.mockResolvedValue({
+      event: { ...detailFixture().event, availability: "Inactive" },
+    });
+    mocks.updateEvent.mockResolvedValue({
+      event: { ...detailFixture().event, name: "改名聚會" },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventAvailabilityConfirmProceed,
+      })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).toBeInTheDocument();
+
+    // An unrelated identity edit must not leave the stale Undo clickable —
+    // it would silently re-open availability the user never asked for.
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditTitle })
+    );
+    const nameInput = await screen.findByLabelText(COPY.programs.eventName);
+    await user.clear(nameInput);
+    await user.type(nameInput, "改名聚會");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventSavedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("cancel requires a reason and shows the cancelled state", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.cancelEvent.mockResolvedValue({
