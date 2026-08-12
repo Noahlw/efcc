@@ -7,11 +7,13 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { getManagementAccess } from "@/lib/programs/program-api";
+import type { Department } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
 import { ParticipantProgramDetail } from "./participant-program-detail";
+import { ProgramForm } from "./program-form";
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
@@ -436,7 +438,6 @@ function BoundaryFrame({
     </section>
   );
 }
-
 function ManagementPanel({
   projection,
   intent,
@@ -454,6 +455,10 @@ function ManagementPanel({
   onTaskChange: (task: ProgramsTask | null) => void;
   onBackDirectory: () => void;
 }) {
+  const [createDepartments, setCreateDepartments] = useState<
+    Department[] | null
+  >(null);
+
   if (!projection.hasManagementCapability) {
     return (
       <StatePanel
@@ -492,8 +497,20 @@ function ManagementPanel({
           onBack={onBackDirectory}
           onTaskChange={onTaskChange}
         />
+      ) : createDepartments ? (
+        <ProgramForm
+          departments={createDepartments}
+          onSaved={(programId) => {
+            setCreateDepartments(null);
+            onOpenProgram(programId);
+          }}
+          onCancel={() => setCreateDepartments(null)}
+        />
       ) : (
-        <ManagementDirectory onOpenProgram={onOpenProgram} />
+        <ManagementDirectory
+          onOpenProgram={onOpenProgram}
+          onCreateProgram={setCreateDepartments}
+        />
       )}
     </>
   );

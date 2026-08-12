@@ -286,6 +286,14 @@ export class InvalidProgramLifecycleError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class ProgramArchiveBlockedError extends Error {
+  constructor(programId: string, reasons: readonly string[]) {
+    super(`Program ${programId} cannot be archived: ${reasons.join(", ")}.`);
+    this.name = "ProgramArchiveBlockedError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidModuleKeyError extends Error {
   constructor(key: string) {
     super(`Unknown module key: ${key}`);
@@ -506,10 +514,14 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext
   ): Promise<ManagementDirectoryView> {
     const allDepartments = await this.listDepartments(ctx);
+    const departmentScopeIds = new Set<string>();
     const departmentPrograms = await Promise.all(
       allDepartments.map(async (department) => {
         if (!(await this.isModuleEnabled(department.department_id))) {
           return [];
+        }
+        if (hasDepartmentManagementScope(department)) {
+          departmentScopeIds.add(department.department_id);
         }
         const rows = await this.store.listProgramsForDepartment(
           department.department_id
@@ -532,9 +544,10 @@ export class DepartmentWorkspace {
       })
     );
     const scopedPrograms = departmentPrograms.flat();
-    const scopedDepartmentIds = new Set(
-      scopedPrograms.map(({ department_id }) => department_id)
-    );
+    const scopedDepartmentIds = new Set([
+      ...departmentScopeIds,
+      ...scopedPrograms.map(({ department_id }) => department_id),
+    ]);
     return {
       departments: allDepartments
         .filter(({ department_id }) => scopedDepartmentIds.has(department_id))
@@ -995,6 +1008,125 @@ export class DepartmentWorkspace {
         throw new DuplicateProgramNameError(update.name);
       }
     }
+    const updateWithAudit = {
+      ...update,
+      updated_by: ctx.actorUserId,
+      updated_at: new Date().toISOString(),
+    };
+    if (update.lifecycle === "Archived") {
+      const onlyLifecycle =
+        update.name === undefined &&
+        update.description === undefined &&
+        update.category === undefined &&
+        update.behavior_type === undefined &&
+        update.discoverability === undefined &&
+        update.enrollment_mode === undefined &&
+        update.display_order === undefined;
+      if (old.lifecycle === "Archived") {
+        if (!onlyLifecycle) {
+          // Metadata edits on an archived program are still allowed; fall
+          // through to the generic update path below.
+        } else {
+          // Terminal repeat: same-actor is a quiet DUPLICATE (never silent),
+          // a different actor observes a CONFLICT against the archived row.
+          const sameActor = old.updated_by === ctx.actorUserId;
+          await this.audit(
+            ctx,
+            "PROGRAM_ARCHIVE",
+            "program",
+            id,
+            sameActor ? "DUPLICATE" : "CONFLICT",
+            old,
+            old,
+            correlationId
+          );
+          if (sameActor) {
+            return {
+              ...old,
+              capabilities: await this.programCapabilities(ctx, old),
+            };
+          }
+          throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+        }
+      } else if (old.lifecycle !== "Active") {
+        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
+      } else {
+        const row = await this.store.archiveProgramIfClear(
+          id,
+          updateWithAudit,
+          new Date().toISOString()
+        );
+        if (!row) {
+          // The atomic update failed: either another actor archived the
+          // program concurrently (repeat classification by actor), or an
+          // operational commitment still blocks the archive (conflict with
+          // reasons).
+          const current = await this.store.findProgramById(id);
+          if (current?.lifecycle === "Archived") {
+            const sameActor = current.updated_by === ctx.actorUserId;
+            await this.audit(
+              ctx,
+              "PROGRAM_ARCHIVE",
+              "program",
+              id,
+              sameActor ? "DUPLICATE" : "CONFLICT",
+              old,
+              current,
+              correlationId
+            );
+            if (sameActor) {
+              return {
+                ...current,
+                capabilities: await this.programCapabilities(ctx, current),
+              };
+            }
+            throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+          }
+          const [events, requests] = await Promise.all([
+            this.store.listEvents(id),
+            this.store.listEnrollmentRequests(id),
+          ]);
+          const reasons = [
+            events.some(
+              (event) =>
+                event.status === "Active" &&
+                Number.isFinite(Date.parse(event.starts_at)) &&
+                Date.parse(event.starts_at) > Date.now()
+            )
+              ? "future_active_event"
+              : null,
+            requests.some((request) => request.status === "Pending")
+              ? "pending_enrollment_request"
+              : null,
+          ].filter((reason): reason is string => reason !== null);
+          await this.audit(
+            ctx,
+            "PROGRAM_ARCHIVE",
+            "program",
+            id,
+            "CONFLICT",
+            old,
+            { reasons },
+            correlationId
+          );
+          throw new ProgramArchiveBlockedError(id, reasons);
+        }
+        await this.audit(
+          ctx,
+          "PROGRAM_ARCHIVE",
+          "program",
+          id,
+          "SUCCESS",
+          old,
+          row,
+          correlationId
+        );
+        return {
+          ...row,
+          capabilities: await this.programCapabilities(ctx, row),
+        };
+      }
+    }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
       const validTransition =
         (old.lifecycle === "Draft" && update.lifecycle === "Active") ||
@@ -1009,11 +1141,7 @@ export class DepartmentWorkspace {
         programId: old.program_id,
       });
     }
-    const row = await this.store.updateProgram(id, {
-      ...update,
-      updated_by: ctx.actorUserId,
-      updated_at: new Date().toISOString(),
-    });
+    const row = await this.store.updateProgram(id, updateWithAudit);
     await this.audit(
       ctx,
       "PROGRAM_UPDATE",
@@ -1128,7 +1256,7 @@ export class DepartmentWorkspace {
     capability: Capability
   ): Promise<ProgramRow> {
     const program = await this.store.findProgramById(programId);
-    if (!program) {
+    if (!program || program.lifecycle === "Archived") {
       throw new AuthorizationDeniedError(capability);
     }
     if (!(await this.isModuleEnabled(program.department_id))) {

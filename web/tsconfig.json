@@ -45,6 +45,7 @@
     "lib/programs/department-workspace.ts",
     "lib/programs/program-handlers.ts",
     "lib/programs/programs.test.ts",
+    "lib/programs/programs-250.test.ts",
     "lib/service-envelope.ts",
     "lib/service-envelope.test.ts"
   ]

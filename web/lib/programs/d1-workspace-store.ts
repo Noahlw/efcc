@@ -269,11 +269,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
-    const current = await this.findProgramById(id);
-    if (!current) {
-      throw new WorkspaceNotFoundError("program", id);
-    }
+  private static programUpdateParts(update: ProgramUpdate): {
+    fields: string[];
+    values: (string | number | null)[];
+  } {
     const fields: string[] = [];
     const values: (string | number | null)[] = [];
     if (update.name !== undefined) {
@@ -309,13 +308,53 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       values.push(update.display_order);
     }
     fields.push("updated_by = ?", "updated_at = ?");
-    values.push(update.updated_by, update.updated_at, id);
+    values.push(update.updated_by, update.updated_at);
+    return { fields, values };
+  }
 
+  async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
+    const current = await this.findProgramById(id);
+    if (!current) {
+      throw new WorkspaceNotFoundError("program", id);
+    }
+    const { fields, values } = D1WorkspaceStore.programUpdateParts(update);
     await this.db
       .prepare(`UPDATE programs SET ${fields.join(", ")} WHERE program_id = ?`)
-      .bind(...values)
+      .bind(...values, id)
       .run();
     return this.requireProgram(id);
+  }
+
+  async archiveProgramIfClear(
+    id: string,
+    update: ProgramUpdate,
+    now: string
+  ): Promise<ProgramRow | null> {
+    const { fields, values } = D1WorkspaceStore.programUpdateParts(update);
+    const result = await this.db
+      .prepare(
+        `UPDATE programs
+            SET ${fields.join(", ")}
+          WHERE program_id = ?
+            AND lifecycle = 'Active'
+            AND NOT EXISTS (
+              SELECT 1
+                FROM events
+               WHERE events.program_id = programs.program_id
+                 AND events.status = 'Active'
+                 AND events.starts_at IS NOT NULL
+                 AND julianday(events.starts_at) > julianday(?)
+            )
+            AND NOT EXISTS (
+              SELECT 1
+                FROM enrollment_requests
+               WHERE enrollment_requests.program_id = programs.program_id
+                 AND enrollment_requests.status = 'Pending'
+            )`
+      )
+      .bind(...values, id, now)
+      .run();
+    return result.meta.changes > 0 ? this.requireProgram(id) : null;
   }
 
   async setDepartmentModule(
@@ -804,7 +843,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
-  }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
+  }): Promise<{
+    request: EnrollmentRequestRow;
+    enrollment: EnrollmentRow;
+  } | null> {
     const results = await this.db.batch([
       this.db
         .prepare(
@@ -828,12 +870,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
            WHERE request_id = ? AND status = 'Pending'`
         )
-        .bind(
-          input.decided_by,
-          input.decided_at,
-          input.note,
-          input.request_id
-        ),
+        .bind(input.decided_by, input.decided_at, input.note, input.request_id),
       // ponytail: gate both audits on the enrollment row the INSERT..SELECT
       // just created, so a no-op batch (0-row select) inserts no audit rows.
       this.auditInsertGated(input.auditCreate, input.enrollment_id),

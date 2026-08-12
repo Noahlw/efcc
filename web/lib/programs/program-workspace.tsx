@@ -21,6 +21,7 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { ProgramForm } from "./program-form";
 import type { ProgramsTask } from "./programs-intent";
 
 import styles from "@/app/programs/programs.module.css";
@@ -221,15 +222,16 @@ const WorkspaceNavigation = ({
     </nav>
   );
 };
-
 const WorkspaceOverview = ({
   program,
   department,
   summary,
+  onEdit,
 }: {
   program: Program;
   department: Department | null;
   summary: SummaryState;
+  onEdit: () => void;
 }) => {
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
@@ -259,6 +261,13 @@ const WorkspaceOverview = ({
         >
           {COPY.programs.workspaceIdentity}
         </h4>
+        <div className={styles.workspaceActions}>
+          {program.capabilities.manage && (
+            <button className={styles.button} type="button" onClick={onEdit}>
+              {COPY.programs.editProgram}
+            </button>
+          )}
+        </div>
         {program.description ? (
           <p className={styles.programDetailDescription}>
             {program.description}
@@ -772,10 +781,10 @@ export const ProgramWorkspace = ({
 }: ProgramWorkspaceProps) => {
   const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
+  const [editing, setEditing] = useState(false);
   const mounted = useRef(true);
   const workspaceRequestId = useRef(0);
   const retryFocusPending = useRef(false);
-
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -986,10 +995,22 @@ export const ProgramWorkspace = ({
         programId={programId}
         task={task}
         modules={state.modules}
-        onTaskChange={onTaskChange}
+        onTaskChange={(nextTask) => {
+          setEditing(false);
+          onTaskChange(nextTask);
+        }}
       />
 
-      {task ? (
+      {editing ? (
+        <ProgramForm
+          initial={state.program}
+          onSaved={() => {
+            setEditing(false);
+            void loadWorkspace();
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : task ? (
         <WorkspaceTask
           program={state.program}
           task={task}
@@ -1001,6 +1022,7 @@ export const ProgramWorkspace = ({
           program={state.program}
           department={state.department}
           summary={summary}
+          onEdit={() => setEditing(true)}
         />
       )}
     </section>

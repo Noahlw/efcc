@@ -325,6 +325,22 @@ export const COPY = {
     editProgram: "編輯課程",
     saveProgram: "儲存課程",
     cancelEdit: "取消編輯",
+    programCreateTitle: "新增課程",
+    programCreateLead: "選擇獲授權部門，建立定期或單次課程。",
+    programEditLead: "更新課程資料；儲存後會重新確認工作區內容。",
+    programSaved: "課程已儲存，正在返回工作區。",
+    programCreateUnavailable: "目前沒有可建立課程的部門。",
+    programCreateForbidden: "你沒有在任何部門建立課程的權限。",
+    programCategoryRequired: "請填寫活動類別。",
+    programCreateDraftOnlyHint:
+      "所選部門未獲授權發佈課程；課程會先以草稿建立。",
+    programConflict: "課程名稱與現有資料衝突，請重新整理後再試。",
+    programTransportAmbiguous:
+      "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
+    archiveBlocked:
+      "課程仍有未完成的未來營運承諾，先處理相關聚會或報名後再存檔。",
+    archiveProgram: "存檔課程",
+    activateProgram: "啟用課程",
     behaviorType: "形式",
     behaviorRecurring: "定期",
     behaviorOneOff: "單次",
@@ -498,6 +514,9 @@ export function errorCopyFor(
   }
   if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND"))) {
     return COPY.error.notFound;
+  }
+  if (code === "PROGRAM_ARCHIVE_BLOCKED") {
+    return COPY.programs.archiveBlocked;
   }
   if (code === "CONFLICT") {
     return COPY.error.conflict;

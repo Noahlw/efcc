@@ -67,15 +67,21 @@ export function projectManagementPrograms(
 
 type DirectoryState =
   | { kind: "loading" }
-  | { kind: "ready"; rows: ManagementProgram[] }
+  | {
+      kind: "ready";
+      rows: ManagementProgram[];
+      departments: Department[];
+    }
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
+  onCreateProgram?: (departments: Department[]) => void;
 }
 
 export const ManagementDirectory = ({
   onOpenProgram,
+  onCreateProgram,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [state, setState] = useState<DirectoryState>({ kind: "loading" });
@@ -106,6 +112,7 @@ export const ManagementDirectory = ({
       }
       setState({
         kind: "ready",
+        departments,
         rows: projectManagementPrograms(departments, programsByDepartment),
       });
       announce(COPY.programs.managementScopeReady);
@@ -189,7 +196,19 @@ export const ManagementDirectory = ({
       <p className={styles.boundaryLead}>
         {COPY.programs.managementDirectoryLead}
       </p>
-
+      {state.kind === "ready" &&
+        state.departments.some(({ capabilities }) => capabilities.manage) &&
+        onCreateProgram && (
+          <div className={styles.workspaceActions}>
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => onCreateProgram(state.departments)}
+            >
+              {COPY.programs.createProgram}
+            </button>
+          </div>
+        )}
       {state.kind === "loading" && (
         <output
           id="programs-management-directory-state"

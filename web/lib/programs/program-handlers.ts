@@ -30,6 +30,7 @@ import {
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  ProgramArchiveBlockedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
@@ -88,7 +89,11 @@ const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
   description: (value) =>
     value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
   category: (value) =>
-    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+    typeof value === "string" && value.trim()
+      ? value.trim()
+      : value === null
+        ? null
+        : INVALID_PROGRAM_VALUE,
   behavior_type: (value) =>
     isProgramBehaviorType(value) ? value : INVALID_PROGRAM_VALUE,
   lifecycle: (value) =>
@@ -632,15 +637,16 @@ export async function handleCreateProgram(
   }
   const fields = parseProgramFields(body, [
     "name",
+    "category",
     "behavior_type",
     "lifecycle",
   ]);
-  if (!fields) {
+  if (!fields || fields.category === null) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, behavior_type, and lifecycle are required and must be valid.",
+      "name, category, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -836,6 +842,15 @@ export async function handleUpdateProgram(
         422,
         "VALIDATION",
         "Validation failed",
+        error.message,
+        requestId
+      );
+    }
+    if (error instanceof ProgramArchiveBlockedError) {
+      return problem(
+        409,
+        "PROGRAM_ARCHIVE_BLOCKED",
+        "Conflict",
         error.message,
         requestId
       );

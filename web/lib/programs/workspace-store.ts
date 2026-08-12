@@ -337,9 +337,14 @@ export interface WorkspaceStore {
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
-  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
+  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  archiveProgramIfClear: (
+    id: string,
+    update: ProgramUpdate,
+    now: string
+  ) => Promise<ProgramRow | null>;
   searchActiveMembers: (
     query: string,
     limit: number

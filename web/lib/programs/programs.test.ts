@@ -165,6 +165,7 @@ async function createProgram(
   departmentId: string,
   body: {
     name: string;
+    category?: string;
     behavior_type: "Recurring" | "OneOff";
     lifecycle?: "Draft" | "Active" | "Archived";
     discoverability?: "Listed" | "Unlisted";
@@ -185,6 +186,7 @@ async function createProgram(
       },
       body: {
         ...body,
+        category: body.category ?? "測試類別",
         lifecycle: body.lifecycle ?? "Draft",
         discoverability: body.discoverability ?? "Unlisted",
         enrollment_mode: body.enrollment_mode ?? "MemberRequest",
@@ -829,6 +831,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Strict Program",
+            category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Published",
             discoverability: "Listed",
@@ -854,6 +857,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Archived Program",
+            category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Archived",
             discoverability: "Listed",
@@ -883,6 +887,14 @@ describe("PRG-01: programs", () => {
         {
           name: "No Lifecycle",
           behavior_type: "Recurring",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+        {
+          name: "Whitespace Category",
+          category: "   ",
+          behavior_type: "Recurring",
+          lifecycle: "Draft",
           discoverability: "Listed",
           enrollment_mode: "MemberRequest",
         },
@@ -930,6 +942,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Defaulted Program",
+            category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
           },
@@ -1182,6 +1195,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Member Program",
+            category: "測試類別",
             behavior_type: "OneOff",
             lifecycle: "Draft",
             discoverability: "Listed",
@@ -1234,6 +1248,7 @@ describe("PRG-01: modules", () => {
           },
           body: {
             name: "Blocked Program",
+            category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
             discoverability: "Listed",
@@ -1358,6 +1373,7 @@ describe("PRG-01: audit", () => {
           },
           body: {
             name: "Idempotency Program",
+            category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
           },

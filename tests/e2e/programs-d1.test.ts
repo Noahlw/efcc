@@ -74,6 +74,15 @@ const COPY = {
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
+  createProgram: "新增課程",
+  editProgram: "編輯課程",
+  saveProgram: "儲存課程",
+  programName: "課程名稱",
+  programCategory: "活動類別",
+  behaviorType: "形式",
+  behaviorOneOff: "單次",
+  lifecycle: "課程狀態",
+  lifecycleActive: "啟用",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -652,8 +661,16 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
     const directory = page.getByRole("list", { name: "可管理課程" });
-    await expect(directory.getByRole("button")).toHaveCount(4);
-    await expect(directory.getByText("E2E_DEMO_MINISTRY")).toHaveCount(4);
+    const demoDirectoryRows = directory
+      .getByRole("button")
+      .filter({ hasText: /^E2E_DEMO_/u });
+    await expect(demoDirectoryRows).toHaveCount(4);
+    expect(
+      await directory
+        .getByRole("listitem")
+        .filter({ hasText: "E2E_DEMO_MINISTRY" })
+        .count()
+    ).toBeGreaterThanOrEqual(4);
 
     const search = page.getByRole("searchbox", {
       name: COPY.managementDirectorySearchLabel,
@@ -827,7 +844,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       const inheritedDirectory = page.getByRole("list", {
         name: "可管理課程",
       });
-      await expect(inheritedDirectory.getByRole("button")).toHaveCount(4);
+      const inheritedDemoRows = inheritedDirectory
+        .getByRole("button")
+        .filter({ hasText: /^E2E_DEMO_/u });
+      expect(await inheritedDemoRows.count()).toBeGreaterThanOrEqual(4);
       await expect(
         inheritedDirectory.getByRole("button", {
           name: /E2E_DEMO_青年團契/u,
@@ -876,5 +896,132 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("button", { name: COPY.workspaceBack })
     ).toBeVisible();
+  });
+});
+
+test.describe("MUI-02 scoped Program management", () => {
+  test("creates a OneOff, operates multiple Events, edits, and blocks archive", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("button", { name: COPY.createProgram }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.createProgram })
+    ).toBeVisible();
+
+    const originalName = `E2E_MUI250_${Date.now()}`;
+    await page
+      .getByRole("textbox", { name: COPY.programName })
+      .fill(originalName);
+    await page
+      .getByRole("textbox", { name: COPY.programCategory })
+      .fill("E2E 活動類別");
+    await page
+      .getByRole("combobox", { name: COPY.behaviorType })
+      .selectOption("OneOff");
+    await page
+      .getByRole("combobox", { name: COPY.lifecycle })
+      .selectOption("Active");
+    await page.getByRole("button", { name: COPY.saveProgram }).click();
+
+    await expect(
+      page.getByRole("heading", { name: originalName })
+    ).toBeVisible();
+    const programId = new URL(page.url()).searchParams.get("program");
+    expect(programId).toBeTruthy();
+    const id = required("created program id", programId ?? undefined);
+    const events = [
+      ["2098-12-01T10:00:00.000Z", "2098-12-01T11:00:00.000Z"],
+      ["2098-12-08T10:00:00.000Z", "2098-12-08T11:00:00.000Z"],
+    ] as const;
+    const eventResult = await page.evaluate(
+      async ({ programId: id, eventTimes }) => {
+        const statuses = await Promise.all(
+          eventTimes.map(async ([starts_at, ends_at]) => {
+            const response = await fetch(`/api/v1/programs/${id}/events`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ starts_at, ends_at }),
+            });
+            return response.status;
+          })
+        );
+        const listed = await fetch(`/api/v1/programs/${id}/events`);
+        const body = (await listed.json()) as {
+          data?: { events?: unknown[] };
+        };
+        return {
+          statuses,
+          listStatus: listed.status,
+          count: body.data?.events?.length ?? -1,
+        };
+      },
+      { programId: id, eventTimes: events }
+    );
+    expect(eventResult).toStrictEqual({
+      statuses: [201, 201],
+      listStatus: 200,
+      count: 2,
+    });
+
+    await page.getByRole("button", { name: COPY.editProgram }).click();
+    const updatedName = `${originalName}_更新`;
+    await page
+      .getByRole("textbox", { name: COPY.programName })
+      .fill(updatedName);
+    await page.getByRole("button", { name: COPY.saveProgram }).click();
+    await expect(
+      page.getByRole("heading", { name: updatedName })
+    ).toBeVisible();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?mode=management&program=${id}$`, "u")
+    );
+
+    const archiveStatus = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lifecycle: "Archived" }),
+      });
+      return response.status;
+    }, id);
+    expect(archiveStatus).toBe(409);
+  });
+
+  test("member direct Program mutation is denied server-side", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+
+    await page.context().clearCookies();
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const denied = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "E2E unauthorized rename" }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { code?: string },
+      };
+    }, id);
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
   });
 });

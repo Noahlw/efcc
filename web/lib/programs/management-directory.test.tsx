@@ -224,6 +224,23 @@ describe(ManagementDirectory, () => {
     await userEvent.click(screen.getByRole("button", { name: /社區關懷/u }));
     expect(onOpenProgram).toHaveBeenCalledWith("program-leader");
   });
+  test("offers creation only from a Department management scope", async () => {
+    mockDirectory();
+    const onCreateProgram = vi.fn();
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn()}
+        onCreateProgram={onCreateProgram}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.createProgram,
+      })
+    );
+    expect(onCreateProgram).toHaveBeenCalledWith(departments);
+  });
 
   test("surfaces a forbidden state and retries without exposing records", async () => {
     mocks.getManagementDirectory
