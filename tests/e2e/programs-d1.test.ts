@@ -1417,7 +1417,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     }
   });
 
-  test("consequential deactivation surfaces the inline confirmation from a stale summary", async ({
+  test("an active Program enrollment alone does not gate this event's deactivation", async ({
     page,
     browser,
   }) => {
@@ -1436,8 +1436,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       180
     );
 
-    // A concurrent actor enrolls and is approved while the admin detail
-    // still holds the zero-participant summary it loaded at open time.
+    // A concurrent actor enrolls and is approved. EVT-01 (#251): enrollments
+    // are Program-scoped, not this Event's own open operations, so an
+    // approved enrollment must never gate deactivation of an event that has
+    // no check-ins of its own.
     const memberContext = await browser.newContext();
     try {
       const memberPage = await memberContext.newPage();
@@ -1481,16 +1483,11 @@ test.describe("EVT-01 event operational detail and availability", () => {
       "approval must leave an Active enrollment"
     ).toBeTruthy();
 
-    // The stale client believes deactivation is safe; the server refusal must
-    // surface the inline confirmation with the authoritative operation count.
+    // Deactivation must succeed immediately: this event has zero check-ins,
+    // so the unrelated Program enrollment above must not surface a
+    // confirmation gate.
     await page
       .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
-      .click();
-    await expect(
-      page.getByText(/1 項進行中的報名／簽到會受影響/u)
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
       .click();
     await expect(
       page.getByText(COPY.eventAvailabilityNotice, { exact: true })
