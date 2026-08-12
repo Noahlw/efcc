@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -390,6 +390,81 @@ describe(ProgramSettings, () => {
     expect(
       screen.getByLabelText(COPY.programs.endTime)
     ).toHaveValue("");
+  });
+
+  test("keeps rule-edit input when the rule-edit mutation fails", async () => {
+    const user = userEvent.setup();
+    mocks.updateScheduleRule.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+
+    const row = screen
+      .getByText(`${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`)
+      .closest("li") as HTMLElement;
+    await user.click(
+      within(row).getByRole("button", { name: COPY.programs.settingsRuleEdit })
+    );
+    const startTime = within(row).getByLabelText(COPY.programs.startTime);
+    await user.clear(startTime);
+    await user.type(startTime, "20:00");
+    await user.click(
+      within(row).getByRole("button", { name: COPY.programs.settingsRuleSave })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.programConflict
+    );
+    expect(within(row).getByLabelText(COPY.programs.startTime)).toHaveValue(
+      "20:00"
+    );
+    expect(
+      within(row).getByRole("button", { name: COPY.programs.settingsRuleSave })
+    ).toBeInTheDocument();
+    expect(
+      within(row).queryByRole("button", { name: COPY.programs.settingsRuleEdit })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsSaved)
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps exception input when the exception mutation fails", async () => {
+    const user = userEvent.setup();
+    mocks.createScheduleException.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsRuleAddException })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate),
+      "2026-08-13"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsExceptionSave })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.programConflict
+    );
+    expect(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate)
+    ).toHaveValue("2026-08-13");
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsExceptionSave })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsSaved)
+    ).not.toBeInTheDocument();
   });
 
   test("explains that existing schedule exceptions cannot be listed yet", async () => {

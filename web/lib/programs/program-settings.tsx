@@ -395,9 +395,9 @@ export const ProgramSettings = ({
             rule.rule_id,
             ruleInputFrom(draft)
           ),
-        COPY.programs.settingsSaved
+        COPY.programs.settingsSaved,
+        () => setEditingRuleId(null)
       );
-      setEditingRuleId(null);
     };
 
   const exceptionDraftFor = (ruleId: string): ExceptionValues =>
@@ -421,9 +421,9 @@ export const ProgramSettings = ({
             }));
           }
         },
-        COPY.programs.settingsSaved
+        COPY.programs.settingsSaved,
+        () => setExceptionRuleId(null)
       );
-      setExceptionRuleId(null);
     };
 
   const removeException = (exception: ScheduleException) => {
