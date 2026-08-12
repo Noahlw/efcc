@@ -311,17 +311,23 @@ export class DuplicateProgramNameError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidProgramLifecycleError extends Error {
-  constructor(from: ProgramLifecycle, to: ProgramLifecycle) {
-    super(`Invalid program lifecycle transition: ${from} -> ${to}.`);
+  constructor(
+    from: ProgramLifecycle,
+    to: ProgramLifecycle,
+    message = `Invalid program lifecycle transition: ${from} -> ${to}.`
+  ) {
+    super(message);
     this.name = "InvalidProgramLifecycleError";
   }
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class ProgramArchiveBlockedError extends Error {
+  readonly reasons: readonly string[];
   constructor(programId: string, reasons: readonly string[]) {
     super(`Program ${programId} cannot be archived: ${reasons.join(", ")}.`);
     this.name = "ProgramArchiveBlockedError";
+    this.reasons = reasons;
   }
 }
 
@@ -821,7 +827,13 @@ export class DepartmentWorkspace {
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     if (cmd.lifecycle === "Archived") {
-      throw new InvalidProgramLifecycleError("Draft", "Archived");
+      // Create-time validation, not a lifecycle transition: Draft is merely
+      // the default create state, so the transition-pair message would lie.
+      throw new InvalidProgramLifecycleError(
+        "Draft",
+        "Archived",
+        "Programs cannot be created directly in the Archived state."
+      );
     }
     if (cmd.lifecycle === "Active") {
       await this.ensure(ctx, CAPABILITY.PROGRAM_PUBLISH, {

@@ -80,12 +80,11 @@ function mutationError(caught: unknown): string {
   ) {
     return COPY.programs.programTransportAmbiguous;
   }
-  if (caught.problem.code === "PROGRAM_ARCHIVE_BLOCKED") {
-    return COPY.programs.archiveBlocked;
-  }
   if (caught.problem.code === "CONFLICT") {
     return COPY.programs.programConflict;
   }
+  // PROGRAM_ARCHIVE_BLOCKED (and everything else) maps through errorCopyFor,
+  // which distinguishes the 'already_archived' reason from commitment blocks.
   return errorCopyFor(caught.problem.code, caught.problem.detail);
 }
 

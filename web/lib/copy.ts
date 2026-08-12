@@ -339,6 +339,7 @@ export const COPY = {
       "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
     archiveBlocked:
       "課程仍有未完成的未來營運承諾，先處理相關聚會或報名後再存檔。",
+    archiveAlreadyArchived: "此課程已被其他負責人存檔。",
     archiveProgram: "存檔課程",
     activateProgram: "啟用課程",
     behaviorType: "形式",
@@ -546,7 +547,8 @@ export const COPY = {
 export function errorCopyFor(
   code?: string,
   // _detail is surfaced only for VALIDATION problems, whose server detail is
-  // a specific user-facing Cantonese sentence; every other code keeps
+  // a specific user-facing Cantonese sentence; PROGRAM_ARCHIVE_BLOCKED uses
+  // it as a machine-readable reason discriminator. Every other code keeps
   // centralized copy as the sole user-facing source.
   _detail?: string
 ): string {
@@ -570,7 +572,11 @@ export function errorCopyFor(
     return COPY.error.notFound;
   }
   if (code === "PROGRAM_ARCHIVE_BLOCKED") {
-    return COPY.programs.archiveBlocked;
+    // 'already_archived' means a different actor reached the terminal state
+    // first — not an unresolved-commitment conflict, so it gets its own copy.
+    return _detail?.includes("already_archived")
+      ? COPY.programs.archiveAlreadyArchived
+      : COPY.programs.archiveBlocked;
   }
   if (code === "CONFLICT") {
     return COPY.error.conflict;

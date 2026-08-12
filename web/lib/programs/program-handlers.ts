@@ -1055,11 +1055,14 @@ export async function handleUpdateProgram(
       );
     }
     if (error instanceof ProgramArchiveBlockedError) {
+      // Detail carries the machine-readable block reason token(s) (e.g.
+      // 'already_archived' vs 'future_active_event') so the client can show
+      // accurate copy; the generic message is not user-facing for this code.
       return problem(
         409,
         "PROGRAM_ARCHIVE_BLOCKED",
         "Conflict",
-        error.message,
+        error.reasons.join(","),
         requestId
       );
     }
