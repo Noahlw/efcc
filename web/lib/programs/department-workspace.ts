@@ -6,8 +6,17 @@
  * this module.
  */
 
-import { CAPABILITY, MODULE_KEY, MODULE_KEYS } from "./capabilities";
-import type { Capability, ModuleKey } from "./capabilities";
+import {
+  CAPABILITY,
+  hasDepartmentManagementScope,
+  MODULE_KEY,
+  MODULE_KEYS,
+} from "./capabilities";
+import type {
+  Capability,
+  DepartmentCapabilities,
+  ModuleKey,
+} from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -47,12 +56,9 @@ import type {
 
 export type { EventAvailability } from "./workspace-store";
 
-export interface DepartmentCapabilities {
-  manage: boolean;
-  publish: boolean;
-  module_configure: boolean;
-  manager_assign?: boolean;
-}
+// Capability flags live in the pure vocabulary module; the domain module
+// re-exports the type so the public surface of this file is unchanged.
+export type { DepartmentCapabilities } from "./capabilities";
 
 export interface ProgramCapabilities {
   manage: boolean;
@@ -96,15 +102,6 @@ export interface EventDetailView {
     active_enrollments: number;
     checked_in: number;
   };
-}
-
-function hasDepartmentManagementScope(department: DepartmentView): boolean {
-  return (
-    department.capabilities.manage ||
-    department.capabilities.publish ||
-    department.capabilities.module_configure ||
-    department.capabilities.manager_assign === true
-  );
 }
 
 function hasProgramManagementScope(
@@ -686,10 +683,7 @@ export class DepartmentWorkspace {
   ): Promise<ManagementAccessView> {
     const departments = await this.listDepartments(ctx);
     const departmentScopes = departments.filter(
-      ({ capabilities }) =>
-        capabilities.manage ||
-        capabilities.publish ||
-        capabilities.module_configure
+      hasDepartmentManagementScope
     ).length;
 
     // A department-level grant is enough to expose the entry. Avoid scanning
@@ -2577,7 +2571,7 @@ export class DepartmentWorkspace {
         "PROGRAM_LEADER_GRANT",
         "program_leader",
         programId,
-        "FAILED",
+        "DENIED",
         null,
         { user_id: userId, reason: "target_account_not_active" },
         correlationId
@@ -2663,6 +2657,16 @@ export class DepartmentWorkspace {
     );
     const existing = await this.store.findProgramLeader(programId, userId);
     if (!existing) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "DENIED",
+        null,
+        { user_id: userId, reason: "leader_not_assigned" },
+        correlationId
+      );
       throw new LeaderNotAssignedError(programId, userId);
     }
     if (existing.revoked_at !== null) {
@@ -2796,7 +2800,7 @@ export class DepartmentWorkspace {
         "DEPARTMENT_MANAGER_GRANT",
         "department_manager",
         `${departmentId}:${userId}`,
-        "FAILED",
+        "DENIED",
         null,
         {
           department_id: departmentId,
@@ -2894,6 +2898,20 @@ export class DepartmentWorkspace {
       userId
     );
     if (!existing) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "manager_not_assigned",
+        },
+        correlationId
+      );
       throw new DepartmentManagerNotAssignedError(departmentId, userId);
     }
     if (existing.revoked_at !== null) {

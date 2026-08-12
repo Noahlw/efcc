@@ -34,6 +34,35 @@ export const CAPABILITY = {
 
 export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];
 
+/**
+ * Department-level capability flags as served to the client and used by the
+ * domain module. `manager_assign` is optional because only management
+ * projections carry it.
+ */
+export interface DepartmentCapabilities {
+  manage: boolean;
+  publish: boolean;
+  module_configure: boolean;
+  manager_assign?: boolean;
+}
+
+/**
+ * Canonical department-level management scope rule (shared by the server
+ * module and the client projections). Any department capability exposes the
+ * department's Programs in the management directory; keep this in lockstep
+ * with the scope the server uses to serve management rows.
+ */
+export function hasDepartmentManagementScope(department: {
+  capabilities: DepartmentCapabilities;
+}): boolean {
+  return (
+    department.capabilities.manage ||
+    department.capabilities.publish ||
+    department.capabilities.module_configure ||
+    department.capabilities.manager_assign === true
+  );
+}
+
 /** Approved product modules that may be enabled per Department. */
 export const MODULE_KEY = {
   PROGRAM_CATALOG: "program_catalog",

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import { hasDepartmentManagementScope } from "@/lib/programs/capabilities";
 import { getManagementDirectory } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -36,10 +37,7 @@ export function projectManagementPrograms(
   const rows: ManagementProgram[] = [];
 
   for (const [departmentIndex, department] of departments.entries()) {
-    const departmentScope =
-      department.capabilities.manage ||
-      department.capabilities.publish ||
-      department.capabilities.module_configure;
+    const departmentScope = hasDepartmentManagementScope(department);
     for (const program of programsByDepartment[departmentIndex] ?? []) {
       if (seen.has(program.program_id)) {
         continue;
@@ -289,12 +287,7 @@ export const ManagementDirectory = ({
         </section>
       )}
       {state.kind === "ready" &&
-        state.departments.some(
-          (department) =>
-            department.capabilities.manage ||
-            department.capabilities.module_configure ||
-            department.capabilities.manager_assign
-        ) && (
+        state.departments.some(hasDepartmentManagementScope) && (
           <section
             className={styles.moduleSection}
             aria-labelledby="programs-management-department-settings"
@@ -310,12 +303,7 @@ export const ManagementDirectory = ({
             </p>
             <ul className={styles.deptList}>
               {state.departments
-                .filter(
-                  (department) =>
-                    department.capabilities.manage ||
-                    department.capabilities.module_configure ||
-                    department.capabilities.manager_assign
-                )
+                .filter(hasDepartmentManagementScope)
                 .map((department) => (
                   <li
                     key={department.department_id}
