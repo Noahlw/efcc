@@ -213,7 +213,11 @@ export interface ProgramEvent {
   starts_at: string;
   ends_at: string;
   status: "Active" | "Cancelled";
+  /** Independent operational availability; absent only in legacy test fixtures. */
+  availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
+  name?: string | null;
+  location?: string | null;
   manual_check_in_code?: string | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
@@ -222,6 +226,14 @@ export interface ProgramEvent {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleException | null;
+}
+export interface EventDetail {
+  event: ProgramEvent;
+  leaders: ProgramLeader[];
+  participant_summary: {
+    active_enrollments: number;
+    checked_in: number;
+  };
 }
 
 export interface EnrollmentRequest {
@@ -709,7 +721,14 @@ export function generateEvents(
 /** POST /api/v1/programs/:id/events */
 export function createEvent(
   programId: string,
-  input: { starts_at: string; ends_at: string }
+  input: {
+    starts_at: string;
+    ends_at: string;
+    name?: string | null;
+    location?: string | null;
+    check_in_window_opens_at?: string | null;
+    check_in_window_closes_at?: string | null;
+  }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
@@ -728,7 +747,52 @@ export function listEvents(
   );
 }
 
-/** PATCH /api/v1/programs/:id/events/:eventId — soft cancel */
+/** GET /api/v1/programs/:id/events/:eventId — operator detail projection. */
+export function getEvent(
+  programId: string,
+  eventId: string
+): Promise<EventDetail> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "GET"
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — identity/schedule edit. */
+export function updateEvent(
+  programId: string,
+  eventId: string,
+  patch: {
+    starts_at?: string;
+    ends_at?: string;
+    name?: string | null;
+    location?: string | null;
+    check_in_window_opens_at?: string | null;
+    check_in_window_closes_at?: string | null;
+  }
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "PATCH",
+    patch
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — independent availability. */
+export function setEventAvailability(
+  programId: string,
+  eventId: string,
+  availability: "Active" | "Inactive",
+  confirm = false
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "PATCH",
+    { availability, confirm }
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — soft cancel. */
 export function cancelEvent(
   programId: string,
   eventId: string,

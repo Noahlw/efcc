@@ -6,7 +6,6 @@ import { RpcError } from "@/lib/api";
 import { buildCheckInSheet } from "@/lib/check-in-sheet";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { qrDataUrl } from "@/lib/qr";
 import {
   cancelEvent,
   createEvent,
@@ -30,6 +29,7 @@ import {
   hkWallDateTimeLabel,
   wallWeekday,
 } from "@/lib/programs/recurrence";
+import { qrDataUrl } from "@/lib/qr";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -94,9 +94,12 @@ function ruleForEvent(
 export const EventsPanel = ({
   program,
   canManage,
+  onOpenEvent,
 }: {
   program: Program;
   canManage: boolean;
+  /** EVT-01 (#251): deep link into the Event operational detail screen. */
+  onOpenEvent?: (eventId: string) => void;
 }) => {
   const [rules, setRules] = useState<ScheduleRule[] | null>(null);
   const [events, setEvents] = useState<ProgramEvent[] | null>(null);
@@ -114,9 +117,9 @@ export const EventsPanel = ({
   );
   // Exceptions created this session, keyed by HK wall date. The API exposes
   // no list-exceptions endpoint, so the 恢復 affordance lives for the session.
-  const [exceptions, setExceptions] = useState<Record<string, ScheduleException>>(
-    {}
-  );
+  const [exceptions, setExceptions] = useState<
+    Record<string, ScheduleException>
+  >({});
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
 
@@ -575,198 +578,214 @@ export const EventsPanel = ({
             const exception = exceptions[wall.date];
             return (
               <li key={event.event_id} className={styles.eventRow}>
-              <span className={styles.eventDate}>
-                {hkWallDateTimeLabel(event.starts_at)}
-              </span>
-              <span className={styles.eventSource}>
-                {event.source === "SCHEDULE"
-                  ? COPY.programs.eventScheduleSource
-                  : COPY.programs.eventManualSource}
-              </span>
-              <span
-                className={
-                  event.status === "Cancelled"
-                    ? styles.eventCancelled
-                    : styles.eventActive
-                }
-              >
-                {STATUS_LABEL[event.status]}
-              </span>
-              {event.exception !== null && event.exception !== undefined && (
-                <span className={styles.exceptionBadge}>
-                  {event.exception.action === "RESCHEDULE"
-                    ? COPY.programs.eventRescheduledBadge.replace(
-                        "{time}",
-                        event.exception.new_start_time ?? ""
-                      )
-                    : COPY.programs.eventCancelledBadge}
+                <span className={styles.eventDate}>
+                  {hkWallDateTimeLabel(event.starts_at)}
                 </span>
-              )}
-              {canManage && event.status === "Active" && rule !== null &&
-                (exception === undefined ? (
-                  <div className={styles.eventActions}>
-                    {reschedulingEventId === event.event_id ? (
-                      <form
-                        className={styles.ruleForm}
-                        ref={rescheduleFormRef}
-                        onSubmit={submitReschedule(rule, wall.date)}
-                      >
-                        <input
-                          type="time"
-                          name="new_start_time"
-                          required
-                          aria-label={COPY.programs.rescheduleStart}
-                        />
-                        <input
-                          type="time"
-                          name="new_end_time"
-                          required
-                          aria-label={COPY.programs.rescheduleEnd}
-                        />
-                        <button
-                          type="submit"
-                          disabled={busy}
-                          className={styles.actionButton}
+                <span className={styles.eventSource}>
+                  {event.source === "SCHEDULE"
+                    ? COPY.programs.eventScheduleSource
+                    : COPY.programs.eventManualSource}
+                </span>
+                <span
+                  className={
+                    event.status === "Cancelled"
+                      ? styles.eventCancelled
+                      : styles.eventActive
+                  }
+                >
+                  {STATUS_LABEL[event.status]}
+                </span>
+                {event.exception !== null && event.exception !== undefined && (
+                  <span className={styles.exceptionBadge}>
+                    {event.exception.action === "RESCHEDULE"
+                      ? COPY.programs.eventRescheduledBadge.replace(
+                          "{time}",
+                          event.exception.new_start_time ?? ""
+                        )
+                      : COPY.programs.eventCancelledBadge}
+                  </span>
+                )}
+                {canManage &&
+                  event.status === "Active" &&
+                  rule !== null &&
+                  (exception === undefined ? (
+                    <div className={styles.eventActions}>
+                      {reschedulingEventId === event.event_id ? (
+                        <form
+                          className={styles.ruleForm}
+                          ref={rescheduleFormRef}
+                          onSubmit={submitReschedule(rule, wall.date)}
                         >
-                          {COPY.programs.confirmReschedule}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          className={styles.secondaryButton}
-                          onClick={() => setReschedulingEventId(null)}
-                        >
-                          {COPY.programs.cancelRevoke}
-                        </button>
-                      </form>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className={styles.secondaryButton}
-                        onClick={() => setReschedulingEventId(event.event_id)}
-                      >
-                        {COPY.programs.rescheduleEvent}
-                      </button>
-                    )}
-                    <form
-                      className={styles.cancelForm}
-                      onSubmit={submitCancelOccurrence(rule, wall.date, event.event_id)}
-                    >
-                      {confirmingCancelId !== event.event_id ? (
-                        <button
-                          type="submit"
-                          disabled={busy}
-                          className={styles.secondaryButton}
-                        >
-                          {COPY.programs.cancelOccurrence}
-                        </button>
-                      ) : (
-                        <div
-                          className={styles.confirmation}
-                          role="alert"
-                          ref={confirmOccurrenceRef}
-                        >
-                          <span>{COPY.programs.cancelOccurrenceConfirm}</span>
+                          <input
+                            type="time"
+                            name="new_start_time"
+                            required
+                            aria-label={COPY.programs.rescheduleStart}
+                          />
+                          <input
+                            type="time"
+                            name="new_end_time"
+                            required
+                            aria-label={COPY.programs.rescheduleEnd}
+                          />
                           <button
                             type="submit"
                             disabled={busy}
-                            className={styles.dangerButton}
+                            className={styles.actionButton}
                           >
-                            {COPY.programs.confirmCancelOccurrence}
+                            {COPY.programs.confirmReschedule}
                           </button>
                           <button
                             type="button"
                             disabled={busy}
                             className={styles.secondaryButton}
-                            onClick={() => setConfirmingCancelId(null)}
+                            onClick={() => setReschedulingEventId(null)}
                           >
-                            {COPY.programs.keepOccurrence}
+                            {COPY.programs.cancelRevoke}
+                          </button>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className={styles.secondaryButton}
+                          onClick={() => setReschedulingEventId(event.event_id)}
+                        >
+                          {COPY.programs.rescheduleEvent}
+                        </button>
+                      )}
+                      <form
+                        className={styles.cancelForm}
+                        onSubmit={submitCancelOccurrence(
+                          rule,
+                          wall.date,
+                          event.event_id
+                        )}
+                      >
+                        {confirmingCancelId !== event.event_id ? (
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className={styles.secondaryButton}
+                          >
+                            {COPY.programs.cancelOccurrence}
+                          </button>
+                        ) : (
+                          <div
+                            className={styles.confirmation}
+                            role="alert"
+                            ref={confirmOccurrenceRef}
+                          >
+                            <span>{COPY.programs.cancelOccurrenceConfirm}</span>
+                            <button
+                              type="submit"
+                              disabled={busy}
+                              className={styles.dangerButton}
+                            >
+                              {COPY.programs.confirmCancelOccurrence}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className={styles.secondaryButton}
+                              onClick={() => setConfirmingCancelId(null)}
+                            >
+                              {COPY.programs.keepOccurrence}
+                            </button>
+                          </div>
+                        )}
+                      </form>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={styles.successOutline}
+                      onClick={() => removeException(exception)}
+                    >
+                      {COPY.programs.restoreOccurrence}
+                    </button>
+                  ))}
+                {event.status === "Cancelled" &&
+                  event.cancel_reason !== null && (
+                    <span className={styles.eventReason}>
+                      {COPY.programs.cancelledReason.replace(
+                        "{reason}",
+                        event.cancel_reason
+                      )}
+                    </span>
+                  )}
+                {canManage && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => onOpenEvent?.(event.event_id)}
+                  >
+                    {COPY.programs.eventDetailOpen}
+                  </button>
+                )}
+                {canManage && event.status === "Active" && (
+                  <>
+                    <form
+                      className={styles.cancelForm}
+                      onSubmit={submitCancel(event.event_id)}
+                    >
+                      <input
+                        type="text"
+                        name="cancel_reason"
+                        placeholder={COPY.programs.cancelReasonPlaceholder}
+                        required
+                        aria-label={COPY.programs.cancelReason}
+                      />
+                      {confirmingEventId !== event.event_id && (
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className={styles.dangerOutline}
+                        >
+                          {COPY.programs.cancelEvent}
+                        </button>
+                      )}
+                      {confirmingEventId === event.event_id && (
+                        <div
+                          className={styles.confirmation}
+                          role="alert"
+                          ref={confirmEventRef}
+                        >
+                          <span>{COPY.programs.cancelEventConfirm}</span>
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className={styles.dangerButton}
+                          >
+                            {COPY.programs.confirmCancelEvent}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={styles.secondaryButton}
+                            onClick={() => setConfirmingEventId(null)}
+                          >
+                            {COPY.programs.keepEvent}
                           </button>
                         </div>
                       )}
                     </form>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className={styles.successOutline}
-                    onClick={() => removeException(exception)}
-                  >
-                    {COPY.programs.restoreOccurrence}
-                  </button>
-                ))}
-              {event.status === "Cancelled" && event.cancel_reason !== null && (
-                <span className={styles.eventReason}>
-                  {COPY.programs.cancelledReason.replace(
-                    "{reason}",
-                    event.cancel_reason
-                  )}
-                </span>
-              )}
-              {canManage && event.status === "Active" && (
-                <>
-                  <form
-                    className={styles.cancelForm}
-                    onSubmit={submitCancel(event.event_id)}
-                  >
-                  <input
-                    type="text"
-                    name="cancel_reason"
-                    placeholder={COPY.programs.cancelReasonPlaceholder}
-                    required
-                    aria-label={COPY.programs.cancelReason}
-                  />
-                  {confirmingEventId !== event.event_id && (
                     <button
-                      type="submit"
-                      disabled={busy}
-                      className={styles.dangerOutline}
+                      type="button"
+                      className={styles.actionButton}
+                      onClick={() => printSheet(event)}
                     >
-                      {COPY.programs.cancelEvent}
+                      {COPY.attendance.printSheet}
                     </button>
-                  )}
-                  {confirmingEventId === event.event_id && (
-                    <div
-                      className={styles.confirmation}
-                      role="alert"
-                      ref={confirmEventRef}
+                    <a
+                      className={styles.actionButton}
+                      href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
                     >
-                      <span>{COPY.programs.cancelEventConfirm}</span>
-                      <button
-                        type="submit"
-                        disabled={busy}
-                        className={styles.dangerButton}
-                      >
-                        {COPY.programs.confirmCancelEvent}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className={styles.secondaryButton}
-                        onClick={() => setConfirmingEventId(null)}
-                      >
-                        {COPY.programs.keepEvent}
-                      </button>
-                    </div>
-                  )}
-                </form>
-                <button
-                  type="button"
-                  className={styles.actionButton}
-                  onClick={() => printSheet(event)}
-                >
-                  {COPY.attendance.printSheet}
-                </button>
-                <a
-                  className={styles.actionButton}
-                  href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
-                >
-                  {COPY.attendance.assistedOpen}
-                </a>
-                </>
-              )}
+                      {COPY.attendance.assistedOpen}
+                    </a>
+                  </>
+                )}
               </li>
             );
           })

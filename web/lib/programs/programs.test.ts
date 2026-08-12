@@ -2503,6 +2503,513 @@ describe("PRG-02: events", () => {
 });
 
 // ---------------------------------------------------------------------------
+// PRG-02 (#251): event operations — operator identity fields, independent
+// availability, event detail projection, edit/availability/cancel APIs.
+// ---------------------------------------------------------------------------
+
+async function createEventFor(
+  access: string,
+  programId: string,
+  body: Record<string, unknown>
+): Promise<{
+  event_id: string;
+  status: string;
+  availability: string;
+  source: string;
+  name: string | null;
+  location: string | null;
+  manual_check_in_code: string | null;
+}> {
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/events`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body,
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 201);
+  const result = (await assertCorrelated(res)) as {
+    data: { event: Record<string, unknown> };
+  };
+  return result.data.event as {
+    event_id: string;
+    status: string;
+    availability: string;
+    source: string;
+    name: string | null;
+    location: string | null;
+    manual_check_in_code: string | null;
+  };
+}
+
+describe("PRG-02: event operations (#251)", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let programId = "";
+
+  beforeAll(async () => {
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PRG-02-EVT251",
+      name: "Event Ops Test Department",
+    });
+    const program = await createProgram(adminAccess, dept.department_id, {
+      name: "Event Ops Program",
+      behavior_type: "OneOff",
+      discoverability: "Listed",
+    });
+    programId = program.program_id;
+  });
+
+  test("create carries operator identity fields defaulting to availability Active", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-10T10:00:00.000Z",
+      ends_at: "2026-09-10T11:30:00.000Z",
+      name: "迎新聚會",
+      location: "教會禮堂",
+      check_in_window_opens_at: "2026-09-10T09:30:00.000Z",
+      check_in_window_closes_at: "2026-09-10T12:00:00.000Z",
+    });
+    assert.strictEqual(event.status, "Active");
+    assert.strictEqual(event.availability, "Active");
+    assert.strictEqual(event.source, "MANUAL");
+    assert.strictEqual(event.name, "迎新聚會");
+    assert.strictEqual(event.location, "教會禮堂");
+    assert.ok(event.manual_check_in_code, "event carries a check-in code");
+  });
+
+  test("GET detail projects leaders and participant summary; member 403; unknown 404", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-11T10:00:00.000Z",
+      ends_at: "2026-09-11T11:00:00.000Z",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at) VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)"
+      )
+      .bind(
+        crypto.randomUUID(),
+        programId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      )
+      .run();
+    await testDb()
+      .prepare(
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
+      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .run();
+
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const result = (await assertCorrelated(res)) as {
+      data: {
+        event: { event_id: string; program_id: string; availability: string };
+        leaders: unknown[];
+        participant_summary: { active_enrollments: number; checked_in: number };
+      };
+    };
+    assert.strictEqual(result.data.event.event_id, event.event_id);
+    assert.strictEqual(result.data.event.program_id, programId);
+    assert.strictEqual(result.data.event.availability, "Active");
+    assert.ok(Array.isArray(result.data.leaders));
+    assert.strictEqual(result.data.participant_summary.active_enrollments, 1);
+    assert.strictEqual(result.data.participant_summary.checked_in, 1);
+
+    const denied = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(denied.status, 403);
+
+    const unknown = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${crypto.randomUUID()}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unknown.status, 404);
+
+    // Teardown: leave the shared Program without participant state so later
+    // tests control their own fixtures.
+    await testDb()
+      .prepare(
+        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+      )
+      .bind(programId)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM attendances WHERE event_id = ?")
+      .bind(event.event_id)
+      .run();
+  });
+
+  test("PATCH edits identity/schedule/window, audits SUCCESS, and conflicts on duplicate start", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-12T10:00:00.000Z",
+      ends_at: "2026-09-12T11:00:00.000Z",
+    });
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "改名聚會",
+            location: "副堂",
+            starts_at: "2026-09-12T09:00:00.000Z",
+            check_in_window_opens_at: "2026-09-12T08:30:00.000Z",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const result = (await assertCorrelated(res)) as {
+      data: { event: Record<string, unknown> };
+    };
+    assert.strictEqual(result.data.event.name, "改名聚會");
+    assert.strictEqual(result.data.event.location, "副堂");
+    assert.strictEqual(result.data.event.starts_at, "2026-09-12T09:00:00.000Z");
+    assert.strictEqual(
+      result.data.event.check_in_window_opens_at,
+      "2026-09-12T08:30:00.000Z"
+    );
+
+    const audit = await testDb()
+      .prepare(
+        "SELECT action, outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_UPDATE' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ action: string; outcome: string }>();
+    assert.ok(audit, "EVENT_UPDATE audit row must exist");
+    assert.strictEqual(audit.outcome, "SUCCESS");
+
+    // Second event at the old start so a move onto it conflicts.
+    const other = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-13T10:00:00.000Z",
+      ends_at: "2026-09-13T11:00:00.000Z",
+    });
+    const conflict = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${other.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: "2026-09-12T09:00:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(conflict.status, 409);
+    const conflictBody = await problemOf(conflict);
+    assert.strictEqual(conflictBody.code, "CONFLICT");
+  });
+  test("PATCH null check-in windows preserve the existing operational window", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-20T10:00:00.000Z",
+      ends_at: "2026-09-20T11:00:00.000Z",
+    });
+    const before = await testDb()
+      .prepare(
+        "SELECT check_in_window_opens_at, check_in_window_closes_at FROM events WHERE event_id = ?"
+      )
+      .bind(event.event_id)
+      .first<{
+        check_in_window_opens_at: string;
+        check_in_window_closes_at: string;
+      }>();
+    assert.ok(before);
+
+    const response = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            check_in_window_opens_at: null,
+            check_in_window_closes_at: null,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const result = (await assertCorrelated(response)) as {
+      data: {
+        event: {
+          check_in_window_opens_at: string;
+          check_in_window_closes_at: string;
+        };
+      };
+    };
+    assert.strictEqual(
+      result.data.event.check_in_window_opens_at,
+      before.check_in_window_opens_at
+    );
+    assert.strictEqual(
+      result.data.event.check_in_window_closes_at,
+      before.check_in_window_closes_at
+    );
+  });
+
+  test("availability: deactivation with open operations requires confirmation; confirmed toggle audits SUCCESS", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-14T10:00:00.000Z",
+      ends_at: "2026-09-14T11:00:00.000Z",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at) VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)"
+      )
+      .bind(
+        crypto.randomUUID(),
+        programId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      )
+      .run();
+
+    const unconfirmed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unconfirmed.status, 409);
+    const required = await problemOf(unconfirmed);
+    assert.strictEqual(required.code, "CONFIRMATION_REQUIRED");
+
+    const confirmed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(confirmed.status, 200);
+    const result = (await assertCorrelated(confirmed)) as {
+      data: { event: { availability: string } };
+    };
+    assert.strictEqual(result.data.event.availability, "Inactive");
+
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(audit?.outcome, "SUCCESS");
+
+    // Teardown: remove the seeded enrollment so later tests can deactivate
+    // without tripping the confirmation gate.
+    await testDb()
+      .prepare(
+        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+      )
+      .bind(programId)
+      .run();
+  });
+
+  test("availability: member listing hides Inactive events; repeat toggle is a quiet DUPLICATE", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-15T10:00:00.000Z",
+      ends_at: "2026-09-15T11:00:00.000Z",
+    });
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+
+    const memberView = await listEventsFor(memberAccess, programId);
+    assert.ok(
+      !memberView.some((e) => e.event_id === event.event_id),
+      "Member must not see Inactive events"
+    );
+
+    const repeat = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(repeat.status, 200);
+    const duplicate = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(duplicate?.outcome, "DUPLICATE");
+  });
+
+  test("attendance resolve and check-in deny an Inactive event with EVENT_UNAVAILABLE", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-16T10:00:00.000Z",
+      ends_at: "2026-09-16T11:00:00.000Z",
+      check_in_window_opens_at: "2026-09-16T09:00:00.000Z",
+      check_in_window_closes_at: "2026-09-16T12:00:00.000Z",
+    });
+    assert.ok(event.manual_check_in_code, "manual code required for resolve");
+    await testDb()
+      .prepare(
+        "INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at) VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)"
+      )
+      .bind(
+        crypto.randomUUID(),
+        programId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      )
+      .run();
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+
+    const resolve = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/resolve?manual_code=${encodeURIComponent(event.manual_check_in_code)}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(resolve.status, 409);
+    const body = await problemOf(resolve);
+    assert.strictEqual(body.code, "EVENT_UNAVAILABLE");
+
+    const checkIn = await worker.fetch(
+      programsRequest(`/api/v1/attendance/self`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          event_id: event.event_id,
+          method: "self_manual_code",
+          manual_code: event.manual_check_in_code,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 409);
+    const checkInBody = await problemOf(checkIn);
+    assert.strictEqual(checkInBody.code, "EVENT_UNAVAILABLE");
+
+    const audit = await testDb()
+      .prepare(
+        "SELECT reason FROM audit_events WHERE action = 'attendance.check_in' AND entity_id = ? AND outcome = 'DENIED' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ reason: string }>();
+    assert.strictEqual(audit?.reason, "EVENT_UNAVAILABLE");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PRG-03 (#199): enrollment requests and enrollments.
 // ---------------------------------------------------------------------------
 

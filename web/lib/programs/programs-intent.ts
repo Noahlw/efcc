@@ -8,6 +8,8 @@ export interface ProgramsIntent {
   hash: string | null;
   /** Management task carried by a direct Program workspace link. */
   task?: ProgramsTask;
+  /** Management Event deep link, valid only with task === "events". */
+  eventId?: string;
   malformed: boolean;
 }
 
@@ -15,11 +17,14 @@ export interface ProgramsHrefIntent {
   mode: ProgramsMode;
   programId?: string | null;
   task?: ProgramsTask | null;
+  /** Event deep link; emitted only for management task "events". */
+  eventId?: string | null;
   hash?: string | null;
 }
 
 const SAFE_PROGRAM_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
 const SAFE_HASH = /^#[A-Za-z0-9._~-]{1,128}$/u;
+const SAFE_EVENT_ID = /^[A-Za-z0-9-]{1,64}$/u;
 const PROGRAM_TASKS: readonly ProgramsTask[] = [
   "events",
   "participants",
@@ -90,6 +95,25 @@ function parseTask(
   };
 }
 
+function parseEvent(
+  rawEventId: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode,
+  task: ProgramsTask | undefined,
+  programId: string | null
+): { value: string | undefined; malformed: boolean } {
+  const raw = rawEventId.value;
+  const value = raw !== null && SAFE_EVENT_ID.test(raw) ? raw : undefined;
+  return {
+    value,
+    malformed:
+      raw !== null &&
+      (value === undefined ||
+        mode !== "management" ||
+        task !== "events" ||
+        programId === null),
+  };
+}
+
 /** Parse only the URL-owned Programs boundary state; server data stays out. */
 export function parseProgramsIntent(search: string): ProgramsIntent {
   const hashIndex = search.indexOf("#");
@@ -100,11 +124,13 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawProgram = singleParam(params, "program");
   const rawProgramId = singleParam(params, "programId");
   const rawTask = singleParam(params, "task");
+  const rawEventId = singleParam(params, "event");
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
   const hash = parseHash(rawHash);
   const task = parseTask(rawTask.value, mode, program.id);
+  const event = parseEvent(rawEventId, mode, task.value, program.id);
   const malformed =
     rawMode.duplicate ||
     (rawMode.value !== null &&
@@ -114,7 +140,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     program.duplicate ||
     hash.malformed ||
     rawTask.duplicate ||
-    task.malformed;
+    task.malformed ||
+    rawEventId.duplicate ||
+    event.malformed;
 
   if (task.value !== undefined && !malformed) {
     return {
@@ -122,6 +150,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
       programId: program.id,
       hash: hash.value,
       task: task.value,
+      ...(event.value !== undefined ? { eventId: event.value } : {}),
       malformed,
     };
   }
@@ -133,6 +162,7 @@ export function buildProgramsHref({
   mode,
   programId,
   task,
+  eventId,
   hash,
 }: ProgramsHrefIntent): string {
   const params = new URLSearchParams();
@@ -144,6 +174,9 @@ export function buildProgramsHref({
   }
   if (mode === "management" && task && isProgramsTask(task) && programId) {
     params.set("task", task);
+    if (task === "events" && eventId && SAFE_EVENT_ID.test(eventId)) {
+      params.set("event", eventId);
+    }
   }
   const query = params.toString();
   const suffix = query ? `/programs?${query}` : "/programs";

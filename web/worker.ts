@@ -400,6 +400,7 @@ export default {
         handleGenerateEvents,
         handleCreateEvent,
         handleListEvents,
+        handleGetEvent,
         handleEventUpdate,
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
@@ -612,6 +613,14 @@ export default {
       const event = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
       );
+      if (event && request.method === "GET") {
+        return handleGetEvent(
+          request,
+          programEnv,
+          event.groups?.id ?? "",
+          event.groups?.eventId ?? ""
+        );
+      }
       if (event && request.method === "PATCH") {
         return handleEventUpdate(
           request,

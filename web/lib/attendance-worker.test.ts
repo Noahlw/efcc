@@ -548,8 +548,16 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(response.status, 200);
     const body = await json(response);
     const { events } = body.data as {
-      events: { event_id: string; program_name: string }[];
+      events: {
+        event_id: string;
+        program_name: string;
+        availability: string;
+      }[];
     };
+    assert.strictEqual(
+      events.find((e) => e.event_id === EVENT)?.availability,
+      "Active"
+    );
     const ids = events.map((e) => e.event_id);
     assert.ok(ids.includes(EVENT));
     assert.ok(ids.includes(CANCELLED_EVENT));

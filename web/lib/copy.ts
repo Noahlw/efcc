@@ -212,7 +212,7 @@ export const COPY = {
     workspaceTaskParticipants: "參與者",
     workspaceTaskSettings: "課程設定",
     workspaceTaskEventsLead:
-      "查看這個課程的聚會記錄；建立與編輯由聚會工作流程處理。",
+      "查看這個課程的聚會記錄；建立聚會並於聚會詳情中編輯。",
     workspaceTaskParticipantsLead:
       "查看報名申請與活躍參與者；決定與新增操作由參與者工作流程處理。",
     workspaceTaskSettingsLead: "查看目前課程設定與可用的管理能力。",
@@ -470,6 +470,47 @@ export const COPY = {
     leaderAccountInactive:
       "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
     enrollmentDuplicate: "此會友已報名此課程。",
+    // EVT-01 (#251): event operational detail and independent availability.
+    eventCreate: "新增聚會",
+    eventCreateTitle: "建立聚會",
+    eventCreateSubmit: "建立聚會",
+    eventCreateCancel: "取消建立",
+    eventDetailOpen: "詳情",
+    eventDetailBack: "返回聚會列表",
+    eventDetailTitle: "聚會詳情",
+    eventDetailNotFound: "找不到此聚會。",
+    eventName: "聚會名稱",
+    eventNamePlaceholder: "輸入聚會名稱（可留空）",
+    eventLocation: "地點",
+    eventLocationPlaceholder: "輸入地點（可留空）",
+    eventDetailLeaders: "事工負責人",
+    eventDetailParticipantSummary: "報名與出席",
+    eventActiveEnrollments: "已報名 {count} 人",
+    eventCheckedIn: "已簽到 {count} 人",
+    eventNoParticipants: "目前未有報名或簽到記錄。",
+    eventAvailability: "開放狀態",
+    eventAvailable: "開放",
+    eventUnavailable: "暫停",
+    eventAvailabilityDeactivate: "暫停聚會",
+    eventAvailabilityActivate: "恢復開放",
+    eventAvailabilityConfirmTitle: "暫停此聚會？",
+    eventAvailabilityConfirmBody:
+      "暫停後，已報名成員將不能簽到（{count} 項進行中的報名／簽到會受影響）。",
+    eventAvailabilityConfirmProceed: "確定暫停",
+    eventAvailabilityNotice: "聚會已暫停開放。",
+    eventAvailabilityRestoredNotice: "聚會已恢復開放。",
+    eventAvailabilityUndo: "復原",
+    eventEditTitle: "編輯聚會資料",
+    eventEditSave: "儲存更改",
+    eventEditCancel: "取消編輯",
+    eventSavedNotice: "聚會資料已更新。",
+    eventCreatedNotice: "聚會已建立。",
+    eventAvailabilityConfirmRequired:
+      "此聚會有進行中的報名或簽到，需確認後才能暫停。",
+    eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
+    eventCheckInWindow: "簽到時間",
+    eventCheckInWindowOpensAt: "開放簽到",
+    eventCheckInWindowClosesAt: "結束簽到",
   },
 } as const;
 
@@ -525,6 +566,12 @@ export function errorCopyFor(
   }
   if (code === "DUPLICATE_ATTENDANCE") {
     return COPY.attendance.guestDuplicate;
+  }
+  if (code === "CONFIRMATION_REQUIRED") {
+    return COPY.programs.eventAvailabilityConfirmRequired;
+  }
+  if (code === "EVENT_UNAVAILABLE") {
+    return COPY.programs.eventUnavailableCheckIn;
   }
   if (code === "UNAVAILABLE") {
     return COPY.error.unavailable;

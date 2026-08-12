@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
+  createEvent,
   getManagementProgram,
   listEnrollments,
   listEnrollmentRequests,
@@ -21,6 +23,11 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import {
+  EventDetail,
+  hkWallInputToIso,
+  hkWallInputValue,
+} from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
 
 import styles from "@/app/programs/programs.module.css";
@@ -28,8 +35,12 @@ import styles from "@/app/programs/programs.module.css";
 export interface ProgramWorkspaceProps {
   programId: string;
   task?: ProgramsTask;
+  /** EVT-01 (#251): management Event deep link under the events task. */
+  eventId?: string | null;
   onBack: () => void;
   onTaskChange: (task: ProgramsTask | null) => void;
+  /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
+  onEventChange?: (eventId: string | null) => void;
 }
 
 type WorkspaceState =
@@ -375,12 +386,24 @@ const WorkspaceOverview = ({
   );
 };
 
-const EventsTask = ({ programId }: { programId: string }) => {
+const EventsTask = ({
+  programId,
+  canManage,
+  onOpenEvent,
+}: {
+  programId: string;
+  canManage: boolean;
+  /** EVT-01 (#251): deep link into the Event operational detail screen. */
+  onOpenEvent?: (eventId: string) => void;
+}) => {
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "ready"; events: ProgramEvent[] }
     | { kind: "error"; message: string }
   >({ kind: "loading" });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -415,6 +438,50 @@ const EventsTask = ({ programId }: { programId: string }) => {
     void load();
   }, [load]);
 
+  const submitCreate = (formEvent: FormEvent<HTMLFormElement>) => {
+    formEvent.preventDefault();
+    const form = new FormData(formEvent.currentTarget);
+    const startsAt = hkWallInputToIso(String(form.get("starts_at") ?? ""));
+    const endsAt = hkWallInputToIso(String(form.get("ends_at") ?? ""));
+    const opensAt = hkWallInputToIso(String(form.get("opens_at") ?? ""));
+    const closesAt = hkWallInputToIso(String(form.get("closes_at") ?? ""));
+    if (!startsAt || !endsAt || !opensAt || !closesAt) {
+      const message = errorCopyFor("VALIDATION");
+      setCreateError(message);
+      announce(message);
+      return;
+    }
+    setCreateBusy(true);
+    setCreateError(null);
+    void createEvent(programId, {
+      name: String(form.get("name") ?? "").trim() || null,
+      location: String(form.get("location") ?? "").trim() || null,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      check_in_window_opens_at: opensAt,
+      check_in_window_closes_at: closesAt,
+    })
+      .then(({ event }) => {
+        announce(COPY.programs.eventCreatedNotice);
+        setCreateOpen(false);
+        onOpenEvent?.(event.event_id);
+      })
+      .catch((error: unknown) => {
+        if (redirectToLoginIfRequired(error)) {
+          return;
+        }
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(error.problem.code, error.problem.detail)
+            : COPY.error.networkError;
+        setCreateError(message);
+        announce(message);
+      })
+      .finally(() => {
+        setCreateBusy(false);
+      });
+  };
+
   return (
     <section
       className={styles.workspaceTask}
@@ -429,6 +496,113 @@ const EventsTask = ({ programId }: { programId: string }) => {
       <p className={styles.programDetailMuted}>
         {COPY.programs.workspaceTaskEventsLead}
       </p>
+      {canManage && (
+        <>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={() => {
+              setCreateOpen((open) => !open);
+              setCreateError(null);
+            }}
+          >
+            {COPY.programs.eventCreate}
+          </button>
+          {createOpen && (
+            <form
+              className={styles.ruleForm}
+              aria-labelledby="programs-workspace-event-create-title"
+              onSubmit={submitCreate}
+            >
+              <h5
+                id="programs-workspace-event-create-title"
+                className={styles.workspaceSubheading}
+              >
+                {COPY.programs.eventCreateTitle}
+              </h5>
+              {createError !== null && (
+                <output className={styles.panelError} role="alert">
+                  {createError}
+                </output>
+              )}
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventName}</span>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder={COPY.programs.eventNamePlaceholder}
+                  aria-label={COPY.programs.eventName}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventLocation}</span>
+                <input
+                  type="text"
+                  name="location"
+                  placeholder={COPY.programs.eventLocationPlaceholder}
+                  aria-label={COPY.programs.eventLocation}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventStart}</span>
+                <input
+                  type="datetime-local"
+                  name="starts_at"
+                  required
+                  aria-label={COPY.programs.eventStart}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventEnd}</span>
+                <input
+                  type="datetime-local"
+                  name="ends_at"
+                  required
+                  aria-label={COPY.programs.eventEnd}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
+                <input
+                  type="datetime-local"
+                  name="opens_at"
+                  required
+                  aria-label={COPY.programs.eventCheckInWindowOpensAt}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
+                <input
+                  type="datetime-local"
+                  name="closes_at"
+                  required
+                  aria-label={COPY.programs.eventCheckInWindowClosesAt}
+                />
+              </label>
+              <div className={styles.confirmRow}>
+                <button
+                  type="submit"
+                  className={styles.button}
+                  disabled={createBusy}
+                >
+                  {COPY.programs.eventCreateSubmit}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={createBusy}
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setCreateError(null);
+                  }}
+                >
+                  {COPY.programs.eventCreateCancel}
+                </button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
       {state.kind === "loading" && (
         <output aria-busy="true">
           {COPY.programs.workspaceTaskEventsLoading}
@@ -469,6 +643,21 @@ const EventsTask = ({ programId }: { programId: string }) => {
                   ? COPY.programs.eventScheduleSource
                   : COPY.programs.eventManualSource}
               </span>
+              {event.availability !== undefined &&
+                event.availability !== "Active" && (
+                  <span className={styles.eventCancelled}>
+                    {COPY.programs.eventUnavailable}
+                  </span>
+                )}
+              {onOpenEvent && (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => onOpenEvent(event.event_id)}
+                >
+                  {COPY.programs.eventDetailOpen}
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -741,15 +930,21 @@ const WorkspaceTask = ({
   task,
   modules,
   onTaskChange,
+  onOpenEvent,
 }: {
   program: Program;
   task: ProgramsTask;
   modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
+  onOpenEvent?: (eventId: string) => void;
 }) => {
   if (task === "events") {
     return hasModule(modules, "events") ? (
-      <EventsTask programId={program.program_id} />
+      <EventsTask
+        programId={program.program_id}
+        canManage={program.capabilities.manage}
+        onOpenEvent={onOpenEvent}
+      />
     ) : (
       <TaskUnavailable task={task} />
     );
@@ -767,8 +962,10 @@ const WorkspaceTask = ({
 export const ProgramWorkspace = ({
   programId,
   task,
+  eventId,
   onBack,
   onTaskChange,
+  onEventChange,
 }: ProgramWorkspaceProps) => {
   const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
@@ -989,12 +1186,20 @@ export const ProgramWorkspace = ({
         onTaskChange={onTaskChange}
       />
 
-      {task ? (
+      {task && task === "events" && eventId ? (
+        <EventDetail
+          programId={programId}
+          eventId={eventId}
+          canManage={state.program.capabilities.manage}
+          onBack={() => onEventChange?.(null)}
+        />
+      ) : task ? (
         <WorkspaceTask
           program={state.program}
           task={task}
           modules={state.modules}
           onTaskChange={onTaskChange}
+          onOpenEvent={(id) => onEventChange?.(id)}
         />
       ) : (
         <WorkspaceOverview
