@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   createScheduleException,
@@ -20,6 +20,7 @@ import type {
   ScheduleRule,
   ScheduleRuleInput,
 } from "@/lib/programs/program-api";
+import { WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -58,6 +59,7 @@ interface ExceptionValues {
 export interface ProgramSettingsProps {
   program: Program;
   eventsEnabled?: boolean;
+  attendanceEnabled?: boolean;
   onTaskChange?: (task: "events" | null) => void;
 }
 const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
@@ -66,17 +68,9 @@ const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
   Archived: COPY.programs.lifecycleArchived,
 };
 
-const WEEKDAY_LABELS = [
-  COPY.programs.weekdaySunday,
-  COPY.programs.weekdayMonday,
-  COPY.programs.weekdayTuesday,
-  COPY.programs.weekdayWednesday,
-  COPY.programs.weekdayThursday,
-  COPY.programs.weekdayFriday,
-  COPY.programs.weekdaySaturday,
-];
 
-function errorMessage(error: unknown): string {
+
+function settingsErrorMessage(error: unknown): string {
   if (error instanceof RpcError) {
     if (
       error.problem.code === "CONFLICT" &&
@@ -87,9 +81,8 @@ function errorMessage(error: unknown): string {
     if (error.problem.code === "CONFLICT") {
       return COPY.programs.programConflict;
     }
-    return errorCopyFor(error.problem.code, error.problem.detail);
   }
-  return COPY.error.networkError;
+  return errorMessage(error);
 }
 
 function basicsFrom(program: Program): BasicsValues {
@@ -168,6 +161,7 @@ function exceptionInputFrom(values: ExceptionValues): {
 export const ProgramSettings = ({
   program,
   eventsEnabled = true,
+  attendanceEnabled = true,
   onTaskChange,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
@@ -232,7 +226,7 @@ export const ProgramSettings = ({
       if (!mounted.current) {
         return;
       }
-      setRuleError(errorMessage(error));
+      setRuleError(settingsErrorMessage(error));
       setRules([]);
     }
   }, [
@@ -270,7 +264,7 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        const message = errorMessage(error);
+        const message = settingsErrorMessage(error);
         setActionError(message);
         announce(message);
       } finally {
@@ -359,7 +353,7 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        const message = errorMessage(error);
+        const message = settingsErrorMessage(error);
         setActionError(message);
         announce(message);
       } finally {
@@ -1111,6 +1105,11 @@ export const ProgramSettings = ({
                 {COPY.programs.settingsAttendanceLead}
               </p>
             </div>
+            {!attendanceEnabled ? (
+              <p className={styles.settingsReadonly}>
+                {COPY.programs.settingsAttendanceUnavailable}
+              </p>
+            ) : (
             <form className={styles.settingsForm} onSubmit={saveAttendance}>
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>{COPY.programs.settingsAttendanceOpens}</span>
@@ -1158,6 +1157,7 @@ export const ProgramSettings = ({
                 </button>
               </div>
             </form>
+            )}
           </section>
         </div>
       )}

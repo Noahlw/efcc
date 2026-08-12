@@ -842,6 +842,7 @@ const SettingsTask = ({
     <ProgramSettings
       program={program}
       eventsEnabled={hasModule(modules, "events")}
+      attendanceEnabled={hasModule(modules, "attendance")}
       onTaskChange={onTaskChange}
     />
     {(program.capabilities.manage || program.capabilities.leader_assign) && (

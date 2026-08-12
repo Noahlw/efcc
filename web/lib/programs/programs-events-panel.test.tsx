@@ -303,7 +303,7 @@ describe("PRG-02 events panel", () => {
             title: "Invalid",
             status: 422,
             code: "VALIDATION",
-            detail: "horizon_days must be an integer 1-365.",
+            detail: "產生範圍的天數必須是 1 至 365 之間的整數。",
             requestId: "rid-4",
           },
           { status: 422 }
@@ -317,7 +317,7 @@ describe("PRG-02 events panel", () => {
       screen.getByRole("button", { name: COPY.programs.generateEvents })
     );
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      errorCopyFor("VALIDATION")
+      "產生範圍的天數必須是 1 至 365 之間的整數。"
     );
   });
 

@@ -2027,10 +2027,18 @@ export class DepartmentWorkspace {
         event.program_id
       );
       // EVT-01 (#251): enrollments are Program-scoped; this Event's own open
-      // operations are its active check-ins alone. Deactivating a never-
-      // attended event must not be gated on unrelated Program enrollments.
+      // operations are its active check-ins and any open check-in window.
+      // Deactivating a never-attended event whose window is still open still
+      // closes an in-progress operation, so it requires confirmation.
       const affectedOperations = summary.checked_in;
-      if (affectedOperations > 0) {
+      const now = new Date().toISOString();
+      const windowOpen =
+        event.check_in_window_opens_at !== null &&
+        event.check_in_window_closes_at !== null &&
+        now >= event.check_in_window_opens_at &&
+        now <= event.check_in_window_closes_at;
+      const impactCount = Math.max(affectedOperations, windowOpen ? 1 : 0);
+      if (impactCount > 0) {
         await this.audit(
           ctx,
           "EVENT_AVAILABILITY",
@@ -2042,7 +2050,7 @@ export class DepartmentWorkspace {
           correlationId
         );
         throw new EventAvailabilityConfirmationRequiredError(
-          affectedOperations
+          impactCount
         );
       }
     }

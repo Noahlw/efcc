@@ -1611,7 +1611,10 @@ export async function handleGenerateEvents(
     ) {
       horizonDays = raw;
     } else if (raw !== undefined) {
-      return validation(requestId, "horizon_days must be an integer 1-365.");
+      return validation(
+        requestId,
+        "產生範圍的天數必須是 1 至 365 之間的整數。"
+      );
     }
   }
   const { workspace } = await getModule(env);

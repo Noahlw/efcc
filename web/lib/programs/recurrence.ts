@@ -1,3 +1,5 @@
+import { COPY } from "@/lib/copy";
+
 /**
  * EFCC Programs domain — Asia/Hong_Kong wall-clock recurrence math (PRG-02
  * #198). Pure functions, no I/O. Church-facing dates and times are computed
@@ -182,3 +184,14 @@ const HK_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-Hant", {
 export function hkWallDateTimeLabel(iso: string): string {
   return HK_DATE_TIME_FORMATTER.format(new Date(iso));
 }
+
+/** 0 = Sunday .. 6 = Saturday display labels (shared by settings + events panel). */
+export const WEEKDAY_LABELS = [
+  COPY.programs.weekdaySunday,
+  COPY.programs.weekdayMonday,
+  COPY.programs.weekdayTuesday,
+  COPY.programs.weekdayWednesday,
+  COPY.programs.weekdayThursday,
+  COPY.programs.weekdayFriday,
+  COPY.programs.weekdaySaturday,
+];

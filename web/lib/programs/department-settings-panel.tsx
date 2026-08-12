@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   assignDepartmentManager,
@@ -24,11 +23,6 @@ import { MemberPicker } from "./member-picker";
 
 import styles from "@/app/programs/programs.module.css";
 
-function errorMessage(error: unknown): string {
-  return error instanceof RpcError
-    ? errorCopyFor(error.problem.code, error.problem.detail)
-    : COPY.error.networkError;
-}
 
 const MODULE_LABEL: Record<
   DepartmentDetail["modules"][number]["module_key"],

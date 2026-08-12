@@ -1,3 +1,5 @@
+import { RpcError } from "@/lib/api";
+
 // Traditional Chinese copy for the shell (Spec 074 user story 29).
 // Every user-facing string lives here; no hardcoded text in components.
 export const COPY = {
@@ -246,6 +248,8 @@ export const COPY = {
       "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
     settingsScheduleUnavailable:
       "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+    settingsAttendanceUnavailable:
+      "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
     settingsExceptionsUnavailable:
       "既有例外清單目前無法讀取；在此工作階段建立或移除的例外會即時反映。",
     settingsScheduleLoading: "正在載入時間表規則…",
@@ -578,7 +582,7 @@ export const COPY = {
     eventAvailabilityActivate: "恢復開放",
     eventAvailabilityConfirmTitle: "暫停此聚會？",
     eventAvailabilityConfirmBody:
-      "暫停後，此聚會將停止開放簽到（{count} 項進行中的簽到會受影響）。",
+      "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
     eventAvailabilityConfirmProceed: "確定暫停",
     eventAvailabilityNotice: "聚會已暫停開放。",
     eventAvailabilityRestoredNotice: "聚會已恢復開放。",
@@ -589,7 +593,7 @@ export const COPY = {
     eventSavedNotice: "聚會資料已更新。",
     eventCreatedNotice: "聚會已建立。",
     eventAvailabilityConfirmRequired:
-      "此聚會有進行中的簽到，需確認後才能暫停。",
+      "此聚會有進行中的操作，需確認後才能暫停。",
     eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
     eventCheckInWindow: "簽到時間",
     eventCheckInWindowOpensAt: "開放簽到",
@@ -674,6 +678,15 @@ export function errorCopyFor(
     return COPY.error.malformed;
   }
   return COPY.error.unknown;
+}
+
+/** Shared error-to-message mapper for program components.
+ * RpcError -> errorCopyFor (with detail for VALIDATION/ARCHIVE_BLOCKED);
+ * everything else -> generic network error. */
+export function errorMessage(error: unknown): string {
+  return error instanceof RpcError
+    ? errorCopyFor(error.problem.code, error.problem.detail)
+    : COPY.error.networkError;
 }
 
 // Traditional Chinese landing-page copy for the signed-out Persuade surface.

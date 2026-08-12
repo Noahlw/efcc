@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
@@ -23,11 +23,6 @@ import {
 
 import styles from "@/app/programs/programs.module.css";
 
-function errorMessage(err: unknown): string {
-  return err instanceof RpcError
-    ? errorCopyFor(err.problem.code)
-    : COPY.error.networkError;
-}
 
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,

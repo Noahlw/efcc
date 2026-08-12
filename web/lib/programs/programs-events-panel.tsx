@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { RpcError } from "@/lib/api";
 import { buildCheckInSheet } from "@/lib/check-in-sheet";
-import { COPY, errorCopyFor } from "@/lib/copy";
+
+import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
@@ -24,35 +24,22 @@ import type {
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import {
-  HK_TIME_ZONE,
   HK_UTC_OFFSET_MINUTES,
   hkWallDateTimeLabel,
   wallWeekday,
+  WEEKDAY_LABELS,
 } from "@/lib/programs/recurrence";
 import { qrDataUrl } from "@/lib/qr";
 
 import styles from "@/app/programs/programs.module.css";
 
-function errorMessage(err: unknown): string {
-  return err instanceof RpcError
-    ? errorCopyFor(err.problem.code)
-    : COPY.error.networkError;
-}
 
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
 };
 
-const WEEKDAY_LABELS = [
-  COPY.programs.weekdaySunday,
-  COPY.programs.weekdayMonday,
-  COPY.programs.weekdayTuesday,
-  COPY.programs.weekdayWednesday,
-  COPY.programs.weekdayThursday,
-  COPY.programs.weekdayFriday,
-  COPY.programs.weekdaySaturday,
-];
+
 
 /** HK wall date ("YYYY-MM-DD") and time ("HH:MM") of an ISO instant. */
 function hkWallParts(iso: string): { date: string; time: string } {
