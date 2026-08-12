@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
@@ -59,6 +59,11 @@ export interface ProgramSettingsProps {
   program: Program;
   onTaskChange?: (task: "events" | null) => void;
 }
+const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
+  Draft: COPY.programs.lifecycleDraft,
+  Active: COPY.programs.lifecycleActive,
+  Archived: COPY.programs.lifecycleArchived,
+};
 
 const WEEKDAY_LABELS = [
   COPY.programs.weekdaySunday,
@@ -420,11 +425,6 @@ export const ProgramSettings = ({
     );
   };
 
-  const currentLifecycle = useMemo(
-    () => currentProgram.lifecycle,
-    [currentProgram.lifecycle]
-  );
-
   return (
     <section
       className={`${styles.workspaceTask} ${styles.settingsSurface}`}
@@ -557,7 +557,7 @@ export const ProgramSettings = ({
             <dl className={styles.settingsCurrent}>
               <div>
                 <dt>{COPY.programs.settingsLifecycle}</dt>
-                <dd>{currentLifecycle}</dd>
+                <dd>{LIFECYCLE_LABEL[currentProgram.lifecycle]}</dd>
               </div>
             </dl>
             <p className={styles.fieldHint}>{COPY.programs.settingsLifecycleHint}</p>
