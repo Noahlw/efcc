@@ -112,6 +112,7 @@ async function createProgram(
       method: "POST",
       body: {
         name,
+        category: "測試",
         behavior_type: "OneOff",
         lifecycle: "Draft",
         discoverability: "Unlisted",
@@ -322,6 +323,7 @@ describe("AUTH-01: Department Manager scope", () => {
         method: "POST",
         body: {
           name: "Denied",
+          category: "測試",
           behavior_type: "OneOff",
           lifecycle: "Draft",
           discoverability: "Unlisted",

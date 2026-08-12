@@ -603,9 +603,6 @@ export class DepartmentWorkspace {
         if (!(await this.isModuleEnabled(department.department_id))) {
           return [];
         }
-        if (hasDepartmentManagementScope(department)) {
-          departmentScopeIds.add(department.department_id);
-        }
         const rows = await this.store.listProgramsForDepartment(
           department.department_id
         );

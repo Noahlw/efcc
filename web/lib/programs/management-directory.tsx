@@ -160,7 +160,6 @@ export const ManagementDirectory = ({
         kind: "ready",
         departments,
         rows: projectManagementPrograms(departments, programsByDepartment),
-        departments,
       });
       announce(COPY.programs.managementScopeReady);
     } catch (error) {
