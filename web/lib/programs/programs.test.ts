@@ -2503,7 +2503,7 @@ describe("PRG-02: events", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PRG-02 (#251): event operations — operator identity fields, independent
+// EVT-01 (#251): event operations — operator identity fields, independent
 // availability, event detail projection, edit/availability/cancel APIs.
 // ---------------------------------------------------------------------------
 
@@ -2547,7 +2547,7 @@ async function createEventFor(
   };
 }
 
-describe("PRG-02: event operations (#251)", () => {
+describe("EVT-01: event operations (#251)", () => {
   let adminAccess = "";
   let memberAccess = "";
   let programId = "";
@@ -2746,6 +2746,7 @@ describe("PRG-02: event operations (#251)", () => {
     const conflictBody = await problemOf(conflict);
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
+
   test("PATCH null check-in windows preserve the existing operational window", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-20T10:00:00.000Z",
@@ -2834,6 +2835,17 @@ describe("PRG-02: event operations (#251)", () => {
     assert.strictEqual(unconfirmed.status, 409);
     const required = await problemOf(unconfirmed);
     assert.strictEqual(required.code, "CONFIRMATION_REQUIRED");
+    const deniedAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(
+      deniedAudit?.outcome,
+      "DENIED",
+      "confirmation-required deactivation must be audited"
+    );
 
     const confirmed = await worker.fetch(
       programsRequest(
@@ -5017,6 +5029,7 @@ describe("PUI-03: participant Program detail", () => {
     assert.ok(!raw.includes("manual_check_in_code"));
     assert.ok(!raw.includes("capabilities"));
   });
+
   test("keeps multiple active events for a OneOff participant detail", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {

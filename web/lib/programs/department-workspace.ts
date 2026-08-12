@@ -43,6 +43,7 @@ import type {
   ScheduleRuleRow,
   WorkspaceStore,
 } from "./workspace-store";
+
 export type { EventAvailability } from "./workspace-store";
 
 export interface DepartmentCapabilities {
@@ -1735,6 +1736,16 @@ export class DepartmentWorkspace {
         summary.checked_in
       );
       if (affectedOperations > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_AVAILABILITY",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          event,
+          correlationId
+        );
         throw new EventAvailabilityConfirmationRequiredError(
           affectedOperations
         );
