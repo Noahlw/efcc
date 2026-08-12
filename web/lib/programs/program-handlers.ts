@@ -131,7 +131,8 @@ function problem(
   code: string,
   title: string,
   detail: string | undefined,
-  requestId: string
+  requestId: string,
+  extensions?: Record<string, unknown>
 ): Response {
   const body: Record<string, unknown> = {
     type: `tag:apps-script/efcc/errors#${code}`,
@@ -142,6 +143,9 @@ function problem(
   };
   if (detail !== undefined) {
     body.detail = detail;
+  }
+  if (extensions !== undefined) {
+    Object.assign(body, extensions);
   }
   return Response.json(body, {
     status,
@@ -1630,7 +1634,8 @@ export async function handleEventUpdate(
           "CONFIRMATION_REQUIRED",
           "Confirmation required",
           `${error.message} Affected open operations: ${error.affectedOperations}.`,
-          requestId
+          requestId,
+          { open_operations: error.affectedOperations }
         );
       }
       if (error instanceof AuthorizationDeniedError) {

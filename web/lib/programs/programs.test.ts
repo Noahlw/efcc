@@ -102,7 +102,12 @@ async function assertCorrelated(res: Response): Promise<unknown> {
 
 async function problemOf(
   res: Response
-): Promise<{ code: string; status: number; requestId: string }> {
+): Promise<{
+  code: string;
+  status: number;
+  requestId: string;
+  open_operations?: number;
+}> {
   assert.strictEqual(
     res.headers.get("Content-Type"),
     "application/problem+json"
@@ -111,6 +116,7 @@ async function problemOf(
     code: string;
     status: number;
     requestId: string;
+    open_operations?: number;
   };
   assert.strictEqual(body.requestId, res.headers.get("X-Request-Id"));
   return body;
@@ -2835,6 +2841,11 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(unconfirmed.status, 409);
     const required = await problemOf(unconfirmed);
     assert.strictEqual(required.code, "CONFIRMATION_REQUIRED");
+    assert.strictEqual(
+      required.open_operations,
+      1,
+      "the refusal carries the server's fresh open-operation count"
+    );
     const deniedAudit = await testDb()
       .prepare(
         "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"

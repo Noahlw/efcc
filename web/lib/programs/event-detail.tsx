@@ -91,6 +91,10 @@ export const EventDetail = ({
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [undoAvailable, setUndoAvailable] = useState(false);
+  // Affected-operation count shown in the deactivation confirm; sourced
+  // from the loaded summary or, on a server refusal, the server's fresh
+  // count.
+  const [deactivateImpact, setDeactivateImpact] = useState(0);
   const confirmRef = useRef<HTMLDivElement>(null);
   const cancelConfirmRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
@@ -138,7 +142,8 @@ export const EventDetail = ({
   const runAction = useCallback(
     async (
       fn: () => Promise<unknown>,
-      successCopy: string | (() => string)
+      successCopy: string | (() => string),
+      onRefused?: (error: unknown) => boolean
     ) => {
       setBusy(true);
       setActionError(null);
@@ -157,6 +162,9 @@ export const EventDetail = ({
         announce(message);
       } catch (error) {
         if (!mounted.current) {
+          return;
+        }
+        if (onRefused?.(error)) {
           return;
         }
         const message = errorMessage(error);
@@ -205,6 +213,32 @@ export const EventDetail = ({
         setConfirmingDeactivate(false);
         setUndoAvailable(true);
         return COPY.programs.eventAvailabilityNotice;
+      },
+      (error) => {
+        // A concurrent enrollment/check-in can make the server require
+        // confirmation even when the loaded summary looked safe; surface
+        // the inline confirm with the server's fresh operation count
+        // instead of a dead-end error.
+        if (
+          !confirmRequired &&
+          error instanceof RpcError &&
+          error.problem.code === "CONFIRMATION_REQUIRED"
+        ) {
+          const problem = error.problem as typeof error.problem & {
+            open_operations?: unknown;
+          };
+          setDeactivateImpact(
+            typeof problem.open_operations === "number"
+              ? problem.open_operations
+              : Math.max(
+                  detail?.participant_summary.active_enrollments ?? 0,
+                  detail?.participant_summary.checked_in ?? 0
+                )
+          );
+          setConfirmingDeactivate(true);
+          return true;
+        }
+        return false;
       }
     );
   };
@@ -231,6 +265,7 @@ export const EventDetail = ({
       () => cancelEvent(programId, eventId, reason),
       () => {
         setConfirmingCancel(false);
+        setUndoAvailable(false);
         return COPY.programs.eventCancelledNotice;
       }
     );
@@ -276,7 +311,7 @@ export const EventDetail = ({
       {notice !== null && (
         <output className={styles.panelNotice}>
           {notice}
-          {undoAvailable && (
+          {undoAvailable && !cancelled && (
             <button
               type="button"
               className={styles.successOutline}
@@ -413,12 +448,7 @@ export const EventDetail = ({
                   <p>
                     {COPY.programs.eventAvailabilityConfirmBody.replace(
                       "{count}",
-                      String(
-                        Math.max(
-                          participant_summary.active_enrollments,
-                          participant_summary.checked_in
-                        )
-                      )
+                      String(deactivateImpact)
                     )}
                   </p>
                   <div className={styles.confirmRow}>
@@ -455,6 +485,12 @@ export const EventDetail = ({
                     ) {
                       submitDeactivate(false);
                     } else {
+                      setDeactivateImpact(
+                        Math.max(
+                          participant_summary.active_enrollments,
+                          participant_summary.checked_in
+                        )
+                      );
                       setConfirmingDeactivate(true);
                     }
                   }}

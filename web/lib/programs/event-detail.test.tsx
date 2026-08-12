@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { RpcError } from "@/lib/api";
+import { RpcError, type ProblemDetails } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
@@ -336,6 +336,148 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.eventAvailabilityConfirmRequired)
     ).resolves.toBeInTheDocument();
+  });
+
+  test("a server confirmation refusal on a safe-looking summary surfaces the inline confirm", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        participant_summary: { active_enrollments: 0, checked_in: 0 },
+      })
+    );
+    mocks.setEventAvailability
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "CONFIRMATION_REQUIRED",
+          status: 409,
+          title: "Confirmation required",
+          open_operations: 2,
+        } as ProblemDetails)
+      )
+      .mockResolvedValueOnce({
+        event: { ...detailFixture().event, availability: "Inactive" },
+      });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    );
+    // The loaded summary looked safe, so the first attempt went out
+    // without confirmation; the server's fresh count says otherwise.
+    expect(mocks.setEventAvailability).toHaveBeenNthCalledWith(
+      1,
+      "program-1",
+      "event-1",
+      "Inactive",
+      false
+    );
+    // The refusal must surface the inline confirm with the server's
+    // fresh operation count — not a dead-end error.
+    await expect(
+      screen.findByText(
+        COPY.programs.eventAvailabilityConfirmBody.replace("{count}", "2")
+      )
+    ).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventAvailabilityConfirmProceed,
+      })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventAvailabilityNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.setEventAvailability).toHaveBeenNthCalledWith(
+      2,
+      "program-1",
+      "event-1",
+      "Inactive",
+      true
+    );
+    expect(
+      screen.queryByText(COPY.programs.eventAvailabilityConfirmRequired)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.eventAvailabilityUndo })
+    ).toBeInTheDocument();
+  });
+
+  test("undo is retired when the event is cancelled", async () => {
+    let cancelled = false;
+    mocks.getEvent.mockImplementation(() =>
+      Promise.resolve(
+        cancelled
+          ? detailFixture({
+              event: {
+                ...detailFixture().event,
+                status: "Cancelled",
+                cancel_reason: "場地維修",
+              },
+            })
+          : detailFixture({
+              participant_summary: { active_enrollments: 0, checked_in: 0 },
+            })
+      )
+    );
+    mocks.setEventAvailability.mockResolvedValue({
+      event: { ...detailFixture().event, availability: "Inactive" },
+    });
+    mocks.cancelEvent.mockImplementation(async () => {
+      cancelled = true;
+      return { event: { ...detailFixture().event, status: "Cancelled" } };
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    );
+    await expect(
+      screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEvent })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.cancelReason),
+      "場地維修"
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmCancelEvent,
+      })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventCancelledNotice)
+    ).resolves.toBeInTheDocument();
+    // The retired record must not keep offering availability Undo.
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("missing detail shows the load error with retry", async () => {
