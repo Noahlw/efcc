@@ -70,6 +70,10 @@ export type ManagementDepartmentView = Omit<
 export type ManagementProgramView = ProgramSummary & {
   capabilities: ProgramCapabilities;
 };
+export type ManagementProgramSettingsView = ManagementProgramView & {
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
+};
 export type ManagementDepartmentModuleView = Omit<
   DepartmentModuleRow,
   "enabled_by"
@@ -80,7 +84,7 @@ export interface ManagementDirectoryView {
   programs: ManagementProgramView[];
 }
 export interface ManagementProgramWorkspaceView {
-  program: ManagementProgramView;
+  program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
 }
@@ -579,7 +583,7 @@ export class DepartmentWorkspace {
       enabled,
       enabled_at,
     }));
-    const program = this.managementProgram(
+    const program = this.managementProgramSettings(
       row,
       await this.programCapabilities(ctx, row)
     );
@@ -954,6 +958,21 @@ export class DepartmentWorkspace {
   ): ManagementProgramView {
     return { ...this.programSummary(row), capabilities };
   }
+  private managementProgramSettings(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    const program = this.managementProgram(row, capabilities);
+    return capabilities.manage
+      ? {
+          ...program,
+          check_in_opens_at_minutes_before_start:
+            row.check_in_opens_at_minutes_before_start,
+          check_in_closes_at_minutes_after_end:
+            row.check_in_closes_at_minutes_after_end,
+        }
+      : program;
+  }
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
@@ -1021,7 +1040,9 @@ export class DepartmentWorkspace {
         update.behavior_type === undefined &&
         update.discoverability === undefined &&
         update.enrollment_mode === undefined &&
-        update.display_order === undefined;
+        update.display_order === undefined &&
+        update.check_in_opens_at_minutes_before_start === undefined &&
+        update.check_in_closes_at_minutes_after_end === undefined;
       if (old.lifecycle === "Archived") {
         if (!onlyLifecycle) {
           // Metadata edits on an archived program are still allowed; fall

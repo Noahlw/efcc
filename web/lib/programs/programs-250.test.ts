@@ -536,3 +536,128 @@ describe("MUI-02: Program lifecycle and behavior", () => {
     assert.equal(row?.category, null);
   });
 });
+
+describe("CFG-01: scope-owned Program Settings", () => {
+  test("management read exposes attendance defaults and update is audited", async () => {
+    const admin = await access("alice", "alice-secret");
+    const departmentId = await createDepartment(
+      admin,
+      `CFG254-${Date.now()}`
+    );
+    const programId = await createProgram(
+      admin,
+      departmentId,
+      `RecurringSettings-${Date.now()}`,
+      "Recurring"
+    );
+
+    const management = await worker.fetch(
+      request(`/api/v1/programs/${programId}/management`, { cookie: admin }),
+      testEnv()
+    );
+    assert.equal(management.status, 200);
+    const managementBody = (await management.json()) as {
+      data: {
+        program: {
+          check_in_opens_at_minutes_before_start?: number;
+          check_in_closes_at_minutes_after_end?: number;
+          check_in_token?: string;
+        };
+      };
+    };
+    assert.equal(
+      managementBody.data.program.check_in_opens_at_minutes_before_start,
+      15
+    );
+    assert.equal(
+      managementBody.data.program.check_in_closes_at_minutes_after_end,
+      0
+    );
+    assert.equal("check_in_token" in managementBody.data.program, false);
+
+    const updated = await worker.fetch(
+      request(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        cookie: admin,
+        body: {
+          check_in_opens_at_minutes_before_start: 30,
+          check_in_closes_at_minutes_after_end: 10,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(updated.status, 200);
+    const updatedBody = (await updated.json()) as {
+      data: {
+        program: {
+          check_in_opens_at_minutes_before_start: number;
+          check_in_closes_at_minutes_after_end: number;
+        };
+      };
+    };
+    assert.equal(
+      updatedBody.data.program.check_in_opens_at_minutes_before_start,
+      30
+    );
+    assert.equal(
+      updatedBody.data.program.check_in_closes_at_minutes_after_end,
+      10
+    );
+
+    const row = await testDb()
+      .prepare(
+        "SELECT check_in_opens_at_minutes_before_start, check_in_closes_at_minutes_after_end FROM programs WHERE program_id = ?"
+      )
+      .bind(programId)
+      .first<{
+        check_in_opens_at_minutes_before_start: number;
+        check_in_closes_at_minutes_after_end: number;
+      }>();
+    assert.deepEqual(row, {
+      check_in_opens_at_minutes_before_start: 30,
+      check_in_closes_at_minutes_after_end: 10,
+    });
+    const audit = await testDb()
+      .prepare(
+        "SELECT action, outcome FROM audit_events WHERE action = 'PROGRAM_UPDATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(programId)
+      .first<{ action: string; outcome: string }>();
+    assert.deepEqual(audit, { action: "PROGRAM_UPDATE", outcome: "SUCCESS" });
+  });
+
+  test("attendance defaults reject invalid values and member mutation stays forbidden", async () => {
+    const admin = await access("alice", "alice-secret");
+    const member = await access("bob", "bob-secret");
+    const departmentId = await createDepartment(
+      admin,
+      `CFG254-VALIDATE-${Date.now()}`
+    );
+    const programId = await createProgram(
+      admin,
+      departmentId,
+      `AttendanceSettings-${Date.now()}`,
+      "Recurring"
+    );
+
+    const invalid = await worker.fetch(
+      request(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        cookie: admin,
+        body: { check_in_opens_at_minutes_before_start: -1 },
+      }),
+      testEnv()
+    );
+    assert.equal(invalid.status, 422);
+
+    const denied = await worker.fetch(
+      request(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        cookie: member,
+        body: { check_in_closes_at_minutes_after_end: 20 },
+      }),
+      testEnv()
+    );
+    assert.equal(denied.status, 403);
+  });
+});
