@@ -1964,10 +1964,10 @@ export class DepartmentWorkspace {
         event.event_id,
         event.program_id
       );
-      const affectedOperations = Math.max(
-        summary.active_enrollments,
-        summary.checked_in
-      );
+      // EVT-01 (#251): enrollments are Program-scoped; this Event's own open
+      // operations are its active check-ins alone. Deactivating a never-
+      // attended event must not be gated on unrelated Program enrollments.
+      const affectedOperations = summary.checked_in;
       if (affectedOperations > 0) {
         await this.audit(
           ctx,

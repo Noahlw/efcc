@@ -144,6 +144,54 @@ describe("EVT-01 event detail", () => {
     });
   });
 
+  test("a window-less event can be edited without inventing a check-in window", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      })
+    );
+    mocks.updateEvent.mockResolvedValue({
+      event: { ...detailFixture().event, name: "改名聚會" },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.eventEditTitle })
+    );
+    const nameInput = await screen.findByLabelText(COPY.programs.eventName);
+    await user.clear(nameInput);
+    await user.type(nameInput, "改名聚會");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventSavedNotice)
+    ).resolves.toBeInTheDocument();
+    // Empty window inputs submit as an explicit null (clear), not as a
+    // required-field block, so the edit reaches the server.
+    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
+      name: "改名聚會",
+      location: null,
+      starts_at: "2026-09-12T10:00:00.000Z",
+      ends_at: "2026-09-12T11:30:00.000Z",
+      check_in_window_opens_at: null,
+      check_in_window_closes_at: null,
+    });
+  });
+
   test("deactivation requires inline confirmation and offers Undo", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.setEventAvailability.mockResolvedValue({
@@ -162,11 +210,18 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.eventAvailabilityDeactivate,
     });
     await user.click(deactivate);
-    // Inline confirmation replaces the button and takes focus.
+    // Inline confirmation replaces the button and takes focus. The count
+    // names THIS event's open operations (active check-ins), not the
+    // Program-wide enrollment count (3 in the fixture).
     const confirm = await screen.findByRole("button", {
       name: COPY.programs.eventAvailabilityConfirmProceed,
     });
     expect(document.activeElement).toBe(confirm);
+    expect(
+      screen.getByText(
+        COPY.programs.eventAvailabilityConfirmBody.replace("{count}", "2")
+      )
+    ).toBeInTheDocument();
     await user.click(confirm);
     await expect(
       screen.findByText(COPY.programs.eventAvailabilityNotice)
@@ -190,10 +245,13 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.eventAvailabilityRestoredNotice)
     ).resolves.toBeInTheDocument();
   });
-  test("deactivates immediately with Undo when no operations are affected", async () => {
+  test("deactivates immediately with Undo when no event operations are affected", async () => {
+    // Program-wide enrollments are NOT this event's operations: with zero
+    // event check-ins the deactivation is immediate even when the Program
+    // has unrelated active enrollments.
     mocks.getEvent.mockResolvedValue(
       detailFixture({
-        participant_summary: { active_enrollments: 0, checked_in: 0 },
+        participant_summary: { active_enrollments: 3, checked_in: 0 },
       })
     );
     mocks.setEventAvailability.mockResolvedValue({
@@ -233,6 +291,60 @@ describe("EVT-01 event detail", () => {
         name: COPY.programs.eventAvailabilityUndo,
       })
     ).toBeInTheDocument();
+  });
+
+  test("an unrelated edit retires a stale availability Undo", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.setEventAvailability.mockResolvedValue({
+      event: { ...detailFixture().event, availability: "Inactive" },
+    });
+    mocks.updateEvent.mockResolvedValue({
+      event: { ...detailFixture().event, name: "改名聚會" },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventAvailabilityConfirmProceed,
+      })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).toBeInTheDocument();
+
+    // An unrelated identity edit must not leave the stale Undo clickable —
+    // it would silently re-open availability the user never asked for.
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditTitle })
+    );
+    const nameInput = await screen.findByLabelText(COPY.programs.eventName);
+    await user.clear(nameInput);
+    await user.type(nameInput, "改名聚會");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventSavedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.eventAvailabilityUndo,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("cancel requires a reason and shows the cancelled state", async () => {

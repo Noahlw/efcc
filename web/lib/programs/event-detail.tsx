@@ -200,6 +200,9 @@ export const EventDetail = ({
         }),
       () => {
         setEditing(false);
+        // Any successful edit invalidates the prior deactivation's Undo
+        // context; a stale Undo would silently re-open availability.
+        setUndoAvailable(false);
         return COPY.programs.eventSavedNotice;
       }
     );
@@ -230,10 +233,7 @@ export const EventDetail = ({
           setDeactivateImpact(
             typeof problem.open_operations === "number"
               ? problem.open_operations
-              : Math.max(
-                  detail?.participant_summary.active_enrollments ?? 0,
-                  detail?.participant_summary.checked_in ?? 0
-                )
+              : detail?.participant_summary.checked_in ?? 0
           );
           setConfirmingDeactivate(true);
           return true;
@@ -479,18 +479,12 @@ export const EventDetail = ({
                     // AC-4: safe (zero affected operations) deactivation is
                     // immediate with Undo; only consequential deactivation
                     // requires the inline confirm naming the open operations.
-                    if (
-                      participant_summary.active_enrollments === 0 &&
-                      participant_summary.checked_in === 0
-                    ) {
+                    // Enrollments are Program-scoped; this Event's own open
+                    // operations are its active check-ins alone.
+                    if (participant_summary.checked_in === 0) {
                       submitDeactivate(false);
                     } else {
-                      setDeactivateImpact(
-                        Math.max(
-                          participant_summary.active_enrollments,
-                          participant_summary.checked_in
-                        )
-                      );
+                      setDeactivateImpact(participant_summary.checked_in);
                       setConfirmingDeactivate(true);
                     }
                   }}
@@ -561,7 +555,7 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="opens_at"
-                    required
+                    required={event.check_in_window_opens_at != null}
                     defaultValue={hkWallInputValue(
                       event.check_in_window_opens_at
                     )}
@@ -573,7 +567,7 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="closes_at"
-                    required
+                    required={event.check_in_window_opens_at != null}
                     defaultValue={hkWallInputValue(
                       event.check_in_window_closes_at
                     )}
