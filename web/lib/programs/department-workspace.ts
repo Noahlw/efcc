@@ -27,6 +27,7 @@ import type {
   DepartmentUpdate,
   EnrollmentRequestRow,
   EnrollmentRow,
+  EventAvailability,
   EventRow,
   GenerateResult,
   ProgramBehaviorType,
@@ -42,6 +43,8 @@ import type {
   ScheduleRuleRow,
   WorkspaceStore,
 } from "./workspace-store";
+
+export type { EventAvailability } from "./workspace-store";
 
 export interface DepartmentCapabilities {
   manage: boolean;
@@ -83,6 +86,14 @@ export interface ManagementProgramWorkspaceView {
   program: ManagementProgramView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
+}
+export interface EventDetailView {
+  event: EventRow;
+  leaders: ProgramLeaderRow[];
+  participant_summary: {
+    active_enrollments: number;
+    checked_in: number;
+  };
 }
 
 function hasDepartmentManagementScope(department: DepartmentView): boolean {
@@ -246,6 +257,24 @@ export interface CreateScheduleExceptionCommand {
 export interface CreateEventCommand {
   starts_at: string;
   ends_at: string;
+  name: string | null;
+  location: string | null;
+  check_in_window_opens_at: string | null;
+  check_in_window_closes_at: string | null;
+}
+
+export interface UpdateEventCommand {
+  starts_at?: string;
+  ends_at?: string;
+  name?: string | null;
+  location?: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
+}
+
+export interface SetEventAvailabilityCommand {
+  availability: EventAvailability;
+  confirm: boolean;
 }
 
 export interface CancelEventCommand {
@@ -324,6 +353,18 @@ export class DuplicateEventError extends Error {
   constructor(startsAt: string) {
     super(`An event already exists for this start time: ${startsAt}`);
     this.name = "DuplicateEventError";
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventAvailabilityConfirmationRequiredError extends Error {
+  readonly affectedOperations: number;
+
+  constructor(affectedOperations: number) {
+    super(
+      `Deactivating this event affects ${affectedOperations} open participant operations and requires confirmation.`
+    );
+    this.name = "EventAvailabilityConfirmationRequiredError";
+    this.affectedOperations = affectedOperations;
   }
 }
 
@@ -865,7 +906,10 @@ export class DepartmentWorkspace {
         end_time: rule.end_time,
       })),
       events: (eventRows ?? [])
-        .filter((event) => event.status === "Active")
+        .filter(
+          (event) =>
+            event.status === "Active" && event.availability === "Active"
+        )
         .map((event) => ({
           event_id: event.event_id,
           program_id: event.program_id,
@@ -1323,6 +1367,27 @@ export class DepartmentWorkspace {
     return this.store.findEventById(eventId);
   }
 
+  async getEventDetail(
+    ctx: AuthorizationContext,
+    eventId: string
+  ): Promise<EventDetailView | null> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      return null;
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const [leaders, participant_summary] = await Promise.all([
+      this.store.listProgramLeaders(program.program_id),
+      this.store.getEventParticipantSummary(event.event_id, program.program_id),
+    ]);
+    return { event, leaders, participant_summary };
+  }
+
   async createScheduleRule(
     ctx: AuthorizationContext,
     programId: string,
@@ -1542,7 +1607,12 @@ export class DepartmentWorkspace {
             starts_at: occurrence.starts_at,
             ends_at: occurrence.ends_at,
             status: "Active",
+            availability: "Active",
             source: "SCHEDULE",
+            name: null,
+            location: null,
+            check_in_window_opens_at: null,
+            check_in_window_closes_at: null,
             cancel_reason: null,
             created_by: ctx.actorUserId,
             created_at: now,
@@ -1613,7 +1683,12 @@ export class DepartmentWorkspace {
       starts_at: cmd.starts_at,
       ends_at: cmd.ends_at,
       status: "Active",
+      availability: "Active",
       source: "MANUAL",
+      name: cmd.name,
+      location: cmd.location,
+      check_in_window_opens_at: cmd.check_in_window_opens_at,
+      check_in_window_closes_at: cmd.check_in_window_closes_at,
       cancel_reason: null,
       created_by: ctx.actorUserId,
       created_at: now,
@@ -1662,7 +1737,9 @@ export class DepartmentWorkspace {
     if (program.discoverability === "Unlisted") {
       return null;
     }
-    return decorated.filter((r) => r.status === "Active");
+    return decorated.filter(
+      (r) => r.status === "Active" && r.availability === "Active"
+    );
   }
 
   /**
@@ -1690,6 +1767,138 @@ export class DepartmentWorkspace {
           exceptions
         ) as ScheduleExceptionRow | null) ?? null,
     }));
+  }
+  async updateEvent(
+    ctx: AuthorizationContext,
+    eventId: string,
+    cmd: UpdateEventCommand,
+    correlationId: string | null
+  ): Promise<EventRow> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
+      const duplicate = await this.store.findEventByStart(
+        event.program_id,
+        cmd.starts_at
+      );
+      if (duplicate && duplicate.event_id !== event.event_id) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          duplicate.event_id,
+          "CONFLICT",
+          event,
+          { starts_at: cmd.starts_at },
+          correlationId
+        );
+        throw new DuplicateEventError(cmd.starts_at);
+      }
+    }
+    const updated = await this.store.updateEvent(
+      eventId,
+      cmd,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!updated) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    await this.audit(
+      ctx,
+      "EVENT_UPDATE",
+      "event",
+      eventId,
+      "SUCCESS",
+      event,
+      updated,
+      correlationId
+    );
+    return updated;
+  }
+
+  async setEventAvailability(
+    ctx: AuthorizationContext,
+    eventId: string,
+    cmd: SetEventAvailabilityCommand,
+    correlationId: string | null
+  ): Promise<EventRow> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (event.availability === cmd.availability) {
+      await this.audit(
+        ctx,
+        "EVENT_AVAILABILITY",
+        "event",
+        eventId,
+        "DUPLICATE",
+        event,
+        event,
+        correlationId
+      );
+      return event;
+    }
+    if (cmd.availability === "Inactive" && !cmd.confirm) {
+      const summary = await this.store.getEventParticipantSummary(
+        event.event_id,
+        event.program_id
+      );
+      const affectedOperations = Math.max(
+        summary.active_enrollments,
+        summary.checked_in
+      );
+      if (affectedOperations > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_AVAILABILITY",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          event,
+          correlationId
+        );
+        throw new EventAvailabilityConfirmationRequiredError(
+          affectedOperations
+        );
+      }
+    }
+    const updated = await this.store.updateEvent(
+      eventId,
+      { availability: cmd.availability },
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!updated) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    await this.audit(
+      ctx,
+      "EVENT_AVAILABILITY",
+      "event",
+      eventId,
+      "SUCCESS",
+      event,
+      updated,
+      correlationId
+    );
+    return updated;
   }
 
   async cancelEvent(

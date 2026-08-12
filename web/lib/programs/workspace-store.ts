@@ -125,6 +125,7 @@ export interface MemberOptionRow {
 }
 
 export type EventStatus = "Active" | "Cancelled";
+export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
 
 export interface ScheduleRuleInput {
@@ -184,13 +185,17 @@ export interface ScheduleExceptionRow {
   created_by: string | null;
   created_at: string;
 }
-
 export interface EventInput {
   program_id: string;
   starts_at: string;
   ends_at: string;
   status: EventStatus;
+  availability: EventAvailability;
   source: EventSource;
+  name: string | null;
+  location: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
   cancel_reason: string | null;
   created_by: string | null;
   created_at: string;
@@ -204,7 +209,10 @@ export interface EventRow {
   starts_at: string;
   ends_at: string;
   status: EventStatus;
+  availability: EventAvailability;
   source: EventSource;
+  name: string | null;
+  location: string | null;
   cancel_reason: string | null;
   created_by: string | null;
   created_at: string;
@@ -394,6 +402,27 @@ export interface WorkspaceStore {
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
+  updateEvent: (
+    id: string,
+    update: {
+      starts_at?: string;
+      ends_at?: string;
+      name?: string | null;
+      location?: string | null;
+      check_in_window_opens_at?: string | null;
+      check_in_window_closes_at?: string | null;
+      availability?: EventAvailability;
+    },
+    updatedBy: string,
+    updatedAt: string
+  ) => Promise<EventRow | null>;
+  getEventParticipantSummary: (
+    eventId: string,
+    programId: string
+  ) => Promise<{
+    active_enrollments: number;
+    checked_in: number;
+  }>;
 
   createEnrollmentRequest: (
     input: EnrollmentRequestInput

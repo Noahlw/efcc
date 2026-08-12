@@ -561,17 +561,17 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           source, cancel_reason, manual_check_in_code,
+           availability, source, name, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
-               FROM programs WHERE programs.program_id = ?))),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+               FROM programs WHERE programs.program_id = ?)))),
+           COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
-               FROM programs WHERE programs.program_id = ?))),
+               FROM programs WHERE programs.program_id = ?)))),
            ?, ?, ?, ?`
       )
       .bind(
@@ -580,10 +580,15 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.starts_at,
         input.ends_at,
         input.status,
+        input.availability,
         input.source,
+        input.name,
+        input.location,
         input.cancel_reason,
+        input.check_in_window_opens_at,
         input.starts_at,
         input.program_id,
+        input.check_in_window_closes_at,
         input.ends_at,
         input.program_id,
         input.created_by,
@@ -603,18 +608,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-           status, source, cancel_reason, manual_check_in_code,
-           check_in_window_opens_at, check_in_window_closes_at,
-           created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?,
-           upper(substr(hex(randomblob(4)), 1, 8)),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
-             printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
-               FROM programs WHERE programs.program_id = ?))),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
-             printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
-               FROM programs WHERE programs.program_id = ?))),
-           ?, ?, ?, ?`
+         status, availability, source, name, location, cancel_reason, manual_check_in_code,
+         check_in_window_opens_at, check_in_window_closes_at,
+         created_by, created_at, updated_by, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         upper(substr(hex(randomblob(4)), 1, 8)),
+         COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
+             FROM programs WHERE programs.program_id = ?)))),
+         COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
+             FROM programs WHERE programs.program_id = ?)))),
+         ?, ?, ?, ?`
       )
       .bind(
         crypto.randomUUID(),
@@ -622,10 +627,15 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.starts_at,
         input.ends_at,
         input.status,
+        input.availability,
         input.source,
+        input.name,
+        input.location,
         input.cancel_reason,
+        input.check_in_window_opens_at,
         input.starts_at,
         input.program_id,
+        input.check_in_window_closes_at,
         input.ends_at,
         input.program_id,
         input.created_by,
@@ -684,6 +694,80 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       return null;
     }
     return this.findEventById(id);
+  }
+  async updateEvent(
+    id: string,
+    update: {
+      starts_at?: string;
+      ends_at?: string;
+      name?: string | null;
+      location?: string | null;
+      check_in_window_opens_at?: string | null;
+      check_in_window_closes_at?: string | null;
+      availability?: "Active" | "Inactive";
+    },
+    updatedBy: string,
+    updatedAt: string
+  ): Promise<EventRow | null> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const entries: [string, unknown][] = [
+      ["starts_at", update.starts_at],
+      ["ends_at", update.ends_at],
+      ["name", update.name],
+      ["location", update.location],
+      // EVT-01 (#251): a null window is "keep the existing window", never a
+      // literal NULL — isOpen() treats a missing close as permanently closed.
+      [
+        "check_in_window_opens_at",
+        update.check_in_window_opens_at ?? undefined,
+      ],
+      [
+        "check_in_window_closes_at",
+        update.check_in_window_closes_at ?? undefined,
+      ],
+      ["availability", update.availability],
+    ];
+    for (const [column, value] of entries) {
+      if (value !== undefined) {
+        fields.push(`${column} = ?`);
+        values.push(value);
+      }
+    }
+    if (fields.length === 0) {
+      return this.findEventById(id);
+    }
+    fields.push("updated_by = ?", "updated_at = ?");
+    values.push(updatedBy, updatedAt, id);
+    await this.db
+      .prepare(`UPDATE events SET ${fields.join(", ")} WHERE event_id = ?`)
+      .bind(...values)
+      .run();
+    return this.findEventById(id);
+  }
+
+  async getEventParticipantSummary(
+    eventId: string,
+    programId: string
+  ): Promise<{ active_enrollments: number; checked_in: number }> {
+    const [enrollments, checkedIn] = await Promise.all([
+      this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+        )
+        .bind(programId)
+        .first<{ count: number }>(),
+      this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+        )
+        .bind(eventId)
+        .first<{ count: number }>(),
+    ]);
+    return {
+      active_enrollments: Number(enrollments?.count ?? 0),
+      checked_in: Number(checkedIn?.count ?? 0),
+    };
   }
 
   async createEnrollmentRequest(

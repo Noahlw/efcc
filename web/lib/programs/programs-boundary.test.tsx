@@ -220,6 +220,64 @@ describe("Programs intent", () => {
         .malformed
     ).toBeTruthy();
   });
+
+  test("preserves an Event deep link under the management events task", () => {
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42"
+      )
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "events",
+      eventId: "event-42",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "events",
+        eventId: "event-42",
+      })
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=events&event=event-42"
+    );
+    // Non-events tasks and participant mode never carry the param.
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "participants",
+        eventId: "event-42",
+      })
+    ).toBe("/programs?mode=management&program=program-1&task=participants");
+    expect(
+      buildProgramsHref({
+        mode: "participant",
+        programId: "program-1",
+        eventId: "event-42",
+      })
+    ).toBe("/programs?program=program-1");
+    // An Event without the events task, a bad id, or a duplicate param is
+    // malformed; an unknown event id never survives parsing.
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=bad%2Fid"
+      ).malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42&event=event-7"
+      ).malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=settings&event=event-42"
+      ).malformed
+    ).toBeTruthy();
+  });
 });
 
 describe("Programs boundary copy", () => {

@@ -421,6 +421,16 @@
   color: var(--ink-muted);
 }
 
+.ruleForm.eventCreateForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+.eventCreateForm > h5,
+.eventCreateForm > .panelError {
+  grid-column: 1 / -1;
+}
+
 .ruleForm,
 .cancelForm {
   display: flex;
@@ -504,6 +514,14 @@
   background: var(--error-surface);
   color: var(--error);
   font-size: 0.875rem;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
 }
 
 .confirmRow {
@@ -769,6 +787,9 @@
   .eventActions {
     align-items: stretch;
     flex-direction: column;
+  }
+  .ruleForm.eventCreateForm {
+    grid-template-columns: 1fr;
   }
 
   .cancelForm {

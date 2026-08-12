@@ -28,6 +28,7 @@ export default defineProject({
       "lib/programs/program-form.test.tsx",
       "lib/programs/program-workspace.test.tsx",
       "lib/programs/programs-management-boundary.test.tsx",
+      "lib/programs/event-detail.test.tsx",
       "lib/session-deep-link.test.tsx",
       "lib/programs/participant-program-detail.test.tsx",
       "lib/programs/participant-enrollment.test.tsx",

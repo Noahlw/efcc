@@ -228,6 +228,29 @@ export function ProgramsBoundary() {
         : COPY.programs.workspaceTitle
     );
   };
+  // EVT-01 (#251): Event deep links live under the management events task;
+  // null returns to the list.
+  const navigateManagementEvent = (eventId: string | null) => {
+    if (!intent.programId) {
+      return;
+    }
+    const href = buildProgramsHref({
+      mode: "management",
+      programId: intent.programId,
+      task: "events",
+      eventId,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(
+      eventId !== null ? COPY.programs.eventDetailTitle : COPY.programs.events
+    );
+  };
   // PUI-02: row selection hands off through the canonical opaque Program
   // intent URL — the directory never renders the nested manager.
   const openProgram = (programId: string) => {
@@ -347,6 +370,7 @@ export function ProgramsBoundary() {
           onRecoverParticipant={() => navigateMode("participant", true)}
           onOpenProgram={openManagementProgram}
           onTaskChange={navigateManagementTask}
+          onEventChange={navigateManagementEvent}
           onBackDirectory={() => navigateMode("management", true, null)}
         />
       )}
@@ -445,6 +469,7 @@ function ManagementPanel({
   onRecoverParticipant,
   onOpenProgram,
   onTaskChange,
+  onEventChange,
   onBackDirectory,
 }: {
   projection: ProgramsManagementAccess;
@@ -453,6 +478,7 @@ function ManagementPanel({
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string) => void;
   onTaskChange: (task: ProgramsTask | null) => void;
+  onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
 }) {
   const [createDepartments, setCreateDepartments] = useState<
@@ -494,8 +520,10 @@ function ManagementPanel({
           key={intent.programId}
           programId={intent.programId}
           task={intent.task}
+          eventId={intent.eventId ?? null}
           onBack={onBackDirectory}
           onTaskChange={onTaskChange}
+          onEventChange={onEventChange}
         />
       ) : createDepartments ? (
         <ProgramForm

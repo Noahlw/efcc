@@ -25,6 +25,7 @@ import {
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentNotAllowedError,
+  EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
@@ -36,7 +37,10 @@ import {
   SelfDelegationError,
 } from "./department-workspace";
 import type {
+  CreateEventCommand,
   CreateScheduleRuleCommand,
+  EventAvailability,
+  UpdateEventCommand,
   UpdateScheduleRuleCommand,
 } from "./department-workspace";
 import { isWallDate, isWallTime } from "./recurrence";
@@ -132,7 +136,8 @@ function problem(
   code: string,
   title: string,
   detail: string | undefined,
-  requestId: string
+  requestId: string,
+  extensions?: Record<string, unknown>
 ): Response {
   const body: Record<string, unknown> = {
     type: `tag:apps-script/efcc/errors#${code}`,
@@ -143,6 +148,9 @@ function problem(
   };
   if (detail !== undefined) {
     body.detail = detail;
+  }
+  if (extensions !== undefined) {
+    Object.assign(body, extensions);
   }
   return Response.json(body, {
     status,
@@ -1443,6 +1451,10 @@ export async function handleCreateEvent(
   const body = await parseJson<{
     starts_at?: unknown;
     ends_at?: unknown;
+    name?: unknown;
+    location?: unknown;
+    check_in_window_opens_at?: unknown;
+    check_in_window_closes_at?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1453,6 +1465,59 @@ export async function handleCreateEvent(
   if (body.ends_at <= body.starts_at) {
     return validation(requestId, "ends_at must be after starts_at.");
   }
+  const textField = (
+    value: unknown,
+    field: string
+  ): string | null | undefined => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== "string") {
+      throw new Error(`${field} must be text.`);
+    }
+    return value.trim() || null;
+  };
+  let name: string | null | undefined;
+  let location: string | null | undefined;
+  let opens: string | null | undefined;
+  let closes: string | null | undefined;
+  try {
+    name = textField(body.name, "name");
+    location = textField(body.location, "location");
+    opens = textField(
+      body.check_in_window_opens_at,
+      "check_in_window_opens_at"
+    );
+    closes = textField(
+      body.check_in_window_closes_at,
+      "check_in_window_closes_at"
+    );
+  } catch (error) {
+    return validation(
+      requestId,
+      error instanceof Error ? error.message : "Invalid text field."
+    );
+  }
+  if (
+    (opens !== undefined && opens !== null && !isIsoInstant(opens)) ||
+    (closes !== undefined && closes !== null && !isIsoInstant(closes))
+  ) {
+    return validation(
+      requestId,
+      "Check-in window values must be ISO-8601 UTC."
+    );
+  }
+  if (
+    opens !== undefined &&
+    closes !== undefined &&
+    opens !== null &&
+    closes !== null &&
+    closes <= opens
+  ) {
+    return validation(
+      requestId,
+      "check-in window closes_at must be after opens_at."
+    );
+  }
   const { workspace } = await getModule(env);
   const program = await workspace.getProgram(ctxFrom(auth.account), programId);
   if (!program) {
@@ -1462,7 +1527,14 @@ export async function handleCreateEvent(
     const row = await workspace.createEvent(
       ctxFrom(auth.account),
       programId,
-      { starts_at: body.starts_at, ends_at: body.ends_at },
+      {
+        starts_at: body.starts_at,
+        ends_at: body.ends_at,
+        name: name ?? null,
+        location: location ?? null,
+        check_in_window_opens_at: opens ?? null,
+        check_in_window_closes_at: closes ?? null,
+      } satisfies CreateEventCommand,
       correlationId
     );
     return jsonResponse(201, { event: row }, requestId);
@@ -1496,6 +1568,36 @@ export async function handleListEvents(
   return jsonResponse(200, { events: rows }, requestId);
 }
 
+/** GET /api/v1/programs/:programId/events/:eventId */
+export async function handleGetEvent(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  eventId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const detail = await workspace.getEventDetail(
+      ctxFrom(auth.account),
+      eventId
+    );
+    if (!detail || detail.event.program_id !== programId) {
+      return notFound(requestId, "Unknown event.");
+    }
+    return jsonResponse(200, detail, requestId);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    throw error;
+  }
+}
+
 /** PATCH /api/v1/programs/:programId/events/:eventId */
 export async function handleEventUpdate(
   request: Request,
@@ -1509,33 +1611,173 @@ export async function handleEventUpdate(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ reason?: unknown }>(request);
+  const body = await parseJson<Record<string, unknown>>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-  if (!reason) {
-    return validation(requestId, "reason is required.");
+  if ("availability" in body) {
+    if (body.availability !== "Active" && body.availability !== "Inactive") {
+      return validation(requestId, "availability must be Active or Inactive.");
+    }
+  }
+  if ("reason" in body) {
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (!reason) {
+      return validation(requestId, "reason is required.");
+    }
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEvent(ctxFrom(auth.account), eventId);
-  if (!existing) {
+  if (!existing || existing.program_id !== programId) {
     return notFound(requestId, "Unknown event.");
   }
-  if (existing.program_id !== programId) {
-    return notFound(requestId, "Unknown event.");
+  if ("availability" in body) {
+    const confirmed = body.confirm === true;
+    const availability = body.availability as EventAvailability;
+    try {
+      const row = await workspace.setEventAvailability(
+        ctxFrom(auth.account),
+        eventId,
+        { availability, confirm: confirmed },
+        correlationId
+      );
+      return jsonResponse(200, { event: row }, requestId);
+    } catch (error) {
+      if (error instanceof EventAvailabilityConfirmationRequiredError) {
+        return problem(
+          409,
+          "CONFIRMATION_REQUIRED",
+          "Confirmation required",
+          `${error.message} Affected open operations: ${error.affectedOperations}.`,
+          requestId,
+          { open_operations: error.affectedOperations }
+        );
+      }
+      if (error instanceof AuthorizationDeniedError) {
+        return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+      }
+      throw error;
+    }
+  }
+  if ("reason" in body) {
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    try {
+      const row = await workspace.cancelEvent(
+        ctxFrom(auth.account),
+        eventId,
+        { reason },
+        correlationId
+      );
+      return jsonResponse(200, { event: row }, requestId);
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError) {
+        return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+      }
+      throw error;
+    }
+  }
+  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
+    starts_at: true,
+    ends_at: true,
+    name: true,
+    location: true,
+    check_in_window_opens_at: true,
+    check_in_window_closes_at: true,
+  };
+  if (Object.keys(body).some((key) => !ALLOWED_EVENT_UPDATE_FIELDS[key])) {
+    return validation(requestId, "Unknown event field.");
+  }
+  const parseOptionalText = (value: unknown, field: string) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== "string") {
+      throw new Error(`${field} must be text.`);
+    }
+    return value.trim() || null;
+  };
+  let update: UpdateEventCommand;
+  try {
+    const starts = body.starts_at;
+    const ends = body.ends_at;
+    if (starts !== undefined && !isIsoInstant(starts)) {
+      return validation(requestId, "starts_at must be ISO-8601 UTC.");
+    }
+    if (ends !== undefined && !isIsoInstant(ends)) {
+      return validation(requestId, "ends_at must be ISO-8601 UTC.");
+    }
+    const effectiveStarts =
+      (starts as string | undefined) ?? existing.starts_at;
+    const effectiveEnds = (ends as string | undefined) ?? existing.ends_at;
+    if (effectiveEnds <= effectiveStarts) {
+      return validation(requestId, "ends_at must be after starts_at.");
+    }
+    const opens = parseOptionalText(
+      body.check_in_window_opens_at,
+      "check_in_window_opens_at"
+    );
+    const closes = parseOptionalText(
+      body.check_in_window_closes_at,
+      "check_in_window_closes_at"
+    );
+    if (
+      (opens !== undefined && opens !== null && !isIsoInstant(opens)) ||
+      (closes !== undefined && closes !== null && !isIsoInstant(closes))
+    ) {
+      return validation(
+        requestId,
+        "Check-in window values must be ISO-8601 UTC."
+      );
+    }
+    const effectiveOpens = opens ?? existing.check_in_window_opens_at;
+    const effectiveCloses = closes ?? existing.check_in_window_closes_at;
+    if (
+      effectiveOpens !== null &&
+      effectiveCloses !== null &&
+      effectiveOpens !== undefined &&
+      effectiveCloses !== undefined &&
+      effectiveCloses <= effectiveOpens
+    ) {
+      return validation(
+        requestId,
+        "check-in window closes_at must be after opens_at."
+      );
+    }
+    update = {
+      ...(starts === undefined ? {} : { starts_at: starts }),
+      ...(ends === undefined ? {} : { ends_at: ends }),
+      ...(body.name === undefined
+        ? {}
+        : { name: parseOptionalText(body.name, "name") }),
+      ...(body.location === undefined
+        ? {}
+        : { location: parseOptionalText(body.location, "location") }),
+      ...(body.check_in_window_opens_at === undefined
+        ? {}
+        : { check_in_window_opens_at: opens }),
+      ...(body.check_in_window_closes_at === undefined
+        ? {}
+        : { check_in_window_closes_at: closes }),
+    };
+  } catch (error) {
+    return validation(
+      requestId,
+      error instanceof Error ? error.message : "Invalid event field."
+    );
   }
   try {
-    const row = await workspace.cancelEvent(
+    const row = await workspace.updateEvent(
       ctxFrom(auth.account),
       eventId,
-      { reason },
+      update,
       correlationId
     );
     return jsonResponse(200, { event: row }, requestId);
   } catch (error) {
     if (error instanceof AuthorizationDeniedError) {
       return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    }
+    if (error instanceof DuplicateEventError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     throw error;
   }
