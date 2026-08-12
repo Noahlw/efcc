@@ -391,4 +391,12 @@ describe(ProgramSettings, () => {
       screen.getByLabelText(COPY.programs.endTime)
     ).toHaveValue("");
   });
+
+  test("explains that existing schedule exceptions cannot be listed yet", async () => {
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+
+    await expect(
+      screen.findByText(COPY.programs.settingsExceptionsUnavailable)
+    ).resolves.toBeInTheDocument();
+  });
 });

@@ -976,6 +976,11 @@ export const ProgramSettings = ({
                     )}
                   </ul>
                 )}
+                {rules !== null && rules.length > 0 && (
+                  <p className={styles.settingsReadonly}>
+                    {COPY.programs.settingsExceptionsUnavailable}
+                  </p>
+                )}
                 <form className={styles.settingsForm} onSubmit={submitNewRule}>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>{COPY.programs.behaviorType}</span>
