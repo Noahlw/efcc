@@ -848,7 +848,9 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       const inheritedDemoRows = inheritedDirectory
         .getByRole("button")
         .filter({ hasText: /^E2E_DEMO_/u });
-      expect(await inheritedDemoRows.count()).toBeGreaterThanOrEqual(4);
+      await expect
+        .poll(async () => inheritedDemoRows.count())
+        .toBeGreaterThanOrEqual(4);
       await expect(
         inheritedDirectory.getByRole("button", {
           name: /E2E_DEMO_青年團契/u,
