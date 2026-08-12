@@ -3970,9 +3970,21 @@ describe("PRG-04: program leaders", () => {
     assert.strictEqual(rule.status, 403, "revoked leader must lose manage");
   });
 
-  test("DLG-12 revoking a user who was never a leader is 404", async () => {
+  test("DLG-12 revoking a user who was never a leader is 404 with a DENIED audit row", async () => {
     const res = await revokeLeader(adminAccess, leaderProgramId, "U001");
     assert.strictEqual(res.status, 404);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DENIED'
+           AND entity_id = ?`
+      )
+      .bind(leaderProgramId)
+      .first<{ outcome: string }>();
+    assert.ok(
+      audit,
+      "revoke of a never-assigned leader must write a DENIED audit row (ADR-0027)"
+    );
   });
 
   test("DLG-13 revoking an already-revoked pair is a quiet 200 that audits DUPLICATE", async () => {

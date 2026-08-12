@@ -2313,6 +2313,16 @@ export class DepartmentWorkspace {
     );
     const existing = await this.store.findProgramLeader(programId, userId);
     if (!existing) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "DENIED",
+        null,
+        { user_id: userId, reason: "leader_not_assigned" },
+        correlationId
+      );
       throw new LeaderNotAssignedError(programId, userId);
     }
     if (existing.revoked_at !== null) {
@@ -2544,6 +2554,20 @@ export class DepartmentWorkspace {
       userId
     );
     if (!existing) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "manager_not_assigned",
+        },
+        correlationId
+      );
       throw new DepartmentManagerNotAssignedError(departmentId, userId);
     }
     if (existing.revoked_at !== null) {

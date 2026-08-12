@@ -495,6 +495,25 @@ describe("AUTH-01: Department Manager scope", () => {
       ),
       true
     );
+
+    const revokeNeverAssigned = await worker.fetch(
+      request(
+        `/api/v1/programs/departments/${departmentId}/managers/U005/revoke`,
+        admin,
+        { method: "POST" }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(revokeNeverAssigned.status, 404);
+    assert.strictEqual(
+      await auditOutcome(
+        "DEPARTMENT_MANAGER_REVOKE",
+        `${departmentId}:U005`,
+        "DENIED"
+      ),
+      true,
+      "revoke of a never-assigned manager must write a DENIED audit row (ADR-0027)"
+    );
   });
 
   test("concurrent grants of a brand-new pair yield one SUCCESS and one CONFLICT", async () => {
