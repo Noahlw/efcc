@@ -302,4 +302,28 @@ describe(ProgramSettings, () => {
     ).not.toBeInTheDocument();
     expect(mocks.listScheduleRules).not.toHaveBeenCalled();
   });
+
+  test("withholds schedule controls when the events module is disabled", async () => {
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        eventsEnabled={false}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsSchedule })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.settingsScheduleUnavailable)
+    ).toBeInTheDocument();
+    expect(mocks.listScheduleRules).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.addRule })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: COPY.programs.startTime })
+    ).not.toBeInTheDocument();
+  });
 });

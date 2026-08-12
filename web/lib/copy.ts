@@ -244,6 +244,8 @@ export const COPY = {
       "生命週期轉換由課程管理流程處理；請返回概覽使用現有的啟用或存檔操作。",
     settingsScheduleOneOff:
       "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
+    settingsScheduleUnavailable:
+      "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
     settingsScheduleLoading: "正在載入時間表規則…",
     settingsScheduleLoadError: "無法載入時間表規則。",
     settingsScheduleRetry: "重試載入時間表",

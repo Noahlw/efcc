@@ -57,6 +57,7 @@ interface ExceptionValues {
 
 export interface ProgramSettingsProps {
   program: Program;
+  eventsEnabled?: boolean;
   onTaskChange?: (task: "events" | null) => void;
 }
 const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
@@ -160,6 +161,7 @@ function exceptionInputFrom(values: ExceptionValues): {
 // oxlint-disable-next-line eslint/complexity
 export const ProgramSettings = ({
   program,
+  eventsEnabled = true,
   onTaskChange,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
@@ -167,7 +169,9 @@ export const ProgramSettings = ({
   const [enrollment, setEnrollment] = useState(() => enrollmentFrom(program));
   const [attendance, setAttendance] = useState(() => attendanceFrom(program));
   const [rules, setRules] = useState<ScheduleRule[] | null>(
-    program.behavior_type === "Recurring" && program.capabilities.manage
+    program.behavior_type === "Recurring" &&
+      program.capabilities.manage &&
+      eventsEnabled
       ? null
       : []
   );
@@ -203,7 +207,11 @@ export const ProgramSettings = ({
   );
 
   const loadRules = useCallback(async () => {
-    if (currentProgram.behavior_type !== "Recurring" || !canManage) {
+    if (
+      currentProgram.behavior_type !== "Recurring" ||
+      !canManage ||
+      !eventsEnabled
+    ) {
       return;
     }
     setRules(null);
@@ -221,7 +229,12 @@ export const ProgramSettings = ({
       setRuleError(errorMessage(error));
       setRules([]);
     }
-  }, [canManage, currentProgram.behavior_type, currentProgram.program_id]);
+  }, [
+    canManage,
+    currentProgram.behavior_type,
+    currentProgram.program_id,
+    eventsEnabled,
+  ]);
 
   useEffect(() => {
     void loadRules();
@@ -651,6 +664,10 @@ export const ProgramSettings = ({
             </div>
             {currentProgram.behavior_type === "OneOff" ? (
               <p className={styles.settingsReadonly}>{COPY.programs.settingsScheduleOneOff}</p>
+            ) : !eventsEnabled ? (
+              <p className={styles.settingsReadonly}>
+                {COPY.programs.settingsScheduleUnavailable}
+              </p>
             ) : (
               <>
                 {ruleError !== null && (

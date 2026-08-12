@@ -647,11 +647,19 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
 
 const SettingsTask = ({
   program,
+  modules,
   onTaskChange,
 }: {
   program: Program;
+  modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
-}) => <ProgramSettings program={program} onTaskChange={onTaskChange} />;
+}) => (
+  <ProgramSettings
+    program={program}
+    eventsEnabled={hasModule(modules, "events")}
+    onTaskChange={onTaskChange}
+  />
+);
 const TaskUnavailable = ({ task }: { task: ProgramsTask }) => (
   <section
     className={styles.workspaceTask}
@@ -693,7 +701,13 @@ const WorkspaceTask = ({
       <TaskUnavailable task={task} />
     );
   }
-  return <SettingsTask program={program} onTaskChange={onTaskChange} />;
+  return (
+    <SettingsTask
+      program={program}
+      modules={modules}
+      onTaskChange={onTaskChange}
+    />
+  );
 };
 
 export const ProgramWorkspace = ({
