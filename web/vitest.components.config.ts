@@ -25,6 +25,7 @@ export default defineProject({
       "lib/programs/programs-boundary.test.tsx",
       "lib/programs/participant-directory.test.tsx",
       "lib/programs/management-directory.test.tsx",
+      "lib/programs/department-settings-panel.test.tsx",
       "lib/programs/program-workspace.test.tsx",
       "lib/programs/programs-management-boundary.test.tsx",
       "lib/session-deep-link.test.tsx",

@@ -37,6 +37,7 @@ export interface Department {
     manage: boolean;
     publish: boolean;
     module_configure: boolean;
+    manager_assign?: boolean;
   };
 }
 
@@ -257,6 +258,16 @@ export type EnrollmentDecision = "Approved" | "Rejected";
 
 export interface ProgramLeader {
   program_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  user_name?: string;
+  username?: string;
+}
+export interface DepartmentManager {
+  department_id: string;
   user_id: string;
   granted_by: string;
   granted_at: string;
@@ -591,6 +602,52 @@ export function createProgram(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
     input
+  );
+}
+/** GET /api/v1/programs/departments/:id/managers */
+export function listDepartmentManagers(departmentId: string): Promise<{
+  managers: DepartmentManager[];
+}> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
+    "GET"
+  );
+}
+
+/** GET /api/v1/programs/departments/:id/member-options?q=... */
+export function searchDepartmentMemberOptions(
+  departmentId: string,
+  query: string
+): Promise<{ members: MemberOption[] }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/member-options?q=${encodeURIComponent(query)}`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers */
+export function assignDepartmentManager(
+  departmentId: string,
+  userId: string
+): Promise<{ manager: DepartmentManager }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
+    "POST",
+    { user_id: userId },
+    { idempotencyKey: null }
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
+export function revokeDepartmentManager(
+  departmentId: string,
+  userId: string
+): Promise<{ manager: DepartmentManager }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers/${encodeURIComponent(userId)}/revoke`,
+    "POST",
+    {},
+    { idempotencyKey: null }
   );
 }
 

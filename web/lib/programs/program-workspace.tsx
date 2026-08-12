@@ -22,6 +22,7 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 
 import type { ProgramsTask } from "./programs-intent";
+import { LeadersPanel } from "./programs-leaders-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -710,6 +711,12 @@ const SettingsTask = ({
           </ul>
         )}
       </section>
+      {(program.capabilities.manage || program.capabilities.leader_assign) && (
+        <LeadersPanel
+          program={program}
+          canManage={program.capabilities.leader_assign}
+        />
+      )}
       <button
         className={styles.programDetailBack}
         type="button"

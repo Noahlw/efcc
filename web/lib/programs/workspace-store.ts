@@ -303,6 +303,30 @@ export interface ProgramLeaderRevokeInput {
   revoked_by: string;
   revoked_at: string;
 }
+export interface DepartmentManagerRow {
+  department_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  user_name?: string;
+  username?: string;
+}
+
+export interface DepartmentManagerGrantInput {
+  department_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+}
+
+export interface DepartmentManagerRevokeInput {
+  department_id: string;
+  user_id: string;
+  revoked_by: string;
+  revoked_at: string;
+}
 
 export interface AuditInput {
   audit_id: string;
@@ -454,6 +478,19 @@ export interface WorkspaceStore {
     cancelledBy: string,
     cancelledAt: string
   ) => Promise<EnrollmentRow | null>;
+  findDepartmentManager: (
+    departmentId: string,
+    userId: string
+  ) => Promise<DepartmentManagerRow | null>;
+  listDepartmentManagers: (
+    departmentId: string
+  ) => Promise<DepartmentManagerRow[]>;
+  assignDepartmentManager: (
+    input: DepartmentManagerGrantInput
+  ) => Promise<DepartmentManagerRow>;
+  revokeDepartmentManager: (
+    input: DepartmentManagerRevokeInput
+  ) => Promise<DepartmentManagerRow | null>;
 
   findProgramLeader: (
     programId: string,

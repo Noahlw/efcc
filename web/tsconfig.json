@@ -44,6 +44,7 @@
     "lib/programs/capability-authorizer.ts",
     "lib/programs/department-workspace.ts",
     "lib/programs/program-handlers.ts",
+    "lib/programs/department-manager.test.ts",
     "lib/programs/programs.test.ts",
     "lib/service-envelope.ts",
     "lib/service-envelope.test.ts"

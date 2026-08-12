@@ -9,6 +9,9 @@ import type {
   AuditInput,
   ProgramAccessRow,
   DepartmentInput,
+  DepartmentManagerGrantInput,
+  DepartmentManagerRevokeInput,
+  DepartmentManagerRow,
   DepartmentModuleRow,
   DepartmentRow,
   DepartmentUpdate,
@@ -804,7 +807,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
-  }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
+  }): Promise<{
+    request: EnrollmentRequestRow;
+    enrollment: EnrollmentRow;
+  } | null> {
     const results = await this.db.batch([
       this.db
         .prepare(
@@ -828,12 +834,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
            WHERE request_id = ? AND status = 'Pending'`
         )
-        .bind(
-          input.decided_by,
-          input.decided_at,
-          input.note,
-          input.request_id
-        ),
+        .bind(input.decided_by, input.decided_at, input.note, input.request_id),
       // ponytail: gate both audits on the enrollment row the INSERT..SELECT
       // just created, so a no-op batch (0-row select) inserts no audit rows.
       this.auditInsertGated(input.auditCreate, input.enrollment_id),
@@ -966,6 +967,104 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.findEnrollmentById(id);
   }
 
+  findDepartmentManager(
+    departmentId: string,
+    userId: string
+  ): Promise<DepartmentManagerRow | null> {
+    return this.db
+      .prepare(
+        `SELECT department_id, user_id, granted_by, granted_at, revoked_by, revoked_at
+           FROM department_managers
+          WHERE department_id = ? AND user_id = ?`
+      )
+      .bind(departmentId, userId)
+      .first<DepartmentManagerRow>();
+  }
+
+  listDepartmentManagers(
+    departmentId: string
+  ): Promise<DepartmentManagerRow[]> {
+    return this.db
+      .prepare(
+        `SELECT department_managers.*, accounts.name AS user_name,
+                accounts.username
+           FROM department_managers
+           LEFT JOIN accounts ON accounts.user_id = department_managers.user_id
+          WHERE department_managers.department_id = ?
+            AND department_managers.revoked_at IS NULL
+          ORDER BY department_managers.granted_at`
+      )
+      .bind(departmentId)
+      .all<DepartmentManagerRow>()
+      .then((result) => result.results);
+  }
+
+  async assignDepartmentManager(
+    input: DepartmentManagerGrantInput
+  ): Promise<DepartmentManagerRow> {
+    const existing = await this.findDepartmentManager(
+      input.department_id,
+      input.user_id
+    );
+    if (existing?.revoked_at === null) {
+      return existing;
+    }
+    await this.db
+      .prepare(
+        existing
+          ? `UPDATE department_managers
+                SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
+              WHERE department_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
+          : `INSERT INTO department_managers
+                (department_id, user_id, granted_by, granted_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(department_id, user_id) DO NOTHING`
+      )
+      .bind(
+        ...(existing
+          ? [
+              input.granted_by,
+              input.granted_at,
+              input.department_id,
+              input.user_id,
+            ]
+          : [
+              input.department_id,
+              input.user_id,
+              input.granted_by,
+              input.granted_at,
+            ])
+      )
+      .run();
+    const row = await this.findDepartmentManager(
+      input.department_id,
+      input.user_id
+    );
+    if (!row) {
+      throw new Error("department manager row missing after assign");
+    }
+    return row;
+  }
+
+  async revokeDepartmentManager(
+    input: DepartmentManagerRevokeInput
+  ): Promise<DepartmentManagerRow | null> {
+    await this.db
+      .prepare(
+        `UPDATE department_managers
+            SET revoked_by = ?, revoked_at = ?
+          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(
+        input.revoked_by,
+        input.revoked_at,
+        input.department_id,
+        input.user_id
+      )
+      .run();
+    return this.findDepartmentManager(input.department_id, input.user_id);
+  }
+
   findProgramLeader(
     programId: string,
     userId: string
@@ -1005,9 +1104,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const sql = existing
       ? `UPDATE program_leaders
          SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
-         WHERE program_id = ? AND user_id = ?`
+         WHERE program_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
       : `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)`;
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(program_id, user_id) DO NOTHING`;
     const args = existing
       ? [input.granted_by, input.granted_at, input.program_id, input.user_id]
       : [input.program_id, input.user_id, input.granted_by, input.granted_at];
@@ -1098,6 +1198,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ?"
       )
       .bind(role, capability)
+      .first<{ 1: number }>();
+    return row !== null;
+  }
+
+  async hasDepartmentManagement(
+    userId: string,
+    departmentId: string
+  ): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        `SELECT 1 FROM department_managers
+          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(departmentId, userId)
       .first<{ 1: number }>();
     return row !== null;
   }

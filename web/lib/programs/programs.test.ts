@@ -212,6 +212,7 @@ beforeAll(async () => {
     ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
     ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
     ["U004", "Dana Pending", "dana", "9999", "Member", "Pending"],
+    ["U005", "Staff User", "staff", "2468", "Staff", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -222,6 +223,11 @@ beforeAll(async () => {
     userId: "U002",
     legacyPin: "5678",
     newCredential: "bob-secret",
+  });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U005",
+    legacyPin: "2468",
+    newCredential: "staff-secret",
   });
 });
 
@@ -4137,6 +4143,49 @@ describe("PRG-04: program leaders", () => {
     assert.strictEqual(rule.status, 201, "leader must manage own program");
   });
 
+  test("DLG-19 concurrent grants of a brand-new pair yield one SUCCESS and one CONFLICT", async () => {
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const fresh = await createProgram(adminAccess, leaderDeptId, {
+      name: "Leader Race Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const results = await Promise.all([
+      assignLeader(adminAccess, fresh.program_id, "U003"),
+      assignLeader(staffAccess, fresh.program_id, "U003"),
+    ]);
+    const statuses = results.map((result) => result.status).sort();
+    assert.deepStrictEqual(
+      statuses,
+      [200, 409],
+      "one concurrent grant wins, the other conflicts"
+    );
+    const active = await testDb()
+      .prepare(
+        `SELECT user_id FROM program_leaders
+         WHERE program_id = ? AND revoked_at IS NULL`
+      )
+      .bind(fresh.program_id)
+      .all<{ user_id: string }>();
+    assert.deepStrictEqual(
+      (active.results ?? []).map(({ user_id }) => user_id),
+      ["U003"],
+      "exactly one active leader row"
+    );
+    const outcomes = await testDb()
+      .prepare(
+        `SELECT DISTINCT outcome FROM audit_events
+         WHERE action = 'PROGRAM_LEADER_GRANT' AND entity_id = ?`
+      )
+      .bind(fresh.program_id)
+      .all<{ outcome: string }>();
+    const seen = new Set(
+      (outcomes.results ?? []).map(({ outcome }) => outcome)
+    );
+    assert.ok(seen.has("SUCCESS"), "winner audited SUCCESS");
+    assert.ok(seen.has("CONFLICT"), "loser audited CONFLICT");
+  });
+
   test("AUD-2 no credential material enters leader audit records", async () => {
     const rows = await testDb()
       .prepare(
@@ -4510,6 +4559,7 @@ describe("PUI-03: participant Program detail", () => {
     assert.ok(!raw.includes("manual_check_in_code"));
     assert.ok(!raw.includes("capabilities"));
   });
+
   test("keeps multiple active events for a OneOff participant detail", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
