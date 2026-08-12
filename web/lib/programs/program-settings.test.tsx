@@ -467,6 +467,42 @@ describe(ProgramSettings, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("shows accurate copy for a duplicate schedule exception", async () => {
+    const user = userEvent.setup();
+    mocks.createScheduleException.mockRejectedValueOnce(
+      new RpcError({
+        code: "CONFLICT",
+        status: 409,
+        detail: "Schedule exception already exists for rule rule-1 on 2026-08-13",
+      })
+    );
+    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsRuleAddException })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate),
+      "2026-08-13"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsExceptionSave })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.settingsExceptionDuplicate
+    );
+    expect(
+      screen.queryByText(COPY.programs.programConflict)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate)
+    ).toHaveValue("2026-08-13");
+  });
+
   test("explains that existing schedule exceptions cannot be listed yet", async () => {
     render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
 

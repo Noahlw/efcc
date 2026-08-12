@@ -264,6 +264,7 @@ export const COPY = {
     settingsExceptionNewEnd: "新結束時間",
     settingsExceptionSave: "儲存例外",
     settingsExceptionRestore: "移除例外",
+    settingsExceptionDuplicate: "此日期已有例外安排，無法重複新增。",
     settingsScheduleEventsLink: "前往聚會工作流程",
     settingsAttendanceOpens: "開始前可簽到分鐘",
     settingsAttendanceCloses: "結束後仍可簽到分鐘",

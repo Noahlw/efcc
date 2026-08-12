@@ -78,6 +78,12 @@ const WEEKDAY_LABELS = [
 
 function errorMessage(error: unknown): string {
   if (error instanceof RpcError) {
+    if (
+      error.problem.code === "CONFLICT" &&
+      error.problem.detail?.includes("Schedule exception already exists")
+    ) {
+      return COPY.programs.settingsExceptionDuplicate;
+    }
     if (error.problem.code === "CONFLICT") {
       return COPY.programs.programConflict;
     }
