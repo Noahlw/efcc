@@ -838,11 +838,19 @@ const SettingsTask = ({
   modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
 }) => (
-  <ProgramSettings
-    program={program}
-    eventsEnabled={hasModule(modules, "events")}
-    onTaskChange={onTaskChange}
-  />
+  <>
+    <ProgramSettings
+      program={program}
+      eventsEnabled={hasModule(modules, "events")}
+      onTaskChange={onTaskChange}
+    />
+    {(program.capabilities.manage || program.capabilities.leader_assign) && (
+      <LeadersPanel
+        program={program}
+        canManage={program.capabilities.leader_assign}
+      />
+    )}
+  </>
 );
 const TaskUnavailable = ({ task }: { task: ProgramsTask }) => (
   <section
