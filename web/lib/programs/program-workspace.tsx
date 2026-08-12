@@ -28,6 +28,7 @@ import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
 import { LeadersPanel } from "./programs-leaders-panel";
+import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -393,6 +394,11 @@ const WorkspaceOverview = ({
   );
 };
 
+type EventsState =
+  | { kind: "loading" }
+  | { kind: "ready"; events: ProgramEvent[] }
+  | { kind: "error"; message: string };
+
 const EventsTask = ({
   programId,
   canManage,
@@ -403,47 +409,37 @@ const EventsTask = ({
   /** EVT-01 (#251): deep link into the Event operational detail screen. */
   onOpenEvent?: (eventId: string) => void;
 }) => {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; events: ProgramEvent[] }
-    | { kind: "error"; message: string }
-  >({ kind: "loading" });
+  const { state, run, retry } = useAsyncResource<ProgramEvent[], EventsState>(
+    async () => {
+      const { events } = await listEvents(programId);
+      return events;
+    },
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (events) => ({ kind: "ready", events }),
+      onError: (error) => {
+        if (redirectToLoginIfRequired(error)) {
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        return {
+          kind: "error",
+          message:
+            error instanceof RpcError
+              ? errorCopyFor(code, error.problem.detail)
+              : COPY.error.networkError,
+        };
+      },
+    },
+    [programId]
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const requestId = useRef(0);
-
-  const load = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    try {
-      const { events } = await listEvents(programId);
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", events });
-    } catch (error) {
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      setState({
-        kind: "error",
-        message:
-          error instanceof RpcError
-            ? errorCopyFor(code, error.problem.detail)
-            : COPY.error.networkError,
-      });
-    }
-  }, [programId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void run();
+  }, [run]);
 
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
@@ -619,7 +615,7 @@ const EventsTask = ({
           <button
             className={styles.retry}
             type="button"
-            onClick={() => void load()}
+            onClick={retry}
           >
             {COPY.programs.workspaceTaskEventsRetry}
           </button>
@@ -671,52 +667,54 @@ const EventsTask = ({
   );
 };
 
-const ParticipantsTask = ({ programId }: { programId: string }) => {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | {
-        kind: "ready";
-        requests: EnrollmentRequest[];
-        enrollments: Enrollment[];
-      }
-    | { kind: "error"; message: string }
-  >({ kind: "loading" });
-  const requestId = useRef(0);
+type ParticipantsState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      requests: EnrollmentRequest[];
+      enrollments: Enrollment[];
+    }
+  | { kind: "error"; message: string };
 
-  const load = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    try {
+const ParticipantsTask = ({ programId }: { programId: string }) => {
+  const { state, run, retry } = useAsyncResource<
+    { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
+    ParticipantsState
+  >(
+    async () => {
       const [{ requests }, { enrollments }] = await Promise.all([
         listEnrollmentRequests(programId),
         listEnrollments(programId),
       ]);
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", requests, enrollments });
-    } catch (error) {
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      setState({
-        kind: "error",
-        message:
-          error instanceof RpcError
-            ? errorCopyFor(code, error.problem.detail)
-            : COPY.error.networkError,
-      });
-    }
-  }, [programId]);
+      return { requests, enrollments };
+    },
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ requests, enrollments }) => ({
+        kind: "ready",
+        requests,
+        enrollments,
+      }),
+      onError: (error) => {
+        if (redirectToLoginIfRequired(error)) {
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        return {
+          kind: "error",
+          message:
+            error instanceof RpcError
+              ? errorCopyFor(code, error.problem.detail)
+              : COPY.error.networkError,
+        };
+      },
+    },
+    [programId]
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void run();
+  }, [run]);
 
   return (
     <section
@@ -743,7 +741,7 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
           <button
             className={styles.retry}
             type="button"
-            onClick={() => void load()}
+            onClick={retry}
           >
             {COPY.programs.workspaceTaskParticipantsRetry}
           </button>
@@ -917,91 +915,76 @@ export const ProgramWorkspace = ({
   onTaskChange,
   onEventChange,
 }: ProgramWorkspaceProps) => {
-  const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
   const [editing, setEditing] = useState(false);
   const mounted = useRef(true);
-  const workspaceRequestId = useRef(0);
-  const retryFocusPending = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-
-  const loadWorkspace = useCallback(async () => {
-    workspaceRequestId.current += 1;
-    const currentRequest = workspaceRequestId.current;
-    setState({ kind: "loading" });
-    announce(COPY.programs.workspaceLoading);
-    try {
-      const { program, department, modules } =
-        await getManagementProgram(programId);
-      if (!mounted.current || workspaceRequestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", program, department, modules });
-      announce(program.name);
-    } catch (error) {
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        window.location.assign("/");
-        return;
-      }
-      if (!mounted.current || workspaceRequestId.current !== currentRequest) {
-        return;
-      }
-      if (error instanceof RpcError && error.problem.code === "FORBIDDEN") {
-        setState({
-          kind: "error",
-          failure: "forbidden",
-          message: COPY.programs.workspaceUnavailableHint,
-        });
-        announce(COPY.programs.workspaceForbidden);
-        return;
-      }
-      if (
-        error instanceof RpcError &&
-        (error.problem.code === "NOT_FOUND" || error.problem.status === 404)
-      ) {
-        setState({
-          kind: "error",
-          failure: "unavailable",
-          message: COPY.programs.workspaceUnavailableHint,
-        });
-        announce(COPY.programs.workspaceUnavailable);
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({ kind: "error", failure: "recoverable", message });
-      announce(message);
-    }
-  }, [programId]);
+  const { state, run: loadWorkspace, retry } = useAsyncResource<
+    { program: Program; department: Department | null; modules: DepartmentModule[] },
+    WorkspaceState
+  >(
+    async () => getManagementProgram(programId),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ program, department, modules }) => ({
+        kind: "ready",
+        program,
+        department,
+        modules,
+      }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          window.location.assign("/");
+          return null;
+        }
+        if (error instanceof RpcError && error.problem.code === "FORBIDDEN") {
+          announce(COPY.programs.workspaceForbidden);
+          return {
+            kind: "error",
+            failure: "forbidden",
+            message: COPY.programs.workspaceUnavailableHint,
+          };
+        }
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "NOT_FOUND" || error.problem.status === 404)
+        ) {
+          announce(COPY.programs.workspaceUnavailable);
+          return {
+            kind: "error",
+            failure: "unavailable",
+            message: COPY.programs.workspaceUnavailableHint,
+          };
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return { kind: "error", failure: "recoverable", message };
+      },
+      announceLoading: COPY.programs.workspaceLoading,
+      announceReady: ({ program }) => program.name,
+      focusTarget: "#programs-workspace-state",
+    },
+    [programId]
+  );
 
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
-
-  useEffect(() => {
-    if (!retryFocusPending.current || state.kind !== "error") {
-      return;
-    }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-workspace-state"
-    );
-    if (!panel) {
-      return;
-    }
-    panel.focus();
-    retryFocusPending.current = false;
-  }, [state.kind]);
 
   const loadSummary = useCallback(
     async (modules: readonly DepartmentModule[]) => {
@@ -1054,11 +1037,6 @@ export const ProgramWorkspace = ({
     }
     void loadSummary(state.modules);
   }, [loadSummary, state]);
-
-  const retry = () => {
-    retryFocusPending.current = true;
-    void loadWorkspace();
-  };
 
   if (state.kind === "loading") {
     return (

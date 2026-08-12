@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -18,17 +18,13 @@ import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
+import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
-interface ReadyAccess {
-  kind: "ready";
-  projection: ProgramsManagementAccess;
-}
-
 type AccessState =
   | { kind: "loading" }
-  | ReadyAccess
+  | { kind: "ready"; projection: ProgramsManagementAccess }
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 
 export function ProgramsBoundary() {
@@ -39,20 +35,51 @@ export function ProgramsBoundary() {
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const [locationReady, setLocationReady] = useState(false);
-  const [access, setAccess] = useState<AccessState>({ kind: "loading" });
-  const mounted = useRef(true);
-  const accessRequestId = useRef(0);
   const previousMode = useRef<ProgramsIntent["mode"] | null>(null);
   const focusMode = useRef<ProgramsIntent["mode"] | null>(null);
   const retryFocusPending = useRef(false);
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const { state: access, run: loadAccess } = useAsyncResource<
+    ProgramsManagementAccess,
+    AccessState
+  >(
+    async () => getManagementAccess(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (projection) => ({ kind: "ready", projection }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            typeof window === "undefined"
+              ? pathname
+              : `${pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return {
+          kind: "error",
+          failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
+          message,
+        };
+      },
+      announceLoading: COPY.programs.accessLoading,
+      announceReady: (projection) =>
+        projection.hasManagementCapability
+          ? COPY.programs.managementScopeReady
+          : undefined,
+    },
+    [pathname, router]
+  );
   useEffect(() => {
     const syncSearch = () =>
       setSearch(`${window.location.search}${window.location.hash}`);
@@ -65,61 +92,6 @@ export function ProgramsBoundary() {
       window.removeEventListener("hashchange", syncSearch);
     };
   }, [routeKey]);
-
-  const loadAccess = useCallback(
-    async (request?: { cancelled: boolean }) => {
-      accessRequestId.current += 1;
-      const requestId = accessRequestId.current;
-      setAccess({ kind: "loading" });
-      announce(COPY.programs.accessLoading);
-      try {
-        const projection = await getManagementAccess();
-        if (
-          !mounted.current ||
-          request?.cancelled ||
-          accessRequestId.current !== requestId
-        ) {
-          return;
-        }
-        setAccess({ kind: "ready", projection });
-        if (projection.hasManagementCapability) {
-          announce(COPY.programs.managementScopeReady);
-        }
-      } catch (error) {
-        if (
-          !mounted.current ||
-          request?.cancelled ||
-          accessRequestId.current !== requestId
-        ) {
-          return;
-        }
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
-          rememberDeepLink(
-            typeof window === "undefined"
-              ? pathname
-              : `${pathname}${window.location.search}${window.location.hash}`
-          );
-          router.replace("/");
-          return;
-        }
-        const code = error instanceof RpcError ? error.problem.code : undefined;
-        const message =
-          error instanceof RpcError
-            ? errorCopyFor(code, error.problem.detail)
-            : COPY.error.networkError;
-        setAccess({
-          kind: "error",
-          failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
-          message,
-        });
-        announce(message);
-      }
-    },
-    [pathname, router]
-  );
 
   useEffect(() => {
     if (!locationReady || intent.malformed) {

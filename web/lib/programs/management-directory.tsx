@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -15,6 +15,7 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -128,85 +129,57 @@ export const ManagementDirectory = ({
   onCreateProgram,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
-  const [state, setState] = useState<DirectoryState>({ kind: "loading" });
   const [query, setQuery] = useState("");
-  const mounted = useRef(true);
-  const requestId = useRef(0);
-  const retryFocusPending = useRef(false);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const loadDirectory = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    announce(COPY.programs.managementDirectoryLoading);
-    try {
-      const { departments, programs } = await getManagementDirectory();
-      const programsByDepartment = departments.map(({ department_id }) =>
-        programs.filter(({ department_id: id }) => id === department_id)
-      );
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
-      }
-      setState({
-        kind: "ready",
-        departments,
-        rows: projectManagementPrograms(departments, programsByDepartment),
-      });
-      announce(COPY.programs.managementScopeReady);
-    } catch (error) {
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
-      }
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
+  const { state, run: loadDirectory, retry } = useAsyncResource<
+    { departments: Department[]; programs: ManagementProgramRecord[] },
+    DirectoryState
+  >(
+    async () => getManagementDirectory(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ departments, programs }) => {
+        const programsByDepartment = departments.map(({ department_id }) =>
+          programs.filter(({ department_id: id }) => id === department_id)
         );
-        router.replace("/");
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({
-        kind: "error",
-        failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
-        message,
-      });
-      announce(message);
-    }
-  }, [router]);
+        return {
+          kind: "ready",
+          departments,
+          rows: projectManagementPrograms(departments, programsByDepartment),
+        };
+      },
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return {
+          kind: "error",
+          failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
+          message,
+        };
+      },
+      announceLoading: COPY.programs.managementDirectoryLoading,
+      announceReady: () => COPY.programs.managementScopeReady,
+      focusTarget: "#programs-management-directory-state",
+    },
+    [router]
+  );
 
   useEffect(() => {
     void loadDirectory();
   }, [loadDirectory]);
-
-  useEffect(() => {
-    if (!retryFocusPending.current || state.kind !== "error") {
-      return;
-    }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-management-directory-state"
-    );
-    if (!panel) {
-      return;
-    }
-    panel.focus();
-    retryFocusPending.current = false;
-  }, [state.kind]);
-
-  const retry = () => {
-    retryFocusPending.current = true;
-    void loadDirectory();
-  };
 
   const filteredRows = useMemo(() => {
     if (state.kind !== "ready") {
