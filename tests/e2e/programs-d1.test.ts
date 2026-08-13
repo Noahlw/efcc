@@ -128,6 +128,16 @@ const COPY = {
   keepEvent: "保留聚會",
   cancelReason: "取消原因",
   eventCancelledNotice: "聚會已取消。",
+  // AUTH-01 (#255): Program Leader and Department Manager administration.
+  programLeaders: "事工負責人",
+  leaderUserId: "選擇會友",
+  assignLeader: "新增負責人",
+  revokeLeader: "移除負責人",
+  confirmRevokeLeader: "確定要移除此事工負責人嗎？",
+  confirmRevoke: "確定移除",
+  leaderAssignedNotice: "已新增事工負責人。",
+  leaderRevokedNotice: "已移除事工負責人。",
+  selfDelegationForbidden: "您沒有權限執行此操作。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -996,6 +1006,117 @@ test.describe("CFG-01 Program Settings", () => {
     await expect(
       page.getByRole("button", { name: COPY.addRule })
     ).toHaveCount(0);
+  });
+});
+
+test.describe("AUTH-01 Program Leader administration", () => {
+  test("Staff denies self-assignment, revokes the seeded leader, and re-grants it", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+    const id = required("program id", programId);
+
+    await page.goto(
+      `/programs?mode=management&program=${id}&task=settings`
+    );
+    const leadersPanel = page.getByRole("region", {
+      name: COPY.programLeaders,
+    });
+    await expect(leadersPanel).toBeVisible();
+    // Wait for the async leader-list load to settle before interacting,
+    // so a throttled (phone) profile doesn't race the initial fetch.
+    await expect(
+      leadersPanel.getByText(/E2E Member/).first()
+    ).toBeVisible();
+
+    const combo = leadersPanel.getByRole("combobox", {
+      name: COPY.leaderUserId,
+    });
+
+    try {
+      // Self-assignment denial: pick self, submit, server-side 403.
+      // The fixture already has E2E_member as leader, so this must not
+      // touch that grant.
+      await combo.click();
+      await combo.fill("E2E_staff");
+      await leadersPanel
+        .getByRole("option", { name: /E2E Staff/ })
+        .click();
+      await leadersPanel
+        .getByRole("button", { name: COPY.assignLeader })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.selfDelegationForbidden, { exact: true })
+      ).toBeVisible();
+
+      // The demo fixture pre-seeds E2E_member as leader (PUI-04/#255 seed
+      // fixture). Revoke it: a real state transition, not a duplicate-grant
+      // no-op. The self-denial error above does not reload the list
+      // (runAction only reloads on success), so E2E Member is still here.
+      await expect(
+        leadersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+      await leadersPanel
+        .getByRole("button", { name: COPY.revokeLeader })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.confirmRevokeLeader)
+      ).toBeVisible();
+      await leadersPanel
+        .getByRole("button", { name: COPY.confirmRevoke })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.leaderRevokedNotice, { exact: true }).first()
+      ).toBeVisible();
+
+      // Re-grant: exercise the real grant path and its notice.
+      await combo.click();
+      await combo.fill("E2E_member");
+      await leadersPanel
+        .getByRole("option", { name: /E2E Member/ })
+        .click();
+      await leadersPanel
+        .getByRole("button", { name: COPY.assignLeader })
+        .click();
+      await expect(
+        leadersPanel
+          .getByText(COPY.leaderAssignedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        leadersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+    } finally {
+      // Failure-safe restoration: guarantee E2E_member ends the test as
+      // leader regardless of where an assertion above failed.
+      await page.evaluate(
+        async ({ programId, memberUserId }) => {
+          const listRes = await fetch(
+            `/api/v1/programs/${programId}/leaders`
+          );
+          const listBody = (await listRes.json()) as {
+            data?: { leaders?: { user_id: string; username?: string }[] };
+          };
+          const hasMember = (listBody.data?.leaders ?? []).some(
+            (leader) => leader.username === "E2E_member"
+          );
+          if (!hasMember) {
+            await fetch(`/api/v1/programs/${programId}/leaders`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: memberUserId }),
+            });
+          }
+        },
+        { programId: id, memberUserId: DEV_MEMBER.userId }
+      );
+    }
   });
 });
 
