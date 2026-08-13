@@ -1676,7 +1676,26 @@ export async function handlePreviewEvents(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ horizon_days?: unknown }>(request);
+  // This is the only handler whose body is fully optional, so `parseJson`
+  // returning null for BOTH an empty body and malformed JSON would silently
+  // default a garbage body to horizonDays = 90 and persist a real preview.
+  // Read the raw text: empty/whitespace-only means "no body, use defaults";
+  // any non-empty body must parse as a non-null, non-array JSON object or
+  // the request is rejected before any write (EVT-02.4 acceptance).
+  const rawBody = await request.text();
+  let body: { horizon_days?: unknown } | null = null;
+  if (rawBody.trim().length > 0) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    body = parsed as { horizon_days?: unknown };
+  }
   let horizonDays = 90;
   if (body !== null) {
     const raw = body.horizon_days;

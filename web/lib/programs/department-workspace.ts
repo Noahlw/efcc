@@ -1692,7 +1692,7 @@ export class DepartmentWorkspace {
         { rule_count: 0 },
         correlationId
       );
-      throw new NoScheduleRulesError(programId);
+      throw new NoScheduleRulesError();
     }
     const exceptions = await this.store.listScheduleExceptions(
       rules.map((rule) => rule.rule_id)
@@ -1704,6 +1704,14 @@ export class DepartmentWorkspace {
       horizonDays,
       exceptions
     );
+    // Preview-time duplicate signal: mark occurrences whose starts_at is
+    // already claimed by a live event row, or by an earlier candidate in
+    // this same plan (intra-plan collision), so the operator sees skipped
+    // duplicates BEFORE any write. This is purely advisory: generation's
+    // own INSERT OR IGNORE + findEventByStart check in
+    // attemptGenerationOccurrence stays the authoritative write-time guard
+    // and continues to run exactly as before regardless of this flag.
+    await this.markPreviewDuplicates(programId, candidates);
     const planHash = await this.computePlanHash(
       rules,
       exceptions,
@@ -2061,6 +2069,39 @@ export class DepartmentWorkspace {
         a.starts_at.localeCompare(b.starts_at) ||
         a.rule_id.localeCompare(b.rule_id)
     );
+  }
+
+  /**
+   * Mark preview candidates that generation would skip as DUPLICATE. The
+   * candidates arrive sorted (occurs_on, starts_at, rule_id), so the first
+   * candidate to claim a starts_at is the deterministic "earlier" one: any
+   * later candidate with the same starts_at — whether already materialized
+   * as an event row, or produced by another rule in this same plan — is
+   * flagged DUPLICATE. CANCEL rows keep their existing marker and neither
+   * claim nor release a starts_at. Pure preview-time signal; no writes.
+   */
+  private async markPreviewDuplicates(
+    programId: string,
+    candidates: PreviewOccurrenceCandidate[]
+  ): Promise<void> {
+    const existingEvents = await this.store.listEvents(programId);
+    const existingStarts = new Set(
+      existingEvents.map((event) => event.starts_at)
+    );
+    const acceptedStarts = new Set<string>();
+    for (const candidate of candidates) {
+      if (candidate.skip_reason === "CANCEL") {
+        continue;
+      }
+      if (
+        existingStarts.has(candidate.starts_at) ||
+        acceptedStarts.has(candidate.starts_at)
+      ) {
+        candidate.skip_reason = "DUPLICATE";
+      } else {
+        acceptedStarts.add(candidate.starts_at);
+      }
+    }
   }
 
   /**

@@ -2532,6 +2532,129 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
+  test("EVT-02.1 preview marks occurrences already existing as events as DUPLICATE without writing anything", async () => {
+    const programId = await freshProgram("EVT-02 Duplicate Preview");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const seeded = await preview(adminAccess, programId, 14);
+    assert.strictEqual(seeded.occurrences.length, 2);
+    const existingStarts = seeded.occurrences[0].starts_at;
+    // Materialize one event row at the first occurrence's start time (as a
+    // manual event or an earlier generation would), then preview a
+    // DIFFERENT horizon so a fresh plan is computed with the event in place.
+    const created = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: existingStarts,
+          ends_at: seeded.occurrences[0].ends_at,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+
+    const plan = await preview(adminAccess, programId, 15);
+    const duplicate = plan.occurrences.find(
+      (occurrence) => occurrence.starts_at === existingStarts
+    );
+    assert.ok(duplicate, "the pre-existing start time is still previewed");
+    assert.strictEqual(duplicate.skip_reason, "DUPLICATE");
+    for (const occurrence of plan.occurrences) {
+      if (occurrence.starts_at === existingStarts) {
+        continue;
+      }
+      assert.strictEqual(
+        occurrence.skip_reason,
+        null,
+        "unclaimed occurrences stay creatable"
+      );
+    }
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      events?.count ?? 0,
+      1,
+      "duplicate-marked preview still writes zero events"
+    );
+    const previewAudits = await auditRowsFor(programId, "EVENT_PREVIEW");
+    assert.ok(
+      previewAudits.some((row) => row.outcome === "SUCCESS"),
+      "duplicate-marked preview is still audited SUCCESS"
+    );
+  });
+
+  test("EVT-02.1 two rules producing the same starts_at surface the later one as DUPLICATE", async () => {
+    const programId = await freshProgram("EVT-02 Intra-plan Duplicate");
+    const first = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const second = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(
+      plan.occurrences.length,
+      4,
+      "two rules over the horizon's two Tuesdays"
+    );
+    const byDate = new Map<string, { rule_id: string; skip_reason: string | null }[]>();
+    for (const occurrence of plan.occurrences) {
+      const rows = byDate.get(occurrence.occurs_on) ?? [];
+      rows.push({
+        rule_id: occurrence.rule_id,
+        skip_reason: occurrence.skip_reason,
+      });
+      byDate.set(occurrence.occurs_on, rows);
+    }
+    assert.strictEqual(byDate.size, 2, "two distinct dates in the horizon");
+    for (const rows of byDate.values()) {
+      assert.strictEqual(rows.length, 2, "both rules materialize the same date");
+      const unmarked = rows.filter((row) => row.skip_reason === null);
+      const duplicates = rows.filter((row) => row.skip_reason === "DUPLICATE");
+      assert.strictEqual(unmarked.length, 1, "exactly one rule keeps the start");
+      assert.strictEqual(
+        duplicates.length,
+        1,
+        "the colliding rule is marked DUPLICATE"
+      );
+    }
+    // Deterministic per the existing sort (occurs_on, starts_at, rule_id):
+    // the lexicographically earlier rule_id claims the start.
+    const firstDate = plan.occurrences[0].occurs_on;
+    const kept = plan.occurrences.find(
+      (occurrence) =>
+        occurrence.occurs_on === firstDate && occurrence.skip_reason === null
+    );
+    assert.ok(kept, "the kept occurrence is present");
+    assert.strictEqual(
+      kept.rule_id,
+      first.rule_id < second.rule_id ? first.rule_id : second.rule_id,
+      "the earlier rule_id claims the start deterministically"
+    );
+  });
+
   test("EVT-02.2 generation with a stale plan is rejected before writes", async () => {
     const programId = await freshProgram("EVT-02 Stale Plan");
     const rule = await createRule(adminAccess, programId, {
@@ -2716,14 +2839,19 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const [firstOccurrence] = plan.occurrences;
 
     // Simulate a crashed partial run: one failed attempt recorded durably.
+    // finished_at is ALREADY set (the first finishGenerationRun call writes
+    // it even for partial/failed outcomes), so the retry can only re-settle
+    // the run if finishGenerationRun's guard is `status != 'completed'`
+    // rather than `finished_at IS NULL`.
     const runId = "evt02-resume-run";
+    const finishedAt = new Date().toISOString();
     await testDb()
       .prepare(
         `INSERT INTO program_generation_runs (run_id, program_id, plan_id, status,
-           created, skipped, failed, started_at, created_by, correlation_id)
-         VALUES (?, ?, ?, 'partial', 0, 0, 1, ?, 'U001', NULL)`
+           created, skipped, failed, started_at, finished_at, created_by, correlation_id)
+         VALUES (?, ?, ?, 'partial', 0, 0, 1, ?, ?, 'U001', NULL)`
       )
-      .bind(runId, programId, plan.plan_id, new Date().toISOString())
+      .bind(runId, programId, plan.plan_id, finishedAt, finishedAt)
       .run();
     await testDb()
       .prepare(
@@ -2753,6 +2881,28 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(body.data.generated.status, "completed");
     assert.strictEqual(body.data.generated.created, 2, "failed unit is retried");
     assert.strictEqual(body.data.generated.failed, 0);
+    // The durable run row itself must be re-settled by the retry, not stuck
+    // at the stale partial/failed snapshot the first settlement wrote.
+    const settledRun = await testDb()
+      .prepare(
+        "SELECT status, created, skipped, failed, finished_at FROM program_generation_runs WHERE run_id = ?"
+      )
+      .bind(runId)
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+        finished_at: string | null;
+      }>();
+    assert.strictEqual(
+      settledRun?.status,
+      "completed",
+      "retry re-settles the partial run to completed"
+    );
+    assert.strictEqual(settledRun?.created, 2, "recomputed created count");
+    assert.strictEqual(settledRun?.failed, 0, "no failures remain after retry");
+    assert.ok(settledRun?.finished_at, "the settled run keeps a finished_at");
 
     const events = await testDb()
       .prepare("SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC")
@@ -2870,6 +3020,74 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .bind(programId)
       .first<{ count: number }>();
     assert.strictEqual(runs?.count ?? 0, 0, "rejected plans create no run records");
+  });
+
+  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
+    const programId = await freshProgram("EVT-02 Malformed Preview Body");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 6,
+      start_time: "15:00",
+      end_time: "16:00",
+    });
+    const headers = {
+      Origin: HOST,
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+      "Content-Type": "application/json",
+    };
+    const previewPath = `/api/v1/programs/${programId}/events/preview`;
+
+    const notJson = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+        body: "not json",
+      }),
+      testEnv()
+    );
+    assert.strictEqual(notJson.status, 422);
+    assert.strictEqual((await problemOf(notJson)).code, "VALIDATION");
+
+    const nonObject = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+        body: [1, 2, 3],
+      }),
+      testEnv()
+    );
+    assert.strictEqual(nonObject.status, 422);
+    assert.strictEqual((await problemOf(nonObject)).code, "VALIDATION");
+
+    // Rejected bodies must not persist a preview plan or write an audit row.
+    const plans = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_preview_plans WHERE program_id = ?"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(plans?.count ?? 0, 0, "no preview plan is persisted");
+    const audits = await auditRowsFor(programId, "EVENT_PREVIEW");
+    assert.strictEqual(audits.length, 0, "no EVENT_PREVIEW audit row is written");
+
+    // Empty body (no Content-Length) keeps the existing 90-day default.
+    const empty = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+      }),
+      testEnv()
+    );
+    assert.strictEqual(empty.status, 200);
+    const result = (await assertCorrelated(empty)) as {
+      data: { plan: { horizon_days: number; rule_count: number } };
+    };
+    assert.strictEqual(
+      result.data.plan.horizon_days,
+      90,
+      "empty body defaults to 90 days"
+    );
+    assert.ok(result.data.plan.rule_count >= 1, "the default preview materializes");
   });
 
   test("EVT-02.3 CANCEL exceptions are skipped and RESCHEDULE moves the generated event", async () => {
@@ -3108,6 +3326,39 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       repaired.occurrences.map((o) => o.occurrence_id),
       first.occurrences.map((o) => o.occurrence_id),
       "repaired occurrence identities match the original plan"
+    );
+  });
+
+  test("EVT-02.1 preview persists schedules larger than D1's batch statement limit across chunked batches", async () => {
+    const programId = await freshProgram("EVT-02 Large Preview");
+    // 20 weekly rules over the full 365-day horizon produce >1000 occurrence
+    // rows (>1000 INSERT statements), which exceeds D1's single db.batch()
+    // limit; replacePreviewPlan must chunk the inserts to persist them all.
+    const ruleCount = 20;
+    for (let i = 0; i < ruleCount; i += 1) {
+      await createRule(adminAccess, programId, {
+        recurrence: "WEEKLY",
+        day_of_week: i % 7,
+        start_time: `${String(9 + (i % 10)).padStart(2, "0")}:00`,
+        end_time: `${String(10 + (i % 10)).padStart(2, "0")}:00`,
+      });
+    }
+    const plan = await preview(adminAccess, programId, 365);
+    assert.strictEqual(plan.rule_count, ruleCount);
+    assert.ok(
+      plan.occurrences.length > 500,
+      `chunking is exercised (got ${plan.occurrences.length} occurrences)`
+    );
+    const persisted = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_preview_occurrences WHERE plan_id = ?"
+      )
+      .bind(plan.plan_id)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      persisted?.count ?? 0,
+      plan.occurrences.length,
+      "every previewed occurrence row is durably persisted"
     );
   });
 

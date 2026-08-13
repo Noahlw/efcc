@@ -255,7 +255,7 @@ export interface PreviewPlanRow {
   created_at: string;
 }
 
-export type PreviewSkipReason = "CANCEL";
+export type PreviewSkipReason = "CANCEL" | "DUPLICATE";
 
 export interface PreviewOccurrenceRow {
   occurrence_id: string;

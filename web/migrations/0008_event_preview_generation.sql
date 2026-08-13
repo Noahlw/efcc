@@ -64,7 +64,7 @@ CREATE TABLE program_preview_occurrences (
   starts_at     TEXT NOT NULL,
   ends_at       TEXT NOT NULL,
   location      TEXT,
-  skip_reason   TEXT CHECK (skip_reason IS NULL OR skip_reason IN ('CANCEL')),
+  skip_reason   TEXT CHECK (skip_reason IS NULL OR skip_reason IN ('CANCEL', 'DUPLICATE')),
   exception_id  TEXT,
   FOREIGN KEY (plan_id) REFERENCES program_preview_plans(plan_id) ON DELETE RESTRICT,
   FOREIGN KEY (rule_id) REFERENCES program_schedule_rules(rule_id) ON DELETE RESTRICT

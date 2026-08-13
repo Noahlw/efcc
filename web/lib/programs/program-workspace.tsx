@@ -433,6 +433,7 @@ const RecurringSchedulePanel = ({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
+  const [generatePartial, setGeneratePartial] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -459,7 +460,10 @@ const RecurringSchedulePanel = ({
               ? errorCopyFor(error.problem.code, error.problem.detail)
               : COPY.error.networkError
           );
-          setRules([]);
+          // Leave rules as null on failure: the no-rules empty state must
+          // only reflect a SUCCESSFUL load of zero rules, never a transport
+          // or auth failure, or the Preview form would be hidden behind a
+          // misleading "no schedule" message on a recoverable error.
         }
       }
     })();
@@ -525,6 +529,7 @@ const RecurringSchedulePanel = ({
     setGenerateBusy(true);
     setGenerateError(null);
     setGenerateResult(null);
+    setGeneratePartial(false);
     try {
       const { generated } = await generateEvents(programId, planId);
       if (!mounted.current) {
@@ -543,6 +548,13 @@ const RecurringSchedulePanel = ({
               .replace("{created}", String(generated.created))
               .replace("{skipped}", String(generated.skipped))
               .replace("{failed}", String(generated.failed));
+      // A partial/failed run is NOT a full success: surface the same text
+      // through the alert treatment so the operator sees generation is
+      // incomplete and can re-click Generate on the same plan to resume the
+      // failed units (the server run is resumable by design). Keep the plan
+      // and preview state untouched; only refresh the event directory with
+      // whatever partial progress exists.
+      setGeneratePartial(generated.failed > 0);
       setGenerateResult(result);
       announce(result);
       onGenerated();
@@ -671,6 +683,11 @@ const RecurringSchedulePanel = ({
                       {COPY.programs.previewOccurrenceSkipped}
                     </span>
                   )}
+                  {occurrence.skip_reason === "DUPLICATE" && (
+                    <span className={styles.eventCancelled}>
+                      {COPY.programs.previewOccurrenceDuplicate}
+                    </span>
+                  )}
                   {occurrence.skip_reason === null &&
                     occurrence.exception_id !== null && (
                       <span className={styles.exceptionBadge}>
@@ -690,11 +707,16 @@ const RecurringSchedulePanel = ({
             >
               {generateBusy ? COPY.programs.generating : COPY.programs.generateEvents}
             </button>
-            {generateResult !== null && (
-              <output className={styles.panelNotice} aria-live="polite">
-                {generateResult}
-              </output>
-            )}
+            {generateResult !== null &&
+              (generatePartial ? (
+                <output className={styles.panelError} role="alert">
+                  {generateResult}
+                </output>
+              ) : (
+                <output className={styles.panelNotice} aria-live="polite">
+                  {generateResult}
+                </output>
+              ))}
           </div>
           {generateError !== null && (
             <output className={styles.panelError} role="alert">

@@ -568,6 +568,81 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   });
 
+  test("a schedule-rules load failure keeps the Preview form reachable next to the error alert", async () => {
+    mocks.listScheduleRules.mockRejectedValue(
+      new RpcError({ code: "FORBIDDEN", status: 403 })
+    );
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    // The failure is communicated by the existing error alert…
+    await expect(
+      screen.findByRole("alert")
+    ).resolves.toHaveTextContent(COPY.error.forbidden);
+    // …but the Preview form must stay reachable (rules stays null on error,
+    // so the no-rules empty state is NOT shown and the horizon input lives
+    // on). A transient rules-load failure must not masquerade as "no
+    // schedule configured".
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(COPY.programs.previewHorizon)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsScheduleNone)
+    ).not.toBeInTheDocument();
+  });
+
+  test("a partial generation reports through the alert treatment and stays retryable", async () => {
+    const user = userEvent.setup();
+    renderEventsTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockResolvedValue({
+      generated: {
+        run_id: "run-1",
+        plan_id: "plan-abc123",
+        status: "partial",
+        created: 1,
+        skipped: 0,
+        failed: 1,
+        resumed: false,
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    // partial/failed output uses the alert treatment, not the plain notice
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      COPY.programs.generatedPartial
+        .replace("{created}", "1")
+        .replace("{skipped}", "0")
+        .replace("{failed}", "1")
+    );
+    expect(
+      screen.queryByText(COPY.programs.generated)
+    ).not.toBeInTheDocument();
+    // The plan is kept and Generate stays enabled so the operator can
+    // immediately retry the failed units on the same plan.
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeEnabled();
+  });
+
   test("an empty schedule hides preview controls behind an explicit empty state", async () => {
     mocks.listScheduleRules.mockResolvedValue({ rules: [] });
     mockWorkspace();

@@ -143,7 +143,7 @@ export interface PreviewOccurrenceCandidate {
   starts_at: string;
   ends_at: string;
   location: string | null;
-  skip_reason: "CANCEL" | null;
+  skip_reason: "CANCEL" | "DUPLICATE" | null;
   exception_id: string | null;
 }
 

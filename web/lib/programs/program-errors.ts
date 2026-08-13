@@ -64,10 +64,12 @@ export class ScheduleRuleNotApplicableError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class NoScheduleRulesError extends Error {
-  constructor(programId: string) {
-    super(
-      `Program ${programId} has no schedule rules to generate events from.`
-    );
+  constructor() {
+    // Stable, non-identifying message: this surfaces verbatim as the
+    // VALIDATION problem detail to the client (mapWorkspaceError), so no
+    // program UUID or raw entity reference may leak into it. Matches the
+    // sibling EmptyPreviewPlanError convention (no identifiers).
+    super("This program has no schedule rules to generate events from.");
     this.name = "NoScheduleRulesError";
   }
 }

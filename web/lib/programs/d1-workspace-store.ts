@@ -830,28 +830,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     occurrences: PreviewOccurrenceRow[]
   ): Promise<PreviewPlanRow> {
     // plan_id is deterministic (program + plan_hash), so the plan row and
-    // its exact occurrence rows commit in ONE atomic batch: either the whole
-    // plan materializes or nothing does. Identical inputs re-run the same
+    // its exact occurrence rows commit atomically: either the whole plan
+    // materializes or nothing does. Identical inputs re-run the same
     // INSERT OR IGNORE statements, which also repairs any occurrence rows a
     // previous crash may have left missing before the plan is returned.
-    await this.db.batch([
-      this.db
-        .prepare(
-          `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
-             plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .bind(
-          plan.plan_id,
-          plan.program_id,
-          plan.plan_hash,
-          plan.horizon_days,
-          plan.from_date,
-          plan.rule_count,
-          plan.created_by,
-          plan.created_at
-        ),
-      ...occurrences.map((occurrence) =>
+    //
+    // Occurrence inserts are chunked at 500 statements per db.batch() so a
+    // large valid schedule (horizon up to 365 days, no rule-count cap) never
+    // exceeds D1's 1,000-statement batch() limit. The plan-row insert leads
+    // the first chunk (or stands alone when the plan has zero occurrences).
+    // A crash between chunks self-heals on the next identical preview: every
+    // chunk is INSERT OR IGNORE, so the repair philosophy is unchanged.
+    const planStatement = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
+           plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        plan.plan_id,
+        plan.program_id,
+        plan.plan_hash,
+        plan.horizon_days,
+        plan.from_date,
+        plan.rule_count,
+        plan.created_by,
+        plan.created_at
+      );
+    const occurrenceStatements = (rows: PreviewOccurrenceRow[]) =>
+      rows.map((occurrence) =>
         this.db
           .prepare(
             `INSERT OR IGNORE INTO program_preview_occurrences
@@ -870,8 +877,17 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
             occurrence.skip_reason,
             occurrence.exception_id
           )
-      ),
+      );
+    const CHUNK_SIZE = 500;
+    await this.db.batch([
+      planStatement,
+      ...occurrenceStatements(occurrences.slice(0, CHUNK_SIZE)),
     ]);
+    for (let offset = CHUNK_SIZE; offset < occurrences.length; offset += CHUNK_SIZE) {
+      await this.db.batch(
+        occurrenceStatements(occurrences.slice(offset, offset + CHUNK_SIZE))
+      );
+    }
     const persisted = await this.db
       .prepare(
         `SELECT * FROM program_preview_plans
@@ -973,8 +989,14 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
    * counts and status are recomputed from program_generation_run_items
    * inside the UPDATE, so a caller can never mark a run terminal from an
    * incomplete snapshot while another request is still recording. The
-   * `finished_at IS NULL` guard is a compare-and-set: the first finisher
-   * wins and repeat/concurrent finishers reload the settled row.
+   * `status != 'completed'` guard keeps the run re-settlable while it is
+   * partial/failed — a retry that fixes previously-failed items must be
+   * able to update the run's counts/status even though `finished_at` was
+   * already written by the first settlement — and locks the row only once
+   * every occurrence genuinely reached a terminal created/skipped outcome
+   * (matching `generateEvents`'s `status === "completed"` short-circuit).
+   * The UPDATE recomputes every column idempotently from the item table,
+   * so repeat/concurrent finishers always converge on the same counts.
    */
   async finishGenerationRun(
     runId: string,
@@ -983,23 +1005,23 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     await this.db
       .prepare(
         `UPDATE program_generation_runs SET
-           created = (SELECT COUNT(*) FROM program_generation_run_items
-                      WHERE run_id = ?1 AND outcome = 'created'),
-           skipped = (SELECT COUNT(*) FROM program_generation_run_items
-                      WHERE run_id = ?1 AND outcome = 'skipped'),
-           failed  = (SELECT COUNT(*) FROM program_generation_run_items
-                      WHERE run_id = ?1 AND outcome = 'failed'),
-           status = CASE
-             WHEN (SELECT COUNT(*) FROM program_generation_run_items
-                   WHERE run_id = ?1 AND outcome = 'failed') = 0
-               THEN 'completed'
-             WHEN (SELECT COUNT(*) FROM program_generation_run_items
-                   WHERE run_id = ?1 AND outcome IN ('created','skipped')) > 0
-               THEN 'partial'
-             ELSE 'failed'
-           END,
-           finished_at = ?2
-         WHERE run_id = ?1 AND finished_at IS NULL`
+          created = (SELECT COUNT(*) FROM program_generation_run_items
+                     WHERE run_id = ?1 AND outcome = 'created'),
+          skipped = (SELECT COUNT(*) FROM program_generation_run_items
+                     WHERE run_id = ?1 AND outcome = 'skipped'),
+          failed  = (SELECT COUNT(*) FROM program_generation_run_items
+                     WHERE run_id = ?1 AND outcome = 'failed'),
+          status = CASE
+            WHEN (SELECT COUNT(*) FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome = 'failed') = 0
+              THEN 'completed'
+            WHEN (SELECT COUNT(*) FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) > 0
+              THEN 'partial'
+            ELSE 'failed'
+          END,
+          finished_at = ?2
+        WHERE run_id = ?1 AND status != 'completed'`
       )
       .bind(runId, finishedAt)
       .run();

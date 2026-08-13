@@ -478,6 +478,7 @@ export const COPY = {
     previewOccurrenceLocation: "地點",
     previewOccurrenceRule: "來源規則",
     previewOccurrenceSkipped: "本次已取消",
+    previewOccurrenceDuplicate: "已存在，將略過",
     previewOccurrenceRescheduled: "已改期",
     previewNone: "尚未預覽。請先按「預覽聚會」產生未來聚會清單。",
     previewEmpty: "此範圍內沒有符合時間表的聚會。",
