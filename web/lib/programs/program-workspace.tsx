@@ -863,7 +863,6 @@ const ParticipantsTask = ({
         [request.request_id]: issue.message,
       }));
       announce(issue.message);
-      void run();
     } finally {
       setBusyRequestId(null);
     }
@@ -893,7 +892,6 @@ const ParticipantsTask = ({
       const issue = participantIssue(error);
       setAssistedError(issue.message);
       announce(issue.message);
-      void run();
     } finally {
       setAssistedBusy(false);
     }

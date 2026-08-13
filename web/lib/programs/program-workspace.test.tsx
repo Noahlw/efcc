@@ -387,6 +387,56 @@ describe("ENR-01 participants workspace", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
+
+  test("keeps the queue visible when assisted enrollment fails", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, enrollment_mode: "ManagerOnly" },
+      department,
+      modules,
+    });
+    mocks.searchMemberOptions.mockResolvedValue({
+      members: [
+        { user_id: "member-3", name: "王同工", username: "wang" },
+      ],
+    });
+    mocks.assistedEnroll.mockRejectedValue(
+      new RpcError({
+        code: "ENROLLMENT_DUPLICATE",
+        status: 409,
+        detail: COPY.programs.enrollmentDuplicate,
+      })
+    );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const picker = await screen.findByRole("combobox", {
+      name: COPY.programs.memberId,
+    });
+    await userEvent.type(picker, "王同");
+    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.assistedEnroll })
+    );
+    expect(
+      await screen.findByText(
+        `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+  });
+
   test("submits an assisted enrollment from the ManagerOnly queue", async () => {
     mockWorkspace();
     mocks.getManagementProgram.mockResolvedValue({
