@@ -21,6 +21,7 @@ import type {
   DepartmentModule,
   Enrollment,
   EnrollmentRequest,
+  ManagementAttention,
   Program,
   ProgramEvent,
 } from "@/lib/programs/program-api";
@@ -33,7 +34,6 @@ import { MemberPicker } from "./member-picker";
 import type { ProgramsTask } from "./programs-intent";
 import { LeadersPanel } from "./programs-leaders-panel";
 import { useAsyncResource } from "./use-async-resource";
-
 import styles from "@/app/programs/programs.module.css";
 
 export interface ProgramWorkspaceProps {
@@ -41,6 +41,9 @@ export interface ProgramWorkspaceProps {
   task?: ProgramsTask;
   /** EVT-01 (#251): management Event deep link under the events task. */
   eventId?: string | null;
+  /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
+  attention?: ManagementAttention | null;
+  onAttentionRefresh?: () => void;
   onBack: () => void;
   onTaskChange: (task: ProgramsTask | null) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
@@ -406,10 +409,14 @@ type EventsState =
 const EventsTask = ({
   programId,
   canManage,
+  attention,
+  onAttentionRefresh,
   onOpenEvent,
 }: {
   programId: string;
   canManage: boolean;
+  attention: ManagementAttention | null;
+  onAttentionRefresh: () => void;
   /** EVT-01 (#251): deep link into the Event operational detail screen. */
   onOpenEvent?: (eventId: string) => void;
 }) => {
@@ -444,6 +451,10 @@ const EventsTask = ({
   useEffect(() => {
     void run();
   }, [run]);
+
+  const eventAttention = attention?.programs.find(
+    ({ program_id }) => program_id === programId
+  );
 
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
@@ -498,6 +509,28 @@ const EventsTask = ({
       >
         {COPY.programs.workspaceTaskEvents}
       </h4>
+      {eventAttention && eventAttention.inactive_event_count > 0 && (
+        <span
+          className={`${styles.badge} ${styles.badgeActive}`}
+          aria-label={COPY.programs.attentionEventCount.replace(
+            "{count}",
+            String(eventAttention.inactive_event_count)
+          )}
+        >
+          {eventAttention.inactive_event_count}
+        </span>
+      )}
+      {eventAttention && eventAttention.cancelled_event_count > 0 && (
+        <span
+          className={styles.badge}
+          aria-label={COPY.programs.attentionCancelledCount.replace(
+            "{count}",
+            String(eventAttention.cancelled_event_count)
+          )}
+        >
+          {eventAttention.cancelled_event_count}
+        </span>
+      )}
       <p className={styles.programDetailMuted}>
         {COPY.programs.workspaceTaskEventsLead}
       </p>
@@ -739,10 +772,14 @@ const ParticipantsTask = ({
   programId,
   canManage,
   enrollmentMode,
+  attention,
+  onAttentionRefresh,
 }: {
   programId: string;
   canManage: boolean;
   enrollmentMode: Program["enrollment_mode"];
+  attention: ManagementAttention | null;
+  onAttentionRefresh: () => void;
 }) => {
   const { state, run, retry } = useAsyncResource<
     { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
@@ -851,6 +888,10 @@ const ParticipantsTask = ({
     };
   }, [state]);
 
+  const pendingAttentionCount = attention?.programs.find(
+    ({ program_id }) => program_id === programId
+  )?.pending_enrollment_count;
+
   const handleDecision = async (
     request: EnrollmentRequest,
     action: "Approved" | "Rejected"
@@ -870,6 +911,7 @@ const ParticipantsTask = ({
         notes[request.request_id],
         request.request_version
       );
+      onAttentionRefresh();
       setRefreshSuccess(COPY.programs.decisionMade);
       setRefreshingAction(request.request_id);
       void run();
@@ -902,6 +944,7 @@ const ParticipantsTask = ({
     setNotice(null);
     try {
       await assistedEnroll(programId, memberUserId);
+      onAttentionRefresh();
       setRefreshSuccess(COPY.programs.assistedSubmitted);
       setRefreshingAction("assisted");
       void run();
@@ -1139,7 +1182,11 @@ const ParticipantsTask = ({
             <div role="tablist" aria-label={COPY.programs.workspaceTaskParticipants}>
               {(
                 [
-                  ["pending", COPY.programs.workspacePendingRequests, queue.counts.pending],
+                  [
+                    "pending",
+                    COPY.programs.workspacePendingRequests,
+                    pendingAttentionCount ?? queue.counts.pending,
+                  ],
                   ["active", COPY.programs.workspaceActiveParticipants, queue.counts.active],
                   ["history", COPY.programs.enrollmentHistory, queue.counts.history],
                 ] as const
@@ -1238,12 +1285,16 @@ const WorkspaceTask = ({
   program,
   task,
   modules,
+  attention,
+  onAttentionRefresh,
   onTaskChange,
   onOpenEvent,
 }: {
   program: Program;
   task: ProgramsTask;
   modules: readonly DepartmentModule[];
+  attention: ManagementAttention | null;
+  onAttentionRefresh: () => void;
   onTaskChange: (task: ProgramsTask | null) => void;
   onOpenEvent?: (eventId: string) => void;
 }) => {
@@ -1252,6 +1303,8 @@ const WorkspaceTask = ({
       <EventsTask
         programId={program.program_id}
         canManage={program.capabilities.manage}
+        attention={attention}
+        onAttentionRefresh={onAttentionRefresh}
         onOpenEvent={onOpenEvent}
       />
     ) : (
@@ -1264,6 +1317,8 @@ const WorkspaceTask = ({
         programId={program.program_id}
         canManage={program.capabilities.manage}
         enrollmentMode={program.enrollment_mode}
+        attention={attention}
+        onAttentionRefresh={onAttentionRefresh}
       />
     ) : (
       <TaskUnavailable task={task} />
@@ -1282,6 +1337,8 @@ export const ProgramWorkspace = ({
   programId,
   task,
   eventId,
+  attention = null,
+  onAttentionRefresh = () => {},
   onBack,
   onTaskChange,
   onEventChange,
@@ -1502,6 +1559,7 @@ export const ProgramWorkspace = ({
           programId={programId}
           eventId={eventId}
           canManage={state.program.capabilities.manage}
+          onAttentionRefresh={onAttentionRefresh}
           onBack={() => onEventChange?.(null)}
         />
       ) : task ? (
@@ -1509,6 +1567,8 @@ export const ProgramWorkspace = ({
           program={state.program}
           task={task}
           modules={state.modules}
+          attention={attention}
+          onAttentionRefresh={onAttentionRefresh}
           onTaskChange={onTaskChange}
           onOpenEvent={(id) => onEventChange?.(id)}
         />

@@ -808,6 +808,273 @@ describe("MUI-01: capability-aware management reads", () => {
     );
   });
 });
+describe("NTF-01: management attention", () => {
+  async function attentionFor(access: string): Promise<{
+    programs: {
+      program_id: string;
+      department_id: string;
+      pending_enrollment_count: number;
+      inactive_event_count: number;
+      cancelled_event_count: number;
+      actionable_count: number;
+    }[];
+    items: {
+      kind: string;
+      actionable: boolean;
+      count?: number;
+      program_id: string;
+      department_id?: string;
+      event_id?: string;
+      status?: string;
+      availability?: string;
+    }[];
+    total_actionable_count: number;
+    has_more: boolean;
+  }> {
+    const response = await worker.fetch(
+      programsRequest("/api/v1/programs/attention", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = (await assertCorrelated(response)) as {
+      data: {
+        programs: {
+          program_id: string;
+          department_id: string;
+          pending_enrollment_count: number;
+          inactive_event_count: number;
+          cancelled_event_count: number;
+          actionable_count: number;
+        }[];
+        items: {
+          kind: string;
+          actionable: boolean;
+          count?: number;
+          program_id: string;
+          department_id?: string;
+          event_id?: string;
+          status?: string;
+          availability?: string;
+        }[];
+        total_actionable_count: number;
+        has_more: boolean;
+      };
+    };
+    return body.data;
+  }
+
+  test("projects current scoped queues and resolves approval, rejection, and Event state", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "NTF-01-ATTENTION",
+      name: "Attention Test Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Attention Test Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+
+    const pending = await submitRequest(memberAccess, program.program_id);
+    const initial = await attentionFor(adminAccess);
+    const initialProgram = initial.programs.find(
+      ({ program_id }) => program_id === program.program_id
+    );
+    assert.deepStrictEqual(initialProgram, {
+      program_id: program.program_id,
+      department_id: department.department_id,
+      pending_enrollment_count: 1,
+      inactive_event_count: 0,
+      cancelled_event_count: 0,
+      actionable_count: 1,
+    });
+    assert.strictEqual(initial.total_actionable_count, 1);
+    assert.deepStrictEqual(initial.items[0], {
+      kind: "enrollment",
+      actionable: true,
+      count: 1,
+      program_id: program.program_id,
+      program_name: program.name,
+      department_id: department.department_id,
+      department_name: department.name,
+    });
+
+    const memberAttention = await attentionFor(memberAccess);
+    assert.strictEqual(
+      memberAttention.programs.some(
+        ({ program_id }) => program_id === program.program_id
+      ),
+      false,
+      "unmanaged actors must not receive the Program attention projection"
+    );
+    assert.strictEqual(memberAttention.total_actionable_count, 0);
+
+    const approved = await decideRequest(
+      adminAccess,
+      program.program_id,
+      pending.request_id,
+      "Approved"
+    );
+    assert.strictEqual(approved.status, 200);
+    const afterApproval = await attentionFor(adminAccess);
+    assert.strictEqual(
+      afterApproval.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.pending_enrollment_count,
+      0
+    );
+
+    const startsAt = new Date(Date.now() + 2 * 86_400_000);
+    const inactiveEvent = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "需要恢復的聚會",
+      location: "禮堂",
+      check_in_window_opens_at: new Date(
+        startsAt.getTime() - 30 * 60_000
+      ).toISOString(),
+      check_in_window_closes_at: new Date(
+        startsAt.getTime() + 2 * 60 * 60_000
+      ).toISOString(),
+    });
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: new Date(startsAt.getTime() + 86_400_000).toISOString(),
+        ends_at: new Date(startsAt.getTime() + 25 * 60 * 60_000).toISOString(),
+        name: "已取消的聚會",
+        location: "禮堂",
+        check_in_window_opens_at: new Date(
+          startsAt.getTime() + 23.5 * 60 * 60_000
+        ).toISOString(),
+        check_in_window_closes_at: new Date(
+          startsAt.getTime() + 26 * 60 * 60_000
+        ).toISOString(),
+      }
+    );
+
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${inactiveEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地維修" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const withEvents = await attentionFor(adminAccess);
+    const eventProgram = withEvents.programs.find(
+      ({ program_id }) => program_id === program.program_id
+    );
+    assert.strictEqual(eventProgram?.pending_enrollment_count, 0);
+    assert.strictEqual(eventProgram?.inactive_event_count, 1);
+    assert.strictEqual(eventProgram?.cancelled_event_count, 1);
+    assert.strictEqual(eventProgram?.actionable_count, 1);
+    assert.strictEqual(withEvents.total_actionable_count, 1);
+    assert.deepStrictEqual(
+      withEvents.items
+        .filter(({ kind }) => kind === "event")
+        .map(({ event_id, actionable, status, availability }) => ({
+          event_id,
+          actionable,
+          status,
+          availability,
+        })),
+      [
+        {
+          event_id: inactiveEvent.event_id,
+          actionable: true,
+          status: "Active",
+          availability: "Inactive",
+        },
+        {
+          event_id: cancelledEvent.event_id,
+          actionable: false,
+          status: "Cancelled",
+          availability: "Active",
+        },
+      ]
+    );
+    const rejectionProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Attention Rejection Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+
+    const rejectedRequest = await submitRequest(
+      memberAccess,
+      rejectionProgram.program_id
+    );
+    const beforeReject = await attentionFor(adminAccess);
+    assert.strictEqual(
+      beforeReject.programs.find(
+        ({ program_id }) => program_id === rejectionProgram.program_id
+      )?.pending_enrollment_count,
+      1
+    );
+    const rejected = await decideRequest(
+      adminAccess,
+      rejectionProgram.program_id,
+      rejectedRequest.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(rejected.status, 200);
+    const afterReject = await attentionFor(adminAccess);
+    assert.strictEqual(
+      afterReject.programs.find(
+        ({ program_id }) => program_id === rejectionProgram.program_id
+      )?.actionable_count,
+      0,
+      "rejection removes the enrollment source"
+    );
+    assert.strictEqual(
+      afterReject.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "rejection leaves the inactive Event source"
+    );
+  });
+});
 
 describe("PRG-01: programs", () => {
   test("Admin can create a program under a department", async () => {

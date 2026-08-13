@@ -10,6 +10,7 @@ import { hasDepartmentManagementScope } from "@/lib/programs/capabilities";
 import { getManagementDirectory } from "@/lib/programs/program-api";
 import type {
   Department,
+  ManagementAttention,
   ManagementProgram as ManagementProgramRecord,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
@@ -121,15 +122,15 @@ const DepartmentSettingsLauncher = ({
     </button>
   );
 };
-
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
   onCreateProgram?: (departments: Department[]) => void;
+  attention?: ManagementAttention | null;
 }
-
 export const ManagementDirectory = ({
   onOpenProgram,
   onCreateProgram,
+  attention,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -203,7 +204,11 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
+
   }, [query, state]);
+  const attentionByProgram = new Map(
+    (attention?.programs ?? []).map((program) => [program.program_id, program])
+  );
 
   return (
     <section aria-labelledby="programs-management-directory-title">
@@ -366,6 +371,22 @@ export const ManagementDirectory = ({
                   >
                     <span className={styles.directoryCardTitle}>
                       {program.name}
+                      {(attentionByProgram.get(program.program_id)?.actionable_count ??
+                        0) > 0 && (
+                        <span
+                          className={`${styles.badge} ${styles.badgeActive}`}
+                          aria-label={COPY.programs.attentionCount.replace(
+                            "{count}",
+                            String(
+                              attentionByProgram.get(program.program_id)
+                                ?.actionable_count ?? 0
+                            )
+                          )}
+                        >
+                          {attentionByProgram.get(program.program_id)
+                            ?.actionable_count ?? 0}
+                        </span>
+                      )}
                     </span>
                     {program.description && (
                       <span className={styles.directoryCardDescription}>

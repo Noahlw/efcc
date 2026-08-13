@@ -14,7 +14,11 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  ManagementAttention,
+  Program,
+} from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -240,6 +244,37 @@ describe(ManagementDirectory, () => {
       })
     );
     expect(onCreateProgram).toHaveBeenCalledWith(departments);
+  });
+  test("uses the fresh server attention aggregate for per-Program badges", async () => {
+    mockDirectory();
+    const attention: ManagementAttention = {
+      programs: [
+        {
+          program_id: "program-youth",
+          department_id: "dept-youth",
+          pending_enrollment_count: 2,
+          inactive_event_count: 0,
+          cancelled_event_count: 0,
+          actionable_count: 2,
+        },
+      ],
+      items: [],
+      total_actionable_count: 2,
+      has_more: false,
+    };
+    render(
+      <ManagementDirectory
+        attention={attention}
+        onOpenProgram={vi.fn()}
+      />
+    );
+
+    const attentionProgram = await screen.findByRole("button", {
+      name: /查經小組/u,
+    });
+    expect(attentionProgram).toHaveTextContent("2");
+    const quietProgram = screen.getByRole("button", { name: /社區關懷/u });
+    expect(quietProgram).not.toHaveTextContent("2");
   });
 
   test("surfaces a forbidden state and retries without exposing records", async () => {
