@@ -207,6 +207,29 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
+/**
+ * Clear cookies AND the `efcc_auth_active` localStorage presence flag
+ * before switching personas. `page.context().clearCookies()` alone
+ * leaves the flag set; the shell's restore effect (app-shell.tsx) then
+ * sees a stale "was logged in" hint on the next navigation and attempts
+ * a doomed authMe -> authRefresh round-trip against the now-cookie-less
+ * session before loginAs()'s fresh login ever runs. Individually
+ * harmless, but this file switches personas often enough (several
+ * pre-existing tests plus AUTH-01's dept-manager scope check) that the
+ * wasted round-trips add measurable load to a single long-lived local
+ * wrangler dev process across a full sequential run.
+ */
+async function clearSession(page: Page): Promise<void> {
+  await page.context().clearCookies();
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("efcc_auth_active");
+    } catch {
+      // Storage unavailable — nothing to clear.
+    }
+  });
+}
+
 async function loginAs(
   page: Page,
   username: string,
@@ -629,7 +652,7 @@ test.describe("PUI-03 participant Program detail", () => {
     );
     expect(hiddenProgramId).toBeTruthy();
 
-    await page.context().clearCookies();
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -891,7 +914,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     ).toBe(200);
 
     try {
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -911,7 +934,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
       ).toBeVisible();
 
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
@@ -933,7 +956,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         })
       ).toBeVisible();
     } finally {
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -944,7 +967,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       ).toBe(200);
     }
 
-    await page.context().clearCookies();
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -1037,7 +1060,7 @@ test.describe("CFG-01 Program Settings", () => {
     );
     const [gateProgramId] = await catalogProgramIds(
       page,
-      "E2E_DEMO_模組停用課程"
+      "E2E_模組停用課程"
     );
     const id = required("module-gate program id", gateProgramId);
 
@@ -1148,6 +1171,33 @@ test.describe("AUTH-01 Program Leader administration", () => {
     expect(programId).toBeTruthy();
     const id = required("program id", programId);
 
+    // Establish a known baseline instead of assuming one: the demo
+    // fixture does not itself grant leadership (no seed script creates
+    // program_leaders rows), and another pre-existing test in this file
+    // ("leader exact scope and manager inheritance stay distinct",
+    // MUI-01) deliberately revokes E2E_member's leadership as part of
+    // its own designed end-state. This test must not assume it runs
+    // before or after that one -- ensure the precondition itself.
+    await page.evaluate(
+      async ({ programId, memberUserId }) => {
+        const listRes = await fetch(`/api/v1/programs/${programId}/leaders`);
+        const listBody = (await listRes.json()) as {
+          data?: { leaders?: { user_id: string }[] };
+        };
+        const hasMember = (listBody.data?.leaders ?? []).some(
+          (leader) => leader.user_id === memberUserId
+        );
+        if (!hasMember) {
+          await fetch(`/api/v1/programs/${programId}/leaders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: memberUserId }),
+          });
+        }
+      },
+      { programId: id, memberUserId: DEV_MEMBER.userId }
+    );
+
     await page.goto(
       `/programs?mode=management&program=${id}&task=settings`
     );
@@ -1167,8 +1217,8 @@ test.describe("AUTH-01 Program Leader administration", () => {
 
     try {
       // Self-assignment denial: pick self, submit, server-side 403.
-      // The fixture already has E2E_member as leader, so this must not
-      // touch that grant.
+      // The baseline above guarantees E2E_member as leader, so this must
+      // not touch that grant.
       await combo.click();
       await combo.fill("E2E_staff");
       await leadersPanel
@@ -1181,10 +1231,9 @@ test.describe("AUTH-01 Program Leader administration", () => {
         leadersPanel.getByText(COPY.selfDelegationForbidden, { exact: true })
       ).toBeVisible();
 
-      // The demo fixture pre-seeds E2E_member as leader (PUI-04/#255 seed
-      // fixture). Revoke it: a real state transition, not a duplicate-grant
-      // no-op. The self-denial error above does not reload the list
-      // (runAction only reloads on success), so E2E Member is still here.
+      // Revoke: a real state transition, not a duplicate-grant no-op.
+      // The self-denial error above does not reload the list (runAction
+      // only reloads on success), so E2E Member is still here.
       await expect(
         leadersPanel.getByText(/E2E Member/).first()
       ).toBeVisible();
@@ -1227,10 +1276,10 @@ test.describe("AUTH-01 Program Leader administration", () => {
             `/api/v1/programs/${programId}/leaders`
           );
           const listBody = (await listRes.json()) as {
-            data?: { leaders?: { user_id: string; username?: string }[] };
+            data?: { leaders?: { user_id: string }[] };
           };
           const hasMember = (listBody.data?.leaders ?? []).some(
-            (leader) => leader.username === "E2E_member"
+            (leader) => leader.user_id === memberUserId
           );
           if (!hasMember) {
             await fetch(`/api/v1/programs/${programId}/leaders`, {
@@ -1314,7 +1363,7 @@ test.describe("AUTH-01 Department Manager administration", () => {
       // Scope inheritance: E2E_member should now see the whole department
       // (all 4 programs + the department settings card), not just the one
       // program they lead.
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -1336,7 +1385,7 @@ test.describe("AUTH-01 Department Manager administration", () => {
       ).toBeVisible();
 
       // Revoke, back as Admin.
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -1378,7 +1427,7 @@ test.describe("AUTH-01 Department Manager administration", () => {
       // failure mid-scope-check would otherwise leave the page on the
       // E2E_member session, which lacks department.manager.assign and
       // would 403 on the revoke below).
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -1528,7 +1577,21 @@ test.describe("MUI-02 scoped Program management", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
 
-    await page.context().clearCookies();
+    // This test's premise is that the member has NO management relationship
+    // to the program. That is not guaranteed by suite order alone -- an
+    // earlier AUTH-01 test intentionally leaves E2E_member re-granted as
+    // this program's leader (restoring what it found), and a Program
+    // Leader legitimately has PROGRAM_MANAGE over their own program. Revoke
+    // any such grant first so the denial below tests the real "no
+    // relationship" case regardless of what ran before it.
+    const staleLeaderRevoke = await postProgramLeader(
+      page,
+      id,
+      DEV_MEMBER.userId,
+      "revoke"
+    );
+    expect([200, 404]).toContain(staleLeaderRevoke);
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),

@@ -47,6 +47,18 @@ export default defineConfig({
   testDir: ".",
   testMatch: ["**/programs-d1.test.ts"],
   timeout: 45_000,
+  // Local `wrangler dev` (Miniflare, single process) occasionally drops a
+  // request at the socket level under sustained sequential load -- the
+  // browser then shows its own network-error interstitial instead of the
+  // app. Confirmed via trace inspection: the failing locator wait ran the
+  // full timeout while the underlying click's request never completed and
+  // the server logged nothing (the request never reached the app layer),
+  // so it is a transient connectivity gap, not a slow render -- extending
+  // `expect.timeout` would not help a request that already failed. A fresh
+  // retry (new navigation) reliably recovers; this mirrors the existing
+  // `retries: 1` in tests/e2e/responsive.config.ts for the same class of
+  // local-server flake. A genuinely broken assertion still fails on retry.
+  retries: 1,
   fullyParallel: false,
   workers: 1,
   reporter: [

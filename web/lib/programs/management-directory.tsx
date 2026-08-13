@@ -91,8 +91,11 @@ const DepartmentSettingsLauncher = ({
       }
       return;
     }
-    const panel = document.querySelector<HTMLElement>(
-      `#${department.department_id}-settings-panel`
+    // getElementById, not querySelector: department_id is a UUID and can
+    // start with a digit, which is not a valid leading character for an
+    // unescaped CSS id selector (throws SyntaxError at runtime).
+    const panel = document.getElementById(
+      `${department.department_id}-settings-panel`
     );
     panel?.focus();
   }, [open, department.department_id, returnFocusPending]);

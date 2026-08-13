@@ -72,23 +72,34 @@ const REQUIRED_MODULES = [
 // left disabled by design, so tests can assert the module-gated
 // "unavailable" settings copy without touching the shared demo
 // department's module state (which E2E_DEMO_MINISTRY's other tests and
-// human QA rely on staying enabled).
+// human QA rely on staying enabled). Deliberately NOT under the
+// "E2E_DEMO_" prefix: MUI-01's directory test hardcodes
+// `demoDirectoryRows` count === 4 for names matching that exact prefix,
+// so a fixture program sharing it would silently break an unrelated,
+// pre-existing assertion. "E2E_" alone is still disposable (the reset
+// script's GLOB covers `E2E_*`, not just `E2E_DEMO_*`).
 const MODULE_GATE_DEPARTMENT = {
-  code: "E2E_DEMO_MODULE_GATE",
-  name: "E2E_DEMO_模組停用示範",
+  code: "E2E_MODULE_GATE",
+  name: "E2E_模組停用示範",
   description:
     "本機示範資料；不可用於生產環境。聚會與出席模組刻意停用，供 CFG-01 測試使用。",
 } as const;
 
 const MODULE_GATE_PROGRAM = {
-  name: "E2E_DEMO_模組停用課程",
+  name: "E2E_模組停用課程",
   description: "聚會與出席模組已停用的示範課程。",
   category: "測試",
   behavior_type: "Recurring" as const,
   lifecycle: "Active" as const,
   discoverability: "Unlisted" as const,
   enrollment_mode: "MemberRequest" as const,
-  display_order: 1,
+  // Deliberately last: management-directory.tsx sorts by display_order
+  // then name, and several pre-existing tests (e.g. MUI-01's
+  // "keyboard-operable" test) pick the FIRST directory row assuming it
+  // is always E2E_DEMO_成人查經. A tied/low display_order here would
+  // silently take that slot and break those tests' unrelated
+  // assumption -- this fixture must never sort first.
+  display_order: 999,
 } as const;
 
 interface JsonRecord {
