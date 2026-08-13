@@ -381,6 +381,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 出席課程 ${fresh("P")}`,
+        category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
         discoverability: "Listed",
