@@ -1176,6 +1176,37 @@
   text-align: left;
   cursor: pointer;
 }
+.directoryCardGroup {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.directoryAttentionLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.75rem;
+  align-items: center;
+  padding: 0 1rem 0.125rem;
+}
+
+.directoryAttentionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.directoryAttentionLink:hover {
+  color: var(--accent);
+}
+
+.directoryAttentionLink:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 
 .directoryCard:hover {
   border-color: var(--accent);

@@ -83,10 +83,12 @@ function readyState(
 
 describe(ProgramsAttention, () => {
   test("opens real sources with exact management deep links", async () => {
+    const onOpen = vi.fn();
     render(
       <ProgramsAttention
         state={readyState([enrollmentItem, inactiveEventItem, cancelledEventItem], 3)}
         onRetry={vi.fn()}
+        onOpen={onOpen}
       />
     );
 
@@ -94,9 +96,8 @@ describe(ProgramsAttention, () => {
     const trigger = screen.getByRole("button", {
       name: new RegExp(COPY.programs.attentionTitle),
     });
-    expect(trigger).toHaveTextContent("3");
-
     await userEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledOnce();
     const dialog = screen.getByRole("dialog", {
       name: COPY.programs.attentionTitle,
     });
@@ -115,6 +116,25 @@ describe(ProgramsAttention, () => {
       "/programs?mode=management&program=program-events&task=events&event=event-cancelled"
     );
     expect(links[2].parentElement).toHaveClass(styles.attentionInformational);
+  });
+  test("requests expansion when the bounded list has more sources", async () => {
+    const onExpand = vi.fn();
+    render(
+      <ProgramsAttention
+        state={readyState([enrollmentItem], 1, true)}
+        onRetry={vi.fn()}
+        onExpand={onExpand}
+      />
+    );
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.programs.attentionTitle),
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.attentionViewAll })
+    );
+    expect(onExpand).toHaveBeenCalledOnce();
   });
 
   test("suppresses zero badge and explains the zero state", async () => {

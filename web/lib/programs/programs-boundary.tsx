@@ -466,12 +466,13 @@ function ManagementPanel({
   >(null);
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
+  const [attentionLimit, setAttentionLimit] = useState(5);
   const {
     state: attentionState,
     run: loadAttention,
     retry: retryAttention,
   } = useAsyncResource<ManagementAttention, ManagementAttentionState>(
-    async () => getManagementAttention(),
+    async () => getManagementAttention(attentionLimit),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (attention) => ({ kind: "ready", attention }),
@@ -495,8 +496,18 @@ function ManagementPanel({
         return { kind: "error", message };
       },
       announceLoading: COPY.programs.attentionLoading,
+      announceReady: (data) =>
+        data.items.length === 0 ? COPY.programs.attentionZero : undefined,
     },
-    [attentionRefreshKey, router]
+    [
+      attentionRefreshKey,
+      attentionLimit,
+      intent.mode,
+      intent.programId,
+      intent.task,
+      intent.eventId,
+      router,
+    ]
   );
   useEffect(() => {
     void loadAttention();
@@ -532,6 +543,11 @@ function ManagementPanel({
       <ProgramsAttention
         state={attentionState}
         onRetry={retryAttention}
+        onOpen={refreshAttention}
+        onExpand={() => {
+          setAttentionLimit(50);
+          refreshAttention();
+        }}
       />
       <button
         className={styles.secondaryButton}

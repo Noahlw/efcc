@@ -25,9 +25,11 @@ function errorMessage(err: unknown): string {
 export const LeadersPanel = ({
   program,
   canManage,
+  onAttentionRefresh,
 }: {
   program: Program;
   canManage: boolean;
+  onAttentionRefresh?: () => void;
 }) => {
   const [leaders, setLeaders] = useState<ProgramLeader[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export const LeadersPanel = ({
         }
         setNotice(successCopy);
         announce(successCopy);
+        onAttentionRefresh?.();
       } catch (error) {
         if (!mounted.current) {
           return;

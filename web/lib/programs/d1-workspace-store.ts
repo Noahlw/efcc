@@ -787,7 +787,13 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
               status = 'Cancelled'
               OR (status = 'Active' AND availability = 'Inactive')
             )
-          ORDER BY starts_at ASC, event_id ASC
+          ORDER BY
+            CASE
+              WHEN status = 'Active' AND availability = 'Inactive' THEN 0
+              ELSE 1
+            END,
+            starts_at ASC,
+            event_id ASC
           LIMIT ?`
       )
       .bind(startsAtOrAfter, ...programIds, limit)

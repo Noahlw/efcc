@@ -605,8 +605,11 @@ export function getManagementDirectory(): Promise<ManagementDirectory> {
 }
 
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
-export function getManagementAttention(): Promise<ManagementAttention> {
-  return programsFetch("/api/v1/programs/attention", "GET");
+export function getManagementAttention(
+  limit = 5
+): Promise<ManagementAttention> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return programsFetch(`/api/v1/programs/attention?${query}`, "GET");
 }
 
 /** GET /api/v1/programs/access — capability-only entry projection. */

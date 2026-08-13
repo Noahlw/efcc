@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   return {
     getManagementAccess: vi.fn(),
+    getManagementAttention: vi.fn(),
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
@@ -43,6 +44,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementAccess: mocks.getManagementAccess,
+  getManagementAttention: mocks.getManagementAttention,
   getManagementDirectory: mocks.getManagementDirectory,
   getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
@@ -348,6 +350,12 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/programs");
   sessionStorage.clear();
   mocks.getManagementAccess.mockReset();
+  mocks.getManagementAttention.mockResolvedValue({
+    programs: [],
+    items: [],
+    total_actionable_count: 0,
+    has_more: false,
+  });
   mocks.getManagementDirectory.mockReset();
   mocks.getManagementProgram.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });

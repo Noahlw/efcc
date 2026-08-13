@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { COPY } from "@/lib/copy";
+import { hkWallDateTimeLabel } from "@/lib/programs/recurrence";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import type {
   ManagementAttention,
@@ -17,15 +18,7 @@ export type ManagementAttentionState =
   | { kind: "error"; message: string };
 
 function formatAttentionTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return new Intl.DateTimeFormat("zh-HK", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Hong_Kong",
-  }).format(date);
+  return hkWallDateTimeLabel(value);
 }
 
 function attentionHref(item: ManagementAttentionItem): string {
@@ -48,11 +41,15 @@ function attentionHref(item: ManagementAttentionItem): string {
 export interface ProgramsAttentionProps {
   state: ManagementAttentionState;
   onRetry: () => void;
+  onOpen?: () => void;
+  onExpand?: () => void;
 }
 
 export function ProgramsAttention({
   state,
   onRetry,
+  onOpen,
+  onExpand,
 }: ProgramsAttentionProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -81,7 +78,13 @@ export function ProgramsAttention({
         aria-expanded={open}
         aria-controls="programs-attention-panel"
         aria-haspopup="dialog"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          const nextOpen = !open;
+          setOpen(nextOpen);
+          if (nextOpen) {
+            onOpen?.();
+          }
+        }}
       >
         <span>{COPY.programs.attentionTitle}</span>
         {actionableCount > 0 && (
@@ -105,7 +108,11 @@ export function ProgramsAttention({
           tabIndex={-1}
         >
           {state.kind === "loading" && (
-            <output className={styles.attentionState} aria-busy="true">
+            <output
+              className={styles.attentionState}
+              aria-busy="true"
+              role="status"
+            >
               {COPY.programs.attentionLoading}
             </output>
           )}
@@ -122,7 +129,7 @@ export function ProgramsAttention({
             </div>
           )}
           {state.kind === "ready" && state.attention.items.length === 0 && (
-            <p className={styles.attentionZero}>
+            <p className={styles.attentionZero} role="status">
               {COPY.programs.attentionZero}
             </p>
           )}
@@ -160,9 +167,9 @@ export function ProgramsAttention({
                           </span>
                         ) : (
                           <span>
-                            {item.name ?? formatAttentionTime(item.starts_at)}
-                            {" · "}
-                            {formatAttentionTime(item.starts_at)}
+                            {item.name
+                              ? `${item.name} · ${formatAttentionTime(item.starts_at)}`
+                              : formatAttentionTime(item.starts_at)}
                           </span>
                         )}
                       </a>
@@ -171,13 +178,13 @@ export function ProgramsAttention({
                 })}
               </ul>
               {state.attention.has_more && (
-                <a
+                <button
                   className={styles.attentionViewAll}
-                  href={buildProgramsHref({ mode: "management" })}
-                  onClick={() => setOpen(false)}
+                  type="button"
+                  onClick={onExpand}
                 >
                   {COPY.programs.attentionViewAll}
-                </a>
+                </button>
               )}
             </>
           )}

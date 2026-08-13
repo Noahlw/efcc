@@ -551,8 +551,14 @@ export async function handleGetManagementAttention(
     return auth;
   }
   const { workspace } = await getModule(env);
+  const rawLimit = new URL(request.url).searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 5 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 5;
   const attention = await workspace.getManagementAttention(
-    ctxFrom(auth.account)
+    ctxFrom(auth.account),
+    limit
   );
   return jsonResponse(200, attention, requestId);
 }

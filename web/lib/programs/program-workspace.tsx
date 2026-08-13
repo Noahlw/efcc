@@ -1245,10 +1245,12 @@ const SettingsTask = ({
   program,
   modules,
   onTaskChange,
+  onAttentionRefresh,
 }: {
   program: Program;
   modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
+  onAttentionRefresh: () => void;
 }) => (
   <>
     <ProgramSettings
@@ -1261,6 +1263,7 @@ const SettingsTask = ({
       <LeadersPanel
         program={program}
         canManage={program.capabilities.leader_assign}
+        onAttentionRefresh={onAttentionRefresh}
       />
     )}
   </>
@@ -1329,6 +1332,7 @@ const WorkspaceTask = ({
       program={program}
       modules={modules}
       onTaskChange={onTaskChange}
+      onAttentionRefresh={onAttentionRefresh}
     />
   );
 };

@@ -309,7 +309,7 @@ export const EventDetail = ({
       </button>
       {notice !== null && (
         <output className={styles.panelNotice}>
-          {notice}
+          <span>{notice}</span>
           {undoAvailable && !cancelled && (
             <button
               type="button"

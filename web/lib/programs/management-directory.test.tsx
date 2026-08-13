@@ -245,7 +245,7 @@ describe(ManagementDirectory, () => {
     );
     expect(onCreateProgram).toHaveBeenCalledWith(departments);
   });
-  test("uses the fresh server attention aggregate for per-Program badges", async () => {
+  test("uses source-specific server attention badges as exact task links", async () => {
     mockDirectory();
     const attention: ManagementAttention = {
       programs: [
@@ -253,13 +253,13 @@ describe(ManagementDirectory, () => {
           program_id: "program-youth",
           department_id: "dept-youth",
           pending_enrollment_count: 2,
-          inactive_event_count: 0,
-          cancelled_event_count: 0,
-          actionable_count: 2,
+          inactive_event_count: 1,
+          cancelled_event_count: 1,
+          actionable_count: 3,
         },
       ],
       items: [],
-      total_actionable_count: 2,
+      total_actionable_count: 3,
       has_more: false,
     };
     render(
@@ -269,12 +269,26 @@ describe(ManagementDirectory, () => {
       />
     );
 
-    const attentionProgram = await screen.findByRole("button", {
-      name: /查經小組/u,
-    });
-    expect(attentionProgram).toHaveTextContent("2");
-    const quietProgram = screen.getByRole("button", { name: /社區關懷/u });
-    expect(quietProgram).not.toHaveTextContent("2");
+    const row = await screen.findByRole("button", { name: /查經小組/u });
+    expect(row).toHaveTextContent("查經小組");
+    expect(
+      screen.getByRole("link", { name: "待處理報名 2 項" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=participants"
+    );
+    expect(
+      screen.getByRole("link", { name: "暫停聚會 1 場" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=events"
+    );
+    expect(
+      screen.getByRole("link", { name: "已取消聚會 1 場" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=events"
+    );
   });
 
   test("surfaces a forbidden state and retries without exposing records", async () => {
