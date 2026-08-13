@@ -23,6 +23,7 @@ export default defineProject({
       "lib/programs/programs-leaders-panel.test.tsx",
       "lib/programs/member-picker.test.tsx",
       "lib/programs/programs-boundary.test.tsx",
+      "lib/programs/programs-attention.test.tsx",
       "lib/programs/participant-directory.test.tsx",
       "lib/programs/management-directory.test.tsx",
       "lib/programs/program-form.test.tsx",

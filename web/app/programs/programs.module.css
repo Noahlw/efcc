@@ -119,6 +119,97 @@
   background: var(--success-surface);
 }
 
+.attentionControl {
+  position: relative;
+  margin: 0 0 1rem;
+}
+
+.attentionTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.attentionTrigger:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.attentionPopover {
+  width: min(100%, 30rem);
+  max-height: 24rem;
+  overflow: auto;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 0.5rem 1rem rgb(23 26 29 / 12%);
+}
+
+.attentionList {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attentionItem {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.attentionActionable {
+  border-color: var(--success-border);
+}
+
+.attentionInformational {
+  background: var(--surface);
+}
+
+.attentionItemLink {
+  display: grid;
+  gap: 0.1875rem;
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.attentionItemLink:hover {
+  color: var(--accent);
+}
+
+.attentionItemLink span {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.attentionViewAll {
+  display: inline-block;
+  margin-top: 0.75rem;
+  min-height: 44px;
+  padding: 0.625rem 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.attentionState,
+.attentionZero {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
 .detail {
   border-top: 1px solid var(--line);
   padding: 1rem;
@@ -240,7 +331,8 @@
   cursor: pointer;
 }
 
-.taskButton[aria-pressed="true"] {
+.taskButton[aria-pressed="true"],
+.taskButton[aria-selected="true"] {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--surface-raised);
@@ -1084,6 +1176,37 @@
   text-align: left;
   cursor: pointer;
 }
+.directoryCardGroup {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.directoryAttentionLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.75rem;
+  align-items: center;
+  padding: 0 1rem 0.125rem;
+}
+
+.directoryAttentionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.directoryAttentionLink:hover {
+  color: var(--accent);
+}
+
+.directoryAttentionLink:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 
 .directoryCard:hover {
   border-color: var(--accent);
@@ -1436,6 +1559,24 @@
   align-items: center;
   gap: 0.5rem;
   flex: 1 1 100%;
+  width: 100%;
+}
+
+.settingsExceptionList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settingsExceptionList > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .settingsCurrent {
@@ -1555,6 +1696,29 @@
   .workspaceActions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settingsForm {
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+
+  .settingsForm > .field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settingsActions {
+    align-items: stretch;
+    flex-direction: column;
+    flex: 0 0 auto;
+  }
+
+  .settingsActions > button,
+  .settingsActions > .confirmRow,
+  .settingsExceptionList .successOutline {
+    width: 100%;
+    max-width: 100%;
   }
 
   .managementWorkspace > .programDetailBack,

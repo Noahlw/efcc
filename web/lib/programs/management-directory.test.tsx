@@ -14,7 +14,11 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  ManagementAttention,
+  Program,
+} from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -240,6 +244,51 @@ describe(ManagementDirectory, () => {
       })
     );
     expect(onCreateProgram).toHaveBeenCalledWith(departments);
+  });
+  test("uses source-specific server attention badges as exact task links", async () => {
+    mockDirectory();
+    const attention: ManagementAttention = {
+      programs: [
+        {
+          program_id: "program-youth",
+          department_id: "dept-youth",
+          pending_enrollment_count: 2,
+          inactive_event_count: 1,
+          cancelled_event_count: 1,
+          actionable_count: 3,
+        },
+      ],
+      items: [],
+      total_actionable_count: 3,
+      has_more: false,
+    };
+    render(
+      <ManagementDirectory
+        attention={attention}
+        onOpenProgram={vi.fn()}
+      />
+    );
+
+    const row = await screen.findByRole("button", { name: /查經小組/u });
+    expect(row).toHaveTextContent("查經小組");
+    expect(
+      screen.getByRole("link", { name: "待處理報名 2 項" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=participants"
+    );
+    expect(
+      screen.getByRole("link", { name: "暫停聚會 1 場" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=events"
+    );
+    expect(
+      screen.getByRole("link", { name: "已取消聚會 1 場" })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-youth&task=events"
+    );
   });
 
   test("surfaces a forbidden state and retries without exposing records", async () => {

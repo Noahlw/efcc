@@ -6,16 +6,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { getManagementAccess } from "@/lib/programs/program-api";
-import type { Department } from "@/lib/programs/program-api";
+import {
+  getManagementAccess,
+  getManagementAttention,
+} from "@/lib/programs/program-api";
+import type {
+  Department,
+  ManagementAttention,
+} from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
-
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
 import { ParticipantProgramDetail } from "./participant-program-detail";
 import { ProgramForm } from "./program-form";
+
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
+import { ProgramsAttention } from "./programs-attention";
+import type { ManagementAttentionState } from "./programs-attention";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
@@ -78,7 +86,7 @@ export function ProgramsBoundary() {
           ? COPY.programs.managementScopeReady
           : undefined,
     },
-    [pathname, router]
+    [pathname]
   );
   useEffect(() => {
     const syncSearch = () =>
@@ -130,12 +138,13 @@ export function ProgramsBoundary() {
   const navigateMode = (
     mode: "participant" | "management",
     replace = false,
-    programId = intent.programId
+    programId = intent.programId,
+    hash = intent.hash
   ) => {
     const href = buildProgramsHref({
       mode,
       programId,
-      hash: intent.hash,
+      hash,
     });
     focusMode.current = mode;
     if (typeof window === "undefined") {
@@ -344,6 +353,14 @@ export function ProgramsBoundary() {
           onTaskChange={navigateManagementTask}
           onEventChange={navigateManagementEvent}
           onBackDirectory={() => navigateMode("management", true, null)}
+          onOpenManagementDirectory={() =>
+            navigateMode(
+              "management",
+              false,
+              null,
+              "#programs-management-directory-title"
+            )
+          }
         />
       )}
       {access.kind === "ready" &&
@@ -443,6 +460,7 @@ function ManagementPanel({
   onTaskChange,
   onEventChange,
   onBackDirectory,
+  onOpenManagementDirectory,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -452,10 +470,62 @@ function ManagementPanel({
   onTaskChange: (task: ProgramsTask | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
+  onOpenManagementDirectory: () => void;
 }) {
   const [createDepartments, setCreateDepartments] = useState<
     Department[] | null
   >(null);
+  const router = useRouter();
+  const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
+  const {
+    state: attentionState,
+    run: loadAttention,
+    retry: retryAttention,
+  } = useAsyncResource<ManagementAttention, ManagementAttentionState>(
+    async () => getManagementAttention(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (attention) => ({ kind: "ready", attention }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return { kind: "error", message };
+      },
+      // router is read through optionsRef; including its unstable identity in
+      // deps would restart the attention request on every shell render.
+      announceLoading: COPY.programs.attentionLoading,
+      announceReady: (data) =>
+        data.items.length === 0 ? COPY.programs.attentionZero : undefined,
+    },
+    [
+      attentionRefreshKey,
+      intent.mode,
+      intent.programId,
+      intent.task,
+      intent.eventId,
+    ]
+  );
+  useEffect(() => {
+    void loadAttention();
+  }, [loadAttention]);
+  const attention =
+    attentionState.kind === "ready" ? attentionState.attention : null;
+  const refreshAttention = () =>
+    setAttentionRefreshKey((current) => current + 1);
 
   if (!projection.hasManagementCapability) {
     return (
@@ -480,6 +550,15 @@ function ManagementPanel({
       <p className={styles.boundaryHint}>
         {COPY.programs.managementBoundaryHint}
       </p>
+      <ProgramsAttention
+        state={attentionState}
+        onRetry={retryAttention}
+        onOpen={refreshAttention}
+        onExpand={() => {
+          setCreateDepartments(null);
+          onOpenManagementDirectory();
+        }}
+      />
       <button
         className={styles.secondaryButton}
         type="button"
@@ -493,6 +572,8 @@ function ManagementPanel({
           programId={intent.programId}
           task={intent.task}
           eventId={intent.eventId ?? null}
+          attention={attention}
+          onAttentionRefresh={refreshAttention}
           onBack={onBackDirectory}
           onTaskChange={onTaskChange}
           onEventChange={onEventChange}
@@ -508,6 +589,7 @@ function ManagementPanel({
         />
       ) : (
         <ManagementDirectory
+          attention={attention}
           onOpenProgram={onOpenProgram}
           onCreateProgram={setCreateDepartments}
         />

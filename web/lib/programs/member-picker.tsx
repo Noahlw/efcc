@@ -16,12 +16,14 @@ export const MemberPicker = ({
   label,
   placeholder,
   searchOptions,
+  excludeEnrolled,
 }: {
   programId: string;
   name: string;
   label: string;
   placeholder: string;
   searchOptions?: (query: string) => Promise<{ members: MemberOption[] }>;
+  excludeEnrolled?: boolean;
 }) => {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<MemberOption | null>(null);
@@ -78,7 +80,7 @@ export const MemberPicker = ({
       try {
         const result = await (searchOptions
           ? searchOptions(value)
-          : searchMemberOptions(programId, value));
+          : searchMemberOptions(programId, value, { excludeEnrolled }));
         if (current) {
           setOptions(result.members);
           announce(
@@ -105,7 +107,7 @@ export const MemberPicker = ({
     return () => {
       current = false;
     };
-  }, [programId, query, retryToken, searchOptions, selected]);
+  }, [programId, query, retryToken, searchOptions, selected, excludeEnrolled]);
 
   return (
     <div className={styles.picker}>

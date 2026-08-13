@@ -93,6 +93,46 @@ export interface ManagementDirectory {
   programs: ManagementProgram[];
 }
 
+export interface ManagementAttentionProgram {
+  program_id: string;
+  department_id: string;
+  pending_enrollment_count: number;
+  inactive_event_count: number;
+  cancelled_event_count: number;
+  actionable_count: number;
+}
+
+export type ManagementAttentionItem =
+  | {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+    }
+  | {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+    };
+
+export interface ManagementAttention {
+  programs: ManagementAttentionProgram[];
+  items: ManagementAttentionItem[];
+  total_actionable_count: number;
+  has_more: boolean;
+}
+
 export interface DepartmentDetail {
   department: Department;
   modules: DepartmentModule[];
@@ -199,6 +239,7 @@ export interface ScheduleRule {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -271,8 +312,12 @@ export interface Enrollment {
   member_username?: string;
 }
 
-export type EnrollmentDecision = "Approved" | "Rejected";
+export interface EnrollmentSnapshot {
+  requests: EnrollmentRequest[];
+  enrollments: Enrollment[];
+}
 
+export type EnrollmentDecision = "Approved" | "Rejected";
 export interface ProgramLeader {
   program_id: string;
   user_id: string;
@@ -301,9 +346,42 @@ export interface MemberOption {
 }
 
 export interface GenerateResult {
+  run_id: string;
+  plan_id: string;
+  status: "completed" | "partial" | "failed";
   created: number;
   skipped: number;
+  failed: number;
+  /** True when the request resumed an already-started run (retry/concurrent). */
+  resumed: boolean;
+}
+
+/** One materialized occurrence row of a server-owned preview plan. */
+export interface PreviewOccurrence {
+  occurrence_id: string;
+  plan_id: string;
+  rule_id: string;
+  occurs_on: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  skip_reason: "CANCEL" | "DUPLICATE" | null;
+  exception_id: string | null;
+}
+
+export interface PreviewPlan {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
   rule_count: number;
+  created_at: string;
+}
+
+export interface PreviewResult {
+  plan: PreviewPlan;
+  occurrences: PreviewOccurrence[];
 }
 
 export interface ScheduleRuleInput {
@@ -312,6 +390,7 @@ export interface ScheduleRuleInput {
   month_day?: number;
   start_time: string;
   end_time: string;
+  location?: string | null;
 }
 
 export interface ProgramInput {
@@ -433,7 +512,6 @@ export function submitEnrollmentRequest(
     {}
   );
 }
-
 /** GET /api/v1/programs/:programId/enrollment-requests */
 export function listEnrollmentRequests(
   programId: string
@@ -444,17 +522,35 @@ export function listEnrollmentRequests(
   );
 }
 
+/** GET /api/v1/programs/:programId/enrollment-snapshot */
+export function listEnrollmentSnapshot(
+  programId: string
+): Promise<EnrollmentSnapshot> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-snapshot`,
+    "GET"
+  );
+}
+
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
 export function decideEnrollmentRequest(
   programId: string,
   requestId: string,
   action: EnrollmentDecision,
-  note?: string
-): Promise<{ request: EnrollmentRequest }> {
+  note?: string,
+  requestVersion?: number
+): Promise<{
+  request: EnrollmentRequest;
+  enrollment: Enrollment | null;
+}> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
     "POST",
-    { action, note: note?.trim() ? note.trim() : null }
+    {
+      action,
+      note: note?.trim() ? note.trim() : null,
+      request_version: requestVersion ?? null,
+    }
   );
 }
 
@@ -541,6 +637,14 @@ export function listDepartments(): Promise<{
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
   return programsFetch("/api/v1/programs/management-directory", "GET");
+}
+
+/** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
+export function getManagementAttention(
+  limit = 5
+): Promise<ManagementAttention> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return programsFetch(`/api/v1/programs/attention?${query}`, "GET");
 }
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
@@ -685,10 +789,15 @@ export function updateProgram(
 /** GET /api/v1/programs/:id/member-options?q=... */
 export function searchMemberOptions(
   programId: string,
-  query: string
+  query: string,
+  options?: { excludeEnrolled?: boolean }
 ): Promise<{ members: MemberOption[] }> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.excludeEnrolled) {
+    params.set("excludeEnrolled", "true");
+  }
   return programsFetch(
-    `/api/v1/programs/${encodeURIComponent(programId)}/member-options?q=${encodeURIComponent(query)}`,
+    `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
     "GET"
   );
 }
@@ -724,6 +833,17 @@ export function createScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
     "POST",
     input
+  );
+}
+
+/** GET /api/v1/programs/:id/schedule-rules/:ruleId/exceptions */
+export function listScheduleExceptions(
+  programId: string,
+  ruleId: string
+): Promise<{ exceptions: ScheduleException[] }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
+    "GET"
   );
 }
 
@@ -770,15 +890,30 @@ export function deleteScheduleException(
   );
 }
 
-/** POST /api/v1/programs/:id/events/generate */
+/**
+ * POST /api/v1/programs/:id/events/preview — server-owned preview plan.
+ * Writes no events; identical inputs resolve to the same plan identity.
+ */
+export function previewEvents(
+  programId: string,
+  horizonDays: number
+): Promise<PreviewResult> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/preview`,
+    "POST",
+    { horizon_days: horizonDays }
+  );
+}
+
+/** POST /api/v1/programs/:id/events/generate — generate from a current plan. */
 export function generateEvents(
   programId: string,
-  horizonDays?: number
+  planId: string
 ): Promise<{ generated: GenerateResult }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/generate`,
     "POST",
-    horizonDays === undefined ? {} : { horizon_days: horizonDays }
+    { plan_id: planId }
   );
 }
 

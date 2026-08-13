@@ -69,11 +69,14 @@ export const EventDetail = ({
   eventId,
   canManage,
   onBack,
+  onAttentionRefresh,
 }: {
   programId: string;
   eventId: string;
   canManage: boolean;
   onBack: () => void;
+  /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
+  onAttentionRefresh?: () => void;
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -147,6 +150,7 @@ export const EventDetail = ({
         if (!mounted.current) {
           return;
         }
+        onAttentionRefresh?.();
         await load();
         if (!mounted.current) {
           return;
@@ -171,7 +175,7 @@ export const EventDetail = ({
         }
       }
     },
-    [load]
+    [load, onAttentionRefresh]
   );
 
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -305,7 +309,7 @@ export const EventDetail = ({
       </button>
       {notice !== null && (
         <output className={styles.panelNotice}>
-          {notice}
+          <span>{notice}</span>
           {undoAvailable && !cancelled && (
             <button
               type="button"

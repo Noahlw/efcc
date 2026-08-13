@@ -10,6 +10,7 @@ import {
   createScheduleException,
   createScheduleRule,
   deleteScheduleException,
+  listScheduleExceptions,
   listScheduleRules,
   updateProgram,
   updateScheduleRule,
@@ -20,7 +21,7 @@ import type {
   ScheduleRule,
   ScheduleRuleInput,
 } from "@/lib/programs/program-api";
-import { WEEKDAY_LABELS } from "@/lib/programs/recurrence";
+import { isWallDate, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -47,6 +48,7 @@ interface RuleValues {
   monthDay: string;
   startTime: string;
   endTime: string;
+  location: string;
 }
 
 interface ExceptionValues {
@@ -115,6 +117,7 @@ function ruleValuesFrom(rule: ScheduleRule): RuleValues {
     monthDay: String(rule.month_day ?? 1),
     startTime: rule.start_time,
     endTime: rule.end_time,
+    location: rule.location ?? "",
   };
 }
 
@@ -136,6 +139,7 @@ function ruleInputFrom(values: RuleValues): ScheduleRuleInput {
       values.recurrence === "MONTHLY" ? Number(values.monthDay) : undefined,
     start_time: values.startTime,
     end_time: values.endTime,
+    location: values.location.trim() || null,
   };
 }
 
@@ -184,14 +188,16 @@ export const ProgramSettings = ({
     monthDay: "1",
     startTime: "",
     endTime: "",
+    location: "",
   });
   const [exceptionRuleId, setExceptionRuleId] = useState<string | null>(null);
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionValues>
   >({});
   const [exceptions, setExceptions] = useState<
-    Record<string, ScheduleException>
+    Record<string, ScheduleException[]>
   >({});
+  const [exceptionError, setExceptionError] = useState<string | null>(null);
   const [confirmingEnrollment, setConfirmingEnrollment] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -216,12 +222,34 @@ export const ProgramSettings = ({
     }
     setRules(null);
     setRuleError(null);
+    setExceptionError(null);
+    setExceptions({});
     try {
       const result = await listScheduleRules(currentProgram.program_id);
       if (!mounted.current) {
         return;
       }
       setRules(result.rules);
+      try {
+        const exceptionEntries = await Promise.all(
+          result.rules.map(async (rule) => {
+            const exceptionsResult = await listScheduleExceptions(
+              currentProgram.program_id,
+              rule.rule_id
+            );
+            return [rule.rule_id, exceptionsResult.exceptions] as const;
+          })
+        );
+        if (!mounted.current) {
+          return;
+        }
+        setExceptions(Object.fromEntries(exceptionEntries));
+      } catch (error) {
+        if (!mounted.current) {
+          return;
+        }
+        setExceptionError(settingsErrorMessage(error));
+      }
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -407,6 +435,11 @@ export const ProgramSettings = ({
     (rule: ScheduleRule) => (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const draft = exceptionDraftFor(rule.rule_id);
+      if (!isWallDate(draft.overrideDate)) {
+        setActionError(COPY.programs.settingsExceptionDateValidation);
+        announce(COPY.programs.settingsExceptionDateValidation);
+        return;
+      }
       void runScheduleMutation(
         async () => {
           const result = await createScheduleException(
@@ -417,7 +450,13 @@ export const ProgramSettings = ({
           if ("exception" in result) {
             setExceptions((previous) => ({
               ...previous,
-              [rule.rule_id]: result.exception,
+              [rule.rule_id]: [
+                ...(previous[rule.rule_id] ?? []).filter(
+                  (exception) =>
+                    exception.exception_id !== result.exception.exception_id
+                ),
+                result.exception,
+              ],
             }));
           }
         },
@@ -436,7 +475,9 @@ export const ProgramSettings = ({
         );
         setExceptions((previous) => {
           const next = { ...previous };
-          delete next[exception.rule_id];
+          next[exception.rule_id] = (next[exception.rule_id] ?? []).filter(
+            ({ exception_id }) => exception_id !== exception.exception_id
+          );
           return next;
         });
       },
@@ -702,7 +743,7 @@ export const ProgramSettings = ({
                     ) : (
                       rules.map((rule) => {
                         const draft = ruleDrafts[rule.rule_id] ?? ruleValuesFrom(rule);
-                        const exception = exceptions[rule.rule_id];
+                        const ruleExceptions = exceptions[rule.rule_id] ?? [];
                         return (
                           <li key={rule.rule_id} className={styles.settingsRuleRow}>
                             {editingRuleId === rule.rule_id ? (
@@ -806,6 +847,24 @@ export const ProgramSettings = ({
                                     }
                                   />
                                 </label>
+                                <label className={styles.field}>
+                                  <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                                  <input
+                                    className={styles.input}
+                                    type="text"
+                                    value={draft.location}
+                                    placeholder={COPY.programs.ruleLocationPlaceholder}
+                                    onChange={(event) =>
+                                      setRuleDrafts((previous) => ({
+                                        ...previous,
+                                        [rule.rule_id]: {
+                                          ...draft,
+                                          location: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </label>
                                 <div className={styles.settingsActions}>
                                   <button className={styles.button} type="submit" disabled={busy}>
                                     {COPY.programs.settingsRuleSave}
@@ -855,21 +914,29 @@ export const ProgramSettings = ({
                                   >
                                     {COPY.programs.settingsRuleAddException}
                                   </button>
-                                  {exception && (
-                                    <button
-                                      className={styles.successOutline}
-                                      type="button"
-                                      onClick={() => removeException(exception)}
-                                      disabled={busy}
-                                    >
-                                      {COPY.programs.settingsExceptionRestore}
-                                    </button>
-                                  )}
                                 </div>
-                                {exception && (
-                                  <p className={styles.settingsReadonly}>
-                                    {exception.override_date} · {exception.action === "CANCEL" ? COPY.programs.settingsExceptionCancel : COPY.programs.settingsExceptionReschedule}
-                                  </p>
+                                {ruleExceptions.length > 0 && (
+                                  <ul
+                                    className={styles.settingsExceptionList}
+                                    aria-label={COPY.programs.settingsExistingExceptions}
+                                  >
+                                    {ruleExceptions.map((exception) => (
+                                      <li key={exception.exception_id}>
+                                        <span>
+                                          {exception.override_date} · {exception.action === "CANCEL" ? COPY.programs.settingsExceptionCancel : COPY.programs.settingsExceptionReschedule}
+                                        </span>
+                                        <button
+                                          className={styles.successOutline}
+                                          type="button"
+                                          onClick={() => removeException(exception)}
+                                          disabled={busy}
+                                          aria-label={`${COPY.programs.settingsExceptionRestore} ${exception.override_date}`}
+                                        >
+                                          {COPY.programs.settingsExceptionRestore}
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
                                 {exceptionRuleId === rule.rule_id && (
                                   <form
@@ -892,6 +959,17 @@ export const ProgramSettings = ({
                                             },
                                           }))
                                         }
+                                        onInput={(event) => {
+                                          const overrideDate =
+                                            event.currentTarget.value;
+                                          setExceptionDrafts((previous) => ({
+                                            ...previous,
+                                            [rule.rule_id]: {
+                                              ...exceptionDraftFor(rule.rule_id),
+                                              overrideDate,
+                                            },
+                                          }));
+                                        }}
                                       />
                                     </label>
                                     <label className={styles.field}>
@@ -976,10 +1054,10 @@ export const ProgramSettings = ({
                     )}
                   </ul>
                 )}
-                {rules !== null && rules.length > 0 && (
-                  <p className={styles.settingsReadonly}>
-                    {COPY.programs.settingsExceptionsUnavailable}
-                  </p>
+                {exceptionError !== null && (
+                  <output className={styles.panelError} role="alert">
+                    {COPY.programs.settingsExceptionsLoadError}
+                  </output>
                 )}
                 <form className={styles.settingsForm} onSubmit={submitNewRule}>
                   <label className={styles.field}>
@@ -1063,6 +1141,22 @@ export const ProgramSettings = ({
                         setNewRule((previous) => ({
                           ...previous,
                           endTime: event.target.value,
+                        }))
+                      }
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                    <input
+                      className={styles.input}
+                      type="text"
+                      value={newRule.location}
+                      placeholder={COPY.programs.ruleLocationPlaceholder}
+                      onChange={(event) =>
+                        setNewRule((previous) => ({
+                          ...previous,
+                          location: event.target.value,
                         }))
                       }
                       disabled={busy}

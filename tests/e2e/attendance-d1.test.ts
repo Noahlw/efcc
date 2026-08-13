@@ -381,6 +381,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 出席課程 ${fresh("P")}`,
+        category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
         discoverability: "Listed",
@@ -410,10 +411,18 @@ test.beforeAll(async ({ playwright }) => {
     );
     expect(rule.status).toBe(201);
 
+    const preview = await postJson(
+      admin.api,
+      `/api/v1/programs/${programId}/events/preview`,
+      { horizon_days: 14 }
+    );
+    expect(preview.status).toBe(200);
+    const planId = (preview.body.data as { plan: { plan_id: string } }).plan
+      .plan_id;
     const generated = await postJson(
       admin.api,
       `/api/v1/programs/${programId}/events/generate`,
-      {}
+      { plan_id: planId }
     );
     expect(generated.status).toBe(200);
 

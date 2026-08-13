@@ -34,6 +34,9 @@ import {
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
+  EnrollmentAccountInactiveError,
+  EnrollmentDecisionConflictError,
+  EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
@@ -41,12 +44,15 @@ import {
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
   SelfDepartmentManagerError,
   ProgramLeaderConflictError,
+  StaleEnrollmentRequestError,
+  StalePreviewPlanError,
 } from "./program-errors";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
@@ -214,26 +220,47 @@ function mapWorkspaceError(
   ) {
     return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
   }
-  if (error instanceof LeaderAccountInactiveError) {
+  if (
+    error instanceof LeaderAccountInactiveError ||
+    error instanceof EnrollmentAccountInactiveError
+  ) {
     return problem(
       422,
-      "ACCOUNT_INACTIVE",
+      error instanceof EnrollmentAccountInactiveError
+        ? "ENROLLMENT_ACCOUNT_INACTIVE"
+        : "ACCOUNT_INACTIVE",
       "Validation failed",
       error.message,
       requestId
     );
+  }
+  if (error instanceof StaleEnrollmentRequestError) {
+    return problem(409, "STALE", "Stale request", error.message, requestId);
   }
   if (
     error instanceof InvalidProgramLifecycleError ||
     error instanceof InvalidModuleKeyError ||
     error instanceof EnrollmentNotAllowedError ||
     error instanceof ScheduleRuleNotApplicableError ||
-    error instanceof NoScheduleRulesError
+    error instanceof NoScheduleRulesError ||
+    error instanceof EmptyPreviewPlanError
   ) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof PreviewPlanNotFoundError) {
+    return problem(404, "PLAN_NOT_FOUND", "Not found", error.message, requestId);
+  }
+  if (error instanceof StalePreviewPlanError) {
+    return problem(
+      409,
+      "STALE_PLAN",
+      "Conflict",
       error.message,
       requestId
     );
@@ -250,6 +277,7 @@ function mapWorkspaceError(
     error instanceof DuplicateEventError ||
     error instanceof DuplicateScheduleExceptionError ||
     error instanceof RequestNotDecidableError ||
+    error instanceof EnrollmentDecisionConflictError ||
     error instanceof DepartmentManagerConflictError ||
     error instanceof ProgramLeaderConflictError
   ) {
@@ -526,6 +554,29 @@ export async function handleListManagementDirectory(
     ctxFrom(auth.account)
   );
   return jsonResponse(200, directory, requestId);
+}
+
+/** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
+export async function handleGetManagementAttention(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rawLimit = new URL(request.url).searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 5 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 5;
+  const attention = await workspace.getManagementAttention(
+    ctxFrom(auth.account),
+    limit
+  );
+  return jsonResponse(200, attention, requestId);
 }
 
 /** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
@@ -1151,6 +1202,8 @@ export async function handleSearchMemberOptions(
     );
   }
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const excludeEnrolled =
+    new URL(request.url).searchParams.get("excludeEnrolled") === "true";
   if (query.length < 2) {
     return problem(
       422,
@@ -1160,7 +1213,11 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const members = await workspace.searchActiveMembers(query, 20);
+  const members = await workspace.searchActiveMembers(
+    query,
+    20,
+    excludeEnrolled ? programId : undefined
+  );
   return jsonResponse(200, { members }, requestId);
 }
 
@@ -1271,6 +1328,7 @@ function parseRuleBody(body: {
   month_day?: unknown;
   start_time?: unknown;
   end_time?: unknown;
+  location?: unknown;
 }): RuleBodyResult {
   if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
@@ -1289,6 +1347,13 @@ function parseRuleBody(body: {
   if (body.recurrence === "MONTHLY" && !isMonthDay) {
     return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
   }
+  if (
+    body.location !== undefined &&
+    body.location !== null &&
+    typeof body.location !== "string"
+  ) {
+    return { ok: false, detail: "location must be text or null." };
+  }
   return {
     ok: true,
     value: {
@@ -1297,6 +1362,14 @@ function parseRuleBody(body: {
       month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
       start_time: body.start_time,
       end_time: body.end_time,
+      ...(body.location === undefined
+        ? {}
+        : {
+            location:
+              typeof body.location === "string"
+                ? body.location.trim() || null
+                : null,
+          }),
     },
   };
 }
@@ -1324,6 +1397,39 @@ export async function handleListScheduleRules(
   return jsonResponse(200, { rules }, requestId);
 }
 
+/** GET /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
+export async function handleListScheduleExceptions(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
+  if (!rule || rule.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  try {
+    const exceptions = await workspace.listScheduleExceptions(
+      ctxFrom(auth.account),
+      programId,
+      ruleId
+    );
+    return jsonResponse(200, { exceptions }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** POST /api/v1/programs/:programId/schedule-rules */
 export async function handleCreateScheduleRule(
   request: Request,
@@ -1342,6 +1448,7 @@ export async function handleCreateScheduleRule(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1385,6 +1492,7 @@ function parseRulePatch(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   },
   existing: ScheduleRuleRow
 ): RulePatchResult {
@@ -1419,6 +1527,15 @@ function parseRulePatch(
   if (endTime !== null) {
     update.end_time = endTime;
   }
+  if (body.location !== undefined) {
+    if (body.location !== null && typeof body.location !== "string") {
+      return { ok: false, detail: "location must be text or null." };
+    }
+    update.location =
+      typeof body.location === "string"
+        ? body.location.trim() || null
+        : null;
+  }
   const resolvedStart = update.start_time ?? existing.start_time;
   const resolvedEnd = update.end_time ?? existing.end_time;
   if (resolvedEnd <= resolvedStart) {
@@ -1450,6 +1567,7 @@ export async function handleUpdateScheduleRule(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1620,8 +1738,8 @@ export async function handleDeleteScheduleException(
   }
 }
 
-/** POST /api/v1/programs/:programId/events/generate */
-export async function handleGenerateEvents(
+/** POST /api/v1/programs/:programId/events/preview */
+export async function handlePreviewEvents(
   request: Request,
   env: ProgramEnv,
   programId: string
@@ -1632,7 +1750,26 @@ export async function handleGenerateEvents(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ horizon_days?: unknown }>(request);
+  // This is the only handler whose body is fully optional, so `parseJson`
+  // returning null for BOTH an empty body and malformed JSON would silently
+  // default a garbage body to horizonDays = 90 and persist a real preview.
+  // Read the raw text: empty/whitespace-only means "no body, use defaults";
+  // any non-empty body must parse as a non-null, non-array JSON object or
+  // the request is rejected before any write (EVT-02.4 acceptance).
+  const rawBody = await request.text();
+  let body: { horizon_days?: unknown } | null = null;
+  if (rawBody.trim().length > 0) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    body = parsed as { horizon_days?: unknown };
+  }
   let horizonDays = 90;
   if (body !== null) {
     const raw = body.horizon_days;
@@ -1656,10 +1793,56 @@ export async function handleGenerateEvents(
     return notFound(requestId, "Unknown program.");
   }
   try {
-    const result = await workspace.generateEvents(
+    const result = await workspace.previewEvents(
       ctxFrom(auth.account),
       programId,
       horizonDays,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { plan: result.plan, occurrences: result.occurrences },
+      requestId
+    );
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/events/generate */
+export async function handleGenerateEvents(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ plan_id?: unknown }>(request);
+  if (
+    body === null ||
+    typeof body.plan_id !== "string" ||
+    body.plan_id.trim().length === 0
+  ) {
+    return validation(requestId, "plan_id is required.");
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const result = await workspace.generateEvents(
+      ctxFrom(auth.account),
+      programId,
+      body.plan_id,
       correlationId
     );
     return jsonResponse(200, { generated: result }, requestId);
@@ -2062,6 +2245,27 @@ export async function handleListEnrollmentRequests(
   }
   return jsonResponse(200, { requests: rows }, requestId);
 }
+/** GET /api/v1/programs/:programId/enrollment-snapshot */
+export async function handleListEnrollmentSnapshot(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const snapshot = await workspace.listEnrollmentSnapshot(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (snapshot === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, snapshot, requestId);
+}
 
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
 export async function handleDecideEnrollmentRequest(
@@ -2076,12 +2280,28 @@ export async function handleDecideEnrollmentRequest(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
+  const body = await parseJson<{
+    action?: unknown;
+    note?: unknown;
+    request_version?: unknown;
+  }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
   if (body.action !== "Approved" && body.action !== "Rejected") {
     return validation(requestId, "action must be Approved or Rejected.");
+  }
+  const requestVersion =
+    body.request_version === undefined || body.request_version === null
+      ? undefined
+      : body.request_version;
+  if (
+    requestVersion !== undefined &&
+    (typeof requestVersion !== "number" ||
+      !Number.isSafeInteger(requestVersion) ||
+      requestVersion < 1)
+  ) {
+    return validation(requestId, "request_version must be a positive integer.");
   }
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
@@ -2096,14 +2316,18 @@ export async function handleDecideEnrollmentRequest(
     return notFound(requestId, "Unknown enrollment request.");
   }
   try {
-    const row = await workspace.decideEnrollmentRequest(
+    const result = await workspace.decideEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
       enrollmentRequestId,
-      { action: body.action, note },
+      {
+        action: body.action,
+        note,
+        expectedRequestVersion: requestVersion,
+      },
       correlationId
     );
-    return jsonResponse(200, { request: row }, requestId);
+    return jsonResponse(200, result, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2174,10 +2398,6 @@ export async function handleAssistedEnroll(
     typeof body.member_user_id === "string" ? body.member_user_id : "";
   if (!memberUserId) {
     return validation(requestId, "member_user_id is required.");
-  }
-  const member = await findAccountByUserId(env.DB, memberUserId);
-  if (!member) {
-    return validation(requestId, "Unknown member_user_id.");
   }
   const { workspace } = await getModule(env);
   const program = await workspace.getProgram(ctxFrom(auth.account), programId);

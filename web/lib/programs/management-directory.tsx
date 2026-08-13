@@ -10,11 +10,13 @@ import { hasDepartmentManagementScope } from "@/lib/programs/capabilities";
 import { getManagementDirectory } from "@/lib/programs/program-api";
 import type {
   Department,
+  ManagementAttention,
   ManagementProgram as ManagementProgramRecord,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
@@ -121,15 +123,15 @@ const DepartmentSettingsLauncher = ({
     </button>
   );
 };
-
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
   onCreateProgram?: (departments: Department[]) => void;
+  attention?: ManagementAttention | null;
 }
-
 export const ManagementDirectory = ({
   onOpenProgram,
   onCreateProgram,
+  attention,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -203,7 +205,11 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
+
   }, [query, state]);
+  const attentionByProgram = new Map(
+    (attention?.programs ?? []).map((program) => [program.program_id, program])
+  );
 
   return (
     <section aria-labelledby="programs-management-directory-title">
@@ -359,44 +365,135 @@ export const ManagementDirectory = ({
             >
               {filteredRows.map(({ program, department, scope }) => (
                 <li key={program.program_id} className={styles.directoryItem}>
-                  <button
-                    className={styles.directoryCard}
-                    type="button"
-                    onClick={() => onOpenProgram(program.program_id)}
-                  >
-                    <span className={styles.directoryCardTitle}>
-                      {program.name}
-                    </span>
-                    {program.description && (
-                      <span className={styles.directoryCardDescription}>
-                        {program.description}
-                      </span>
-                    )}
-                    <span className={styles.directoryCardMeta}>
-                      <span className={styles.directoryMetaItem}>
-                        {department.name} · {department.code}
-                      </span>
-                      {program.category && (
-                        <span className={styles.directoryMetaItem}>
-                          {program.category}
-                        </span>
-                      )}
-                      <span className={styles.directoryStatus}>
-                        {scope === "department"
-                          ? COPY.programs.managementScopeDepartment
-                          : COPY.programs.managementScopeProgram}
-                      </span>
-                      <span
-                        className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
-                      >
-                        {program.lifecycle === "Active"
-                          ? COPY.programs.filterActive
-                          : program.lifecycle === "Draft"
-                            ? COPY.programs.filterDraft
-                            : COPY.programs.filterArchived}
-                      </span>
-                    </span>
-                  </button>
+                  {(() => {
+                    const programAttention = attentionByProgram.get(
+                      program.program_id
+                    );
+                    const pendingCount =
+                      programAttention?.pending_enrollment_count ?? 0;
+                    const inactiveEventCount =
+                      programAttention?.inactive_event_count ?? 0;
+                    const cancelledEventCount =
+                      programAttention?.cancelled_event_count ?? 0;
+                    return (
+                      <div className={styles.directoryCardGroup}>
+                        <button
+                          className={styles.directoryCard}
+                          type="button"
+                          onClick={() => onOpenProgram(program.program_id)}
+                        >
+                          <span className={styles.directoryCardTitle}>
+                            {program.name}
+                          </span>
+                          {program.description && (
+                            <span className={styles.directoryCardDescription}>
+                              {program.description}
+                            </span>
+                          )}
+                          <span className={styles.directoryCardMeta}>
+                            <span className={styles.directoryMetaItem}>
+                              {department.name} · {department.code}
+                            </span>
+                            {program.category && (
+                              <span className={styles.directoryMetaItem}>
+                                {program.category}
+                              </span>
+                            )}
+                            <span className={styles.directoryStatus}>
+                              {scope === "department"
+                                ? COPY.programs.managementScopeDepartment
+                                : COPY.programs.managementScopeProgram}
+                            </span>
+                            <span
+                              className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
+                            >
+                              {program.lifecycle === "Active"
+                                ? COPY.programs.filterActive
+                                : program.lifecycle === "Draft"
+                                  ? COPY.programs.filterDraft
+                                  : COPY.programs.filterArchived}
+                            </span>
+                          </span>
+                        </button>
+                        {(pendingCount > 0 ||
+                          inactiveEventCount > 0 ||
+                          cancelledEventCount > 0) && (
+                          <div
+                            className={styles.directoryAttentionLinks}
+                            aria-label={COPY.programs.attentionListLabel}
+                          >
+                            {pendingCount > 0 && (
+                              <a
+                                className={styles.directoryAttentionLink}
+                                href={buildProgramsHref({
+                                  mode: "management",
+                                  programId: program.program_id,
+                                  task: "participants",
+                                })}
+                                aria-label={COPY.programs.attentionEnrollmentBadge.replace(
+                                  "{count}",
+                                  String(pendingCount)
+                                )}
+                              >
+                                <span
+                                  className={`${styles.badge} ${styles.badgeActive}`}
+                                  aria-hidden="true"
+                                >
+                                  {pendingCount}
+                                </span>
+                                <span>
+                                  {COPY.programs.attentionEnrollmentLabel}
+                                </span>
+                              </a>
+                            )}
+                            {inactiveEventCount > 0 && (
+                              <a
+                                className={styles.directoryAttentionLink}
+                                href={buildProgramsHref({
+                                  mode: "management",
+                                  programId: program.program_id,
+                                  task: "events",
+                                })}
+                                aria-label={COPY.programs.attentionEventBadge.replace(
+                                  "{count}",
+                                  String(inactiveEventCount)
+                                )}
+                              >
+                                <span
+                                  className={`${styles.badge} ${styles.badgeActive}`}
+                                  aria-hidden="true"
+                                >
+                                  {inactiveEventCount}
+                                </span>
+                                <span>{COPY.programs.attentionEventLabel}</span>
+                              </a>
+                            )}
+                            {cancelledEventCount > 0 && (
+                              <a
+                                className={styles.directoryAttentionLink}
+                                href={buildProgramsHref({
+                                  mode: "management",
+                                  programId: program.program_id,
+                                  task: "events",
+                                })}
+                                aria-label={COPY.programs.attentionCancelledBadge.replace(
+                                  "{count}",
+                                  String(cancelledEventCount)
+                                )}
+                              >
+                                <span className={styles.badge} aria-hidden="true">
+                                  {cancelledEventCount}
+                                </span>
+                                <span>
+                                  {COPY.programs.attentionEventInformationalLabel}
+                                </span>
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </li>
               ))}
             </ul>
