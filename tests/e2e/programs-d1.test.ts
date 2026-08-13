@@ -128,6 +128,35 @@ const COPY = {
   keepEvent: "保留聚會",
   cancelReason: "取消原因",
   eventCancelledNotice: "聚會已取消。",
+  // AUTH-01 (#255): Program Leader and Department Manager administration.
+  programLeaders: "事工負責人",
+  leaderUserId: "選擇會友",
+  assignLeader: "新增負責人",
+  revokeLeader: "移除負責人",
+  confirmRevokeLeader: "確定要移除此事工負責人嗎？",
+  confirmRevoke: "確定移除",
+  leaderAssignedNotice: "已新增事工負責人。",
+  leaderRevokedNotice: "已移除事工負責人。",
+  selfDelegationForbidden: "您沒有權限執行此操作。",
+  departmentSettings: "部門設定",
+  departmentManagers: "部門管理者",
+  departmentManagerUserId: "選擇部門管理者",
+  assignDepartmentManager: "新增部門管理者",
+  revokeDepartmentManager: "移除部門管理者",
+  confirmRevokeDepartmentManager: "確定要移除此部門管理者嗎？",
+  departmentManagerAssignedNotice: "已新增部門管理者。",
+  departmentManagerRevokedNotice: "已移除部門管理者。",
+  noDepartmentManagers: "目前沒有部門管理者。",
+  settingsScheduleUnavailable: "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+  settingsAttendanceUnavailable: "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
+  discoverabilityListed: "公開",
+  discoverabilityUnlisted: "不公開",
+  settingsSaveEnrollment: "儲存報名與可見性",
+  settingsConfirmEnrollment: "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
+  settingsConfirmChange: "確認變更",
+  settingsSaved: "課程設定已儲存。",
+  eventAvailabilityConfirmBody:
+    "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -176,6 +205,29 @@ function required(name: string, value: string | undefined): string {
     throw new Error(`${name} is required`);
   }
   return value;
+}
+
+/**
+ * Clear cookies AND the `efcc_auth_active` localStorage presence flag
+ * before switching personas. `page.context().clearCookies()` alone
+ * leaves the flag set; the shell's restore effect (app-shell.tsx) then
+ * sees a stale "was logged in" hint on the next navigation and attempts
+ * a doomed authMe -> authRefresh round-trip against the now-cookie-less
+ * session before loginAs()'s fresh login ever runs. Individually
+ * harmless, but this file switches personas often enough (several
+ * pre-existing tests plus AUTH-01's dept-manager scope check) that the
+ * wasted round-trips add measurable load to a single long-lived local
+ * wrangler dev process across a full sequential run.
+ */
+async function clearSession(page: Page): Promise<void> {
+  await page.context().clearCookies();
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("efcc_auth_active");
+    } catch {
+      // Storage unavailable — nothing to clear.
+    }
+  });
 }
 
 async function loginAs(
@@ -600,7 +652,7 @@ test.describe("PUI-03 participant Program detail", () => {
     );
     expect(hiddenProgramId).toBeTruthy();
 
-    await page.context().clearCookies();
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -862,7 +914,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     ).toBe(200);
 
     try {
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -882,7 +934,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
       ).toBeVisible();
 
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
@@ -904,7 +956,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         })
       ).toBeVisible();
     } finally {
-      await page.context().clearCookies();
+      await clearSession(page);
       await loginAs(
         page,
         required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -915,7 +967,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       ).toBe(200);
     }
 
-    await page.context().clearCookies();
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -996,6 +1048,420 @@ test.describe("CFG-01 Program Settings", () => {
     await expect(
       page.getByRole("button", { name: COPY.addRule })
     ).toHaveCount(0);
+  });
+
+  test("renders unavailable copy for Schedule and Attendance when their modules are disabled", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [gateProgramId] = await catalogProgramIds(
+      page,
+      "E2E_模組停用課程"
+    );
+    const id = required("module-gate program id", gateProgramId);
+
+    await page.goto(
+      `/programs?mode=management&program=${id}&task=settings`
+    );
+    await expect(
+      page.getByText(COPY.settingsScheduleUnavailable)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.addRule })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(COPY.settingsAttendanceUnavailable)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
+    ).toHaveCount(0);
+  });
+
+  test("consequential discoverability change requires confirmation before it saves", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("program id", programId);
+
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${id}&task=settings`
+      );
+      const discoverabilitySelect = page.getByRole("combobox", {
+        name: COPY.discoverabilityListed,
+      });
+      await expect(discoverabilitySelect).toHaveValue("Listed");
+
+      await discoverabilitySelect.selectOption("Unlisted");
+      await page
+        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .click();
+      // Submitting a changed value shows the inline confirm instead of
+      // saving immediately -- the save button itself is replaced by the
+      // confirm row (saveEnrollment sets confirmingEnrollment, it does
+      // not mutate yet).
+      const confirmAlert = page.getByRole("alert", {
+        name: COPY.settingsConfirmEnrollment,
+      });
+      await expect(confirmAlert).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.settingsSaveEnrollment })
+      ).toHaveCount(0);
+
+      await confirmAlert
+        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .click();
+      await expect(
+        page.getByText(COPY.settingsSaved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(discoverabilitySelect).toHaveValue("Unlisted");
+
+      // Revert, same confirm flow.
+      await discoverabilitySelect.selectOption("Listed");
+      await page
+        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .click();
+      await expect(
+        page.getByRole("alert", { name: COPY.settingsConfirmEnrollment })
+      ).toBeVisible();
+      await page
+        .getByRole("alert", { name: COPY.settingsConfirmEnrollment })
+        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .click();
+      await expect(
+        page.getByText(COPY.settingsSaved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(discoverabilitySelect).toHaveValue("Listed");
+    } finally {
+      const status = await page.evaluate(async (programId) => {
+        const res = await fetch(`/api/v1/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ discoverability: "Listed" }),
+        });
+        return res.status;
+      }, id);
+      expect(
+        status,
+        "safety-net restore of discoverability must succeed"
+      ).toBe(200);
+    }
+  });
+});
+
+test.describe("AUTH-01 Program Leader administration", () => {
+  test("Staff denies self-assignment, revokes the seeded leader, and re-grants it", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+    const id = required("program id", programId);
+
+    // Establish a known baseline instead of assuming one: the demo
+    // fixture does not itself grant leadership (no seed script creates
+    // program_leaders rows), and another pre-existing test in this file
+    // ("leader exact scope and manager inheritance stay distinct",
+    // MUI-01) deliberately revokes E2E_member's leadership as part of
+    // its own designed end-state. This test must not assume it runs
+    // before or after that one -- ensure the precondition itself.
+    await page.evaluate(
+      async ({ programId, memberUserId }) => {
+        const listRes = await fetch(`/api/v1/programs/${programId}/leaders`);
+        const listBody = (await listRes.json()) as {
+          data?: { leaders?: { user_id: string }[] };
+        };
+        const hasMember = (listBody.data?.leaders ?? []).some(
+          (leader) => leader.user_id === memberUserId
+        );
+        if (!hasMember) {
+          await fetch(`/api/v1/programs/${programId}/leaders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: memberUserId }),
+          });
+        }
+      },
+      { programId: id, memberUserId: DEV_MEMBER.userId }
+    );
+
+    await page.goto(
+      `/programs?mode=management&program=${id}&task=settings`
+    );
+    const leadersPanel = page.getByRole("region", {
+      name: COPY.programLeaders,
+    });
+    await expect(leadersPanel).toBeVisible();
+    // Wait for the async leader-list load to settle before interacting,
+    // so a throttled (phone) profile doesn't race the initial fetch.
+    await expect(
+      leadersPanel.getByText(/E2E Member/).first()
+    ).toBeVisible();
+
+    const combo = leadersPanel.getByRole("combobox", {
+      name: COPY.leaderUserId,
+    });
+
+    try {
+      // Self-assignment denial: pick self, submit, server-side 403.
+      // The baseline above guarantees E2E_member as leader, so this must
+      // not touch that grant.
+      await combo.click();
+      await combo.fill("E2E_staff");
+      await leadersPanel
+        .getByRole("option", { name: /E2E Staff/ })
+        .click();
+      await leadersPanel
+        .getByRole("button", { name: COPY.assignLeader })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.selfDelegationForbidden, { exact: true })
+      ).toBeVisible();
+
+      // Revoke: a real state transition, not a duplicate-grant no-op.
+      // The self-denial error above does not reload the list (runAction
+      // only reloads on success), so E2E Member is still here.
+      await expect(
+        leadersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+      await leadersPanel
+        .getByRole("button", { name: COPY.revokeLeader })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.confirmRevokeLeader)
+      ).toBeVisible();
+      await leadersPanel
+        .getByRole("button", { name: COPY.confirmRevoke })
+        .click();
+      await expect(
+        leadersPanel.getByText(COPY.leaderRevokedNotice, { exact: true }).first()
+      ).toBeVisible();
+
+      // Re-grant: exercise the real grant path and its notice.
+      await combo.click();
+      await combo.fill("E2E_member");
+      await leadersPanel
+        .getByRole("option", { name: /E2E Member/ })
+        .click();
+      await leadersPanel
+        .getByRole("button", { name: COPY.assignLeader })
+        .click();
+      await expect(
+        leadersPanel
+          .getByText(COPY.leaderAssignedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        leadersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+    } finally {
+      // Failure-safe restoration: guarantee E2E_member ends the test as
+      // leader regardless of where an assertion above failed.
+      await page.evaluate(
+        async ({ programId, memberUserId }) => {
+          const listRes = await fetch(
+            `/api/v1/programs/${programId}/leaders`
+          );
+          const listBody = (await listRes.json()) as {
+            data?: { leaders?: { user_id: string }[] };
+          };
+          const hasMember = (listBody.data?.leaders ?? []).some(
+            (leader) => leader.user_id === memberUserId
+          );
+          if (!hasMember) {
+            await fetch(`/api/v1/programs/${programId}/leaders`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: memberUserId }),
+            });
+          }
+        },
+        { programId: id, memberUserId: DEV_MEMBER.userId }
+      );
+    }
+  });
+});
+
+test.describe("AUTH-01 Department Manager administration", () => {
+  test("Admin grants a Department Manager, scope inherits, then revokes", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const departmentId = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/programs/departments");
+      const body = (await res.json()) as {
+        data?: {
+          departments?: { department_id: string; code: string }[];
+        };
+      };
+      return (
+        body.data?.departments?.find((d) => d.code === "E2E_DEMO_MINISTRY")
+          ?.department_id ?? null
+      );
+    });
+    const deptId = required("E2E_DEMO_MINISTRY department id", departmentId ?? undefined);
+
+    try {
+      await page.goto("/programs?mode=management");
+      await page
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .click();
+
+      // The panel's notice/error live in the OUTER "部門設定: ..." section,
+      // as a sibling of the "部門管理者" sub-region below -- not nested
+      // inside it (unlike the single-purpose LeadersPanel).
+      const deptPanel = page.getByRole("region", {
+        name: /部門設定.*E2E_DEMO_示範事工/,
+      });
+      const managersPanel = deptPanel.getByRole("region", {
+        name: COPY.departmentManagers,
+      });
+      await expect(managersPanel).toBeVisible();
+      // Confirmed empty at fixture baseline (no prior grant for this dept).
+      await expect(
+        managersPanel.getByText(COPY.noDepartmentManagers)
+      ).toBeVisible();
+
+      const combo = managersPanel.getByRole("combobox", {
+        name: COPY.departmentManagerUserId,
+      });
+      await combo.click();
+      await combo.fill("E2E_member");
+      await managersPanel
+        .getByRole("option", { name: /E2E Member/ })
+        .click();
+      await managersPanel
+        .getByRole("button", { name: COPY.assignDepartmentManager })
+        .click();
+      await expect(
+        deptPanel
+          .getByText(COPY.departmentManagerAssignedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        managersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+
+      // Scope inheritance: E2E_member should now see the whole department
+      // (all 4 programs + the department settings card), not just the one
+      // program they lead.
+      await clearSession(page);
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      for (const programName of [
+        "E2E_DEMO_成人查經",
+        "E2E_DEMO_青年團契",
+        "E2E_DEMO_社區關懷",
+        "E2E_DEMO_管理安排",
+      ]) {
+        await expect(
+          page.getByRole("button", { name: new RegExp(programName) })
+        ).toBeVisible();
+      }
+      await expect(
+        page.getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+      ).toBeVisible();
+
+      // Revoke, back as Admin.
+      await clearSession(page);
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      await page
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .click();
+      const deptPanel2 = page.getByRole("region", {
+        name: /部門設定.*E2E_DEMO_示範事工/,
+      });
+      const managersPanel2 = deptPanel2.getByRole("region", {
+        name: COPY.departmentManagers,
+      });
+      await expect(
+        managersPanel2.getByText(/E2E Member/).first()
+      ).toBeVisible();
+      await managersPanel2
+        .getByRole("button", { name: COPY.revokeDepartmentManager })
+        .click();
+      await expect(
+        managersPanel2.getByText(COPY.confirmRevokeDepartmentManager)
+      ).toBeVisible();
+      await managersPanel2
+        .getByRole("button", { name: COPY.confirmRevoke })
+        .click();
+      await expect(
+        deptPanel2
+          .getByText(COPY.departmentManagerRevokedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        managersPanel2.getByText(COPY.noDepartmentManagers)
+      ).toBeVisible();
+    } finally {
+      // Failure-safe restoration: re-authenticate as Admin regardless of
+      // which persona was active when the try block failed (e.g. a
+      // failure mid-scope-check would otherwise leave the page on the
+      // E2E_member session, which lacks department.manager.assign and
+      // would 403 on the revoke below).
+      await clearSession(page);
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      const cleanup = await page.evaluate(
+        async ({ deptId, memberUserId }) => {
+          const listRes = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers`
+          );
+          const listBody = (await listRes.json()) as {
+            data?: { managers?: { user_id: string }[] };
+          };
+          const hasMember = (listBody.data?.managers ?? []).some(
+            (m) => m.user_id === memberUserId
+          );
+          if (!hasMember) {
+            return { revoked: false, status: null as number | null };
+          }
+          const revokeRes = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers/${memberUserId}/revoke`,
+            { method: "POST" }
+          );
+          return { revoked: true, status: revokeRes.status };
+        },
+        { deptId, memberUserId: DEV_MEMBER.userId }
+      );
+      if (cleanup.revoked) {
+        expect(
+          cleanup.status,
+          "safety-net revoke must succeed to leave the fixture clean"
+        ).toBe(200);
+      }
+    }
   });
 });
 
@@ -1111,7 +1577,21 @@ test.describe("MUI-02 scoped Program management", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
 
-    await page.context().clearCookies();
+    // This test's premise is that the member has NO management relationship
+    // to the program. That is not guaranteed by suite order alone -- an
+    // earlier AUTH-01 test intentionally leaves E2E_member re-granted as
+    // this program's leader (restoring what it found), and a Program
+    // Leader legitimately has PROGRAM_MANAGE over their own program. Revoke
+    // any such grant first so the denial below tests the real "no
+    // relationship" case regardless of what ran before it.
+    const staleLeaderRevoke = await postProgramLeader(
+      page,
+      id,
+      DEV_MEMBER.userId,
+      "revoke"
+    );
+    expect([200, 404]).toContain(staleLeaderRevoke);
+    await clearSession(page);
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
@@ -1512,5 +1992,110 @@ test.describe("EVT-01 event operational detail and availability", () => {
         {}
       )
     ).toBe(200);
+  });
+
+  test("a currently open check-in window with zero check-ins still requires confirmation to deactivate", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    // This event's window must be open right now (unlike every other
+    // fixture in this file, which is dated +120 days so the window is
+    // never open at test time) -- construct it relative to Date.now().
+    const created = await page.evaluate(async (programId) => {
+      const now = Date.now();
+      const res = await fetch(
+        `/api/v1/programs/${encodeURIComponent(programId)}/events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            starts_at: new Date(now - 30 * 60_000).toISOString(),
+            ends_at: new Date(now + 30 * 60_000).toISOString(),
+            check_in_window_opens_at: new Date(
+              now - 15 * 60_000
+            ).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 45 * 60_000
+            ).toISOString(),
+          }),
+        }
+      );
+      const body = (await res.json()) as {
+        data?: { event?: { event_id?: string } };
+      };
+      return { status: res.status, eventId: body.data?.event?.event_id ?? null };
+    }, programId);
+    expect(created.status, "event creation must succeed").toBe(201);
+    const id = required("open-window event id", created.eventId ?? undefined);
+
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${programId}&task=events&event=${id}`
+      );
+      await expect(
+        page.getByRole("region", { name: COPY.eventDetailTitle })
+      ).toBeVisible();
+
+      // Single click: the client optimistically attempts a no-confirm
+      // deactivate (checked_in === 0 in the loaded summary), the server
+      // rejects it with 409 CONFIRMATION_REQUIRED because the window is
+      // open, and the client catches that and shows the same inline
+      // confirm UI as the checked-in>0 case -- with an exact count of 1
+      // (the open window itself is the one affected operation; see
+      // department-workspace.ts's impactCount = Math.max(checked_in,
+      // windowOpen ? 1 : 0)).
+      await page
+        .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
+        .click();
+      const expectedBody = COPY.eventAvailabilityConfirmBody.replace(
+        "{count}",
+        "1"
+      );
+      const confirmAlert = page.getByRole("alert").filter({
+        hasText: expectedBody,
+      });
+      await expect(confirmAlert).toBeVisible();
+      await expect(
+        confirmAlert.getByRole("button", {
+          name: COPY.eventAvailabilityConfirmProceed,
+        })
+      ).toBeVisible();
+
+      await confirmAlert
+        .getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
+        .click();
+      await expect(
+        page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.eventAvailabilityUndo })
+      ).toBeVisible();
+    } finally {
+      const restoreStatus = await page.evaluate(
+        async ({ programId, eventId }) => {
+          const res = await fetch(
+            `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ availability: "Active" }),
+            }
+          );
+          return res.status;
+        },
+        { programId, eventId: id }
+      );
+      expect(
+        restoreStatus,
+        "restoring the event to Active must succeed"
+      ).toBe(200);
+    }
   });
 });

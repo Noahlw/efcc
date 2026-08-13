@@ -68,6 +68,40 @@ const REQUIRED_MODULES = [
   "attendance",
 ] as const;
 
+// CFG-01 (#254): a dedicated disposable department with events/attendance
+// left disabled by design, so tests can assert the module-gated
+// "unavailable" settings copy without touching the shared demo
+// department's module state (which E2E_DEMO_MINISTRY's other tests and
+// human QA rely on staying enabled). Deliberately NOT under the
+// "E2E_DEMO_" prefix: MUI-01's directory test hardcodes
+// `demoDirectoryRows` count === 4 for names matching that exact prefix,
+// so a fixture program sharing it would silently break an unrelated,
+// pre-existing assertion. "E2E_" alone is still disposable (the reset
+// script's GLOB covers `E2E_*`, not just `E2E_DEMO_*`).
+const MODULE_GATE_DEPARTMENT = {
+  code: "E2E_MODULE_GATE",
+  name: "E2E_模組停用示範",
+  description:
+    "本機示範資料；不可用於生產環境。聚會與出席模組刻意停用，供 CFG-01 測試使用。",
+} as const;
+
+const MODULE_GATE_PROGRAM = {
+  name: "E2E_模組停用課程",
+  description: "聚會與出席模組已停用的示範課程。",
+  category: "測試",
+  behavior_type: "Recurring" as const,
+  lifecycle: "Active" as const,
+  discoverability: "Unlisted" as const,
+  enrollment_mode: "MemberRequest" as const,
+  // Deliberately last: management-directory.tsx sorts by display_order
+  // then name, and several pre-existing tests (e.g. MUI-01's
+  // "keyboard-operable" test) pick the FIRST directory row assuming it
+  // is always E2E_DEMO_成人查經. A tied/low display_order here would
+  // silently take that slot and break those tests' unrelated
+  // assumption -- this fixture must never sort first.
+  display_order: 999,
+} as const;
+
 interface JsonRecord {
   data?: unknown;
   [key: string]: unknown;
@@ -334,11 +368,80 @@ async function seedDemo(): Promise<void> {
     throw new Error("The E2E_DEMO recurring program generated no events");
   }
 
+  // CFG-01 module-gate fixture: a separate department with only
+  // program_catalog enabled (required for program creation itself),
+  // events/attendance left disabled. Never toggled at runtime by tests.
+  let gateDepartment: DepartmentRow;
+  const gateExisting = departments.departments.find(
+    (candidate) => candidate.code === MODULE_GATE_DEPARTMENT.code
+  );
+  if (gateExisting) {
+    gateDepartment = gateExisting;
+  } else {
+    const { department: createdGateDepartment } = payload<{
+      department: DepartmentRow;
+    }>(
+      await request("POST", "/api/v1/programs/departments", {
+        ...MODULE_GATE_DEPARTMENT,
+        lifecycle: "Active",
+        display_order: 91,
+      })
+    );
+    gateDepartment = createdGateDepartment;
+  }
+  const gateModules = payload<{ modules: ModuleRow[] }>(
+    await request(
+      "GET",
+      `/api/v1/programs/departments/${encodeURIComponent(gateDepartment.department_id)}`
+    )
+  );
+  const gateEnabledModules = new Map(
+    gateModules.modules.map((module) => [module.module_key, module.enabled])
+  );
+  // Deterministic target state, enforced on every run: program_catalog
+  // must be enabled (required for program creation); events and
+  // attendance must be disabled (that's the whole point of this
+  // fixture). A prior interrupted test or manual toggle must not leave
+  // this department in a state that makes CFG-01's module-gate test
+  // flaky.
+  const gateModuleTargetState: Record<string, boolean> = {
+    program_catalog: true,
+    events: false,
+    attendance: false,
+  };
+  for (const [moduleKey, shouldBeEnabled] of Object.entries(
+    gateModuleTargetState
+  )) {
+    const currentlyEnabled =
+      gateEnabledModules.get(moduleKey) === true ||
+      gateEnabledModules.get(moduleKey) === 1;
+    if (currentlyEnabled !== shouldBeEnabled) {
+      await request(
+        "POST",
+        `/api/v1/programs/departments/${encodeURIComponent(gateDepartment.department_id)}/modules/${moduleKey}/${shouldBeEnabled ? "enable" : "disable"}`
+      );
+    }
+  }
+  const gatePrograms = payload<{ programs: ProgramRow[] }>(
+    await request(
+      "GET",
+      `/api/v1/programs/departments/${encodeURIComponent(gateDepartment.department_id)}/programs`
+    )
+  );
+  if (!gatePrograms.programs.some((p) => p.name === MODULE_GATE_PROGRAM.name)) {
+    await request(
+      "POST",
+      `/api/v1/programs/departments/${encodeURIComponent(gateDepartment.department_id)}/programs`,
+      MODULE_GATE_PROGRAM
+    );
+  }
+
   process.stdout.write(
     `${[
       `Seeded local ${DEPARTMENT.code}.`,
       `Programs: ${PROGRAMS.map(({ name }) => name).join(", ")}.`,
       `Generated events for ${PROGRAMS[0].name}: ${events.events.length}.`,
+      `Seeded local ${MODULE_GATE_DEPARTMENT.code} (events/attendance disabled).`,
     ].join("\n")}\n`
   );
 }
