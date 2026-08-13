@@ -138,6 +138,15 @@ const COPY = {
   leaderAssignedNotice: "已新增事工負責人。",
   leaderRevokedNotice: "已移除事工負責人。",
   selfDelegationForbidden: "您沒有權限執行此操作。",
+  departmentSettings: "部門設定",
+  departmentManagers: "部門管理者",
+  departmentManagerUserId: "選擇部門管理者",
+  assignDepartmentManager: "新增部門管理者",
+  revokeDepartmentManager: "移除部門管理者",
+  confirmRevokeDepartmentManager: "確定要移除此部門管理者嗎？",
+  departmentManagerAssignedNotice: "已新增部門管理者。",
+  departmentManagerRevokedNotice: "已移除部門管理者。",
+  noDepartmentManagers: "目前沒有部門管理者。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -1116,6 +1125,176 @@ test.describe("AUTH-01 Program Leader administration", () => {
         },
         { programId: id, memberUserId: DEV_MEMBER.userId }
       );
+    }
+  });
+});
+
+test.describe("AUTH-01 Department Manager administration", () => {
+  test("Admin grants a Department Manager, scope inherits, then revokes", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const departmentId = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/programs/departments");
+      const body = (await res.json()) as {
+        data?: {
+          departments?: { department_id: string; code: string }[];
+        };
+      };
+      return (
+        body.data?.departments?.find((d) => d.code === "E2E_DEMO_MINISTRY")
+          ?.department_id ?? null
+      );
+    });
+    const deptId = required("E2E_DEMO_MINISTRY department id", departmentId ?? undefined);
+
+    try {
+      await page.goto("/programs?mode=management");
+      await page
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .click();
+
+      // The panel's notice/error live in the OUTER "部門設定: ..." section,
+      // as a sibling of the "部門管理者" sub-region below -- not nested
+      // inside it (unlike the single-purpose LeadersPanel).
+      const deptPanel = page.getByRole("region", {
+        name: /部門設定.*E2E_DEMO_示範事工/,
+      });
+      const managersPanel = deptPanel.getByRole("region", {
+        name: COPY.departmentManagers,
+      });
+      await expect(managersPanel).toBeVisible();
+      // Confirmed empty at fixture baseline (no prior grant for this dept).
+      await expect(
+        managersPanel.getByText(COPY.noDepartmentManagers)
+      ).toBeVisible();
+
+      const combo = managersPanel.getByRole("combobox", {
+        name: COPY.departmentManagerUserId,
+      });
+      await combo.click();
+      await combo.fill("E2E_member");
+      await managersPanel
+        .getByRole("option", { name: /E2E Member/ })
+        .click();
+      await managersPanel
+        .getByRole("button", { name: COPY.assignDepartmentManager })
+        .click();
+      await expect(
+        deptPanel
+          .getByText(COPY.departmentManagerAssignedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        managersPanel.getByText(/E2E Member/).first()
+      ).toBeVisible();
+
+      // Scope inheritance: E2E_member should now see the whole department
+      // (all 4 programs + the department settings card), not just the one
+      // program they lead.
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      for (const programName of [
+        "E2E_DEMO_成人查經",
+        "E2E_DEMO_青年團契",
+        "E2E_DEMO_社區關懷",
+        "E2E_DEMO_管理安排",
+      ]) {
+        await expect(
+          page.getByRole("button", { name: new RegExp(programName) })
+        ).toBeVisible();
+      }
+      await expect(
+        page.getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+      ).toBeVisible();
+
+      // Revoke, back as Admin.
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      await page.goto("/programs?mode=management");
+      await page
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .click();
+      const deptPanel2 = page.getByRole("region", {
+        name: /部門設定.*E2E_DEMO_示範事工/,
+      });
+      const managersPanel2 = deptPanel2.getByRole("region", {
+        name: COPY.departmentManagers,
+      });
+      await expect(
+        managersPanel2.getByText(/E2E Member/).first()
+      ).toBeVisible();
+      await managersPanel2
+        .getByRole("button", { name: COPY.revokeDepartmentManager })
+        .click();
+      await expect(
+        managersPanel2.getByText(COPY.confirmRevokeDepartmentManager)
+      ).toBeVisible();
+      await managersPanel2
+        .getByRole("button", { name: COPY.confirmRevoke })
+        .click();
+      await expect(
+        deptPanel2
+          .getByText(COPY.departmentManagerRevokedNotice, { exact: true })
+          .first()
+      ).toBeVisible();
+      await expect(
+        managersPanel2.getByText(COPY.noDepartmentManagers)
+      ).toBeVisible();
+    } finally {
+      // Failure-safe restoration: re-authenticate as Admin regardless of
+      // which persona was active when the try block failed (e.g. a
+      // failure mid-scope-check would otherwise leave the page on the
+      // E2E_member session, which lacks department.manager.assign and
+      // would 403 on the revoke below).
+      await page.context().clearCookies();
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      const cleanup = await page.evaluate(
+        async ({ deptId, memberUserId }) => {
+          const listRes = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers`
+          );
+          const listBody = (await listRes.json()) as {
+            data?: { managers?: { user_id: string }[] };
+          };
+          const hasMember = (listBody.data?.managers ?? []).some(
+            (m) => m.user_id === memberUserId
+          );
+          if (!hasMember) {
+            return { revoked: false, status: null as number | null };
+          }
+          const revokeRes = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers/${memberUserId}/revoke`,
+            { method: "POST" }
+          );
+          return { revoked: true, status: revokeRes.status };
+        },
+        { deptId, memberUserId: DEV_MEMBER.userId }
+      );
+      if (cleanup.revoked) {
+        expect(
+          cleanup.status,
+          "safety-net revoke must succeed to leave the fixture clean"
+        ).toBe(200);
+      }
     }
   });
 });
