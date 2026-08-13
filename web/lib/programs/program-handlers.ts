@@ -36,6 +36,7 @@ import {
   DuplicateScheduleExceptionError,
   EnrollmentAccountInactiveError,
   EnrollmentDecisionConflictError,
+  EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
@@ -43,6 +44,7 @@ import {
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
@@ -50,6 +52,7 @@ import {
   SelfDepartmentManagerError,
   ProgramLeaderConflictError,
   StaleEnrollmentRequestError,
+  StalePreviewPlanError,
 } from "./program-errors";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
@@ -239,12 +242,25 @@ function mapWorkspaceError(
     error instanceof InvalidModuleKeyError ||
     error instanceof EnrollmentNotAllowedError ||
     error instanceof ScheduleRuleNotApplicableError ||
-    error instanceof NoScheduleRulesError
+    error instanceof NoScheduleRulesError ||
+    error instanceof EmptyPreviewPlanError
   ) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof PreviewPlanNotFoundError) {
+    return problem(404, "PLAN_NOT_FOUND", "Not found", error.message, requestId);
+  }
+  if (error instanceof StalePreviewPlanError) {
+    return problem(
+      409,
+      "STALE_PLAN",
+      "Conflict",
       error.message,
       requestId
     );
@@ -1312,6 +1328,7 @@ function parseRuleBody(body: {
   month_day?: unknown;
   start_time?: unknown;
   end_time?: unknown;
+  location?: unknown;
 }): RuleBodyResult {
   if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
@@ -1330,6 +1347,13 @@ function parseRuleBody(body: {
   if (body.recurrence === "MONTHLY" && !isMonthDay) {
     return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
   }
+  if (
+    body.location !== undefined &&
+    body.location !== null &&
+    typeof body.location !== "string"
+  ) {
+    return { ok: false, detail: "location must be text or null." };
+  }
   return {
     ok: true,
     value: {
@@ -1338,6 +1362,14 @@ function parseRuleBody(body: {
       month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
       start_time: body.start_time,
       end_time: body.end_time,
+      ...(body.location === undefined
+        ? {}
+        : {
+            location:
+              typeof body.location === "string"
+                ? body.location.trim() || null
+                : null,
+          }),
     },
   };
 }
@@ -1383,6 +1415,7 @@ export async function handleCreateScheduleRule(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1426,6 +1459,7 @@ function parseRulePatch(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   },
   existing: ScheduleRuleRow
 ): RulePatchResult {
@@ -1460,6 +1494,15 @@ function parseRulePatch(
   if (endTime !== null) {
     update.end_time = endTime;
   }
+  if (body.location !== undefined) {
+    if (body.location !== null && typeof body.location !== "string") {
+      return { ok: false, detail: "location must be text or null." };
+    }
+    update.location =
+      typeof body.location === "string"
+        ? body.location.trim() || null
+        : null;
+  }
   const resolvedStart = update.start_time ?? existing.start_time;
   const resolvedEnd = update.end_time ?? existing.end_time;
   if (resolvedEnd <= resolvedStart) {
@@ -1491,6 +1534,7 @@ export async function handleUpdateScheduleRule(
     month_day?: unknown;
     start_time?: unknown;
     end_time?: unknown;
+    location?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1661,8 +1705,8 @@ export async function handleDeleteScheduleException(
   }
 }
 
-/** POST /api/v1/programs/:programId/events/generate */
-export async function handleGenerateEvents(
+/** POST /api/v1/programs/:programId/events/preview */
+export async function handlePreviewEvents(
   request: Request,
   env: ProgramEnv,
   programId: string
@@ -1673,7 +1717,26 @@ export async function handleGenerateEvents(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ horizon_days?: unknown }>(request);
+  // This is the only handler whose body is fully optional, so `parseJson`
+  // returning null for BOTH an empty body and malformed JSON would silently
+  // default a garbage body to horizonDays = 90 and persist a real preview.
+  // Read the raw text: empty/whitespace-only means "no body, use defaults";
+  // any non-empty body must parse as a non-null, non-array JSON object or
+  // the request is rejected before any write (EVT-02.4 acceptance).
+  const rawBody = await request.text();
+  let body: { horizon_days?: unknown } | null = null;
+  if (rawBody.trim().length > 0) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return validation(requestId, "請求內容必須是有效的 JSON 物件。");
+    }
+    body = parsed as { horizon_days?: unknown };
+  }
   let horizonDays = 90;
   if (body !== null) {
     const raw = body.horizon_days;
@@ -1697,10 +1760,56 @@ export async function handleGenerateEvents(
     return notFound(requestId, "Unknown program.");
   }
   try {
-    const result = await workspace.generateEvents(
+    const result = await workspace.previewEvents(
       ctxFrom(auth.account),
       programId,
       horizonDays,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { plan: result.plan, occurrences: result.occurrences },
+      requestId
+    );
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/events/generate */
+export async function handleGenerateEvents(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ plan_id?: unknown }>(request);
+  if (
+    body === null ||
+    typeof body.plan_id !== "string" ||
+    body.plan_id.trim().length === 0
+  ) {
+    return validation(requestId, "plan_id is required.");
+  }
+  const { workspace } = await getModule(env);
+  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  if (!program) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const result = await workspace.generateEvents(
+      ctxFrom(auth.account),
+      programId,
+      body.plan_id,
       correlationId
     );
     return jsonResponse(200, { generated: result }, requestId);

@@ -151,6 +151,14 @@ async function main(): Promise<void> {
         "-- Includes registration requests (no FK, deleted last).",
         "-- Run before each suite run so consecutive runs stay green:",
         "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
+        // EVT-02 (#252): preview plans and generation runs reference
+        // programs/rules/events with ON DELETE RESTRICT, so they must be
+        // deleted before their parents (children first, mirroring the
+        // reset's FK ordering contract).
+        `DELETE FROM program_generation_run_items WHERE run_id IN (SELECT run_id FROM program_generation_runs WHERE program_id IN ${e2eProgramIds});`,
+        `DELETE FROM program_generation_runs WHERE program_id IN ${e2eProgramIds};`,
+        `DELETE FROM program_preview_occurrences WHERE plan_id IN (SELECT plan_id FROM program_preview_plans WHERE program_id IN ${e2eProgramIds});`,
+        `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds});`,

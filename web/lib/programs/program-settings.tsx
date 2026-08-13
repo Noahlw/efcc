@@ -47,6 +47,7 @@ interface RuleValues {
   monthDay: string;
   startTime: string;
   endTime: string;
+  location: string;
 }
 
 interface ExceptionValues {
@@ -115,6 +116,7 @@ function ruleValuesFrom(rule: ScheduleRule): RuleValues {
     monthDay: String(rule.month_day ?? 1),
     startTime: rule.start_time,
     endTime: rule.end_time,
+    location: rule.location ?? "",
   };
 }
 
@@ -136,6 +138,7 @@ function ruleInputFrom(values: RuleValues): ScheduleRuleInput {
       values.recurrence === "MONTHLY" ? Number(values.monthDay) : undefined,
     start_time: values.startTime,
     end_time: values.endTime,
+    location: values.location.trim() || null,
   };
 }
 
@@ -184,6 +187,7 @@ export const ProgramSettings = ({
     monthDay: "1",
     startTime: "",
     endTime: "",
+    location: "",
   });
   const [exceptionRuleId, setExceptionRuleId] = useState<string | null>(null);
   const [exceptionDrafts, setExceptionDrafts] = useState<
@@ -806,6 +810,24 @@ export const ProgramSettings = ({
                                     }
                                   />
                                 </label>
+                                <label className={styles.field}>
+                                  <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                                  <input
+                                    className={styles.input}
+                                    type="text"
+                                    value={draft.location}
+                                    placeholder={COPY.programs.ruleLocationPlaceholder}
+                                    onChange={(event) =>
+                                      setRuleDrafts((previous) => ({
+                                        ...previous,
+                                        [rule.rule_id]: {
+                                          ...draft,
+                                          location: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </label>
                                 <div className={styles.settingsActions}>
                                   <button className={styles.button} type="submit" disabled={busy}>
                                     {COPY.programs.settingsRuleSave}
@@ -1063,6 +1085,22 @@ export const ProgramSettings = ({
                         setNewRule((previous) => ({
                           ...previous,
                           endTime: event.target.value,
+                        }))
+                      }
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                    <input
+                      className={styles.input}
+                      type="text"
+                      value={newRule.location}
+                      placeholder={COPY.programs.ruleLocationPlaceholder}
+                      onChange={(event) =>
+                        setNewRule((previous) => ({
+                          ...previous,
+                          location: event.target.value,
                         }))
                       }
                       disabled={busy}

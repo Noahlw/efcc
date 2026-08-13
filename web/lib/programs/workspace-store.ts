@@ -137,6 +137,7 @@ export interface ScheduleRuleInput {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location?: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -149,6 +150,7 @@ export interface ScheduleRuleUpdate {
   month_day?: number | null;
   start_time?: string;
   end_time?: string;
+  location?: string | null;
   updated_by: string;
   updated_at: string;
 }
@@ -161,6 +163,7 @@ export interface ScheduleRuleRow {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -238,9 +241,79 @@ export interface ManagementAttentionEventRow {
 }
 
 export interface GenerateResult {
+  run_id: string;
+  plan_id: string;
+  status: GenerationRunStatus;
   created: number;
   skipped: number;
+  failed: number;
+  resumed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// EVT-02 (#252): preview plans and generation runs.
+// ---------------------------------------------------------------------------
+
+export interface PreviewPlanRow {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
   rule_count: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type PreviewSkipReason = "CANCEL" | "DUPLICATE";
+
+export interface PreviewOccurrenceRow {
+  occurrence_id: string;
+  plan_id: string;
+  rule_id: string;
+  occurs_on: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  skip_reason: PreviewSkipReason | null;
+  exception_id: string | null;
+}
+
+export type GenerationRunStatus = "completed" | "partial" | "failed";
+export type GenerationRunItemOutcome = "created" | "skipped" | "failed";
+
+export interface GenerationRunRow {
+  run_id: string;
+  program_id: string;
+  plan_id: string;
+  status: GenerationRunStatus;
+  created: number;
+  skipped: number;
+  failed: number;
+  started_at: string;
+  finished_at: string | null;
+  created_by: string | null;
+  correlation_id: string | null;
+}
+
+export interface GenerationRunItemRow {
+  item_id: string;
+  run_id: string;
+  occurrence_id: string;
+  starts_at: string;
+  outcome: GenerationRunItemOutcome;
+  event_id: string | null;
+  detail: string | null;
+}
+
+export interface GenerationRunItemInput {
+  item_id: string;
+  run_id: string;
+  occurrence_id: string;
+  starts_at: string;
+  outcome: GenerationRunItemOutcome;
+  event_id: string | null;
+  detail: string | null;
 }
 
 export type EnrollmentRequestStatus =
@@ -478,6 +551,39 @@ export interface WorkspaceStore {
     active_enrollments: number;
     checked_in: number;
   }>;
+
+  // --- EVT-02 (#252): preview plans and generation runs ---
+
+  findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
+  findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
+  listPreviewOccurrences: (
+    planId: string
+  ) => Promise<PreviewOccurrenceRow[]>;
+  /** Persist a preview plan and its exact occurrence rows idempotently. */
+  replacePreviewPlan: (
+    plan: PreviewPlanRow,
+    occurrences: PreviewOccurrenceRow[]
+  ) => Promise<PreviewPlanRow>;
+  findGenerationRunByPlan: (planId: string) => Promise<GenerationRunRow | null>;
+  /** One durable run per plan; resolves the existing run on repeat. */
+  createGenerationRun: (input: {
+    run_id: string;
+    program_id: string;
+    plan_id: string;
+    started_at: string;
+    created_by: string | null;
+    correlation_id: string | null;
+  }) => Promise<{ run: GenerationRunRow; created: boolean }>;
+  listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
+  /** Record one attempt durably; false when the row already exists. */
+  recordGenerationRunItem: (
+    input: GenerationRunItemInput
+  ) => Promise<boolean>;
+  /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
+  finishGenerationRun: (
+    runId: string,
+    finishedAt: string
+  ) => Promise<GenerationRunRow>;
 
   createEnrollmentRequest: (
     input: EnrollmentRequestInput

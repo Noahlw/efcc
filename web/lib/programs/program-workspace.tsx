@@ -13,8 +13,11 @@ import {
   getManagementProgram,
   listEnrollmentRequests,
   listEnrollmentSnapshot,
+  generateEvents,
   listEnrollments,
   listEvents,
+  listScheduleRules,
+  previewEvents,
 } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -22,10 +25,13 @@ import type {
   Enrollment,
   EnrollmentRequest,
   ManagementAttention,
+  PreviewResult,
   Program,
   ProgramEvent,
+  ScheduleRule,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+import { hkWallDateTimeLabel, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 import { ProgramSettings } from "./program-settings";
 
 import { ProgramForm } from "./program-form";
@@ -406,17 +412,343 @@ type EventsState =
   | { kind: "ready"; events: ProgramEvent[] }
   | { kind: "error"; message: string };
 
+// EVT-02 (#252): server-owned preview plan lifecycle in the events task.
+type PreviewState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; plan: PreviewResult }
+  | { kind: "empty" }
+  | { kind: "error"; message: string; stale: boolean };
+
+function ruleLabel(rule: ScheduleRule): string {
+  return rule.recurrence === "WEEKLY"
+    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${rule.start_time}–${rule.end_time}`
+    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
+}
+
+const RecurringSchedulePanel = ({
+  programId,
+  onGenerated,
+}: {
+  programId: string;
+  /** Invoked after a successful generation so the event list refreshes. */
+  onGenerated: () => void;
+}) => {
+  const [rules, setRules] = useState<ScheduleRule[] | null>(null);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewState>({ kind: "idle" });
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [generateBusy, setGenerateBusy] = useState(false);
+  const [generateResult, setGenerateResult] = useState<string | null>(null);
+  const [generatePartial, setGeneratePartial] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setRules(null);
+      setRulesError(null);
+      try {
+        const result = await listScheduleRules(programId);
+        if (!cancelled) {
+          setRules(result.rules);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRulesError(
+            error instanceof RpcError
+              ? errorCopyFor(error.problem.code, error.problem.detail)
+              : COPY.error.networkError
+          );
+          // Leave rules as null on failure: the no-rules empty state must
+          // only reflect a SUCCESSFUL load of zero rules, never a transport
+          // or auth failure, or the Preview form would be hidden behind a
+          // misleading "no schedule" message on a recoverable error.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [programId]);
+
+  const submitPreview = async (formEvent: FormEvent<HTMLFormElement>) => {
+    formEvent.preventDefault();
+    const form = new FormData(formEvent.currentTarget);
+    const raw = form.get("horizon_days");
+    const horizonDays = Number(raw);
+    if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) {
+      setPreview({ kind: "idle" });
+      setGenerateError(COPY.programs.previewError);
+      announce(COPY.programs.previewError);
+      return;
+    }
+    setPreviewBusy(true);
+    setPreview({ kind: "loading" });
+    setGenerateResult(null);
+    setGenerateError(null);
+    try {
+      const plan = await previewEvents(programId, horizonDays);
+      if (!mounted.current) {
+        return;
+      }
+      if (plan.occurrences.length === 0) {
+        setPreview({ kind: "empty" });
+        announce(COPY.programs.previewEmpty);
+        return;
+      }
+      setPreview({ kind: "ready", plan });
+      announce(
+        COPY.programs.previewed.replace("{count}", String(plan.occurrences.length))
+      );
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setPreview({ kind: "error", message, stale: false });
+      announce(message);
+    } finally {
+      if (mounted.current) {
+        setPreviewBusy(false);
+      }
+    }
+  };
+
+  const submitGenerate = async () => {
+    if (preview.kind !== "ready") {
+      return;
+    }
+    const planId = preview.plan.plan.plan_id;
+    setGenerateBusy(true);
+    setGenerateError(null);
+    setGenerateResult(null);
+    setGeneratePartial(false);
+    try {
+      const { generated } = await generateEvents(programId, planId);
+      if (!mounted.current) {
+        return;
+      }
+      const result =
+        generated.failed === 0
+          ? generated.resumed
+            ? COPY.programs.generatedResumed
+                .replace("{created}", String(generated.created))
+                .replace("{skipped}", String(generated.skipped))
+            : COPY.programs.generated
+                .replace("{created}", String(generated.created))
+                .replace("{skipped}", String(generated.skipped))
+          : COPY.programs.generatedPartial
+              .replace("{created}", String(generated.created))
+              .replace("{skipped}", String(generated.skipped))
+              .replace("{failed}", String(generated.failed));
+      // A partial/failed run is NOT a full success: surface the same text
+      // through the alert treatment so the operator sees generation is
+      // incomplete and can re-click Generate on the same plan to resume the
+      // failed units (the server run is resumable by design). Keep the plan
+      // and preview state untouched; only refresh the event directory with
+      // whatever partial progress exists.
+      setGeneratePartial(generated.failed > 0);
+      setGenerateResult(result);
+      announce(result);
+      onGenerated();
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      if (
+        error instanceof RpcError &&
+        error.problem.code === "STALE_PLAN"
+      ) {
+        // The schedule changed under the plan; require a fresh preview
+        // before generation can run again.
+        setPreview({ kind: "error", message, stale: true });
+      } else {
+        setGenerateError(message);
+      }
+      announce(message);
+    } finally {
+      if (mounted.current) {
+        setGenerateBusy(false);
+      }
+    }
+  };
+
+  const rulesReady = rules !== null;
+  const noRules = rulesReady && rules.length === 0;
+
+  return (
+    <section
+      className={styles.workspaceSection}
+      aria-labelledby="programs-workspace-recurring-title"
+    >
+      <h5
+        id="programs-workspace-recurring-title"
+        className={styles.workspaceSubheading}
+      >
+        {COPY.programs.previewLead}
+      </h5>
+      {rulesError !== null && (
+        <output className={styles.panelError} role="alert">
+          {rulesError}
+        </output>
+      )}
+      {noRules ? (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.settingsScheduleNone}
+        </p>
+      ) : (
+        <form className={styles.ruleForm} onSubmit={submitPreview}>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.previewHorizon}</span>
+            <input
+              type="number"
+              name="horizon_days"
+              min={1}
+              max={365}
+              defaultValue={90}
+              required
+              aria-label={COPY.programs.previewHorizon}
+            />
+          </label>
+          <button
+            type="submit"
+            className={styles.button}
+            disabled={previewBusy || generateBusy}
+          >
+            {previewBusy ? COPY.programs.previewing : COPY.programs.previewEvents}
+          </button>
+        </form>
+      )}
+      {preview.kind === "loading" && (
+        <output aria-busy="true">{COPY.programs.previewing}</output>
+      )}
+      {preview.kind === "error" && (
+        <output className={styles.panelError} role="alert">
+          {preview.message}
+        </output>
+      )}
+      {preview.kind === "empty" && (
+        <p className={styles.programDetailMuted} aria-live="polite">
+          {COPY.programs.previewEmpty}
+        </p>
+      )}
+      {preview.kind === "ready" && (
+        <>
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.previewPlanLabel.replace(
+              "{id}",
+              preview.plan.plan.plan_id.slice(0, 8)
+            )}
+            {" · "}
+            {COPY.programs.previewPlanMeta
+              .replace("{rules}", String(preview.plan.plan.rule_count))
+              .replace("{days}", String(preview.plan.plan.horizon_days))}
+          </p>
+          <ul
+            className={styles.workspaceTaskList}
+            aria-label={COPY.programs.previewEvents}
+          >
+            {preview.plan.occurrences.map((occurrence) => {
+              const rule = (rules ?? []).find(
+                (candidate) => candidate.rule_id === occurrence.rule_id
+              );
+              return (
+                <li
+                  key={occurrence.occurrence_id}
+                  className={styles.workspaceTaskRow}
+                >
+                  <strong>{hkWallDateTimeLabel(occurrence.starts_at)}</strong>
+                  <span>
+                    {occurrence.location?.trim()
+                      ? occurrence.location
+                      : COPY.programs.eventLocationPlaceholder}
+                  </span>
+                  <span>{rule ? ruleLabel(rule) : occurrence.rule_id}</span>
+                  {occurrence.skip_reason === "CANCEL" && (
+                    <span className={styles.eventCancelled}>
+                      {COPY.programs.previewOccurrenceSkipped}
+                    </span>
+                  )}
+                  {occurrence.skip_reason === "DUPLICATE" && (
+                    <span className={styles.eventCancelled}>
+                      {COPY.programs.previewOccurrenceDuplicate}
+                    </span>
+                  )}
+                  {occurrence.skip_reason === null &&
+                    occurrence.exception_id !== null && (
+                      <span className={styles.exceptionBadge}>
+                        {COPY.programs.previewOccurrenceRescheduled}
+                      </span>
+                    )}
+                </li>
+              );
+            })}
+          </ul>
+          <div className={styles.formActions}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() => void submitGenerate()}
+              disabled={generateBusy || previewBusy}
+            >
+              {generateBusy ? COPY.programs.generating : COPY.programs.generateEvents}
+            </button>
+            {generateResult !== null &&
+              (generatePartial ? (
+                <output className={styles.panelError} role="alert">
+                  {generateResult}
+                </output>
+              ) : (
+                <output className={styles.panelNotice} aria-live="polite">
+                  {generateResult}
+                </output>
+              ))}
+          </div>
+          {generateError !== null && (
+            <output className={styles.panelError} role="alert">
+              {generateError}
+            </output>
+          )}
+        </>
+      )}
+    </section>
+  );
+};
+
 const EventsTask = ({
   programId,
   canManage,
   attention,
   onAttentionRefresh,
+  recurring,
   onOpenEvent,
 }: {
   programId: string;
   canManage: boolean;
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
+  recurring: boolean;
   /** EVT-01 (#251): deep link into the Event operational detail screen. */
   onOpenEvent?: (eventId: string) => void;
 }) => {
@@ -534,6 +866,14 @@ const EventsTask = ({
       <p className={styles.programDetailMuted}>
         {COPY.programs.workspaceTaskEventsLead}
       </p>
+      {canManage && recurring && (
+        <RecurringSchedulePanel
+          programId={programId}
+          onGenerated={() => {
+            void run();
+          }}
+        />
+      )}
       {canManage && (
         <>
           <button
@@ -1308,6 +1648,7 @@ const WorkspaceTask = ({
         canManage={program.capabilities.manage}
         attention={attention}
         onAttentionRefresh={onAttentionRefresh}
+        recurring={program.behavior_type === "Recurring"}
         onOpenEvent={onOpenEvent}
       />
     ) : (

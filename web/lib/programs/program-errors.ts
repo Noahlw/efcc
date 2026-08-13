@@ -64,11 +64,45 @@ export class ScheduleRuleNotApplicableError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class NoScheduleRulesError extends Error {
-  constructor(programId: string) {
-    super(
-      `Program ${programId} has no schedule rules to generate events from.`
-    );
+  constructor() {
+    // Stable, non-identifying message: this surfaces verbatim as the
+    // VALIDATION problem detail to the client (mapWorkspaceError), so no
+    // program UUID or raw entity reference may leak into it. Matches the
+    // sibling EmptyPreviewPlanError convention (no identifiers).
+    super("This program has no schedule rules to generate events from.");
     this.name = "NoScheduleRulesError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class PreviewPlanNotFoundError extends Error {
+  constructor(planId: string) {
+    super(`Preview plan ${planId} does not exist or is not usable here.`);
+    this.name = "PreviewPlanNotFoundError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class StalePreviewPlanError extends Error {
+  constructor(planId: string, programId: string) {
+    super(
+      `Preview plan ${planId} is stale: the schedule changed after it was created, or it was superseded by a newer preview. Preview again before generating.`
+    );
+    this.name = "StalePreviewPlanError";
+    this.planId = planId;
+    this.programId = programId;
+  }
+  readonly planId: string;
+  readonly programId: string;
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EmptyPreviewPlanError extends Error {
+  constructor() {
+    super(
+      "This preview plan contains no occurrences; adjust the schedule rules or the preview horizon before generating."
+    );
+    this.name = "EmptyPreviewPlanError";
   }
 }
 

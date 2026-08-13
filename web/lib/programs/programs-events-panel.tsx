@@ -12,12 +12,10 @@ import {
   createScheduleException,
   createScheduleRule,
   deleteScheduleException,
-  generateEvents,
   listEvents,
   listScheduleRules,
 } from "@/lib/programs/program-api";
 import type {
-  GenerateResult,
   Program,
   ProgramEvent,
   ScheduleException,
@@ -388,20 +386,6 @@ export const EventsPanel = ({
     })();
   };
 
-  const handleGenerate = () => {
-    void runAction(
-      async () => {
-        const { generated } = await generateEvents(program.program_id);
-        return generated;
-      },
-      (generated: GenerateResult) => {
-        return COPY.programs.generated
-          .replace("{created}", String(generated.created))
-          .replace("{skipped}", String(generated.skipped));
-      }
-    );
-  };
-
   return (
     <section className={styles.eventsPanel} aria-label={COPY.programs.events}>
       <h3 className={styles.panelHeading}>{COPY.programs.events}</h3>
@@ -512,14 +496,6 @@ export const EventsPanel = ({
               {busy ? COPY.programs.submitting : COPY.programs.addRule}
             </button>
           </form>
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={busy}
-            className={styles.actionButton}
-          >
-            {busy ? COPY.programs.generating : COPY.programs.generateEvents}
-          </button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </>
       )}

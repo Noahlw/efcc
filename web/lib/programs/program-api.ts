@@ -239,6 +239,7 @@ export interface ScheduleRule {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -345,9 +346,42 @@ export interface MemberOption {
 }
 
 export interface GenerateResult {
+  run_id: string;
+  plan_id: string;
+  status: "completed" | "partial" | "failed";
   created: number;
   skipped: number;
+  failed: number;
+  /** True when the request resumed an already-started run (retry/concurrent). */
+  resumed: boolean;
+}
+
+/** One materialized occurrence row of a server-owned preview plan. */
+export interface PreviewOccurrence {
+  occurrence_id: string;
+  plan_id: string;
+  rule_id: string;
+  occurs_on: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  skip_reason: "CANCEL" | "DUPLICATE" | null;
+  exception_id: string | null;
+}
+
+export interface PreviewPlan {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
   rule_count: number;
+  created_at: string;
+}
+
+export interface PreviewResult {
+  plan: PreviewPlan;
+  occurrences: PreviewOccurrence[];
 }
 
 export interface ScheduleRuleInput {
@@ -356,6 +390,7 @@ export interface ScheduleRuleInput {
   month_day?: number;
   start_time: string;
   end_time: string;
+  location?: string | null;
 }
 
 export interface ProgramInput {
@@ -844,15 +879,30 @@ export function deleteScheduleException(
   );
 }
 
-/** POST /api/v1/programs/:id/events/generate */
+/**
+ * POST /api/v1/programs/:id/events/preview — server-owned preview plan.
+ * Writes no events; identical inputs resolve to the same plan identity.
+ */
+export function previewEvents(
+  programId: string,
+  horizonDays: number
+): Promise<PreviewResult> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/preview`,
+    "POST",
+    { horizon_days: horizonDays }
+  );
+}
+
+/** POST /api/v1/programs/:id/events/generate — generate from a current plan. */
 export function generateEvents(
   programId: string,
-  horizonDays?: number
+  planId: string
 ): Promise<{ generated: GenerateResult }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/generate`,
     "POST",
-    horizonDays === undefined ? {} : { horizon_days: horizonDays }
+    { plan_id: planId }
   );
 }
 

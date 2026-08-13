@@ -488,6 +488,32 @@ export const COPY = {
     startTime: "開始時間",
     endTime: "結束時間",
     addRule: "新增時間表",
+    // EVT-02 (#252): recurring preview and generation.
+    ruleLocation: "地點",
+    ruleLocationPlaceholder: "輸入地點（可留空）",
+    previewEvents: "預覽聚會",
+    previewing: "預覽中…",
+    previewed: "已預覽 {count} 場聚會。",
+    previewRequiresRecurring: "只有定期課程可預覽聚會。",
+    previewError: "無法預覽聚會。",
+    previewHorizon: "預覽範圍（天數）",
+    previewLead:
+      "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。",
+    previewPlanLabel: "方案 {id}",
+    previewPlanMeta: "由 {rules} 條規則組成，範圍 {days} 天（香港時間）。",
+    previewOccurrenceDate: "日期",
+    previewOccurrenceTime: "時間",
+    previewOccurrenceLocation: "地點",
+    previewOccurrenceRule: "來源規則",
+    previewOccurrenceSkipped: "本次已取消",
+    previewOccurrenceDuplicate: "已存在，將略過",
+    previewOccurrenceRescheduled: "已改期",
+    previewNone: "尚未預覽。請先按「預覽聚會」產生未來聚會清單。",
+    previewEmpty: "此範圍內沒有符合時間表的聚會。",
+    previewChanged: "時間表已變更，請重新預覽。",
+    generateRequiresPreview: "請先預覽時間表再產生聚會。",
+    generatedPartial: "已產生 {created} 場，跳過 {skipped} 場，{failed} 場失敗。",
+    generatedResumed: "已接續上次產生，新增 {created} 場，跳過 {skipped} 場。",
     generateEvents: "產生聚會",
     generating: "產生中…",
     generated: "已產生 {created} 場聚會，跳過 {skipped} 場重複。",
@@ -700,6 +726,12 @@ export function errorCopyFor(
   }
   if (code === "CONFIRMATION_REQUIRED") {
     return COPY.programs.eventAvailabilityConfirmRequired;
+  }
+  if (code === "STALE_PLAN") {
+    return COPY.programs.previewChanged;
+  }
+  if (code === "PLAN_NOT_FOUND") {
+    return COPY.programs.previewNone;
   }
   if (code === "EVENT_UNAVAILABLE") {
     return COPY.programs.eventUnavailableCheckIn;
