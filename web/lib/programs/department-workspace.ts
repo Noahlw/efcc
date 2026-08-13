@@ -6,13 +6,44 @@
  * this module.
  */
 
-import { CAPABILITY, MODULE_KEY, MODULE_KEYS } from "./capabilities";
-import type { Capability, ModuleKey } from "./capabilities";
+import {
+  CAPABILITY,
+  hasDepartmentManagementScope,
+  MODULE_KEY,
+  MODULE_KEYS,
+} from "./capabilities";
+import type {
+  Capability,
+  DepartmentCapabilities,
+  ModuleKey,
+} from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
+import {
+  DepartmentManagerConflictError,
+  DepartmentManagerNotAssignedError,
+  DuplicateDepartmentCodeError,
+  DuplicateEnrollmentError,
+  DuplicateEventError,
+  DuplicateProgramNameError,
+  DuplicateScheduleExceptionError,
+  EnrollmentNotAllowedError,
+  EventAvailabilityConfirmationRequiredError,
+  InvalidModuleKeyError,
+  InvalidProgramLifecycleError,
+  LeaderAccountInactiveError,
+  LeaderNotAssignedError,
+  NoScheduleRulesError,
+  ProgramArchiveBlockedError,
+  ProgramLeaderConflictError,
+  RequestNotDecidableError,
+  ScheduleRuleNotApplicableError,
+  SelfDelegationError,
+  SelfDepartmentManagerError,
+} from "./program-errors";
 import {
   exceptionForEvent,
   hkTodayWallDate,
@@ -23,10 +54,12 @@ import type {
   AuditInput,
   AuditOutcome,
   DepartmentLifecycle,
+  DepartmentManagerRow,
   DepartmentRow,
   DepartmentUpdate,
   EnrollmentRequestRow,
   EnrollmentRow,
+  EventAvailability,
   EventRow,
   GenerateResult,
   ProgramBehaviorType,
@@ -43,11 +76,11 @@ import type {
   WorkspaceStore,
 } from "./workspace-store";
 
-export interface DepartmentCapabilities {
-  manage: boolean;
-  publish: boolean;
-  module_configure: boolean;
-}
+export type { EventAvailability } from "./workspace-store";
+
+// Capability flags live in the pure vocabulary module; the domain module
+// re-exports the type so the public surface of this file is unchanged.
+export type { DepartmentCapabilities } from "./capabilities";
 
 export interface ProgramCapabilities {
   manage: boolean;
@@ -70,6 +103,10 @@ export type ManagementDepartmentView = Omit<
 export type ManagementProgramView = ProgramSummary & {
   capabilities: ProgramCapabilities;
 };
+export type ManagementProgramSettingsView = ManagementProgramView & {
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
+};
 export type ManagementDepartmentModuleView = Omit<
   DepartmentModuleRow,
   "enabled_by"
@@ -80,17 +117,17 @@ export interface ManagementDirectoryView {
   programs: ManagementProgramView[];
 }
 export interface ManagementProgramWorkspaceView {
-  program: ManagementProgramView;
+  program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
 }
-
-function hasDepartmentManagementScope(department: DepartmentView): boolean {
-  return (
-    department.capabilities.manage ||
-    department.capabilities.publish ||
-    department.capabilities.module_configure
-  );
+export interface EventDetailView {
+  event: EventRow;
+  leaders: ProgramLeaderRow[];
+  participant_summary: {
+    active_enrollments: number;
+    checked_in: number;
+  };
 }
 
 function hasProgramManagementScope(
@@ -246,6 +283,24 @@ export interface CreateScheduleExceptionCommand {
 export interface CreateEventCommand {
   starts_at: string;
   ends_at: string;
+  name: string | null;
+  location: string | null;
+  check_in_window_opens_at: string | null;
+  check_in_window_closes_at: string | null;
+}
+
+export interface UpdateEventCommand {
+  starts_at?: string;
+  ends_at?: string;
+  name?: string | null;
+  location?: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
+}
+
+export interface SetEventAvailabilityCommand {
+  availability: EventAvailability;
+  confirm: boolean;
 }
 
 export interface CancelEventCommand {
@@ -259,124 +314,6 @@ export interface DecideEnrollmentRequestCommand {
 
 export interface AssistedEnrollCommand {
   memberUserId: string;
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DuplicateDepartmentCodeError extends Error {
-  constructor(code: string) {
-    super(`A department with code '${code}' already exists.`);
-    this.name = "DuplicateDepartmentCodeError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DuplicateProgramNameError extends Error {
-  constructor(name: string) {
-    super(`A program with name '${name}' already exists in this department.`);
-    this.name = "DuplicateProgramNameError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class InvalidProgramLifecycleError extends Error {
-  constructor(from: ProgramLifecycle, to: ProgramLifecycle) {
-    super(`Invalid program lifecycle transition: ${from} -> ${to}.`);
-    this.name = "InvalidProgramLifecycleError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class InvalidModuleKeyError extends Error {
-  constructor(key: string) {
-    super(`Unknown module key: ${key}`);
-    this.name = "InvalidModuleKeyError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class ScheduleRuleNotApplicableError extends Error {
-  constructor(programId: string) {
-    super(`Schedule rules apply only to Recurring programs: ${programId}`);
-    this.name = "ScheduleRuleNotApplicableError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class NoScheduleRulesError extends Error {
-  constructor(programId: string) {
-    super(
-      `Program ${programId} has no schedule rules to generate events from.`
-    );
-    this.name = "NoScheduleRulesError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DuplicateEventError extends Error {
-  constructor(startsAt: string) {
-    super(`An event already exists for this start time: ${startsAt}`);
-    this.name = "DuplicateEventError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DuplicateScheduleExceptionError extends Error {
-  constructor(ruleId: string, overrideDate: string) {
-    super(
-      `Schedule exception already exists for rule ${ruleId} on ${overrideDate}`
-    );
-    this.name = "DuplicateScheduleExceptionError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class EnrollmentNotAllowedError extends Error {
-  constructor(programId: string, expected: string) {
-    super(`Program ${programId} does not accept enrollment mode ${expected}.`);
-    this.name = "EnrollmentNotAllowedError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DuplicateEnrollmentError extends Error {
-  constructor(programId: string, memberUserId: string) {
-    super(
-      `Member ${memberUserId} already has an open request or active enrollment for program ${programId}.`
-    );
-    this.name = "DuplicateEnrollmentError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class RequestNotDecidableError extends Error {
-  constructor(requestId: string) {
-    super(`Enrollment request ${requestId} is not in a decidable state.`);
-    this.name = "RequestNotDecidableError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class SelfDelegationError extends Error {
-  constructor(userId: string) {
-    super(`A user cannot grant Program Leader to themselves: ${userId}`);
-    this.name = "SelfDelegationError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class LeaderNotAssignedError extends Error {
-  constructor(programId: string, userId: string) {
-    super(`User ${userId} is not an active Program Leader of ${programId}.`);
-    this.name = "LeaderNotAssignedError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class LeaderAccountInactiveError extends Error {
-  constructor(userId: string) {
-    super(`Cannot assign ${userId} as Program Leader: account is not Active.`);
-    this.name = "LeaderAccountInactiveError";
-  }
 }
 
 function isPendingEnrollmentConstraint(error: unknown): boolean {
@@ -506,15 +443,20 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext
   ): Promise<ManagementDirectoryView> {
     const allDepartments = await this.listDepartments(ctx);
+    const scopedDepartments = allDepartments.filter((department) =>
+      hasDepartmentManagementScope(department)
+    );
     const departmentPrograms = await Promise.all(
       allDepartments.map(async (department) => {
+        const departmentScope = scopedDepartments.some(
+          ({ department_id }) => department_id === department.department_id
+        );
         if (!(await this.isModuleEnabled(department.department_id))) {
           return [];
         }
         const rows = await this.store.listProgramsForDepartment(
           department.department_id
         );
-        const departmentScope = hasDepartmentManagementScope(department);
         const views = await Promise.all(
           rows.map(async (row) => ({
             row,
@@ -532,9 +474,10 @@ export class DepartmentWorkspace {
       })
     );
     const scopedPrograms = departmentPrograms.flat();
-    const scopedDepartmentIds = new Set(
-      scopedPrograms.map(({ department_id }) => department_id)
-    );
+    const scopedDepartmentIds = new Set([
+      ...scopedDepartments.map(({ department_id }) => department_id),
+      ...scopedPrograms.map(({ department_id }) => department_id),
+    ]);
     return {
       departments: allDepartments
         .filter(({ department_id }) => scopedDepartmentIds.has(department_id))
@@ -566,7 +509,7 @@ export class DepartmentWorkspace {
       enabled,
       enabled_at,
     }));
-    const program = this.managementProgram(
+    const program = this.managementProgramSettings(
       row,
       await this.programCapabilities(ctx, row)
     );
@@ -588,10 +531,7 @@ export class DepartmentWorkspace {
   ): Promise<ManagementAccessView> {
     const departments = await this.listDepartments(ctx);
     const departmentScopes = departments.filter(
-      ({ capabilities }) =>
-        capabilities.manage ||
-        capabilities.publish ||
-        capabilities.module_configure
+      hasDepartmentManagementScope
     ).length;
 
     // A department-level grant is enough to expose the entry. Avoid scanning
@@ -642,7 +582,41 @@ export class DepartmentWorkspace {
     id: string
   ): Promise<DepartmentView | null> {
     const row = await this.store.findDepartmentById(id);
-    return row ? this.departmentView(ctx, row) : null;
+    if (!row) {
+      return null;
+    }
+    const [canManage, canConfigureModules, canAssignManagers] =
+      await Promise.all([
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+          departmentId: id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+          departmentId: id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+          departmentId: id,
+        }),
+      ]);
+    if (!(canManage || canConfigureModules || canAssignManagers)) {
+      return null;
+    }
+    return this.departmentView(ctx, row);
+  }
+
+  async listDepartmentManagers(
+    ctx: AuthorizationContext,
+    departmentId: string
+  ): Promise<DepartmentManagerRow[] | null> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (
+      !department ||
+      !(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+        departmentId,
+      }))
+    ) {
+      return null;
+    }
+    return this.store.listDepartmentManagers(departmentId);
   }
 
   async updateDepartment(
@@ -695,7 +669,13 @@ export class DepartmentWorkspace {
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     if (cmd.lifecycle === "Archived") {
-      throw new InvalidProgramLifecycleError("Draft", "Archived");
+      // Create-time validation, not a lifecycle transition: Draft is merely
+      // the default create state, so the transition-pair message would lie.
+      throw new InvalidProgramLifecycleError(
+        "Draft",
+        "Archived",
+        "Programs cannot be created directly in the Archived state."
+      );
     }
     if (cmd.lifecycle === "Active") {
       await this.ensure(ctx, CAPABILITY.PROGRAM_PUBLISH, {
@@ -852,7 +832,10 @@ export class DepartmentWorkspace {
         end_time: rule.end_time,
       })),
       events: (eventRows ?? [])
-        .filter((event) => event.status === "Active")
+        .filter(
+          (event) =>
+            event.status === "Active" && event.availability === "Active"
+        )
         .map((event) => ({
           event_id: event.event_id,
           program_id: event.program_id,
@@ -941,6 +924,29 @@ export class DepartmentWorkspace {
   ): ManagementProgramView {
     return { ...this.programSummary(row), capabilities };
   }
+  private managementProgramSettings(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    const program = this.managementProgram(row, capabilities);
+    return capabilities.manage
+      ? {
+          ...program,
+          check_in_opens_at_minutes_before_start:
+            row.check_in_opens_at_minutes_before_start,
+          check_in_closes_at_minutes_after_end:
+            row.check_in_closes_at_minutes_after_end,
+        }
+      : program;
+  }
+  private programMutationView(
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): ManagementProgramSettingsView {
+    // PATCH responses mirror the management read projection: attendance
+    // defaults for managers, but never the check-in secret.
+    return this.managementProgramSettings(row, capabilities);
+  }
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
@@ -971,18 +977,54 @@ export class DepartmentWorkspace {
     id: string,
     update: ProgramUpdate,
     correlationId: string | null
-  ): Promise<ProgramView> {
+  ): Promise<ManagementProgramSettingsView> {
     const old = await this.store.findProgramById(id);
     if (!old) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        null,
+        null,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     if (!(await this.isModuleEnabled(old.department_id))) {
+      await this.audit(
+        ctx,
+        "PROGRAM_UPDATE",
+        "program",
+        id,
+        "DENIED",
+        old,
+        old,
+        correlationId
+      );
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
-    await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
-      departmentId: old.department_id,
-      programId: old.program_id,
-    });
+    try {
+      await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
+        departmentId: old.department_id,
+        programId: old.program_id,
+      });
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError) {
+        await this.audit(
+          ctx,
+          "PROGRAM_UPDATE",
+          "program",
+          id,
+          "DENIED",
+          old,
+          old,
+          correlationId
+        );
+      }
+      throw error;
+    }
     if (update.name !== undefined && update.name !== old.name) {
       const existing = await this.store.listProgramsForDepartment(
         old.department_id
@@ -993,6 +1035,127 @@ export class DepartmentWorkspace {
         )
       ) {
         throw new DuplicateProgramNameError(update.name);
+      }
+    }
+    const updateWithAudit = {
+      ...update,
+      updated_by: ctx.actorUserId,
+      updated_at: new Date().toISOString(),
+    };
+    if (update.lifecycle === "Archived") {
+      const onlyLifecycle =
+        update.name === undefined &&
+        update.description === undefined &&
+        update.category === undefined &&
+        update.behavior_type === undefined &&
+        update.discoverability === undefined &&
+        update.enrollment_mode === undefined &&
+        update.display_order === undefined &&
+        update.check_in_opens_at_minutes_before_start === undefined &&
+        update.check_in_closes_at_minutes_after_end === undefined;
+      if (old.lifecycle === "Archived") {
+        if (!onlyLifecycle) {
+          // Metadata edits on an archived program are still allowed; fall
+          // through to the generic update path below.
+        } else {
+          // Terminal repeat: same-actor is a quiet DUPLICATE (never silent),
+          // a different actor observes a CONFLICT against the archived row.
+          const sameActor = old.updated_by === ctx.actorUserId;
+          await this.audit(
+            ctx,
+            "PROGRAM_ARCHIVE",
+            "program",
+            id,
+            sameActor ? "DUPLICATE" : "CONFLICT",
+            old,
+            old,
+            correlationId
+          );
+          if (sameActor) {
+            return this.programMutationView(
+              old,
+              await this.programCapabilities(ctx, old)
+            );
+          }
+          throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+        }
+      } else if (old.lifecycle !== "Active") {
+        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
+      } else {
+        const row = await this.store.archiveProgramIfClear(
+          id,
+          updateWithAudit,
+          new Date().toISOString()
+        );
+        if (!row) {
+          // The atomic update failed: either another actor archived the
+          // program concurrently (repeat classification by actor), or an
+          // operational commitment still blocks the archive (conflict with
+          // reasons).
+          const current = await this.store.findProgramById(id);
+          if (current?.lifecycle === "Archived") {
+            const sameActor = current.updated_by === ctx.actorUserId;
+            await this.audit(
+              ctx,
+              "PROGRAM_ARCHIVE",
+              "program",
+              id,
+              sameActor ? "DUPLICATE" : "CONFLICT",
+              old,
+              current,
+              correlationId
+            );
+            if (sameActor) {
+              return this.programMutationView(
+                current,
+                await this.programCapabilities(ctx, current)
+              );
+            }
+            throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+          }
+          const [events, requests] = await Promise.all([
+            this.store.listEvents(id),
+            this.store.listEnrollmentRequests(id),
+          ]);
+          const reasons = [
+            events.some(
+              (event) =>
+                event.status === "Active" &&
+                Number.isFinite(Date.parse(event.starts_at)) &&
+                Date.parse(event.starts_at) > Date.now()
+            )
+              ? "future_active_event"
+              : null,
+            requests.some((request) => request.status === "Pending")
+              ? "pending_enrollment_request"
+              : null,
+          ].filter((reason): reason is string => reason !== null);
+          await this.audit(
+            ctx,
+            "PROGRAM_ARCHIVE",
+            "program",
+            id,
+            "CONFLICT",
+            old,
+            { reasons },
+            correlationId
+          );
+          throw new ProgramArchiveBlockedError(id, reasons);
+        }
+        await this.audit(
+          ctx,
+          "PROGRAM_ARCHIVE",
+          "program",
+          id,
+          "SUCCESS",
+          old,
+          row,
+          correlationId
+        );
+        return this.programMutationView(
+          row,
+          await this.programCapabilities(ctx, row)
+        );
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -1009,11 +1172,7 @@ export class DepartmentWorkspace {
         programId: old.program_id,
       });
     }
-    const row = await this.store.updateProgram(id, {
-      ...update,
-      updated_by: ctx.actorUserId,
-      updated_at: new Date().toISOString(),
-    });
+    const row = await this.store.updateProgram(id, updateWithAudit);
     await this.audit(
       ctx,
       "PROGRAM_UPDATE",
@@ -1024,7 +1183,10 @@ export class DepartmentWorkspace {
       row,
       correlationId
     );
-    return { ...row, capabilities: await this.programCapabilities(ctx, row) };
+    return this.programMutationView(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
   }
 
   async setDepartmentModule(
@@ -1068,10 +1230,25 @@ export class DepartmentWorkspace {
     return row;
   }
 
-  listDepartmentModules(
+  async listDepartmentModules(
     ctx: AuthorizationContext,
     departmentId: string
-  ): Promise<DepartmentModuleRow[]> {
+  ): Promise<DepartmentModuleRow[] | null> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      return null;
+    }
+    const [canManage, canConfigureModules] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+        departmentId,
+      }),
+    ]);
+    if (!(canManage || canConfigureModules)) {
+      return null;
+    }
     return this.store.listDepartmentModules(departmentId);
   }
 
@@ -1079,23 +1256,29 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     row: DepartmentRow
   ): Promise<DepartmentView> {
-    const [manage, publish, moduleConfigure] = await Promise.all([
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
-        departmentId: row.department_id,
-      }),
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
-        departmentId: row.department_id,
-      }),
-      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
-        departmentId: row.department_id,
-      }),
-    ]);
+    const [manage, publish, moduleConfigure, managerAssign] = await Promise.all(
+      [
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+          departmentId: row.department_id,
+        }),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+          departmentId: row.department_id,
+        }),
+      ]
+    );
     return {
       ...row,
       capabilities: {
         manage,
         publish,
         module_configure: moduleConfigure,
+        manager_assign: managerAssign,
       },
     };
   }
@@ -1128,7 +1311,7 @@ export class DepartmentWorkspace {
     capability: Capability
   ): Promise<ProgramRow> {
     const program = await this.store.findProgramById(programId);
-    if (!program) {
+    if (!program || program.lifecycle === "Archived") {
       throw new AuthorizationDeniedError(capability);
     }
     if (!(await this.isModuleEnabled(program.department_id))) {
@@ -1193,6 +1376,27 @@ export class DepartmentWorkspace {
     eventId: string
   ): Promise<EventRow | null> {
     return this.store.findEventById(eventId);
+  }
+
+  async getEventDetail(
+    ctx: AuthorizationContext,
+    eventId: string
+  ): Promise<EventDetailView | null> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      return null;
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const [leaders, participant_summary] = await Promise.all([
+      this.store.listProgramLeaders(program.program_id),
+      this.store.getEventParticipantSummary(event.event_id, program.program_id),
+    ]);
+    return { event, leaders, participant_summary };
   }
 
   async createScheduleRule(
@@ -1414,7 +1618,12 @@ export class DepartmentWorkspace {
             starts_at: occurrence.starts_at,
             ends_at: occurrence.ends_at,
             status: "Active",
+            availability: "Active",
             source: "SCHEDULE",
+            name: null,
+            location: null,
+            check_in_window_opens_at: null,
+            check_in_window_closes_at: null,
             cancel_reason: null,
             created_by: ctx.actorUserId,
             created_at: now,
@@ -1485,7 +1694,12 @@ export class DepartmentWorkspace {
       starts_at: cmd.starts_at,
       ends_at: cmd.ends_at,
       status: "Active",
+      availability: "Active",
       source: "MANUAL",
+      name: cmd.name,
+      location: cmd.location,
+      check_in_window_opens_at: cmd.check_in_window_opens_at,
+      check_in_window_closes_at: cmd.check_in_window_closes_at,
       cancel_reason: null,
       created_by: ctx.actorUserId,
       created_at: now,
@@ -1534,7 +1748,9 @@ export class DepartmentWorkspace {
     if (program.discoverability === "Unlisted") {
       return null;
     }
-    return decorated.filter((r) => r.status === "Active");
+    return decorated.filter(
+      (r) => r.status === "Active" && r.availability === "Active"
+    );
   }
 
   /**
@@ -1562,6 +1778,146 @@ export class DepartmentWorkspace {
           exceptions
         ) as ScheduleExceptionRow | null) ?? null,
     }));
+  }
+  async updateEvent(
+    ctx: AuthorizationContext,
+    eventId: string,
+    cmd: UpdateEventCommand,
+    correlationId: string | null
+  ): Promise<EventRow> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
+      const duplicate = await this.store.findEventByStart(
+        event.program_id,
+        cmd.starts_at
+      );
+      if (duplicate && duplicate.event_id !== event.event_id) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          duplicate.event_id,
+          "CONFLICT",
+          event,
+          { starts_at: cmd.starts_at },
+          correlationId
+        );
+        throw new DuplicateEventError(cmd.starts_at);
+      }
+    }
+    const updated = await this.store.updateEvent(
+      eventId,
+      cmd,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!updated) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    await this.audit(
+      ctx,
+      "EVENT_UPDATE",
+      "event",
+      eventId,
+      "SUCCESS",
+      event,
+      updated,
+      correlationId
+    );
+    return updated;
+  }
+
+  async setEventAvailability(
+    ctx: AuthorizationContext,
+    eventId: string,
+    cmd: SetEventAvailabilityCommand,
+    correlationId: string | null
+  ): Promise<EventRow> {
+    const event = await this.store.findEventById(eventId);
+    if (!event) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      event.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (event.availability === cmd.availability) {
+      await this.audit(
+        ctx,
+        "EVENT_AVAILABILITY",
+        "event",
+        eventId,
+        "DUPLICATE",
+        event,
+        event,
+        correlationId
+      );
+      return event;
+    }
+    if (cmd.availability === "Inactive" && !cmd.confirm) {
+      const summary = await this.store.getEventParticipantSummary(
+        event.event_id,
+        event.program_id
+      );
+      // EVT-01 (#251): enrollments are Program-scoped; this Event's own open
+      // operations are its active check-ins and any open check-in window.
+      // Deactivating a never-attended event whose window is still open still
+      // closes an in-progress operation, so it requires confirmation.
+      const affectedOperations = summary.checked_in;
+      const now = new Date().toISOString();
+      const windowOpen =
+        event.check_in_window_opens_at !== null &&
+        event.check_in_window_closes_at !== null &&
+        now >= event.check_in_window_opens_at &&
+        now <= event.check_in_window_closes_at;
+      const impactCount = Math.max(affectedOperations, windowOpen ? 1 : 0);
+      if (impactCount > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_AVAILABILITY",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          event,
+          correlationId
+        );
+        throw new EventAvailabilityConfirmationRequiredError(
+          impactCount
+        );
+      }
+    }
+    const updated = await this.store.updateEvent(
+      eventId,
+      { availability: cmd.availability },
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    if (!updated) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    await this.audit(
+      ctx,
+      "EVENT_AVAILABILITY",
+      "event",
+      eventId,
+      "SUCCESS",
+      event,
+      updated,
+      correlationId
+    );
+    return updated;
   }
 
   async cancelEvent(
@@ -2117,6 +2473,16 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_LEADER_ASSIGN
     );
     if (userId === ctx.actorUserId) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "DENIED",
+        null,
+        { user_id: userId, reason: "self_delegation" },
+        correlationId
+      );
       throw new SelfDelegationError(userId);
     }
     if (!(await this.store.isAccountActive(userId))) {
@@ -2125,7 +2491,7 @@ export class DepartmentWorkspace {
         "PROGRAM_LEADER_GRANT",
         "program_leader",
         programId,
-        "FAILED",
+        "DENIED",
         null,
         { user_id: userId, reason: "target_account_not_active" },
         correlationId
@@ -2133,26 +2499,58 @@ export class DepartmentWorkspace {
       throw new LeaderAccountInactiveError(userId);
     }
     const existing = await this.store.findProgramLeader(programId, userId);
-    if (existing && existing.revoked_at === null) {
+    if (existing?.revoked_at === null) {
+      const outcome =
+        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
       await this.audit(
         ctx,
         "PROGRAM_LEADER_GRANT",
         "program_leader",
         programId,
-        "DUPLICATE",
+        outcome,
         existing,
         existing,
         correlationId
       );
+      if (outcome === "CONFLICT") {
+        throw new ProgramLeaderConflictError(programId, userId);
+      }
       return existing;
     }
-    const now = new Date().toISOString();
-    const row = await this.store.assignProgramLeader({
-      program_id: programId,
-      user_id: userId,
-      granted_by: ctx.actorUserId,
-      granted_at: now,
-    });
+    let row: ProgramLeaderRow;
+    try {
+      row = await this.store.assignProgramLeader({
+        program_id: programId,
+        user_id: userId,
+        granted_by: ctx.actorUserId,
+        granted_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_GRANT",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
+    }
     await this.audit(
       ctx,
       "PROGRAM_LEADER_GRANT",
@@ -2179,29 +2577,82 @@ export class DepartmentWorkspace {
     );
     const existing = await this.store.findProgramLeader(programId, userId);
     if (!existing) {
-      throw new LeaderNotAssignedError(programId, userId);
-    }
-    if (existing.revoked_at !== null) {
       await this.audit(
         ctx,
         "PROGRAM_LEADER_REVOKE",
         "program_leader",
         programId,
-        "DUPLICATE",
+        "DENIED",
+        null,
+        { user_id: userId, reason: "leader_not_assigned" },
+        correlationId
+      );
+      throw new LeaderNotAssignedError(programId, userId);
+    }
+    if (existing.revoked_at !== null) {
+      const outcome =
+        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        outcome,
         existing,
         existing,
         correlationId
       );
+      if (outcome === "CONFLICT") {
+        throw new ProgramLeaderConflictError(programId, userId);
+      }
       return existing;
     }
-    const revoked = await this.store.revokeProgramLeader({
-      program_id: programId,
-      user_id: userId,
-      revoked_by: ctx.actorUserId,
-      revoked_at: new Date().toISOString(),
-    });
+    let revoked: ProgramLeaderRow | null;
+    try {
+      revoked = await this.store.revokeProgramLeader({
+        program_id: programId,
+        user_id: userId,
+        revoked_by: ctx.actorUserId,
+        revoked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
     if (!revoked) {
-      throw new LeaderNotAssignedError(programId, userId);
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        null,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
+    }
+    if (revoked.revoked_by !== ctx.actorUserId || revoked.revoked_at === null) {
+      await this.audit(
+        ctx,
+        "PROGRAM_LEADER_REVOKE",
+        "program_leader",
+        programId,
+        "CONFLICT",
+        existing,
+        revoked,
+        correlationId
+      );
+      throw new ProgramLeaderConflictError(programId, userId);
     }
     await this.audit(
       ctx,
@@ -2232,5 +2683,232 @@ export class DepartmentWorkspace {
       return null;
     }
     return this.store.listProgramLeaders(programId);
+  }
+  async assignDepartmentManager(
+    ctx: AuthorizationContext,
+    departmentId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<DepartmentManagerRow> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
+    }
+    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+      departmentId,
+    });
+    if (userId === ctx.actorUserId) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "self_assignment",
+        },
+        correlationId
+      );
+      throw new SelfDepartmentManagerError(userId);
+    }
+    if (!(await this.store.isAccountActive(userId))) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "target_account_not_active",
+        },
+        correlationId
+      );
+      throw new LeaderAccountInactiveError(userId, "Department Manager");
+    }
+    const existing = await this.store.findDepartmentManager(
+      departmentId,
+      userId
+    );
+    if (existing?.revoked_at === null) {
+      const outcome =
+        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        outcome,
+        existing,
+        existing,
+        correlationId
+      );
+      if (outcome === "CONFLICT") {
+        throw new DepartmentManagerConflictError(departmentId, userId);
+      }
+      return existing;
+    }
+    let row: DepartmentManagerRow;
+    try {
+      row = await this.store.assignDepartmentManager({
+        department_id: departmentId,
+        user_id: userId,
+        granted_by: ctx.actorUserId,
+        granted_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_GRANT",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    await this.audit(
+      ctx,
+      "DEPARTMENT_MANAGER_GRANT",
+      "department_manager",
+      `${departmentId}:${userId}`,
+      "SUCCESS",
+      existing,
+      row,
+      correlationId
+    );
+    return row;
+  }
+
+  async revokeDepartmentManager(
+    ctx: AuthorizationContext,
+    departmentId: string,
+    userId: string,
+    correlationId: string | null
+  ): Promise<DepartmentManagerRow> {
+    const department = await this.store.findDepartmentById(departmentId);
+    if (!department) {
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
+    }
+    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+      departmentId,
+    });
+    const existing = await this.store.findDepartmentManager(
+      departmentId,
+      userId
+    );
+    if (!existing) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "DENIED",
+        null,
+        {
+          department_id: departmentId,
+          user_id: userId,
+          reason: "manager_not_assigned",
+        },
+        correlationId
+      );
+      throw new DepartmentManagerNotAssignedError(departmentId, userId);
+    }
+    if (existing.revoked_at !== null) {
+      const outcome =
+        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        outcome,
+        existing,
+        existing,
+        correlationId
+      );
+      if (outcome === "CONFLICT") {
+        throw new DepartmentManagerConflictError(departmentId, userId);
+      }
+      return existing;
+    }
+    let row: DepartmentManagerRow | null;
+    try {
+      row = await this.store.revokeDepartmentManager({
+        department_id: departmentId,
+        user_id: userId,
+        revoked_by: ctx.actorUserId,
+        revoked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "FAILED",
+        existing,
+        { user_id: userId, reason: "store_error" },
+        correlationId
+      );
+      throw error;
+    }
+    if (!row) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        null,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    if (row.revoked_by !== ctx.actorUserId || row.revoked_at === null) {
+      await this.audit(
+        ctx,
+        "DEPARTMENT_MANAGER_REVOKE",
+        "department_manager",
+        `${departmentId}:${userId}`,
+        "CONFLICT",
+        existing,
+        row,
+        correlationId
+      );
+      throw new DepartmentManagerConflictError(departmentId, userId);
+    }
+    await this.audit(
+      ctx,
+      "DEPARTMENT_MANAGER_REVOKE",
+      "department_manager",
+      `${departmentId}:${userId}`,
+      "SUCCESS",
+      existing,
+      row,
+      correlationId
+    );
+    return row;
   }
 }

@@ -29,6 +29,7 @@ const ACTIVE: AttendanceEvent = {
   check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
   check_in_window_closes_at: "2026-08-13T13:30:00.000Z",
   status: "Active",
+  availability: "Active",
 };
 
 const CANCELLED: AttendanceEvent = {

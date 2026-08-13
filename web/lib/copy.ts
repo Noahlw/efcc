@@ -1,3 +1,5 @@
+import { RpcError } from "@/lib/api";
+
 // Traditional Chinese copy for the shell (Spec 074 user story 29).
 // Every user-facing string lives here; no hardcoded text in components.
 export const COPY = {
@@ -212,10 +214,65 @@ export const COPY = {
     workspaceTaskParticipants: "參與者",
     workspaceTaskSettings: "課程設定",
     workspaceTaskEventsLead:
-      "查看這個課程的聚會記錄；建立與編輯由聚會工作流程處理。",
+      "查看這個課程的聚會記錄；建立聚會並於聚會詳情中編輯。",
     workspaceTaskParticipantsLead:
       "查看報名申請與活躍參與者；決定與新增操作由參與者工作流程處理。",
-    workspaceTaskSettingsLead: "查看目前課程設定與可用的管理能力。",
+    workspaceTaskSettingsLead: "集中管理這個課程本身的基本資料、報名、時間表與出席預設。",
+    settingsBasics: "基本資料",
+    settingsBasicsLead: "更新課程名稱、簡介、類別及在課程目錄中的顯示次序。",
+    settingsEnrollment: "報名與可見性",
+    settingsEnrollmentLead:
+      "這些設定會影響日後的課程發現和報名方式，不會改寫既有報名紀錄。",
+    settingsSchedule: "時間表",
+    settingsScheduleLead:
+      "只設定定期課程的重複規則；產生具體聚會請到聚會工作流程。",
+    settingsAttendance: "出席",
+    settingsAttendanceLead:
+      "這是課程層級的簽到預設，具體聚會會按這些相對時間計算簽到時段。",
+    settingsNoManagement: "目前沒有課程設定管理能力。",
+    settingsNoManagementHint: "你的管理範圍仍然保留，但這個課程的設定不能由目前帳戶編輯。",
+    settingsSaved: "課程設定已儲存。",
+    settingsSaveBasics: "儲存基本資料",
+    settingsSaveEnrollment: "儲存報名與可見性",
+    settingsSaveAttendance: "儲存出席預設",
+    settingsBasicsValidation: "請填寫課程名稱，並輸入不小於零的整數顯示次序。",
+    settingsAttendanceValidation: "請輸入不小於零的整數分鐘。",
+    settingsConfirmEnrollment:
+      "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
+    settingsConfirmChange: "確認變更",
+    settingsKeepCurrent: "保留目前設定",
+    settingsLifecycle: "生命週期",
+    settingsLifecycleHint:
+      "生命週期轉換由課程管理流程處理；請返回概覽使用現有的啟用或存檔操作。",
+    settingsScheduleOneOff:
+      "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
+    settingsScheduleUnavailable:
+      "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+    settingsAttendanceUnavailable:
+      "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
+    settingsExceptionsUnavailable:
+      "既有例外清單目前無法讀取；在此工作階段建立或移除的例外會即時反映。",
+    settingsScheduleLoading: "正在載入時間表規則…",
+    settingsScheduleLoadError: "無法載入時間表規則。",
+    settingsScheduleRetry: "重試載入時間表",
+    settingsScheduleNone: "目前尚未設定時間表規則。",
+    settingsRuleEdit: "編輯規則",
+    settingsRuleCancel: "取消編輯",
+    settingsRuleSave: "儲存規則",
+    settingsRuleAddException: "新增例外",
+    settingsExceptionDate: "例外日期",
+    settingsExceptionAction: "例外處理",
+    settingsExceptionCancel: "取消該次",
+    settingsExceptionReschedule: "改期該次",
+    settingsExceptionNewStart: "新開始時間",
+    settingsExceptionNewEnd: "新結束時間",
+    settingsExceptionSave: "儲存例外",
+    settingsExceptionRestore: "移除例外",
+    settingsExceptionDuplicate: "此日期已有例外安排，無法重複新增。",
+    settingsScheduleEventsLink: "前往聚會工作流程",
+    settingsAttendanceOpens: "開始前可簽到分鐘",
+    settingsAttendanceCloses: "結束後仍可簽到分鐘",
+    settingsAttendanceUnits: "分鐘",
     workspaceTaskEventsLoading: "正在載入聚會…",
     workspaceTaskEventsError: "無法載入聚會",
     workspaceTaskEventsRetry: "重試載入聚會",
@@ -325,6 +382,23 @@ export const COPY = {
     editProgram: "編輯課程",
     saveProgram: "儲存課程",
     cancelEdit: "取消編輯",
+    programCreateTitle: "新增課程",
+    programCreateLead: "選擇獲授權部門，建立定期或單次課程。",
+    programEditLead: "更新課程資料；儲存後會重新確認工作區內容。",
+    programSaved: "課程已儲存，正在返回工作區。",
+    programCreateUnavailable: "目前沒有可建立課程的部門。",
+    programCreateForbidden: "你沒有在任何部門建立課程的權限。",
+    programCategoryRequired: "請填寫活動類別。",
+    programCreateDraftOnlyHint:
+      "所選部門未獲授權發佈課程；課程會先以草稿建立。",
+    programConflict: "課程名稱與現有資料衝突，請重新整理後再試。",
+    programTransportAmbiguous:
+      "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
+    archiveBlocked:
+      "課程仍有未完成的未來營運承諾，先處理相關聚會或報名後再存檔。",
+    archiveAlreadyArchived: "此課程已被其他負責人存檔。",
+    archiveProgram: "存檔課程",
+    activateProgram: "啟用課程",
     behaviorType: "形式",
     behaviorRecurring: "定期",
     behaviorOneOff: "單次",
@@ -339,6 +413,19 @@ export const COPY = {
     moduleEvents: "聚會",
     moduleAttendance: "出席",
     moduleCustomForms: "自訂表單",
+    departmentSettings: "部門設定",
+    departmentDetails: "部門資料",
+    saveDepartment: "儲存部門",
+    departmentManagers: "部門管理者",
+    noDepartmentManagers: "目前沒有部門管理者。",
+    assignDepartmentManager: "新增部門管理者",
+    revokeDepartmentManager: "移除部門管理者",
+    confirmRevokeDepartmentManager: "確定要移除此部門管理者嗎？",
+    departmentManagerUserId: "選擇部門管理者",
+    departmentManagerUserIdPlaceholder: "輸入姓名或用戶名稱",
+    departmentManagerAssignedNotice: "已新增部門管理者。",
+    departmentManagerRevokedNotice: "已移除部門管理者。",
+    departmentScopeHint: "此設定只適用於目前部門，不會改變全域角色。",
     enable: "啟用",
     disable: "停用",
     expand: "展開",
@@ -470,13 +557,55 @@ export const COPY = {
     leaderAccountInactive:
       "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
     enrollmentDuplicate: "此會友已報名此課程。",
+    // EVT-01 (#251): event operational detail and independent availability.
+    eventCreate: "新增聚會",
+    eventCreateTitle: "聚會資料",
+    eventCreateSubmit: "建立聚會",
+    eventCreateCancel: "取消建立",
+    eventDetailOpen: "詳情",
+    eventDetailBack: "返回聚會列表",
+    eventDetailTitle: "聚會詳情",
+    eventDetailNotFound: "找不到此聚會。",
+    eventName: "聚會名稱",
+    eventNamePlaceholder: "輸入聚會名稱（可留空）",
+    eventLocation: "地點",
+    eventLocationPlaceholder: "輸入地點（可留空）",
+    eventDetailLeaders: "事工負責人",
+    eventDetailParticipantSummary: "報名與出席",
+    eventActiveEnrollments: "已報名 {count} 人",
+    eventCheckedIn: "已簽到 {count} 人",
+    eventNoParticipants: "目前未有報名或簽到記錄。",
+    eventAvailability: "開放狀態",
+    eventAvailable: "開放",
+    eventUnavailable: "暫停",
+    eventAvailabilityDeactivate: "暫停聚會",
+    eventAvailabilityActivate: "恢復開放",
+    eventAvailabilityConfirmTitle: "暫停此聚會？",
+    eventAvailabilityConfirmBody:
+      "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
+    eventAvailabilityConfirmProceed: "確定暫停",
+    eventAvailabilityNotice: "聚會已暫停開放。",
+    eventAvailabilityRestoredNotice: "聚會已恢復開放。",
+    eventAvailabilityUndo: "復原",
+    eventEditTitle: "編輯聚會資料",
+    eventEditSave: "儲存更改",
+    eventEditCancel: "取消編輯",
+    eventSavedNotice: "聚會資料已更新。",
+    eventCreatedNotice: "聚會已建立。",
+    eventAvailabilityConfirmRequired:
+      "此聚會有進行中的操作，需確認後才能暫停。",
+    eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
+    eventCheckInWindow: "簽到時間",
+    eventCheckInWindowOpensAt: "開放簽到",
+    eventCheckInWindowClosesAt: "結束簽到",
   },
 } as const;
 
 export function errorCopyFor(
   code?: string,
   // _detail is surfaced only for VALIDATION problems, whose server detail is
-  // a specific user-facing Cantonese sentence; every other code keeps
+  // a specific user-facing Cantonese sentence; PROGRAM_ARCHIVE_BLOCKED uses
+  // it as a machine-readable reason discriminator. Every other code keeps
   // centralized copy as the sole user-facing source.
   _detail?: string
 ): string {
@@ -498,6 +627,13 @@ export function errorCopyFor(
   }
   if (code === "NOT_FOUND" || (code && code.endsWith("_NOT_FOUND"))) {
     return COPY.error.notFound;
+  }
+  if (code === "PROGRAM_ARCHIVE_BLOCKED") {
+    // 'already_archived' means a different actor reached the terminal state
+    // first — not an unresolved-commitment conflict, so it gets its own copy.
+    return _detail?.includes("already_archived")
+      ? COPY.programs.archiveAlreadyArchived
+      : COPY.programs.archiveBlocked;
   }
   if (code === "CONFLICT") {
     return COPY.error.conflict;
@@ -526,6 +662,12 @@ export function errorCopyFor(
   if (code === "DUPLICATE_ATTENDANCE") {
     return COPY.attendance.guestDuplicate;
   }
+  if (code === "CONFIRMATION_REQUIRED") {
+    return COPY.programs.eventAvailabilityConfirmRequired;
+  }
+  if (code === "EVENT_UNAVAILABLE") {
+    return COPY.programs.eventUnavailableCheckIn;
+  }
   if (code === "UNAVAILABLE") {
     return COPY.error.unavailable;
   }
@@ -536,6 +678,15 @@ export function errorCopyFor(
     return COPY.error.malformed;
   }
   return COPY.error.unknown;
+}
+
+/** Shared error-to-message mapper for program components.
+ * RpcError -> errorCopyFor (with detail for VALIDATION/ARCHIVE_BLOCKED);
+ * everything else -> generic network error. */
+export function errorMessage(error: unknown): string {
+  return error instanceof RpcError
+    ? errorCopyFor(error.problem.code, error.problem.detail)
+    : COPY.error.networkError;
 }
 
 // Traditional Chinese landing-page copy for the signed-out Persuade surface.

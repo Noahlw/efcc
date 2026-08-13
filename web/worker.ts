@@ -385,6 +385,10 @@ export default {
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
         handleGetDepartment,
+        handleListDepartmentManagers,
+        handleAssignDepartmentManager,
+        handleRevokeDepartmentManager,
+        handleSearchDepartmentMemberOptions,
         handleUpdateDepartment,
         handleCreateProgram,
         handleListPrograms,
@@ -400,6 +404,7 @@ export default {
         handleGenerateEvents,
         handleCreateEvent,
         handleListEvents,
+        handleGetEvent,
         handleEventUpdate,
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
@@ -478,6 +483,44 @@ export default {
           request,
           programEnv,
           department.groups?.id ?? ""
+        );
+      }
+      const departmentManagers = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/managers$/u
+      );
+      if (departmentManagers && request.method === "GET") {
+        return handleListDepartmentManagers(
+          request,
+          programEnv,
+          departmentManagers.groups?.id ?? ""
+        );
+      }
+      if (departmentManagers && request.method === "POST") {
+        return handleAssignDepartmentManager(
+          request,
+          programEnv,
+          departmentManagers.groups?.id ?? ""
+        );
+      }
+      const departmentManagerRevoke = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/managers\/(?<userId>[^/]+)\/revoke$/u
+      );
+      if (departmentManagerRevoke && request.method === "POST") {
+        return handleRevokeDepartmentManager(
+          request,
+          programEnv,
+          departmentManagerRevoke.groups?.id ?? "",
+          departmentManagerRevoke.groups?.userId ?? ""
+        );
+      }
+      const departmentMemberOptions = url.pathname.match(
+        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/member-options$/u
+      );
+      if (departmentMemberOptions && request.method === "GET") {
+        return handleSearchDepartmentMemberOptions(
+          request,
+          programEnv,
+          departmentMemberOptions.groups?.id ?? ""
         );
       }
       const departmentPrograms = url.pathname.match(
@@ -612,6 +655,14 @@ export default {
       const event = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
       );
+      if (event && request.method === "GET") {
+        return handleGetEvent(
+          request,
+          programEnv,
+          event.groups?.id ?? "",
+          event.groups?.eventId ?? ""
+        );
+      }
       if (event && request.method === "PATCH") {
         return handleEventUpdate(
           request,

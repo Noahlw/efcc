@@ -75,6 +75,8 @@ export interface ProgramUpdate {
   discoverability?: ProgramDiscoverability;
   enrollment_mode?: ProgramEnrollmentMode;
   display_order?: number;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
   updated_by: string;
   updated_at: string;
 }
@@ -125,6 +127,7 @@ export interface MemberOptionRow {
 }
 
 export type EventStatus = "Active" | "Cancelled";
+export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
 
 export interface ScheduleRuleInput {
@@ -184,13 +187,17 @@ export interface ScheduleExceptionRow {
   created_by: string | null;
   created_at: string;
 }
-
 export interface EventInput {
   program_id: string;
   starts_at: string;
   ends_at: string;
   status: EventStatus;
+  availability: EventAvailability;
   source: EventSource;
+  name: string | null;
+  location: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
   cancel_reason: string | null;
   created_by: string | null;
   created_at: string;
@@ -204,7 +211,10 @@ export interface EventRow {
   starts_at: string;
   ends_at: string;
   status: EventStatus;
+  availability: EventAvailability;
   source: EventSource;
+  name: string | null;
+  location: string | null;
   cancel_reason: string | null;
   created_by: string | null;
   created_at: string;
@@ -303,6 +313,30 @@ export interface ProgramLeaderRevokeInput {
   revoked_by: string;
   revoked_at: string;
 }
+export interface DepartmentManagerRow {
+  department_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  user_name?: string;
+  username?: string;
+}
+
+export interface DepartmentManagerGrantInput {
+  department_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+}
+
+export interface DepartmentManagerRevokeInput {
+  department_id: string;
+  user_id: string;
+  revoked_by: string;
+  revoked_at: string;
+}
 
 export interface AuditInput {
   audit_id: string;
@@ -337,9 +371,14 @@ export interface WorkspaceStore {
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
-  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   findProgramById: (id: string) => Promise<ProgramRow | null>;
+  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  archiveProgramIfClear: (
+    id: string,
+    update: ProgramUpdate,
+    now: string
+  ) => Promise<ProgramRow | null>;
   searchActiveMembers: (
     query: string,
     limit: number
@@ -389,6 +428,27 @@ export interface WorkspaceStore {
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
+  updateEvent: (
+    id: string,
+    update: {
+      starts_at?: string;
+      ends_at?: string;
+      name?: string | null;
+      location?: string | null;
+      check_in_window_opens_at?: string | null;
+      check_in_window_closes_at?: string | null;
+      availability?: EventAvailability;
+    },
+    updatedBy: string,
+    updatedAt: string
+  ) => Promise<EventRow | null>;
+  getEventParticipantSummary: (
+    eventId: string,
+    programId: string
+  ) => Promise<{
+    active_enrollments: number;
+    checked_in: number;
+  }>;
 
   createEnrollmentRequest: (
     input: EnrollmentRequestInput
@@ -454,6 +514,19 @@ export interface WorkspaceStore {
     cancelledBy: string,
     cancelledAt: string
   ) => Promise<EnrollmentRow | null>;
+  findDepartmentManager: (
+    departmentId: string,
+    userId: string
+  ) => Promise<DepartmentManagerRow | null>;
+  listDepartmentManagers: (
+    departmentId: string
+  ) => Promise<DepartmentManagerRow[]>;
+  assignDepartmentManager: (
+    input: DepartmentManagerGrantInput
+  ) => Promise<DepartmentManagerRow>;
+  revokeDepartmentManager: (
+    input: DepartmentManagerRevokeInput
+  ) => Promise<DepartmentManagerRow | null>;
 
   findProgramLeader: (
     programId: string,

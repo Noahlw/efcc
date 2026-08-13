@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -19,6 +25,11 @@ const mocks = vi.hoisted(() => ({
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
   listEnrollments: vi.fn(),
+  getEvent: vi.fn(),
+  createEvent: vi.fn(),
+  updateEvent: vi.fn(),
+  setEventAvailability: vi.fn(),
+  cancelEvent: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -26,6 +37,11 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollments: mocks.listEnrollments,
+  createEvent: mocks.createEvent,
+  getEvent: mocks.getEvent,
+  updateEvent: mocks.updateEvent,
+  setEventAvailability: mocks.setEventAvailability,
+  cancelEvent: mocks.cancelEvent,
 }));
 
 const program: Program = {
@@ -140,6 +156,7 @@ beforeEach(() => {
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
+  mocks.createEvent.mockReset();
 });
 
 afterEach(() => {
@@ -180,7 +197,7 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
-  test("renders Events as a focused read-only task destination", async () => {
+  test("renders Events with the management create entry point", async () => {
     mockWorkspace();
     const onTaskChange = vi.fn();
     render(
@@ -201,8 +218,8 @@ describe(ProgramWorkspace, () => {
       screen.findByText(COPY.programs.eventScheduleSource)
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /新增|建立|編輯|取消/u })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: COPY.programs.eventCreate })
+    ).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("link", {
@@ -277,5 +294,115 @@ describe(ProgramWorkspace, () => {
     await waitFor(() =>
       expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
     );
+  });
+});
+
+describe("EVT-01 workspace Event deep link (#251)", () => {
+  beforeEach(() => {
+    mocks.getEvent.mockReset();
+  });
+
+  test("events rows hand the Event id to onEventChange", async () => {
+    mockWorkspace();
+    const onEventChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        onEventChange={onEventChange}
+      />
+    );
+    const open = await screen.findByRole("button", {
+      name: COPY.programs.eventDetailOpen,
+    });
+    await userEvent.click(open);
+    expect(onEventChange).toHaveBeenCalledWith("event-1");
+  });
+  test("creates an Event with HK wall-time fields and opens its detail", async () => {
+    mockWorkspace();
+    mocks.createEvent.mockResolvedValue({
+      event: { ...event, event_id: "event-created" },
+    });
+    const onEventChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        onEventChange={onEventChange}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.eventCreate })
+    );
+    await userEvent.type(
+      screen.getByLabelText(COPY.programs.eventName),
+      "新聚會"
+    );
+    await userEvent.type(
+      screen.getByLabelText(COPY.programs.eventLocation),
+      "主堂"
+    );
+    fireEvent.change(screen.getByLabelText(COPY.programs.eventStart), {
+      target: { value: "2026-09-13T18:00" },
+    });
+    fireEvent.change(screen.getByLabelText(COPY.programs.eventEnd), {
+      target: { value: "2026-09-13T19:30" },
+    });
+    fireEvent.change(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowOpensAt),
+      { target: { value: "2026-09-13T17:30" } }
+    );
+    fireEvent.change(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowClosesAt),
+      { target: { value: "2026-09-13T19:30" } }
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.eventCreateSubmit })
+    );
+
+    await waitFor(() =>
+      expect(mocks.createEvent).toHaveBeenCalledWith("program-1", {
+        name: "新聚會",
+        location: "主堂",
+        starts_at: "2026-09-13T10:00:00.000Z",
+        ends_at: "2026-09-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-09-13T09:30:00.000Z",
+        check_in_window_closes_at: "2026-09-13T11:30:00.000Z",
+      })
+    );
+    expect(onEventChange).toHaveBeenCalledWith("event-created");
+  });
+
+  test("an eventId renders the Event detail screen and back clears it", async () => {
+    mockWorkspace();
+    mocks.getEvent.mockResolvedValue({
+      event: { ...event, name: "迎新聚會" },
+      leaders: [],
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    });
+    const onEventChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        eventId="event-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        onEventChange={onEventChange}
+      />
+    );
+    await expect(
+      screen.findByRole("heading", { name: "迎新聚會" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.eventDetailBack })
+    );
+    expect(onEventChange).toHaveBeenCalledWith(null);
   });
 });

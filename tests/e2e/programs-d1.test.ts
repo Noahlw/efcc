@@ -71,9 +71,63 @@ const COPY = {
   workspaceTaskParticipants: "參與者",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
+  settingsBasics: "基本資料",
+  settingsEnrollment: "報名與可見性",
+  settingsSchedule: "時間表",
+  settingsAttendance: "出席",
+  settingsScheduleOneOff:
+    "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
+  settingsAttendanceOpens: "開始前可簽到分鐘",
+  settingsAttendanceCloses: "結束後仍可簽到分鐘",
+  settingsSaveBasics: "儲存基本資料",
+  settingsSaveAttendance: "儲存出席預設",
+  addRule: "新增時間表",
+  generateEvents: "產生聚會",
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
+  createProgram: "新增課程",
+  editProgram: "編輯課程",
+  saveProgram: "儲存課程",
+  workspaceDepartment: "所屬部門",
+  programName: "課程名稱",
+  programCategory: "活動類別",
+  behaviorType: "形式",
+  behaviorOneOff: "單次",
+  lifecycle: "課程狀態",
+  lifecycleActive: "啟用",
+  // EVT-01 (#251): event operational detail and independent availability.
+  eventCreate: "新增聚會",
+  eventCreateSubmit: "建立聚會",
+  eventDetailBack: "返回聚會列表",
+  eventDetailTitle: "聚會詳情",
+  eventDetailParticipantSummary: "報名與出席",
+  eventName: "聚會名稱",
+  eventLocation: "地點",
+  eventStart: "開始時間（香港時間）",
+  eventEnd: "結束時間（香港時間）",
+  eventCheckInWindowOpensAt: "開放簽到",
+  eventCheckInWindowClosesAt: "結束簽到",
+  eventManualSource: "手動",
+  eventActive: "進行",
+  eventCancelled: "已取消",
+  eventAvailable: "開放",
+  eventUnavailable: "暫停",
+  eventAvailabilityDeactivate: "暫停聚會",
+  eventAvailabilityActivate: "恢復開放",
+  eventAvailabilityConfirmProceed: "確定暫停",
+  eventAvailabilityNotice: "聚會已暫停開放。",
+  eventAvailabilityRestoredNotice: "聚會已恢復開放。",
+  eventAvailabilityUndo: "復原",
+  eventEditTitle: "編輯聚會資料",
+  eventEditSave: "儲存更改",
+  eventSavedNotice: "聚會資料已更新。",
+  eventCreatedNotice: "聚會已建立。",
+  cancelEvent: "取消聚會",
+  confirmCancelEvent: "取消聚會",
+  keepEvent: "保留聚會",
+  cancelReason: "取消原因",
+  eventCancelledNotice: "聚會已取消。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -652,8 +706,16 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
     const directory = page.getByRole("list", { name: "可管理課程" });
-    await expect(directory.getByRole("button")).toHaveCount(4);
-    await expect(directory.getByText("E2E_DEMO_MINISTRY")).toHaveCount(4);
+    const demoDirectoryRows = directory
+      .getByRole("button")
+      .filter({ hasText: /^E2E_DEMO_/u });
+    await expect(demoDirectoryRows).toHaveCount(4);
+    expect(
+      await directory
+        .getByRole("listitem")
+        .filter({ hasText: "E2E_DEMO_MINISTRY" })
+        .count()
+    ).toBeGreaterThanOrEqual(4);
 
     const search = page.getByRole("searchbox", {
       name: COPY.managementDirectorySearchLabel,
@@ -700,7 +762,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskParticipants })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskParticipants,
+        exact: true,
+      })
     ).toBeVisible();
 
     await page
@@ -827,7 +892,12 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       const inheritedDirectory = page.getByRole("list", {
         name: "可管理課程",
       });
-      await expect(inheritedDirectory.getByRole("button")).toHaveCount(4);
+      const inheritedDemoRows = inheritedDirectory
+        .getByRole("button")
+        .filter({ hasText: /^E2E_DEMO_/u });
+      await expect
+        .poll(async () => inheritedDemoRows.count())
+        .toBeGreaterThanOrEqual(4);
       await expect(
         inheritedDirectory.getByRole("button", {
           name: /E2E_DEMO_青年團契/u,
@@ -876,5 +946,571 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("button", { name: COPY.workspaceBack })
     ).toBeVisible();
+
+  });
+});
+
+test.describe("CFG-01 Program Settings", () => {
+  test("renders all scope-owned groups and omits recurring controls for OneOff", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [recurringId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const [oneOffId] = await catalogProgramIds(page, "E2E_DEMO_青年團契");
+    expect(recurringId).toBeTruthy();
+    expect(oneOffId).toBeTruthy();
+
+    await page.goto(
+      `/programs?mode=management&program=${required("recurring id", recurringId)}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsBasics })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsEnrollment })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsSchedule })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsAttendance })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
+
+    await page.goto(
+      `/programs?mode=management&program=${required("one-off id", oneOffId)}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsSchedule })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.addRule })
+    ).toHaveCount(0);
+  });
+});
+
+test.describe("MUI-02 scoped Program management", () => {
+  test("creates a OneOff, operates multiple Events, edits, and blocks archive", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("button", { name: COPY.createProgram }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.createProgram })
+    ).toBeVisible();
+    // The department combobox defaults to the first department by
+    // display_order, which is the baseline 青區 — its program_catalog module
+    // is disabled (#250 module gating), so creating a program there is a 403.
+    // Explicitly pick the E2E_DEMO_ demo department (module enabled by seed).
+    await page
+      .getByRole("combobox", { name: COPY.workspaceDepartment })
+      .selectOption({ label: "E2E_DEMO_示範事工 · E2E_DEMO_MINISTRY" });
+
+    const originalName = `E2E_MUI250_${Date.now()}`;
+    await page
+      .getByRole("textbox", { name: COPY.programName })
+      .fill(originalName);
+    await page
+      .getByRole("textbox", { name: COPY.programCategory })
+      .fill("E2E 活動類別");
+    await page
+      .getByRole("combobox", { name: COPY.behaviorType })
+      .selectOption("OneOff");
+    await page
+      .getByRole("combobox", { name: COPY.lifecycle })
+      .selectOption("Active");
+    await page.getByRole("button", { name: COPY.saveProgram }).click();
+
+    await expect(
+      page.getByRole("heading", { name: originalName })
+    ).toBeVisible();
+    const programId = new URL(page.url()).searchParams.get("program");
+    expect(programId).toBeTruthy();
+    const id = required("created program id", programId ?? undefined);
+    const events = [
+      ["2098-12-01T10:00:00.000Z", "2098-12-01T11:00:00.000Z"],
+      ["2098-12-08T10:00:00.000Z", "2098-12-08T11:00:00.000Z"],
+    ] as const;
+    const eventResult = await page.evaluate(
+      async ({ programId: id, eventTimes }) => {
+        const statuses = await Promise.all(
+          eventTimes.map(async ([starts_at, ends_at]) => {
+            const response = await fetch(`/api/v1/programs/${id}/events`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ starts_at, ends_at }),
+            });
+            return response.status;
+          })
+        );
+        const listed = await fetch(`/api/v1/programs/${id}/events`);
+        const body = (await listed.json()) as {
+          data?: { events?: unknown[] };
+        };
+        return {
+          statuses,
+          listStatus: listed.status,
+          count: body.data?.events?.length ?? -1,
+        };
+      },
+      { programId: id, eventTimes: events }
+    );
+    expect(eventResult).toStrictEqual({
+      statuses: [201, 201],
+      listStatus: 200,
+      count: 2,
+    });
+
+    await page.getByRole("button", { name: COPY.editProgram }).click();
+    const updatedName = `${originalName}_更新`;
+    await page
+      .getByRole("textbox", { name: COPY.programName })
+      .fill(updatedName);
+    await page.getByRole("button", { name: COPY.saveProgram }).click();
+    await expect(
+      page.getByRole("heading", { name: updatedName })
+    ).toBeVisible();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?mode=management&program=${id}$`, "u")
+    );
+
+    const archiveStatus = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lifecycle: "Archived" }),
+      });
+      return response.status;
+    }, id);
+    expect(archiveStatus).toBe(409);
+  });
+
+  test("member direct Program mutation is denied server-side", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+
+    await page.context().clearCookies();
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const denied = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "E2E unauthorized rename" }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { code?: string },
+      };
+    }, id);
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
+  });
+});
+
+test.describe("EVT-01 event operational detail and availability", () => {
+  // Fresh E2E_DEMO_ fixtures (ADR-0029 reseed) are required: schedule-rule
+  // generation only ever creates Wednesdays 19:30, and this suite creates
+  // events at a worker-unique minute (+120 days, +start-second minutes), so
+  // starts_at never collides with generated events or earlier runs.
+  let evtBaseEpoch: number | null = null;
+  function eventStart(
+    dateOffsetDays: number,
+    minuteOffsetMinutes: number
+  ): string {
+    const base =
+      evtBaseEpoch ??
+      (evtBaseEpoch =
+        Date.now() + 120 * 86_400_000 + new Date().getSeconds() * 60_000);
+    const start = new Date(
+      base + dateOffsetDays * 86_400_000 + minuteOffsetMinutes * 60_000
+    );
+    const pad = (value: number): string => String(value).padStart(2, "0");
+    return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(
+      start.getDate()
+    )}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  }
+
+  function eventEndMinutesLater(start: string, minutes: number): string {
+    const value = new Date(`${start}:00`);
+    value.setMinutes(value.getMinutes() + minutes);
+    const pad = (value: number): string => String(value).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(
+      value.getDate()
+    )}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  }
+
+  // Mirrors hkWallDateTimeLabel in web/lib/programs/recurrence.ts.
+  const HK_WALL_FORMATTER = new Intl.DateTimeFormat("zh-Hant", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  function hkWallLabel(wallInput: string): string {
+    return HK_WALL_FORMATTER.format(new Date(`${wallInput}:00+08:00`));
+  }
+
+  async function apiJsonStatus(
+    page: Page,
+    path: string,
+    method = "GET",
+    body?: unknown
+  ): Promise<number> {
+    return await page.evaluate(
+      async ({ requestPath, requestMethod, requestBody }) => {
+        if (requestBody === undefined) {
+          const response = await fetch(requestPath, { method: requestMethod });
+          return response.status;
+        }
+        const response = await fetch(requestPath, {
+          method: requestMethod,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        return response.status;
+      },
+      { requestPath: path, requestMethod: method, requestBody: body }
+    );
+  }
+
+  interface EvtEnrollmentRequest {
+    request_id: string;
+    member_user_id: string;
+    status: string;
+  }
+
+  async function evtPendingRequests(
+    page: Page,
+    programId: string
+  ): Promise<EvtEnrollmentRequest[]> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { requests?: unknown } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
+    );
+    return ((body.data?.requests ?? []) as EvtEnrollmentRequest[]).filter(
+      ({ status }) => status === "Pending"
+    );
+  }
+
+  interface EvtEnrollment {
+    enrollment_id: string;
+    member_user_id: string;
+    status: string;
+  }
+
+  async function evtActiveEnrollments(
+    page: Page,
+    programId: string
+  ): Promise<EvtEnrollment[]> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { enrollments?: unknown } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/enrollments`
+    );
+    return (body.data?.enrollments ?? []) as EvtEnrollment[];
+  }
+
+  async function openEventsTask(
+    page: Page,
+    programId: string
+  ): Promise<void> {
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+    ).toBeVisible();
+  }
+
+  async function createManualEvent(
+    page: Page,
+    programId: string,
+    name: string,
+    minuteOffsetMinutes: number
+  ): Promise<string> {
+    await openEventsTask(page, programId);
+    await page.getByRole("button", { name: COPY.eventCreate }).click();
+    const startsAt = eventStart(0, minuteOffsetMinutes);
+    await page.getByLabel(COPY.eventName).fill(name);
+    await page.getByLabel(COPY.eventLocation).fill("測試場地");
+    await page.getByLabel(COPY.eventStart).fill(startsAt);
+    await page
+      .getByLabel(COPY.eventEnd)
+      .fill(eventEndMinutesLater(startsAt, 90));
+    await page
+      .getByLabel(COPY.eventCheckInWindowOpensAt)
+      .fill(eventEndMinutesLater(startsAt, -30));
+    await page
+      .getByLabel(COPY.eventCheckInWindowClosesAt)
+      .fill(eventEndMinutesLater(startsAt, 120));
+    await page.getByRole("button", { name: COPY.eventCreateSubmit }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${programId}&task=events&event=[A-Za-z0-9-]+$`,
+        "u"
+      )
+    );
+    const match = page
+      .url()
+      .match(/[?&]event=([A-Za-z0-9-]+)$/u);
+    expect(match?.[1], "create must navigate to the new event detail").toBeTruthy();
+    await expect(
+      page.getByRole("heading", { name })
+    ).toBeVisible();
+    return match?.[1] ?? "";
+  }
+
+  test("admin creates, deep-links, and edits an event with HK wall display", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    const name = `E2E_EVT_建立_${Date.now()}`;
+    const renamed = `E2E_EVT_改名_${Date.now()}`;
+    await createManualEvent(page, programId, name, 0);
+
+    const startsAt = eventStart(0, 0);
+    const endsAt = eventEndMinutesLater(startsAt, 90);
+    const opensAt = eventEndMinutesLater(startsAt, -30);
+    const closesAt = eventEndMinutesLater(startsAt, 120);
+    await expect(
+      page.getByRole("region", { name: COPY.eventDetailTitle })
+    ).toBeVisible();
+    await expect(
+      page.getByText(`${hkWallLabel(startsAt)} — ${hkWallLabel(endsAt)}`)
+    ).toBeVisible();
+    await expect(page.getByText(COPY.eventManualSource, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.eventActive, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.eventAvailable, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        `${COPY.eventCheckInWindowOpensAt} ${hkWallLabel(opensAt)}；${COPY.eventCheckInWindowClosesAt} ${hkWallLabel(closesAt)}`
+      )
+    ).toBeVisible();
+    await expect(page.getByText("已報名 0 人", { exact: true })).toBeVisible();
+    await expect(page.getByText("已簽到 0 人", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.eventDetailParticipantSummary })
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: COPY.eventEditTitle }).click();
+    await page.getByLabel(COPY.eventName).fill(renamed);
+    await page.getByLabel(COPY.eventLocation).fill("副堂 A");
+    await page.getByRole("button", { name: COPY.eventEditSave }).click();
+    await expect(
+      page.getByText(COPY.eventSavedNotice, { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: renamed })
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: renamed })
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: COPY.eventDetailBack }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${programId}&task=events$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+    ).toBeVisible();
+  });
+
+  test("safe deactivation is immediate with Undo; cancellation retires controls", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    await createManualEvent(
+      page,
+      programId,
+      `E2E_EVT_暫停_${Date.now()}`,
+      90
+    );
+
+    await page.getByRole("button", { name: COPY.eventAvailabilityDeactivate }).click();
+    await expect(
+      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
+    ).toHaveCount(0);
+    const undo = page.getByRole("button", { name: COPY.eventAvailabilityUndo });
+    await expect(undo).toBeVisible();
+    await undo.click();
+    await expect(
+      page.getByText(COPY.eventAvailabilityRestoredNotice, { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.eventAvailabilityDeactivate })
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: COPY.cancelEvent }).click();
+    await page.getByLabel(COPY.cancelReason).fill("場地維修");
+    await page.getByRole("button", { name: COPY.confirmCancelEvent }).click();
+    await expect(
+      page.getByText(COPY.eventCancelledNotice, { exact: true }).first()
+    ).toBeVisible();
+    await expect(page.getByText("取消原因：場地維修")).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventCancelled, { exact: true })
+    ).toBeVisible();
+    for (const label of [
+      COPY.eventAvailabilityDeactivate,
+      COPY.eventAvailabilityActivate,
+      COPY.eventAvailabilityUndo,
+      COPY.eventEditTitle,
+      COPY.cancelEvent,
+    ]) {
+      await expect(page.getByRole("button", { name: label })).toHaveCount(0);
+    }
+  });
+
+  test("an active Program enrollment alone does not gate this event's deactivation", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    await createManualEvent(
+      page,
+      programId,
+      `E2E_EVT_確認_${Date.now()}`,
+      180
+    );
+
+    // A concurrent actor enrolls and is approved. EVT-01 (#251): enrollments
+    // are Program-scoped, not this Event's own open operations, so an
+    // approved enrollment must never gate deactivation of an event that has
+    // no check-ins of its own.
+    const memberContext = await browser.newContext();
+    try {
+      const memberPage = await memberContext.newPage();
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      expect(
+        await apiJsonStatus(
+          memberPage,
+          `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`,
+          "POST",
+          {}
+        )
+      ).toBeGreaterThanOrEqual(200);
+      expect(
+        await apiJsonStatus(memberPage, "/api/v1/programs/access")
+      ).toBe(200);
+    } finally {
+      await memberContext.close();
+    }
+
+    const pending = await evtPendingRequests(page, programId);
+    const request = pending.find(
+      ({ member_user_id }) => member_user_id === DEV_MEMBER.userId
+    );
+    expect(request, "member request must be pending for approval").toBeTruthy();
+    const decisionStatus = await apiJsonStatus(
+      page,
+      `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests/${encodeURIComponent(request?.request_id ?? "")}/decision`,
+      "POST",
+      { action: "Approved" }
+    );
+    expect([200, 409]).toContain(decisionStatus);
+    const approved = await evtActiveEnrollments(page, programId);
+    expect(
+      approved.some(
+        ({ member_user_id }) => member_user_id === DEV_MEMBER.userId
+      ),
+      "approval must leave an Active enrollment"
+    ).toBeTruthy();
+
+    // Deactivation must succeed immediately: this event has zero check-ins,
+    // so the unrelated Program enrollment above must not surface a
+    // confirmation gate.
+    await page
+      .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
+      .click();
+    await expect(
+      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.eventAvailabilityUndo })
+    ).toBeVisible();
+
+    // Restore the fixture: retire the seeded approval so a same-day re-run
+    // starts clean.
+    const enrollments = await evtActiveEnrollments(page, programId);
+    const enrollment = enrollments.find(
+      ({ member_user_id, status }) =>
+        member_user_id === DEV_MEMBER.userId && status === "Active"
+    );
+    expect(enrollment, "approved enrollment must be active").toBeTruthy();
+    expect(
+      await apiJsonStatus(
+        page,
+        `/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(enrollment?.enrollment_id ?? "")}/cancel`,
+        "POST",
+        {}
+      )
+    ).toBe(200);
   });
 });

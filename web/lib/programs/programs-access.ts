@@ -1,3 +1,4 @@
+import { hasDepartmentManagementScope } from "@/lib/programs/capabilities";
 import type { Department, Program } from "@/lib/programs/program-api";
 
 export interface ProgramsManagementAccess {
@@ -15,10 +16,7 @@ export function projectManagementAccess(
   programsByDepartment: readonly (readonly Program[])[]
 ): ProgramsManagementAccess {
   const departmentScopes = departments.filter(
-    ({ capabilities }) =>
-      capabilities.manage ||
-      capabilities.publish ||
-      capabilities.module_configure
+    hasDepartmentManagementScope
   ).length;
   const programScopes = programsByDepartment
     .flat()

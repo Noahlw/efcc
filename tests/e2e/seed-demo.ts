@@ -61,7 +61,12 @@ const PROGRAMS = [
   },
 ] as const;
 
-const REQUIRED_MODULES = ["program_catalog", "events", "enrollment"] as const;
+const REQUIRED_MODULES = [
+  "program_catalog",
+  "events",
+  "enrollment",
+  "attendance",
+] as const;
 
 interface JsonRecord {
   data?: unknown;

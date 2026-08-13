@@ -17,29 +17,40 @@ import {
 } from "./capability-authorizer";
 import type { AuthorizationContext } from "./capability-authorizer";
 import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
+import { DepartmentWorkspace } from "./department-workspace";
+import type {
+  CreateEventCommand,
+  CreateScheduleRuleCommand,
+  EventAvailability,
+  UpdateEventCommand,
+  DepartmentView,
+  UpdateScheduleRuleCommand,
+} from "./department-workspace";
 import {
-  DepartmentWorkspace,
+  DepartmentManagerConflictError,
+  DepartmentManagerNotAssignedError,
   DuplicateDepartmentCodeError,
   DuplicateEnrollmentError,
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentNotAllowedError,
+  EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  ProgramArchiveBlockedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
-} from "./department-workspace";
-import type {
-  CreateScheduleRuleCommand,
-  UpdateScheduleRuleCommand,
-} from "./department-workspace";
+  SelfDepartmentManagerError,
+  ProgramLeaderConflictError,
+} from "./program-errors";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
+  DepartmentManagerRow,
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
@@ -50,33 +61,38 @@ export interface ProgramEnv {
   EFCC_ACCESS_TOKEN_SECRET: string;
 }
 
-function isDepartmentLifecycle(
-  v: unknown
-): v is "Draft" | "PendingDevelopment" | "Active" | "Archived" {
-  return (
-    v === "Draft" ||
-    v === "PendingDevelopment" ||
-    v === "Active" ||
-    v === "Archived"
-  );
+function departmentManagerDto(row: DepartmentManagerRow) {
+  return {
+    department_id: row.department_id,
+    user_id: row.user_id,
+    granted_by: row.granted_by,
+    granted_at: row.granted_at,
+    revoked_by: row.revoked_by,
+    revoked_at: row.revoked_at,
+    ...(row.user_name === undefined ? {} : { user_name: row.user_name }),
+    ...(row.username === undefined ? {} : { username: row.username }),
+  };
 }
 
-function isProgramBehaviorType(v: unknown): v is "Recurring" | "OneOff" {
-  return v === "Recurring" || v === "OneOff";
+function departmentDto(row: DepartmentView) {
+  return {
+    department_id: row.department_id,
+    code: row.code,
+    name: row.name,
+    description: row.description,
+    lifecycle: row.lifecycle,
+    display_order: row.display_order,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    capabilities: row.capabilities,
+  };
 }
 
-function isProgramLifecycle(v: unknown): v is "Draft" | "Active" | "Archived" {
-  return v === "Draft" || v === "Active" || v === "Archived";
-}
-
-function isProgramDiscoverability(v: unknown): v is "Listed" | "Unlisted" {
-  return v === "Listed" || v === "Unlisted";
-}
-
-function isProgramEnrollmentMode(
-  v: unknown
-): v is "MemberRequest" | "ManagerOnly" {
-  return v === "MemberRequest" || v === "ManagerOnly";
+function isOneOf<T extends string>(
+  v: unknown,
+  options: readonly T[]
+): v is T {
+  return typeof v === "string" && (options as readonly string[]).includes(v);
 }
 
 const INVALID_PROGRAM_VALUE = Symbol("invalid program value");
@@ -88,16 +104,36 @@ const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
   description: (value) =>
     value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
   category: (value) =>
-    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
+    typeof value === "string" && value.trim()
+      ? value.trim()
+      : value === null
+        ? null
+        : INVALID_PROGRAM_VALUE,
   behavior_type: (value) =>
-    isProgramBehaviorType(value) ? value : INVALID_PROGRAM_VALUE,
+    isOneOf(value, ["Recurring", "OneOff"] as const)
+      ? value
+      : INVALID_PROGRAM_VALUE,
   lifecycle: (value) =>
-    isProgramLifecycle(value) ? value : INVALID_PROGRAM_VALUE,
+    isOneOf(value, ["Draft", "Active", "Archived"] as const)
+      ? value
+      : INVALID_PROGRAM_VALUE,
   discoverability: (value) =>
-    isProgramDiscoverability(value) ? value : INVALID_PROGRAM_VALUE,
+    isOneOf(value, ["Listed", "Unlisted"] as const)
+      ? value
+      : INVALID_PROGRAM_VALUE,
   enrollment_mode: (value) =>
-    isProgramEnrollmentMode(value) ? value : INVALID_PROGRAM_VALUE,
+    isOneOf(value, ["MemberRequest", "ManagerOnly"] as const)
+      ? value
+      : INVALID_PROGRAM_VALUE,
   display_order: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
+  check_in_opens_at_minutes_before_start: (value) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : INVALID_PROGRAM_VALUE,
+  check_in_closes_at_minutes_after_end: (value) =>
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0
       ? value
       : INVALID_PROGRAM_VALUE,
@@ -127,7 +163,8 @@ function problem(
   code: string,
   title: string,
   detail: string | undefined,
-  requestId: string
+  requestId: string,
+  extensions?: Record<string, unknown>
 ): Response {
   const body: Record<string, unknown> = {
     type: `tag:apps-script/efcc/errors#${code}`,
@@ -139,6 +176,9 @@ function problem(
   if (detail !== undefined) {
     body.detail = detail;
   }
+  if (extensions !== undefined) {
+    Object.assign(body, extensions);
+  }
   return Response.json(body, {
     status,
     headers: {
@@ -148,6 +188,106 @@ function problem(
   });
 }
 
+function validation(requestId: string, detail: string): Response {
+  return problem(422, "VALIDATION", "Validation failed", detail, requestId);
+}
+
+function notFound(requestId: string, detail: string): Response {
+  return problem(404, "NOT_FOUND", "Not found", detail, requestId);
+}
+
+/**
+ * Central 1:1 mapping from DepartmentWorkspace domain errors to Problem
+ * Details responses. Returns null for errors this mapping does not know
+ * (including WorkspaceNotFoundError, which only a few handlers map, with
+ * handler-specific detail) so callers fall through to bespoke handling or
+ * rethrow.
+ */
+function mapWorkspaceError(
+  error: unknown,
+  requestId: string
+): Response | null {
+  if (
+    error instanceof AuthorizationDeniedError ||
+    error instanceof SelfDepartmentManagerError ||
+    error instanceof SelfDelegationError
+  ) {
+    return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+  }
+  if (error instanceof LeaderAccountInactiveError) {
+    return problem(
+      422,
+      "ACCOUNT_INACTIVE",
+      "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (
+    error instanceof InvalidProgramLifecycleError ||
+    error instanceof InvalidModuleKeyError ||
+    error instanceof EnrollmentNotAllowedError ||
+    error instanceof ScheduleRuleNotApplicableError ||
+    error instanceof NoScheduleRulesError
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (
+    error instanceof DepartmentManagerNotAssignedError ||
+    error instanceof LeaderNotAssignedError
+  ) {
+    return problem(404, "NOT_FOUND", "Not found", error.message, requestId);
+  }
+  if (
+    error instanceof DuplicateDepartmentCodeError ||
+    error instanceof DuplicateProgramNameError ||
+    error instanceof DuplicateEventError ||
+    error instanceof DuplicateScheduleExceptionError ||
+    error instanceof RequestNotDecidableError ||
+    error instanceof DepartmentManagerConflictError ||
+    error instanceof ProgramLeaderConflictError
+  ) {
+    return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+  }
+  if (error instanceof DuplicateEnrollmentError) {
+    return problem(
+      409,
+      "ENROLLMENT_DUPLICATE",
+      "Conflict",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof ProgramArchiveBlockedError) {
+    // Detail carries the machine-readable block reason token(s) (e.g.
+    // 'already_archived' vs 'future_active_event') so the client can show
+    // accurate copy; the generic message is not user-facing for this code.
+    return problem(
+      409,
+      "PROGRAM_ARCHIVE_BLOCKED",
+      "Conflict",
+      error.reasons.join(","),
+      requestId
+    );
+  }
+  if (error instanceof EventAvailabilityConfirmationRequiredError) {
+    return problem(
+      409,
+      "CONFIRMATION_REQUIRED",
+      "Confirmation required",
+      `${error.message} Affected open operations: ${error.affectedOperations}.`,
+      requestId,
+      { open_operations: error.affectedOperations }
+    );
+  }
+  return null;
+}
 function jsonResponse(
   status: number,
   body: unknown,
@@ -289,7 +429,10 @@ export async function handleCreateDepartment(
   }
   if (
     typeof body.lifecycle !== "string" ||
-    !isDepartmentLifecycle(body.lifecycle)
+    !isOneOf(
+      body.lifecycle,
+      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
+    )
   ) {
     return problem(
       422,
@@ -329,11 +472,9 @@ export async function handleCreateDepartment(
     );
     return jsonResponse(201, { department: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof DuplicateDepartmentCodeError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -483,7 +624,148 @@ export async function handleGetDepartment(
     ctxFrom(auth.account),
     departmentId
   );
-  return jsonResponse(200, { department: row, modules }, requestId);
+  const safeModules = (modules ?? []).map(
+    ({ department_id, module_key, enabled, enabled_at }) => ({
+      department_id,
+      module_key,
+      enabled,
+      enabled_at,
+    })
+  );
+  return jsonResponse(
+    200,
+    { department: departmentDto(row), modules: safeModules },
+    requestId
+  );
+}
+/** GET /api/v1/programs/departments/:id/managers */
+export async function handleListDepartmentManagers(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const managers = await workspace.listDepartmentManagers(
+    ctxFrom(auth.account),
+    departmentId
+  );
+  if (managers === null) {
+    return notFound(requestId, "Unknown department.");
+  }
+  return jsonResponse(
+    200,
+    { managers: managers.map(departmentManagerDto) },
+    requestId
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers */
+export async function handleAssignDepartmentManager(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ user_id?: unknown }>(request);
+  if (body === null || typeof body.user_id !== "string" || !body.user_id) {
+    return validation(requestId, "user_id is required.");
+  }
+  const target = await findAccountByUserId(env.DB, body.user_id);
+  if (!target) {
+    return validation(requestId, "Unknown user_id.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const manager = await workspace.assignDepartmentManager(
+      ctxFrom(auth.account),
+      departmentId,
+      body.user_id,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { manager: departmentManagerDto(manager) },
+      requestId
+    );
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
+export async function handleRevokeDepartmentManager(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string,
+  userId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const manager = await workspace.revokeDepartmentManager(
+      ctxFrom(auth.account),
+      departmentId,
+      userId,
+      correlationId
+    );
+    return jsonResponse(
+      200,
+      { manager: departmentManagerDto(manager) },
+      requestId
+    );
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/departments/:id/member-options?q=... */
+export async function handleSearchDepartmentMemberOptions(
+  request: Request,
+  env: ProgramEnv,
+  departmentId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const department = await workspace.getDepartment(
+    ctxFrom(auth.account),
+    departmentId
+  );
+  if (!department || department.capabilities.manager_assign !== true) {
+    return notFound(requestId, "Unknown department.");
+  }
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const members = await workspace.searchActiveMembers(query, 20);
+  return jsonResponse(200, { members }, requestId);
 }
 
 /** PATCH /api/v1/programs/departments/:id */
@@ -534,7 +816,13 @@ export async function handleUpdateDepartment(
       requestId
     );
   }
-  if (body.lifecycle !== undefined && !isDepartmentLifecycle(body.lifecycle)) {
+  if (
+    body.lifecycle !== undefined &&
+    !isOneOf(
+      body.lifecycle,
+      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
+    )
+  ) {
     return problem(
       422,
       "VALIDATION",
@@ -566,7 +854,12 @@ export async function handleUpdateDepartment(
   if (typeof body.description === "string") {
     update.description = body.description;
   }
-  if (isDepartmentLifecycle(body.lifecycle)) {
+  if (
+    isOneOf(
+      body.lifecycle,
+      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
+    )
+  ) {
     update.lifecycle = body.lifecycle;
   }
   if (typeof body.display_order === "number") {
@@ -593,6 +886,10 @@ export async function handleUpdateDepartment(
         "Not authorized to update this department.",
         requestId
       );
+    }
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -632,15 +929,16 @@ export async function handleCreateProgram(
   }
   const fields = parseProgramFields(body, [
     "name",
+    "category",
     "behavior_type",
     "lifecycle",
   ]);
-  if (!fields) {
+  if (!fields || fields.category === null) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, behavior_type, and lifecycle are required and must be valid.",
+      "name, category, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -685,17 +983,9 @@ export async function handleCreateProgram(
         requestId
       );
     }
-    if (error instanceof DuplicateProgramNameError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
-    }
-    if (error instanceof InvalidProgramLifecycleError) {
-      return problem(
-        422,
-        "VALIDATION",
-        "Validation failed",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -769,6 +1059,8 @@ export async function handleUpdateProgram(
     discoverability?: unknown;
     enrollment_mode?: unknown;
     display_order?: unknown;
+    check_in_opens_at_minutes_before_start?: unknown;
+    check_in_closes_at_minutes_after_end?: unknown;
   }>(request);
   if (body === null) {
     return problem(
@@ -828,17 +1120,9 @@ export async function handleUpdateProgram(
         requestId
       );
     }
-    if (error instanceof DuplicateProgramNameError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
-    }
-    if (error instanceof InvalidProgramLifecycleError) {
-      return problem(
-        422,
-        "VALIDATION",
-        "Validation failed",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -908,15 +1192,6 @@ export async function handleSetModule(
     );
     return jsonResponse(200, { module }, requestId);
   } catch (error) {
-    if (error instanceof InvalidModuleKeyError) {
-      return problem(
-        422,
-        "VALIDATION",
-        "Validation failed",
-        error.message,
-        requestId
-      );
-    }
     if (
       error instanceof AuthorizationDeniedError ||
       error instanceof WorkspaceNotFoundError
@@ -929,6 +1204,10 @@ export async function handleSetModule(
         requestId
       );
     }
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
     throw error;
   }
 }
@@ -936,14 +1215,6 @@ export async function handleSetModule(
 // ---------------------------------------------------------------------------
 // PRG-02 (#198): schedule rules, exceptions, generation, events.
 // ---------------------------------------------------------------------------
-
-function isRecurrenceKind(v: unknown): v is "WEEKLY" | "MONTHLY" {
-  return v === "WEEKLY" || v === "MONTHLY";
-}
-
-function isScheduleExceptionAction(v: unknown): v is "CANCEL" | "RESCHEDULE" {
-  return v === "CANCEL" || v === "RESCHEDULE";
-}
 
 function isIsoInstant(v: unknown): v is string {
   if (typeof v !== "string") {
@@ -953,14 +1224,6 @@ function isIsoInstant(v: unknown): v is string {
     return false;
   }
   return !Number.isNaN(Date.parse(v));
-}
-
-function validation(requestId: string, detail: string): Response {
-  return problem(422, "VALIDATION", "Validation failed", detail, requestId);
-}
-
-function notFound(requestId: string, detail: string): Response {
-  return problem(404, "NOT_FOUND", "Not found", detail, requestId);
 }
 
 function isDayOfWeekValue(v: unknown): v is number {
@@ -1009,7 +1272,7 @@ function parseRuleBody(body: {
   start_time?: unknown;
   end_time?: unknown;
 }): RuleBodyResult {
-  if (!isRecurrenceKind(body.recurrence)) {
+  if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
   }
   if (!isWallTime(body.start_time) || !isWallTime(body.end_time)) {
@@ -1103,11 +1366,9 @@ export async function handleCreateScheduleRule(
     );
     return jsonResponse(201, { rule: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof ScheduleRuleNotApplicableError) {
-      return validation(requestId, error.message);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1128,7 +1389,7 @@ function parseRulePatch(
   existing: ScheduleRuleRow
 ): RulePatchResult {
   const update: UpdateScheduleRuleCommand = {};
-  if (isRecurrenceKind(body.recurrence)) {
+  if (isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     update.recurrence = body.recurrence;
   }
   if (body.day_of_week !== undefined && !isDayOfWeekValue(body.day_of_week)) {
@@ -1220,8 +1481,9 @@ export async function handleUpdateScheduleRule(
     );
     return jsonResponse(200, { rule: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1253,7 +1515,7 @@ export async function handleCreateScheduleException(
   if (!isWallDate(body.override_date)) {
     return validation(requestId, "override_date must be YYYY-MM-DD.");
   }
-  if (!isScheduleExceptionAction(body.action)) {
+  if (!isOneOf(body.action, ["CANCEL", "RESCHEDULE"] as const)) {
     return validation(requestId, "action must be CANCEL or RESCHEDULE.");
   }
   const newStart =
@@ -1306,11 +1568,9 @@ export async function handleCreateScheduleException(
     );
     return jsonResponse(201, { exception: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof DuplicateScheduleExceptionError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1352,8 +1612,9 @@ export async function handleDeleteScheduleException(
     );
     return jsonResponse(200, { deleted: true }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1383,7 +1644,10 @@ export async function handleGenerateEvents(
     ) {
       horizonDays = raw;
     } else if (raw !== undefined) {
-      return validation(requestId, "horizon_days must be an integer 1-365.");
+      return validation(
+        requestId,
+        "產生範圍的天數必須是 1 至 365 之間的整數。"
+      );
     }
   }
   const { workspace } = await getModule(env);
@@ -1400,14 +1664,9 @@ export async function handleGenerateEvents(
     );
     return jsonResponse(200, { generated: result }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof ScheduleRuleNotApplicableError) {
-      return validation(requestId, error.message);
-    }
-    if (error instanceof NoScheduleRulesError) {
-      return validation(requestId, error.message);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1428,6 +1687,10 @@ export async function handleCreateEvent(
   const body = await parseJson<{
     starts_at?: unknown;
     ends_at?: unknown;
+    name?: unknown;
+    location?: unknown;
+    check_in_window_opens_at?: unknown;
+    check_in_window_closes_at?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1438,6 +1701,59 @@ export async function handleCreateEvent(
   if (body.ends_at <= body.starts_at) {
     return validation(requestId, "ends_at must be after starts_at.");
   }
+  const textField = (
+    value: unknown,
+    field: string
+  ): string | null | undefined => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== "string") {
+      throw new Error(`${field} must be text.`);
+    }
+    return value.trim() || null;
+  };
+  let name: string | null | undefined;
+  let location: string | null | undefined;
+  let opens: string | null | undefined;
+  let closes: string | null | undefined;
+  try {
+    name = textField(body.name, "name");
+    location = textField(body.location, "location");
+    opens = textField(
+      body.check_in_window_opens_at,
+      "check_in_window_opens_at"
+    );
+    closes = textField(
+      body.check_in_window_closes_at,
+      "check_in_window_closes_at"
+    );
+  } catch (error) {
+    return validation(
+      requestId,
+      error instanceof Error ? error.message : "Invalid text field."
+    );
+  }
+  if (
+    (opens !== undefined && opens !== null && !isIsoInstant(opens)) ||
+    (closes !== undefined && closes !== null && !isIsoInstant(closes))
+  ) {
+    return validation(
+      requestId,
+      "Check-in window values must be ISO-8601 UTC."
+    );
+  }
+  if (
+    opens !== undefined &&
+    closes !== undefined &&
+    opens !== null &&
+    closes !== null &&
+    closes <= opens
+  ) {
+    return validation(
+      requestId,
+      "check-in window closes_at must be after opens_at."
+    );
+  }
   const { workspace } = await getModule(env);
   const program = await workspace.getProgram(ctxFrom(auth.account), programId);
   if (!program) {
@@ -1447,16 +1763,21 @@ export async function handleCreateEvent(
     const row = await workspace.createEvent(
       ctxFrom(auth.account),
       programId,
-      { starts_at: body.starts_at, ends_at: body.ends_at },
+      {
+        starts_at: body.starts_at,
+        ends_at: body.ends_at,
+        name: name ?? null,
+        location: location ?? null,
+        check_in_window_opens_at: opens ?? null,
+        check_in_window_closes_at: closes ?? null,
+      } satisfies CreateEventCommand,
       correlationId
     );
     return jsonResponse(201, { event: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof DuplicateEventError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1481,6 +1802,37 @@ export async function handleListEvents(
   return jsonResponse(200, { events: rows }, requestId);
 }
 
+/** GET /api/v1/programs/:programId/events/:eventId */
+export async function handleGetEvent(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  eventId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const detail = await workspace.getEventDetail(
+      ctxFrom(auth.account),
+      eventId
+    );
+    if (!detail || detail.event.program_id !== programId) {
+      return notFound(requestId, "Unknown event.");
+    }
+    return jsonResponse(200, detail, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** PATCH /api/v1/programs/:programId/events/:eventId */
 export async function handleEventUpdate(
   request: Request,
@@ -1494,33 +1846,163 @@ export async function handleEventUpdate(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ reason?: unknown }>(request);
+  const body = await parseJson<Record<string, unknown>>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-  if (!reason) {
-    return validation(requestId, "reason is required.");
+  if ("availability" in body) {
+    if (body.availability !== "Active" && body.availability !== "Inactive") {
+      return validation(requestId, "availability must be Active or Inactive.");
+    }
+  }
+  if ("reason" in body) {
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (!reason) {
+      return validation(requestId, "reason is required.");
+    }
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEvent(ctxFrom(auth.account), eventId);
-  if (!existing) {
+  if (!existing || existing.program_id !== programId) {
     return notFound(requestId, "Unknown event.");
   }
-  if (existing.program_id !== programId) {
-    return notFound(requestId, "Unknown event.");
+  if ("availability" in body) {
+    const confirmed = body.confirm === true;
+    const availability = body.availability as EventAvailability;
+    try {
+      const row = await workspace.setEventAvailability(
+        ctxFrom(auth.account),
+        eventId,
+        { availability, confirm: confirmed },
+        correlationId
+      );
+      return jsonResponse(200, { event: row }, requestId);
+    } catch (error) {
+      const mapped = mapWorkspaceError(error, requestId);
+      if (mapped) {
+        return mapped;
+      }
+      throw error;
+    }
+  }
+  if ("reason" in body) {
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    try {
+      const row = await workspace.cancelEvent(
+        ctxFrom(auth.account),
+        eventId,
+        { reason },
+        correlationId
+      );
+      return jsonResponse(200, { event: row }, requestId);
+    } catch (error) {
+      const mapped = mapWorkspaceError(error, requestId);
+      if (mapped) {
+        return mapped;
+      }
+      throw error;
+    }
+  }
+  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
+    starts_at: true,
+    ends_at: true,
+    name: true,
+    location: true,
+    check_in_window_opens_at: true,
+    check_in_window_closes_at: true,
+  };
+  if (Object.keys(body).some((key) => !ALLOWED_EVENT_UPDATE_FIELDS[key])) {
+    return validation(requestId, "Unknown event field.");
+  }
+  const parseOptionalText = (value: unknown, field: string) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== "string") {
+      throw new Error(`${field} must be text.`);
+    }
+    return value.trim() || null;
+  };
+  let update: UpdateEventCommand;
+  try {
+    const starts = body.starts_at;
+    const ends = body.ends_at;
+    if (starts !== undefined && !isIsoInstant(starts)) {
+      return validation(requestId, "starts_at must be ISO-8601 UTC.");
+    }
+    if (ends !== undefined && !isIsoInstant(ends)) {
+      return validation(requestId, "ends_at must be ISO-8601 UTC.");
+    }
+    const effectiveStarts =
+      (starts as string | undefined) ?? existing.starts_at;
+    const effectiveEnds = (ends as string | undefined) ?? existing.ends_at;
+    if (effectiveEnds <= effectiveStarts) {
+      return validation(requestId, "ends_at must be after starts_at.");
+    }
+    const opens = parseOptionalText(
+      body.check_in_window_opens_at,
+      "check_in_window_opens_at"
+    );
+    const closes = parseOptionalText(
+      body.check_in_window_closes_at,
+      "check_in_window_closes_at"
+    );
+    if (
+      (opens !== undefined && opens !== null && !isIsoInstant(opens)) ||
+      (closes !== undefined && closes !== null && !isIsoInstant(closes))
+    ) {
+      return validation(
+        requestId,
+        "Check-in window values must be ISO-8601 UTC."
+      );
+    }
+    const effectiveOpens = opens ?? existing.check_in_window_opens_at;
+    const effectiveCloses = closes ?? existing.check_in_window_closes_at;
+    if (
+      effectiveOpens !== null &&
+      effectiveCloses !== null &&
+      effectiveOpens !== undefined &&
+      effectiveCloses !== undefined &&
+      effectiveCloses <= effectiveOpens
+    ) {
+      return validation(
+        requestId,
+        "check-in window closes_at must be after opens_at."
+      );
+    }
+    update = {
+      ...(starts === undefined ? {} : { starts_at: starts }),
+      ...(ends === undefined ? {} : { ends_at: ends }),
+      ...(body.name === undefined
+        ? {}
+        : { name: parseOptionalText(body.name, "name") }),
+      ...(body.location === undefined
+        ? {}
+        : { location: parseOptionalText(body.location, "location") }),
+      ...(body.check_in_window_opens_at === undefined
+        ? {}
+        : { check_in_window_opens_at: opens }),
+      ...(body.check_in_window_closes_at === undefined
+        ? {}
+        : { check_in_window_closes_at: closes }),
+    };
+  } catch (error) {
+    return validation(
+      requestId,
+      error instanceof Error ? error.message : "Invalid event field."
+    );
   }
   try {
-    const row = await workspace.cancelEvent(
+    const row = await workspace.updateEvent(
       ctxFrom(auth.account),
       eventId,
-      { reason },
+      update,
       correlationId
     );
     return jsonResponse(200, { event: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1551,20 +2033,9 @@ export async function handleCreateEnrollmentRequest(
     );
     return jsonResponse(201, { request: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof EnrollmentNotAllowedError) {
-      return validation(requestId, error.message);
-    }
-    if (error instanceof DuplicateEnrollmentError) {
-      return problem(
-        409,
-        "ENROLLMENT_DUPLICATE",
-        "Conflict",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1634,20 +2105,9 @@ export async function handleDecideEnrollmentRequest(
     );
     return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
-    }
-    if (error instanceof DuplicateEnrollmentError) {
-      return problem(
-        409,
-        "ENROLLMENT_DUPLICATE",
-        "Conflict",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1686,11 +2146,9 @@ export async function handleWithdrawEnrollmentRequest(
     );
     return jsonResponse(200, { request: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1735,20 +2193,9 @@ export async function handleAssistedEnroll(
     );
     return jsonResponse(201, { enrollment: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof EnrollmentNotAllowedError) {
-      return validation(requestId, error.message);
-    }
-    if (error instanceof DuplicateEnrollmentError) {
-      return problem(
-        409,
-        "ENROLLMENT_DUPLICATE",
-        "Conflict",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1809,11 +2256,9 @@ export async function handleCancelEnrollment(
     );
     return jsonResponse(200, { enrollment: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof RequestNotDecidableError) {
-      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1853,20 +2298,9 @@ export async function handleAssignProgramLeader(
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof SelfDelegationError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof LeaderAccountInactiveError) {
-      return problem(
-        422,
-        "ACCOUNT_INACTIVE",
-        "Validation failed",
-        error.message,
-        requestId
-      );
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }
@@ -1895,11 +2329,9 @@ export async function handleRevokeProgramLeader(
     );
     return jsonResponse(200, { leader: row }, requestId);
   } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
-    }
-    if (error instanceof LeaderNotAssignedError) {
-      return notFound(requestId, error.message);
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
     }
     throw error;
   }

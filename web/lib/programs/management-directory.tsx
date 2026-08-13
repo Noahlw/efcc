@@ -1,17 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import { hasDepartmentManagementScope } from "@/lib/programs/capabilities";
 import { getManagementDirectory } from "@/lib/programs/program-api";
 import type {
   Department,
   ManagementProgram as ManagementProgramRecord,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+
+import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -34,10 +38,7 @@ export function projectManagementPrograms(
   const rows: ManagementProgram[] = [];
 
   for (const [departmentIndex, department] of departments.entries()) {
-    const departmentScope =
-      department.capabilities.manage ||
-      department.capabilities.publish ||
-      department.capabilities.module_configure;
+    const departmentScope = hasDepartmentManagementScope(department);
     for (const program of programsByDepartment[departmentIndex] ?? []) {
       if (seen.has(program.program_id)) {
         continue;
@@ -67,95 +68,118 @@ export function projectManagementPrograms(
 
 type DirectoryState =
   | { kind: "loading" }
-  | { kind: "ready"; rows: ManagementProgram[] }
+  | {
+      kind: "ready";
+      rows: ManagementProgram[];
+      departments: Department[];
+    }
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
+const DepartmentSettingsLauncher = ({
+  department,
+}: {
+  department: Department;
+}) => {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [returnFocusPending, setReturnFocusPending] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      if (returnFocusPending) {
+        triggerRef.current?.focus();
+        setReturnFocusPending(false);
+      }
+      return;
+    }
+    const panel = document.querySelector<HTMLElement>(
+      `#${department.department_id}-settings-panel`
+    );
+    panel?.focus();
+  }, [open, department.department_id, returnFocusPending]);
+
+  const close = () => {
+    setReturnFocusPending(true);
+    setOpen(false);
+  };
+
+  return open ? (
+    <DepartmentSettingsPanel department={department} onClose={close} />
+  ) : (
+    <button
+      ref={triggerRef}
+      className={styles.directoryCard}
+      type="button"
+      onClick={() => setOpen(true)}
+    >
+      <span className={styles.directoryCardTitle}>{department.name}</span>
+      <span className={styles.directoryCardMeta}>
+        {department.code} · {COPY.programs.departmentSettings}
+      </span>
+    </button>
+  );
+};
 
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
+  onCreateProgram?: (departments: Department[]) => void;
 }
 
 export const ManagementDirectory = ({
   onOpenProgram,
+  onCreateProgram,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
-  const [state, setState] = useState<DirectoryState>({ kind: "loading" });
   const [query, setQuery] = useState("");
-  const mounted = useRef(true);
-  const requestId = useRef(0);
-  const retryFocusPending = useRef(false);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const loadDirectory = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    announce(COPY.programs.managementDirectoryLoading);
-    try {
-      const { departments, programs } = await getManagementDirectory();
-      const programsByDepartment = departments.map(({ department_id }) =>
-        programs.filter(({ department_id: id }) => id === department_id)
-      );
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
-      }
-      setState({
-        kind: "ready",
-        rows: projectManagementPrograms(departments, programsByDepartment),
-      });
-      announce(COPY.programs.managementScopeReady);
-    } catch (error) {
-      if (!mounted.current || requestId.current !== currentRequest) {
-        return;
-      }
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
+  const { state, run: loadDirectory, retry } = useAsyncResource<
+    { departments: Department[]; programs: ManagementProgramRecord[] },
+    DirectoryState
+  >(
+    async () => getManagementDirectory(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ departments, programs }) => {
+        const programsByDepartment = departments.map(({ department_id }) =>
+          programs.filter(({ department_id: id }) => id === department_id)
         );
-        router.replace("/");
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({
-        kind: "error",
-        failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
-        message,
-      });
-      announce(message);
-    }
-  }, [router]);
+        return {
+          kind: "ready",
+          departments,
+          rows: projectManagementPrograms(departments, programsByDepartment),
+        };
+      },
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return {
+          kind: "error",
+          failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
+          message,
+        };
+      },
+      announceLoading: COPY.programs.managementDirectoryLoading,
+      announceReady: () => COPY.programs.managementScopeReady,
+      focusTarget: "#programs-management-directory-state",
+    },
+    [router]
+  );
 
   useEffect(() => {
     void loadDirectory();
   }, [loadDirectory]);
-
-  useEffect(() => {
-    if (!retryFocusPending.current || state.kind !== "error") {
-      return;
-    }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-management-directory-state"
-    );
-    if (!panel) {
-      return;
-    }
-    panel.focus();
-    retryFocusPending.current = false;
-  }, [state.kind]);
-
-  const retry = () => {
-    retryFocusPending.current = true;
-    void loadDirectory();
-  };
 
   const filteredRows = useMemo(() => {
     if (state.kind !== "ready") {
@@ -189,7 +213,19 @@ export const ManagementDirectory = ({
       <p className={styles.boundaryLead}>
         {COPY.programs.managementDirectoryLead}
       </p>
-
+      {state.kind === "ready" &&
+        state.departments.some(({ capabilities }) => capabilities.manage) &&
+        onCreateProgram && (
+          <div className={styles.workspaceActions}>
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => onCreateProgram(state.departments)}
+            >
+              {COPY.programs.createProgram}
+            </button>
+          </div>
+        )}
       {state.kind === "loading" && (
         <output
           id="programs-management-directory-state"
@@ -223,6 +259,35 @@ export const ManagementDirectory = ({
           </button>
         </section>
       )}
+      {state.kind === "ready" &&
+        state.departments.some(hasDepartmentManagementScope) && (
+          <section
+            className={styles.moduleSection}
+            aria-labelledby="programs-management-department-settings"
+          >
+            <h3
+              id="programs-management-department-settings"
+              className={styles.sectionLabel}
+            >
+              {COPY.programs.managementScopeDepartment}
+            </h3>
+            <p className={styles.fieldHint}>
+              {COPY.programs.departmentScopeHint}
+            </p>
+            <ul className={styles.deptList}>
+              {state.departments
+                .filter(hasDepartmentManagementScope)
+                .map((department) => (
+                  <li
+                    key={department.department_id}
+                    className={styles.deptItem}
+                  >
+                    <DepartmentSettingsLauncher department={department} />
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
 
       {state.kind === "ready" && state.rows.length === 0 && (
         <section

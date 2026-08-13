@@ -1517,6 +1517,21 @@ describe("Shell", () => {
       expect(errorCopyFor("CONFLICT")).toBe(COPY.error.conflict);
     });
 
+    test("PROGRAM_ARCHIVE_BLOCKED distinguishes already_archived from commitment blocks", () => {
+      expect(errorCopyFor("PROGRAM_ARCHIVE_BLOCKED")).toBe(
+        COPY.programs.archiveBlocked
+      );
+      expect(errorCopyFor("PROGRAM_ARCHIVE_BLOCKED", "already_archived")).toBe(
+        COPY.programs.archiveAlreadyArchived
+      );
+      expect(
+        errorCopyFor(
+          "PROGRAM_ARCHIVE_BLOCKED",
+          "future_active_event,pending_enrollment_request"
+        )
+      ).toBe(COPY.programs.archiveBlocked);
+    });
+
     test("UNAVAILABLE maps to unavailable", () => {
       expect(errorCopyFor("UNAVAILABLE")).toBe(COPY.error.unavailable);
     });

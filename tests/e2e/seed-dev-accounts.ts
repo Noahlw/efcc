@@ -160,6 +160,7 @@ async function main(): Promise<void> {
         `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM programs WHERE program_id IN ${e2eProgramIds};`,
         "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
+        "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
         "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*';",
         "DELETE FROM registration_requests WHERE username GLOB 'E2E_*';",
         "",

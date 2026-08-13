@@ -37,6 +37,7 @@ export interface Department {
     manage: boolean;
     publish: boolean;
     module_configure: boolean;
+    manager_assign?: boolean;
   };
 }
 
@@ -81,6 +82,11 @@ export type ManagementProgram = Omit<
   | "check_in_opens_at_minutes_before_start"
   | "check_in_closes_at_minutes_after_end"
 >;
+export type ManagementProgramSettings = ManagementProgram &
+  Pick<
+    Program,
+    "check_in_opens_at_minutes_before_start" | "check_in_closes_at_minutes_after_end"
+  >;
 /** Server-filtered and secret-redacted Programs management projection. */
 export interface ManagementDirectory {
   departments: Department[];
@@ -213,7 +219,11 @@ export interface ProgramEvent {
   starts_at: string;
   ends_at: string;
   status: "Active" | "Cancelled";
+  /** Independent operational availability; absent only in legacy test fixtures. */
+  availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
+  name?: string | null;
+  location?: string | null;
   manual_check_in_code?: string | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
@@ -222,6 +232,14 @@ export interface ProgramEvent {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleException | null;
+}
+export interface EventDetail {
+  event: ProgramEvent;
+  leaders: ProgramLeader[];
+  participant_summary: {
+    active_enrollments: number;
+    checked_in: number;
+  };
 }
 
 export interface EnrollmentRequest {
@@ -257,6 +275,16 @@ export type EnrollmentDecision = "Approved" | "Rejected";
 
 export interface ProgramLeader {
   program_id: string;
+  user_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  user_name?: string;
+  username?: string;
+}
+export interface DepartmentManager {
+  department_id: string;
   user_id: string;
   granted_by: string;
   granted_at: string;
@@ -303,6 +331,8 @@ export type ProgramPatch = Omit<
 > & {
   description?: string | null;
   category?: string | null;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
 };
 
 interface ProgramsSuccess<T> {
@@ -573,7 +603,7 @@ export function listPrograms(
 
 /** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
 export function getManagementProgram(programId: string): Promise<{
-  program: ManagementProgram;
+  program: ManagementProgramSettings;
   department: Department;
   modules: DepartmentModule[];
 }> {
@@ -591,6 +621,52 @@ export function createProgram(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
     input
+  );
+}
+/** GET /api/v1/programs/departments/:id/managers */
+export function listDepartmentManagers(departmentId: string): Promise<{
+  managers: DepartmentManager[];
+}> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
+    "GET"
+  );
+}
+
+/** GET /api/v1/programs/departments/:id/member-options?q=... */
+export function searchDepartmentMemberOptions(
+  departmentId: string,
+  query: string
+): Promise<{ members: MemberOption[] }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/member-options?q=${encodeURIComponent(query)}`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers */
+export function assignDepartmentManager(
+  departmentId: string,
+  userId: string
+): Promise<{ manager: DepartmentManager }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
+    "POST",
+    { user_id: userId },
+    { idempotencyKey: null }
+  );
+}
+
+/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
+export function revokeDepartmentManager(
+  departmentId: string,
+  userId: string
+): Promise<{ manager: DepartmentManager }> {
+  return programsFetch(
+    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers/${encodeURIComponent(userId)}/revoke`,
+    "POST",
+    {},
+    { idempotencyKey: null }
   );
 }
 
@@ -709,7 +785,14 @@ export function generateEvents(
 /** POST /api/v1/programs/:id/events */
 export function createEvent(
   programId: string,
-  input: { starts_at: string; ends_at: string }
+  input: {
+    starts_at: string;
+    ends_at: string;
+    name?: string | null;
+    location?: string | null;
+    check_in_window_opens_at?: string | null;
+    check_in_window_closes_at?: string | null;
+  }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
@@ -728,7 +811,52 @@ export function listEvents(
   );
 }
 
-/** PATCH /api/v1/programs/:id/events/:eventId — soft cancel */
+/** GET /api/v1/programs/:id/events/:eventId — operator detail projection. */
+export function getEvent(
+  programId: string,
+  eventId: string
+): Promise<EventDetail> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "GET"
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — identity/schedule edit. */
+export function updateEvent(
+  programId: string,
+  eventId: string,
+  patch: {
+    starts_at?: string;
+    ends_at?: string;
+    name?: string | null;
+    location?: string | null;
+    check_in_window_opens_at?: string | null;
+    check_in_window_closes_at?: string | null;
+  }
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "PATCH",
+    patch
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — independent availability. */
+export function setEventAvailability(
+  programId: string,
+  eventId: string,
+  availability: "Active" | "Inactive",
+  confirm = false
+): Promise<{ event: ProgramEvent }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+    "PATCH",
+    { availability, confirm }
+  );
+}
+
+/** PATCH /api/v1/programs/:id/events/:eventId — soft cancel. */
 export function cancelEvent(
   programId: string,
   eventId: string,

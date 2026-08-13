@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
+  createEvent,
   getManagementProgram,
   listEnrollments,
   listEnrollmentRequests,
@@ -20,16 +22,25 @@ import type {
   ProgramEvent,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+import { ProgramSettings } from "./program-settings";
 
+import { ProgramForm } from "./program-form";
+import { EventDetail, hkWallInputToIso } from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
+import { LeadersPanel } from "./programs-leaders-panel";
+import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
 export interface ProgramWorkspaceProps {
   programId: string;
   task?: ProgramsTask;
+  /** EVT-01 (#251): management Event deep link under the events task. */
+  eventId?: string | null;
   onBack: () => void;
   onTaskChange: (task: ProgramsTask | null) => void;
+  /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
+  onEventChange?: (eventId: string | null) => void;
 }
 
 type WorkspaceState =
@@ -221,15 +232,16 @@ const WorkspaceNavigation = ({
     </nav>
   );
 };
-
 const WorkspaceOverview = ({
   program,
   department,
   summary,
+  onEdit,
 }: {
   program: Program;
   department: Department | null;
   summary: SummaryState;
+  onEdit: () => void;
 }) => {
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
@@ -259,6 +271,13 @@ const WorkspaceOverview = ({
         >
           {COPY.programs.workspaceIdentity}
         </h4>
+        <div className={styles.workspaceActions}>
+          {program.capabilities.manage && (
+            <button className={styles.button} type="button" onClick={onEdit}>
+              {COPY.programs.editProgram}
+            </button>
+          )}
+        </div>
         {program.description ? (
           <p className={styles.programDetailDescription}>
             {program.description}
@@ -375,45 +394,94 @@ const WorkspaceOverview = ({
   );
 };
 
-const EventsTask = ({ programId }: { programId: string }) => {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; events: ProgramEvent[] }
-    | { kind: "error"; message: string }
-  >({ kind: "loading" });
-  const requestId = useRef(0);
+type EventsState =
+  | { kind: "loading" }
+  | { kind: "ready"; events: ProgramEvent[] }
+  | { kind: "error"; message: string };
 
-  const load = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    try {
+const EventsTask = ({
+  programId,
+  canManage,
+  onOpenEvent,
+}: {
+  programId: string;
+  canManage: boolean;
+  /** EVT-01 (#251): deep link into the Event operational detail screen. */
+  onOpenEvent?: (eventId: string) => void;
+}) => {
+  const { state, run, retry } = useAsyncResource<ProgramEvent[], EventsState>(
+    async () => {
       const { events } = await listEvents(programId);
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", events });
-    } catch (error) {
-      if (requestId.current !== currentRequest) {
-        return;
-      }
+      return events;
+    },
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (events) => ({ kind: "ready", events }),
+      onError: (error) => {
+        if (redirectToLoginIfRequired(error)) {
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        return {
+          kind: "error",
+          message:
+            error instanceof RpcError
+              ? errorCopyFor(code, error.problem.detail)
+              : COPY.error.networkError,
+        };
+      },
+    },
+    [programId]
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void run();
+  }, [run]);
+
+  const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
+    formEvent.preventDefault();
+    const form = new FormData(formEvent.currentTarget);
+    const startsAt = hkWallInputToIso(String(form.get("starts_at") ?? ""));
+    const endsAt = hkWallInputToIso(String(form.get("ends_at") ?? ""));
+    const opensAt = hkWallInputToIso(String(form.get("opens_at") ?? ""));
+    const closesAt = hkWallInputToIso(String(form.get("closes_at") ?? ""));
+    if (!startsAt || !endsAt || !opensAt || !closesAt) {
+      const message = errorCopyFor("VALIDATION");
+      setCreateError(message);
+      announce(message);
+      return;
+    }
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const { event } = await createEvent(programId, {
+        name: String(form.get("name") ?? "").trim() || null,
+        location: String(form.get("location") ?? "").trim() || null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        check_in_window_opens_at: opensAt,
+        check_in_window_closes_at: closesAt,
+      });
+      announce(COPY.programs.eventCreatedNotice);
+      setCreateOpen(false);
+      onOpenEvent?.(event.event_id);
+    } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      setState({
-        kind: "error",
-        message:
-          error instanceof RpcError
-            ? errorCopyFor(code, error.problem.detail)
-            : COPY.error.networkError,
-      });
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setCreateError(message);
+      announce(message);
+    } finally {
+      setCreateBusy(false);
     }
-  }, [programId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  };
 
   return (
     <section
@@ -429,6 +497,113 @@ const EventsTask = ({ programId }: { programId: string }) => {
       <p className={styles.programDetailMuted}>
         {COPY.programs.workspaceTaskEventsLead}
       </p>
+      {canManage && (
+        <>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={() => {
+              setCreateOpen((open) => !open);
+              setCreateError(null);
+            }}
+          >
+            {COPY.programs.eventCreate}
+          </button>
+          {createOpen && (
+            <form
+              className={`${styles.ruleForm} ${styles.eventCreateForm}`}
+              aria-labelledby="programs-workspace-event-create-title"
+              onSubmit={submitCreate}
+            >
+              <h5
+                id="programs-workspace-event-create-title"
+                className={styles.workspaceSubheading}
+              >
+                {COPY.programs.eventCreateTitle}
+              </h5>
+              {createError !== null && (
+                <output className={styles.panelError} role="alert">
+                  {createError}
+                </output>
+              )}
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventName}</span>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder={COPY.programs.eventNamePlaceholder}
+                  aria-label={COPY.programs.eventName}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventLocation}</span>
+                <input
+                  type="text"
+                  name="location"
+                  placeholder={COPY.programs.eventLocationPlaceholder}
+                  aria-label={COPY.programs.eventLocation}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventStart}</span>
+                <input
+                  type="datetime-local"
+                  name="starts_at"
+                  required
+                  aria-label={COPY.programs.eventStart}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventEnd}</span>
+                <input
+                  type="datetime-local"
+                  name="ends_at"
+                  required
+                  aria-label={COPY.programs.eventEnd}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
+                <input
+                  type="datetime-local"
+                  name="opens_at"
+                  required
+                  aria-label={COPY.programs.eventCheckInWindowOpensAt}
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
+                <input
+                  type="datetime-local"
+                  name="closes_at"
+                  required
+                  aria-label={COPY.programs.eventCheckInWindowClosesAt}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button
+                  type="submit"
+                  className={styles.button}
+                  disabled={createBusy}
+                >
+                  {COPY.programs.eventCreateSubmit}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={createBusy}
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setCreateError(null);
+                  }}
+                >
+                  {COPY.programs.eventCreateCancel}
+                </button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
       {state.kind === "loading" && (
         <output aria-busy="true">
           {COPY.programs.workspaceTaskEventsLoading}
@@ -440,7 +615,7 @@ const EventsTask = ({ programId }: { programId: string }) => {
           <button
             className={styles.retry}
             type="button"
-            onClick={() => void load()}
+            onClick={retry}
           >
             {COPY.programs.workspaceTaskEventsRetry}
           </button>
@@ -469,6 +644,21 @@ const EventsTask = ({ programId }: { programId: string }) => {
                   ? COPY.programs.eventScheduleSource
                   : COPY.programs.eventManualSource}
               </span>
+              {event.availability !== undefined &&
+                event.availability !== "Active" && (
+                  <span className={styles.eventCancelled}>
+                    {COPY.programs.eventUnavailable}
+                  </span>
+                )}
+              {onOpenEvent && (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => onOpenEvent(event.event_id)}
+                >
+                  {COPY.programs.eventDetailOpen}
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -477,52 +667,54 @@ const EventsTask = ({ programId }: { programId: string }) => {
   );
 };
 
-const ParticipantsTask = ({ programId }: { programId: string }) => {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | {
-        kind: "ready";
-        requests: EnrollmentRequest[];
-        enrollments: Enrollment[];
-      }
-    | { kind: "error"; message: string }
-  >({ kind: "loading" });
-  const requestId = useRef(0);
+type ParticipantsState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      requests: EnrollmentRequest[];
+      enrollments: Enrollment[];
+    }
+  | { kind: "error"; message: string };
 
-  const load = useCallback(async () => {
-    requestId.current += 1;
-    const currentRequest = requestId.current;
-    setState({ kind: "loading" });
-    try {
+const ParticipantsTask = ({ programId }: { programId: string }) => {
+  const { state, run, retry } = useAsyncResource<
+    { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
+    ParticipantsState
+  >(
+    async () => {
       const [{ requests }, { enrollments }] = await Promise.all([
         listEnrollmentRequests(programId),
         listEnrollments(programId),
       ]);
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", requests, enrollments });
-    } catch (error) {
-      if (requestId.current !== currentRequest) {
-        return;
-      }
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      setState({
-        kind: "error",
-        message:
-          error instanceof RpcError
-            ? errorCopyFor(code, error.problem.detail)
-            : COPY.error.networkError,
-      });
-    }
-  }, [programId]);
+      return { requests, enrollments };
+    },
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ requests, enrollments }) => ({
+        kind: "ready",
+        requests,
+        enrollments,
+      }),
+      onError: (error) => {
+        if (redirectToLoginIfRequired(error)) {
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        return {
+          kind: "error",
+          message:
+            error instanceof RpcError
+              ? errorCopyFor(code, error.problem.detail)
+              : COPY.error.networkError,
+        };
+      },
+    },
+    [programId]
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void run();
+  }, [run]);
 
   return (
     <section
@@ -549,7 +741,7 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
           <button
             className={styles.retry}
             type="button"
-            onClick={() => void load()}
+            onClick={retry}
           >
             {COPY.programs.workspaceTaskParticipantsRetry}
           </button>
@@ -637,89 +829,28 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
 
 const SettingsTask = ({
   program,
+  modules,
   onTaskChange,
 }: {
   program: Program;
+  modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
-}) => {
-  const capabilities: string[] = [];
-  if (program.capabilities.manage) {
-    capabilities.push(COPY.programs.workspaceCapabilityManage);
-  }
-  if (program.capabilities.publish) {
-    capabilities.push(COPY.programs.workspaceCapabilityPublish);
-  }
-  if (program.capabilities.leader_assign) {
-    capabilities.push(COPY.programs.workspaceCapabilityLeaderAssign);
-  }
-
-  return (
-    <section
-      className={styles.workspaceTask}
-      aria-labelledby="programs-workspace-settings-title"
-    >
-      <h4
-        id="programs-workspace-settings-title"
-        className={styles.workspaceHeading}
-      >
-        {COPY.programs.workspaceTaskSettings}
-      </h4>
-      <p className={styles.programDetailMuted}>
-        {COPY.programs.workspaceTaskSettingsLead}
-      </p>
-      <dl className={styles.workspaceFacts}>
-        <div>
-          <dt>{COPY.programs.programName}</dt>
-          <dd>{program.name}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceBehavior}</dt>
-          <dd>{behaviorLabel(program.behavior_type)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceLifecycle}</dt>
-          <dd>{lifecycleLabel(program.lifecycle)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceDiscoverability}</dt>
-          <dd>{discoverabilityLabel(program.discoverability)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceEnrollmentMode}</dt>
-          <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-        </div>
-      </dl>
-      <section aria-labelledby="programs-workspace-settings-capabilities">
-        <h5
-          id="programs-workspace-settings-capabilities"
-          className={styles.workspaceSubheading}
-        >
-          {COPY.programs.workspaceTaskSettingsCapabilities}
-        </h5>
-        {capabilities.length === 0 ? (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.workspaceTaskSettingsNoCapabilities}
-          </p>
-        ) : (
-          <ul className={styles.workspaceTaskList}>
-            {capabilities.map((capability) => (
-              <li key={capability} className={styles.workspaceTaskRow}>
-                <span>{capability}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <button
-        className={styles.programDetailBack}
-        type="button"
-        onClick={() => onTaskChange(null)}
-      >
-        {COPY.programs.backToOverview}
-      </button>
-    </section>
-  );
-};
+}) => (
+  <>
+    <ProgramSettings
+      program={program}
+      eventsEnabled={hasModule(modules, "events")}
+      attendanceEnabled={hasModule(modules, "attendance")}
+      onTaskChange={onTaskChange}
+    />
+    {(program.capabilities.manage || program.capabilities.leader_assign) && (
+      <LeadersPanel
+        program={program}
+        canManage={program.capabilities.leader_assign}
+      />
+    )}
+  </>
+);
 const TaskUnavailable = ({ task }: { task: ProgramsTask }) => (
   <section
     className={styles.workspaceTask}
@@ -741,15 +872,21 @@ const WorkspaceTask = ({
   task,
   modules,
   onTaskChange,
+  onOpenEvent,
 }: {
   program: Program;
   task: ProgramsTask;
   modules: readonly DepartmentModule[];
   onTaskChange: (task: ProgramsTask | null) => void;
+  onOpenEvent?: (eventId: string) => void;
 }) => {
   if (task === "events") {
     return hasModule(modules, "events") ? (
-      <EventsTask programId={program.program_id} />
+      <EventsTask
+        programId={program.program_id}
+        canManage={program.capabilities.manage}
+        onOpenEvent={onOpenEvent}
+      />
     ) : (
       <TaskUnavailable task={task} />
     );
@@ -761,100 +898,93 @@ const WorkspaceTask = ({
       <TaskUnavailable task={task} />
     );
   }
-  return <SettingsTask program={program} onTaskChange={onTaskChange} />;
+  return (
+    <SettingsTask
+      program={program}
+      modules={modules}
+      onTaskChange={onTaskChange}
+    />
+  );
 };
 
 export const ProgramWorkspace = ({
   programId,
   task,
+  eventId,
   onBack,
   onTaskChange,
+  onEventChange,
 }: ProgramWorkspaceProps) => {
-  const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
+  const [editing, setEditing] = useState(false);
   const mounted = useRef(true);
-  const workspaceRequestId = useRef(0);
-  const retryFocusPending = useRef(false);
-
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-
-  const loadWorkspace = useCallback(async () => {
-    workspaceRequestId.current += 1;
-    const currentRequest = workspaceRequestId.current;
-    setState({ kind: "loading" });
-    announce(COPY.programs.workspaceLoading);
-    try {
-      const { program, department, modules } =
-        await getManagementProgram(programId);
-      if (!mounted.current || workspaceRequestId.current !== currentRequest) {
-        return;
-      }
-      setState({ kind: "ready", program, department, modules });
-      announce(program.name);
-    } catch (error) {
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        window.location.assign("/");
-        return;
-      }
-      if (!mounted.current || workspaceRequestId.current !== currentRequest) {
-        return;
-      }
-      if (error instanceof RpcError && error.problem.code === "FORBIDDEN") {
-        setState({
-          kind: "error",
-          failure: "forbidden",
-          message: COPY.programs.workspaceUnavailableHint,
-        });
-        announce(COPY.programs.workspaceForbidden);
-        return;
-      }
-      if (
-        error instanceof RpcError &&
-        (error.problem.code === "NOT_FOUND" || error.problem.status === 404)
-      ) {
-        setState({
-          kind: "error",
-          failure: "unavailable",
-          message: COPY.programs.workspaceUnavailableHint,
-        });
-        announce(COPY.programs.workspaceUnavailable);
-        return;
-      }
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({ kind: "error", failure: "recoverable", message });
-      announce(message);
-    }
-  }, [programId]);
+  const { state, run: loadWorkspace, retry } = useAsyncResource<
+    { program: Program; department: Department | null; modules: DepartmentModule[] },
+    WorkspaceState
+  >(
+    async () => getManagementProgram(programId),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: ({ program, department, modules }) => ({
+        kind: "ready",
+        program,
+        department,
+        modules,
+      }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          window.location.assign("/");
+          return null;
+        }
+        if (error instanceof RpcError && error.problem.code === "FORBIDDEN") {
+          announce(COPY.programs.workspaceForbidden);
+          return {
+            kind: "error",
+            failure: "forbidden",
+            message: COPY.programs.workspaceUnavailableHint,
+          };
+        }
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "NOT_FOUND" || error.problem.status === 404)
+        ) {
+          announce(COPY.programs.workspaceUnavailable);
+          return {
+            kind: "error",
+            failure: "unavailable",
+            message: COPY.programs.workspaceUnavailableHint,
+          };
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return { kind: "error", failure: "recoverable", message };
+      },
+      announceLoading: COPY.programs.workspaceLoading,
+      announceReady: ({ program }) => program.name,
+      focusTarget: "#programs-workspace-state",
+    },
+    [programId]
+  );
 
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
-
-  useEffect(() => {
-    if (!retryFocusPending.current || state.kind !== "error") {
-      return;
-    }
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-workspace-state"
-    );
-    if (!panel) {
-      return;
-    }
-    panel.focus();
-    retryFocusPending.current = false;
-  }, [state.kind]);
 
   const loadSummary = useCallback(
     async (modules: readonly DepartmentModule[]) => {
@@ -907,11 +1037,6 @@ export const ProgramWorkspace = ({
     }
     void loadSummary(state.modules);
   }, [loadSummary, state]);
-
-  const retry = () => {
-    retryFocusPending.current = true;
-    void loadWorkspace();
-  };
 
   if (state.kind === "loading") {
     return (
@@ -986,21 +1111,42 @@ export const ProgramWorkspace = ({
         programId={programId}
         task={task}
         modules={state.modules}
-        onTaskChange={onTaskChange}
+        onTaskChange={(nextTask) => {
+          setEditing(false);
+          onTaskChange(nextTask);
+        }}
       />
 
-      {task ? (
+      {editing ? (
+        <ProgramForm
+          initial={state.program}
+          onSaved={() => {
+            setEditing(false);
+            void loadWorkspace();
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : task && task === "events" && eventId ? (
+        <EventDetail
+          programId={programId}
+          eventId={eventId}
+          canManage={state.program.capabilities.manage}
+          onBack={() => onEventChange?.(null)}
+        />
+      ) : task ? (
         <WorkspaceTask
           program={state.program}
           task={task}
           modules={state.modules}
           onTaskChange={onTaskChange}
+          onOpenEvent={(id) => onEventChange?.(id)}
         />
       ) : (
         <WorkspaceOverview
           program={state.program}
           department={state.department}
           summary={summary}
+          onEdit={() => setEditing(true)}
         />
       )}
     </section>

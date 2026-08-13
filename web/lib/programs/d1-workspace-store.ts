@@ -9,6 +9,9 @@ import type {
   AuditInput,
   ProgramAccessRow,
   DepartmentInput,
+  DepartmentManagerGrantInput,
+  DepartmentManagerRevokeInput,
+  DepartmentManagerRow,
   DepartmentModuleRow,
   DepartmentRow,
   DepartmentUpdate,
@@ -269,11 +272,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
-    const current = await this.findProgramById(id);
-    if (!current) {
-      throw new WorkspaceNotFoundError("program", id);
-    }
+  private static programUpdateParts(update: ProgramUpdate): {
+    fields: string[];
+    values: (string | number | null)[];
+  } {
     const fields: string[] = [];
     const values: (string | number | null)[] = [];
     if (update.name !== undefined) {
@@ -308,14 +310,62 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       fields.push("display_order = ?");
       values.push(update.display_order);
     }
+    if (update.check_in_opens_at_minutes_before_start !== undefined) {
+      fields.push("check_in_opens_at_minutes_before_start = ?");
+      values.push(update.check_in_opens_at_minutes_before_start);
+    }
+    if (update.check_in_closes_at_minutes_after_end !== undefined) {
+      fields.push("check_in_closes_at_minutes_after_end = ?");
+      values.push(update.check_in_closes_at_minutes_after_end);
+    }
     fields.push("updated_by = ?", "updated_at = ?");
-    values.push(update.updated_by, update.updated_at, id);
+    values.push(update.updated_by, update.updated_at);
+    return { fields, values };
+  }
 
+  async updateProgram(id: string, update: ProgramUpdate): Promise<ProgramRow> {
+    const current = await this.findProgramById(id);
+    if (!current) {
+      throw new WorkspaceNotFoundError("program", id);
+    }
+    const { fields, values } = D1WorkspaceStore.programUpdateParts(update);
     await this.db
       .prepare(`UPDATE programs SET ${fields.join(", ")} WHERE program_id = ?`)
-      .bind(...values)
+      .bind(...values, id)
       .run();
     return this.requireProgram(id);
+  }
+
+  async archiveProgramIfClear(
+    id: string,
+    update: ProgramUpdate,
+    now: string
+  ): Promise<ProgramRow | null> {
+    const { fields, values } = D1WorkspaceStore.programUpdateParts(update);
+    const result = await this.db
+      .prepare(
+        `UPDATE programs
+            SET ${fields.join(", ")}
+          WHERE program_id = ?
+            AND lifecycle = 'Active'
+            AND NOT EXISTS (
+              SELECT 1
+                FROM events
+               WHERE events.program_id = programs.program_id
+                 AND events.status = 'Active'
+                 AND events.starts_at IS NOT NULL
+                 AND julianday(events.starts_at) > julianday(?)
+            )
+            AND NOT EXISTS (
+              SELECT 1
+                FROM enrollment_requests
+               WHERE enrollment_requests.program_id = programs.program_id
+                 AND enrollment_requests.status = 'Pending'
+            )`
+      )
+      .bind(...values, id, now)
+      .run();
+    return result.meta.changes > 0 ? this.requireProgram(id) : null;
   }
 
   async setDepartmentModule(
@@ -522,17 +572,17 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           source, cancel_reason, manual_check_in_code,
+           availability, source, name, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
-               FROM programs WHERE programs.program_id = ?))),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+               FROM programs WHERE programs.program_id = ?)))),
+           COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
-               FROM programs WHERE programs.program_id = ?))),
+               FROM programs WHERE programs.program_id = ?)))),
            ?, ?, ?, ?`
       )
       .bind(
@@ -541,10 +591,15 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.starts_at,
         input.ends_at,
         input.status,
+        input.availability,
         input.source,
+        input.name,
+        input.location,
         input.cancel_reason,
+        input.check_in_window_opens_at,
         input.starts_at,
         input.program_id,
+        input.check_in_window_closes_at,
         input.ends_at,
         input.program_id,
         input.created_by,
@@ -564,18 +619,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-           status, source, cancel_reason, manual_check_in_code,
-           check_in_window_opens_at, check_in_window_closes_at,
-           created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?,
-           upper(substr(hex(randomblob(4)), 1, 8)),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
-             printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
-               FROM programs WHERE programs.program_id = ?))),
-           strftime('%Y-%m-%dT%H:%M:%SZ', ?,
-             printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
-               FROM programs WHERE programs.program_id = ?))),
-           ?, ?, ?, ?`
+         status, availability, source, name, location, cancel_reason, manual_check_in_code,
+         check_in_window_opens_at, check_in_window_closes_at,
+         created_by, created_at, updated_by, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         upper(substr(hex(randomblob(4)), 1, 8)),
+         COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
+             FROM programs WHERE programs.program_id = ?)))),
+         COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
+           printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
+             FROM programs WHERE programs.program_id = ?)))),
+         ?, ?, ?, ?`
       )
       .bind(
         crypto.randomUUID(),
@@ -583,10 +638,15 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.starts_at,
         input.ends_at,
         input.status,
+        input.availability,
         input.source,
+        input.name,
+        input.location,
         input.cancel_reason,
+        input.check_in_window_opens_at,
         input.starts_at,
         input.program_id,
+        input.check_in_window_closes_at,
         input.ends_at,
         input.program_id,
         input.created_by,
@@ -645,6 +705,74 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       return null;
     }
     return this.findEventById(id);
+  }
+  async updateEvent(
+    id: string,
+    update: {
+      starts_at?: string;
+      ends_at?: string;
+      name?: string | null;
+      location?: string | null;
+      check_in_window_opens_at?: string | null;
+      check_in_window_closes_at?: string | null;
+      availability?: "Active" | "Inactive";
+    },
+    updatedBy: string,
+    updatedAt: string
+  ): Promise<EventRow | null> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const entries: [string, unknown][] = [
+      ["starts_at", update.starts_at],
+      ["ends_at", update.ends_at],
+      ["name", update.name],
+      ["location", update.location],
+      // EVT-01 (#251): an absent window field keeps the existing window; an
+      // explicit null clears it. Same nullable convention as name/location.
+      ["check_in_window_opens_at", update.check_in_window_opens_at],
+      ["check_in_window_closes_at", update.check_in_window_closes_at],
+      ["availability", update.availability],
+    ];
+    for (const [column, value] of entries) {
+      if (value !== undefined) {
+        fields.push(`${column} = ?`);
+        values.push(value);
+      }
+    }
+    if (fields.length === 0) {
+      return this.findEventById(id);
+    }
+    fields.push("updated_by = ?", "updated_at = ?");
+    values.push(updatedBy, updatedAt, id);
+    await this.db
+      .prepare(`UPDATE events SET ${fields.join(", ")} WHERE event_id = ?`)
+      .bind(...values)
+      .run();
+    return this.findEventById(id);
+  }
+
+  async getEventParticipantSummary(
+    eventId: string,
+    programId: string
+  ): Promise<{ active_enrollments: number; checked_in: number }> {
+    const [enrollments, checkedIn] = await Promise.all([
+      this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+        )
+        .bind(programId)
+        .first<{ count: number }>(),
+      this.db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+        )
+        .bind(eventId)
+        .first<{ count: number }>(),
+    ]);
+    return {
+      active_enrollments: Number(enrollments?.count ?? 0),
+      checked_in: Number(checkedIn?.count ?? 0),
+    };
   }
 
   async createEnrollmentRequest(
@@ -804,7 +932,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
-  }): Promise<{ request: EnrollmentRequestRow; enrollment: EnrollmentRow } | null> {
+  }): Promise<{
+    request: EnrollmentRequestRow;
+    enrollment: EnrollmentRow;
+  } | null> {
     const results = await this.db.batch([
       this.db
         .prepare(
@@ -828,12 +959,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
            WHERE request_id = ? AND status = 'Pending'`
         )
-        .bind(
-          input.decided_by,
-          input.decided_at,
-          input.note,
-          input.request_id
-        ),
+        .bind(input.decided_by, input.decided_at, input.note, input.request_id),
       // ponytail: gate both audits on the enrollment row the INSERT..SELECT
       // just created, so a no-op batch (0-row select) inserts no audit rows.
       this.auditInsertGated(input.auditCreate, input.enrollment_id),
@@ -966,6 +1092,104 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.findEnrollmentById(id);
   }
 
+  findDepartmentManager(
+    departmentId: string,
+    userId: string
+  ): Promise<DepartmentManagerRow | null> {
+    return this.db
+      .prepare(
+        `SELECT department_id, user_id, granted_by, granted_at, revoked_by, revoked_at
+           FROM department_managers
+          WHERE department_id = ? AND user_id = ?`
+      )
+      .bind(departmentId, userId)
+      .first<DepartmentManagerRow>();
+  }
+
+  listDepartmentManagers(
+    departmentId: string
+  ): Promise<DepartmentManagerRow[]> {
+    return this.db
+      .prepare(
+        `SELECT department_managers.*, accounts.name AS user_name,
+                accounts.username
+           FROM department_managers
+           LEFT JOIN accounts ON accounts.user_id = department_managers.user_id
+          WHERE department_managers.department_id = ?
+            AND department_managers.revoked_at IS NULL
+          ORDER BY department_managers.granted_at`
+      )
+      .bind(departmentId)
+      .all<DepartmentManagerRow>()
+      .then((result) => result.results);
+  }
+
+  async assignDepartmentManager(
+    input: DepartmentManagerGrantInput
+  ): Promise<DepartmentManagerRow> {
+    const existing = await this.findDepartmentManager(
+      input.department_id,
+      input.user_id
+    );
+    if (existing?.revoked_at === null) {
+      return existing;
+    }
+    await this.db
+      .prepare(
+        existing
+          ? `UPDATE department_managers
+                SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
+              WHERE department_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
+          : `INSERT INTO department_managers
+                (department_id, user_id, granted_by, granted_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(department_id, user_id) DO NOTHING`
+      )
+      .bind(
+        ...(existing
+          ? [
+              input.granted_by,
+              input.granted_at,
+              input.department_id,
+              input.user_id,
+            ]
+          : [
+              input.department_id,
+              input.user_id,
+              input.granted_by,
+              input.granted_at,
+            ])
+      )
+      .run();
+    const row = await this.findDepartmentManager(
+      input.department_id,
+      input.user_id
+    );
+    if (!row) {
+      throw new Error("department manager row missing after assign");
+    }
+    return row;
+  }
+
+  async revokeDepartmentManager(
+    input: DepartmentManagerRevokeInput
+  ): Promise<DepartmentManagerRow | null> {
+    await this.db
+      .prepare(
+        `UPDATE department_managers
+            SET revoked_by = ?, revoked_at = ?
+          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(
+        input.revoked_by,
+        input.revoked_at,
+        input.department_id,
+        input.user_id
+      )
+      .run();
+    return this.findDepartmentManager(input.department_id, input.user_id);
+  }
+
   findProgramLeader(
     programId: string,
     userId: string
@@ -1005,9 +1229,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const sql = existing
       ? `UPDATE program_leaders
          SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
-         WHERE program_id = ? AND user_id = ?`
+         WHERE program_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
       : `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)`;
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(program_id, user_id) DO NOTHING`;
     const args = existing
       ? [input.granted_by, input.granted_at, input.program_id, input.user_id]
       : [input.program_id, input.user_id, input.granted_by, input.granted_at];
@@ -1098,6 +1323,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ?"
       )
       .bind(role, capability)
+      .first<{ 1: number }>();
+    return row !== null;
+  }
+
+  async hasDepartmentManagement(
+    userId: string,
+    departmentId: string
+  ): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        `SELECT 1 FROM department_managers
+          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(departmentId, userId)
       .first<{ 1: number }>();
     return row !== null;
   }
