@@ -3645,14 +3645,35 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(enrollmentRow?.member_user_id, "U002");
     assert.strictEqual(enrollmentRow?.request_id, request.request_id);
 
-    const audits = await testDb()
+    const decisionAudit = await testDb()
       .prepare(
-        "SELECT action FROM audit_events WHERE action IN ('ENROLLMENT_REQUEST_DECIDE', 'ENROLLMENT_CREATE')"
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
       )
-      .all<{ action: string }>();
-    const actions = new Set((audits.results ?? []).map((r) => r.action));
-    assert.ok(actions.has("ENROLLMENT_REQUEST_DECIDE"));
-    assert.ok(actions.has("ENROLLMENT_CREATE"));
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(decisionAudit, "approval decision audit row must exist");
+    const decisionOld = JSON.parse(decisionAudit.old_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    const decisionNew = JSON.parse(decisionAudit.new_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(decisionOld.status, "Pending");
+    assert.strictEqual(decisionOld.request_version, 1);
+    assert.strictEqual(decisionNew.status, "Approved");
+    assert.strictEqual(decisionNew.request_version, 2);
+    const enrollmentAudit = await testDb()
+      .prepare(
+        "SELECT action FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(responseEnrollment.enrollment_id)
+      .first<{ action: string }>();
+    assert.ok(enrollmentAudit, "approval enrollment audit row must exist");
   });
 
   test("REQ-5 rejection leaves the request Rejected and no enrollment", async () => {
@@ -3685,6 +3706,28 @@ describe("PRG-03: enrollment requests", () => {
       .bind(request.request_id)
       .all<{ enrollment_id: string }>();
     assert.strictEqual(enrollments.results?.length, 0);
+    const decisionAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(decisionAudit, "rejection decision audit row must exist");
+    const decisionOld = JSON.parse(decisionAudit.old_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    const decisionNew = JSON.parse(decisionAudit.new_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(decisionOld.status, "Pending");
+    assert.strictEqual(decisionOld.request_version, 1);
+    assert.strictEqual(decisionNew.status, "Rejected");
+    assert.strictEqual(decisionNew.request_version, 2);
   });
   test("REQ-5A stale request versions and opposite terminal decisions fail closed", async () => {
     const staleProgramId = await freshRequestProgram("REQ-5A Stale Program");
@@ -3754,6 +3797,24 @@ describe("PRG-03: enrollment requests", () => {
       .bind(request.request_id)
       .first<{ status: string }>();
     assert.strictEqual(row?.status, "Withdrawn");
+    const withdrawalAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_WITHDRAW' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(withdrawalAudit, "withdrawal audit row must exist");
+    const withdrawalNew = JSON.parse(
+      withdrawalAudit.new_value_json ?? "{}"
+    ) as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(withdrawalNew.status, "Withdrawn");
+    assert.strictEqual(withdrawalNew.request_version, 2);
 
     const afterWithdraw = await worker.fetch(
       programsRequest(
