@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   listScheduleRules: vi.fn(),
   createScheduleRule: vi.fn(),
   updateScheduleRule: vi.fn(),
+  listScheduleExceptions: vi.fn(),
   createScheduleException: vi.fn(),
   deleteScheduleException: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listScheduleRules: mocks.listScheduleRules,
   createScheduleRule: mocks.createScheduleRule,
   updateScheduleRule: mocks.updateScheduleRule,
+  listScheduleExceptions: mocks.listScheduleExceptions,
   createScheduleException: mocks.createScheduleException,
   deleteScheduleException: mocks.deleteScheduleException,
 }));
@@ -77,12 +79,14 @@ beforeEach(() => {
   mocks.listScheduleRules.mockReset();
   mocks.createScheduleRule.mockReset();
   mocks.updateScheduleRule.mockReset();
+  mocks.listScheduleExceptions.mockReset();
   mocks.createScheduleException.mockReset();
   mocks.deleteScheduleException.mockReset();
   mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
   mocks.updateProgram.mockResolvedValue({ program: updatedProgram() });
   mocks.createScheduleRule.mockResolvedValue({ rule });
   mocks.updateScheduleRule.mockResolvedValue({ rule });
+  mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
   mocks.createScheduleException.mockResolvedValue({
     exception: {
       exception_id: "exception-1",
@@ -504,11 +508,37 @@ describe(ProgramSettings, () => {
     ).toHaveValue("2026-08-13");
   });
 
-  test("explains that existing schedule exceptions cannot be listed yet", async () => {
+  test("shows existing schedule exceptions and lets a manager remove one", async () => {
+    const user = userEvent.setup();
+    mocks.listScheduleExceptions.mockResolvedValueOnce({
+      exceptions: [
+        {
+          exception_id: "exception-existing",
+          rule_id: "rule-1",
+          override_date: "2026-08-13",
+          action: "CANCEL",
+          new_start_time: null,
+          new_end_time: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
     render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
 
     await expect(
-      screen.findByText(COPY.programs.settingsExceptionsUnavailable)
+      screen.findByText(
+        `2026-08-13 · ${COPY.programs.settingsExceptionCancel}`
+      )
     ).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: `${COPY.programs.settingsExceptionRestore} 2026-08-13`,
+      })
+    );
+    expect(mocks.deleteScheduleException).toHaveBeenCalledWith(
+      "program-1",
+      "rule-1",
+      "exception-existing"
+    );
   });
 });

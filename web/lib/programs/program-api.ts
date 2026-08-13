@@ -836,6 +836,17 @@ export function createScheduleRule(
   );
 }
 
+/** GET /api/v1/programs/:id/schedule-rules/:ruleId/exceptions */
+export function listScheduleExceptions(
+  programId: string,
+  ruleId: string
+): Promise<{ exceptions: ScheduleException[] }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
+    "GET"
+  );
+}
+
 /** PATCH /api/v1/programs/:id/schedule-rules/:ruleId */
 export function updateScheduleRule(
   programId: string,

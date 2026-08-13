@@ -398,6 +398,7 @@ export default {
         handleSearchMemberOptions,
         handleSetModule,
         handleListScheduleRules,
+        handleListScheduleExceptions,
         handleCreateScheduleRule,
         handleUpdateScheduleRule,
         handleCreateScheduleException,
@@ -617,6 +618,14 @@ export default {
       );
       if (scheduleExceptions && request.method === "POST") {
         return handleCreateScheduleException(
+          request,
+          programEnv,
+          scheduleExceptions.groups?.id ?? "",
+          scheduleExceptions.groups?.ruleId ?? ""
+        );
+      }
+      if (scheduleExceptions && request.method === "GET") {
+        return handleListScheduleExceptions(
           request,
           programEnv,
           scheduleExceptions.groups?.id ?? "",

@@ -1397,6 +1397,39 @@ export async function handleListScheduleRules(
   return jsonResponse(200, { rules }, requestId);
 }
 
+/** GET /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
+export async function handleListScheduleExceptions(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
+  if (!rule || rule.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  try {
+    const exceptions = await workspace.listScheduleExceptions(
+      ctxFrom(auth.account),
+      programId,
+      ruleId
+    );
+    return jsonResponse(200, { exceptions }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** POST /api/v1/programs/:programId/schedule-rules */
 export async function handleCreateScheduleRule(
   request: Request,

@@ -269,8 +269,8 @@ export const COPY = {
       "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
     settingsAttendanceUnavailable:
       "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
-    settingsExceptionsUnavailable:
-      "既有例外清單目前無法讀取；在此工作階段建立或移除的例外會即時反映。",
+    settingsExceptionsLoadError: "無法載入既有例外安排，請重試時間表。",
+    settingsExistingExceptions: "既有例外安排",
     settingsScheduleLoading: "正在載入時間表規則…",
     settingsScheduleLoadError: "無法載入時間表規則。",
     settingsScheduleRetry: "重試載入時間表",
@@ -287,6 +287,7 @@ export const COPY = {
     settingsExceptionNewEnd: "新結束時間",
     settingsExceptionSave: "儲存例外",
     settingsExceptionRestore: "移除例外",
+    settingsExceptionDateValidation: "請選擇有效的例外日期。",
     settingsExceptionDuplicate: "此日期已有例外安排，無法重複新增。",
     settingsScheduleEventsLink: "前往聚會工作流程",
     settingsAttendanceOpens: "開始前可簽到分鐘",

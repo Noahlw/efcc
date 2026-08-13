@@ -2511,6 +2511,24 @@ describe("PRG-02: generation", () => {
     );
     assert.strictEqual(res.status, 201);
 
+    const listedExceptions = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(listedExceptions.status, 200);
+    const listedBody = (await listedExceptions.json()) as {
+      data?: { exceptions?: { exception_id: string }[] };
+    };
+    assert.strictEqual(listedBody.data?.exceptions?.length, 1);
+
     const result = await generate(adminAccess, programId, 14);
     assert.strictEqual(result.created, 1, "one of two occurrences suppressed");
     const events = await listEventsFor(adminAccess, programId);

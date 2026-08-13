@@ -1603,6 +1603,24 @@ export class DepartmentWorkspace {
     return this.store.listScheduleRules(programId);
   }
 
+  async listScheduleExceptions(
+    ctx: AuthorizationContext,
+    programId: string,
+    ruleId: string
+  ): Promise<ScheduleExceptionRow[]> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const rule = await this.store.findScheduleRule(ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return [];
+    }
+    return this.store.listScheduleExceptions([ruleId]);
+  }
+
   getScheduleException(
     _ctx: AuthorizationContext,
     exceptionId: string

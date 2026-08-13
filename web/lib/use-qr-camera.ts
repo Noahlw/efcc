@@ -87,19 +87,33 @@ export function useQrCamera(input: {
       if (cancelled) {
         return;
       }
-      const codes = await scanner.detect(video);
-      const value = codes[0]?.rawValue;
-      if (value) {
-        stopCamera();
-        onDetectRef.current(value);
-        return;
+      try {
+        const codes = await scanner.detect(video);
+        const value = codes[0]?.rawValue;
+        if (value) {
+          stopCamera();
+          onDetectRef.current(value);
+          return;
+        }
+        requestAnimationFrame(() => void scan());
+      } catch {
+        if (!cancelled) {
+          stopCamera();
+          onUnavailableRef.current();
+        }
       }
-      requestAnimationFrame(() => void scan());
     };
     video.srcObject = stream;
     const startScan = async () => {
-      await video.play();
-      await scan();
+      try {
+        await video.play();
+        await scan();
+      } catch {
+        if (!cancelled) {
+          stopCamera();
+          onUnavailableRef.current();
+        }
+      }
     };
     void startScan();
     return () => {

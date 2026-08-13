@@ -1559,6 +1559,24 @@
   align-items: center;
   gap: 0.5rem;
   flex: 1 1 100%;
+  width: 100%;
+}
+
+.settingsExceptionList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settingsExceptionList > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .settingsCurrent {
@@ -1678,6 +1696,29 @@
   .workspaceActions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settingsForm {
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+
+  .settingsForm > .field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settingsActions {
+    align-items: stretch;
+    flex-direction: column;
+    flex: 0 0 auto;
+  }
+
+  .settingsActions > button,
+  .settingsActions > .confirmRow,
+  .settingsExceptionList .successOutline {
+    width: 100%;
+    max-width: 100%;
   }
 
   .managementWorkspace > .programDetailBack,

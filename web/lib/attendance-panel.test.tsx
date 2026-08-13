@@ -10,7 +10,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import { AttendancePanel } from "@/lib/attendance-panel";
 import type { AttendanceEvent } from "@/lib/attendance";
@@ -162,6 +162,53 @@ describe("AttendancePanel guest flow", () => {
     );
     const output = await screen.findByText(COPY.attendance.guestDuplicate);
     expect(output.closest("output")).toHaveAttribute("data-tone", "info");
+  });
+});
+
+describe("AttendancePanel camera feedback", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    cleanup();
+  });
+
+  test("turns a detector failure into recoverable camera feedback", async () => {
+    const stream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const originalDetector = (
+      window as Window & { BarcodeDetector?: unknown }
+    ).BarcodeDetector;
+    Object.defineProperty(window, "BarcodeDetector", {
+      configurable: true,
+      value: class {
+        detect(): Promise<never> {
+          return Promise.reject(new Error("detector unavailable"));
+        }
+      },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(<AttendancePanel />);
+    await user.click(screen.getByRole("button", { name: COPY.attendance.camera }));
+
+    await expect(
+      screen.findByText(COPY.attendance.cameraUnavailable)
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: COPY.attendance.camera })).toBeInTheDocument();
+
+    if (originalDetector === undefined) {
+      Reflect.deleteProperty(window, "BarcodeDetector");
+    } else {
+      Object.defineProperty(window, "BarcodeDetector", {
+        configurable: true,
+        value: originalDetector,
+      });
+    }
   });
 });
 
