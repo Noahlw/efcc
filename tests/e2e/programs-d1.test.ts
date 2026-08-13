@@ -147,6 +147,8 @@ const COPY = {
   departmentManagerAssignedNotice: "已新增部門管理者。",
   departmentManagerRevokedNotice: "已移除部門管理者。",
   noDepartmentManagers: "目前沒有部門管理者。",
+  settingsScheduleUnavailable: "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+  settingsAttendanceUnavailable: "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -1014,6 +1016,37 @@ test.describe("CFG-01 Program Settings", () => {
     await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.addRule })
+    ).toHaveCount(0);
+  });
+
+  test("renders unavailable copy for Schedule and Attendance when their modules are disabled", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [gateProgramId] = await catalogProgramIds(
+      page,
+      "E2E_DEMO_模組停用課程"
+    );
+    const id = required("module-gate program id", gateProgramId);
+
+    await page.goto(
+      `/programs?mode=management&program=${id}&task=settings`
+    );
+    await expect(
+      page.getByText(COPY.settingsScheduleUnavailable)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.addRule })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(COPY.settingsAttendanceUnavailable)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
     ).toHaveCount(0);
   });
 });
