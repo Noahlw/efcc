@@ -798,7 +798,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
@@ -1732,7 +1732,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
       `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
     ).toBeVisible();
   }
 
@@ -1837,7 +1837,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
     ).toBeVisible();
   });
 
@@ -2097,5 +2097,268 @@ test.describe("EVT-01 event operational detail and availability", () => {
         "restoring the event to Active must succeed"
       ).toBe(200);
     }
+  });
+});
+
+test.describe("EVT-02 recurring preview and generation", () => {
+  // EVT-02 (#252): reachable Program Workspace preview/generate controls.
+  const previewEvents = "預覽聚會";
+  const previewChanged = "時間表已變更，請重新預覽。";
+  const previewLead = "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
+
+  async function openEventsTask(
+    page: Page,
+    programId: string
+  ): Promise<void> {
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
+    ).toBeVisible();
+  }
+
+  async function eventCount(page: Page, programId: string): Promise<number> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { events?: unknown[] } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/events`
+    );
+    return (body.data?.events ?? []).length;
+  }
+
+  async function scheduleRules(
+    page: Page,
+    programId: string
+  ): Promise<{ rule_id: string; start_time: string }[]> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { rules?: unknown[] } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`
+    );
+    return (body.data?.rules ?? []) as { rule_id: string; start_time: string }[];
+  }
+
+  async function patchRule(
+    page: Page,
+    programId: string,
+    ruleId: string,
+    patch: Record<string, unknown>
+  ): Promise<number> {
+    return page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return response.status;
+      },
+      {
+        requestPath: `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
+        body: patch,
+      }
+    );
+  }
+
+  /**
+   * Create a disposable recurring program (with one weekly rule) under the
+   * demo department so generation tests are deterministic: no prior plans,
+   * runs, or events exist for it, and the deterministic plan identity can
+   * never collide with state left by an earlier suite run.
+   */
+  async function createRecurringProgram(
+    page: Page,
+    prefix: string
+  ): Promise<string> {
+    const catalog = await fetchCatalog(page);
+    const departmentId = catalog[0]?.department.department_id;
+    expect(departmentId).toBeTruthy();
+    const name = `${prefix}_${Date.now()}`;
+    const created = await page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as { data?: { program?: { program_id?: string } } },
+        };
+      },
+      {
+        requestPath: `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
+        body: {
+          name,
+          description: null,
+          category: "測試類別",
+          behavior_type: "Recurring",
+          lifecycle: "Draft",
+          discoverability: "Unlisted",
+          enrollment_mode: "MemberRequest",
+          display_order: 0,
+        },
+      }
+    );
+    expect(created.status).toBe(201);
+    const programId = created.body.data?.program?.program_id;
+    expect(programId).toBeTruthy();
+    const ruleStatus = await page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return response.status;
+      },
+      {
+        requestPath: `/api/v1/programs/${encodeURIComponent(programId ?? "")}/schedule-rules`,
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 3,
+          start_time: "19:30",
+          end_time: "20:45",
+        },
+      }
+    );
+    expect(ruleStatus).toBe(201);
+    return programId ?? "";
+  }
+
+  test("preview materializes exact rows without writing events", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+    await openEventsTask(page, id);
+
+    const before = await eventCount(page, id);
+    await expect(
+      page.getByRole("button", { name: previewEvents })
+    ).toBeVisible();
+    await page.getByRole("button", { name: previewEvents }).click();
+
+    // Server-owned plan identity + exact occurrence rows in the DOM.
+    await expect(page.getByText(previewLead)).toBeVisible();
+    await expect(page.getByText(/^方案 /u).first()).toBeVisible();
+    await expect(
+      page.locator("[aria-label='預覽聚會'] > li").first()
+    ).toBeVisible();
+    // The generate control becomes reachable only with a current plan.
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+
+    // Non-mutating: the observable event directory is unchanged.
+    expect(await eventCount(page, id)).toBe(before);
+  });
+
+  test("generation reports deterministic created/skipped counts and refreshes the directory", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_產生");
+    await openEventsTask(page, id);
+    const before = await eventCount(page, id);
+    expect(before).toBe(0);
+    await page.getByRole("button", { name: previewEvents }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect
+      .poll(async () => eventCount(page, id))
+      .toBeGreaterThan(before);
+
+    // Deterministic repeat: the same plan generates nothing new.
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已接續上次產生，新增 0 場，跳過 \d+ 場。$/u).first()
+    ).toBeVisible();
+    expect(await eventCount(page, id)).toBeGreaterThan(before);
+  });
+
+  test("a stale plan is rejected before writes and requires a fresh preview", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_過期");
+    const rules = await scheduleRules(page, id);
+    const rule = rules[0];
+    expect(rule).toBeTruthy();
+
+    await openEventsTask(page, id);
+    const before = await eventCount(page, id);
+    await page.getByRole("button", { name: previewEvents }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+
+    // Change a rule after the preview, then generate with the stale plan.
+    const patchStatus = await patchRule(page, id, rule.rule_id, {
+      start_time: "19:45",
+    });
+    expect(patchStatus).toBe(200);
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+
+    const staleAlert = page.getByRole("alert").filter({
+      hasText: previewChanged,
+    });
+    await expect(staleAlert).toBeVisible();
+    // The stale plan is cleared; the UI requires a new preview.
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
+    expect(await eventCount(page, id)).toBe(before);
+  });
+
+  test("preview/generate controls are unreachable without the manage capability", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+    // A member without Program Manage cannot enter management mode at all:
+    // the capability-shaped boundary renders the no-management-scope state,
+    // so no preview/generate control is reachable.
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(id)}&task=events`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: previewEvents })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
   });
 });
