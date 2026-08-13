@@ -347,7 +347,7 @@ describe("ENR-01 participants workspace", () => {
       screen.getByRole("tab", {
         name: `${COPY.programs.workspaceActiveParticipants} (1)`,
       })
-    ).not.toHaveAttribute("aria-controls");
+    ).toHaveAttribute("aria-controls", "participants-active-panel");
     expect(
       screen.getByRole("button", { name: COPY.programs.approve })
     ).toBeInTheDocument();
@@ -449,6 +449,94 @@ describe("ENR-01 participants workspace", () => {
         name: `${COPY.programs.workspacePendingRequests} (1)`,
       })
     ).toBeInTheDocument();
+  });
+
+  test("an approved request whose enrollment is later cancelled counts once in history", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [
+        {
+          ...request,
+          status: "Approved",
+          request_version: 2,
+          decided_by: "manager-1",
+          decided_at: "2026-08-03T00:00:00.000Z",
+        },
+      ],
+      enrollments: [
+        {
+          ...enrollment,
+          request_id: "request-1",
+          status: "Cancelled",
+          cancelled_at: "2026-08-04T00:00:00.000Z",
+          cancelled_by: "member-1",
+        },
+      ],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.enrollmentHistory} (1)`,
+      })
+    );
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
+    expect(history.querySelectorAll("li")).toHaveLength(1);
+    expect(history).toHaveTextContent(COPY.programs.enrollmentCancelled);
+  });
+
+  test("keeps the queue rendered when the post-decision refresh fails", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockResolvedValue({
+      request: { ...request, status: "Approved" },
+    });
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [request],
+        enrollments: [enrollment],
+      })
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "NETWORK",
+          status: 0,
+          detail: "refresh failed",
+        })
+      );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.approve })
+    );
+    expect(
+      await screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.workspaceTaskParticipantsRetry,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("submits an assisted enrollment from the ManagerOnly queue", async () => {

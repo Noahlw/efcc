@@ -283,6 +283,7 @@ export const COPY = {
     workspaceTaskParticipantsEmpty: "目前沒有報名或活躍參與者。",
     workspaceParticipantsRefresh: "重新整理參與者資料",
     workspaceParticipantsRefreshSuccess: "參與者資料已更新。",
+    workspaceParticipantsRefreshFailed: "更新參與者資料失敗，畫面顯示上次已知結果。",
     workspaceParticipantsForbidden: "你目前無法操作這個課程的參與者資料。",
     workspaceParticipantsStale: "這項報名資料已過時，請重新整理後再試。",
     workspaceParticipantsConflict: "這項操作與另一項更新衝突，資料未有改變。",

@@ -71,8 +71,13 @@ const COPY = {
   workspaceTaskParticipants: "參與者",
   workspacePendingRequests: "待處理報名",
   workspaceActiveParticipants: "活躍參與者",
+  workspaceParticipantsRefresh: "重新整理參與者資料",
+  workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
   approve: "核准",
+  reject: "拒絕",
+  decisionNote: "決定備註",
   decisionMade: "已處理申請。",
+  enrollmentHistory: "你的報名紀錄",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
   settingsBasics: "基本資料",
@@ -885,8 +890,14 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       await expect(pendingTab).toBeVisible();
       await expect(activeTab).toBeVisible();
       await expect(pendingTab).toHaveAttribute("aria-selected", "true");
-      await expect(pendingTab).not.toHaveAttribute("aria-controls");
-      await expect(activeTab).not.toHaveAttribute("aria-controls");
+      await expect(pendingTab).toHaveAttribute(
+        "aria-controls",
+        "participants-pending-panel"
+      );
+      await expect(activeTab).toHaveAttribute(
+        "aria-controls",
+        "participants-active-panel"
+      );
 
       const requestRow = page
         .getByRole("listitem")
@@ -903,6 +914,157 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       await expect(
         page.getByRole("list", { name: COPY.workspaceActiveParticipants })
       ).toContainText("E2E Member");
+
+      // ENR-01 reject path: a second member submits, the manager rejects
+      // with a note, and the rejected request leaves no Active enrollment.
+      const secondUsername = `E2E_reject_${Date.now()}`;
+      const secondPassword = "E2E_reject_pw!1";
+      const secondContext = await browser.newContext();
+      const secondPage = await secondContext.newPage();
+      let secondReady = false;
+      try {
+        const registered = await page.evaluate(
+          async ({ username, password }) => {
+            const response = await fetch("/api/v1/auth/register", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": `e2e-register-${Date.now()}`,
+              },
+              body: JSON.stringify({
+                username,
+                password,
+                name: "E2E Reject Member",
+              }),
+            });
+            return { ok: response.ok, status: response.status };
+          },
+          { username: secondUsername, password: secondPassword }
+        );
+        expect(
+          registered.ok,
+          "second member registration must submit"
+        ).toBe(true);
+        const approved = await page.evaluate(async ({ username }) => {
+          const listResponse = await fetch("/api/v1/auth/registrations");
+          const body = (await listResponse.json()) as {
+            data?: {
+              registrations?: { requestId: string; username: string }[];
+            };
+          };
+          const pending = body.data?.registrations?.find(
+            (row) => row.username === username
+          );
+          if (!pending) {
+            return { ok: false, status: 404 };
+          }
+          const response = await fetch(
+            `/api/v1/auth/registrations/${encodeURIComponent(pending.requestId)}/approve`,
+            {
+              method: "POST",
+              headers: { "Idempotency-Key": `e2e-approve-${Date.now()}` },
+            }
+          );
+          return { ok: response.ok, status: response.status };
+        }, { username: secondUsername });
+        expect(approved.ok, "admin must approve the second member").toBe(true);
+
+        await loginAs(secondPage, secondUsername, secondPassword);
+        secondReady = true;
+        await secondPage.goto(`/programs?program=${programId}#overview`);
+        const secondPanel = secondPage.getByRole("region", {
+          name: COPY.enrollment,
+        });
+        await secondPanel
+          .getByRole("button", { name: COPY.requestEnroll })
+          .click();
+        await expect(
+          secondPanel.getByText(COPY.requestPendingHint)
+        ).toBeVisible();
+
+        await page
+          .getByRole("button", { name: COPY.workspaceParticipantsRefresh })
+          .click();
+        await page
+          .getByRole("tab", {
+            name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+          })
+          .click();
+        const secondRow = page
+          .getByRole("listitem")
+          .filter({ hasText: "E2E Reject Member" });
+        await expect(secondRow).toBeVisible();
+        await secondRow.getByLabel(COPY.decisionNote).fill("時間不合");
+        await secondRow.getByRole("button", { name: COPY.reject }).click();
+        await expect(
+          page
+            .getByRole("region", { name: COPY.workspaceTaskParticipants })
+            .getByText(COPY.decisionMade, { exact: true })
+        ).toBeVisible();
+        await expect(
+          page.getByText(COPY.workspaceParticipantsPendingEmpty)
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole("listitem")
+            .filter({ hasText: "E2E Reject Member" })
+        ).toHaveCount(0);
+        const secondEnrollments = await secondPage.evaluate(
+          async (id) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-snapshot`
+            );
+            const body = (await response.json()) as {
+              data?: { enrollments?: { status: string }[] };
+            };
+            return body.data?.enrollments ?? [];
+          },
+          programId
+        );
+        expect(
+          secondEnrollments.some((row) => row.status === "Active"),
+          "rejected request must not create an Active enrollment"
+        ).toBe(false);
+        const historyTab = page.getByRole("tab", {
+          name: new RegExp(`${COPY.enrollmentHistory} \\(\\d+\\)`, "u"),
+        });
+        await historyTab.click();
+        await expect(
+          page
+            .getByRole("list", { name: COPY.enrollmentHistory })
+            .filter({ hasText: "E2E Reject Member" })
+        ).toContainText("時間不合");
+      } finally {
+        if (secondReady) {
+          await secondPage.evaluate(async (id) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+            );
+            const body = (await response.json()) as {
+              data?: {
+                requests?: {
+                  request_id: string;
+                  status: string;
+                }[];
+              };
+            };
+            const pending = (body.data?.requests ?? []).find(
+              (row) => row.status === "Pending"
+            );
+            if (pending) {
+              await fetch(
+                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(pending.request_id)}/withdraw`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: "{}",
+                }
+              );
+            }
+          }, programId);
+          await secondContext.close();
+        }
+      }
     } finally {
       if (programId && adminReady) {
         await page.evaluate(async (id) => {

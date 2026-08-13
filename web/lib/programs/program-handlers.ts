@@ -1163,6 +1163,8 @@ export async function handleSearchMemberOptions(
     );
   }
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const excludeEnrolled =
+    new URL(request.url).searchParams.get("excludeEnrolled") === "true";
   if (query.length < 2) {
     return problem(
       422,
@@ -1172,7 +1174,11 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const members = await workspace.searchActiveMembers(query, 20, programId);
+  const members = await workspace.searchActiveMembers(
+    query,
+    20,
+    excludeEnrolled ? programId : undefined
+  );
   return jsonResponse(200, { members }, requestId);
 }
 

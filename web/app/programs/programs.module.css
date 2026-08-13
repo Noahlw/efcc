@@ -240,7 +240,8 @@
   cursor: pointer;
 }
 
-.taskButton[aria-pressed="true"] {
+.taskButton[aria-pressed="true"],
+.taskButton[aria-selected="true"] {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--surface-raised);

@@ -2194,51 +2194,76 @@ export class DepartmentWorkspace {
             )
           : null,
     });
-    const request = await this.store.findEnrollmentRequestById(requestId);
-    if (!request || request.program_id !== programId) {
-      throw new RequestNotDecidableError(requestId);
-    }
-    if (
-      cmd.expectedRequestVersion !== undefined &&
-      cmd.expectedRequestVersion !== request.request_version
-    ) {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "CONFLICT",
-        request,
-        { ...request, reason: "stale_request_version" },
-        correlationId
-      );
-      throw new StaleEnrollmentRequestError(requestId);
-    }
-    if (request.status !== "Pending") {
-      if (request.status === cmd.action) {
+    // ADR-0023 §3 / ADR-0027: DUPLICATE is the SAME actor repeating their own
+    // terminal decision; CONFLICT is a different actor reaching the terminal
+    // state first or an opposite terminal state. Check STATUS before
+    // request-version staleness so a terminal request is never misclassified
+    // as a stale-version CONFLICT (a deciding actor's own idempotent retry
+    // after a network timeout carries an already-advanced version).
+    const classifyObserved = async (
+      latest: EnrollmentRequestRow | null
+    ): Promise<EnrollmentDecisionResult | null> => {
+      if (latest && latest.status !== "Pending") {
+        if (
+          latest.status === cmd.action &&
+          latest.decided_by === ctx.actorUserId
+        ) {
+          await this.audit(
+            ctx,
+            "ENROLLMENT_REQUEST_DECIDE",
+            "enrollment_request",
+            requestId,
+            "DUPLICATE",
+            null,
+            { ...latest, reason: "already_decided" },
+            correlationId
+          );
+          return decisionResult(latest);
+        }
         await this.audit(
           ctx,
           "ENROLLMENT_REQUEST_DECIDE",
           "enrollment_request",
           requestId,
-          "DUPLICATE",
-          null,
-          { ...request, reason: "already_decided" },
+          "CONFLICT",
+          request,
+          {
+            ...latest,
+            reason:
+              latest.status === cmd.action
+                ? "already_decided_by_other_actor"
+                : "terminal_request",
+          },
           correlationId
         );
-        return decisionResult(request);
+        throw new EnrollmentDecisionConflictError(requestId, latest.status);
       }
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "CONFLICT",
-        request,
-        { ...request, reason: "terminal_request" },
-        correlationId
-      );
-      throw new EnrollmentDecisionConflictError(requestId, request.status);
+      if (
+        latest &&
+        cmd.expectedRequestVersion !== undefined &&
+        cmd.expectedRequestVersion !== latest.request_version
+      ) {
+        await this.audit(
+          ctx,
+          "ENROLLMENT_REQUEST_DECIDE",
+          "enrollment_request",
+          requestId,
+          "CONFLICT",
+          request,
+          { ...latest, reason: "stale_request_version" },
+          correlationId
+        );
+        throw new StaleEnrollmentRequestError(requestId);
+      }
+      return null;
+    };
+    const request = await this.store.findEnrollmentRequestById(requestId);
+    if (!request || request.program_id !== programId) {
+      throw new RequestNotDecidableError(requestId);
+    }
+    const alreadyTerminal = await classifyObserved(request);
+    if (alreadyTerminal) {
+      return alreadyTerminal;
     }
 
     const now = new Date().toISOString();
@@ -2358,48 +2383,13 @@ export class DepartmentWorkspace {
     }
 
     const latest = await this.store.findEnrollmentRequestById(requestId);
-    if (
-      cmd.expectedRequestVersion !== undefined &&
-      latest?.request_version !== cmd.expectedRequestVersion
-    ) {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "CONFLICT",
-        request,
-        { ...(latest ?? request), reason: "stale_request_version" },
-        correlationId
-      );
-      throw new StaleEnrollmentRequestError(requestId);
+    const observed = await classifyObserved(latest);
+    if (observed) {
+      return observed;
     }
-    if (latest?.status === cmd.action) {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "DUPLICATE",
-        null,
-        { ...latest, reason: "already_decided" },
-        correlationId
-      );
-      return decisionResult(latest);
-    }
-    if (latest && latest.status !== "Pending") {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "CONFLICT",
-        request,
-        { ...latest, reason: "terminal_request" },
-        correlationId
-      );
-      throw new EnrollmentDecisionConflictError(requestId, latest.status);
-    }
+    // Defensive: the CAS failed but the re-read is a Pending row matching the
+    // expected version — treat the decision as already applied and return the
+    // observed row so the caller never fabricates a second mutation.
     await this.audit(
       ctx,
       "ENROLLMENT_REQUEST_DECIDE",

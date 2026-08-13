@@ -1166,11 +1166,12 @@ describe("PRG-01: programs", () => {
       enrollment_mode: "ManagerOnly",
     });
     const search = async (
-      q: string
+      q: string,
+      excludeEnrolled = false
     ): Promise<{ user_id: string; name: string; username: string }[]> => {
       const res = await worker.fetch(
         programsRequest(
-          `/api/v1/programs/${program.program_id}/member-options?q=${q}`,
+          `/api/v1/programs/${program.program_id}/member-options?q=${q}${excludeEnrolled ? "&excludeEnrolled=true" : ""}`,
           {
             headers: {
               Origin: HOST,
@@ -1200,8 +1201,13 @@ describe("PRG-01: programs", () => {
     assert.strictEqual(enrolled.status, 201);
     assert.deepStrictEqual(
       await search("Bob"),
+      [{ user_id: "U002", name: "Bob Lee", username: "bob" }],
+      "without excludeEnrolled, an already-enrolled active account stays selectable (Program Leader picker)"
+    );
+    assert.deepStrictEqual(
+      await search("Bob", true),
       [],
-      "active enrollment is excluded from the selected program's picker"
+      "with excludeEnrolled=true, an already-enrolled active account is excluded (assisted enrollment)"
     );
     assert.deepStrictEqual(
       await search("U004"),
@@ -4400,6 +4406,136 @@ describe("PRG-03: enrollments", () => {
       .bind(request.request_id)
       .first<{ outcome: string }>();
     assert.ok(audit, "decide-on-decided must write a DUPLICATE audit row");
+  });
+
+  test("REQ-9B same-actor retry with a stale version after success is a quiet DUPLICATE, not STALE", async () => {
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Same-Actor Retry Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(first.status, 200);
+    // The retry carries the caller's last-observed version (1), but the
+    // request is now terminal at version 2. ADR-0023/0027: the deciding
+    // actor's own repeat is DUPLICATE, never a stale-version CONFLICT.
+    const retry = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved",
+      1
+    );
+    assert.strictEqual(retry.status, 200, "same-actor retry is a quiet success");
+    const body = (await assertCorrelated(retry)) as {
+      data: { request: { status: string; request_version: number } };
+    };
+    assert.strictEqual(body.data.request.status, "Approved");
+    assert.strictEqual(
+      body.data.request.request_version,
+      2,
+      "terminal request version must not advance on a repeat"
+    );
+    const dupAudit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'DUPLICATE'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(request.request_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(dupAudit, "same-actor retry must audit DUPLICATE");
+    assert.strictEqual(
+      (JSON.parse(dupAudit.new_value_json) as { reason?: string }).reason,
+      "already_decided"
+    );
+  });
+
+  test("REQ-9C a different actor repeating an already-decided action audits CONFLICT", async () => {
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Cross-Actor Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(first.status, 200);
+    const repeat = await decideRequest(
+      staffAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(repeat.status, 409, "cross-actor repeat must conflict");
+    const repeatBody = await problemOf(repeat);
+    assert.strictEqual(repeatBody.code, "CONFLICT");
+    const conflictAudit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'CONFLICT'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(request.request_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(conflictAudit, "cross-actor repeat must audit CONFLICT");
+    assert.strictEqual(
+      (JSON.parse(conflictAudit.new_value_json) as { reason?: string }).reason,
+      "already_decided_by_other_actor"
+    );
+  });
+
+  test("REQ-9D concurrent decisions by different actors yield one SUCCESS and one CONFLICT", async () => {
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Cross-Actor Race Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const [first, second] = await Promise.all([
+      decideRequest(adminAccess, programId, request.request_id, "Approved"),
+      decideRequest(staffAccess, programId, request.request_id, "Approved"),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409]);
+    const outcomes = await testDb()
+      .prepare(
+        `SELECT outcome, COUNT(*) AS n FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ?
+         GROUP BY outcome`
+      )
+      .bind(request.request_id)
+      .all<{ outcome: string; n: number }>();
+    const byOutcome = new Map(
+      (outcomes.results ?? []).map((r) => [r.outcome, r.n])
+    );
+    assert.strictEqual(byOutcome.get("SUCCESS"), 1, "one committed decision");
+    assert.strictEqual(
+      byOutcome.get("CONFLICT"),
+      1,
+      "cross-actor race loser audits CONFLICT (never a quiet DUPLICATE)"
+    );
   });
 
   test("REQ-10 withdraw-on-withdrawn is a quiet 200 with a DUPLICATE audit row", async () => {

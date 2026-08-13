@@ -706,10 +706,15 @@ export function updateProgram(
 /** GET /api/v1/programs/:id/member-options?q=... */
 export function searchMemberOptions(
   programId: string,
-  query: string
+  query: string,
+  options?: { excludeEnrolled?: boolean }
 ): Promise<{ members: MemberOption[] }> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.excludeEnrolled) {
+    params.set("excludeEnrolled", "true");
+  }
   return programsFetch(
-    `/api/v1/programs/${encodeURIComponent(programId)}/member-options?q=${encodeURIComponent(query)}`,
+    `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
     "GET"
   );
 }

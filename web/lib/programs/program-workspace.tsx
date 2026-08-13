@@ -776,10 +776,22 @@ const ParticipantsTask = ({
   const [refreshingAction, setRefreshingAction] = useState<string | null>(null);
   const [assistedBusy, setAssistedBusy] = useState(false);
   const [assistedError, setAssistedError] = useState<string | null>(null);
+  // Most recent successful snapshot: a failed refresh after a successful
+  // mutation keeps the queue rendered from the last-known data instead of
+  // ejecting the operator into the full-panel error state.
+  const lastReadyRef = useRef<Extract<ParticipantsState, { kind: "ready" }> | null>(
+    null
+  );
 
   useEffect(() => {
     void run();
   }, [run]);
+
+  useEffect(() => {
+    if (state.kind === "ready") {
+      lastReadyRef.current = state;
+    }
+  }, [state]);
 
   useEffect(() => {
     if (refreshingAction === null || state.kind === "loading") {
@@ -795,22 +807,35 @@ const ParticipantsTask = ({
   }, [refreshSuccess, refreshingAction, state]);
 
   const queue = useMemo(() => {
-    if (state.kind !== "ready") {
+    const snapshot =
+      state.kind === "ready"
+        ? state
+        : state.kind === "error" && lastReadyRef.current
+          ? lastReadyRef.current
+          : null;
+    if (snapshot === null) {
       return null;
     }
-    const active = state.enrollments.filter(
+    const active = snapshot.enrollments.filter(
       ({ status }) => status === "Active"
     );
-    const activeRequestIds = new Set(
-      active.flatMap(({ request_id }) => (request_id ? [request_id] : []))
+    // Every enrollment row (Active or Cancelled) tells the Approved
+    // request's story once; an Approved request stays out of history as
+    // long as ANY linked enrollment row exists.
+    const enrolledRequestIds = new Set(
+      snapshot.enrollments.flatMap(({ request_id }) =>
+        request_id ? [request_id] : []
+      )
     );
-    const pending = state.requests.filter(({ status }) => status === "Pending");
-    const historyRequests = state.requests.filter(
+    const pending = snapshot.requests.filter(
+      ({ status }) => status === "Pending"
+    );
+    const historyRequests = snapshot.requests.filter(
       ({ status, request_id }) =>
         status !== "Pending" &&
-        !(status === "Approved" && activeRequestIds.has(request_id))
+        !(status === "Approved" && enrolledRequestIds.has(request_id))
     );
-    const historyEnrollments = state.enrollments.filter(
+    const historyEnrollments = snapshot.enrollments.filter(
       ({ status }) => status === "Cancelled"
     );
     return {
@@ -1058,8 +1083,11 @@ const ParticipantsTask = ({
         {COPY.programs.workspaceTaskParticipantsLead}
       </p>
       {notice !== null && (
-        <output className={styles.panelNotice} aria-live="polite">
-          {notice}
+        <output className={styles.panelNotice}>{notice}</output>
+      )}
+      {state.kind === "error" && lastReadyRef.current !== null && (
+        <output className={styles.panelNotice}>
+          {COPY.programs.workspaceParticipantsRefreshFailed}
         </output>
       )}
       {canManage && enrollmentMode === "ManagerOnly" && (
@@ -1069,6 +1097,7 @@ const ParticipantsTask = ({
             name="member_user_id"
             label={COPY.programs.memberId}
             placeholder={COPY.programs.memberIdPlaceholder}
+            excludeEnrolled
           />
           <button
             type="submit"
@@ -1089,7 +1118,7 @@ const ParticipantsTask = ({
           {COPY.programs.workspaceTaskParticipantsLoading}
         </output>
       )}
-      {state.kind === "error" && (
+      {state.kind === "error" && lastReadyRef.current === null && (
         <div className={styles.boundaryError} role="alert">
           <p>{state.message}</p>
           <button
@@ -1119,8 +1148,9 @@ const ParticipantsTask = ({
                   key={value}
                   type="button"
                   role="tab"
+                  id={`participants-${value}-tab`}
                   aria-selected={tab === value}
-                  aria-pressed={tab === value}
+                  aria-controls={`participants-${value}-panel`}
                   className={styles.taskButton}
                   onClick={() => setTab(value)}
                 >
@@ -1150,13 +1180,7 @@ const ParticipantsTask = ({
           <section
             id={`participants-${tab}-panel`}
             role="tabpanel"
-            aria-label={
-              tab === "pending"
-                ? COPY.programs.workspacePendingRequests
-                : tab === "active"
-                  ? COPY.programs.workspaceActiveParticipants
-                  : COPY.programs.enrollmentHistory
-            }
+            aria-labelledby={`participants-${tab}-tab`}
           >
             {tab === "pending"
               ? renderPending()
