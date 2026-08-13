@@ -93,6 +93,46 @@ export interface ManagementDirectory {
   programs: ManagementProgram[];
 }
 
+export interface ManagementAttentionProgram {
+  program_id: string;
+  department_id: string;
+  pending_enrollment_count: number;
+  inactive_event_count: number;
+  cancelled_event_count: number;
+  actionable_count: number;
+}
+
+export type ManagementAttentionItem =
+  | {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+    }
+  | {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+    };
+
+export interface ManagementAttention {
+  programs: ManagementAttentionProgram[];
+  items: ManagementAttentionItem[];
+  total_actionable_count: number;
+  has_more: boolean;
+}
+
 export interface DepartmentDetail {
   department: Department;
   modules: DepartmentModule[];
@@ -562,6 +602,11 @@ export function listDepartments(): Promise<{
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
   return programsFetch("/api/v1/programs/management-directory", "GET");
+}
+
+/** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
+export function getManagementAttention(): Promise<ManagementAttention> {
+  return programsFetch("/api/v1/programs/attention", "GET");
 }
 
 /** GET /api/v1/programs/access — capability-only entry projection. */

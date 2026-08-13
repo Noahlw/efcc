@@ -21,11 +21,12 @@ import type {
   EnrollmentRow,
   EventInput,
   EventRow,
-  ProgramInput,
+  ManagementAttentionEventRow,
   ProgramLeaderGrantInput,
   ProgramLeaderRevokeInput,
   ProgramLeaderRow,
   ProgramRow,
+  ProgramInput,
   ProgramUpdate,
   MemberOptionRow,
   ScheduleExceptionInput,
@@ -693,6 +694,104 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .bind(programId)
       .all<EventRow>();
+    return result.results ?? [];
+  }
+
+  async countPendingEnrollmentRequests(
+    programIds: readonly string[]
+  ): Promise<Array<{ program_id: string; count: number }>> {
+    if (programIds.length === 0) {
+      return [];
+    }
+    const placeholders = programIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT program_id, COUNT(*) AS count
+           FROM enrollment_requests
+          WHERE status = 'Pending'
+            AND program_id IN (${placeholders})
+          GROUP BY program_id`
+      )
+      .bind(...programIds)
+      .all<{ program_id: string; count: number }>();
+    return (result.results ?? []).map((row) => ({
+      program_id: row.program_id,
+      count: Number(row.count),
+    }));
+  }
+
+  async countManagementEventAttention(
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ): Promise<
+    Array<{
+      program_id: string;
+      inactive_event_count: number;
+      cancelled_event_count: number;
+    }>
+  > {
+    if (programIds.length === 0) {
+      return [];
+    }
+    const placeholders = programIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT program_id,
+                SUM(
+                  CASE
+                    WHEN status = 'Active' AND availability = 'Inactive' THEN 1
+                    ELSE 0
+                  END
+                ) AS inactive_event_count,
+                SUM(
+                  CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END
+                ) AS cancelled_event_count
+           FROM events
+          WHERE starts_at >= ?
+            AND program_id IN (${placeholders})
+            AND (
+              status = 'Cancelled'
+              OR (status = 'Active' AND availability = 'Inactive')
+            )
+          GROUP BY program_id`
+      )
+      .bind(startsAtOrAfter, ...programIds)
+      .all<{
+        program_id: string;
+        inactive_event_count: number;
+        cancelled_event_count: number;
+      }>();
+    return (result.results ?? []).map((row) => ({
+      program_id: row.program_id,
+      inactive_event_count: Number(row.inactive_event_count),
+      cancelled_event_count: Number(row.cancelled_event_count),
+    }));
+  }
+
+  async listManagementEventAttention(
+    programIds: readonly string[],
+    startsAtOrAfter: string,
+    limit: number
+  ): Promise<ManagementAttentionEventRow[]> {
+    if (programIds.length === 0 || limit <= 0) {
+      return [];
+    }
+    const placeholders = programIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT event_id, program_id, starts_at, status, availability, name
+           FROM events
+          WHERE starts_at >= ?
+            AND program_id IN (${placeholders})
+            AND (
+              status = 'Cancelled'
+              OR (status = 'Active' AND availability = 'Inactive')
+            )
+          ORDER BY starts_at ASC, event_id ASC
+          LIMIT ?`
+      )
+      .bind(startsAtOrAfter, ...programIds, limit)
+      .all<ManagementAttentionEventRow>();
     return result.results ?? [];
   }
 

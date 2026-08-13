@@ -540,6 +540,23 @@ export async function handleListManagementDirectory(
   return jsonResponse(200, directory, requestId);
 }
 
+/** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
+export async function handleGetManagementAttention(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const attention = await workspace.getManagementAttention(
+    ctxFrom(auth.account)
+  );
+  return jsonResponse(200, attention, requestId);
+}
+
 /** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */
 export async function handleGetManagementProgram(
   request: Request,

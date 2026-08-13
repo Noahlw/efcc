@@ -381,6 +381,7 @@ export default {
         handleListDepartments,
         handleListManagementAccess,
         handleListManagementDirectory,
+        handleGetManagementAttention,
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
@@ -430,6 +431,12 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/attention" &&
+        request.method === "GET"
+      ) {
+        return handleGetManagementAttention(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/catalog" &&

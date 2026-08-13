@@ -227,6 +227,23 @@ export interface EventRow {
   check_in_window_closes_at: string | null;
 }
 
+/** Bounded operator-facing Event state rows for the Management attention seam. */
+export interface ManagementAttentionEventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  name: string | null;
+}
+
+export interface ManagementAttentionCountRow {
+  program_id: string;
+  pending_enrollment_count: number;
+  inactive_event_count: number;
+  cancelled_event_count: number;
+}
+
 export interface GenerateResult {
   created: number;
   skipped: number;
@@ -423,6 +440,24 @@ export interface WorkspaceStore {
   ) => Promise<EventRow | null>;
   findEventById: (id: string) => Promise<EventRow | null>;
   listEvents: (programId: string) => Promise<EventRow[]>;
+  countPendingEnrollmentRequests: (
+    programIds: readonly string[]
+  ) => Promise<Array<{ program_id: string; count: number }>>;
+  countManagementEventAttention: (
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ) => Promise<
+    Array<{
+      program_id: string;
+      inactive_event_count: number;
+      cancelled_event_count: number;
+    }>
+  >;
+  listManagementEventAttention: (
+    programIds: readonly string[],
+    startsAtOrAfter: string,
+    limit: number
+  ) => Promise<ManagementAttentionEventRow[]>;
   cancelEvent: (
     id: string,
     reason: string,

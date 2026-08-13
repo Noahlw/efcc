@@ -73,6 +73,7 @@ import type {
   MemberOptionRow,
   ProgramRow,
   ProgramLeaderRow,
+  ManagementAttentionEventRow,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -119,6 +120,47 @@ export interface ManagementDirectoryView {
   departments: ManagementDepartmentView[];
   programs: ManagementProgramView[];
 }
+
+export interface ManagementAttentionProgramView {
+  program_id: string;
+  department_id: string;
+  pending_enrollment_count: number;
+  inactive_event_count: number;
+  cancelled_event_count: number;
+  actionable_count: number;
+}
+
+type ManagementAttentionItemBase = {
+  program_id: string;
+  program_name: string;
+  department_id: string;
+  department_name: string;
+};
+
+export type ManagementAttentionItem =
+  | (ManagementAttentionItemBase & {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+    })
+  | (ManagementAttentionItemBase & {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+    });
+
+export interface ManagementAttentionView {
+  programs: ManagementAttentionProgramView[];
+  items: ManagementAttentionItem[];
+  total_actionable_count: number;
+  has_more: boolean;
+}
+
+export const MANAGEMENT_ATTENTION_LIMIT = 5;
 export interface ManagementProgramWorkspaceView {
   program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
@@ -491,6 +533,154 @@ export class DepartmentWorkspace {
         .filter(({ department_id }) => scopedDepartmentIds.has(department_id))
         .map((department) => this.managementDepartment(department)),
       programs: scopedPrograms,
+    };
+  }
+
+  async getManagementAttention(
+    ctx: AuthorizationContext
+  ): Promise<ManagementAttentionView> {
+    const directory = await this.listManagementDirectory(ctx);
+    const departmentsById = new Map(
+      directory.departments.map((department) => [
+        department.department_id,
+        department,
+      ])
+    );
+    const managedPrograms = directory.programs.filter(
+      ({ capabilities }) => capabilities.manage
+    );
+    const moduleScopes = await Promise.all(
+      managedPrograms.map(async (program) => ({
+        program,
+        enrollment: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.ENROLLMENT
+        ),
+        events: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.EVENTS
+        ),
+      }))
+    );
+    const enrollmentProgramIds = moduleScopes
+      .filter(({ enrollment }) => enrollment)
+      .map(({ program }) => program.program_id);
+    const eventProgramIds = moduleScopes
+      .filter(({ events }) => events)
+      .map(({ program }) => program.program_id);
+    const startsAtOrAfter = new Date().toISOString();
+    const [pendingRows, eventCounts, eventRows] = await Promise.all([
+      this.store.countPendingEnrollmentRequests(enrollmentProgramIds),
+      this.store.countManagementEventAttention(
+        eventProgramIds,
+        startsAtOrAfter
+      ),
+      this.store.listManagementEventAttention(
+        eventProgramIds,
+        startsAtOrAfter,
+        MANAGEMENT_ATTENTION_LIMIT
+      ),
+    ]);
+    const pendingByProgram = new Map(
+      pendingRows.map(({ program_id, count }) => [program_id, count])
+    );
+    const eventsByProgram = new Map(
+      eventCounts.map(
+        ({ program_id, inactive_event_count, cancelled_event_count }) => [
+          program_id,
+          { inactive_event_count, cancelled_event_count },
+        ]
+      )
+    );
+    const programs = managedPrograms.map((program) => {
+      const pending = pendingByProgram.get(program.program_id) ?? 0;
+      const events = eventsByProgram.get(program.program_id) ?? {
+        inactive_event_count: 0,
+        cancelled_event_count: 0,
+      };
+      return {
+        program_id: program.program_id,
+        department_id: program.department_id,
+        pending_enrollment_count: pending,
+        inactive_event_count: events.inactive_event_count,
+        cancelled_event_count: events.cancelled_event_count,
+        actionable_count: pending + events.inactive_event_count,
+      };
+    });
+    const programById = new Map(
+      managedPrograms.map((program) => [program.program_id, program])
+    );
+    const items: ManagementAttentionItem[] = [];
+    for (const program of programs) {
+      const source = programById.get(program.program_id);
+      const department = departmentsById.get(program.department_id);
+      if (!source || !department) {
+        continue;
+      }
+      if (program.pending_enrollment_count > 0) {
+        items.push({
+          kind: "enrollment",
+          actionable: true,
+          count: program.pending_enrollment_count,
+          program_id: source.program_id,
+          program_name: source.name,
+          department_id: department.department_id,
+          department_name: department.name,
+        });
+      }
+    }
+    for (const event of eventRows) {
+      const program = programById.get(event.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department) {
+        continue;
+      }
+      items.push({
+        kind: "event",
+        actionable:
+          event.status === "Active" && event.availability === "Inactive",
+        event_id: event.event_id,
+        program_id: event.program_id,
+        program_name: program.name,
+        department_id: department.department_id,
+        department_name: department.name,
+        starts_at: event.starts_at,
+        status: event.status,
+        availability: event.availability,
+        name: event.name,
+      });
+    }
+    items.sort((left, right) => {
+      if (left.actionable !== right.actionable) {
+        return left.actionable ? -1 : 1;
+      }
+      if (left.kind === "event" && right.kind === "event") {
+        return (
+          left.starts_at.localeCompare(right.starts_at) ||
+          left.event_id.localeCompare(right.event_id)
+        );
+      }
+      return left.program_name.localeCompare(right.program_name, "zh-Hant");
+    });
+    const totalActionableCount = programs.reduce(
+      (total, program) => total + program.actionable_count,
+      0
+    );
+    const totalItemCount =
+      programs.filter(({ pending_enrollment_count }) => pending_enrollment_count > 0)
+        .length +
+      eventCounts.reduce(
+        (total, { inactive_event_count, cancelled_event_count }) =>
+          total + inactive_event_count + cancelled_event_count,
+        0
+      );
+    return {
+      programs,
+      items: items.slice(0, MANAGEMENT_ATTENTION_LIMIT),
+      total_actionable_count: totalActionableCount,
+      has_more: totalItemCount > MANAGEMENT_ATTENTION_LIMIT,
     };
   }
 
