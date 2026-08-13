@@ -1209,6 +1209,88 @@ describe("NTF-01: management attention", () => {
     );
     assert.ok(pending.request_id);
   });
+  test("revoking a Program Leader's capability drops the program from their attention aggregate", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-01-REVOKE-${Date.now()}`,
+      name: "Attention Revoke Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Attention Revoke Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const leaderGrant = await assignLeader(
+      adminAccess,
+      program.program_id,
+      "U002"
+    );
+    assert.strictEqual(leaderGrant.status, 200);
+
+    const startsAt = new Date(Date.now() + 4 * 86_400_000);
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "撤銷前需處理的聚會",
+      location: "禮堂",
+    });
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+
+    const beforeRevoke = await attentionFor(leaderAccess);
+    assert.strictEqual(
+      beforeRevoke.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "the granted leader must see the scoped program's actionable count"
+    );
+
+    const revoke = await revokeLeader(adminAccess, program.program_id, "U002");
+    assert.strictEqual(revoke.status, 200);
+
+    const afterRevoke = await attentionFor(leaderAccess);
+    assert.strictEqual(
+      afterRevoke.programs.some(
+        ({ program_id }) => program_id === program.program_id
+      ),
+      false,
+      "a revoked leader's aggregate must never keep serving the former Program"
+    );
+    assert.strictEqual(
+      afterRevoke.items.some(
+        (item) => item.program_id === program.program_id
+      ),
+      false
+    );
+    assert.strictEqual(afterRevoke.total_actionable_count, 0);
+
+    const stillAdmin = await attentionFor(adminAccess);
+    assert.strictEqual(
+      stillAdmin.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "revoking the leader must not affect the Admin's own authorized aggregate"
+    );
+  });
 });
 
 describe("PRG-01: programs", () => {
