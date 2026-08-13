@@ -7,7 +7,9 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
+  assistedEnroll,
   createEvent,
+  decideEnrollmentRequest,
   getManagementProgram,
   listEnrollments,
   listEnrollmentRequests,
@@ -26,6 +28,7 @@ import { ProgramSettings } from "./program-settings";
 
 import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
+import { MemberPicker } from "./member-picker";
 import type { ProgramsTask } from "./programs-intent";
 import { LeadersPanel } from "./programs-leaders-panel";
 import { useAsyncResource } from "./use-async-resource";
@@ -667,6 +670,9 @@ const EventsTask = ({
   );
 };
 
+type ParticipantTab = "pending" | "active" | "history";
+type ParticipantFailure = "forbidden" | "stale" | "conflict" | "server";
+
 type ParticipantsState =
   | { kind: "loading" }
   | {
@@ -674,9 +680,69 @@ type ParticipantsState =
       requests: EnrollmentRequest[];
       enrollments: Enrollment[];
     }
-  | { kind: "error"; message: string };
+  | {
+      kind: "error";
+      failure: ParticipantFailure;
+      message: string;
+    };
 
-const ParticipantsTask = ({ programId }: { programId: string }) => {
+function participantIssue(error: unknown): {
+  failure: ParticipantFailure;
+  message: string;
+} {
+  const code = error instanceof RpcError ? error.problem.code : undefined;
+  if (code === "FORBIDDEN") {
+    return {
+      failure: "forbidden",
+      message: COPY.programs.workspaceParticipantsForbidden,
+    };
+  }
+  if (code === "STALE") {
+    return {
+      failure: "stale",
+      message: COPY.programs.workspaceParticipantsStale,
+    };
+  }
+  if (code === "CONFLICT" || code === "ENROLLMENT_DUPLICATE") {
+    return {
+      failure: "conflict",
+      message:
+        code === "ENROLLMENT_DUPLICATE"
+          ? `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
+          : COPY.programs.workspaceParticipantsConflict,
+    };
+  }
+  return {
+    failure: "server",
+    message:
+      error instanceof RpcError
+        ? errorCopyFor(code, error.problem.detail)
+        : COPY.error.networkError,
+  };
+}
+
+function requestStatusLabel(status: EnrollmentRequest["status"]): string {
+  if (status === "Pending") {
+    return COPY.programs.requestPending;
+  }
+  if (status === "Approved") {
+    return COPY.programs.requestApproved;
+  }
+  if (status === "Rejected") {
+    return COPY.programs.requestRejected;
+  }
+  return COPY.programs.requestWithdrawn;
+}
+
+const ParticipantsTask = ({
+  programId,
+  canManage,
+  enrollmentMode,
+}: {
+  programId: string;
+  canManage: boolean;
+  enrollmentMode: Program["enrollment_mode"];
+}) => {
   const { state, run, retry } = useAsyncResource<
     { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
     ParticipantsState
@@ -699,27 +765,295 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
         if (redirectToLoginIfRequired(error)) {
           return null;
         }
-        const code = error instanceof RpcError ? error.problem.code : undefined;
-        return {
-          kind: "error",
-          message:
-            error instanceof RpcError
-              ? errorCopyFor(code, error.problem.detail)
-              : COPY.error.networkError,
-        };
+        return { kind: "error", ...participantIssue(error) };
       },
     },
     [programId]
   );
+  const [refreshSuccess, setRefreshSuccess] = useState<string>(
+    COPY.programs.decisionMade
+  );
+  const [tab, setTab] = useState<ParticipantTab>("pending");
+  const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
+  const [refreshingAction, setRefreshingAction] = useState<string | null>(null);
+  const [assistedBusy, setAssistedBusy] = useState(false);
+  const [assistedError, setAssistedError] = useState<string | null>(null);
 
   useEffect(() => {
     void run();
   }, [run]);
 
+  useEffect(() => {
+    if (refreshingAction === null || state.kind === "loading") {
+      return;
+    }
+    if (state.kind === "ready") {
+      setNotice(refreshSuccess);
+      announce(refreshSuccess);
+    } else {
+      setNotice(null);
+    }
+    setRefreshingAction(null);
+  }, [refreshSuccess, refreshingAction, state]);
+
+  const queue = useMemo(() => {
+    if (state.kind !== "ready") {
+      return null;
+    }
+    const active = state.enrollments.filter(
+      ({ status }) => status === "Active"
+    );
+    const activeRequestIds = new Set(
+      active.flatMap(({ request_id }) => (request_id ? [request_id] : []))
+    );
+    const pending = state.requests.filter(({ status }) => status === "Pending");
+    const historyRequests = state.requests.filter(
+      ({ status, request_id }) =>
+        status !== "Pending" &&
+        !(status === "Approved" && activeRequestIds.has(request_id))
+    );
+    const historyEnrollments = state.enrollments.filter(
+      ({ status }) => status === "Cancelled"
+    );
+    return {
+      pending,
+      active,
+      historyRequests,
+      historyEnrollments,
+      counts: {
+        pending: pending.length,
+        active: active.length,
+        history: historyRequests.length + historyEnrollments.length,
+      },
+    };
+  }, [state]);
+
+  const handleDecision = async (
+    request: EnrollmentRequest,
+    action: "Approved" | "Rejected"
+  ) => {
+    setBusyRequestId(request.request_id);
+    setNotice(null);
+    setActionErrors((current) => {
+      const next = { ...current };
+      delete next[request.request_id];
+      return next;
+    });
+    try {
+      await decideEnrollmentRequest(
+        programId,
+        request.request_id,
+        action,
+        notes[request.request_id],
+        request.request_version
+      );
+      setRefreshSuccess(COPY.programs.decisionMade);
+      setRefreshingAction(request.request_id);
+      void run();
+    } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const issue = participantIssue(error);
+      setActionErrors((current) => ({
+        ...current,
+        [request.request_id]: issue.message,
+      }));
+      announce(issue.message);
+      void run();
+    } finally {
+      setBusyRequestId(null);
+    }
+  };
+
+  const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const memberUserId = String(
+      new FormData(event.currentTarget).get("member_user_id") ?? ""
+    ).trim();
+    if (!memberUserId) {
+      setAssistedError(COPY.programs.memberSearchHint);
+      return;
+    }
+    setAssistedBusy(true);
+    setAssistedError(null);
+    setNotice(null);
+    try {
+      await assistedEnroll(programId, memberUserId);
+      setRefreshSuccess(COPY.programs.assistedSubmitted);
+      setRefreshingAction("assisted");
+      void run();
+    } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const issue = participantIssue(error);
+      setAssistedError(issue.message);
+      announce(issue.message);
+      void run();
+    } finally {
+      setAssistedBusy(false);
+    }
+  };
+
+  const renderPending = () => {
+    if (queue === null || queue.pending.length === 0) {
+      return (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.workspaceParticipantsPendingEmpty}
+        </p>
+      );
+    }
+    return (
+      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.requests}>
+        {queue.pending.map((request) => {
+          const member =
+            request.member_name ??
+            request.member_username ??
+            request.member_user_id;
+          return (
+            <li
+              key={request.request_id}
+              className={styles.workspaceTaskRow}
+              aria-busy={busyRequestId === request.request_id}
+            >
+              <strong>{member}</strong>
+              <span>{requestStatusLabel(request.status)}</span>
+              <span>{formatEventTime(request.submitted_at)}</span>
+              {canManage && (
+                <>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.decisionNote}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="text"
+                      value={notes[request.request_id] ?? ""}
+                      aria-label={COPY.programs.decisionNote}
+                      onChange={(event) =>
+                        setNotes((current) => ({
+                          ...current,
+                          [request.request_id]: event.target.value,
+                        }))
+                      }
+                      disabled={busyRequestId !== null}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={styles.successOutline}
+                    onClick={() => void handleDecision(request, "Approved")}
+                    disabled={busyRequestId !== null}
+                  >
+                    {COPY.programs.approve}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.dangerOutline}
+                    onClick={() => void handleDecision(request, "Rejected")}
+                    disabled={busyRequestId !== null}
+                  >
+                    {COPY.programs.reject}
+                  </button>
+                </>
+              )}
+              {actionErrors[request.request_id] && (
+                <output className={styles.panelError} role="alert">
+                  {actionErrors[request.request_id]}
+                </output>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
+  const renderActive = () => {
+    if (queue === null || queue.active.length === 0) {
+      return (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.workspaceParticipantsActiveEmpty}
+        </p>
+      );
+    }
+    return (
+      <ul
+        className={styles.workspaceTaskList}
+        aria-label={COPY.programs.workspaceActiveParticipants}
+      >
+        {queue.active.map((enrollment) => {
+          const request = state.kind === "ready"
+            ? state.requests.find(
+                ({ request_id }) => request_id === enrollment.request_id
+              )
+            : undefined;
+          return (
+            <li key={enrollment.enrollment_id} className={styles.workspaceTaskRow}>
+              <strong>
+                {enrollment.member_name ??
+                  enrollment.member_username ??
+                  enrollment.member_user_id}
+              </strong>
+              <span>{COPY.programs.enrollmentActive}</span>
+              {request && <span>{requestStatusLabel(request.status)}</span>}
+              <span>{formatEventTime(enrollment.enrolled_at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
+  const renderHistory = () => {
+    if (queue === null || queue.counts.history === 0) {
+      return (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.workspaceParticipantsHistoryEmpty}
+        </p>
+      );
+    }
+    return (
+      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.enrollmentHistory}>
+        {queue.historyRequests.map((request) => (
+          <li key={`request-${request.request_id}`} className={styles.workspaceTaskRow}>
+            <strong>
+              {request.member_name ??
+                request.member_username ??
+                request.member_user_id}
+            </strong>
+            <span>{requestStatusLabel(request.status)}</span>
+            {request.decision_note && <span>{request.decision_note}</span>}
+            <span>{formatEventTime(request.decided_at ?? request.submitted_at)}</span>
+          </li>
+        ))}
+        {queue.historyEnrollments.map((enrollment) => (
+          <li
+            key={`enrollment-${enrollment.enrollment_id}`}
+            className={styles.workspaceTaskRow}
+          >
+            <strong>
+              {enrollment.member_name ??
+                enrollment.member_username ??
+                enrollment.member_user_id}
+            </strong>
+            <span>{COPY.programs.enrollmentCancelled}</span>
+            <span>{formatEventTime(enrollment.cancelled_at ?? enrollment.enrolled_at)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   return (
     <section
       className={styles.workspaceTask}
       aria-labelledby="programs-workspace-participants-title"
+      aria-busy={state.kind === "loading"}
     >
       <h4
         id="programs-workspace-participants-title"
@@ -730,6 +1064,33 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
       <p className={styles.programDetailMuted}>
         {COPY.programs.workspaceTaskParticipantsLead}
       </p>
+      {notice !== null && (
+        <output className={styles.panelNotice} aria-live="polite">
+          {notice}
+        </output>
+      )}
+      {canManage && enrollmentMode === "ManagerOnly" && (
+        <form className={styles.ruleForm} onSubmit={handleAssisted}>
+          <MemberPicker
+            programId={programId}
+            name="member_user_id"
+            label={COPY.programs.memberId}
+            placeholder={COPY.programs.memberIdPlaceholder}
+          />
+          <button
+            type="submit"
+            className={styles.actionButton}
+            disabled={assistedBusy || busyRequestId !== null}
+          >
+            {assistedBusy ? COPY.programs.submitting : COPY.programs.assistedEnroll}
+          </button>
+          {assistedError !== null && (
+            <output className={styles.panelError} role="alert">
+              {assistedError}
+            </output>
+          )}
+        </form>
+      )}
       {state.kind === "loading" && (
         <output aria-busy="true">
           {COPY.programs.workspaceTaskParticipantsLoading}
@@ -741,88 +1102,78 @@ const ParticipantsTask = ({ programId }: { programId: string }) => {
           <button
             className={styles.retry}
             type="button"
-            onClick={retry}
+            onClick={() => {
+              setActionErrors({});
+              retry();
+            }}
           >
             {COPY.programs.workspaceTaskParticipantsRetry}
           </button>
         </div>
       )}
-      {state.kind === "ready" &&
-        state.requests.length === 0 &&
-        state.enrollments.length === 0 && (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.workspaceTaskParticipantsEmpty}
-          </p>
-        )}
-      {state.kind === "ready" &&
-        (state.requests.length > 0 || state.enrollments.length > 0) && (
-          <div className={styles.workspaceParticipantGroups}>
-            <section aria-labelledby="programs-workspace-pending-title">
-              <h5
-                id="programs-workspace-pending-title"
-                className={styles.workspaceSubheading}
-              >
-                {COPY.programs.workspacePendingRequests}
-              </h5>
-              {state.requests.filter(({ status }) => status === "Pending")
-                .length === 0 ? (
-                <p className={styles.programDetailMuted}>
-                  {COPY.programs.workspaceTaskParticipantsEmpty}
-                </p>
-              ) : (
-                <ul className={styles.workspaceTaskList}>
-                  {state.requests
-                    .filter(({ status }) => status === "Pending")
-                    .map((request) => (
-                      <li
-                        key={request.request_id}
-                        className={styles.workspaceTaskRow}
-                      >
-                        <strong>
-                          {request.member_name ??
-                            request.member_username ??
-                            request.member_user_id}
-                        </strong>
-                        <span>{request.status}</span>
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </section>
-            <section aria-labelledby="programs-workspace-active-title">
-              <h5
-                id="programs-workspace-active-title"
-                className={styles.workspaceSubheading}
-              >
-                {COPY.programs.workspaceActiveParticipants}
-              </h5>
-              {state.enrollments.filter(({ status }) => status === "Active")
-                .length === 0 ? (
-                <p className={styles.programDetailMuted}>
-                  {COPY.programs.workspaceTaskParticipantsEmpty}
-                </p>
-              ) : (
-                <ul className={styles.workspaceTaskList}>
-                  {state.enrollments
-                    .filter(({ status }) => status === "Active")
-                    .map((enrollment) => (
-                      <li
-                        key={enrollment.enrollment_id}
-                        className={styles.workspaceTaskRow}
-                      >
-                        <strong>
-                          {enrollment.member_name ??
-                            enrollment.member_username ??
-                            enrollment.member_user_id}
-                        </strong>
-                        <span>{enrollment.status}</span>
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </section>
+      {queue !== null && (
+        <>
+          <div className={styles.workspaceActions}>
+            <div role="tablist" aria-label={COPY.programs.workspaceTaskParticipants}>
+              {(
+                [
+                  ["pending", COPY.programs.workspacePendingRequests, queue.counts.pending],
+                  ["active", COPY.programs.workspaceActiveParticipants, queue.counts.active],
+                  ["history", COPY.programs.enrollmentHistory, queue.counts.history],
+                ] as const
+              ).map(([value, label, count]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === value}
+                  aria-pressed={tab === value}
+                  aria-controls={`participants-${value}-panel`}
+                  className={styles.taskButton}
+                  onClick={() => setTab(value)}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setActionErrors({});
+                setNotice(null);
+                setRefreshSuccess(COPY.programs.workspaceParticipantsRefreshSuccess);
+                setRefreshingAction("refresh");
+                void run();
+              }}
+            >
+              {COPY.programs.workspaceParticipantsRefresh}
+            </button>
           </div>
-        )}
+          {queue.counts.pending + queue.counts.active + queue.counts.history === 0 && (
+            <p className={styles.programDetailMuted}>
+              {COPY.programs.workspaceTaskParticipantsEmpty}
+            </p>
+          )}
+          <section
+            id={`participants-${tab}-panel`}
+            role="tabpanel"
+            aria-label={
+              tab === "pending"
+                ? COPY.programs.workspacePendingRequests
+                : tab === "active"
+                  ? COPY.programs.workspaceActiveParticipants
+                  : COPY.programs.enrollmentHistory
+            }
+          >
+            {tab === "pending"
+              ? renderPending()
+              : tab === "active"
+                ? renderActive()
+                : renderHistory()}
+          </section>
+        </>
+      )}
     </section>
   );
 };
@@ -893,7 +1244,11 @@ const WorkspaceTask = ({
   }
   if (task === "participants") {
     return hasModule(modules, "enrollment") ? (
-      <ParticipantsTask programId={program.program_id} />
+      <ParticipantsTask
+        programId={program.program_id}
+        canManage={program.capabilities.manage}
+        enrollmentMode={program.enrollment_mode}
+      />
     ) : (
       <TaskUnavailable task={task} />
     );

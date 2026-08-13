@@ -25,8 +25,11 @@ const mocks = vi.hoisted(() => ({
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
   listEnrollments: vi.fn(),
-  getEvent: vi.fn(),
+  decideEnrollmentRequest: vi.fn(),
+  assistedEnroll: vi.fn(),
+  searchMemberOptions: vi.fn(),
   createEvent: vi.fn(),
+  getEvent: vi.fn(),
   updateEvent: vi.fn(),
   setEventAvailability: vi.fn(),
   cancelEvent: vi.fn(),
@@ -37,8 +40,11 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollments: mocks.listEnrollments,
-  createEvent: mocks.createEvent,
+  decideEnrollmentRequest: mocks.decideEnrollmentRequest,
+  assistedEnroll: mocks.assistedEnroll,
+  searchMemberOptions: mocks.searchMemberOptions,
   getEvent: mocks.getEvent,
+  createEvent: mocks.createEvent,
   updateEvent: mocks.updateEvent,
   setEventAvailability: mocks.setEventAvailability,
   cancelEvent: mocks.cancelEvent,
@@ -156,9 +162,11 @@ beforeEach(() => {
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
+  mocks.decideEnrollmentRequest.mockReset();
+  mocks.assistedEnroll.mockReset();
+  mocks.searchMemberOptions.mockReset();
   mocks.createEvent.mockReset();
 });
-
 afterEach(() => {
   cleanup();
 });
@@ -293,6 +301,131 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
     await waitFor(() =>
       expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
+    );
+  });
+});
+describe("ENR-01 participants workspace", () => {
+  test("renders pending, active, and history tabs from server state", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockResolvedValue({
+      request: { ...request, status: "Approved" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.approve })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.reject })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    );
+    expect(await screen.findByText("李同工")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.approve })
+    ).not.toBeInTheDocument();
+  });
+
+  test("sends the request version and keeps stale decisions visible", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockRejectedValue(
+      new RpcError({
+        code: "STALE",
+        status: 409,
+        detail: COPY.programs.workspaceParticipantsStale,
+      })
+    );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.approve })
+    );
+    await waitFor(() =>
+      expect(mocks.decideEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        "request-1",
+        "Approved",
+        undefined,
+        1
+      )
+    );
+    expect(
+      await screen.findByText(COPY.programs.workspaceParticipantsStale)
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+  });
+  test("submits an assisted enrollment from the ManagerOnly queue", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, enrollment_mode: "ManagerOnly" },
+      department,
+      modules,
+    });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+    mocks.searchMemberOptions.mockResolvedValue({
+      members: [
+        { user_id: "member-3", name: "王同工", username: "wang" },
+      ],
+    });
+    mocks.assistedEnroll.mockResolvedValue({
+      enrollment: { ...enrollment, member_user_id: "member-3" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const picker = await screen.findByRole("combobox", {
+      name: COPY.programs.memberId,
+    });
+    await userEvent.type(picker, "王同");
+    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.assistedEnroll })
+    );
+    await waitFor(() =>
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
+        "program-1",
+        "member-3"
+      )
     );
   });
 });

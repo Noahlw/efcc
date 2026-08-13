@@ -3265,7 +3265,8 @@ function decideRequest(
   access: string,
   programId: string,
   requestId: string,
-  action: "Approved" | "Rejected"
+  action: "Approved" | "Rejected",
+  requestVersion?: number
 ): Promise<Response> {
   return worker.fetch(
     programsRequest(
@@ -3277,7 +3278,12 @@ function decideRequest(
           Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
           "Content-Type": "application/json",
         },
-        body: { action },
+        body: {
+          action,
+          ...(requestVersion === undefined
+            ? {}
+            : { request_version: requestVersion }),
+        },
       }
     ),
     testEnv()
@@ -3633,6 +3639,49 @@ describe("PRG-03: enrollment requests", () => {
       .all<{ enrollment_id: string }>();
     assert.strictEqual(enrollments.results?.length, 0);
   });
+  test("REQ-5A stale request versions and opposite terminal decisions fail closed", async () => {
+    const staleProgramId = await freshRequestProgram("REQ-5A Stale Program");
+    const staleRequest = await submitRequest(memberAccess, staleProgramId);
+    const stale = await decideRequest(
+      adminAccess,
+      staleProgramId,
+      staleRequest.request_id,
+      "Rejected",
+      99
+    );
+    assert.strictEqual(stale.status, 409);
+    const staleBody = await problemOf(stale);
+    assert.strictEqual(staleBody.code, "STALE");
+    const staleRow = await testDb()
+      .prepare(
+        "SELECT status, request_version FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(staleRequest.request_id)
+      .first<{ status: string; request_version: number }>();
+    assert.strictEqual(staleRow?.status, "Pending");
+    assert.strictEqual(staleRow?.request_version, 1);
+
+    const terminalProgramId = await freshRequestProgram(
+      "REQ-5A Terminal Program"
+    );
+    const terminalRequest = await submitRequest(memberAccess, terminalProgramId);
+    const approved = await decideRequest(
+      adminAccess,
+      terminalProgramId,
+      terminalRequest.request_id,
+      "Approved"
+    );
+    assert.strictEqual(approved.status, 200);
+    const opposite = await decideRequest(
+      adminAccess,
+      terminalProgramId,
+      terminalRequest.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(opposite.status, 409);
+    const oppositeBody = await problemOf(opposite);
+    assert.strictEqual(oppositeBody.code, "CONFLICT");
+  });
 
   test("REQ-6 withdrawal is self-service, only while Pending", async () => {
     const programId = await freshRequestProgram("REQ-6 Program");
@@ -3910,13 +3959,37 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(wrongMode.status, 422);
   });
 
-  test("ENR-2 assisted enrollment for an unknown member is 422", async () => {
-    const res = await assistedEnrollFor(
+  test("ENR-2 inactive and unknown assisted members are rejected and audited", async () => {
+    const inactive = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U004"
+    );
+    assert.strictEqual(inactive.status, 422);
+    const inactiveBody = await problemOf(inactive);
+    assert.strictEqual(inactiveBody.code, "ENROLLMENT_ACCOUNT_INACTIVE");
+    const inactiveEnrollment = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U004' AND status = 'Active'"
+      )
+      .bind(managerOnlyId)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(inactiveEnrollment.results?.length, 0);
+    const inactiveAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_type = 'enrollment' AND entity_id = 'U004' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .first<{ outcome: string }>();
+    assert.strictEqual(inactiveAudit?.outcome, "DENIED");
+
+    const unknown = await assistedEnrollFor(
       adminAccess,
       managerOnlyId,
       crypto.randomUUID()
     );
-    assert.strictEqual(res.status, 422);
+    assert.strictEqual(unknown.status, 422);
+    const unknownBody = await problemOf(unknown);
+    assert.strictEqual(unknownBody.code, "ENROLLMENT_ACCOUNT_INACTIVE");
   });
 
   test("ENR-3 concurrent assisted enrollment yields at most one Active row", async () => {

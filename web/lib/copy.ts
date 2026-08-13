@@ -281,6 +281,14 @@ export const COPY = {
     workspaceTaskParticipantsError: "無法載入參與者資料",
     workspaceTaskParticipantsRetry: "重試載入參與者資料",
     workspaceTaskParticipantsEmpty: "目前沒有報名或活躍參與者。",
+    workspaceParticipantsRefresh: "重新整理參與者資料",
+    workspaceParticipantsRefreshSuccess: "參與者資料已更新。",
+    workspaceParticipantsForbidden: "你目前無法操作這個課程的參與者資料。",
+    workspaceParticipantsStale: "這項報名資料已過時，請重新整理後再試。",
+    workspaceParticipantsConflict: "這項操作與另一項更新衝突，資料未有改變。",
+    workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
+    workspaceParticipantsActiveEmpty: "目前沒有活躍參與者。",
+    workspaceParticipantsHistoryEmpty: "目前沒有歷史或撤回紀錄。",
     workspaceTaskSettingsCapabilities: "目前能力",
     workspaceTaskSettingsNoCapabilities: "目前沒有可用的課程管理能力。",
     workspaceTaskUnavailable: "這項工作目前未在所屬部門啟用。",
@@ -549,6 +557,8 @@ export const COPY = {
     revokeLeader: "移除負責人",
     confirmRevokeLeader: "確定要移除此事工負責人嗎？",
     confirmRevoke: "確定移除",
+    enrollmentAccountInactive:
+      "無法新增報名：此帳戶不存在或尚未啟用。請選取狀態為「啟用」的帳戶。",
     cancelRevoke: "取消",
     leaderUserId: "選擇會友",
     leaderUserIdPlaceholder: "輸入姓名或用戶名稱",
@@ -637,6 +647,12 @@ export function errorCopyFor(
   }
   if (code === "CONFLICT") {
     return COPY.error.conflict;
+  }
+  if (code === "STALE") {
+    return COPY.programs.workspaceParticipantsStale;
+  }
+  if (code === "ENROLLMENT_ACCOUNT_INACTIVE") {
+    return COPY.programs.enrollmentAccountInactive;
   }
   if (code === "ACCOUNT_INACTIVE") {
     return COPY.programs.leaderAccountInactive;

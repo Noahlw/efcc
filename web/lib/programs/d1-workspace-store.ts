@@ -877,16 +877,27 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     decidedBy: string,
     decidedAt: string,
     note: string | null,
-    audit: AuditInput
+    audit: AuditInput,
+    expectedRequestVersion?: number
   ): Promise<EnrollmentRequestRow | null> {
     const results = await this.db.batch([
       this.db
         .prepare(
           `UPDATE enrollment_requests
-           SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?
-           WHERE request_id = ? AND status = 'Pending'`
+           SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?,
+               request_version = request_version + 1
+           WHERE request_id = ? AND status = 'Pending'
+             AND (? IS NULL OR request_version = ?)`
         )
-        .bind(decision, decidedBy, decidedAt, note, id),
+        .bind(
+          decision,
+          decidedBy,
+          decidedAt,
+          note,
+          id,
+          expectedRequestVersion ?? null,
+          expectedRequestVersion ?? null
+        ),
       // ponytail: gate the audit on the same decided-state the UPDATE just
       // wrote, so a no-op decision (0 changes) inserts no audit row.
       this.db
@@ -932,10 +943,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
+    expected_request_version?: number;
   }): Promise<{
     request: EnrollmentRequestRow;
     enrollment: EnrollmentRow;
   } | null> {
+    const expectedVersion = input.expected_request_version ?? null;
     const results = await this.db.batch([
       this.db
         .prepare(
@@ -943,7 +956,9 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
              request_id, status, enrolled_at, created_by, created_at)
            SELECT ?, r.program_id, r.member_user_id, ?, 'Active', ?, ?, ?
              FROM enrollment_requests r
-            WHERE r.request_id = ? AND r.status = 'Pending'`
+            WHERE r.request_id = ? AND r.program_id = ?
+              AND r.member_user_id = ? AND r.status = 'Pending'
+              AND (? IS NULL OR r.request_version = ?)`
         )
         .bind(
           input.enrollment_id,
@@ -951,15 +966,31 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
           input.decided_at,
           input.decided_by,
           input.decided_at,
-          input.request_id
+          input.request_id,
+          input.program_id,
+          input.member_user_id,
+          expectedVersion,
+          expectedVersion
         ),
       this.db
         .prepare(
           `UPDATE enrollment_requests
-           SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?
-           WHERE request_id = ? AND status = 'Pending'`
+           SET status = 'Approved', decided_by = ?, decided_at = ?, decision_note = ?,
+               request_version = request_version + 1
+           WHERE request_id = ? AND program_id = ? AND member_user_id = ?
+             AND status = 'Pending'
+             AND (? IS NULL OR request_version = ?)`
         )
-        .bind(input.decided_by, input.decided_at, input.note, input.request_id),
+        .bind(
+          input.decided_by,
+          input.decided_at,
+          input.note,
+          input.request_id,
+          input.program_id,
+          input.member_user_id,
+          expectedVersion,
+          expectedVersion
+        ),
       // ponytail: gate both audits on the enrollment row the INSERT..SELECT
       // just created, so a no-op batch (0-row select) inserts no audit rows.
       this.auditInsertGated(input.auditCreate, input.enrollment_id),
@@ -986,7 +1017,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `UPDATE enrollment_requests
-         SET status = 'Withdrawn', decided_by = ?, decided_at = ?
+         SET status = 'Withdrawn', decided_by = ?, decided_at = ?,
+             request_version = request_version + 1
          WHERE request_id = ? AND status = 'Pending' AND member_user_id = ?`
       )
       .bind(memberUserId, withdrawnAt, id, memberUserId)

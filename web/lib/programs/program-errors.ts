@@ -109,6 +109,31 @@ export class EnrollmentNotAllowedError extends Error {
     this.name = "EnrollmentNotAllowedError";
   }
 }
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentAccountInactiveError extends Error {
+  constructor(userId: string) {
+    super(`Cannot enroll ${userId}: account is not Active.`);
+    this.name = "EnrollmentAccountInactiveError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class StaleEnrollmentRequestError extends Error {
+  constructor(requestId: string) {
+    super(`Enrollment request ${requestId} is stale; reload before deciding.`);
+    this.name = "StaleEnrollmentRequestError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentDecisionConflictError extends Error {
+  constructor(requestId: string, status: string) {
+    super(
+      `Enrollment request ${requestId} cannot be decided from status ${status}.`
+    );
+    this.name = "EnrollmentDecisionConflictError";
+  }
+}
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateEnrollmentError extends Error {

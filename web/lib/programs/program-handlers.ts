@@ -34,6 +34,8 @@ import {
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
+  EnrollmentAccountInactiveError,
+  EnrollmentDecisionConflictError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
@@ -47,6 +49,7 @@ import {
   SelfDelegationError,
   SelfDepartmentManagerError,
   ProgramLeaderConflictError,
+  StaleEnrollmentRequestError,
 } from "./program-errors";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
@@ -214,14 +217,22 @@ function mapWorkspaceError(
   ) {
     return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
   }
-  if (error instanceof LeaderAccountInactiveError) {
+  if (
+    error instanceof LeaderAccountInactiveError ||
+    error instanceof EnrollmentAccountInactiveError
+  ) {
     return problem(
       422,
-      "ACCOUNT_INACTIVE",
+      error instanceof EnrollmentAccountInactiveError
+        ? "ENROLLMENT_ACCOUNT_INACTIVE"
+        : "ACCOUNT_INACTIVE",
       "Validation failed",
       error.message,
       requestId
     );
+  }
+  if (error instanceof StaleEnrollmentRequestError) {
+    return problem(409, "STALE", "Stale request", error.message, requestId);
   }
   if (
     error instanceof InvalidProgramLifecycleError ||
@@ -250,6 +261,7 @@ function mapWorkspaceError(
     error instanceof DuplicateEventError ||
     error instanceof DuplicateScheduleExceptionError ||
     error instanceof RequestNotDecidableError ||
+    error instanceof EnrollmentDecisionConflictError ||
     error instanceof DepartmentManagerConflictError ||
     error instanceof ProgramLeaderConflictError
   ) {
@@ -2076,12 +2088,28 @@ export async function handleDecideEnrollmentRequest(
   if (auth instanceof Response) {
     return auth;
   }
-  const body = await parseJson<{ action?: unknown; note?: unknown }>(request);
+  const body = await parseJson<{
+    action?: unknown;
+    note?: unknown;
+    request_version?: unknown;
+  }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
   if (body.action !== "Approved" && body.action !== "Rejected") {
     return validation(requestId, "action must be Approved or Rejected.");
+  }
+  const requestVersion =
+    body.request_version === undefined || body.request_version === null
+      ? undefined
+      : body.request_version;
+  if (
+    requestVersion !== undefined &&
+    (typeof requestVersion !== "number" ||
+      !Number.isSafeInteger(requestVersion) ||
+      requestVersion < 1)
+  ) {
+    return validation(requestId, "request_version must be a positive integer.");
   }
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
@@ -2100,7 +2128,11 @@ export async function handleDecideEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
       enrollmentRequestId,
-      { action: body.action, note },
+      {
+        action: body.action,
+        note,
+        expectedRequestVersion: requestVersion,
+      },
       correlationId
     );
     return jsonResponse(200, { request: row }, requestId);
@@ -2174,10 +2206,6 @@ export async function handleAssistedEnroll(
     typeof body.member_user_id === "string" ? body.member_user_id : "";
   if (!memberUserId) {
     return validation(requestId, "member_user_id is required.");
-  }
-  const member = await findAccountByUserId(env.DB, memberUserId);
-  if (!member) {
-    return validation(requestId, "Unknown member_user_id.");
   }
   const { workspace } = await getModule(env);
   const program = await workspace.getProgram(ctxFrom(auth.account), programId);

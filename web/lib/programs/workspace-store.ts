@@ -476,7 +476,8 @@ export interface WorkspaceStore {
     decidedBy: string,
     decidedAt: string,
     note: string | null,
-    audit: AuditInput
+    audit: AuditInput,
+    expectedRequestVersion?: number
   ) => Promise<EnrollmentRequestRow | null>;
   approveEnrollmentRequest: (input: {
     request_id: string;
@@ -488,6 +489,7 @@ export interface WorkspaceStore {
     note: string | null;
     auditCreate: AuditInput;
     auditDecide: AuditInput;
+    expected_request_version?: number;
   }) => Promise<{
     request: EnrollmentRequestRow;
     enrollment: EnrollmentRow;

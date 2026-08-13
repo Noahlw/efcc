@@ -449,12 +449,17 @@ export function decideEnrollmentRequest(
   programId: string,
   requestId: string,
   action: EnrollmentDecision,
-  note?: string
+  note?: string,
+  requestVersion?: number
 ): Promise<{ request: EnrollmentRequest }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
     "POST",
-    { action, note: note?.trim() ? note.trim() : null }
+    {
+      action,
+      note: note?.trim() ? note.trim() : null,
+      request_version: requestVersion ?? null,
+    }
   );
 }
 

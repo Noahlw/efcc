@@ -30,6 +30,8 @@ import {
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
+  EnrollmentAccountInactiveError,
+  EnrollmentDecisionConflictError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
@@ -43,6 +45,7 @@ import {
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
   SelfDepartmentManagerError,
+  StaleEnrollmentRequestError,
 } from "./program-errors";
 import {
   exceptionForEvent,
@@ -310,6 +313,7 @@ export interface CancelEventCommand {
 export interface DecideEnrollmentRequestCommand {
   action: "Approved" | "Rejected";
   note: string | null;
+  expectedRequestVersion?: number;
 }
 
 export interface AssistedEnrollCommand {
@@ -2131,6 +2135,49 @@ export class DepartmentWorkspace {
     if (!request || request.program_id !== programId) {
       throw new RequestNotDecidableError(requestId);
     }
+    if (
+      cmd.expectedRequestVersion !== undefined &&
+      cmd.expectedRequestVersion !== request.request_version
+    ) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "CONFLICT",
+        request,
+        { ...request, reason: "stale_request_version" },
+        correlationId
+      );
+      throw new StaleEnrollmentRequestError(requestId);
+    }
+    if (request.status !== "Pending") {
+      if (request.status === cmd.action) {
+        await this.audit(
+          ctx,
+          "ENROLLMENT_REQUEST_DECIDE",
+          "enrollment_request",
+          requestId,
+          "DUPLICATE",
+          null,
+          { ...request, reason: "already_decided" },
+          correlationId
+        );
+        return request;
+      }
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "CONFLICT",
+        request,
+        { ...request, reason: "terminal_request" },
+        correlationId
+      );
+      throw new EnrollmentDecisionConflictError(requestId, request.status);
+    }
+
     const now = new Date().toISOString();
     let decided: EnrollmentRequestRow | null;
     if (cmd.action === "Approved") {
@@ -2179,6 +2226,7 @@ export class DepartmentWorkspace {
           note: cmd.note,
           auditCreate,
           auditDecide,
+          expected_request_version: cmd.expectedRequestVersion,
         });
         decided = committed?.request ?? null;
       } catch (error) {
@@ -2233,10 +2281,32 @@ export class DepartmentWorkspace {
         ctx.actorUserId,
         now,
         cmd.note,
-        auditDecide
+        auditDecide,
+        cmd.expectedRequestVersion
       );
     }
-    if (!decided) {
+    if (decided) {
+      return decided;
+    }
+
+    const latest = await this.store.findEnrollmentRequestById(requestId);
+    if (
+      cmd.expectedRequestVersion !== undefined &&
+      latest?.request_version !== cmd.expectedRequestVersion
+    ) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "CONFLICT",
+        request,
+        { ...(latest ?? request), reason: "stale_request_version" },
+        correlationId
+      );
+      throw new StaleEnrollmentRequestError(requestId);
+    }
+    if (latest?.status === cmd.action) {
       await this.audit(
         ctx,
         "ENROLLMENT_REQUEST_DECIDE",
@@ -2244,12 +2314,35 @@ export class DepartmentWorkspace {
         requestId,
         "DUPLICATE",
         null,
-        { ...request, reason: "already_decided" },
+        { ...latest, reason: "already_decided" },
         correlationId
       );
-      return request;
+      return latest;
     }
-    return decided;
+    if (latest && latest.status !== "Pending") {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_REQUEST_DECIDE",
+        "enrollment_request",
+        requestId,
+        "CONFLICT",
+        request,
+        { ...latest, reason: "terminal_request" },
+        correlationId
+      );
+      throw new EnrollmentDecisionConflictError(requestId, latest.status);
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_DECIDE",
+      "enrollment_request",
+      requestId,
+      "DUPLICATE",
+      null,
+      { ...(latest ?? request), reason: "already_decided" },
+      correlationId
+    );
+    return latest ?? request;
   }
 
   async withdrawEnrollmentRequest(
@@ -2323,6 +2416,19 @@ export class DepartmentWorkspace {
     if (program.enrollment_mode !== "ManagerOnly") {
       throw new EnrollmentNotAllowedError(programId, "ManagerOnly");
     }
+    if (!(await this.store.isAccountActive(cmd.memberUserId))) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_CREATE",
+        "enrollment",
+        cmd.memberUserId,
+        "DENIED",
+        null,
+        { program_id: programId, reason: "account_inactive_or_unknown" },
+        correlationId
+      );
+      throw new EnrollmentAccountInactiveError(cmd.memberUserId);
+    }
     if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
       await this.audit(
         ctx,
@@ -2355,7 +2461,27 @@ export class DepartmentWorkspace {
     } catch (error) {
       // ponytail: partial unique index is the race guard; on constraint
       // violation the member already has an Active enrollment.
-      if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+      const existing = await this.store.findActiveEnrollment(
+        programId,
+        cmd.memberUserId
+      );
+      if (existing) {
+        const outcome =
+          existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+        await this.audit(
+          ctx,
+          "ENROLLMENT_CREATE",
+          "enrollment",
+          programId,
+          outcome,
+          null,
+          {
+            member_user_id: cmd.memberUserId,
+            enrollment_id: existing.enrollment_id,
+            reason: "active_enrollment_exists",
+          },
+          correlationId
+        );
         throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
       }
       throw error;
