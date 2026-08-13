@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
+  listEnrollmentSnapshot: vi.fn(),
   listEnrollments: vi.fn(),
   decideEnrollmentRequest: vi.fn(),
   assistedEnroll: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
+  listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
   listEnrollments: mocks.listEnrollments,
   decideEnrollmentRequest: mocks.decideEnrollmentRequest,
   assistedEnroll: mocks.assistedEnroll,
@@ -155,14 +157,18 @@ function mockWorkspace() {
   mocks.listEvents.mockResolvedValue({ events: [event] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
-}
+  mocks.listEnrollmentSnapshot.mockResolvedValue({
+    requests: [request],
+    enrollments: [enrollment],
+  });
 
+}
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
-  mocks.decideEnrollmentRequest.mockReset();
+  mocks.listEnrollmentSnapshot.mockReset();
   mocks.assistedEnroll.mockReset();
   mocks.searchMemberOptions.mockReset();
   mocks.createEvent.mockReset();
@@ -324,6 +330,9 @@ describe("ENR-01 participants workspace", () => {
         name: COPY.programs.workspaceTaskParticipants,
       })
     ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
+    );
     expect(
       await screen.findByRole("tab", {
         name: `${COPY.programs.workspacePendingRequests} (1)`,
@@ -334,6 +343,11 @@ describe("ENR-01 participants workspace", () => {
         name: `${COPY.programs.workspaceActiveParticipants} (1)`,
       })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    ).not.toHaveAttribute("aria-controls");
     expect(
       screen.getByRole("button", { name: COPY.programs.approve })
     ).toBeInTheDocument();
@@ -444,8 +458,10 @@ describe("ENR-01 participants workspace", () => {
       department,
       modules,
     });
-    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
-    mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [],
+      enrollments: [],
+    });
     mocks.searchMemberOptions.mockResolvedValue({
       members: [
         { user_id: "member-3", name: "王同工", username: "wang" },

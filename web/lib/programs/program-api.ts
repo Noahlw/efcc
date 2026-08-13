@@ -271,8 +271,12 @@ export interface Enrollment {
   member_username?: string;
 }
 
-export type EnrollmentDecision = "Approved" | "Rejected";
+export interface EnrollmentSnapshot {
+  requests: EnrollmentRequest[];
+  enrollments: Enrollment[];
+}
 
+export type EnrollmentDecision = "Approved" | "Rejected";
 export interface ProgramLeader {
   program_id: string;
   user_id: string;
@@ -433,13 +437,22 @@ export function submitEnrollmentRequest(
     {}
   );
 }
-
 /** GET /api/v1/programs/:programId/enrollment-requests */
 export function listEnrollmentRequests(
   programId: string
 ): Promise<{ requests: EnrollmentRequest[] }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests`,
+    "GET"
+  );
+}
+
+/** GET /api/v1/programs/:programId/enrollment-snapshot */
+export function listEnrollmentSnapshot(
+  programId: string
+): Promise<EnrollmentSnapshot> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-snapshot`,
     "GET"
   );
 }
@@ -451,7 +464,10 @@ export function decideEnrollmentRequest(
   action: EnrollmentDecision,
   note?: string,
   requestVersion?: number
-): Promise<{ request: EnrollmentRequest }> {
+): Promise<{
+  request: EnrollmentRequest;
+  enrollment: Enrollment | null;
+}> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
     "POST",

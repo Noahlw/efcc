@@ -254,7 +254,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
 
   async searchActiveMembers(
     query: string,
-    limit: number
+    limit: number,
+    programId?: string
   ): Promise<MemberOptionRow[]> {
     const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
     const pattern = `%${escaped}%`;
@@ -264,10 +265,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            FROM accounts
           WHERE account_status = 'Active'
             AND (name LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
+            AND (
+              ? IS NULL OR NOT EXISTS (
+                SELECT 1 FROM enrollments
+                 WHERE enrollments.program_id = ?
+                   AND enrollments.member_user_id = accounts.user_id
+                   AND enrollments.status = 'Active'
+              )
+            )
           ORDER BY name ASC, username ASC
           LIMIT ?`
       )
-      .bind(pattern, pattern, limit)
+      .bind(pattern, pattern, programId ?? null, programId ?? null, limit)
       .all<MemberOptionRow>();
     return result.results ?? [];
   }
@@ -840,6 +849,39 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(programId)
       .all<EnrollmentRequestRow>();
     return result.results ?? [];
+  }
+  async listEnrollmentSnapshot(programId: string): Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }> {
+    const [requests, enrollments] = await this.db.batch([
+      this.db
+        .prepare(
+          `SELECT enrollment_requests.*, accounts.name AS member_name,
+                  accounts.username AS member_username
+             FROM enrollment_requests
+             LEFT JOIN accounts
+               ON accounts.user_id = enrollment_requests.member_user_id
+            WHERE enrollment_requests.program_id = ?
+            ORDER BY enrollment_requests.submitted_at ASC`
+        )
+        .bind(programId),
+      this.db
+        .prepare(
+          `SELECT enrollments.*, accounts.name AS member_name,
+                  accounts.username AS member_username
+             FROM enrollments
+             LEFT JOIN accounts
+               ON accounts.user_id = enrollments.member_user_id
+            WHERE enrollments.program_id = ?
+            ORDER BY enrollments.enrolled_at ASC`
+        )
+        .bind(programId),
+    ]);
+    return {
+      requests: (requests.results ?? []) as EnrollmentRequestRow[],
+      enrollments: (enrollments.results ?? []) as EnrollmentRow[],
+    };
   }
 
   async listParticipantEnrollmentSnapshot(

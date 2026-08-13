@@ -1192,9 +1192,22 @@ describe("PRG-01: programs", () => {
     assert.deepStrictEqual(await search("Alice"), [
       { user_id: "U001", name: "Alice Chan", username: "alice" },
     ]);
-    assert.deepStrictEqual(await search("Bob"), [
-      { user_id: "U002", name: "Bob Lee", username: "bob" },
-    ]);
+    const enrolled = await assistedEnrollFor(
+      adminAccess,
+      program.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrolled.status, 201);
+    assert.deepStrictEqual(
+      await search("Bob"),
+      [],
+      "active enrollment is excluded from the selected program's picker"
+    );
+    assert.deepStrictEqual(
+      await search("U004"),
+      [],
+      "inactive accounts are excluded from the picker"
+    );
   });
 
   test("Member cannot create a program", async () => {
@@ -3582,6 +3595,30 @@ describe("PRG-03: enrollment requests", () => {
       "Approved"
     );
     assert.strictEqual(res.status, 200);
+    const responseBody = (await assertCorrelated(res)) as {
+      data: {
+        request: {
+          request_id: string;
+          status: string;
+          request_version: number;
+        };
+        enrollment: {
+          enrollment_id: string;
+          request_id: string | null;
+          status: string;
+        } | null;
+      };
+    };
+    assert.strictEqual(
+      responseBody.data.request.request_id,
+      request.request_id
+    );
+    assert.strictEqual(responseBody.data.request.status, "Approved");
+    assert.strictEqual(responseBody.data.request.request_version, 2);
+    const responseEnrollment = responseBody.data.enrollment;
+    assert.ok(responseEnrollment, "approval response must include enrollment");
+    assert.strictEqual(responseEnrollment.request_id, request.request_id);
+    assert.strictEqual(responseEnrollment.status, "Active");
 
     const requestRow = await testDb()
       .prepare(
@@ -3628,6 +3665,16 @@ describe("PRG-03: enrollment requests", () => {
       "Rejected"
     );
     assert.strictEqual(res.status, 200);
+    const responseBody = (await assertCorrelated(res)) as {
+      data: {
+        request: { request_id: string; status: string; request_version: number };
+        enrollment: null;
+      };
+    };
+    assert.strictEqual(responseBody.data.request.request_id, request.request_id);
+    assert.strictEqual(responseBody.data.request.status, "Rejected");
+    assert.strictEqual(responseBody.data.request.request_version, 2);
+    assert.strictEqual(responseBody.data.enrollment, null);
     const row = await testDb()
       .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
       .bind(request.request_id)
@@ -3855,6 +3902,49 @@ describe("PRG-03: enrollment requests", () => {
       )
     );
   });
+  test("REQ-8A manager enrollment snapshot returns the request and atomic enrollment result", async () => {
+    const programId = await freshRequestProgram("REQ-8A Snapshot Program");
+    const request = await submitRequest(memberAccess, programId);
+    const decision = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(decision.status, 200);
+
+    const snapshotResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/enrollment-snapshot`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(snapshotResponse.status, 200);
+    const snapshotBody = (await assertCorrelated(snapshotResponse)) as {
+      data: {
+        requests: { request_id: string; status: string }[];
+        enrollments: {
+          enrollment_id: string;
+          request_id: string | null;
+          status: string;
+        }[];
+      };
+    };
+    assert.ok(
+      snapshotBody.data.requests.some(
+        (row) => row.request_id === request.request_id && row.status === "Approved"
+      )
+    );
+    assert.ok(
+      snapshotBody.data.enrollments.some(
+        (row) =>
+          row.request_id === request.request_id && row.status === "Active"
+      )
+    );
+  });
 
   test("REQ-10 X-Request-Id is a fresh per-request id, never the Idempotency-Key", async () => {
     const programId = await freshRequestProgram("REQ-10 Program");
@@ -3992,13 +4082,13 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(unknownBody.code, "ENROLLMENT_ACCOUNT_INACTIVE");
   });
 
-  test("ENR-3 concurrent assisted enrollment yields at most one Active row", async () => {
+  test("ENR-3 concurrent assisted enrollment keeps one Active row and quiets same-actor duplicates", async () => {
     const [first, second] = await Promise.all([
       assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
       assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
     ]);
     const statuses = [first.status, second.status].sort();
-    assert.deepStrictEqual(statuses, [201, 409]);
+    assert.deepStrictEqual(statuses, [201, 201]);
     const rows = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
@@ -4006,13 +4096,26 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .all<{ enrollment_id: string }>();
     assert.strictEqual(rows.results?.length, 1);
+    const duplicateAudit = await testDb()
+      .prepare(
+        "SELECT entity_id FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND outcome = 'DUPLICATE' AND entity_type = 'enrollment' AND entity_id = ?"
+      )
+      .bind(rows.results?.[0]?.enrollment_id)
+      .first<{ entity_id: string }>();
+    assert.strictEqual(
+      duplicateAudit?.entity_id,
+      rows.results?.[0]?.enrollment_id,
+      "same-actor race duplicate audits the existing enrollment"
+    );
   });
 
   test("ENR-4 members cancel their own enrollment; managers cancel in scope; cross-member is 403", async () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
-    assert.strictEqual(res.status, 409, "U002 already active from ENR-1");
-    const dupEnrollBody = await problemOf(res);
-    assert.strictEqual(dupEnrollBody.code, "ENROLLMENT_DUPLICATE");
+    assert.strictEqual(res.status, 201, "same-actor repeat is a quiet success");
+    const dupEnrollBody = (await assertCorrelated(res)) as {
+      data: { enrollment: { enrollment_id: string; status: string } };
+    };
+    assert.strictEqual(dupEnrollBody.data.enrollment.status, "Active");
     const bobEnrollment = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
@@ -4020,6 +4123,10 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .first<{ enrollment_id: string }>();
     assert.ok(bobEnrollment);
+    assert.strictEqual(
+      dupEnrollBody.data.enrollment.enrollment_id,
+      bobEnrollment.enrollment_id
+    );
 
     const ownCancel = await cancelEnrollmentFor(
       memberAccess,
@@ -4040,12 +4147,6 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(cancelled.data.enrollment.cancelled_by, "U002");
     assert.ok(cancelled.data.enrollment.cancelled_at);
 
-    const thirdParty = await assistedEnrollFor(
-      adminAccess,
-      managerOnlyId,
-      "U003"
-    );
-    assert.strictEqual(thirdParty.status, 409, "U003 active from ENR-3");
     const carolEnrollment = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
@@ -4053,6 +4154,25 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .first<{ enrollment_id: string }>();
     assert.ok(carolEnrollment);
+    await testDb()
+      .prepare("UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?")
+      .bind(carolEnrollment.enrollment_id)
+      .run();
+    const thirdParty = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U003"
+    );
+    assert.strictEqual(thirdParty.status, 409, "cross-actor repeat conflicts");
+    const thirdPartyBody = await problemOf(thirdParty);
+    assert.strictEqual(thirdPartyBody.code, "ENROLLMENT_DUPLICATE");
+    const conflictAudit = await testDb()
+      .prepare(
+        "SELECT entity_id FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND outcome = 'CONFLICT' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(carolEnrollment.enrollment_id)
+      .first<{ entity_id: string }>();
+    assert.strictEqual(conflictAudit?.entity_id, carolEnrollment.enrollment_id);
     const crossMember = await cancelEnrollmentFor(
       memberAccess,
       managerOnlyId,

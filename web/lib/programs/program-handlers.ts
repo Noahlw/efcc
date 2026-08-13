@@ -1172,7 +1172,7 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const members = await workspace.searchActiveMembers(query, 20);
+  const members = await workspace.searchActiveMembers(query, 20, programId);
   return jsonResponse(200, { members }, requestId);
 }
 
@@ -2074,6 +2074,27 @@ export async function handleListEnrollmentRequests(
   }
   return jsonResponse(200, { requests: rows }, requestId);
 }
+/** GET /api/v1/programs/:programId/enrollment-snapshot */
+export async function handleListEnrollmentSnapshot(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const snapshot = await workspace.listEnrollmentSnapshot(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (snapshot === null) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, snapshot, requestId);
+}
 
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
 export async function handleDecideEnrollmentRequest(
@@ -2124,7 +2145,7 @@ export async function handleDecideEnrollmentRequest(
     return notFound(requestId, "Unknown enrollment request.");
   }
   try {
-    const row = await workspace.decideEnrollmentRequest(
+    const result = await workspace.decideEnrollmentRequest(
       ctxFrom(auth.account),
       programId,
       enrollmentRequestId,
@@ -2135,7 +2156,7 @@ export async function handleDecideEnrollmentRequest(
       },
       correlationId
     );
-    return jsonResponse(200, { request: row }, requestId);
+    return jsonResponse(200, result, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {

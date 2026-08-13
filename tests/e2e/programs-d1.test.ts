@@ -69,6 +69,10 @@ const COPY = {
   workspaceNearestEvent: "最近聚會",
   workspaceTaskEvents: "聚會",
   workspaceTaskParticipants: "參與者",
+  workspacePendingRequests: "待處理報名",
+  workspaceActiveParticipants: "活躍參與者",
+  approve: "核准",
+  decisionMade: "已處理申請。",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
   settingsBasics: "基本資料",
@@ -830,6 +834,133 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
     ).toHaveAttribute("aria-current", "page");
   });
+  test("manager Participants queue shows scoped counts and approves a pending request", async ({
+    page,
+    browser,
+  }) => {
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    let programId = "";
+    let adminReady = false;
+    try {
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
+      expect(programId).toBeTruthy();
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      const enrollmentPanel = memberPage.getByRole("region", {
+        name: COPY.enrollment,
+      });
+      await enrollmentPanel
+        .getByRole("button", { name: COPY.requestEnroll })
+        .click();
+      await expect(
+        enrollmentPanel.getByText(COPY.requestPendingHint)
+      ).toBeVisible();
+
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      adminReady = true;
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.workspaceTaskParticipants,
+          exact: true,
+        })
+      ).toBeVisible();
+      const pendingTab = page.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+      });
+      const activeTab = page.getByRole("tab", {
+        name: new RegExp(`${COPY.workspaceActiveParticipants} \\(\\d+\\)`, "u"),
+      });
+      await expect(pendingTab).toBeVisible();
+      await expect(activeTab).toBeVisible();
+      await expect(pendingTab).toHaveAttribute("aria-selected", "true");
+      await expect(pendingTab).not.toHaveAttribute("aria-controls");
+      await expect(activeTab).not.toHaveAttribute("aria-controls");
+
+      const requestRow = page
+        .getByRole("listitem")
+        .filter({ hasText: "E2E Member" });
+      await expect(requestRow.getByRole("button", { name: COPY.approve })).toBeVisible();
+      await requestRow.getByRole("button", { name: COPY.approve }).click();
+      await expect(page.getByText(COPY.decisionMade)).toBeVisible();
+      await expect(activeTab).toContainText("(1)");
+      await activeTab.click();
+      await expect(
+        page.getByRole("list", { name: COPY.workspaceActiveParticipants })
+      ).toContainText("E2E Member");
+    } finally {
+      if (programId && adminReady) {
+        await page.evaluate(async (id) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
+          );
+          const body = (await response.json()) as {
+            data?: {
+              enrollments?: {
+                enrollment_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const enrollment = body.data?.enrollments?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
+          );
+          if (enrollment) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+        await memberPage.evaluate(async (id) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+          );
+          const body = (await response.json()) as {
+            data?: {
+              requests?: {
+                request_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const request = body.data?.requests?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
+          );
+          if (request) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+      }
+      await memberContext.close();
+    }
+  });
   test("keeps Directory and Workspace entry points keyboard-operable", async ({
     page,
   }) => {
@@ -870,6 +1001,13 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     expect(programId).toBeTruthy();
     await page.goto(
       `/programs?mode=management&program=${programId}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(page.getByText(programId)).toHaveCount(0);
+    await page.goto(
+      `/programs?mode=management&program=${programId}&task=participants`
     );
     await expect(
       page.getByRole("heading", { name: COPY.noManagementScope })

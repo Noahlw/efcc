@@ -408,6 +408,7 @@ export default {
         handleEventUpdate,
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
+        handleListEnrollmentSnapshot,
         handleDecideEnrollmentRequest,
         handleWithdrawEnrollmentRequest,
         handleAssistedEnroll,
@@ -686,6 +687,16 @@ export default {
           request,
           programEnv,
           enrollmentRequests.groups?.id ?? ""
+        );
+      }
+      const enrollmentSnapshot = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-snapshot$/u
+      );
+      if (enrollmentSnapshot && request.method === "GET") {
+        return handleListEnrollmentSnapshot(
+          request,
+          programEnv,
+          enrollmentSnapshot.groups?.id ?? ""
         );
       }
       const enrollmentRequest = url.pathname.match(

@@ -381,7 +381,8 @@ export interface WorkspaceStore {
   ) => Promise<ProgramRow | null>;
   searchActiveMembers: (
     query: string,
-    limit: number
+    limit: number,
+    programId?: string
   ) => Promise<MemberOptionRow[]>;
 
   setDepartmentModule: (
@@ -463,6 +464,10 @@ export interface WorkspaceStore {
   listEnrollmentRequests: (
     programId: string
   ) => Promise<EnrollmentRequestRow[]>;
+  listEnrollmentSnapshot: (programId: string) => Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }>;
   listParticipantEnrollmentSnapshot: (
     programId: string,
     memberUserId: string

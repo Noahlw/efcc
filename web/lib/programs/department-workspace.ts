@@ -315,6 +315,10 @@ export interface DecideEnrollmentRequestCommand {
   note: string | null;
   expectedRequestVersion?: number;
 }
+export interface EnrollmentDecisionResult {
+  request: EnrollmentRequestRow;
+  enrollment: EnrollmentRow | null;
+}
 
 export interface AssistedEnrollCommand {
   memberUserId: string;
@@ -1981,9 +1985,10 @@ export class DepartmentWorkspace {
 
   searchActiveMembers(
     query: string,
-    limit: number
+    limit: number,
+    programId?: string
   ): Promise<MemberOptionRow[]> {
-    return this.store.searchActiveMembers(query, limit);
+    return this.store.searchActiveMembers(query, limit, programId);
   }
 
   getEnrollment(
@@ -2114,6 +2119,52 @@ export class DepartmentWorkspace {
     });
     return rows.filter((r) => r.member_user_id === ctx.actorUserId);
   }
+  async listEnrollmentSnapshot(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  } | null> {
+    const program = await this.store.findProgramById(programId);
+    if (
+      !program ||
+      !(await this.isModuleEnabled(program.department_id)) ||
+      !(await this.isModuleEnabled(
+        program.department_id,
+        MODULE_KEY.ENROLLMENT
+      ))
+    ) {
+      return null;
+    }
+    const canManage = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      {
+        departmentId: program.department_id,
+        programId: program.program_id,
+      }
+    );
+    const snapshot = await this.store.listEnrollmentSnapshot(programId);
+    if (canManage) {
+      return snapshot;
+    }
+    if (program.discoverability === "Unlisted") {
+      return null;
+    }
+    await this.ensure(ctx, CAPABILITY.PROGRAM_ENROLL, {
+      departmentId: program.department_id,
+      programId: program.program_id,
+    });
+    return {
+      requests: snapshot.requests.filter(
+        (request) => request.member_user_id === ctx.actorUserId
+      ),
+      enrollments: snapshot.enrollments.filter(
+        (enrollment) => enrollment.member_user_id === ctx.actorUserId
+      ),
+    };
+  }
 
   async decideEnrollmentRequest(
     ctx: AuthorizationContext,
@@ -2121,7 +2172,7 @@ export class DepartmentWorkspace {
     requestId: string,
     cmd: DecideEnrollmentRequestCommand,
     correlationId: string | null
-  ): Promise<EnrollmentRequestRow> {
+  ): Promise<EnrollmentDecisionResult> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -2131,6 +2182,18 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    const decisionResult = async (
+      row: EnrollmentRequestRow
+    ): Promise<EnrollmentDecisionResult> => ({
+      request: row,
+      enrollment:
+        row.status === "Approved"
+          ? await this.store.findActiveEnrollment(
+              programId,
+              row.member_user_id
+            )
+          : null,
+    });
     const request = await this.store.findEnrollmentRequestById(requestId);
     if (!request || request.program_id !== programId) {
       throw new RequestNotDecidableError(requestId);
@@ -2163,7 +2226,7 @@ export class DepartmentWorkspace {
           { ...request, reason: "already_decided" },
           correlationId
         );
-        return request;
+        return decisionResult(request);
       }
       await this.audit(
         ctx,
@@ -2179,7 +2242,7 @@ export class DepartmentWorkspace {
     }
 
     const now = new Date().toISOString();
-    let decided: EnrollmentRequestRow | null;
+    let decided: EnrollmentDecisionResult | null;
     if (cmd.action === "Approved") {
       const enrollmentId = crypto.randomUUID();
       const auditCreate = this.buildAuditRow(
@@ -2204,9 +2267,10 @@ export class DepartmentWorkspace {
         "enrollment_request",
         requestId,
         "SUCCESS",
-        { status: "Pending" },
+        { status: "Pending", request_version: request.request_version },
         {
           ...request,
+          request_version: request.request_version + 1,
           status: "Approved",
           decided_by: ctx.actorUserId,
           decided_at: now,
@@ -2228,7 +2292,7 @@ export class DepartmentWorkspace {
           auditDecide,
           expected_request_version: cmd.expectedRequestVersion,
         });
-        decided = committed?.request ?? null;
+        decided = committed;
       } catch (error) {
         // ponytail: the (member, program) unique index is the race guard; on
         // constraint violation the whole batch rolled back, so the request is
@@ -2265,9 +2329,10 @@ export class DepartmentWorkspace {
         "enrollment_request",
         requestId,
         "SUCCESS",
-        { status: "Pending" },
+        { status: "Pending", request_version: request.request_version },
         {
           ...request,
+          request_version: request.request_version + 1,
           status: "Rejected",
           decided_by: ctx.actorUserId,
           decided_at: now,
@@ -2275,7 +2340,7 @@ export class DepartmentWorkspace {
         },
         correlationId
       );
-      decided = await this.store.decideRequest(
+      const rejected = await this.store.decideRequest(
         requestId,
         "Rejected",
         ctx.actorUserId,
@@ -2284,6 +2349,9 @@ export class DepartmentWorkspace {
         auditDecide,
         cmd.expectedRequestVersion
       );
+      decided = rejected
+        ? { request: rejected, enrollment: null }
+        : null;
     }
     if (decided) {
       return decided;
@@ -2317,7 +2385,7 @@ export class DepartmentWorkspace {
         { ...latest, reason: "already_decided" },
         correlationId
       );
-      return latest;
+      return decisionResult(latest);
     }
     if (latest && latest.status !== "Pending") {
       await this.audit(
@@ -2342,7 +2410,7 @@ export class DepartmentWorkspace {
       { ...(latest ?? request), reason: "already_decided" },
       correlationId
     );
-    return latest ?? request;
+    return decisionResult(latest ?? request);
   }
 
   async withdrawEnrollmentRequest(
@@ -2429,20 +2497,26 @@ export class DepartmentWorkspace {
       );
       throw new EnrollmentAccountInactiveError(cmd.memberUserId);
     }
-    if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+    const existing = await this.store.findActiveEnrollment(
+      programId,
+      cmd.memberUserId
+    );
+    if (existing) {
+      const outcome =
+        existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
       await this.audit(
         ctx,
         "ENROLLMENT_CREATE",
         "enrollment",
-        programId,
-        "CONFLICT",
-        null,
-        {
-          member_user_id: cmd.memberUserId,
-          reason: "active_enrollment_exists",
-        },
+        existing.enrollment_id,
+        outcome,
+        existing,
+        { ...existing, reason: "active_enrollment_exists" },
         correlationId
       );
+      if (outcome === "DUPLICATE") {
+        return existing;
+      }
       throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
     }
     const now = new Date().toISOString();
@@ -2472,16 +2546,18 @@ export class DepartmentWorkspace {
           ctx,
           "ENROLLMENT_CREATE",
           "enrollment",
-          programId,
+          existing.enrollment_id,
           outcome,
-          null,
+          existing,
           {
-            member_user_id: cmd.memberUserId,
-            enrollment_id: existing.enrollment_id,
+            ...existing,
             reason: "active_enrollment_exists",
           },
           correlationId
         );
+        if (outcome === "DUPLICATE") {
+          return existing;
+        }
         throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
       }
       throw error;

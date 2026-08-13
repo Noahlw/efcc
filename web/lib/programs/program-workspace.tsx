@@ -11,8 +11,9 @@ import {
   createEvent,
   decideEnrollmentRequest,
   getManagementProgram,
-  listEnrollments,
   listEnrollmentRequests,
+  listEnrollmentSnapshot,
+  listEnrollments,
   listEvents,
 } from "@/lib/programs/program-api";
 import type {
@@ -747,13 +748,7 @@ const ParticipantsTask = ({
     { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
     ParticipantsState
   >(
-    async () => {
-      const [{ requests }, { enrollments }] = await Promise.all([
-        listEnrollmentRequests(programId),
-        listEnrollments(programId),
-      ]);
-      return { requests, enrollments };
-    },
+    async () => listEnrollmentSnapshot(programId),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: ({ requests, enrollments }) => ({
@@ -1126,7 +1121,6 @@ const ParticipantsTask = ({
                   role="tab"
                   aria-selected={tab === value}
                   aria-pressed={tab === value}
-                  aria-controls={`participants-${value}-panel`}
                   className={styles.taskButton}
                   onClick={() => setTab(value)}
                 >
@@ -1385,11 +1379,11 @@ export const ProgramWorkspace = ({
   );
 
   useEffect(() => {
-    if (state.kind !== "ready") {
+    if (state.kind !== "ready" || task !== undefined) {
       return;
     }
     void loadSummary(state.modules);
-  }, [loadSummary, state]);
+  }, [loadSummary, state, task]);
 
   if (state.kind === "loading") {
     return (
