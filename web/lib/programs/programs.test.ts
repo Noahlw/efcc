@@ -3111,6 +3111,87 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
+  test("EVT-02.6 checked-in seed reset order clears preview/run rows before their parents", async () => {
+    const programId = await freshProgram(`E2E_EVT02_Reset_${Date.now()}`);
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+
+    // Durable EVT-02 rows now reference the program/rule/events with
+    // ON DELETE RESTRICT; the reset must delete them before their parents.
+    const durable = await testDb()
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM program_preview_plans WHERE program_id = ?1) AS plans,
+           (SELECT COUNT(*) FROM program_preview_occurrences WHERE plan_id IN
+              (SELECT plan_id FROM program_preview_plans WHERE program_id = ?1)) AS occurrences,
+           (SELECT COUNT(*) FROM program_generation_runs WHERE program_id = ?1) AS runs,
+           (SELECT COUNT(*) FROM program_generation_run_items WHERE run_id IN
+              (SELECT run_id FROM program_generation_runs WHERE program_id = ?1)) AS items,
+           (SELECT COUNT(*) FROM events WHERE program_id = ?1) AS events`
+      )
+      .bind(programId)
+      .first<{
+        plans: number;
+        occurrences: number;
+        runs: number;
+        items: number;
+        events: number;
+      }>();
+    assert.ok((durable?.plans ?? 0) >= 1, "a preview plan exists");
+    assert.ok((durable?.occurrences ?? 0) >= 1, "preview occurrences exist");
+    assert.ok((durable?.runs ?? 0) >= 1, "a generation run exists");
+    assert.ok((durable?.items ?? 0) >= 1, "run items exist");
+    assert.ok((durable?.events ?? 0) >= 1, "generated events exist");
+
+    // Replay tests/e2e/seed-dev-accounts.ts --reset ordering verbatim
+    // (children first): EVT-02 tables, then exceptions/rules/events, then
+    // programs and departments. Any FK-order regression fails here.
+    const e2eProgramIds = `(SELECT p.program_id FROM programs AS p LEFT JOIN departments AS d ON d.department_id = p.department_id WHERE p.name GLOB 'E2E_*' OR d.code GLOB 'E2E_*' OR d.name GLOB 'E2E_*')`;
+    const resetStatements = [
+      `DELETE FROM program_generation_run_items WHERE run_id IN (SELECT run_id FROM program_generation_runs WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_generation_runs WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_preview_occurrences WHERE plan_id IN (SELECT plan_id FROM program_preview_plans WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM events WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM enrollment_requests WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM programs WHERE program_id IN ${e2eProgramIds}`,
+      "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
+      "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
+      "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*'",
+      "DELETE FROM registration_requests WHERE username GLOB 'E2E_*'",
+    ];
+    for (const statement of resetStatements) {
+      await testDb().prepare(statement).run();
+    }
+    const gone = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM programs WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(gone?.count ?? 0, 0, "the E2E_ program is reset");
+    const remaining = await testDb()
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM program_preview_plans WHERE program_id = ?1) +
+           (SELECT COUNT(*) FROM program_generation_runs WHERE program_id = ?1) +
+           (SELECT COUNT(*) FROM events WHERE program_id = ?1) AS total`
+      )
+      .bind(programId)
+      .first<{ total: number }>();
+    assert.strictEqual(remaining?.total ?? 0, 0, "no durable rows remain");
+  });
+
   test("EVT-02.4 skipped duplicate attempts carry the existing event id", async () => {
     const programId = await freshProgram("EVT-02 Skipped Event Id");
     await createRule(adminAccess, programId, {
