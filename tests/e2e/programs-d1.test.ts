@@ -2048,11 +2048,12 @@ test.describe("EVT-01 event operational detail and availability", () => {
     page: Page,
     programId: string,
     name: string,
-    minuteOffsetMinutes: number
+    minuteOffsetMinutes: number,
+    dateOffsetDays = 0
   ): Promise<string> {
     await openEventsTask(page, programId);
     await page.getByRole("button", { name: COPY.eventCreate }).click();
-    const startsAt = eventStart(0, minuteOffsetMinutes);
+    const startsAt = eventStart(dateOffsetDays, minuteOffsetMinutes);
     await page.getByLabel(COPY.eventName).fill(name);
     await page.getByLabel(COPY.eventLocation).fill("測試場地");
     await page.getByLabel(COPY.eventStart).fill(startsAt);
@@ -2164,12 +2165,17 @@ test.describe("EVT-01 event operational detail and availability", () => {
       page,
       programId,
       `E2E_EVT_暫停_${Date.now()}`,
-      90
+      90,
+      -121
     );
+
+    const eventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
 
     await page.getByRole("button", { name: COPY.eventAvailabilityDeactivate }).click();
     await expect(
-      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      eventDetail.getByText(COPY.eventAvailabilityNotice, { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
@@ -2178,7 +2184,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await expect(undo).toBeVisible();
     await undo.click();
     await expect(
-      page.getByText(COPY.eventAvailabilityRestoredNotice, { exact: true }).first()
+      eventDetail
+        .getByText(COPY.eventAvailabilityRestoredNotice, { exact: true })
+        .first()
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityDeactivate })
@@ -2217,7 +2225,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     expect(programId).toBeTruthy();
 
-    await createManualEvent(
+    const eventId = await createManualEvent(
       page,
       programId,
       `E2E_EVT_確認_${Date.now()}`,
@@ -2278,7 +2286,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
       .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
       .click();
     await expect(
-      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      page
+        .getByRole("region", { name: COPY.eventDetailTitle })
+        .getByText(COPY.eventAvailabilityNotice, { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityUndo })
@@ -2298,6 +2308,14 @@ test.describe("EVT-01 event operational detail and availability", () => {
         `/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(enrollment?.enrollment_id ?? "")}/cancel`,
         "POST",
         {}
+      )
+    ).toBe(200);
+    expect(
+      await apiJsonStatus(
+        page,
+        `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+        "PATCH",
+        { availability: "Active" }
       )
     ).toBe(200);
   });
@@ -2380,7 +2398,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
         .getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
         .click();
       await expect(
-        page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+        page
+          .getByRole("region", { name: COPY.eventDetailTitle })
+          .getByText(COPY.eventAvailabilityNotice, { exact: true })
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: COPY.eventAvailabilityUndo })
@@ -2568,8 +2588,12 @@ test.describe("NTF-01 management attention", () => {
     );
     expect(program.status, "attention fixture Program creation").toBe(201);
     const programId = required("attention fixture program id", program.id);
-
-    const memberContext = await browser.newContext();
+    let pendingRequestId = "";
+    let pendingResolved = false;
+    let inactiveEventId = "";
+    let cancelledEventId = "";
+    try {
+      const memberContext = await browser.newContext();
     try {
       const memberPage = await memberContext.newPage();
       await loginAs(
@@ -2577,23 +2601,30 @@ test.describe("NTF-01 management attention", () => {
         required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
         required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
       );
-      const requestStatus = await memberPage.evaluate(
+      const request = await memberPage.evaluate(
         async (requestPath) => {
           const response = await fetch(requestPath, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: "{}",
           });
-          return response.status;
+          const body = (await response.json()) as {
+            data?: { request?: { request_id?: string } };
+          };
+          return {
+            status: response.status,
+            requestId: body.data?.request?.request_id ?? "",
+          };
         },
         `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
       );
-      expect([200, 201]).toContain(requestStatus);
+      pendingRequestId = request.requestId;
+      expect([200, 201]).toContain(request.status);
     } finally {
       await memberContext.close();
     }
 
-    const inactiveEventId = await createAttentionEvent(
+    inactiveEventId = await createAttentionEvent(
       page,
       programId,
       `E2E_NTF256_暫停_${Date.now()}`,
@@ -2605,7 +2636,7 @@ test.describe("NTF-01 management attention", () => {
       })
     ).toBe(200);
 
-    const cancelledEventId = await createAttentionEvent(
+    cancelledEventId = await createAttentionEvent(
       page,
       programId,
       `E2E_NTF256_取消_${Date.now()}`,
@@ -2658,6 +2689,17 @@ test.describe("NTF-01 management attention", () => {
     ).toBeVisible();
 
     await page.goto(inactiveHref);
+    const eventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
+    await expect(eventDetail).toBeVisible();
+    await expect(
+      eventDetail.getByRole("button", { name: COPY.eventAvailabilityActivate })
+    ).toBeVisible();
+
+    await page.goto(
+      `/programs?mode=management&program=${programId}&task=events`
+    );
     const eventsTask = page.getByRole("region", {
       name: COPY.workspaceTaskEvents,
     });
@@ -2681,6 +2723,7 @@ test.describe("NTF-01 management attention", () => {
       return body.data?.requests?.find((request) => request.status === "Pending");
     }, `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`);
     expect(pending?.request_id, "pending source must have an identity").toBeTruthy();
+    pendingRequestId = pending?.request_id ?? pendingRequestId;
     const decisionStatus = await page.evaluate(
       async ({ programId: id, requestId }) => {
         const response = await fetch(
@@ -2696,6 +2739,7 @@ test.describe("NTF-01 management attention", () => {
       { programId, requestId: pending?.request_id ?? "" }
     );
     expect(decisionStatus).toBe(200);
+    pendingResolved = decisionStatus === 200;
     await trigger.click();
     await expect(dialog).toHaveCount(0);
     const aggregateAfterApproval = await page.evaluate(async () => {
@@ -2717,6 +2761,17 @@ test.describe("NTF-01 management attention", () => {
       String(aggregateAfterApproval)
     );
 
+    // NTF-01.2: a deep link captured before its source resolved must
+    // re-authorize and re-read current state, never a stale-looking
+    // success -- landing on the (now-approved) pending link must show
+    // the fresh zero count, not the badge's earlier (1).
+    await page.goto(pendingHref);
+    await expect(
+      participants.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(0\\)`, "u"),
+      })
+    ).toBeVisible();
+
     await page.goto(inactiveHref);
     const attentionRefreshAfterCorrection = page.waitForResponse(
       (response) =>
@@ -2725,7 +2780,9 @@ test.describe("NTF-01 management attention", () => {
     );
     await page.getByRole("button", { name: COPY.eventAvailabilityActivate }).click();
     await expect(
-      page.getByText(COPY.eventAvailabilityRestoredNotice, { exact: true })
+      eventDetail.getByText(COPY.eventAvailabilityRestoredNotice, {
+        exact: true,
+      })
     ).toBeVisible();
     await attentionRefreshAfterCorrection;
 
@@ -2739,5 +2796,47 @@ test.describe("NTF-01 management attention", () => {
     await finalRefresh;
     await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
     await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+    } finally {
+      if (pendingRequestId && !pendingResolved) {
+        await page
+          .evaluate(
+            async ({ programId: id, requestId }) => {
+              const response = await fetch(
+                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "Rejected" }),
+                }
+              );
+              if (!response.ok) {
+                await fetch(
+                  `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/withdraw`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: "{}",
+                  }
+                );
+              }
+            },
+            { programId, requestId: pendingRequestId }
+          )
+          .catch(() => undefined);
+      }
+      if (inactiveEventId) {
+        await patchAttentionEvent(page, programId, inactiveEventId, {
+          availability: "Active",
+        }).catch(() => -1);
+      }
+      if (cancelledEventId) {
+        await patchAttentionEvent(page, programId, cancelledEventId, {
+          starts_at: "2000-01-01T00:00:00.000Z",
+          ends_at: "2000-01-01T01:30:00.000Z",
+          check_in_window_opens_at: "2000-01-01T00:00:00.000Z",
+          check_in_window_closes_at: "2000-01-01T02:00:00.000Z",
+        }).catch(() => -1);
+      }
+    }
   });
 });
