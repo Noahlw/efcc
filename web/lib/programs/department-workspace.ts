@@ -18,6 +18,7 @@ import type {
   ModuleKey,
 } from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
+import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
@@ -154,6 +155,32 @@ export interface ManagementAccessView {
   hasManagementCapability: boolean;
   departmentScopes: number;
   programScopes: number;
+}
+
+/**
+ * Client-safe preview plan projection. Never carries the internal actor id
+ * (created_by) or any other server-only column across the Worker boundary.
+ */
+export interface PreviewPlanView {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
+  rule_count: number;
+  created_at: string;
+}
+
+function previewPlanView(plan: PreviewPlanRow): PreviewPlanView {
+  return {
+    plan_id: plan.plan_id,
+    program_id: plan.program_id,
+    plan_hash: plan.plan_hash,
+    horizon_days: plan.horizon_days,
+    from_date: plan.from_date,
+    rule_count: plan.rule_count,
+    created_at: plan.created_at,
+  };
 }
 
 /**
@@ -1641,7 +1668,7 @@ export class DepartmentWorkspace {
     horizonDays: number,
     correlationId: string | null
   ): Promise<{
-    plan: PreviewPlanRow;
+    plan: PreviewPlanView;
     occurrences: PreviewOccurrenceRow[];
   }> {
     const program = await this.requireProgramFor(
@@ -1684,8 +1711,12 @@ export class DepartmentWorkspace {
       fromDate
     );
     const now = new Date().toISOString();
+    // Deterministic plan identity: the same (program, hash) always maps to
+    // the same plan_id, so re-previewing identical inputs resolves to the
+    // same durable plan row and the plan + its occurrence rows commit in
+    // one atomic batch.
     const plan: PreviewPlanRow = {
-      plan_id: crypto.randomUUID(),
+      plan_id: `pln_${programId}_${planHash.slice(0, 24)}`,
       program_id: programId,
       plan_hash: planHash,
       horizon_days: horizonDays,
@@ -1720,7 +1751,7 @@ export class DepartmentWorkspace {
       },
       correlationId
     );
-    return { plan: persisted, occurrences: storedOccurrences };
+    return { plan: previewPlanView(persisted), occurrences: storedOccurrences };
   }
 
   /**
@@ -1773,12 +1804,15 @@ export class DepartmentWorkspace {
       (latest.created_at > plan.created_at ||
         (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
     if (currentHash !== plan.plan_hash || superseded) {
+      // Business-state conflict (schedule changed / plan superseded), not a
+      // system failure: ADR-0023/0027 reserve FAILED for system-level
+      // failures, so this audits CONFLICT.
       await this.audit(
         ctx,
         "EVENT_GENERATE",
         "event",
         programId,
-        "FAILED",
+        "CONFLICT",
         null,
         { plan_id: planId, reason: "stale_plan" },
         correlationId
@@ -1792,12 +1826,12 @@ export class DepartmentWorkspace {
         "EVENT_GENERATE",
         "event",
         programId,
-        "FAILED",
+        "CONFLICT",
         null,
         { plan_id: planId, reason: "empty_plan" },
         correlationId
       );
-      throw new EmptyPreviewPlanError(planId);
+      throw new EmptyPreviewPlanError();
     }
     const now = new Date().toISOString();
     const { run, created: runCreated } = await this.store.createGenerationRun({
@@ -1810,14 +1844,35 @@ export class DepartmentWorkspace {
     });
     const resumed = !runCreated;
     if (run.status === "completed") {
-      // Deterministic repeat: the plan was already fully generated, so this
-      // request created nothing and skipped every occurrence of the plan.
+      // Deterministic repeat (ADR-0027): the plan was already fully
+      // generated, so this request created nothing and skipped every
+      // occurrence; the repeat still emits its own EVENT_GENERATE audit row
+      // with created = 0, skipped > 0.
+      const skipped = occurrences.length;
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "SUCCESS",
+        null,
+        {
+          run_id: run.run_id,
+          plan_id: planId,
+          status: "completed",
+          created: 0,
+          skipped,
+          failed: 0,
+          resumed: true,
+        },
+        correlationId
+      );
       return {
         run_id: run.run_id,
         plan_id: planId,
         status: "completed",
         created: 0,
-        skipped: occurrences.length,
+        skipped,
         failed: 0,
         resumed: true,
       };
@@ -1834,44 +1889,40 @@ export class DepartmentWorkspace {
       ctx.actorUserId,
       now
     );
-    const items = await this.store.listGenerationRunItems(run.run_id);
-    const created = items.filter((item) => item.outcome === "created").length;
-    const skipped = items.filter((item) => item.outcome === "skipped").length;
-    const failed = items.filter((item) => item.outcome === "failed").length;
-    const status: GenerateResult["status"] =
-      failed === 0 ? "completed" : created + skipped > 0 ? "partial" : "failed";
-    const finished = await this.store.finishGenerationRun(run.run_id, {
-      status,
-      created,
-      skipped,
-      failed,
-      finished_at: new Date().toISOString(),
-    });
+    // Atomic compare-and-set settlement: finishGenerationRun recomputes
+    // counts/status from the item table in one statement and only the first
+    // finisher writes; every caller reloads the settled row, so the run and
+    // every response converge deterministically.
+    await this.store.finishGenerationRun(run.run_id, new Date().toISOString());
+    const settled = await this.store.findGenerationRunByPlan(planId);
+    if (!settled) {
+      throw new WorkspaceNotFoundError("generation_run", run.run_id);
+    }
     await this.audit(
       ctx,
       "EVENT_GENERATE",
       "event",
       programId,
-      status === "completed" ? "SUCCESS" : "FAILED",
+      settled.status === "completed" ? "SUCCESS" : "FAILED",
       null,
       {
-        run_id: finished.run_id,
+        run_id: settled.run_id,
         plan_id: planId,
-        status: finished.status,
-        created: finished.created,
-        skipped: finished.skipped,
-        failed: finished.failed,
+        status: settled.status,
+        created: settled.created,
+        skipped: settled.skipped,
+        failed: settled.failed,
         resumed,
       },
       correlationId
     );
     return {
-      run_id: finished.run_id,
+      run_id: settled.run_id,
       plan_id: planId,
-      status: finished.status,
-      created: finished.created,
-      skipped: finished.skipped,
-      failed: finished.failed,
+      status: settled.status,
+      created: settled.created,
+      skipped: settled.skipped,
+      failed: settled.failed,
       resumed,
     };
   }
@@ -1960,8 +2011,21 @@ export class DepartmentWorkspace {
         );
         eventId = createdEvent?.event_id ?? null;
       } else {
-        // Unique (program_id, starts_at) already satisfied by another run.
-        outcome = "skipped";
+        // INSERT OR IGNORE reported no change. Verify why: only the unique
+        // (program_id, starts_at) index is a benign duplicate; any other
+        // swallowed constraint would have produced no event row at all and
+        // must be surfaced as a system failure, never a false 'skipped'.
+        const existing = await this.store.findEventByStart(
+          programId,
+          occurrence.starts_at
+        );
+        if (existing) {
+          outcome = "skipped";
+          eventId = existing.event_id;
+        } else {
+          outcome = "failed";
+          detail = "event insert ignored without creating an event row";
+        }
       }
     } catch (error) {
       outcome = "failed";

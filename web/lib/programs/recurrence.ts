@@ -102,7 +102,11 @@ export function occurrencesForRule(
   exceptions: ScheduleExceptionLike[]
 ): Occurrence[] {
   const result: Occurrence[] = [];
-  const byDate = new Map(exceptions.map((e) => [e.override_date, e]));
+  // Rule-scoped lookups: exceptions on one rule never affect another rule
+  // firing on the same wall date.
+  const byRuleDate = new Map(
+    exceptions.map((e) => [`${e.rule_id}:${e.override_date}`, e])
+  );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
     const matches =
@@ -112,7 +116,7 @@ export function occurrencesForRule(
     if (!matches) {
       continue;
     }
-    const exception = byDate.get(date);
+    const exception = byRuleDate.get(`${rule.rule_id}:${date}`);
     if (exception?.action === "CANCEL") {
       continue;
     }
@@ -157,7 +161,11 @@ export function previewOccurrencesForRule(
   exceptions: ScheduleExceptionLike[]
 ): PreviewOccurrenceCandidate[] {
   const result: PreviewOccurrenceCandidate[] = [];
-  const byDate = new Map(exceptions.map((e) => [e.override_date, e]));
+  // Exceptions are rule-scoped: two rules firing on the same wall date must
+  // never cross-affect, so lookups are keyed by (rule, date).
+  const byRuleDate = new Map(
+    exceptions.map((e) => [`${e.rule_id}:${e.override_date}`, e])
+  );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
     const matches =
@@ -167,7 +175,7 @@ export function previewOccurrencesForRule(
     if (!matches) {
       continue;
     }
-    const exception = byDate.get(date);
+    const exception = byRuleDate.get(`${rule.rule_id}:${date}`);
     if (exception?.action === "CANCEL") {
       result.push({
         rule_id: rule.rule_id,

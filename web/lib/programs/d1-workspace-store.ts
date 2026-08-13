@@ -451,6 +451,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     ruleId: string,
     update: ScheduleRuleUpdate
   ): Promise<ScheduleRuleRow> {
+    // location is nullable, so an explicit null (clear) must be
+    // distinguishable from an absent field (keep). A sentinel flag drives a
+    // CASE; COALESCE would silently ignore the clear.
+    const locationProvided = update.location !== undefined;
     await this.db
       .prepare(
         `UPDATE program_schedule_rules SET
@@ -459,7 +463,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            month_day = COALESCE(?, month_day),
            start_time = COALESCE(?, start_time),
            end_time = COALESCE(?, end_time),
-           location = COALESCE(?, location),
+           location = CASE WHEN ? = 1 THEN ? ELSE location END,
            updated_by = ?,
            updated_at = ?
          WHERE rule_id = ?`
@@ -470,6 +474,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         update.month_day ?? null,
         update.start_time ?? null,
         update.end_time ?? null,
+        locationProvided ? 1 : 0,
         update.location ?? null,
         update.updated_by,
         update.updated_at,
@@ -824,64 +829,60 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     plan: PreviewPlanRow,
     occurrences: PreviewOccurrenceRow[]
   ): Promise<PreviewPlanRow> {
-    // One row per (program, plan_hash): identical inputs resolve to the same
-    // plan identity; changed inputs create a new (superseding) plan.
-    await this.db
-      .prepare(
-        `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
-           plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        plan.plan_id,
-        plan.program_id,
-        plan.plan_hash,
-        plan.horizon_days,
-        plan.from_date,
-        plan.rule_count,
-        plan.created_by,
-        plan.created_at
-      )
-      .run();
-    const existing = await this.db
+    // plan_id is deterministic (program + plan_hash), so the plan row and
+    // its exact occurrence rows commit in ONE atomic batch: either the whole
+    // plan materializes or nothing does. Identical inputs re-run the same
+    // INSERT OR IGNORE statements, which also repairs any occurrence rows a
+    // previous crash may have left missing before the plan is returned.
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
+             plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          plan.plan_id,
+          plan.program_id,
+          plan.plan_hash,
+          plan.horizon_days,
+          plan.from_date,
+          plan.rule_count,
+          plan.created_by,
+          plan.created_at
+        ),
+      ...occurrences.map((occurrence) =>
+        this.db
+          .prepare(
+            `INSERT OR IGNORE INTO program_preview_occurrences
+               (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
+                location, skip_reason, exception_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            occurrence.occurrence_id,
+            occurrence.plan_id,
+            occurrence.rule_id,
+            occurrence.occurs_on,
+            occurrence.starts_at,
+            occurrence.ends_at,
+            occurrence.location,
+            occurrence.skip_reason,
+            occurrence.exception_id
+          )
+      ),
+    ]);
+    const persisted = await this.db
       .prepare(
         `SELECT * FROM program_preview_plans
          WHERE program_id = ? AND plan_hash = ?`
       )
       .bind(plan.program_id, plan.plan_hash)
       .first<PreviewPlanRow>();
-    if (!existing) {
+    if (!persisted) {
       throw new WorkspaceNotFoundError("preview_plan", plan.plan_id);
     }
-    if (existing.plan_id !== plan.plan_id) {
-      // Identical inputs already previewed; reuse the existing plan as-is.
-      return existing;
-    }
-    if (occurrences.length > 0) {
-      await this.db.batch(
-        occurrences.map((occurrence) =>
-          this.db
-            .prepare(
-              `INSERT OR IGNORE INTO program_preview_occurrences
-                 (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
-                  location, skip_reason, exception_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              occurrence.occurrence_id,
-              occurrence.plan_id,
-              occurrence.rule_id,
-              occurrence.occurs_on,
-              occurrence.starts_at,
-              occurrence.ends_at,
-              occurrence.location,
-              occurrence.skip_reason,
-              occurrence.exception_id
-            )
-        )
-      );
-    }
-    return existing;
+    return persisted;
   }
 
   async findGenerationRunByPlan(planId: string): Promise<GenerationRunRow | null> {
@@ -967,30 +968,40 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return (result.meta?.changes ?? 0) > 0;
   }
 
+  /**
+   * Settle a run from its durable item rows in one atomic statement. The
+   * counts and status are recomputed from program_generation_run_items
+   * inside the UPDATE, so a caller can never mark a run terminal from an
+   * incomplete snapshot while another request is still recording. The
+   * `finished_at IS NULL` guard is a compare-and-set: the first finisher
+   * wins and repeat/concurrent finishers reload the settled row.
+   */
   async finishGenerationRun(
     runId: string,
-    update: {
-      status: GenerationRunStatus;
-      created: number;
-      skipped: number;
-      failed: number;
-      finished_at: string;
-    }
+    finishedAt: string
   ): Promise<GenerationRunRow> {
     await this.db
       .prepare(
-        `UPDATE program_generation_runs SET status = ?, created = ?, skipped = ?,
-           failed = ?, finished_at = ?
-         WHERE run_id = ?`
+        `UPDATE program_generation_runs SET
+           created = (SELECT COUNT(*) FROM program_generation_run_items
+                      WHERE run_id = ?1 AND outcome = 'created'),
+           skipped = (SELECT COUNT(*) FROM program_generation_run_items
+                      WHERE run_id = ?1 AND outcome = 'skipped'),
+           failed  = (SELECT COUNT(*) FROM program_generation_run_items
+                      WHERE run_id = ?1 AND outcome = 'failed'),
+           status = CASE
+             WHEN (SELECT COUNT(*) FROM program_generation_run_items
+                   WHERE run_id = ?1 AND outcome = 'failed') = 0
+               THEN 'completed'
+             WHEN (SELECT COUNT(*) FROM program_generation_run_items
+                   WHERE run_id = ?1 AND outcome IN ('created','skipped')) > 0
+               THEN 'partial'
+             ELSE 'failed'
+           END,
+           finished_at = ?2
+         WHERE run_id = ?1 AND finished_at IS NULL`
       )
-      .bind(
-        update.status,
-        update.created,
-        update.skipped,
-        update.failed,
-        update.finished_at,
-        runId
-      )
+      .bind(runId, finishedAt)
       .run();
     const row = await this.db
       .prepare("SELECT * FROM program_generation_runs WHERE run_id = ?")

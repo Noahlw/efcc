@@ -550,15 +550,10 @@ export interface WorkspaceStore {
   recordGenerationRunItem: (
     input: GenerationRunItemInput
   ) => Promise<boolean>;
+  /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,
-    update: {
-      status: GenerationRunStatus;
-      created: number;
-      skipped: number;
-      failed: number;
-      finished_at: string;
-    }
+    finishedAt: string
   ) => Promise<GenerationRunRow>;
 
   createEnrollmentRequest: (

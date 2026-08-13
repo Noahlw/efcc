@@ -1,4 +1,4 @@
--- Migration number: 0007  2026-08-13T00:00:00.000Z
+-- Migration number: 0008  2026-08-13T00:00:00.000Z
 -- EVT-02 (#252): server-owned recurring Preview Plan and auditable,
 -- resumable Generation Run.
 --
@@ -15,7 +15,8 @@
 --
 -- Conventions match migration 0003: TEXT UUID primary keys, STRICT mode,
 -- ISO-8601 UTC TEXT instants, CHECK-constrained vocabularies, FKs with
--- ON DELETE RESTRICT, immutable audit_events untouched.
+-- ON DELETE RESTRICT (no silent child deletion), immutable audit_events
+-- untouched.
 
 -- ---------------------------------------------------------------------------
 -- 1. Rule default location (optional; existing rules keep NULL).
@@ -50,10 +51,11 @@ CREATE UNIQUE INDEX preview_plans_program_hash_idx
 CREATE INDEX preview_plans_program_created_idx
   ON program_preview_plans(program_id, created_at DESC);
 
--- Exact occurrence rows. occurrence_id is deterministic (rule_id + HK wall
--- date), so re-previewing identical inputs yields identical row identities
--- and the ordering is stable. skip_reason marks occurrences suppressed by a
--- CANCEL exception; exception_id records the RESCHEDULE/CANCEL override.
+-- Exact occurrence rows. occurrence_id is deterministic (plan + rule + HK
+-- wall date), so re-previewing identical inputs yields identical row
+-- identities and the ordering is stable. skip_reason marks occurrences
+-- suppressed by a CANCEL exception; exception_id records the
+-- RESCHEDULE/CANCEL override.
 CREATE TABLE program_preview_occurrences (
   occurrence_id TEXT PRIMARY KEY,
   plan_id       TEXT NOT NULL,
@@ -64,13 +66,8 @@ CREATE TABLE program_preview_occurrences (
   location      TEXT,
   skip_reason   TEXT CHECK (skip_reason IS NULL OR skip_reason IN ('CANCEL')),
   exception_id  TEXT,
-  FOREIGN KEY (plan_id)      REFERENCES program_preview_plans(plan_id)      ON DELETE CASCADE,
-  FOREIGN KEY (rule_id)      REFERENCES program_schedule_rules(rule_id)     ON DELETE RESTRICT,
-  -- Snapshot attribution: removing an exception (settings restore) must not
-  -- be blocked by stale preview rows; the reference is cleared instead.
-  -- Any plan still pointing at it is stale by hash and rejected before
-  -- generation, so the cleared marker never reaches a generated event.
-  FOREIGN KEY (exception_id) REFERENCES program_schedule_exceptions(exception_id) ON DELETE SET NULL
+  FOREIGN KEY (plan_id) REFERENCES program_preview_plans(plan_id) ON DELETE RESTRICT,
+  FOREIGN KEY (rule_id) REFERENCES program_schedule_rules(rule_id) ON DELETE RESTRICT
 ) STRICT;
 
 CREATE INDEX preview_occurrences_plan_idx
@@ -105,8 +102,10 @@ CREATE UNIQUE INDEX generation_runs_plan_idx ON program_generation_runs(plan_id)
 CREATE INDEX generation_runs_program_idx ON program_generation_runs(program_id, started_at DESC);
 
 -- One durable attempt row per (run, occurrence). outcome is the attempt's
--- terminal result; event_id links created events (partial unique index so a
--- created event is attributed to exactly one attempt row).
+-- terminal result; event_id links the event (created rows, and skipped
+-- rows whose event already exists from another run). A plain index, not a
+-- unique one: the same event is legitimately referenced by the run that
+-- created it AND by later runs that skipped it as a duplicate.
 CREATE TABLE program_generation_run_items (
   item_id       TEXT PRIMARY KEY,
   run_id        TEXT NOT NULL,
@@ -115,12 +114,12 @@ CREATE TABLE program_generation_run_items (
   outcome       TEXT NOT NULL CHECK (outcome IN ('created','skipped','failed')),
   event_id      TEXT,
   detail        TEXT,
-  FOREIGN KEY (run_id)        REFERENCES program_generation_runs(run_id)   ON DELETE CASCADE,
+  FOREIGN KEY (run_id)        REFERENCES program_generation_runs(run_id)   ON DELETE RESTRICT,
   FOREIGN KEY (occurrence_id) REFERENCES program_preview_occurrences(occurrence_id) ON DELETE RESTRICT,
   FOREIGN KEY (event_id)      REFERENCES events(event_id)                  ON DELETE RESTRICT
 ) STRICT;
 
 CREATE UNIQUE INDEX generation_run_items_run_occurrence_idx
   ON program_generation_run_items(run_id, occurrence_id);
-CREATE UNIQUE INDEX generation_run_items_event_idx
-  ON program_generation_run_items(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX generation_run_items_event_idx
+  ON program_generation_run_items(event_id);

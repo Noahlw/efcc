@@ -1306,6 +1306,13 @@ function parseRuleBody(body: {
   if (body.recurrence === "MONTHLY" && !isMonthDay) {
     return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
   }
+  if (
+    body.location !== undefined &&
+    body.location !== null &&
+    typeof body.location !== "string"
+  ) {
+    return { ok: false, detail: "location must be text or null." };
+  }
   return {
     ok: true,
     value: {
@@ -1318,9 +1325,9 @@ function parseRuleBody(body: {
         ? {}
         : {
             location:
-              body.location === null || typeof body.location !== "string"
-                ? null
-                : body.location.trim() || null,
+              typeof body.location === "string"
+                ? body.location.trim() || null
+                : null,
           }),
     },
   };

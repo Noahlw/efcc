@@ -2159,11 +2159,34 @@ describe("PRG-02: generation", () => {
     const problem = await problemOf(res);
     assert.strictEqual(problem.code, "VALIDATION");
 
+    // Generation on a OneOff is rejected the same way, before any plan
+    // lookup, even with a fabricated plan id.
+    const generateRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/${oneOff.program_id}/events/generate`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { plan_id: "pln_whatever" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(generateRes.status, 422);
+    const generateProblem = await problemOf(generateRes);
+    assert.strictEqual(generateProblem.code, "VALIDATION");
+
     const events = await testDb()
       .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
       .bind(oneOff.program_id)
       .first<{ count: number }>();
     assert.strictEqual(events?.count ?? 0, 0, "no events may be written");
+    const runs = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .bind(oneOff.program_id)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0, "no generation runs may be written");
   });
 
   test("preview on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
@@ -2557,8 +2580,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
     const staleAudits = await auditRowsFor(programId, "EVENT_GENERATE");
     assert.ok(
-      staleAudits.some((row) => row.outcome === "FAILED"),
-      "stale generation is audited as FAILED"
+      staleAudits.some(
+        (row) => row.outcome === "CONFLICT" && row.new_value_json?.includes("stale_plan")
+      ),
+      "stale generation audits CONFLICT (business conflict, not FAILED)"
     );
 
     // A fresh preview supersedes the old plan and generates cleanly.
@@ -2633,6 +2658,18 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.ok(
       successAudits.some((row) => row.outcome === "SUCCESS"),
       "generation success is audited"
+    );
+    const repeatAudit = [...successAudits]
+      .reverse()
+      .find(
+        (row) =>
+          row.outcome === "SUCCESS" &&
+          row.new_value_json?.includes('"created":0') &&
+          row.new_value_json?.includes('"skipped":2')
+      );
+    assert.ok(
+      repeatAudit,
+      "deterministic repeat emits its own EVENT_GENERATE audit with created=0, skipped>0 (ADR-0027)"
     );
   });
 
@@ -2933,6 +2970,210 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.ok(
       events.results?.every((e) => e.location === "副堂 A"),
       "generated events carry the rule location"
+    );
+  });
+
+  test("EVT-02.3 exceptions are rule-scoped and never cross-affect same-date rules", async () => {
+    const programId = await freshProgram("EVT-02 Exception Scope");
+    const ruleA = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "20:30",
+    });
+    const ruleB = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "21:00",
+      end_time: "22:00",
+    });
+    const today = hkTodayWallDate();
+    const firstTuesday = addWallDays(today, (2 - wallWeekday(today) + 7) % 7);
+    const targetDate = addWallDays(firstTuesday, 7);
+    await createException(programId, ruleA.rule_id, {
+      override_date: targetDate,
+      action: "CANCEL",
+    });
+
+    const plan = await preview(adminAccess, programId, 21);
+    const ruleARows = plan.occurrences.filter((o) => o.rule_id === ruleA.rule_id);
+    const ruleBRows = plan.occurrences.filter((o) => o.rule_id === ruleB.rule_id);
+    assert.ok(
+      ruleARows.some((o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"),
+      "rule A occurrence on the date is cancelled"
+    );
+    assert.ok(
+      ruleBRows.some((o) => o.occurs_on === targetDate && o.skip_reason === null),
+      "rule B occurrence on the same date is untouched by rule A's exception"
+    );
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const events = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ starts_at: string }>();
+    assert.ok(
+      events.results?.some((e) => e.starts_at === `${targetDate}T13:00:00.000Z`),
+      "rule B's 21:00 HK wall occurrence materializes despite rule A's cancel"
+    );
+    assert.ok(
+      !events.results?.some((e) => e.starts_at === `${targetDate}T11:30:00.000Z`),
+      "rule A's 19:30 HK wall occurrence is skipped"
+    );
+  });
+
+  test("EVT-02.2 clearing a rule location persists and malformed location is rejected", async () => {
+    const programId = await freshProgram("EVT-02 Location Clear");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "主堂",
+    });
+
+    const malformed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { location: 5 },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(malformed.status, 422, "non-string location fails closed");
+
+    const clear = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { location: null },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(clear.status, 200);
+    const cleared = (await assertCorrelated(clear)) as {
+      data: { rule: { location: string | null } };
+    };
+    assert.strictEqual(
+      cleared.data.rule.location,
+      null,
+      "explicit null clears the stored location"
+    );
+  });
+
+  test("EVT-02.1 re-preview repairs a plan whose occurrence rows are missing", async () => {
+    const programId = await freshProgram("EVT-02 Plan Repair");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const first = await preview(adminAccess, programId, 14);
+    assert.ok(first.occurrences.length > 0);
+
+    // Simulate a crash between the plan-row insert and occurrence inserts:
+    // wipe the occurrence rows, then re-preview the identical inputs.
+    await testDb()
+      .prepare("DELETE FROM program_preview_occurrences WHERE plan_id = ?")
+      .bind(first.plan_id)
+      .run();
+    const repaired = await preview(adminAccess, programId, 14);
+    assert.strictEqual(
+      repaired.plan_id,
+      first.plan_id,
+      "identical inputs resolve to the same plan identity"
+    );
+    assert.strictEqual(
+      repaired.occurrences.length,
+      first.occurrences.length,
+      "re-preview restores the full occurrence set"
+    );
+    assert.deepStrictEqual(
+      repaired.occurrences.map((o) => o.occurrence_id),
+      first.occurrences.map((o) => o.occurrence_id),
+      "repaired occurrence identities match the original plan"
+    );
+  });
+
+  test("EVT-02.4 skipped duplicate attempts carry the existing event id", async () => {
+    const programId = await freshProgram("EVT-02 Skipped Event Id");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 5,
+      start_time: "10:00",
+      end_time: "11:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    // Seed a duplicate event row so every non-CANCEL attempt is a uniqueness
+    // duplicate, not a fresh create: the run must record outcome 'skipped'
+    // WITH the existing event_id, never a false 'created' or null id.
+    await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: plan.occurrences[0].starts_at,
+          ends_at: plan.occurrences[0].ends_at,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      }),
+      testEnv()
+    );
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { generated: { status: string; created: number; skipped: number } };
+    };
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.ok(
+      body.data.generated.skipped >= 1,
+      "the pre-existing occurrence is counted as skipped"
+    );
+    const items = await testDb()
+      .prepare(
+        `SELECT occurrence_id, outcome, event_id, detail FROM program_generation_run_items
+         WHERE run_id = (SELECT run_id FROM program_generation_runs WHERE plan_id = ?)`
+      )
+      .bind(plan.plan_id)
+      .all<{
+        occurrence_id: string;
+        outcome: string;
+        event_id: string | null;
+        detail: string | null;
+      }>();
+    const duplicateItem = items.results?.find(
+      (item) => item.occurrence_id === plan.occurrences[0].occurrence_id
+    );
+    assert.ok(duplicateItem, "the duplicate occurrence has a run item");
+    assert.strictEqual(duplicateItem.outcome, "skipped");
+    assert.ok(
+      duplicateItem.event_id,
+      "skipped duplicate attempt records the existing event id"
     );
   });
 });

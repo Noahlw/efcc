@@ -96,9 +96,9 @@ export class StalePreviewPlanError extends Error {
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class EmptyPreviewPlanError extends Error {
-  constructor(planId: string) {
+  constructor() {
     super(
-      `Preview plan ${planId} contains no occurrences to generate; adjust the rules or horizon.`
+      "This preview plan contains no occurrences; adjust the schedule rules or the preview horizon before generating."
     );
     this.name = "EmptyPreviewPlanError";
   }
