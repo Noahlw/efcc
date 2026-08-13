@@ -149,6 +149,12 @@ const COPY = {
   noDepartmentManagers: "目前沒有部門管理者。",
   settingsScheduleUnavailable: "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
   settingsAttendanceUnavailable: "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
+  discoverabilityListed: "公開",
+  discoverabilityUnlisted: "不公開",
+  settingsSaveEnrollment: "儲存報名與可見性",
+  settingsConfirmEnrollment: "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
+  settingsConfirmChange: "確認變更",
+  settingsSaved: "課程設定已儲存。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -1048,6 +1054,82 @@ test.describe("CFG-01 Program Settings", () => {
     await expect(
       page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
     ).toHaveCount(0);
+  });
+
+  test("consequential discoverability change requires confirmation before it saves", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("program id", programId);
+
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${id}&task=settings`
+      );
+      const discoverabilitySelect = page.getByRole("combobox", {
+        name: COPY.discoverabilityListed,
+      });
+      await expect(discoverabilitySelect).toHaveValue("Listed");
+
+      await discoverabilitySelect.selectOption("Unlisted");
+      await page
+        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .click();
+      // Submitting a changed value shows the inline confirm instead of
+      // saving immediately -- the save button itself is replaced by the
+      // confirm row (saveEnrollment sets confirmingEnrollment, it does
+      // not mutate yet).
+      const confirmAlert = page.getByRole("alert", {
+        name: COPY.settingsConfirmEnrollment,
+      });
+      await expect(confirmAlert).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.settingsSaveEnrollment })
+      ).toHaveCount(0);
+
+      await confirmAlert
+        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .click();
+      await expect(
+        page.getByText(COPY.settingsSaved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(discoverabilitySelect).toHaveValue("Unlisted");
+
+      // Revert, same confirm flow.
+      await discoverabilitySelect.selectOption("Listed");
+      await page
+        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .click();
+      await expect(
+        page.getByRole("alert", { name: COPY.settingsConfirmEnrollment })
+      ).toBeVisible();
+      await page
+        .getByRole("alert", { name: COPY.settingsConfirmEnrollment })
+        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .click();
+      await expect(
+        page.getByText(COPY.settingsSaved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(discoverabilitySelect).toHaveValue("Listed");
+    } finally {
+      const status = await page.evaluate(async (programId) => {
+        const res = await fetch(`/api/v1/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ discoverability: "Listed" }),
+        });
+        return res.status;
+      }, id);
+      expect(
+        status,
+        "safety-net restore of discoverability must succeed"
+      ).toBe(200);
+    }
   });
 });
 
