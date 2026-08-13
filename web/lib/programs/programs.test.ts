@@ -1074,6 +1074,141 @@ describe("NTF-01: management attention", () => {
       "rejection leaves the inactive Event source"
     );
   });
+  test("filters scoped leadership and honors enrollment and events module gates", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-01-SCOPE-${Date.now()}`,
+      name: "Attention Scope Department",
+    });
+    const scopedProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Scoped Attention Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+    const unscopedProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Unscoped Attention Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+    const leaderGrant = await assignLeader(
+      adminAccess,
+      scopedProgram.program_id,
+      "U002"
+    );
+    assert.strictEqual(leaderGrant.status, 200);
+
+    const pending = await submitRequest(
+      memberAccess,
+      scopedProgram.program_id
+    );
+    const startsAt = new Date(Date.now() + 3 * 86_400_000);
+    const event = await createEventFor(adminAccess, scopedProgram.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "需處理的聚會",
+      location: "禮堂",
+    });
+    const inactive = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${scopedProgram.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(inactive.status, 200);
+
+    const scopedAttention = await attentionFor(memberAccess);
+    assert.deepStrictEqual(
+      scopedAttention.programs.find(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      ),
+      {
+        program_id: scopedProgram.program_id,
+        department_id: department.department_id,
+        pending_enrollment_count: 1,
+        inactive_event_count: 1,
+        cancelled_event_count: 0,
+        actionable_count: 2,
+      }
+    );
+    assert.strictEqual(
+      scopedAttention.programs.some(
+        ({ program_id }) => program_id === unscopedProgram.program_id
+      ),
+      false,
+      "Program Leader scope must not expose another Program"
+    );
+    assert.strictEqual(scopedAttention.total_actionable_count, 2);
+    assert.deepStrictEqual(
+      scopedAttention.items.map(({ kind, program_id }) => ({
+        kind,
+        program_id,
+      })),
+      [
+        { kind: "enrollment", program_id: scopedProgram.program_id },
+        { kind: "event", program_id: scopedProgram.program_id },
+      ]
+    );
+
+    for (const moduleKey of ["enrollment", "events"] as const) {
+      const disabled = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${department.department_id}/modules/${moduleKey}/disable`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(disabled.status, 200);
+    }
+    const afterModulesDisabled = await attentionFor(memberAccess);
+    const scopedAfterModulesDisabled =
+      afterModulesDisabled.programs.find(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      );
+    assert.deepStrictEqual(scopedAfterModulesDisabled, {
+      program_id: scopedProgram.program_id,
+      department_id: department.department_id,
+      pending_enrollment_count: 0,
+      inactive_event_count: 0,
+      cancelled_event_count: 0,
+      actionable_count: 0,
+    });
+    assert.strictEqual(afterModulesDisabled.total_actionable_count, 0);
+    assert.strictEqual(
+      afterModulesDisabled.items.some(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      ),
+      false
+    );
+    assert.ok(pending.request_id);
+  });
 });
 
 describe("PRG-01: programs", () => {

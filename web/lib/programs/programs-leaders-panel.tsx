@@ -76,13 +76,13 @@ export const LeadersPanel = ({
         if (!mounted.current) {
           return;
         }
+        onAttentionRefresh?.();
         await load();
         if (!mounted.current) {
           return;
         }
         setNotice(successCopy);
         announce(successCopy);
-        onAttentionRefresh?.();
       } catch (error) {
         if (!mounted.current) {
           return;
@@ -95,7 +95,7 @@ export const LeadersPanel = ({
         }
       }
     },
-    [load]
+    [load, onAttentionRefresh]
   );
 
   const handleAssign = (event: React.FormEvent<HTMLFormElement>) => {

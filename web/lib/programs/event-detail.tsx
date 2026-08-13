@@ -150,11 +150,11 @@ export const EventDetail = ({
         if (!mounted.current) {
           return;
         }
+        onAttentionRefresh?.();
         await load();
         if (!mounted.current) {
           return;
         }
-        onAttentionRefresh?.();
         const message =
           typeof successCopy === "function" ? successCopy() : successCopy;
         setNotice(message);

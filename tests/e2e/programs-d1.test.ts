@@ -63,6 +63,8 @@ const COPY = {
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
   managerOnlyNote: "此課程由管理員安排成員加入。",
   managementDirectoryTitle: "管理課程目錄",
+  attentionTitle: "管理提示",
+  attentionZero: "目前沒有需要處理或檢視的項目。",
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
@@ -126,6 +128,8 @@ const COPY = {
   eventAvailabilityActivate: "恢復開放",
   eventAvailabilityConfirmProceed: "確定暫停",
   eventAvailabilityNotice: "聚會已暫停開放。",
+  attentionEventCount: "{count} 場聚會需檢視",
+  attentionCancelledCount: "{count} 場聚會狀態",
   eventAvailabilityRestoredNotice: "聚會已恢復開放。",
   eventAvailabilityUndo: "復原",
   eventEditTitle: "編輯聚會資料",
@@ -2401,5 +2405,339 @@ test.describe("EVT-01 event operational detail and availability", () => {
         "restoring the event to Active must succeed"
       ).toBe(200);
     }
+  });
+});
+
+test.describe("NTF-01 management attention", () => {
+  test.describe.configure({ mode: "serial" });
+
+  async function createAttentionEvent(
+    page: Page,
+    programId: string,
+    name: string,
+    offsetDays: number
+  ): Promise<string> {
+    const startsAt = new Date(
+      Date.now() + offsetDays * 86_400_000
+    ).toISOString();
+    const response = await page.evaluate(
+      async ({ programId: id, name: eventName, startsAt: start }) => {
+        const result = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/events`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: eventName,
+              location: "NTF-01 測試場地",
+              starts_at: start,
+              ends_at: new Date(
+                new Date(start).getTime() + 90 * 60_000
+              ).toISOString(),
+              check_in_window_opens_at: new Date(
+                new Date(start).getTime() - 30 * 60_000
+              ).toISOString(),
+              check_in_window_closes_at: new Date(
+                new Date(start).getTime() + 120 * 60_000
+              ).toISOString(),
+            }),
+          }
+        );
+        const body = (await result.json()) as {
+          data?: { event?: { event_id?: string } };
+        };
+        return { status: result.status, eventId: body.data?.event?.event_id };
+      },
+      { programId, name, startsAt }
+    );
+    expect(response.status, "attention event creation must succeed").toBe(201);
+    expect(response.eventId, "attention event must return an id").toBeTruthy();
+    return response.eventId ?? "";
+  }
+
+  async function patchAttentionEvent(
+    page: Page,
+    programId: string,
+    eventId: string,
+    body: Record<string, string>
+  ): Promise<number> {
+    return await page.evaluate(
+      async ({ programId: id, eventId: itemId, patch }) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/events/${encodeURIComponent(itemId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+          }
+        );
+        return response.status;
+      },
+      { programId, eventId, patch: body }
+    );
+  }
+
+  test("zero state is explicit and management attention stays scoped", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+
+    const control = page.getByRole("region", { name: COPY.attentionTitle });
+    await expect(control).toBeVisible();
+    const trigger = control.getByRole("button", {
+      name: COPY.attentionTitle,
+    });
+    await expect(trigger.locator('[class*="badge"]')).toHaveCount(0);
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: COPY.attentionTitle });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("status")).toHaveText(COPY.attentionZero);
+
+    const memberContext = await browser.newContext();
+    try {
+      const memberPage = await memberContext.newPage();
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await memberPage.goto("/programs?mode=management");
+      await expect(
+        memberPage.getByText(COPY.noManagementScope, { exact: true })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("region", { name: COPY.attentionTitle })
+      ).toHaveCount(0);
+    } finally {
+      await memberContext.close();
+    }
+  });
+
+  test("lists bounded real sources, exact task links, workspace counts, and refreshes after decisions", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const departmentId = required(
+      "E2E_DEMO_MINISTRY department id",
+      await page.evaluate(async () => {
+        const response = await fetch("/api/v1/programs/departments");
+        const body = (await response.json()) as {
+          data?: { departments?: { department_id: string; code: string }[] };
+        };
+        return body.data?.departments?.find(
+          ({ code }) => code === "E2E_DEMO_MINISTRY"
+        )?.department_id;
+      })
+    );
+    const programName = `E2E_NTF256_${Date.now()}`;
+    const program = await page.evaluate(
+      async ({ departmentId: id, name }) => {
+        const response = await fetch(
+          `/api/v1/programs/departments/${encodeURIComponent(id)}/programs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              category: "NTF-01",
+              behavior_type: "OneOff",
+              lifecycle: "Active",
+              discoverability: "Listed",
+              enrollment_mode: "MemberRequest",
+            }),
+          }
+        );
+        const body = (await response.json()) as {
+          data?: { program?: { program_id?: string } };
+        };
+        return { status: response.status, id: body.data?.program?.program_id };
+      },
+      { departmentId, name: programName }
+    );
+    expect(program.status, "attention fixture Program creation").toBe(201);
+    const programId = required("attention fixture program id", program.id);
+
+    const memberContext = await browser.newContext();
+    try {
+      const memberPage = await memberContext.newPage();
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      const requestStatus = await memberPage.evaluate(
+        async (requestPath) => {
+          const response = await fetch(requestPath, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          return response.status;
+        },
+        `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
+      );
+      expect([200, 201]).toContain(requestStatus);
+    } finally {
+      await memberContext.close();
+    }
+
+    const inactiveEventId = await createAttentionEvent(
+      page,
+      programId,
+      `E2E_NTF256_暫停_${Date.now()}`,
+      5
+    );
+    expect(
+      await patchAttentionEvent(page, programId, inactiveEventId, {
+        availability: "Inactive",
+      })
+    ).toBe(200);
+
+    const cancelledEventId = await createAttentionEvent(
+      page,
+      programId,
+      `E2E_NTF256_取消_${Date.now()}`,
+      6
+    );
+    expect(
+      await patchAttentionEvent(page, programId, cancelledEventId, {
+        reason: "NTF-01 測試取消",
+      })
+    ).toBe(200);
+
+    const aggregateBeforeUi = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs/attention?limit=5");
+      const body = (await response.json()) as {
+        data?: { total_actionable_count?: number };
+      };
+      return body.data?.total_actionable_count ?? 0;
+    });
+    await page.goto("/programs?mode=management");
+    const control = page.getByRole("region", { name: COPY.attentionTitle });
+    const trigger = control.getByRole("button", {
+      name: COPY.attentionTitle,
+    });
+    await expect(trigger.locator('[class*="badge"]')).toHaveText(
+      String(aggregateBeforeUi)
+    );
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: COPY.attentionTitle });
+    await expect(dialog).toBeVisible();
+
+    const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
+    const inactiveHref = `/programs?mode=management&program=${programId}&task=events&event=${inactiveEventId}`;
+    const cancelledHref = `/programs?mode=management&program=${programId}&task=events&event=${cancelledEventId}`;
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
+    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+    await expect(dialog.getByRole("link")).toHaveCount(3);
+
+    await page.goto(pendingHref);
+    const participants = page.getByRole("region", {
+      name: COPY.workspaceTaskParticipants,
+    });
+    await expect(
+      participants.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(1\\)`, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      participants.getByRole("listitem").filter({ hasText: "E2E Member" })
+    ).toBeVisible();
+
+    await page.goto(inactiveHref);
+    const eventsTask = page.getByRole("region", {
+      name: COPY.workspaceTaskEvents,
+    });
+    await expect(
+      eventsTask.getByLabel(COPY.attentionEventCount.replace("{count}", "1"))
+    ).toHaveText("1");
+    await expect(
+      eventsTask.getByLabel(COPY.attentionCancelledCount.replace("{count}", "1"))
+    ).toHaveText("1");
+
+    await page.goto("/programs?mode=management");
+    await expect(control).toBeVisible();
+    await trigger.click();
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+
+    const pending = await page.evaluate(async (requestPath) => {
+      const response = await fetch(requestPath);
+      const body = (await response.json()) as {
+        data?: { requests?: { request_id: string; status: string }[] };
+      };
+      return body.data?.requests?.find((request) => request.status === "Pending");
+    }, `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`);
+    expect(pending?.request_id, "pending source must have an identity").toBeTruthy();
+    const decisionStatus = await page.evaluate(
+      async ({ programId: id, requestId }) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "Approved" }),
+          }
+        );
+        return response.status;
+      },
+      { programId, requestId: pending?.request_id ?? "" }
+    );
+    expect(decisionStatus).toBe(200);
+    await trigger.click();
+    await expect(dialog).toHaveCount(0);
+    const aggregateAfterApproval = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs/attention?limit=5");
+      const body = (await response.json()) as {
+        data?: { total_actionable_count?: number };
+      };
+      return body.data?.total_actionable_count ?? 0;
+    });
+    const refreshAfterApproval = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/v1/programs/attention?limit=5")
+    );
+    await trigger.click();
+    await refreshAfterApproval;
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toHaveCount(0);
+    await expect(trigger.locator('[class*="badge"]')).toHaveText(
+      String(aggregateAfterApproval)
+    );
+
+    await page.goto(inactiveHref);
+    const attentionRefreshAfterCorrection = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/v1/programs/attention?limit=5")
+    );
+    await page.getByRole("button", { name: COPY.eventAvailabilityActivate }).click();
+    await expect(
+      page.getByText(COPY.eventAvailabilityRestoredNotice, { exact: true })
+    ).toBeVisible();
+    await attentionRefreshAfterCorrection;
+
+    await page.goto("/programs?mode=management");
+    const finalRefresh = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/v1/programs/attention?limit=5")
+    );
+    await trigger.click();
+    await finalRefresh;
+    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
+    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
   });
 });
