@@ -2531,6 +2531,12 @@ test.describe("NTF-01 management attention", () => {
     await trigger.click();
     const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
     await expect(dialog).toBeVisible();
+    const dialogBox = await dialog.boundingBox();
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    expect(dialogBox).not.toBeNull();
+    expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeLessThanOrEqual(
+      viewportWidth
+    );
     await expect(dialog.getByRole("status")).toHaveText(COPY.notificationZero);
 
     const memberContext = await browser.newContext();
