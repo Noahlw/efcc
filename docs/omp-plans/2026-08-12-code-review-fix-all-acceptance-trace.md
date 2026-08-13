@@ -1,6 +1,10 @@
 # Acceptance trace — code-review "fix all" behavior changes
 
-**Status: process deviation on Section A — see Sign-off.**
+**Status: verified; trace-first exception accepted (2026-08-13).** Section A
+remains a post-hoc document for already-implemented behavior — it is NOT
+relabeled as a pre-implementation trace, and this status is NOT a claim of
+strict ADR-0029/Headless-Gate compliance for Section A. See Section A
+acceptance below for the dated owner sign-off and its exact scope.
 
 ## Section A — Post-hoc addendum (already implemented; NOT written before code)
 
@@ -122,3 +126,16 @@ six acceptance criteria in Section B, no more.
 Section A2's coverage gap is now closed. Section A's core deviation
 (implement-then-trace for the original two behavior changes) stands as
 recorded above and still requires project-owner acceptance.
+
+## Section A acceptance (2026-08-13)
+
+Project owner reviewed the deviation record above (implement-then-trace
+ordering for the two behavior changes in commit `bb4677bf`) and explicitly
+accepted it in the same working session that produced this document,
+conditioned on: (1) the observable contract in Section A being accurate
+and (2) the coverage gap it flagged (Section A2) being closed before
+acceptance — both satisfied by the Section B test in commit `7894429`.
+No further action required; this branch's provenance record is complete
+as of `7894429`. This acceptance covers process provenance only — it is
+not authorization to merge to `main`, which remains a separate explicit
+approval per this project's standing rule.
