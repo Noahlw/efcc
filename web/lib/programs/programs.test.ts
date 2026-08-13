@@ -2966,6 +2966,81 @@ describe("EVT-01: event operations (#251)", () => {
       .run();
   });
 
+  test("availability: an open check-in window with zero check-ins still requires confirmation", async () => {
+    // EVT-01 (#251) AC4: a currently-open check-in window is itself an
+    // affected open operation, independent of whether anyone has checked
+    // in yet. Window bounds are relative to "now" (unlike this file's
+    // other fixed-future-date events) because the window must be open at
+    // the moment this test runs.
+    const now = Date.now();
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: new Date(now - 30 * 60_000).toISOString(),
+      ends_at: new Date(now + 30 * 60_000).toISOString(),
+      check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 45 * 60_000).toISOString(),
+    });
+
+    const unconfirmed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unconfirmed.status, 409);
+    const required = await problemOf(unconfirmed);
+    assert.strictEqual(required.code, "CONFIRMATION_REQUIRED");
+    assert.strictEqual(
+      required.open_operations,
+      1,
+      "an open check-in window with zero check-ins still counts as one affected operation"
+    );
+    const deniedAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(deniedAudit?.outcome, "DENIED");
+
+    const confirmed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(confirmed.status, 200);
+    const result = (await assertCorrelated(confirmed)) as {
+      data: { event: { availability: string } };
+    };
+    assert.strictEqual(result.data.event.availability, "Inactive");
+
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(event.event_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(audit?.outcome, "SUCCESS");
+  });
+
   test("availability: program-wide enrollments alone do not gate this event's deactivation", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-14T12:00:00.000Z",
