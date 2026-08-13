@@ -86,7 +86,7 @@ export function ProgramsBoundary() {
           ? COPY.programs.managementScopeReady
           : undefined,
     },
-    [pathname, router]
+    [pathname]
   );
   useEffect(() => {
     const syncSearch = () =>
@@ -495,6 +495,8 @@ function ManagementPanel({
         announce(message);
         return { kind: "error", message };
       },
+      // router is read through optionsRef; including its unstable identity in
+      // deps would restart the attention request on every shell render.
       announceLoading: COPY.programs.attentionLoading,
       announceReady: (data) =>
         data.items.length === 0 ? COPY.programs.attentionZero : undefined,
@@ -506,7 +508,6 @@ function ManagementPanel({
       intent.programId,
       intent.task,
       intent.eventId,
-      router,
     ]
   );
   useEffect(() => {
