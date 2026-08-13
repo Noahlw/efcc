@@ -155,6 +155,8 @@ const COPY = {
   settingsConfirmEnrollment: "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
   settingsConfirmChange: "確認變更",
   settingsSaved: "課程設定已儲存。",
+  eventAvailabilityConfirmBody:
+    "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -1927,5 +1929,110 @@ test.describe("EVT-01 event operational detail and availability", () => {
         {}
       )
     ).toBe(200);
+  });
+
+  test("a currently open check-in window with zero check-ins still requires confirmation to deactivate", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+
+    // This event's window must be open right now (unlike every other
+    // fixture in this file, which is dated +120 days so the window is
+    // never open at test time) -- construct it relative to Date.now().
+    const created = await page.evaluate(async (programId) => {
+      const now = Date.now();
+      const res = await fetch(
+        `/api/v1/programs/${encodeURIComponent(programId)}/events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            starts_at: new Date(now - 30 * 60_000).toISOString(),
+            ends_at: new Date(now + 30 * 60_000).toISOString(),
+            check_in_window_opens_at: new Date(
+              now - 15 * 60_000
+            ).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 45 * 60_000
+            ).toISOString(),
+          }),
+        }
+      );
+      const body = (await res.json()) as {
+        data?: { event?: { event_id?: string } };
+      };
+      return { status: res.status, eventId: body.data?.event?.event_id ?? null };
+    }, programId);
+    expect(created.status, "event creation must succeed").toBe(201);
+    const id = required("open-window event id", created.eventId ?? undefined);
+
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${programId}&task=events&event=${id}`
+      );
+      await expect(
+        page.getByRole("region", { name: COPY.eventDetailTitle })
+      ).toBeVisible();
+
+      // Single click: the client optimistically attempts a no-confirm
+      // deactivate (checked_in === 0 in the loaded summary), the server
+      // rejects it with 409 CONFIRMATION_REQUIRED because the window is
+      // open, and the client catches that and shows the same inline
+      // confirm UI as the checked-in>0 case -- with an exact count of 1
+      // (the open window itself is the one affected operation; see
+      // department-workspace.ts's impactCount = Math.max(checked_in,
+      // windowOpen ? 1 : 0)).
+      await page
+        .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
+        .click();
+      const expectedBody = COPY.eventAvailabilityConfirmBody.replace(
+        "{count}",
+        "1"
+      );
+      const confirmAlert = page.getByRole("alert").filter({
+        hasText: expectedBody,
+      });
+      await expect(confirmAlert).toBeVisible();
+      await expect(
+        confirmAlert.getByRole("button", {
+          name: COPY.eventAvailabilityConfirmProceed,
+        })
+      ).toBeVisible();
+
+      await confirmAlert
+        .getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
+        .click();
+      await expect(
+        page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.eventAvailabilityUndo })
+      ).toBeVisible();
+    } finally {
+      const restoreStatus = await page.evaluate(
+        async ({ programId, eventId }) => {
+          const res = await fetch(
+            `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ availability: "Active" }),
+            }
+          );
+          return res.status;
+        },
+        { programId, eventId: id }
+      );
+      expect(
+        restoreStatus,
+        "restoring the event to Active must succeed"
+      ).toBe(200);
+    }
   });
 });
