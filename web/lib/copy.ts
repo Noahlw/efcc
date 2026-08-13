@@ -218,7 +218,7 @@ export const COPY = {
     attentionRetry: "重試載入提示",
     attentionZero: "目前沒有需要處理或檢視的項目。",
     attentionListLabel: "管理提示清單",
-    attentionViewAll: "查看管理課程目錄",
+    attentionViewAll: "查看全部管理提示",
     attentionEnrollmentLabel: "待處理報名",
     attentionEventCount: "{count} 場聚會需檢視",
     attentionCancelledCount: "{count} 場聚會狀態",
