@@ -893,7 +893,11 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         .filter({ hasText: "E2E Member" });
       await expect(requestRow.getByRole("button", { name: COPY.approve })).toBeVisible();
       await requestRow.getByRole("button", { name: COPY.approve }).click();
-      await expect(page.getByText(COPY.decisionMade)).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: COPY.workspaceTaskParticipants })
+          .getByText(COPY.decisionMade, { exact: true })
+      ).toBeVisible();
       await expect(activeTab).toContainText("(1)");
       await activeTab.click();
       await expect(
