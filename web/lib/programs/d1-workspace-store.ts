@@ -7,6 +7,10 @@ import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
   AuditInput,
+  GenerationRunItemInput,
+  GenerationRunItemRow,
+  GenerationRunRow,
+  GenerationRunStatus,
   ProgramAccessRow,
   DepartmentInput,
   DepartmentManagerGrantInput,
@@ -21,6 +25,8 @@ import type {
   EnrollmentRow,
   EventInput,
   EventRow,
+  PreviewOccurrenceRow,
+  PreviewPlanRow,
   ProgramInput,
   ProgramLeaderGrantInput,
   ProgramLeaderRevokeInput,
@@ -415,9 +421,9 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     await this.db
       .prepare(
         `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
-           day_of_week, month_day, start_time, end_time, created_by, created_at,
-           updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           day_of_week, month_day, start_time, end_time, location, created_by,
+           created_at, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         ruleId,
@@ -427,6 +433,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.month_day,
         input.start_time,
         input.end_time,
+        input.location ?? null,
         input.created_by,
         input.created_at,
         input.updated_by,
@@ -452,6 +459,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
            month_day = COALESCE(?, month_day),
            start_time = COALESCE(?, start_time),
            end_time = COALESCE(?, end_time),
+           location = COALESCE(?, location),
            updated_by = ?,
            updated_at = ?
          WHERE rule_id = ?`
@@ -462,6 +470,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         update.month_day ?? null,
         update.start_time ?? null,
         update.end_time ?? null,
+        update.location ?? null,
         update.updated_by,
         update.updated_at,
         ruleId
@@ -773,6 +782,224 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       active_enrollments: Number(enrollments?.count ?? 0),
       checked_in: Number(checkedIn?.count ?? 0),
     };
+  }
+
+  // --- EVT-02 (#252): preview plans and generation runs ---
+
+  async findPreviewPlan(planId: string): Promise<PreviewPlanRow | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM program_preview_plans WHERE plan_id = ?")
+      .bind(planId)
+      .first<PreviewPlanRow>();
+    return row ?? null;
+  }
+
+  async findLatestPreviewPlan(
+    programId: string
+  ): Promise<PreviewPlanRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM program_preview_plans
+         WHERE program_id = ? ORDER BY created_at DESC, plan_id DESC LIMIT 1`
+      )
+      .bind(programId)
+      .first<PreviewPlanRow>();
+    return row ?? null;
+  }
+
+  async listPreviewOccurrences(
+    planId: string
+  ): Promise<PreviewOccurrenceRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM program_preview_occurrences
+         WHERE plan_id = ? ORDER BY occurs_on ASC, starts_at ASC, rule_id ASC`
+      )
+      .bind(planId)
+      .all<PreviewOccurrenceRow>();
+    return result.results ?? [];
+  }
+
+  async replacePreviewPlan(
+    plan: PreviewPlanRow,
+    occurrences: PreviewOccurrenceRow[]
+  ): Promise<PreviewPlanRow> {
+    // One row per (program, plan_hash): identical inputs resolve to the same
+    // plan identity; changed inputs create a new (superseding) plan.
+    await this.db
+      .prepare(
+        `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
+           plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        plan.plan_id,
+        plan.program_id,
+        plan.plan_hash,
+        plan.horizon_days,
+        plan.from_date,
+        plan.rule_count,
+        plan.created_by,
+        plan.created_at
+      )
+      .run();
+    const existing = await this.db
+      .prepare(
+        `SELECT * FROM program_preview_plans
+         WHERE program_id = ? AND plan_hash = ?`
+      )
+      .bind(plan.program_id, plan.plan_hash)
+      .first<PreviewPlanRow>();
+    if (!existing) {
+      throw new WorkspaceNotFoundError("preview_plan", plan.plan_id);
+    }
+    if (existing.plan_id !== plan.plan_id) {
+      // Identical inputs already previewed; reuse the existing plan as-is.
+      return existing;
+    }
+    if (occurrences.length > 0) {
+      await this.db.batch(
+        occurrences.map((occurrence) =>
+          this.db
+            .prepare(
+              `INSERT OR IGNORE INTO program_preview_occurrences
+                 (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
+                  location, skip_reason, exception_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(
+              occurrence.occurrence_id,
+              occurrence.plan_id,
+              occurrence.rule_id,
+              occurrence.occurs_on,
+              occurrence.starts_at,
+              occurrence.ends_at,
+              occurrence.location,
+              occurrence.skip_reason,
+              occurrence.exception_id
+            )
+        )
+      );
+    }
+    return existing;
+  }
+
+  async findGenerationRunByPlan(planId: string): Promise<GenerationRunRow | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM program_generation_runs WHERE plan_id = ?")
+      .bind(planId)
+      .first<GenerationRunRow>();
+    return row ?? null;
+  }
+
+  async createGenerationRun(input: {
+    run_id: string;
+    program_id: string;
+    plan_id: string;
+    started_at: string;
+    created_by: string | null;
+    correlation_id: string | null;
+  }): Promise<{ run: GenerationRunRow; created: boolean }> {
+    const result = await this.db
+      .prepare(
+        `INSERT OR IGNORE INTO program_generation_runs (run_id, program_id,
+           plan_id, status, created, skipped, failed, started_at, created_by,
+           correlation_id)
+         VALUES (?, ?, ?, 'partial', 0, 0, 0, ?, ?, ?)`
+      )
+      .bind(
+        input.run_id,
+        input.program_id,
+        input.plan_id,
+        input.started_at,
+        input.created_by,
+        input.correlation_id
+      )
+      .run();
+    const row = await this.findGenerationRunByPlan(input.plan_id);
+    if (!row) {
+      throw new WorkspaceNotFoundError("generation_run", input.run_id);
+    }
+    return { run: row, created: (result.meta?.changes ?? 0) > 0 };
+  }
+
+  async listGenerationRunItems(runId: string): Promise<GenerationRunItemRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM program_generation_run_items
+         WHERE run_id = ? ORDER BY item_id ASC`
+      )
+      .bind(runId)
+      .all<GenerationRunItemRow>();
+    return result.results ?? [];
+  }
+
+  /**
+   * Record one attempt durably. Fresh occurrences insert; an existing row is
+   * only superseded when it previously FAILED (retry after a partial run),
+   * so terminal created/skipped outcomes are never overwritten by a
+   * concurrent or repeated request.
+   */
+  async recordGenerationRunItem(
+    input: GenerationRunItemInput
+  ): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `INSERT INTO program_generation_run_items (item_id, run_id,
+           occurrence_id, starts_at, outcome, event_id, detail)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(run_id, occurrence_id) DO UPDATE SET
+           outcome = excluded.outcome,
+           event_id = excluded.event_id,
+           detail = excluded.detail
+         WHERE outcome = 'failed'`
+      )
+      .bind(
+        input.item_id,
+        input.run_id,
+        input.occurrence_id,
+        input.starts_at,
+        input.outcome,
+        input.event_id,
+        input.detail
+      )
+      .run();
+    return (result.meta?.changes ?? 0) > 0;
+  }
+
+  async finishGenerationRun(
+    runId: string,
+    update: {
+      status: GenerationRunStatus;
+      created: number;
+      skipped: number;
+      failed: number;
+      finished_at: string;
+    }
+  ): Promise<GenerationRunRow> {
+    await this.db
+      .prepare(
+        `UPDATE program_generation_runs SET status = ?, created = ?, skipped = ?,
+           failed = ?, finished_at = ?
+         WHERE run_id = ?`
+      )
+      .bind(
+        update.status,
+        update.created,
+        update.skipped,
+        update.failed,
+        update.finished_at,
+        runId
+      )
+      .run();
+    const row = await this.db
+      .prepare("SELECT * FROM program_generation_runs WHERE run_id = ?")
+      .bind(runId)
+      .first<GenerationRunRow>();
+    if (!row) {
+      throw new WorkspaceNotFoundError("generation_run", runId);
+    }
+    return row;
   }
 
   async createEnrollmentRequest(

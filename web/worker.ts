@@ -401,6 +401,7 @@ export default {
         handleUpdateScheduleRule,
         handleCreateScheduleException,
         handleDeleteScheduleException,
+        handlePreviewEvents,
         handleGenerateEvents,
         handleCreateEvent,
         handleListEvents,
@@ -623,6 +624,16 @@ export default {
           programEnv,
           scheduleException.groups?.id ?? "",
           scheduleException.groups?.exceptionId ?? ""
+        );
+      }
+      const programPreview = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/preview$/u
+      );
+      if (programPreview && request.method === "POST") {
+        return handlePreviewEvents(
+          request,
+          programEnv,
+          programPreview.groups?.id ?? ""
         );
       }
       const programGenerate = url.pathname.match(

@@ -21,6 +21,8 @@ export interface ScheduleRuleLike {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  /** Optional default venue materialized onto preview rows and generated events. */
+  location?: string | null;
 }
 
 export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
@@ -119,6 +121,75 @@ export function occurrencesForRule(
     result.push({
       starts_at: hkWallToUtc(date, start),
       ends_at: hkWallToUtc(date, end),
+    });
+  }
+  return result;
+}
+
+/**
+ * One materialized preview row for a rule. CANCEL exceptions still produce
+ * a row (so the plan is exact about suppressed dates) carrying the original
+ * rule times plus skip_reason; RESCHEDULE exceptions override the times and
+ * record the exception_id.
+ */
+export interface PreviewOccurrenceCandidate {
+  rule_id: string;
+  /** HK wall date "YYYY-MM-DD" the occurrence falls on. */
+  occurs_on: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  skip_reason: "CANCEL" | null;
+  exception_id: string | null;
+}
+
+/**
+ * Exact future occurrence candidates for one rule over
+ * [fromDate, fromDate + horizonDays), including CANCEL rows marked for
+ * skipping. Deterministic: dates ascend, and within a date the rule's own
+ * times are used. Pure function (no I/O); the caller owns identity and
+ * persistence.
+ */
+export function previewOccurrencesForRule(
+  rule: ScheduleRuleLike,
+  fromDate: string,
+  horizonDays: number,
+  exceptions: ScheduleExceptionLike[]
+): PreviewOccurrenceCandidate[] {
+  const result: PreviewOccurrenceCandidate[] = [];
+  const byDate = new Map(exceptions.map((e) => [e.override_date, e]));
+  for (let i = 0; i < horizonDays; i += 1) {
+    const date = addWallDays(fromDate, i);
+    const matches =
+      rule.recurrence === "WEEKLY"
+        ? wallWeekday(date) === rule.day_of_week
+        : Number(date.slice(8, 10)) === rule.month_day;
+    if (!matches) {
+      continue;
+    }
+    const exception = byDate.get(date);
+    if (exception?.action === "CANCEL") {
+      result.push({
+        rule_id: rule.rule_id,
+        occurs_on: date,
+        starts_at: hkWallToUtc(date, rule.start_time),
+        ends_at: hkWallToUtc(date, rule.end_time),
+        location: rule.location ?? null,
+        skip_reason: "CANCEL",
+        exception_id: exception.exception_id,
+      });
+      continue;
+    }
+    const start = exception?.new_start_time ?? rule.start_time;
+    const end = exception?.new_end_time ?? rule.end_time;
+    result.push({
+      rule_id: rule.rule_id,
+      occurs_on: date,
+      starts_at: hkWallToUtc(date, start),
+      ends_at: hkWallToUtc(date, end),
+      location: rule.location ?? null,
+      skip_reason: null,
+      exception_id: exception?.exception_id ?? null,
     });
   }
   return result;

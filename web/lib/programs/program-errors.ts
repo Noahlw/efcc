@@ -73,6 +73,38 @@ export class NoScheduleRulesError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class PreviewPlanNotFoundError extends Error {
+  constructor(planId: string) {
+    super(`Preview plan ${planId} does not exist or is not usable here.`);
+    this.name = "PreviewPlanNotFoundError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class StalePreviewPlanError extends Error {
+  constructor(planId: string, programId: string) {
+    super(
+      `Preview plan ${planId} is stale: the schedule changed after it was created, or it was superseded by a newer preview. Preview again before generating.`
+    );
+    this.name = "StalePreviewPlanError";
+    this.planId = planId;
+    this.programId = programId;
+  }
+  readonly planId: string;
+  readonly programId: string;
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EmptyPreviewPlanError extends Error {
+  constructor(planId: string) {
+    super(
+      `Preview plan ${planId} contains no occurrences to generate; adjust the rules or horizon.`
+    );
+    this.name = "EmptyPreviewPlanError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateEventError extends Error {
   constructor(startsAt: string) {
     super(`An event already exists for this start time: ${startsAt}`);

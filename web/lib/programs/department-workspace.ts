@@ -30,6 +30,7 @@ import {
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
+  EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
@@ -37,19 +38,25 @@ import {
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   ProgramLeaderConflictError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
   SelfDepartmentManagerError,
+  StalePreviewPlanError,
 } from "./program-errors";
 import {
   exceptionForEvent,
   hkTodayWallDate,
-  occurrencesForRule,
+  previewOccurrencesForRule,
 } from "./recurrence";
-import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
+import type {
+  PreviewOccurrenceCandidate,
+  RecurrenceKind,
+  ScheduleExceptionAction,
+} from "./recurrence";
 import type {
   AuditInput,
   AuditOutcome,
@@ -62,6 +69,9 @@ import type {
   EventAvailability,
   EventRow,
   GenerateResult,
+  GenerationRunItemRow,
+  PreviewOccurrenceRow,
+  PreviewPlanRow,
   ProgramBehaviorType,
   ProgramDiscoverability,
   ProgramEnrollmentMode,
@@ -263,6 +273,7 @@ export interface CreateScheduleRuleCommand {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location?: string | null;
 }
 
 export interface UpdateScheduleRuleCommand {
@@ -271,6 +282,7 @@ export interface UpdateScheduleRuleCommand {
   month_day?: number | null;
   start_time?: string;
   end_time?: string;
+  location?: string | null;
 }
 
 export interface CreateScheduleExceptionCommand {
@@ -1567,12 +1579,71 @@ export class DepartmentWorkspace {
     );
   }
 
-  async generateEvents(
+  /**
+   * Deterministic SHA-256 hex over the exact plan inputs (sorted so rule and
+   * exception ordering never changes the identity). The hash freezes the
+   * rules/exceptions/horizon/from-date the plan was computed from, which is
+   * what generation re-checks to reject stale plans before any write.
+   */
+  private async computePlanHash(
+    rules: ScheduleRuleRow[],
+    exceptions: ScheduleExceptionRow[],
+    horizonDays: number,
+    fromDate: string
+  ): Promise<string> {
+    const canonical = JSON.stringify({
+      horizon_days: horizonDays,
+      from_date: fromDate,
+      rules: [...rules]
+        .sort((a, b) => a.rule_id.localeCompare(b.rule_id))
+        .map((rule) => ({
+          rule_id: rule.rule_id,
+          recurrence: rule.recurrence,
+          day_of_week: rule.day_of_week,
+          month_day: rule.month_day,
+          start_time: rule.start_time,
+          end_time: rule.end_time,
+          location: rule.location ?? null,
+        })),
+      exceptions: [...exceptions]
+        .sort((a, b) =>
+          a.rule_id === b.rule_id
+            ? a.override_date.localeCompare(b.override_date)
+            : a.rule_id.localeCompare(b.rule_id)
+        )
+        .map((exception) => ({
+          rule_id: exception.rule_id,
+          override_date: exception.override_date,
+          action: exception.action,
+          new_start_time: exception.new_start_time,
+          new_end_time: exception.new_end_time,
+        })),
+    });
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(canonical)
+    );
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * EVT-02 (#252): preview the exact future occurrence set for the current
+   * rules. Server-owned and durable; writes no events and no generation
+   * records. Identical inputs resolve to the same plan identity; changed
+   * inputs produce a new superseding plan. Zero rules is an explicit failed
+   * outcome with a durable FAILED audit record.
+   */
+  async previewEvents(
     ctx: AuthorizationContext,
     programId: string,
     horizonDays: number,
     correlationId: string | null
-  ): Promise<GenerateResult> {
+  ): Promise<{
+    plan: PreviewPlanRow;
+    occurrences: PreviewOccurrenceRow[];
+  }> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -1586,7 +1657,7 @@ export class DepartmentWorkspace {
     if (rules.length === 0) {
       await this.audit(
         ctx,
-        "EVENT_GENERATE",
+        "EVENT_PREVIEW",
         "event",
         programId,
         "FAILED",
@@ -1597,66 +1668,356 @@ export class DepartmentWorkspace {
       throw new NoScheduleRulesError(programId);
     }
     const exceptions = await this.store.listScheduleExceptions(
-      rules.map((r) => r.rule_id)
+      rules.map((rule) => rule.rule_id)
+    );
+    const fromDate = hkTodayWallDate();
+    const candidates = this.materializeOccurrences(
+      rules,
+      fromDate,
+      horizonDays,
+      exceptions
+    );
+    const planHash = await this.computePlanHash(
+      rules,
+      exceptions,
+      horizonDays,
+      fromDate
     );
     const now = new Date().toISOString();
-    const fromDate = hkTodayWallDate();
-    let created = 0;
-    let skipped = 0;
-    const insertions: Promise<boolean>[] = [];
-    for (const rule of rules) {
-      const occurrences = occurrencesForRule(
-        rule,
-        fromDate,
-        horizonDays,
-        exceptions
+    const plan: PreviewPlanRow = {
+      plan_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_hash: planHash,
+      horizon_days: horizonDays,
+      from_date: fromDate,
+      rule_count: rules.length,
+      created_by: ctx.actorUserId,
+      created_at: now,
+    };
+    const occurrences = candidates.map((candidate) =>
+      this.previewOccurrenceRow(plan.plan_id, candidate)
+    );
+    const persisted = await this.store.replacePreviewPlan(plan, occurrences);
+    // The persisted plan is authoritative (identical inputs resolve to the
+    // existing plan); read its exact rows back so plan identity and
+    // occurrence identities always agree.
+    const storedOccurrences = await this.store.listPreviewOccurrences(
+      persisted.plan_id
+    );
+    await this.audit(
+      ctx,
+      "EVENT_PREVIEW",
+      "event",
+      programId,
+      "SUCCESS",
+      null,
+      {
+        plan_id: persisted.plan_id,
+        plan_hash: persisted.plan_hash,
+        horizon_days: persisted.horizon_days,
+        rule_count: persisted.rule_count,
+        occurrence_count: storedOccurrences.length,
+      },
+      correlationId
+    );
+    return { plan: persisted, occurrences: storedOccurrences };
+  }
+
+  /**
+   * EVT-02 (#252): generate events from a current preview plan.
+   *
+   * The plan must be current (hash matches the live schedule and no newer
+   * plan supersedes it) before any write; otherwise a deterministic
+   * STALE_PLAN failure leaves the event directory untouched. Generation is
+   * idempotent and resumable: one durable run per plan, one attempt row per
+   * occurrence, and the events (program_id, starts_at) unique index, so
+   * repeat, concurrent, and post-partial-failure retries never duplicate an
+   * already-created event and expose deterministic counts.
+   */
+  async generateEvents(
+    ctx: AuthorizationContext,
+    programId: string,
+    planId: string,
+    correlationId: string | null
+  ): Promise<GenerateResult> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (program.behavior_type !== "Recurring") {
+      throw new ScheduleRuleNotApplicableError(programId);
+    }
+    const plan = await this.store.findPreviewPlan(planId);
+    if (!plan || plan.program_id !== programId) {
+      throw new PreviewPlanNotFoundError(planId);
+    }
+    // Reject stale/ambiguous plans before writes: the live schedule must
+    // still match the plan's frozen inputs, and no newer preview may have
+    // superseded this plan.
+    const rules = await this.store.listScheduleRules(programId);
+    const exceptions = await this.store.listScheduleExceptions(
+      rules.map((rule) => rule.rule_id)
+    );
+    const currentHash = await this.computePlanHash(
+      rules,
+      exceptions,
+      plan.horizon_days,
+      plan.from_date
+    );
+    const latest = await this.store.findLatestPreviewPlan(programId);
+    const superseded =
+      latest !== null &&
+      latest.plan_id !== plan.plan_id &&
+      (latest.created_at > plan.created_at ||
+        (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
+    if (currentHash !== plan.plan_hash || superseded) {
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "FAILED",
+        null,
+        { plan_id: planId, reason: "stale_plan" },
+        correlationId
       );
-      for (const occurrence of occurrences) {
-        insertions.push(
-          this.store.insertGeneratedEvent({
-            program_id: programId,
-            starts_at: occurrence.starts_at,
-            ends_at: occurrence.ends_at,
-            status: "Active",
-            availability: "Active",
-            source: "SCHEDULE",
-            name: null,
-            location: null,
-            check_in_window_opens_at: null,
-            check_in_window_closes_at: null,
-            cancel_reason: null,
-            created_by: ctx.actorUserId,
-            created_at: now,
-            updated_by: ctx.actorUserId,
-            updated_at: now,
-          })
-        );
-      }
+      throw new StalePreviewPlanError(planId, programId);
     }
-    const results = await Promise.all(insertions);
-    for (const inserted of results) {
-      if (inserted) {
-        created += 1;
-      } else {
-        skipped += 1;
-      }
+    const occurrences = await this.store.listPreviewOccurrences(planId);
+    if (occurrences.length === 0) {
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "FAILED",
+        null,
+        { plan_id: planId, reason: "empty_plan" },
+        correlationId
+      );
+      throw new EmptyPreviewPlanError(planId);
     }
-    const result: GenerateResult = {
+    const now = new Date().toISOString();
+    const { run, created: runCreated } = await this.store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: planId,
+      started_at: now,
+      created_by: ctx.actorUserId,
+      correlation_id: correlationId,
+    });
+    const resumed = !runCreated;
+    if (run.status === "completed") {
+      // Deterministic repeat: the plan was already fully generated, so this
+      // request created nothing and skipped every occurrence of the plan.
+      return {
+        run_id: run.run_id,
+        plan_id: planId,
+        status: "completed",
+        created: 0,
+        skipped: occurrences.length,
+        failed: 0,
+        resumed: true,
+      };
+    }
+    // Each occurrence gets exactly one durable attempt row; repeated and
+    // concurrent requests converge on the same rows (INSERT … ON CONFLICT
+    // only supersedes previously-failed rows), so the item table is the
+    // single source of truth for the final counts. Failed rows are retried;
+    // created/skipped rows are terminal.
+    await this.processGenerationOccurrences(
+      run.run_id,
+      programId,
+      occurrences,
+      ctx.actorUserId,
+      now
+    );
+    const items = await this.store.listGenerationRunItems(run.run_id);
+    const created = items.filter((item) => item.outcome === "created").length;
+    const skipped = items.filter((item) => item.outcome === "skipped").length;
+    const failed = items.filter((item) => item.outcome === "failed").length;
+    const status: GenerateResult["status"] =
+      failed === 0 ? "completed" : created + skipped > 0 ? "partial" : "failed";
+    const finished = await this.store.finishGenerationRun(run.run_id, {
+      status,
       created,
       skipped,
-      rule_count: rules.length,
-    };
+      failed,
+      finished_at: new Date().toISOString(),
+    });
     await this.audit(
       ctx,
       "EVENT_GENERATE",
       "event",
       programId,
-      "SUCCESS",
+      status === "completed" ? "SUCCESS" : "FAILED",
       null,
-      result,
+      {
+        run_id: finished.run_id,
+        plan_id: planId,
+        status: finished.status,
+        created: finished.created,
+        skipped: finished.skipped,
+        failed: finished.failed,
+        resumed,
+      },
       correlationId
     );
-    return result;
+    return {
+      run_id: finished.run_id,
+      plan_id: planId,
+      status: finished.status,
+      created: finished.created,
+      skipped: finished.skipped,
+      failed: finished.failed,
+      resumed,
+    };
+  }
+
+  /**
+   * Durably attempt every occurrence of a run. Attempts are independent and
+   * run in parallel; each attempt row is durable, so a crash mid-run leaves
+   * a resumable partial state and retries resume from the item table.
+   * Failed units are retried; created/skipped rows are terminal.
+   */
+  private async processGenerationOccurrences(
+    runId: string,
+    programId: string,
+    occurrences: PreviewOccurrenceRow[],
+    actorUserId: string,
+    now: string
+  ): Promise<void> {
+    const runItems = await this.store.listGenerationRunItems(runId);
+    const processed = new Map(
+      runItems.map((item) => [item.occurrence_id, item])
+    );
+    await Promise.all(
+      occurrences.map((occurrence) =>
+        this.attemptGenerationOccurrence(
+          runId,
+          programId,
+          occurrence,
+          actorUserId,
+          now,
+          processed
+        )
+      )
+    );
+  }
+
+  private async attemptGenerationOccurrence(
+    runId: string,
+    programId: string,
+    occurrence: PreviewOccurrenceRow,
+    actorUserId: string,
+    now: string,
+    processed: ReadonlyMap<string, GenerationRunItemRow>
+  ): Promise<void> {
+    const prior = processed.get(occurrence.occurrence_id);
+    if (prior && prior.outcome !== "failed") {
+      return;
+    }
+    if (occurrence.skip_reason === "CANCEL") {
+      await this.store.recordGenerationRunItem({
+        item_id: `${runId}:${occurrence.occurrence_id}`,
+        run_id: runId,
+        occurrence_id: occurrence.occurrence_id,
+        starts_at: occurrence.starts_at,
+        outcome: "skipped",
+        event_id: null,
+        detail: "CANCEL",
+      });
+      return;
+    }
+    let outcome: "created" | "skipped" | "failed" = "failed";
+    let eventId: string | null = null;
+    let detail: string | null = null;
+    try {
+      const inserted = await this.store.insertGeneratedEvent({
+        program_id: programId,
+        starts_at: occurrence.starts_at,
+        ends_at: occurrence.ends_at,
+        status: "Active",
+        availability: "Active",
+        source: "SCHEDULE",
+        name: null,
+        location: occurrence.location,
+        check_in_window_opens_at: null,
+        check_in_window_closes_at: null,
+        cancel_reason: null,
+        created_by: actorUserId,
+        created_at: now,
+        updated_by: actorUserId,
+        updated_at: now,
+      });
+      if (inserted) {
+        outcome = "created";
+        const createdEvent = await this.store.findEventByStart(
+          programId,
+          occurrence.starts_at
+        );
+        eventId = createdEvent?.event_id ?? null;
+      } else {
+        // Unique (program_id, starts_at) already satisfied by another run.
+        outcome = "skipped";
+      }
+    } catch (error) {
+      outcome = "failed";
+      detail = error instanceof Error ? error.message : String(error);
+    }
+    await this.store.recordGenerationRunItem({
+      item_id: `${runId}:${occurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: occurrence.occurrence_id,
+      starts_at: occurrence.starts_at,
+      outcome,
+      event_id: eventId,
+      detail,
+    });
+  }
+
+  /** Deterministic, ordered occurrence candidates for every rule. */
+  private materializeOccurrences(
+    rules: ScheduleRuleRow[],
+    fromDate: string,
+    horizonDays: number,
+    exceptions: ScheduleExceptionRow[]
+  ): PreviewOccurrenceCandidate[] {
+    const candidates: PreviewOccurrenceCandidate[] = [];
+    for (const rule of rules) {
+      candidates.push(
+        ...previewOccurrencesForRule(rule, fromDate, horizonDays, exceptions)
+      );
+    }
+    return candidates.sort(
+      (a, b) =>
+        a.occurs_on.localeCompare(b.occurs_on) ||
+        a.starts_at.localeCompare(b.starts_at) ||
+        a.rule_id.localeCompare(b.rule_id)
+    );
+  }
+
+  /**
+   * Deterministic occurrence row identity: plan + rule + HK wall date.
+   * Plan-scoped so a superseding plan never collides on the same row ids.
+   */
+  private previewOccurrenceRow(
+    planId: string,
+    candidate: PreviewOccurrenceCandidate
+  ): PreviewOccurrenceRow {
+    return {
+      occurrence_id: `${planId}:${candidate.rule_id}:${candidate.occurs_on}`,
+      plan_id: planId,
+      rule_id: candidate.rule_id,
+      occurs_on: candidate.occurs_on,
+      starts_at: candidate.starts_at,
+      ends_at: candidate.ends_at,
+      location: candidate.location,
+      skip_reason: candidate.skip_reason,
+      exception_id: candidate.exception_id,
+    };
   }
 
   async createEvent(

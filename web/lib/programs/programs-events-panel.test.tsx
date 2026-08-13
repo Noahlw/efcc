@@ -7,7 +7,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY } from "@/lib/copy";
 import type {
   Program,
   ProgramEvent,
@@ -53,6 +53,7 @@ const WEEKLY_RULE: ScheduleRule = {
   month_day: null,
   start_time: "19:30",
   end_time: "21:00",
+  location: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };
@@ -286,78 +287,6 @@ describe("PRG-02 events panel", () => {
         screen.getByText(COPY.programs.eventCancelled)
       ).toBeInTheDocument();
     });
-  });
-
-  test("U6 a failed generation surfaces the mapped error in an alert", async () => {
-    server.use(
-      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
-      ),
-      http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
-      ),
-      http.post("/api/v1/programs/prog-1/events/generate", () =>
-        HttpResponse.json(
-          {
-            type: "about:blank",
-            title: "Invalid",
-            status: 422,
-            code: "VALIDATION",
-            detail: "產生範圍的天數必須是 1 至 365 之間的整數。",
-            requestId: "rid-4",
-          },
-          { status: 422 }
-        )
-      )
-    );
-    const user = userEvent.setup();
-    render(<EventsPanel program={RECURRING} canManage />);
-    await screen.findByText(COPY.programs.noRules);
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.generateEvents })
-    );
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      "產生範圍的天數必須是 1 至 365 之間的整數。"
-    );
-  });
-
-  test("U7 generation notice reports created and skipped counts", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
-      ),
-      http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
-      ),
-      http.post("/api/v1/programs/prog-1/events/generate", () => {
-        callCount += 1;
-        return HttpResponse.json({
-          requestId: `rid-${callCount + 2}`,
-          data: {
-            generated: {
-              created: callCount === 1 ? 2 : 0,
-              skipped: callCount === 1 ? 0 : 2,
-              rule_count: 1,
-            },
-          },
-        });
-      })
-    );
-    const user = userEvent.setup();
-    render(<EventsPanel program={RECURRING} canManage />);
-    await screen.findByText(COPY.programs.noRules);
-    const generate = screen.getByRole("button", {
-      name: COPY.programs.generateEvents,
-    });
-    await user.click(generate);
-    await expect(
-      screen.findByText("已產生 2 場聚會，跳過 0 場重複。")
-    ).resolves.toBeInTheDocument();
-    await user.click(generate);
-    await expect(
-      screen.findByText("已產生 0 場聚會，跳過 2 場重複。")
-    ).resolves.toBeInTheDocument();
   });
 
   test("U8 rescheduling posts a RESCHEDULE exception for the event's wall date", async () => {
