@@ -251,6 +251,7 @@ describe("PRG-01: schema", () => {
       "enrollment_requests",
       "enrollments",
       "program_leaders",
+      "program_notification_reads",
       "attendances",
       "audit_events",
       "role_capabilities",
@@ -7692,5 +7693,208 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
       "Active"
     );
     assert.ok(!JSON.stringify(approved.data.detail).includes("member_user_id"));
+  });
+});
+
+describe("NTF-01: management notification read state (#256)", () => {
+  test("projects scoped sources, reads them idempotently, and reopens a revised source", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      ["U006", "Eve Member", "eve", "3456", "Member", "Active"],
+    ]);
+    await completeCredentialUpgrade(testDb(), {
+      userId: "U006",
+      legacyPin: "3456",
+      newCredential: "eve-secret",
+    });
+    const memberAccess = await accessCookieFor("eve", "eve-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-${crypto.randomUUID().slice(0, 8)}`,
+      name: `Notification Department ${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `Notification Program ${crypto.randomUUID().slice(0, 8)}`,
+      behavior_type: "OneOff",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    await submitRequest(memberAccess, program.program_id);
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: "2099-08-14T10:00:00.000Z",
+      ends_at: "2099-08-14T11:00:00.000Z",
+      name: "Notification Event",
+    });
+
+    const inactive = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(inactive.status, 200);
+
+    const list = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications?limit=20", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(list.status, 200);
+    const listed = (await assertCorrelated(list)) as {
+      data: {
+        items: {
+          kind: string;
+          source_key: string;
+          source_revision: string;
+          read: boolean;
+          program_id: string;
+          event_id?: string;
+        }[];
+        unread_count: number;
+        has_more: boolean;
+      };
+    };
+    const scopedItems = listed.data.items.filter(
+      (item) => item.program_id === program.program_id
+    );
+    assert.strictEqual(scopedItems.length, 2);
+    const initialUnreadCount = listed.data.unread_count;
+    assert.ok(scopedItems.some((item) => item.kind === "enrollment"));
+    const inactiveItem = scopedItems.find(
+      (item) => item.kind === "event"
+    );
+    assert.ok(inactiveItem);
+    assert.strictEqual(inactiveItem?.read, false);
+
+    const read = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications/read", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          items: scopedItems.map(
+            ({ source_key, source_revision }) => ({
+              source_key,
+              source_revision,
+            })
+          ),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(read.status, 200);
+    const readBody = (await assertCorrelated(read)) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(readBody.data.marked_count, 2);
+
+    const idempotent = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications/read", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          items: scopedItems.map(
+            ({ source_key, source_revision }) => ({
+              source_key,
+              source_revision,
+            })
+          ),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(idempotent.status, 200);
+    const idempotentBody = (await assertCorrelated(idempotent)) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(idempotentBody.data.marked_count, 0);
+
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "changed notification state" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const revised = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications?limit=20", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(revised.status, 200);
+    const revisedBody = (await assertCorrelated(revised)) as {
+      data: {
+        items: {
+          kind: string;
+          status?: string;
+          source_revision: string;
+          read: boolean;
+          program_id: string;
+        }[];
+        unread_count: number;
+      };
+    };
+    const cancelledItem = revisedBody.data.items.find(
+      (item) =>
+        item.kind === "event" && item.program_id === program.program_id
+    );
+    assert.ok(cancelledItem);
+    assert.strictEqual(cancelledItem?.status, "Cancelled");
+    assert.strictEqual(cancelledItem?.read, false);
+    assert.strictEqual(revisedBody.data.unread_count, initialUnreadCount - 1);
+
+    const memberList = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberList.status, 403);
+    const memberProblem = await problemOf(memberList);
+    assert.strictEqual(memberProblem.code, "FORBIDDEN");
+
+    const readRows = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_notification_reads WHERE user_id = 'U001'"
+      )
+      .first<{ count: number }>();
+    assert.ok(Number(readRows?.count) >= 2);
   });
 });

@@ -60,6 +60,7 @@ import type {
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
+  NotificationReadStateInput,
 } from "./workspace-store";
 
 export interface ProgramEnv {
@@ -577,6 +578,99 @@ export async function handleGetManagementAttention(
     limit
   );
   return jsonResponse(200, attention, requestId);
+}
+
+/** GET /api/v1/programs/notifications — current scoped read-state overlay. */
+export async function handleGetManagementNotifications(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const rawLimit = new URL(request.url).searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(20, Math.max(1, Math.floor(parsedLimit)))
+    : 20;
+  try {
+    const notifications = await workspace.getManagementNotifications(
+      ctxFrom(auth.account),
+      limit
+    );
+    return jsonResponse(200, notifications, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/notifications/read — idempotent read-state writes. */
+export async function handleMarkManagementNotificationsRead(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ items?: unknown }>(request);
+  if (!body || !Array.isArray(body.items) || body.items.length > 100) {
+    return validation(
+      requestId,
+      "items must be an array containing at most 100 notification sources."
+    );
+  }
+  const items: NotificationReadStateInput[] = [];
+  const seen = new Set<string>();
+  for (const raw of body.items) {
+    if (typeof raw !== "object" || raw === null) {
+      return validation(requestId, "Each notification source must be an object.");
+    }
+    const sourceKey = (raw as { source_key?: unknown }).source_key;
+    const sourceRevision = (raw as { source_revision?: unknown })
+      .source_revision;
+    if (
+      typeof sourceKey !== "string" ||
+      sourceKey.length === 0 ||
+      sourceKey.length > 256 ||
+      typeof sourceRevision !== "string" ||
+      sourceRevision.length === 0 ||
+      sourceRevision.length > 512
+    ) {
+      return validation(
+        requestId,
+        "Each notification source requires bounded source_key and source_revision strings."
+      );
+    }
+    const key = `${sourceKey}\u0000${sourceRevision}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    items.push({ source_key: sourceKey, source_revision: sourceRevision });
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const markedCount = await workspace.markManagementNotificationsRead(
+      ctxFrom(auth.account),
+      items
+    );
+    return jsonResponse(200, { marked_count: markedCount }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/:id/management — reauthorized safe workspace read. */

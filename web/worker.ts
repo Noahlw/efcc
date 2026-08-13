@@ -382,6 +382,8 @@ export default {
         handleListManagementAccess,
         handleListManagementDirectory,
         handleGetManagementAttention,
+        handleGetManagementNotifications,
+        handleMarkManagementNotificationsRead,
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
@@ -439,6 +441,18 @@ export default {
         request.method === "GET"
       ) {
         return handleGetManagementAttention(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notifications" &&
+        request.method === "GET"
+      ) {
+        return handleGetManagementNotifications(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notifications/read" &&
+        request.method === "POST"
+      ) {
+        return handleMarkManagementNotificationsRead(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/catalog" &&

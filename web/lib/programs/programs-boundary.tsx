@@ -9,10 +9,14 @@ import { announce } from "@/lib/live-region";
 import {
   getManagementAccess,
   getManagementAttention,
+  getManagementNotifications,
+  markManagementNotificationsRead,
 } from "@/lib/programs/program-api";
 import type {
   Department,
   ManagementAttention,
+  ManagementNotificationItem,
+  ManagementNotifications,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 import { ManagementDirectory } from "./management-directory";
@@ -22,8 +26,9 @@ import { ProgramForm } from "./program-form";
 
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
-import { ProgramsAttention } from "./programs-attention";
 import type { ManagementAttentionState } from "./programs-attention";
+import { ProgramsNotifications } from "./programs-notifications";
+import type { ManagementNotificationState } from "./programs-notifications";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
@@ -180,12 +185,12 @@ export function ProgramsBoundary() {
     announce(COPY.programs.programSelected);
   };
   const navigateManagementTask = (task: ProgramsTask | null) => {
-    if (!intent.programId) {
+    if (!intent.programId && task !== "notifications") {
       return;
     }
     const href = buildProgramsHref({
       mode: "management",
-      programId: intent.programId,
+      programId: task === "notifications" ? null : intent.programId,
       task,
       hash: intent.hash,
     });
@@ -202,6 +207,8 @@ export function ProgramsBoundary() {
           ? COPY.programs.workspaceTaskParticipants
           : task === "settings"
             ? COPY.programs.workspaceTaskSettings
+            : task === "notifications"
+              ? COPY.programs.workspaceTaskNotifications
             : null;
     announce(
       taskLabel
@@ -353,14 +360,6 @@ export function ProgramsBoundary() {
           onTaskChange={navigateManagementTask}
           onEventChange={navigateManagementEvent}
           onBackDirectory={() => navigateMode("management", true, null)}
-          onOpenManagementDirectory={() =>
-            navigateMode(
-              "management",
-              false,
-              null,
-              "#programs-management-directory-title"
-            )
-          }
         />
       )}
       {access.kind === "ready" &&
@@ -460,7 +459,6 @@ function ManagementPanel({
   onTaskChange,
   onEventChange,
   onBackDirectory,
-  onOpenManagementDirectory,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -470,17 +468,16 @@ function ManagementPanel({
   onTaskChange: (task: ProgramsTask | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
-  onOpenManagementDirectory: () => void;
 }) {
   const [createDepartments, setCreateDepartments] = useState<
     Department[] | null
   >(null);
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const {
     state: attentionState,
     run: loadAttention,
-    retry: retryAttention,
   } = useAsyncResource<ManagementAttention, ManagementAttentionState>(
     async () => getManagementAttention(),
     {
@@ -520,12 +517,91 @@ function ManagementPanel({
     ]
   );
   useEffect(() => {
+    if (!intent.programId || intent.task === "notifications") {
+      return;
+    }
     void loadAttention();
-  }, [loadAttention]);
+  }, [intent.programId, intent.task, loadAttention]);
   const attention =
     attentionState.kind === "ready" ? attentionState.attention : null;
   const refreshAttention = () =>
     setAttentionRefreshKey((current) => current + 1);
+  const {
+    state: notificationState,
+    run: loadNotifications,
+    retry: retryNotifications,
+  } = useAsyncResource<ManagementNotifications, ManagementNotificationState>(
+    () => getManagementNotifications(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (notifications) => ({ kind: "ready", notifications }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        const message =
+          error instanceof RpcError
+            ? errorCopyFor(code, error.problem.detail)
+            : COPY.error.networkError;
+        announce(message);
+        return { kind: "error", message };
+      },
+      announceLoading: COPY.programs.notificationsLoading,
+    },
+    [
+      notificationRefreshKey,
+      intent.mode,
+      intent.programId,
+      intent.task,
+      intent.eventId,
+    ]
+  );
+  useEffect(() => {
+    void loadNotifications();
+  }, [loadNotifications]);
+  const markNotificationsRead = async (
+    items: readonly (Pick<
+      ManagementNotificationItem,
+      "source_key" | "source_revision"
+    >)[]
+  ) => {
+    if (items.length === 0) {
+      return;
+    }
+    try {
+      await markManagementNotificationsRead(items);
+    } catch (error: unknown) {
+      const code = error instanceof RpcError ? error.problem.code : undefined;
+      announce(
+        error instanceof RpcError
+          ? errorCopyFor(code, error.problem.detail)
+          : COPY.error.networkError
+      );
+    }
+  };
+  const refreshNotifications = () =>
+    setNotificationRefreshKey((current) => current + 1);
+  const notificationSurface = (
+    <ProgramsNotifications
+      state={notificationState}
+      onRetry={retryNotifications}
+      onOpen={refreshNotifications}
+      onMarkRead={markNotificationsRead}
+      onViewAll={() => {
+        setCreateDepartments(null);
+        onTaskChange("notifications");
+      }}
+      full={intent.task === "notifications"}
+    />
+  );
 
   if (!projection.hasManagementCapability) {
     return (
@@ -542,23 +618,20 @@ function ManagementPanel({
 
   return (
     <>
-      <h2 className={styles.boundaryTitle}>{COPY.programs.managementMode}</h2>
-      <p className={styles.boundaryLead}>{COPY.programs.managementLead}</p>
+      <div className={styles.managementHeaderRow}>
+        <div>
+          <h2 className={styles.boundaryTitle}>{COPY.programs.managementMode}</h2>
+          <p className={styles.boundaryLead}>{COPY.programs.managementLead}</p>
+        </div>
+        {intent.task !== "notifications" && notificationSurface}
+      </div>
       <p className={styles.boundaryStatus} role="status">
         {COPY.programs.managementScopeReady}
       </p>
       <p className={styles.boundaryHint}>
         {COPY.programs.managementBoundaryHint}
       </p>
-      <ProgramsAttention
-        state={attentionState}
-        onRetry={retryAttention}
-        onOpen={refreshAttention}
-        onExpand={() => {
-          setCreateDepartments(null);
-          onOpenManagementDirectory();
-        }}
-      />
+      {intent.task === "notifications" && notificationSurface}
       <button
         className={styles.secondaryButton}
         type="button"
@@ -566,7 +639,7 @@ function ManagementPanel({
       >
         {COPY.programs.enterParticipant}
       </button>
-      {intent.programId ? (
+      {intent.task === "notifications" ? null : intent.programId ? (
         <ProgramWorkspace
           key={intent.programId}
           programId={intent.programId}
@@ -589,7 +662,6 @@ function ManagementPanel({
         />
       ) : (
         <ManagementDirectory
-          attention={attention}
           onOpenProgram={onOpenProgram}
           onCreateProgram={setCreateDepartments}
         />

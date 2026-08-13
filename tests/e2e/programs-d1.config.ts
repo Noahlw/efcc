@@ -74,10 +74,17 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "phone",
+      name: "phone-320",
       use: {
         ...devices["Pixel 5"],
-        viewport: { width: 375, height: 812 },
+        viewport: { width: 320, height: 812 },
+      },
+    },
+    {
+      name: "phone-390",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 390, height: 844 },
       },
     },
     {

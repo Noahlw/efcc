@@ -26,6 +26,10 @@ import type {
   EventInput,
   EventRow,
   ManagementAttentionEventRow,
+  ManagementNotificationEnrollmentRow,
+  ManagementNotificationEventRow,
+  NotificationReadStateInput,
+  NotificationReadStateRow,
   PreviewOccurrenceRow,
   PreviewPlanRow,
   ProgramInput,
@@ -813,6 +817,96 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(startsAtOrAfter, ...programIds, limit)
       .all<ManagementAttentionEventRow>();
     return result.results ?? [];
+  }
+
+  async listManagementNotificationEnrollments(
+    programIds: readonly string[]
+  ): Promise<ManagementNotificationEnrollmentRow[]> {
+    if (programIds.length === 0) {
+      return [];
+    }
+    const placeholders = programIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT program_id, COUNT(*) AS count, MAX(submitted_at) AS latest_submitted_at
+           FROM enrollment_requests
+          WHERE status = 'Pending'
+            AND program_id IN (${placeholders})
+          GROUP BY program_id`
+      )
+      .bind(...programIds)
+      .all<ManagementNotificationEnrollmentRow>();
+    return (result.results ?? []).map((row) => ({
+      program_id: row.program_id,
+      count: Number(row.count),
+      latest_submitted_at: row.latest_submitted_at,
+    }));
+  }
+
+  async listManagementNotificationEvents(
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ): Promise<ManagementNotificationEventRow[]> {
+    if (programIds.length === 0) {
+      return [];
+    }
+    const placeholders = programIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT event_id, program_id, starts_at, status, availability, name,
+                updated_at
+           FROM events
+          WHERE starts_at >= ?
+            AND program_id IN (${placeholders})
+            AND (
+              status = 'Cancelled'
+              OR (status = 'Active' AND availability = 'Inactive')
+            )`
+      )
+      .bind(startsAtOrAfter, ...programIds)
+      .all<ManagementNotificationEventRow>();
+    return result.results ?? [];
+  }
+
+  async listNotificationReadStates(
+    userId: string,
+    sourceKeys: readonly string[]
+  ): Promise<NotificationReadStateRow[]> {
+    if (sourceKeys.length === 0) {
+      return [];
+    }
+    const placeholders = sourceKeys.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT source_key, source_revision, read_at
+           FROM program_notification_reads
+          WHERE user_id = ?
+            AND source_key IN (${placeholders})`
+      )
+      .bind(userId, ...sourceKeys)
+      .all<NotificationReadStateRow>();
+    return result.results ?? [];
+  }
+
+  async markNotificationReadStates(
+    userId: string,
+    states: readonly NotificationReadStateInput[],
+    readAt: string
+  ): Promise<number> {
+    if (states.length === 0) {
+      return 0;
+    }
+    const statements = states.map(({ source_key, source_revision }) =>
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO program_notification_reads
+             (user_id, source_key, source_revision, read_at)
+           VALUES (?, ?, ?, ?)`
+        )
+        .bind(userId, source_key, source_revision, readAt)
+    );
+    const results = await this.db.batch(statements);
+    return results.reduce((count, result) => count + (result.meta?.changes ?? 0), 0);
   }
 
   async cancelEvent(

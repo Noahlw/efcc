@@ -85,6 +85,7 @@ import type {
   ProgramRow,
   ProgramLeaderRow,
   ManagementAttentionEventRow,
+  NotificationReadStateInput,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -171,7 +172,42 @@ export interface ManagementAttentionView {
   has_more: boolean;
 }
 
+interface ManagementNotificationItemBase {
+  source_key: string;
+  source_revision: string;
+  read: boolean;
+  program_id: string;
+  program_name: string;
+  department_id: string;
+  department_name: string;
+}
+
+export type ManagementNotificationItem =
+  | (ManagementNotificationItemBase & {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+      latest_submitted_at: string;
+    })
+  | (ManagementNotificationItemBase & {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+      updated_at: string;
+    });
+
+export interface ManagementNotificationsView {
+  items: ManagementNotificationItem[];
+  unread_count: number;
+  has_more: boolean;
+}
+
 export const MANAGEMENT_ATTENTION_LIMIT = 5;
+export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
 export interface ManagementProgramWorkspaceView {
   program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
@@ -723,6 +759,179 @@ export class DepartmentWorkspace {
       total_actionable_count: totalActionableCount,
       has_more: totalItemCount > normalizedLimit,
     };
+  }
+
+  async getManagementNotifications(
+    ctx: AuthorizationContext,
+    limit = MANAGEMENT_NOTIFICATION_LIMIT
+  ): Promise<ManagementNotificationsView> {
+    const normalizedLimit = Math.min(1000, Math.max(1, Math.floor(limit)));
+    const directory = await this.listManagementDirectory(ctx);
+    const managedPrograms = directory.programs.filter(
+      ({ capabilities }) => capabilities.manage
+    );
+    const hasGlobalProgramManagement = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      null
+    );
+    if (!hasGlobalProgramManagement && managedPrograms.length === 0) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+
+    const departmentsById = new Map(
+      directory.departments.map((department) => [
+        department.department_id,
+        department,
+      ])
+    );
+    const moduleScopes = await Promise.all(
+      managedPrograms.map(async (program) => ({
+        program,
+        enrollment: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.ENROLLMENT
+        ),
+        events: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.EVENTS
+        ),
+      }))
+    );
+    const enrollmentProgramIds = moduleScopes
+      .filter(({ enrollment }) => enrollment)
+      .map(({ program }) => program.program_id);
+    const eventProgramIds = moduleScopes
+      .filter(({ events }) => events)
+      .map(({ program }) => program.program_id);
+    const startsAtOrAfter = new Date().toISOString();
+    const [enrollmentRows, eventRows] = await Promise.all([
+      this.store.listManagementNotificationEnrollments(enrollmentProgramIds),
+      this.store.listManagementNotificationEvents(
+        eventProgramIds,
+        startsAtOrAfter
+      ),
+    ]);
+    const programById = new Map(
+      managedPrograms.map((program) => [program.program_id, program])
+    );
+    const current: {
+      item: ManagementNotificationItem;
+      sortAt: string;
+    }[] = [];
+    for (const enrollment of enrollmentRows) {
+      const program = programById.get(enrollment.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department || enrollment.count <= 0) {
+        continue;
+      }
+      const sourceKey = `enrollment:${program.program_id}`;
+      const sourceRevision = `v1:${enrollment.count}:${enrollment.latest_submitted_at}`;
+      current.push({
+        sortAt: enrollment.latest_submitted_at,
+        item: {
+          source_key: sourceKey,
+          source_revision: sourceRevision,
+          read: false,
+          kind: "enrollment",
+          actionable: true,
+          count: enrollment.count,
+          latest_submitted_at: enrollment.latest_submitted_at,
+          program_id: program.program_id,
+          program_name: program.name,
+          department_id: department.department_id,
+          department_name: department.name,
+        },
+      });
+    }
+    for (const event of eventRows) {
+      const program = programById.get(event.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department) {
+        continue;
+      }
+      const sourceKey = `event:${event.event_id}`;
+      const sourceRevision = `v1:${event.status}:${event.availability}:${event.updated_at}`;
+      current.push({
+        sortAt: event.updated_at,
+        item: {
+          source_key: sourceKey,
+          source_revision: sourceRevision,
+          read: false,
+          kind: "event",
+          actionable:
+            event.status === "Active" && event.availability === "Inactive",
+          event_id: event.event_id,
+          program_id: program.program_id,
+          program_name: program.name,
+          department_id: department.department_id,
+          department_name: department.name,
+          starts_at: event.starts_at,
+          status: event.status,
+          availability: event.availability,
+          name: event.name,
+          updated_at: event.updated_at,
+        },
+      });
+    }
+    current.sort((left, right) => {
+      if (left.item.actionable !== right.item.actionable) {
+        return left.item.actionable ? -1 : 1;
+      }
+      return (
+        right.sortAt.localeCompare(left.sortAt) ||
+        left.item.source_key.localeCompare(right.item.source_key)
+      );
+    });
+    const readStates = await this.store.listNotificationReadStates(
+      ctx.actorUserId,
+      current.map(({ item }) => item.source_key)
+    );
+    const readKeys = new Set(
+      readStates.map(
+        ({ source_key, source_revision }) => `${source_key}\u0000${source_revision}`
+      )
+    );
+    for (const entry of current) {
+      entry.item.read = readKeys.has(
+        `${entry.item.source_key}\u0000${entry.item.source_revision}`
+      );
+    }
+    return {
+      items: current
+        .slice(0, normalizedLimit)
+        .map(({ item }) => item),
+      unread_count: current.filter(({ item }) => !item.read).length,
+      has_more: current.length > normalizedLimit,
+    };
+  }
+
+  async markManagementNotificationsRead(
+    ctx: AuthorizationContext,
+    requested: readonly NotificationReadStateInput[]
+  ): Promise<number> {
+    if (requested.length === 0) {
+      return 0;
+    }
+    const current = await this.getManagementNotifications(ctx, 1000);
+    const currentKeys = new Set(
+      current.items.map(
+        ({ source_key, source_revision }) =>
+          `${source_key}\u0000${source_revision}`
+      )
+    );
+    const authorized = requested.filter(({ source_key, source_revision }) =>
+      currentKeys.has(`${source_key}\u0000${source_revision}`)
+    );
+    return this.store.markNotificationReadStates(
+      ctx.actorUserId,
+      authorized,
+      new Date().toISOString()
+    );
   }
 
   async getManagementProgram(

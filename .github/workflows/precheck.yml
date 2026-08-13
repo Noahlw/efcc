@@ -131,3 +131,78 @@ jobs:
 
       - name: Shell responsive suite (static shell, 375px + 1280px)
         run: pnpm test:shell-responsive
+
+  programs-playwright:
+    name: Programs D1 Playwright (320/390 + desktop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Install Playwright Chromium (with system deps)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build static Next assets
+        run: pnpm --dir web build
+
+      - name: Apply local D1 migrations and seed disposable accounts
+        run: |
+          pnpm --dir web exec wrangler d1 migrations apply efcc-identity --local
+          pnpm db:seed:local
+
+      - name: Start local Worker/D1 target
+        env:
+          EFCC_ACCESS_TOKEN_SECRET: ci-programs-playwright-only
+        run: |
+          pnpm --dir web exec wrangler dev --local --port 8787 --var EFCC_ACCESS_TOKEN_SECRET:ci-programs-playwright-only > /tmp/efcc-programs-playwright-worker.log 2>&1 &
+          worker_pid=$!
+          echo "$worker_pid" > /tmp/efcc-programs-playwright-worker.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8787/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Worker did not become ready"
+          sed -n '1,160p' /tmp/efcc-programs-playwright-worker.log
+          exit 1
+
+      - name: Seed local demo fixtures
+        run: pnpm db:seed:demo
+
+      - name: Run targeted Programs acceptance suite
+        run: >-
+          pnpm exec playwright test
+          --config=tests/e2e/programs-d1.config.ts
+          --grep='PUI-01|PUI-02|PUI-03|PUI-04|MUI-01|MUI-02|EVT-01|NTF-01|EVT-02|AUTH-01'
+
+      - name: Upload Programs browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: programs-d1-playwright-results
+          path: |
+            tests/e2e/test-results/programs-d1-results.json
+            tests/e2e/test-results
+            /tmp/efcc-programs-playwright-worker.log
+          if-no-files-found: ignore
+          retention-days: 14

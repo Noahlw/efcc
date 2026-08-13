@@ -65,6 +65,11 @@ const COPY = {
   managementDirectoryTitle: "管理課程目錄",
   attentionTitle: "管理提示",
   attentionZero: "目前沒有需要處理或檢視的項目。",
+  notificationRegion: "管理通知",
+  notificationBell: "開啟管理通知",
+  notificationTitle: "管理通知",
+  notificationZero: "目前沒有新的管理通知。",
+  notificationViewAll: "查看全部通知",
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
@@ -811,7 +816,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
@@ -2040,7 +2048,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
   }
 
@@ -2146,7 +2157,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
   });
 
@@ -2508,16 +2522,16 @@ test.describe("NTF-01 management attention", () => {
     );
     await page.goto("/programs?mode=management");
 
-    const control = page.getByRole("region", { name: COPY.attentionTitle });
+    const control = page.getByRole("region", { name: COPY.notificationRegion });
     await expect(control).toBeVisible();
     const trigger = control.getByRole("button", {
-      name: COPY.attentionTitle,
+      name: COPY.notificationBell,
     });
     await expect(trigger.locator('[class*="badge"]')).toHaveCount(0);
     await trigger.click();
-    const dialog = page.getByRole("dialog", { name: COPY.attentionTitle });
+    const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("status")).toHaveText(COPY.attentionZero);
+    await expect(dialog.getByRole("status")).toHaveText(COPY.notificationZero);
 
     const memberContext = await browser.newContext();
     try {
@@ -2532,7 +2546,7 @@ test.describe("NTF-01 management attention", () => {
         memberPage.getByText(COPY.noManagementScope, { exact: true })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("region", { name: COPY.attentionTitle })
+        memberPage.getByRole("region", { name: COPY.notificationRegion })
       ).toHaveCount(0);
     } finally {
       await memberContext.close();
@@ -2658,22 +2672,27 @@ test.describe("NTF-01 management attention", () => {
     ).toBe(200);
 
     const aggregateBeforeUi = await page.evaluate(async () => {
-      const response = await fetch("/api/v1/programs/attention?limit=5");
+      const response = await fetch("/api/v1/programs/notifications?limit=20");
       const body = (await response.json()) as {
-        data?: { total_actionable_count?: number };
+        data?: { unread_count?: number };
       };
-      return body.data?.total_actionable_count ?? 0;
+      return body.data?.unread_count ?? 0;
     });
     await page.goto("/programs?mode=management");
-    const control = page.getByRole("region", { name: COPY.attentionTitle });
+    const control = page.getByRole("region", { name: COPY.notificationRegion });
     const trigger = control.getByRole("button", {
-      name: COPY.attentionTitle,
+      name: COPY.notificationBell,
     });
     await expect(trigger.locator('[class*="badge"]')).toHaveText(
       String(aggregateBeforeUi)
     );
+    const markedReadPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().endsWith("/api/v1/programs/notifications/read")
+    );
     await trigger.click();
-    const dialog = page.getByRole("dialog", { name: COPY.attentionTitle });
+    const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
     await expect(dialog).toBeVisible();
 
     const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
@@ -2683,6 +2702,41 @@ test.describe("NTF-01 management attention", () => {
     await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
     await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     await expect(dialog.getByRole("link")).toHaveCount(3);
+
+    const markedRead = await markedReadPromise;
+    expect(markedRead.ok()).toBeTruthy();
+    expect(
+      await page.evaluate(async (eventId) => {
+        const response = await fetch("/api/v1/programs/notifications?limit=20");
+        const body = (await response.json()) as {
+          data?: {
+            items?: { kind: string; event_id?: string; read: boolean }[];
+          };
+        };
+        return body.data?.items?.find(
+          (item) => item.kind === "event" && item.event_id === eventId
+        )?.read;
+      }, inactiveEventId)
+    ).toBe(true);
+
+    expect(
+      await patchAttentionEvent(page, programId, inactiveEventId, {
+        name: `E2E_NTF256_修訂_${Date.now()}`,
+      })
+    ).toBe(200);
+    expect(
+      await page.evaluate(async (eventId) => {
+        const response = await fetch("/api/v1/programs/notifications?limit=20");
+        const body = (await response.json()) as {
+          data?: {
+            items?: { kind: string; event_id?: string; read: boolean }[];
+          };
+        };
+        return body.data?.items?.find(
+          (item) => item.kind === "event" && item.event_id === eventId
+        )?.read;
+      }, inactiveEventId)
+    ).toBe(false);
 
     await page.goto(pendingHref);
     const participants = page.getByRole("region", {
@@ -2752,23 +2806,22 @@ test.describe("NTF-01 management attention", () => {
     await trigger.click();
     await expect(dialog).toHaveCount(0);
     const aggregateAfterApproval = await page.evaluate(async () => {
-      const response = await fetch("/api/v1/programs/attention?limit=5");
+      const response = await fetch("/api/v1/programs/notifications?limit=20");
       const body = (await response.json()) as {
-        data?: { total_actionable_count?: number };
+        data?: { unread_count?: number };
       };
-      return body.data?.total_actionable_count ?? 0;
+      return body.data?.unread_count ?? 0;
     });
-    const refreshAfterApproval = page.waitForResponse(
-      (response) =>
-        response.request().method() === "GET" &&
-        response.url().includes("/api/v1/programs/attention?limit=5")
-    );
     await trigger.click();
-    await refreshAfterApproval;
     await expect(dialog.locator(`a[href="${pendingHref}"]`)).toHaveCount(0);
-    await expect(trigger.locator('[class*="badge"]')).toHaveText(
-      String(aggregateAfterApproval)
+    await expect(trigger.locator('[class*="badge"]')).toHaveCount(
+      aggregateAfterApproval > 0 ? 1 : 0
     );
+    if (aggregateAfterApproval > 0) {
+      await expect(trigger.locator('[class*="badge"]')).toHaveText(
+        String(aggregateAfterApproval)
+      );
+    }
 
     // NTF-01.2: a deep link captured before its source resolved must
     // re-authorize and re-read current state, never a stale-looking
@@ -2782,18 +2835,12 @@ test.describe("NTF-01 management attention", () => {
     ).toBeVisible();
 
     await page.goto(inactiveHref);
-    const attentionRefreshAfterCorrection = page.waitForResponse(
-      (response) =>
-        response.request().method() === "GET" &&
-        response.url().includes("/api/v1/programs/attention?limit=5")
-    );
     await page.getByRole("button", { name: COPY.eventAvailabilityActivate }).click();
     await expect(
       eventDetail.getByText(COPY.eventAvailabilityRestoredNotice, {
         exact: true,
       })
     ).toBeVisible();
-    await attentionRefreshAfterCorrection;
     await page.goto(inactiveHref);
     const refreshedEventDetail = page.getByRole("region", {
       name: COPY.eventDetailTitle,
@@ -2835,13 +2882,7 @@ test.describe("NTF-01 management attention", () => {
 
 
     await page.goto("/programs?mode=management");
-    const finalRefresh = page.waitForResponse(
-      (response) =>
-        response.request().method() === "GET" &&
-        response.url().includes("/api/v1/programs/attention?limit=5")
-    );
     await trigger.click();
-    await finalRefresh;
     await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
     await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     } finally {

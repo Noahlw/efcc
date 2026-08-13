@@ -133,6 +133,44 @@ export interface ManagementAttention {
   has_more: boolean;
 }
 
+export type ManagementNotificationItem =
+  | {
+      kind: "enrollment";
+      source_key: string;
+      source_revision: string;
+      read: boolean;
+      actionable: true;
+      count: number;
+      latest_submitted_at: string;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+    }
+  | {
+      kind: "event";
+      source_key: string;
+      source_revision: string;
+      read: boolean;
+      actionable: boolean;
+      event_id: string;
+      program_id: string;
+      program_name: string;
+      department_id: string;
+      department_name: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+      updated_at: string;
+    };
+
+export interface ManagementNotifications {
+  items: ManagementNotificationItem[];
+  unread_count: number;
+  has_more: boolean;
+}
+
 export interface DepartmentDetail {
   department: Department;
   modules: DepartmentModule[];
@@ -645,6 +683,26 @@ export function getManagementAttention(
 ): Promise<ManagementAttention> {
   const query = new URLSearchParams({ limit: String(limit) });
   return programsFetch(`/api/v1/programs/attention?${query}`, "GET");
+}
+
+/** GET /api/v1/programs/notifications — current scoped read-state overlay. */
+export function getManagementNotifications(
+  limit = 20
+): Promise<ManagementNotifications> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return programsFetch(`/api/v1/programs/notifications?${query}`, "GET");
+}
+
+/** POST /api/v1/programs/notifications/read — idempotent read-state write. */
+export function markManagementNotificationsRead(
+  items: readonly {
+    source_key: string;
+    source_revision: string;
+  }[]
+): Promise<{ marked_count: number }> {
+  return programsFetch("/api/v1/programs/notifications/read", "POST", {
+    items,
+  });
 }
 
 /** GET /api/v1/programs/access — capability-only entry projection. */

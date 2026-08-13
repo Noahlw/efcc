@@ -240,6 +240,32 @@ export interface ManagementAttentionEventRow {
   name: string | null;
 }
 
+/** Current source rows used to project per-user management notifications. */
+export interface ManagementNotificationEventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  name: string | null;
+  updated_at: string;
+}
+
+export interface ManagementNotificationEnrollmentRow {
+  program_id: string;
+  count: number;
+  latest_submitted_at: string;
+}
+
+export interface NotificationReadStateInput {
+  source_key: string;
+  source_revision: string;
+}
+
+export interface NotificationReadStateRow extends NotificationReadStateInput {
+  read_at: string;
+}
+
 export interface GenerateResult {
   run_id: string;
   plan_id: string;
@@ -524,6 +550,22 @@ export interface WorkspaceStore {
     startsAtOrAfter: string,
     limit: number
   ) => Promise<ManagementAttentionEventRow[]>;
+  listManagementNotificationEnrollments: (
+    programIds: readonly string[]
+  ) => Promise<ManagementNotificationEnrollmentRow[]>;
+  listManagementNotificationEvents: (
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ) => Promise<ManagementNotificationEventRow[]>;
+  listNotificationReadStates: (
+    userId: string,
+    sourceKeys: readonly string[]
+  ) => Promise<NotificationReadStateRow[]>;
+  markNotificationReadStates: (
+    userId: string,
+    states: readonly NotificationReadStateInput[],
+    readAt: string
+  ) => Promise<number>;
   cancelEvent: (
     id: string,
     reason: string,
