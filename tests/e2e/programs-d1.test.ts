@@ -2592,6 +2592,7 @@ test.describe("NTF-01 management attention", () => {
     let pendingResolved = false;
     let inactiveEventId = "";
     let cancelledEventId = "";
+    let memberLeaderAssigned = false;
     try {
       const memberContext = await browser.newContext();
     try {
@@ -2623,6 +2624,14 @@ test.describe("NTF-01 management attention", () => {
     } finally {
       await memberContext.close();
     }
+    const memberLeaderStatus = await postProgramLeader(
+      page,
+      programId,
+      DEV_MEMBER.userId,
+      "assign"
+    );
+    expect(memberLeaderStatus).toBe(200);
+    memberLeaderAssigned = true;
 
     inactiveEventId = await createAttentionEvent(
       page,
@@ -2785,6 +2794,45 @@ test.describe("NTF-01 management attention", () => {
       })
     ).toBeVisible();
     await attentionRefreshAfterCorrection;
+    await page.goto(inactiveHref);
+    const refreshedEventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
+    await expect(refreshedEventDetail).toBeVisible();
+    await expect(
+      refreshedEventDetail.getByRole("button", {
+        name: COPY.eventAvailabilityActivate,
+      })
+    ).toHaveCount(0);
+    await expect(
+      refreshedEventDetail.getByRole("button", {
+        name: COPY.eventAvailabilityDeactivate,
+      })
+    ).toBeVisible();
+
+    expect(
+      await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
+    ).toBe(200);
+    memberLeaderAssigned = false;
+    const revokedContext = await browser.newContext();
+    try {
+      const revokedPage = await revokedContext.newPage();
+      await loginAs(
+        revokedPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await revokedPage.goto(inactiveHref);
+      await expect(
+        revokedPage.getByRole("heading", {
+          name: COPY.noManagementScope,
+        })
+      ).toBeVisible();
+      await expect(revokedPage.getByText(programName)).toHaveCount(0);
+    } finally {
+      await revokedContext.close();
+    }
+
 
     await page.goto("/programs?mode=management");
     const finalRefresh = page.waitForResponse(
@@ -2797,6 +2845,14 @@ test.describe("NTF-01 management attention", () => {
     await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
     await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     } finally {
+      if (memberLeaderAssigned) {
+        await postProgramLeader(
+          page,
+          programId,
+          DEV_MEMBER.userId,
+          "revoke"
+        ).catch(() => undefined);
+      }
       if (pendingRequestId && !pendingResolved) {
         await page
           .evaluate(

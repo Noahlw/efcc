@@ -138,12 +138,13 @@ export function ProgramsBoundary() {
   const navigateMode = (
     mode: "participant" | "management",
     replace = false,
-    programId = intent.programId
+    programId = intent.programId,
+    hash = intent.hash
   ) => {
     const href = buildProgramsHref({
       mode,
       programId,
-      hash: intent.hash,
+      hash,
     });
     focusMode.current = mode;
     if (typeof window === "undefined") {
@@ -352,6 +353,14 @@ export function ProgramsBoundary() {
           onTaskChange={navigateManagementTask}
           onEventChange={navigateManagementEvent}
           onBackDirectory={() => navigateMode("management", true, null)}
+          onOpenManagementDirectory={() =>
+            navigateMode(
+              "management",
+              false,
+              null,
+              "#programs-management-directory-title"
+            )
+          }
         />
       )}
       {access.kind === "ready" &&
@@ -451,6 +460,7 @@ function ManagementPanel({
   onTaskChange,
   onEventChange,
   onBackDirectory,
+  onOpenManagementDirectory,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -460,19 +470,19 @@ function ManagementPanel({
   onTaskChange: (task: ProgramsTask | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
+  onOpenManagementDirectory: () => void;
 }) {
   const [createDepartments, setCreateDepartments] = useState<
     Department[] | null
   >(null);
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
-  const [attentionLimit, setAttentionLimit] = useState(5);
   const {
     state: attentionState,
     run: loadAttention,
     retry: retryAttention,
   } = useAsyncResource<ManagementAttention, ManagementAttentionState>(
-    async () => getManagementAttention(attentionLimit),
+    async () => getManagementAttention(),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (attention) => ({ kind: "ready", attention }),
@@ -503,7 +513,6 @@ function ManagementPanel({
     },
     [
       attentionRefreshKey,
-      attentionLimit,
       intent.mode,
       intent.programId,
       intent.task,
@@ -546,8 +555,8 @@ function ManagementPanel({
         onRetry={retryAttention}
         onOpen={refreshAttention}
         onExpand={() => {
-          setAttentionLimit(50);
-          refreshAttention();
+          setCreateDepartments(null);
+          onOpenManagementDirectory();
         }}
       />
       <button

@@ -498,6 +498,44 @@ describe("Programs boundary", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("routes attention overflow to the complete management directory", async () => {
+    window.history.replaceState({}, "", "/programs?mode=management");
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
+    mocks.getManagementAttention.mockResolvedValue({
+      programs: [],
+      items: [
+        {
+          kind: "enrollment",
+          actionable: true,
+          count: 1,
+          program_id: "program-1",
+          program_name: "活動",
+          department_id: "dept-1",
+          department_name: "部門",
+        },
+      ],
+      total_actionable_count: 1,
+      has_more: true,
+    });
+
+    render(<ProgramsBoundary />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: new RegExp(COPY.programs.attentionTitle),
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.attentionViewAll })
+    );
+
+    expect(window.location.search).toBe("?mode=management");
+    expect(window.location.hash).toBe(
+      "#programs-management-directory-title"
+    );
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
   test("supports keyboard mode entry and return", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const user = userEvent.setup();

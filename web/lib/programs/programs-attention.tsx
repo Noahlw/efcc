@@ -17,9 +17,6 @@ export type ManagementAttentionState =
   | { kind: "ready"; attention: ManagementAttention }
   | { kind: "error"; message: string };
 
-function formatAttentionTime(value: string): string {
-  return hkWallDateTimeLabel(value);
-}
 
 function attentionHref(item: ManagementAttentionItem): string {
   return buildProgramsHref(
@@ -168,8 +165,8 @@ export function ProgramsAttention({
                         ) : (
                           <span>
                             {item.name
-                              ? `${item.name} · ${formatAttentionTime(item.starts_at)}`
-                              : formatAttentionTime(item.starts_at)}
+                              ? `${item.name} · ${hkWallDateTimeLabel(item.starts_at)}`
+                              : hkWallDateTimeLabel(item.starts_at)}
                           </span>
                         )}
                       </a>

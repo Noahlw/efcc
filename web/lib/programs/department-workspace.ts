@@ -540,6 +540,7 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     limit = MANAGEMENT_ATTENTION_LIMIT
   ): Promise<ManagementAttentionView> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
     const directory = await this.listManagementDirectory(ctx);
     const departmentsById = new Map(
       directory.departments.map((department) => [
@@ -579,7 +580,7 @@ export class DepartmentWorkspace {
       this.store.listManagementEventAttention(
         eventProgramIds,
         startsAtOrAfter,
-        Math.min(50, Math.max(1, Math.floor(limit)))
+        normalizedLimit
       ),
     ]);
     const pendingByProgram = new Map(
@@ -679,9 +680,9 @@ export class DepartmentWorkspace {
       );
     return {
       programs,
-      items: items.slice(0, Math.min(50, Math.max(1, Math.floor(limit)))),
+      items: items.slice(0, normalizedLimit),
       total_actionable_count: totalActionableCount,
-      has_more: totalItemCount > Math.min(50, Math.max(1, Math.floor(limit))),
+      has_more: totalItemCount > normalizedLimit,
     };
   }
 

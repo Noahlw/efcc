@@ -237,13 +237,6 @@ export interface ManagementAttentionEventRow {
   name: string | null;
 }
 
-export interface ManagementAttentionCountRow {
-  program_id: string;
-  pending_enrollment_count: number;
-  inactive_event_count: number;
-  cancelled_event_count: number;
-}
-
 export interface GenerateResult {
   created: number;
   skipped: number;
