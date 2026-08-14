@@ -40,6 +40,9 @@ export default defineProject({
       "lib/attendance-operator-panel.test.tsx",
       "lib/self-check-in-panel.test.tsx",
       "lib/use-qr-camera.test.tsx",
+      "lib/scanner-intent.test.ts",
+      "lib/assisted-scanner-panel.test.tsx",
+      "lib/scanner-boundary.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

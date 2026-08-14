@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   assistedCheckIn,
@@ -15,10 +16,10 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   AttendanceEvent,
+  AttendanceEventSummary,
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/programs/program-api";
-import { hkWallLabel } from "@/lib/hk-time";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
@@ -27,7 +28,9 @@ type StatusTone = "info" | "success" | "error";
 
 export const AttendanceOperatorPanel = () => {
   const [eventId, setEventId] = useState("");
-  const [chooserEvents, setChooserEvents] = useState<AttendanceEvent[]>([]);
+  const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
+    []
+  );
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<AttendanceMember[]>([]);
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
@@ -78,7 +81,7 @@ export const AttendanceOperatorPanel = () => {
       setBusy(false);
     }
   }
-  
+
   async function searchMembers() {
     setBusy(true);
     try {
@@ -260,8 +263,7 @@ export const AttendanceOperatorPanel = () => {
         </div>
         {event && (
           <p className={styles.hint}>
-            {event.program_name} ·{" "}
-            {hkWallLabel(event.starts_at)}
+            {event.program_name} · {hkWallLabel(event.starts_at)}
           </p>
         )}
         {event?.status === "Cancelled" && (
@@ -304,51 +306,51 @@ export const AttendanceOperatorPanel = () => {
           />
         )}
         {event && event.status === "Active" && (
-        <div className={styles.group}>
-          <div className={styles.inputRow}>
-            <label className={styles.field} htmlFor="member-search">
-              <span className={styles.fieldLabel}>
-                {COPY.attendance.memberSearch}
-              </span>
-              <input
-                id="member-search"
-                className={styles.input}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            <button
-              className={styles.buttonSecondary}
-              type="button"
-              disabled={busy}
-              onClick={() => void searchMembers()}
-            >
-              {COPY.attendance.search}
-            </button>
+          <div className={styles.group}>
+            <div className={styles.inputRow}>
+              <label className={styles.field} htmlFor="member-search">
+                <span className={styles.fieldLabel}>
+                  {COPY.attendance.memberSearch}
+                </span>
+                <input
+                  id="member-search"
+                  className={styles.input}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </label>
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                disabled={busy}
+                onClick={() => void searchMembers()}
+              >
+                {COPY.attendance.search}
+              </button>
+            </div>
+            {members.length > 0 && (
+              <ul className={styles.events}>
+                {members.map((member) => (
+                  <li key={member.user_id}>
+                    <button
+                      className={styles.eventButton}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void checkIn(member)}
+                    >
+                      <strong>{member.name}</strong>
+                      <span className={styles.eventMeta}>
+                        {member.phone ?? member.user_id}
+                      </span>
+                      <span className={styles.rowAction}>
+                        {COPY.attendance.checkInMember}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {members.length > 0 && (
-            <ul className={styles.events}>
-              {members.map((member) => (
-                <li key={member.user_id}>
-                  <button
-                    className={styles.eventButton}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void checkIn(member)}
-                  >
-                    <strong>{member.name}</strong>
-                    <span className={styles.eventMeta}>
-                      {member.phone ?? member.user_id}
-                    </span>
-                    <span className={styles.rowAction}>
-                      {COPY.attendance.checkInMember}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
         )}
         {rows.length > 0 && (
           <div className={styles.group}>

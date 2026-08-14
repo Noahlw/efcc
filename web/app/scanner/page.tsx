@@ -1,17 +1,16 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
-import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
+import { ScannerBoundary } from "@/lib/scanner-boundary";
 
 /**
- * Self Check-In is available to every authenticated account. The Worker
- * enforces enrollment and event-window authorization on the mutation; this
- * page is not the privileged assisted-check-in surface.
+ * Scanner starts in Self mode for every authenticated account. ScannerBoundary
+ * asks the Worker for the current eligible assisted Event projection before it
+ * exposes the optional operator mode.
  */
 const ScannerPage = () => (
   <AppShell>
-    <SelfCheckInPanel title={COPY.sections.scanner} />
+    <ScannerBoundary />
   </AppShell>
 );
 

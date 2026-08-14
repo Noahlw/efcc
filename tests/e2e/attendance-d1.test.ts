@@ -85,6 +85,9 @@ const MEMBER_CRED =
 const COPY = {
   scannerTitle: "掃描簽到",
   assistedOpen: "開協助簽到",
+  assistedMode: "協助簽到",
+  assistedContext: "目前聚會",
+  assistedContextStale: "此聚會已不再開放或你沒有權限，請重新選擇。",
   inputLabel: "課程 QR 代碼或聚會手動代碼",
   resolve: "查找聚會",
   chooseEvent: "選擇聚會",
@@ -125,6 +128,7 @@ interface AttendanceEventFixture {
 }
 
 interface Fixtures {
+  programId: string;
   checkInToken: string;
   eventA: AttendanceEventFixture;
   eventB: AttendanceEventFixture;
@@ -493,6 +497,7 @@ test.beforeAll(async ({ playwright }) => {
     );
     staff = staffLogin;
     fixtures = {
+      programId,
       checkInToken,
       eventA,
       eventB,
@@ -722,12 +727,125 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByText(COPY.assistedOpen, { exact: true })
       ).toHaveCount(0);
+      await expect(
+        page.getByText(COPY.assistedMode, { exact: true })
+      ).toHaveCount(0);
       await page.locator("#attendance-code").fill(fixtures.checkInToken);
       await page.getByRole("button", { name: COPY.resolve }).click();
       await expect(page.locator("button[aria-pressed]")).toHaveCount(2);
       await expect(page.getByText(/地點: 主堂/u).first()).toBeVisible();
     } finally {
       await memberContext.close();
+    }
+  });
+  test("D3 Admin switches to Assisted Scanner, pins context, searches, checks in, and does not enroll", async ({
+    browser,
+    playwright,
+  }) => {
+    const adminContext = await browser.newContext({
+      storageState: fixtures.adminState,
+    });
+    const page = await adminContext.newPage();
+    const api = await playwright.request.newContext({
+      baseURL: TARGET_URL,
+      extraHTTPHeaders: {
+        Cookie: cookieHeaderFromStorageState(fixtures.adminState),
+      },
+    });
+    try {
+      const before = await api.get(
+        `/api/v1/programs/${fixtures.programId}/enrollments`
+      );
+      expect(before.status()).toBe(200);
+      const beforeBody = (await before.json()) as {
+        data: { enrollments: unknown[] };
+      };
+      const enrollmentCount = beforeBody.data.enrollments.length;
+
+      await page.goto(
+        `/scanner?mode=assisted&event=${encodeURIComponent(
+          fixtures.eventA.event_id
+        )}`
+      );
+      await expect(
+        page.getByRole("tab", { name: COPY.assistedMode })
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "本人簽到" })).toHaveAttribute(
+        "aria-selected",
+        "false"
+      );
+      await expect(page.locator("#event-id")).toHaveCount(0);
+      await expect(page.locator("#assisted-event-context")).toHaveValue(
+        fixtures.eventA.event_id
+      );
+
+      await page.locator("#assisted-member-search").fill("E2E Member");
+      const searchResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname.endsWith("/members")
+      );
+      await page.getByRole("button", { name: COPY.search }).click();
+      const search = await searchResponse;
+      expect(search.status()).toBe(200);
+      const result = page
+        .locator("li")
+        .filter({ has: page.getByText("E2E Member", { exact: true }) });
+      await expect(
+        result.getByRole("button", { name: COPY.checkInMember })
+      ).toBeVisible();
+
+      const checkInResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname.endsWith("/check-in")
+      );
+      await result.getByRole("button", { name: COPY.checkInMember }).click();
+      const checkIn = await checkInResponse;
+      expect([200, 201]).toContain(checkIn.status());
+      await expect(
+        page.locator("main output").filter({
+          hasText: /簽到成功|已完成此聚會簽到/u,
+        })
+      ).toBeVisible();
+
+      const after = await api.get(
+        `/api/v1/programs/${fixtures.programId}/enrollments`
+      );
+      expect(after.status()).toBe(200);
+      const afterBody = (await after.json()) as {
+        data: { enrollments: unknown[] };
+      };
+      expect(afterBody.data.enrollments).toHaveLength(enrollmentCount);
+    } finally {
+      await api.dispose();
+      await adminContext.close();
+    }
+  });
+
+  test("D4 Assisted Event deep link revalidates stale or cancelled context", async ({
+    browser,
+  }) => {
+    const adminContext = await browser.newContext({
+      storageState: fixtures.adminState,
+    });
+    const page = await adminContext.newPage();
+    try {
+      await page.goto(
+        `/scanner?mode=assisted&event=${encodeURIComponent(
+          fixtures.cancelledEvent.event_id
+        )}`
+      );
+      await expect(
+        page.getByRole("tab", { name: COPY.assistedMode })
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        page.getByRole("region", { name: COPY.scannerTitle }).getByRole("alert")
+      ).toContainText(COPY.assistedContextStale);
+      await expect(page.locator("#assisted-event-context")).toHaveValue("");
+      await expect(page.locator("#assisted-member-search")).toHaveCount(0);
+    } finally {
+      await adminContext.close();
     }
   });
 

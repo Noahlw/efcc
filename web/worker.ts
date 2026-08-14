@@ -232,6 +232,7 @@ export default {
     // ---- Auth surface: cookie-only transport, no CORS ------------------
     if (url.pathname.startsWith("/api/v1/auth/")) {
       try {
+        // oxlint-disable-next-line complexity
         return await (async () => {
           const guard = authTransportGuard(request);
           if (guard) {
@@ -843,6 +844,7 @@ export default {
         handleGuestCheckIn,
         handleListManageableEvents,
         handleListRoster,
+        handleListScannerEvents,
         handleSearchMembers,
         handleResolve,
         handleSelfCheckIn,
@@ -854,6 +856,13 @@ export default {
         request.method === "GET"
       ) {
         return handleListManageableEvents(request, attendanceEnv);
+      }
+
+      if (
+        url.pathname === "/api/v1/attendance/scanner-events" &&
+        request.method === "GET"
+      ) {
+        return handleListScannerEvents(request, attendanceEnv);
       }
 
       if (

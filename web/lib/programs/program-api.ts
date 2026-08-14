@@ -10,6 +10,7 @@ import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
   AttendanceEvent as AttendanceEventType,
+  AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
@@ -20,6 +21,7 @@ import type { ProgramsManagementAccess } from "./programs-access";
 // Re-export under the original names so the browser surface has one shared shape.
 export type {
   AttendanceEvent,
+  AttendanceEventSummary,
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/attendance";
@@ -85,7 +87,8 @@ export type ManagementProgram = Omit<
 export type ManagementProgramSettings = ManagementProgram &
   Pick<
     Program,
-    "check_in_opens_at_minutes_before_start" | "check_in_closes_at_minutes_after_end"
+    | "check_in_opens_at_minutes_before_start"
+    | "check_in_closes_at_minutes_after_end"
   >;
 /** Server-filtered and secret-redacted Programs management projection. */
 export interface ManagementDirectory {
@@ -1112,11 +1115,18 @@ export function guestCheckIn(input: {
   return programsFetch("/api/v1/attendance/guest", "POST", input);
 }
 
-/** GET /api/v1/attendance/events — operator chooser (events the actor can assist) */
+/** GET /api/v1/attendance/events — legacy operator chooser */
 export function listManageableEvents(): Promise<{
-  events: AttendanceEventType[];
+  events: AttendanceEventSummaryType[];
 }> {
   return programsFetch("/api/v1/attendance/events", "GET");
+}
+
+/** GET /api/v1/attendance/scanner-events — eligible Assisted context */
+export function listScannerEvents(): Promise<{
+  events: AttendanceEventSummaryType[];
+}> {
+  return programsFetch("/api/v1/attendance/scanner-events", "GET");
 }
 
 /** GET /api/v1/attendance/events/:eventId/members */
