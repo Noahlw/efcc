@@ -5,8 +5,11 @@ import { COPY } from "@/lib/copy";
  * Stable authenticated navigation destinations (Issue #241/#242).
  *
  * Navigation is a server-shaped presentation projection, not section
- * authorization. Events remains a stable destination while Member accounts
- * continue to receive no Events authorization in `sections[]`.
+ * authorization. Events remains a stable destination for every role; most
+ * Member accounts receive no Events authorization in `sections[]` by
+ * default, except a Member holding an active Program Leader or Department
+ * Manager grant (`sectionsForRole`'s `hasManagementGrant` parameter, #215
+ * ATT-03).
  */
 const STABLE_NAVIGATION_KEYS: Section["key"][] = [
   "home",
@@ -45,14 +48,27 @@ export function stableNavigationSections(): Section[] {
 /**
  * Sections authorized for a role. Unknown or absent roles use the stable
  * Member-safe base (Home, Profile, Programs).
+ *
+ * `hasManagementGrant` (#215 ATT-03) additionally authorizes `events` for a
+ * Member who holds an active Program Leader or Department Manager grant —
+ * roles that already include `events` (Staff/Admin) ignore the flag. The
+ * caller is expected to resolve this only for Member accounts; it is never
+ * inferred here from the role string.
  */
-export function sectionsForRole(role: string): Section[] {
+export function sectionsForRole(
+  role: string,
+  hasManagementGrant = false
+): Section[] {
   // hasOwn keeps inherited Object keys such as "constructor" and "toString"
   // from becoming role projections; unknown values use the Member-safe set.
   const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
     ? ROLE_SECTION_KEYS[role]
     : undefined;
-  return materializeSections(allowed ?? ROLE_SECTION_KEYS.Member);
+  const keys = allowed ?? ROLE_SECTION_KEYS.Member;
+  if (hasManagementGrant && !keys.includes("events")) {
+    return materializeSections([...keys, "events"]);
+  }
+  return materializeSections(keys);
 }
 
 /**

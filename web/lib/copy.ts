@@ -667,6 +667,7 @@ export const COPY = {
     eventCreatedNotice: "聚會已建立。",
     eventAvailabilityConfirmRequired:
       "此聚會有進行中的操作，需確認後才能暫停。",
+    eventRescheduleBlocked: "此聚會已有出席紀錄，不能更改時間。",
     eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
     eventCheckInWindow: "簽到時間",
     eventCheckInWindowOpensAt: "開放簽到",
@@ -743,6 +744,9 @@ export function errorCopyFor(
   }
   if (code === "CONFIRMATION_REQUIRED") {
     return COPY.programs.eventAvailabilityConfirmRequired;
+  }
+  if (code === "EVENT_RESCHEDULE_BLOCKED") {
+    return COPY.programs.eventRescheduleBlocked;
   }
   if (code === "STALE_PLAN") {
     return COPY.programs.previewChanged;

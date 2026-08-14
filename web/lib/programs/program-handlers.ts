@@ -39,6 +39,7 @@ import {
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
+  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
@@ -313,6 +314,15 @@ function mapWorkspaceError(
       `${error.message} Affected open operations: ${error.affectedOperations}.`,
       requestId,
       { open_operations: error.affectedOperations }
+    );
+  }
+  if (error instanceof EventRescheduleBlockedError) {
+    return problem(
+      409,
+      "EVENT_RESCHEDULE_BLOCKED",
+      "Conflict",
+      error.message,
+      requestId
     );
   }
   return null;

@@ -524,8 +524,15 @@ function ManagementPanel({
   }, [intent.programId, intent.task, loadAttention]);
   const attention =
     attentionState.kind === "ready" ? attentionState.attention : null;
-  const refreshAttention = () =>
+  // Bumps both resources: the workspace's own /attention counts AND the
+  // global bell's /notifications feed share no cache, so a caller that only
+  // refreshed attention left the bell showing a stale pre-mutation badge
+  // until the next mount/bell-open (#256 NTF-01 AC4 "without a manual
+  // reload").
+  const refreshAttention = () => {
     setAttentionRefreshKey((current) => current + 1);
+    setNotificationRefreshKey((current) => current + 1);
+  };
   const {
     state: notificationState,
     run: loadNotifications,

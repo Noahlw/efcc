@@ -114,6 +114,17 @@ export class DuplicateEventError extends Error {
   }
 }
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class EventRescheduleBlockedError extends Error {
+  readonly eventId: string;
+  constructor(eventId: string) {
+    super(
+      `Event ${eventId} cannot be rescheduled: Attendance already exists.`
+    );
+    this.name = "EventRescheduleBlockedError";
+    this.eventId = eventId;
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class EventAvailabilityConfirmationRequiredError extends Error {
   readonly affectedOperations: number;
 

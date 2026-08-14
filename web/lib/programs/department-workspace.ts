@@ -36,6 +36,7 @@ import {
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
+  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
@@ -2688,6 +2689,30 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const reschedules =
+      (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) ||
+      (cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at);
+    let hasCheckedIn = false;
+    if (reschedules) {
+      const summary = await this.store.getEventParticipantSummary(
+        eventId,
+        event.program_id
+      );
+      hasCheckedIn = summary.checked_in > 0;
+    }
+    if (hasCheckedIn) {
+      await this.audit(
+        ctx,
+        "EVENT_UPDATE",
+        "event",
+        eventId,
+        "CONFLICT",
+        event,
+        { reason: "attendance_exists" },
+        correlationId
+      );
+      throw new EventRescheduleBlockedError(eventId);
+    }
     if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
       const duplicate = await this.store.findEventByStart(
         event.program_id,

@@ -188,4 +188,22 @@ describe(sectionsForRole, () => {
       memberKeys
     );
   });
+
+  test("Member with an active management grant additionally receives Events (#215)", () => {
+    expect(
+      sectionsForRole("Member", true).map((s) => s.key)
+    ).toStrictEqual([...memberKeys, "events"]);
+  });
+
+  test("Member without a management grant still receives no Events (default false)", () => {
+    expect(sectionsForRole("Member", false).map((s) => s.key)).toStrictEqual(
+      memberKeys
+    );
+  });
+
+  test("hasManagementGrant is a no-op for roles that already include Events", () => {
+    expect(
+      sectionsForRole("Staff", true).map((s) => s.key)
+    ).toStrictEqual(staffKeys);
+  });
 });

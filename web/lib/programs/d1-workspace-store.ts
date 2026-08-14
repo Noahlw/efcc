@@ -1039,16 +1039,25 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   ): Promise<PreviewPlanRow> {
     // plan_id is deterministic (program + plan_hash), so the plan row and
     // its exact occurrence rows commit atomically: either the whole plan
-    // materializes or nothing does. Identical inputs re-run the same
-    // INSERT OR IGNORE statements, which also repairs any occurrence rows a
-    // previous crash may have left missing before the plan is returned.
+    // materializes or nothing does. Identical inputs re-run the same plan
+    // statement (still INSERT OR IGNORE: the plan row itself never changes
+    // once written), which also repairs any occurrence rows a previous
+    // crash may have left missing before the plan is returned.
+    //
+    // Occurrence rows upsert skip_reason on conflict: occurrence_id is
+    // stable for a given plan, but which occurrences are DUPLICATE is a
+    // live fact (it depends on which events currently exist), so a
+    // re-preview of an already-persisted plan must refresh skip_reason on
+    // existing rows instead of silently keeping their original value —
+    // otherwise an already-generated plan's re-preview would report zero
+    // duplicates even though every occurrence would now be skipped.
     //
     // Occurrence inserts are chunked at 500 statements per db.batch() so a
     // large valid schedule (horizon up to 365 days, no rule-count cap) never
     // exceeds D1's 1,000-statement batch() limit. The plan-row insert leads
     // the first chunk (or stands alone when the plan has zero occurrences).
-    // A crash between chunks self-heals on the next identical preview: every
-    // chunk is INSERT OR IGNORE, so the repair philosophy is unchanged.
+    // A crash between chunks self-heals on the next identical preview: the
+    // upsert both repairs missing rows and refreshes skip_reason.
     const planStatement = this.db
       .prepare(
         `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
@@ -1069,10 +1078,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       rows.map((occurrence) =>
         this.db
           .prepare(
-            `INSERT OR IGNORE INTO program_preview_occurrences
+            `INSERT INTO program_preview_occurrences
                (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
                 location, skip_reason, exception_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(occurrence_id) DO UPDATE SET
+               skip_reason = excluded.skip_reason`
           )
           .bind(
             occurrence.occurrence_id,

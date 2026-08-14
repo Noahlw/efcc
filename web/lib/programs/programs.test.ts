@@ -3121,6 +3121,55 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
+  test("EVT-02.1 re-previewing an already-generated plan refreshes stale DUPLICATE badges", async () => {
+    const programId = await freshProgram("EVT-02 Stale Duplicate Refresh");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "09:00",
+      end_time: "10:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+    for (const occurrence of plan.occurrences) {
+      assert.strictEqual(
+        occurrence.skip_reason,
+        null,
+        "fresh plan has no duplicates before generation"
+      );
+    }
+    const generated = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(generated.status, 200);
+    const generatedBody = (await assertCorrelated(generated)) as {
+      data: { generated: { created: number; skipped: number } };
+    };
+    assert.strictEqual(generatedBody.data.generated.created, 2);
+    assert.strictEqual(generatedBody.data.generated.skipped, 0);
+
+    // Re-preview the SAME plan after generation: every occurrence now
+    // exists as an event, so the persisted rows must refresh to DUPLICATE
+    // instead of silently keeping their original null skip_reason.
+    const repeat = await preview(adminAccess, programId, 14);
+    assert.strictEqual(repeat.plan_id, plan.plan_id, "identical inputs resolve to the same plan");
+    for (const occurrence of repeat.occurrences) {
+      assert.strictEqual(
+        occurrence.skip_reason,
+        "DUPLICATE",
+        "re-preview must report every already-generated occurrence as skippable"
+      );
+    }
+
+    // A repeat generate call against the refreshed plan must actually skip
+    // everything, matching what the refreshed preview promised.
+    const repeatGenerate = await generateRequest(programId, repeat.plan_id);
+    assert.strictEqual(repeatGenerate.status, 200);
+    const repeatGenerateBody = (await assertCorrelated(repeatGenerate)) as {
+      data: { generated: { created: number; skipped: number; resumed: boolean } };
+    };
+    assert.strictEqual(repeatGenerateBody.data.generated.created, 0);
+    assert.strictEqual(repeatGenerateBody.data.generated.skipped, 2);
+  });
+
   test("EVT-02.1 two rules producing the same starts_at surface the later one as DUPLICATE", async () => {
     const programId = await freshProgram("EVT-02 Intra-plan Duplicate");
     const first = await createRule(adminAccess, programId, {
@@ -4582,6 +4631,93 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflict.status, 409);
     const conflictBody = await problemOf(conflict);
     assert.strictEqual(conflictBody.code, "CONFLICT");
+  });
+
+  test("PATCH rejects rescheduling once Attendance exists, but allows non-schedule edits", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-15T20:00:00.000Z",
+      ends_at: "2026-09-15T21:00:00.000Z",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
+      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .run();
+
+    const reschedule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: "2026-09-15T20:15:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(reschedule.status, 409);
+    const rescheduleProblem = await problemOf(reschedule);
+    assert.strictEqual(rescheduleProblem.code, "EVENT_RESCHEDULE_BLOCKED");
+    const unchanged = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ starts_at: string }>();
+    assert.strictEqual(
+      unchanged?.starts_at,
+      "2026-09-15T20:00:00.000Z",
+      "blocked reschedule must not move the event"
+    );
+
+    const endsChange = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { ends_at: "2026-09-15T22:00:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(
+      endsChange.status,
+      409,
+      "ends_at is also a schedule field and must be blocked identically"
+    );
+
+    const nameChange = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "改名但不改時間", location: "副堂" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(
+      nameChange.status,
+      200,
+      "non-schedule edits stay allowed once Attendance exists"
+    );
+    const nameChangeBody = (await assertCorrelated(nameChange)) as {
+      data: { event: Record<string, unknown> };
+    };
+    assert.strictEqual(nameChangeBody.data.event.name, "改名但不改時間");
   });
 
   test("PATCH absent window fields preserve the window; explicit null clears it", async () => {
