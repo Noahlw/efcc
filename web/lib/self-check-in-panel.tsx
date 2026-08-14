@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import {
@@ -8,25 +8,42 @@ import {
   attendanceEventMeta,
   attendanceEventName,
 } from "@/lib/attendance-display";
-import { entryFromValue } from "@/lib/attendance-entry";
 import { COPY, errorCopyFor } from "@/lib/copy";
-import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
-import { guestCheckIn } from "@/lib/programs/program-api";
+import { selfCheckIn } from "@/lib/programs/program-api";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 import styles from "./attendance-panel.module.css";
 
-/** Public guest check-in surface. Authenticated Self uses SelfCheckInPanel. */
-export const AttendancePanel = ({ title }: { title?: string }) => {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+export const SelfCheckInPanel = ({
+  title = COPY.sections.scanner,
+}: {
+  title?: string;
+}) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [submitting, setSubmitting] = useState(false);
   const flow = useAttendanceFlow(inputRef);
+  const [retryAvailable, setRetryAvailable] = useState(false);
+  const pickerHeadingRef = useRef<HTMLHeadingElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const retryRef = useRef<HTMLButtonElement>(null);
   const handleCameraClose = () => {
     flow.stopCamera();
   };
+
+  useEffect(() => {
+    if (flow.selected) {
+      submitRef.current?.focus();
+    } else if (flow.events.length > 1) {
+      pickerHeadingRef.current?.focus();
+    }
+  }, [flow.events, flow.selected]);
+
+  useEffect(() => {
+    if (retryAvailable) {
+      retryRef.current?.focus();
+    }
+  }, [retryAvailable]);
 
   async function submit() {
     if (!flow.selected) {
@@ -35,33 +52,38 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
       announce(message);
       return;
     }
+    setRetryAvailable(false);
     setSubmitting(true);
     flow.stopCamera();
+    flow.showStatus(COPY.attendance.resolving);
     try {
       const credential = flow.fromQr
         ? { program_token: flow.input }
         : { entry: flow.input };
-      const result = await guestCheckIn({
+      const result = await selfCheckIn({
         event_id: flow.selected.event_id,
-        method: flow.fromQr ? "guest_qr_scan" : "guest_manual_code",
-        name,
-        phone,
+        method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
         ...credential,
       });
       const message =
         result.outcome === "duplicate"
-          ? COPY.attendance.guestDuplicate
+          ? COPY.attendance.duplicate
           : COPY.attendance.success;
       flow.showStatus(
         message,
         result.outcome === "duplicate" ? "info" : "success"
       );
       announce(message);
+      setRetryAvailable(false);
     } catch (error) {
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
+      const ambiguousTransport =
+        !(error instanceof RpcError) ||
+        error.problem.code === "NETWORK_ERROR" ||
+        error.problem.code === "UNAVAILABLE";
+      const message = ambiguousTransport
+        ? COPY.attendance.transportAmbiguous
+        : errorCopyFor(error.problem.code, error.problem.detail);
+      setRetryAvailable(ambiguousTransport);
       flow.showStatus(message, "error");
       announce(message);
     } finally {
@@ -73,9 +95,11 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
     <div className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
         <h1 id="attendance-title" className={styles.title}>
-          {title ?? COPY.attendance.guestTitle}
+          {title}
         </h1>
-        <p className={styles.lead}>{COPY.attendance.signedOutNote}</p>
+        <p id="attendance-self-hint" className={styles.lead}>
+          {COPY.attendance.selfHint}
+        </p>
         <button
           className={styles.button}
           type="button"
@@ -122,6 +146,7 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
               onChange={(event) => flow.setInput(event.target.value)}
               placeholder={COPY.attendance.inputPlaceholder}
               autoComplete="off"
+              aria-describedby="attendance-self-hint"
             />
           </label>
           <button
@@ -135,7 +160,12 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
         </form>
         {flow.events.length > 1 && (
           <div className={styles.group} aria-labelledby="choose-event-title">
-            <h2 id="choose-event-title" className={styles.sectionTitle}>
+            <h2
+              id="choose-event-title"
+              ref={pickerHeadingRef}
+              className={styles.sectionTitle}
+              tabIndex={-1}
+            >
               {COPY.attendance.chooseEvent}
             </h2>
             <ul className={styles.events}>
@@ -158,70 +188,36 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
           </div>
         )}
         {flow.selected && (
-          <form
-            className={styles.group}
-            aria-labelledby="guest-fields-title"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            <h2 id="guest-fields-title" className={styles.sectionTitle}>
-              {COPY.attendance.guestFields}
-            </h2>
-            <div className={styles.fields}>
-              <label className={styles.field} htmlFor="guest-name">
-                <span className={styles.fieldLabel}>
-                  {COPY.attendance.guestName}
-                </span>
-                <input
-                  id="guest-name"
-                  className={styles.input}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  autoComplete="name"
-                  maxLength={80}
-                  required
-                />
-              </label>
-              <label className={styles.field} htmlFor="guest-phone">
-                <span className={styles.fieldLabel}>
-                  {COPY.attendance.guestPhone}
-                </span>
-                <input
-                  id="guest-phone"
-                  className={styles.input}
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  autoComplete="tel"
-                  inputMode="tel"
-                  required
-                  aria-describedby="guest-phone-hint"
-                />
-                <span id="guest-phone-hint" className={styles.fieldHint}>
-                  {COPY.attendance.guestPhoneHint}
-                </span>
-              </label>
-            </div>
-            <button
-              className={styles.button}
-              type="submit"
-              disabled={flow.busy || submitting}
-              aria-busy={flow.busy || submitting}
-            >
-              {submitting
-                ? COPY.attendance.resolving
-                : COPY.attendance.guestSubmit}
-            </button>
-          </form>
-        )}
-        {flow.selected && (
           <p className={styles.hint}>
             {COPY.attendance.eventTime}: {attendanceEventLabel(flow.selected)}
             {flow.selected.location?.trim()
               ? ` · ${COPY.attendance.eventLocation}: ${flow.selected.location.trim()}`
               : ""}
           </p>
+        )}
+        {flow.selected && (
+          <button
+            ref={submitRef}
+            className={styles.button}
+            type="button"
+            disabled={flow.busy || submitting}
+            aria-busy={flow.busy || submitting}
+            onClick={() => void submit()}
+          >
+            {COPY.attendance.memberSubmit}
+          </button>
+        )}
+        {retryAvailable && (
+          <button
+            ref={retryRef}
+            className={styles.buttonSecondary}
+            type="button"
+            disabled={submitting}
+            aria-busy={submitting}
+            onClick={() => void submit()}
+          >
+            {COPY.attendance.retry}
+          </button>
         )}
         <output
           className={styles.status}
@@ -231,29 +227,6 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
         >
           {flow.status}
         </output>
-        <div className={styles.group}>
-          <a
-            className={styles.back}
-            href="/"
-            onClick={() => {
-              const entry = entryFromValue(flow.input);
-              if (entry.value) {
-                writeGuestCredential({
-                  kind:
-                    flow.fromQr || entry.fromQr
-                      ? "program_token"
-                      : "manual_code",
-                  value: entry.value,
-                });
-              }
-            }}
-          >
-            {COPY.attendance.loginForMember}
-          </a>
-          <a className={styles.back} href="/">
-            {COPY.nav.backToHome}
-          </a>
-        </div>
       </section>
     </div>
   );

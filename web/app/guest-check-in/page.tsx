@@ -54,7 +54,7 @@ const GuestCheckInPage = () => (
       </div>
     </header>
     <main>
-      <AttendancePanel guest />
+      <AttendancePanel />
     </main>
   </div>
 );

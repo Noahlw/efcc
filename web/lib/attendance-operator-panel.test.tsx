@@ -8,12 +8,12 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 
-import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import type {
   AttendanceEvent,
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/attendance";
+import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
 import { LiveRegion } from "@/lib/live-region";
 
@@ -23,6 +23,8 @@ const ACTIVE: AttendanceEvent = {
   event_id: "evt-1",
   program_id: "prog-1",
   program_name: "週六團契",
+  name: "週六聚會",
+  location: "主堂",
   starts_at: "2026-08-13T11:30:00.000Z",
   ends_at: "2026-08-13T13:00:00.000Z",
   manual_check_in_code: "ATT1234",
@@ -80,12 +82,13 @@ function renderWithLiveRegion() {
   );
 }
 
-describe("AttendanceOperatorPanel", () => {
+describe(AttendanceOperatorPanel, () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
   afterEach(() => {
     cleanup();
     server.resetHandlers();
   });
+
   afterAll(() => server.close());
 
   test("assisted check-in announces success and keeps the notice after roster reload", async () => {
@@ -137,12 +140,12 @@ describe("AttendanceOperatorPanel", () => {
       screen.getByLabelText(COPY.attendance.memberSearch),
       "E2E Member"
     );
-    await user.click(screen.getByRole("button", { name: COPY.attendance.search }));
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.search })
+    );
     await screen.findByText(MEMBER.name);
 
-    await user.click(
-      screen.getByRole("button", { name: /替成員簽到/ })
-    );
+    await user.click(screen.getByRole("button", { name: /替成員簽到/u }));
     // The silent roster reload must NOT overwrite the visible success…
     await waitFor(() => expect(rosterCalls).toBeGreaterThanOrEqual(2));
     // Both the panel output and the sr-only live region carry the notice.
@@ -154,7 +157,9 @@ describe("AttendanceOperatorPanel", () => {
 
     // …and the sr-only live region announced it for screen readers.
     const live = document.querySelector('output[role="status"]');
-    await waitFor(() => expect(live?.textContent).toBe(COPY.attendance.success));
+    await waitFor(() =>
+      expect(live?.textContent).toBe(COPY.attendance.success)
+    );
   });
 
   test("cancelled event: chooser suffix, notice, and no check-in controls", async () => {
@@ -172,7 +177,7 @@ describe("AttendanceOperatorPanel", () => {
     renderWithLiveRegion();
 
     await screen.findByRole("option", {
-      name: new RegExp(`（${COPY.programs.eventCancelled}）`),
+      name: new RegExp(`（${COPY.programs.eventCancelled}）`, "u"),
     });
 
     await user.selectOptions(

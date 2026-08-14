@@ -10,10 +10,18 @@ import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
-import { AttendancePanel } from "@/lib/attendance-panel";
 import type { AttendanceEvent } from "@/lib/attendance";
+import { AttendancePanel } from "@/lib/attendance-panel";
 import { COPY } from "@/lib/copy";
 
 const server = setupServer();
@@ -22,6 +30,8 @@ const EVENT: AttendanceEvent = {
   event_id: "evt-1",
   program_id: "prog-1",
   program_name: "週六團契",
+  name: "週六聚會",
+  location: "主堂",
   starts_at: "2026-08-13T11:30:00.000Z",
   ends_at: "2026-08-13T13:00:00.000Z",
   manual_check_in_code: "ATT1234",
@@ -34,7 +44,9 @@ const EVENT: AttendanceEvent = {
 /** Resolve an entry to a chooser with the single event auto-selected. */
 async function resolveSingleEvent(user: UserEvent) {
   await user.type(screen.getByLabelText(COPY.attendance.inputLabel), "ATT1234");
-  await user.click(screen.getByRole("button", { name: COPY.attendance.resolve }));
+  await user.click(
+    screen.getByRole("button", { name: COPY.attendance.resolve })
+  );
   await screen.findByLabelText(COPY.attendance.guestName);
 }
 
@@ -42,7 +54,15 @@ async function resolveSingleEvent(user: UserEvent) {
 // The phone label also wraps the hint span, so its full label text is
 // 電話例如：… — match the label by 電話 prefix instead of the whole text.
 function phoneField(): HTMLInputElement {
-  return screen.getByLabelText(new RegExp(`^${COPY.attendance.guestPhone}`));
+  return screen.getByLabelText(
+    new RegExp(`^${COPY.attendance.guestPhone}`, "u")
+  );
+}
+
+function FailedBarcodeDetector() {
+  return {
+    detect: () => Promise.reject(new Error("detector unavailable")),
+  };
 }
 
 describe("AttendancePanel guest flow", () => {
@@ -51,6 +71,7 @@ describe("AttendancePanel guest flow", () => {
     cleanup();
     server.resetHandlers();
   });
+
   afterAll(() => server.close());
 
   test("guest name input is required and capped at 80 characters", async () => {
@@ -63,7 +84,7 @@ describe("AttendancePanel guest flow", () => {
       )
     );
     const user = userEvent.setup();
-    render(<AttendancePanel guest />);
+    render(<AttendancePanel />);
     await resolveSingleEvent(user);
 
     const nameInput = screen.getByLabelText(COPY.attendance.guestName);
@@ -89,7 +110,7 @@ describe("AttendancePanel guest flow", () => {
       })
     );
     const user = userEvent.setup();
-    render(<AttendancePanel guest />);
+    render(<AttendancePanel />);
     await resolveSingleEvent(user);
 
     await user.click(
@@ -98,7 +119,7 @@ describe("AttendancePanel guest flow", () => {
     // Native constraint validation must abort the submit before any RPC.
     await waitFor(() => expect(guestPosts).toBe(0));
     const phoneInput = phoneField();
-    expect(phoneInput.validity.valueMissing).toBe(true);
+    expect(phoneInput.validity.valueMissing).toBeTruthy();
   });
 
   test("invalid phone surfaces the server VALIDATION detail with error tone", async () => {
@@ -123,10 +144,13 @@ describe("AttendancePanel guest flow", () => {
       )
     );
     const user = userEvent.setup();
-    render(<AttendancePanel guest />);
+    render(<AttendancePanel />);
     await resolveSingleEvent(user);
 
-    await user.type(screen.getByLabelText(COPY.attendance.guestName), "E2E訪客");
+    await user.type(
+      screen.getByLabelText(COPY.attendance.guestName),
+      "E2E訪客"
+    );
     await user.type(phoneField(), "abc");
     await user.click(
       screen.getByRole("button", { name: COPY.attendance.guestSubmit })
@@ -152,10 +176,13 @@ describe("AttendancePanel guest flow", () => {
       )
     );
     const user = userEvent.setup();
-    render(<AttendancePanel guest />);
+    render(<AttendancePanel />);
     await resolveSingleEvent(user);
 
-    await user.type(screen.getByLabelText(COPY.attendance.guestName), "E2E訪客");
+    await user.type(
+      screen.getByLabelText(COPY.attendance.guestName),
+      "E2E訪客"
+    );
     await user.type(phoneField(), "91234567");
     await user.click(
       screen.getByRole("button", { name: COPY.attendance.guestSubmit })
@@ -173,33 +200,36 @@ describe("AttendancePanel camera feedback", () => {
 
   test("turns a detector failure into recoverable camera feedback", async () => {
     const stream = {
-      getTracks: () => [{ stop: vi.fn() }],
+      getTracks: () => [{ stop: vi.fn<() => void>() }],
     } as unknown as MediaStream;
-    const originalDetector = (
-      window as Window & { BarcodeDetector?: unknown }
-    ).BarcodeDetector;
+    const originalDetector = (window as Window & { BarcodeDetector?: unknown })
+      .BarcodeDetector;
     Object.defineProperty(window, "BarcodeDetector", {
       configurable: true,
-      value: class {
-        detect(): Promise<never> {
-          return Promise.reject(new Error("detector unavailable"));
-        }
-      },
+      value: FailedBarcodeDetector,
     });
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+      value: {
+        getUserMedia: vi
+          .fn<() => Promise<MediaStream>>()
+          .mockResolvedValue(stream),
+      },
     });
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
 
     const user = userEvent.setup();
     render(<AttendancePanel />);
-    await user.click(screen.getByRole("button", { name: COPY.attendance.camera }));
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.camera })
+    );
 
     await expect(
       screen.findByText(COPY.attendance.cameraUnavailable)
     ).resolves.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: COPY.attendance.camera })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.camera })
+    ).toBeInTheDocument();
 
     if (originalDetector === undefined) {
       Reflect.deleteProperty(window, "BarcodeDetector");
@@ -229,8 +259,6 @@ describe("attendance module guardrails", () => {
       path.resolve(process.cwd(), "lib/attendance-panel.module.css"),
       "utf-8"
     );
-    expect(css).not.toMatch(
-      /font-size: (0\.[89]rem|0\.95rem|0\.78rem)/u
-    );
+    expect(css).not.toMatch(/font-size: (?:0\.[89]rem|0\.95rem|0\.78rem)/u);
   });
 });

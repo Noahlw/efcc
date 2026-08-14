@@ -21,22 +21,18 @@
 //     resolve. The seeded E2E-MEMBER-U-E2E-MEMBER value is exercised via
 //     the operator member search (exact qr_code_string match) instead.
 import { expect, test } from "@playwright/test";
-import type { APIRequestContext, Browser, Page } from "@playwright/test";
+import type {
+  APIRequestContext,
+  Page,
+  PlaywrightWorkerArgs,
+} from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
 // @playwright/test does not export named `Playwright`/`StorageState` types;
 // the helpers below only need the request-context surface and the cookie
 // shape accepted by browser.newContext({ storageState }).
-interface RequestFactory {
-  request: {
-    newContext(options?: {
-      baseURL?: string;
-      storageState?: unknown;
-      extraHTTPHeaders?: Record<string, string>;
-    }): Promise<APIRequestContext>;
-  };
-}
+type RequestFactory = Pick<PlaywrightWorkerArgs["playwright"], "request">;
 
 interface StorageState {
   cookies: {
@@ -51,7 +47,7 @@ interface StorageState {
   }[];
   origins: {
     origin: string;
-    localStorage: Array<{ name: string; value: string }>;
+    localStorage: { name: string; value: string }[];
   }[];
 }
 
@@ -86,8 +82,9 @@ const MEMBER_CRED =
   process.env.PROGRAMS_MEMBER_CREDENTIAL ??
   (localTarget ? DEV_MEMBER.credential : undefined);
 
-// Copy strings mirrored from web/lib/copy.ts (asserted as observable DOM).
 const COPY = {
+  scannerTitle: "掃描簽到",
+  assistedOpen: "開協助簽到",
   inputLabel: "課程 QR 代碼或聚會手動代碼",
   resolve: "查找聚會",
   chooseEvent: "選擇聚會",
@@ -139,7 +136,7 @@ interface Fixtures {
 
 let fixtures: Fixtures;
 
-function required(name: string, value: string | undefined): string {
+function required(name: string, value: string | null | undefined): string {
   if (!value) {
     throw new Error(`${name} is required`);
   }
@@ -185,6 +182,8 @@ async function loginApi(
   expect(
     setCookieHeaders.map((header) => header.split("=", 1)[0]).sort()
   ).toEqual(["efcc_access", "efcc_refresh"]);
+  // Keep the cookie parser below the login flow for readability.
+  // eslint-disable-next-line no-use-before-define
   const storageState: StorageState = storageStateFromCookies(
     setCookieHeaders,
     new URL(TARGET_URL).hostname
@@ -281,7 +280,7 @@ async function patchJson(
   return { status: response.status(), body };
 }
 
-async function guestCheckIn(
+function guestCheckIn(
   api: APIRequestContext,
   eventId: string,
   manualCode: string,
@@ -328,32 +327,25 @@ async function resolveAndChoose(
 }
 
 test.beforeAll(async ({ playwright }) => {
-  for (const [name, value] of [
-    ["PROGRAMS_ADMIN_USERNAME", ADMIN_USER],
-    ["PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED],
-    ["PROGRAMS_STAFF_USERNAME", STAFF_USER],
-    ["PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED],
-    ["PROGRAMS_MEMBER_USERNAME", MEMBER_USER],
-    ["PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED],
-  ]) {
-    if (!value) {
-      throw new Error(`${name} is required`);
-    }
-  }
+  const adminUsername = required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER);
+  const adminCredential = required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED);
+  const staffUsername = required("PROGRAMS_STAFF_USERNAME", STAFF_USER);
+  const staffCredential = required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED);
+  const memberUsername = required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER);
+  const memberCredential = required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED);
   if (
-    ![ADMIN_USER, STAFF_USER, MEMBER_USER].every((user) =>
-      user?.startsWith("E2E_")
+    ![adminUsername, staffUsername, memberUsername].every((user) =>
+      user.startsWith("E2E_")
     )
   ) {
     throw new Error(
       "PROGRAMS_*_USERNAME must start with E2E_; remote runs require disposable acceptance accounts"
     );
   }
-
   // Fixture build via API (no browser): fresh department + Recurring program
   // + WEEKLY rule + generated events + two overlapping open manual events +
   // one cancelled event; member enrollment request approved by admin.
-  const admin = await loginApi(playwright, ADMIN_USER!, ADMIN_CRED!);
+  const admin = await loginApi(playwright, adminUsername, adminCredential);
   let member: Awaited<ReturnType<typeof loginApi>> | null = null;
   let staff: Awaited<ReturnType<typeof loginApi>> | null = null;
   try {
@@ -391,9 +383,11 @@ test.beforeAll(async ({ playwright }) => {
     expect(program.status).toBe(201);
     const programId = (program.body.data as { program: { program_id: string } })
       .program.program_id;
-    const checkInToken = (
-      program.body.data as { program: { check_in_token: string | null } }
-    ).program.check_in_token;
+    const checkInToken = required(
+      "program check-in token",
+      (program.body.data as { program: { check_in_token: string | null } })
+        .program.check_in_token
+    );
     expect(checkInToken).toMatch(/^[0-9a-f]{32}$/u);
 
     const rule = await postJson(
@@ -438,10 +432,12 @@ test.beforeAll(async ({ playwright }) => {
         {
           starts_at: minutesFromNow(startsMinutes),
           ends_at: minutesFromNow(endsMinutes),
+          name: `E2E 聚會 ${startsMinutes}`,
+          location: "主堂",
         }
       );
       expect(created.status).toBe(201);
-      const {event} = (created.body.data as { event: AttendanceEventFixture });
+      const { event } = created.body.data as { event: AttendanceEventFixture };
       expect(event.manual_check_in_code).toMatch(/^[0-9A-F]{8}$/u);
       return event;
     };
@@ -468,9 +464,14 @@ test.beforeAll(async ({ playwright }) => {
     expect(cancelled.status).toBe(200);
 
     // Enroll the member (member self check-in requires an Active enrollment).
-    member = await loginApi(playwright, MEMBER_USER!, MEMBER_CRED!);
+    const memberLogin = await loginApi(
+      playwright,
+      memberUsername,
+      memberCredential
+    );
+    member = memberLogin;
     const requestResult = await postJson(
-      member!.api,
+      memberLogin.api,
       `/api/v1/programs/${programId}/enrollment-requests`,
       {}
     );
@@ -485,15 +486,20 @@ test.beforeAll(async ({ playwright }) => {
     );
     expect(decision.status).toBe(200);
 
-    staff = await loginApi(playwright, STAFF_USER!, STAFF_CRED!);
+    const staffLogin = await loginApi(
+      playwright,
+      staffUsername,
+      staffCredential
+    );
+    staff = staffLogin;
     fixtures = {
-      checkInToken: checkInToken!,
+      checkInToken,
       eventA,
       eventB,
       cancelledEvent,
       adminState: admin.storageState,
-      memberState: member.storageState,
-      staffState: staff.storageState,
+      memberState: memberLogin.storageState,
+      staffState: staffLogin.storageState,
     };
   } finally {
     await admin.api.dispose();
@@ -543,8 +549,6 @@ test.describe("ATT-04 QR attendance proof", () => {
     playwright,
   }) => {
     const api = await playwright.request.newContext({ baseURL: TARGET_URL });
-    const member: Awaited<ReturnType<typeof loginApi>> | null = null;
-    const staff: Awaited<ReturnType<typeof loginApi>> | null = null;
     try {
       const name = `E2E訪客 ${fresh("B")}`;
       const phone = freshPhone();
@@ -700,6 +704,30 @@ test.describe("ATT-04 QR attendance proof", () => {
       expect(body.data.outcome).toBe("duplicate");
     } finally {
       await api.dispose();
+    }
+  });
+
+  test("D2 member Scanner is Self-only and multi-event choices include location", async ({
+    browser,
+  }) => {
+    const memberContext = await browser.newContext({
+      storageState: fixtures.memberState,
+    });
+    const page = await memberContext.newPage();
+    try {
+      await page.goto("/scanner");
+      await expect(
+        page.getByRole("heading", { name: COPY.scannerTitle })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.assistedOpen, { exact: true })
+      ).toHaveCount(0);
+      await page.locator("#attendance-code").fill(fixtures.checkInToken);
+      await page.getByRole("button", { name: COPY.resolve }).click();
+      await expect(page.locator("button[aria-pressed]")).toHaveCount(2);
+      await expect(page.getByText(/地點: 主堂/u).first()).toBeVisible();
+    } finally {
+      await memberContext.close();
     }
   });
 
