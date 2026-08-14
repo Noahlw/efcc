@@ -195,4 +195,213 @@ describe(AttendanceOperatorPanel, () => {
       screen.queryByRole("button", { name: COPY.attendance.printSheet })
     ).not.toBeInTheDocument();
   });
+
+  test("operator voids an active attendance row with reason", async () => {
+    let voided = false;
+    server.use(
+      http.get("/api/v1/attendance/events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
+        HttpResponse.json({
+          requestId: "rid-roster",
+          data: {
+            event: ACTIVE,
+            attendances: [
+              voided
+                ? { ...ROW, status: "Voided", void_reason: "輸入錯誤" }
+                : ROW,
+            ],
+          },
+        })
+      ),
+      http.post("/api/v1/attendance/att-1/void", async ({ request }) => {
+        const body = (await request.json()) as { reason: string };
+        expect(body.reason).toBe("輸入錯誤");
+        voided = true;
+        return HttpResponse.json({
+          requestId: "rid-void",
+          data: { outcome: "voided", attendance_id: "att-1" },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await screen.findByLabelText(COPY.attendance.chooseEvent);
+    await user.selectOptions(
+      screen.getByLabelText(COPY.attendance.chooseEvent),
+      ACTIVE.event_id
+    );
+
+    await screen.findByText(MEMBER.user_id);
+    await user.type(
+      screen.getByLabelText(COPY.attendance.voidReason),
+      "輸入錯誤"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.void })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(COPY.attendance.status.Voided)).toBeVisible();
+    });
+  });
+
+  test("operator corrects guest attendance name and phone with reason", async () => {
+    const guestRow: AttendanceRow = {
+      attendance_id: "att-guest-1",
+      event_id: ACTIVE.event_id,
+      member_user_id: null,
+      guest_name: "舊訪客名",
+      guest_phone: "9111 2222",
+      guest_phone_normalized: "hk:85291112222",
+      method: "guest_manual_code",
+      status: "Active",
+      checked_in_at: "2026-08-13T11:31:00.000Z",
+      checked_in_by: null,
+      voided_by: null,
+      voided_at: null,
+      void_reason: null,
+    };
+    let corrected = false;
+    server.use(
+      http.get("/api/v1/attendance/events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
+        HttpResponse.json({
+          requestId: "rid-roster",
+          data: {
+            event: ACTIVE,
+            attendances: [
+              corrected
+                ? {
+                    ...guestRow,
+                    guest_name: "新訪客名",
+                    guest_phone: "9222 3333",
+                  }
+                : guestRow,
+            ],
+          },
+        })
+      ),
+      http.patch(
+        "/api/v1/attendance/att-guest-1/guest-correction",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            name: string;
+            phone: string;
+            reason: string;
+          };
+          expect(body.name).toBe("新訪客名");
+          expect(body.phone).toBe("9222 3333");
+          expect(body.reason).toBe("更正電話");
+          corrected = true;
+          return HttpResponse.json({
+            requestId: "rid-corr",
+            data: { outcome: "corrected", attendance_id: "att-guest-1" },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await screen.findByLabelText(COPY.attendance.chooseEvent);
+    await user.selectOptions(
+      screen.getByLabelText(COPY.attendance.chooseEvent),
+      ACTIVE.event_id
+    );
+
+    await screen.findByText("舊訪客名");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.correctGuest })
+    );
+
+    const nameInput = screen.getByDisplayValue("舊訪客名");
+    await user.clear(nameInput);
+    await user.type(nameInput, "新訪客名");
+
+    const phoneInput = screen.getByDisplayValue("9111 2222");
+    await user.clear(phoneInput);
+    await user.type(phoneInput, "9222 3333");
+
+    await user.type(
+      screen.getByLabelText(COPY.attendance.correctionReason),
+      "更正電話"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.saveCorrection })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("新訪客名")).toBeVisible();
+      expect(screen.getByText("9222 3333")).toBeVisible();
+    });
+  });
+
+  test("operator panel surfaces error tone and recovers when void fails", async () => {
+    server.use(
+      http.get("/api/v1/attendance/events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
+        HttpResponse.json({
+          requestId: "rid-roster",
+          data: { event: ACTIVE, attendances: [ROW] },
+        })
+      ),
+      http.post("/api/v1/attendance/att-1/void", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Forbidden",
+            status: 403,
+            code: "FORBIDDEN",
+            detail: "你沒有取消此簽到的權限。",
+          },
+          { status: 403 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await screen.findByLabelText(COPY.attendance.chooseEvent);
+    await user.selectOptions(
+      screen.getByLabelText(COPY.attendance.chooseEvent),
+      ACTIVE.event_id
+    );
+
+    await screen.findByText(MEMBER.user_id);
+    await user.type(
+      screen.getByLabelText(COPY.attendance.voidReason),
+      "嘗試作廢"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.void })
+    );
+
+    const errorOutputs = await screen.findAllByText(COPY.error.forbidden);
+    expect(errorOutputs.length).toBeGreaterThanOrEqual(1);
+    const visibleOutput = errorOutputs.find(
+      (el) => el.dataset.tone === "error"
+    );
+    expect(visibleOutput).toBeDefined();
+    // Roster remains visible and intact; no optimistic deletion occurs on failure.
+    expect(screen.getByText(MEMBER.user_id)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.void })
+    ).toBeEnabled();
+  });
 });
