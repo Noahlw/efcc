@@ -139,6 +139,14 @@ const PUBLIC_USER: PublicUser = {
 // title-case values; uppercase spellings fall back to the Member set.
 const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
 const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
+const PROGRAM_LEADER_USER: PublicUser = {
+  ...PUBLIC_USER,
+  role: "Program Leader",
+};
+const DEPARTMENT_MANAGER_USER: PublicUser = {
+  ...PUBLIC_USER,
+  role: "Department Manager",
+};
 
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
@@ -1081,20 +1089,14 @@ describe("Shell", () => {
     test("renders the stable navigation projection for Member", () => {
       renderWithProvider(sectionsForRole("Member"), "/home");
       expect(
-        screen.getAllByText(COPY.sections.home).length
-      ).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getAllByText(COPY.sections.programs).length
-      ).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getAllByText(COPY.sections.events).length
-      ).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getAllByText(COPY.sections.scanner).length
-      ).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getAllByText(COPY.sections.profile).length
-      ).toBeGreaterThanOrEqual(1);
+        [
+          COPY.sections.home,
+          COPY.sections.programs,
+          COPY.sections.events,
+          COPY.sections.scanner,
+          COPY.sections.profile,
+        ].every((section) => screen.getAllByText(section).length >= 1)
+      ).toBeTruthy();
       expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
@@ -1444,6 +1446,34 @@ describe("Shell", () => {
       });
     });
 
+    test("Scanner is Self and reachable from every authenticated role", async () => {
+      const roleUsers = [
+        PUBLIC_USER,
+        PROGRAM_LEADER_USER,
+        DEPARTMENT_MANAGER_USER,
+        STAFF_USER,
+        ADMIN_USER,
+      ];
+      for (const user of roleUsers) {
+        withAuthRestore(user, sectionsForRole(user.role));
+        setAuthHint();
+        pathnameMock.mockReturnValue("/scanner");
+        render(<ScannerPage />);
+        // These role bootstraps share the same auth/router mocks and must stay ordered.
+        // eslint-disable-next-line no-await-in-loop
+        await waitFor(() => {
+          expect(
+            screen.getByRole("heading", { name: COPY.sections.scanner })
+          ).toBeInTheDocument();
+        });
+        expect(
+          screen.getAllByRole("link", { name: COPY.sections.scanner }).length
+        ).toBeGreaterThan(0);
+        expect(screen.queryByText(COPY.attendance.assistedOpen)).toBeNull();
+        cleanup();
+      }
+    });
+
     test("care page renders COPY.sections.care title", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
@@ -1471,7 +1501,9 @@ describe("Shell", () => {
 
   describe("server-shaped bootstrap authorization", () => {
     test("uses the server projection instead of deriving sections from role", () => {
-      expect(buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)).toStrictEqual({
+      expect(
+        buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)
+      ).toStrictEqual({
         profile: ADMIN_USER,
         sections: MEMBER_SECTIONS,
         navigation: NAVIGATION,

@@ -27,12 +27,16 @@ export const COPY = {
   },
   attendance: {
     title: "簽到",
+    selfHint: "掃描課程 QR 碼或輸入聚會手動代碼。",
     inputLabel: "課程 QR 代碼或聚會手動代碼",
     inputPlaceholder: "輸入代碼",
     resolve: "查找聚會",
     resolving: "查找中…",
     chooseEvent: "選擇聚會",
-    noEvents: "目前沒有可簽到的聚會。",
+    noEvents: "目前沒有可簽到的聚會，請稍後再試或輸入聚會手動代碼。",
+    transportAmbiguous: "未能確認簽到是否完成，請重試以確認狀態。",
+    retry: "重試簽到",
+    eventLocation: "地點",
     memberSubmit: "確認簽到",
     guestTitle: "訪客簽到",
     guestName: "姓名",
@@ -252,7 +256,8 @@ export const COPY = {
       "查看這個課程的聚會記錄；建立聚會並於聚會詳情中編輯。",
     workspaceTaskParticipantsLead:
       "查看報名申請與活躍參與者；決定與新增操作由參與者工作流程處理。",
-    workspaceTaskSettingsLead: "集中管理這個課程本身的基本資料、報名、時間表與出席預設。",
+    workspaceTaskSettingsLead:
+      "集中管理這個課程本身的基本資料、報名、時間表與出席預設。",
     settingsBasics: "基本資料",
     settingsBasicsLead: "更新課程名稱、簡介、類別及在課程目錄中的顯示次序。",
     settingsEnrollment: "報名與可見性",
@@ -265,7 +270,8 @@ export const COPY = {
     settingsAttendanceLead:
       "這是課程層級的簽到預設，具體聚會會按這些相對時間計算簽到時段。",
     settingsNoManagement: "目前沒有課程設定管理能力。",
-    settingsNoManagementHint: "你的管理範圍仍然保留，但這個課程的設定不能由目前帳戶編輯。",
+    settingsNoManagementHint:
+      "你的管理範圍仍然保留，但這個課程的設定不能由目前帳戶編輯。",
     settingsSaved: "課程設定已儲存。",
     settingsSaveBasics: "儲存基本資料",
     settingsSaveEnrollment: "儲存報名與可見性",
@@ -319,7 +325,8 @@ export const COPY = {
     workspaceTaskParticipantsEmpty: "目前沒有報名或活躍參與者。",
     workspaceParticipantsRefresh: "重新整理參與者資料",
     workspaceParticipantsRefreshSuccess: "參與者資料已更新。",
-    workspaceParticipantsRefreshFailed: "更新參與者資料失敗，畫面顯示上次已知結果。",
+    workspaceParticipantsRefreshFailed:
+      "更新參與者資料失敗，畫面顯示上次已知結果。",
     workspaceParticipantsForbidden: "你目前無法操作這個課程的參與者資料。",
     workspaceParticipantsStale: "這項報名資料已過時，請重新整理後再試。",
     workspaceParticipantsConflict: "這項操作與另一項更新衝突，資料未有改變。",
@@ -514,8 +521,7 @@ export const COPY = {
     previewRequiresRecurring: "只有定期課程可預覽聚會。",
     previewError: "無法預覽聚會。",
     previewHorizon: "預覽範圍（天數）",
-    previewLead:
-      "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。",
+    previewLead: "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。",
     previewPlanLabel: "方案 {id}",
     previewPlanMeta: "由 {rules} 條規則組成，範圍 {days} 天（香港時間）。",
     previewOccurrenceDate: "日期",
@@ -529,7 +535,8 @@ export const COPY = {
     previewEmpty: "此範圍內沒有符合時間表的聚會。",
     previewChanged: "時間表已變更，請重新預覽。",
     generateRequiresPreview: "請先預覽時間表再產生聚會。",
-    generatedPartial: "已產生 {created} 場，跳過 {skipped} 場，{failed} 場失敗。",
+    generatedPartial:
+      "已產生 {created} 場，跳過 {skipped} 場，{failed} 場失敗。",
     generatedResumed: "已接續上次產生，新增 {created} 場，跳過 {skipped} 場。",
     generateEvents: "產生聚會",
     generating: "產生中…",
@@ -675,6 +682,29 @@ export const COPY = {
   },
 } as const;
 
+const ERROR_COPY_BY_CODE: Record<string, string> = {
+  CONFLICT: COPY.error.conflict,
+  STALE: COPY.programs.workspaceParticipantsStale,
+  ENROLLMENT_ACCOUNT_INACTIVE: COPY.programs.enrollmentAccountInactive,
+  ACCOUNT_INACTIVE: COPY.programs.leaderAccountInactive,
+  ENROLLMENT_DUPLICATE: COPY.programs.enrollmentDuplicate,
+  EVENT_CANCELLED: COPY.attendance.eventCancelled,
+  CHECK_IN_CLOSED: COPY.attendance.eventClosed,
+  INVALID_CHECK_IN_ENTRY: COPY.attendance.invalidEntry,
+  ENROLLMENT_REQUIRED: COPY.attendance.enrollmentRequired,
+  RATE_LIMITED: COPY.attendance.rateLimited,
+  DUPLICATE_ATTENDANCE: COPY.attendance.guestDuplicate,
+  CONFIRMATION_REQUIRED: COPY.programs.eventAvailabilityConfirmRequired,
+  EVENT_RESCHEDULE_BLOCKED: COPY.programs.eventRescheduleBlocked,
+  STALE_PLAN: COPY.programs.previewChanged,
+  PLAN_NOT_FOUND: COPY.programs.previewNone,
+  EVENT_UNAVAILABLE: COPY.programs.eventUnavailableCheckIn,
+  UNAVAILABLE: COPY.error.unavailable,
+  INTERNAL_ERROR: COPY.error.serverError,
+  MALFORMED_RESPONSE: COPY.error.malformed,
+  MALFORMED_REQUEST: COPY.error.malformed,
+};
+
 export function errorCopyFor(
   code?: string,
   // _detail is surfaced only for VALIDATION problems, whose server detail is
@@ -709,64 +739,7 @@ export function errorCopyFor(
       ? COPY.programs.archiveAlreadyArchived
       : COPY.programs.archiveBlocked;
   }
-  if (code === "CONFLICT") {
-    return COPY.error.conflict;
-  }
-  if (code === "STALE") {
-    return COPY.programs.workspaceParticipantsStale;
-  }
-  if (code === "ENROLLMENT_ACCOUNT_INACTIVE") {
-    return COPY.programs.enrollmentAccountInactive;
-  }
-  if (code === "ACCOUNT_INACTIVE") {
-    return COPY.programs.leaderAccountInactive;
-  }
-  if (code === "ENROLLMENT_DUPLICATE") {
-    return COPY.programs.enrollmentDuplicate;
-  }
-  if (code === "EVENT_CANCELLED") {
-    return COPY.attendance.eventCancelled;
-  }
-  if (code === "CHECK_IN_CLOSED") {
-    return COPY.attendance.eventClosed;
-  }
-  if (code === "INVALID_CHECK_IN_ENTRY") {
-    return COPY.attendance.invalidEntry;
-  }
-  if (code === "ENROLLMENT_REQUIRED") {
-    return COPY.attendance.enrollmentRequired;
-  }
-  if (code === "RATE_LIMITED") {
-    return COPY.attendance.rateLimited;
-  }
-  if (code === "DUPLICATE_ATTENDANCE") {
-    return COPY.attendance.guestDuplicate;
-  }
-  if (code === "CONFIRMATION_REQUIRED") {
-    return COPY.programs.eventAvailabilityConfirmRequired;
-  }
-  if (code === "EVENT_RESCHEDULE_BLOCKED") {
-    return COPY.programs.eventRescheduleBlocked;
-  }
-  if (code === "STALE_PLAN") {
-    return COPY.programs.previewChanged;
-  }
-  if (code === "PLAN_NOT_FOUND") {
-    return COPY.programs.previewNone;
-  }
-  if (code === "EVENT_UNAVAILABLE") {
-    return COPY.programs.eventUnavailableCheckIn;
-  }
-  if (code === "UNAVAILABLE") {
-    return COPY.error.unavailable;
-  }
-  if (code === "INTERNAL_ERROR") {
-    return COPY.error.serverError;
-  }
-  if (code === "MALFORMED_RESPONSE" || code === "MALFORMED_REQUEST") {
-    return COPY.error.malformed;
-  }
-  return COPY.error.unknown;
+  return ERROR_COPY_BY_CODE[code ?? ""] ?? COPY.error.unknown;
 }
 
 /** Shared error-to-message mapper for program components.

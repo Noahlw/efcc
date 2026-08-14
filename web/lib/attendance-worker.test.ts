@@ -14,10 +14,12 @@ const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
 const PROGRAM = "ATT-PROGRAM";
 const PROGRAM2 = "ATT-PROGRAM-2";
+const EMPTY_PROGRAM = "ATT-PROGRAM-EMPTY";
 const EVENT = "ATT-EVENT";
 const CANCELLED_EVENT = "ATT-EVENT-CANCELLED";
 const QR_EVENT = "ATT-EVENT-QR";
 const CLOSED_EVENT = "ATT-EVENT-CLOSED";
+const INACTIVE_EVENT = "ATT-EVENT-INACTIVE";
 const LONG_CODE_EVENT = "ATT-EVENT-LONGCODE";
 
 function testEnv(): Env {
@@ -138,6 +140,30 @@ describe("attendance Worker routes", () => {
       )
       .run();
     await testDb()
+      .prepare(`UPDATE events SET name = ?, location = ? WHERE event_id = ?`)
+      .bind("週六團契", "主堂", EVENT)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+        (event_id, program_id, starts_at, ends_at, status, availability, source,
+         manual_check_in_code, check_in_window_opens_at, check_in_window_closes_at,
+         created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'Active', 'Inactive', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        INACTIVE_EVENT,
+        PROGRAM,
+        new Date(now.getTime() - 15 * 60_000).toISOString(),
+        new Date(now.getTime() + 45 * 60_000).toISOString(),
+        "ATTINACTIVE",
+        new Date(now.getTime() - 60 * 60_000).toISOString(),
+        new Date(now.getTime() + 60 * 60_000).toISOString(),
+        now.toISOString(),
+        now.toISOString()
+      )
+      .run();
+    await testDb()
       .prepare(
         `INSERT INTO events
         (event_id, program_id, starts_at, ends_at, status, source,
@@ -235,6 +261,22 @@ describe("attendance Worker routes", () => {
       .run();
     await testDb()
       .prepare(
+        `INSERT INTO programs
+        (program_id, department_id, name, behavior_type, lifecycle, discoverability,
+         enrollment_mode, check_in_token, created_at, updated_at)
+       VALUES (?, ?, ?, 'OneOff', 'Active', 'Listed', 'MemberRequest', ?, ?, ?)`
+      )
+      .bind(
+        EMPTY_PROGRAM,
+        "018f3b8a-0000-7000-8000-000000000003",
+        "Attendance Test Empty",
+        "ATTENDANCE-PROGRAM-TOKEN-EMPTY",
+        now.toISOString(),
+        now.toISOString()
+      )
+      .run();
+    await testDb()
+      .prepare(
         `INSERT INTO events
         (event_id, program_id, starts_at, ends_at, status, source,
          manual_check_in_code, check_in_window_opens_at, check_in_window_closes_at,
@@ -312,13 +354,37 @@ describe("attendance Worker routes", () => {
     );
     assert.strictEqual(qr.status, 200);
     const qrBody = await json(qr);
-    assert.ok((qrBody.data as { events: unknown[] }).events.length >= 1);
+    const qrBodyData = qrBody.data as {
+      events: {
+        event_id: string;
+        name: string | null;
+        location: string | null;
+      }[];
+    };
+    assert.ok(qrBodyData.events.length >= 1);
+    const namedEvent = qrBodyData.events.find(
+      (event) => event.event_id === EVENT
+    );
+    assert.strictEqual(namedEvent?.name, "週六團契");
+    assert.strictEqual(namedEvent?.location, "主堂");
 
     const manual = await worker.fetch(
       request("/api/v1/attendance/resolve?manual_code=ATT1234"),
       testEnv()
     );
     assert.strictEqual(manual.status, 200);
+  });
+
+  test("valid Program token with no Events resolves to an empty eligible list", async () => {
+    const response = await worker.fetch(
+      request(
+        "/api/v1/attendance/resolve?program_token=ATTENDANCE-PROGRAM-TOKEN-EMPTY"
+      ),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    assert.deepStrictEqual((body.data as { events: unknown[] }).events, []);
   });
 
   test("self check-in is enrolled-only and idempotent", async () => {
@@ -436,6 +502,33 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(response.status, 410);
     const body = await json(response);
     assert.strictEqual(body.code, "EVENT_CANCELLED");
+  });
+
+  test("inactive Event is unavailable at resolve and self check-in", async () => {
+    const resolved = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=ATTINACTIVE"),
+      testEnv()
+    );
+    assert.strictEqual(resolved.status, 409);
+    const resolvedBody = await json(resolved);
+    assert.strictEqual(resolvedBody.code, "EVENT_UNAVAILABLE");
+
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/self", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        body: JSON.stringify({
+          event_id: INACTIVE_EVENT,
+          method: "self_manual_code",
+          manual_code: "ATTINACTIVE",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 409);
+    const checkInBody = await json(checkIn);
+    assert.strictEqual(checkInBody.code, "EVENT_UNAVAILABLE");
   });
 
   test("assisted check-in rejects an enrolled but inactive account", async () => {
@@ -836,7 +929,8 @@ describe("attendance Worker routes", () => {
       testEnv()
     );
     assert.strictEqual(checkIn.status, 201);
-    const { attendance_id } = (await json(checkIn)).data as {
+    const checkInBody = await json(checkIn);
+    const { attendance_id } = checkInBody.data as {
       attendance_id: string;
     };
     const corrected = await worker.fetch(

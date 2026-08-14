@@ -24,6 +24,8 @@ export interface AttendanceEvent {
   event_id: string;
   program_id: string;
   program_name: string;
+  name: string | null;
+  location: string | null;
   starts_at: string;
   ends_at: string;
   manual_check_in_code: string;
@@ -196,8 +198,9 @@ async function findEvent(
   return (
     (await db
       .prepare(
-        `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
-                e.ends_at, e.manual_check_in_code, e.check_in_window_opens_at,
+        `SELECT e.event_id, e.program_id, p.name AS program_name,
+                e.name, e.location, e.starts_at, e.ends_at,
+                e.manual_check_in_code, e.check_in_window_opens_at,
                 e.check_in_window_closes_at, e.status, e.availability
            FROM events e JOIN programs p ON p.program_id = e.program_id
           WHERE e.event_id = ?`
@@ -359,8 +362,9 @@ async function openEvents(
 ): Promise<AttendanceEvent[]> {
   const result = await db
     .prepare(
-      `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
-              e.ends_at, e.manual_check_in_code, e.check_in_window_opens_at,
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.manual_check_in_code, e.check_in_window_opens_at,
               e.check_in_window_closes_at, e.status, e.availability
          FROM events e JOIN programs p ON p.program_id = e.program_id
         WHERE ${entryWhere(byProgramToken)}
@@ -386,6 +390,88 @@ async function matchingEventState(
     .bind(value)
     .first<Pick<AttendanceEvent, "status" | "availability">>();
   return row ?? null;
+}
+async function hasProgramToken(
+  db: D1Database,
+  value: string
+): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT 1 FROM programs WHERE check_in_token = ? LIMIT 1`)
+    .bind(value)
+    .first();
+  return row !== null;
+}
+interface ResolveLookup {
+  events: AttendanceEvent[];
+  latest: Pick<AttendanceEvent, "status" | "availability"> | null;
+  programTokenLookup: boolean;
+}
+
+async function resolveLookup(
+  db: D1Database,
+  token: string | null,
+  code: string | null,
+  value: string
+): Promise<ResolveLookup> {
+  let events: AttendanceEvent[];
+  let latest: Pick<AttendanceEvent, "status" | "availability"> | null = null;
+  let programTokenLookup = Boolean(token);
+  if (token || code) {
+    const byProgramToken = Boolean(token);
+    events = await openEvents(db, byProgramToken, value);
+    if (events.length === 0) {
+      latest = await matchingEventState(db, byProgramToken, value);
+    }
+    return { events, latest, programTokenLookup };
+  }
+
+  events = await openEvents(db, false, value);
+  if (events.length > 0) {
+    return { events, latest, programTokenLookup };
+  }
+  // The typed value may be a cancelled/closed Event's manual code, so check
+  // that status before falling back to the Program token column.
+  latest = await matchingEventState(db, false, value);
+  if (latest !== null) {
+    return { events, latest, programTokenLookup };
+  }
+  programTokenLookup = true;
+  events = await openEvents(db, true, value);
+  if (events.length === 0) {
+    latest = await matchingEventState(db, true, value);
+  }
+  return { events, latest, programTokenLookup };
+}
+
+async function resolveNoEvents(
+  db: D1Database,
+  latest: Pick<AttendanceEvent, "status" | "availability"> | null,
+  programTokenLookup: boolean,
+  value: string,
+  id: string
+): Promise<Response> {
+  if (
+    latest === null &&
+    programTokenLookup &&
+    (await hasProgramToken(db, value))
+  ) {
+    return json(200, { events: [] }, id);
+  }
+  if (latest?.status === "Cancelled") {
+    return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
+  }
+  if (latest?.availability === "Inactive") {
+    return problem(
+      409,
+      "EVENT_UNAVAILABLE",
+      "此聚會已暫停開放，不能簽到。",
+      id
+    );
+  }
+  if (latest?.status === "Active") {
+    return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
+  }
+  return problem(404, "CHECK_IN_NOT_FOUND", "找不到可用的簽到聚會。", id);
 }
 
 async function audit(
@@ -445,47 +531,14 @@ export async function handleResolve(
   if (!value) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
-  let events: AttendanceEvent[];
-  let latest: Pick<AttendanceEvent, "status" | "availability"> | null = null;
-  if (token || code) {
-    const byToken = Boolean(token);
-    events = await openEvents(env.DB, byToken, value);
-    if (events.length === 0) {
-      latest = await matchingEventState(env.DB, byToken, value);
-    }
-  } else {
-    events = await openEvents(env.DB, false, value);
-    if (events.length === 0) {
-      // Same disambiguation order as resolveEntryMethod: the typed value may
-      // be a cancelled/closed Event's manual code, so check the manual
-      // column's status before falling back to the Program token column
-      // (previously the token fallback erased the manual identity and a
-      // cancelled Event's manual code 404'd instead of 410 EVENT_CANCELLED).
-      latest = await matchingEventState(env.DB, false, value);
-      if (latest === null) {
-        events = await openEvents(env.DB, true, value);
-        if (events.length === 0) {
-          latest = await matchingEventState(env.DB, true, value);
-        }
-      }
-    }
-  }
+  const { events, latest, programTokenLookup } = await resolveLookup(
+    env.DB,
+    token,
+    code,
+    value
+  );
   if (events.length === 0) {
-    if (latest?.status === "Cancelled") {
-      return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
-    }
-    if (latest?.availability === "Inactive") {
-      return problem(
-        409,
-        "EVENT_UNAVAILABLE",
-        "此聚會已暫停開放，不能簽到。",
-        id
-      );
-    }
-    if (latest?.status === "Active") {
-      return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
-    }
-    return problem(404, "CHECK_IN_NOT_FOUND", "找不到可用的簽到聚會。", id);
+    return resolveNoEvents(env.DB, latest, programTokenLookup, value, id);
   }
   return json(200, { events }, id);
 }
@@ -1001,8 +1054,9 @@ export async function handleListManageableEvents(
     return current;
   }
   const result = await env.DB.prepare(
-    `SELECT e.event_id, e.program_id, p.name AS program_name, e.starts_at,
-            e.ends_at, e.status, e.availability
+    `SELECT e.event_id, e.program_id, p.name AS program_name,
+            e.name, e.location, e.starts_at, e.ends_at,
+            e.status, e.availability
        FROM events e
        JOIN programs p ON p.program_id = e.program_id
       WHERE p.lifecycle = 'Active'
