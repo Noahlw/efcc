@@ -41,9 +41,11 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
 import { ForbiddenView } from "@/lib/forbidden-view";
 import { GuardedSection } from "@/lib/guarded-section";
+import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
+import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
@@ -277,6 +279,18 @@ describe("Shell", () => {
       expect(replaceMock).not.toHaveBeenCalled();
     });
 
+    test("renders public guest check-in link and registration link independently on the signed-out surface", () => {
+      render(<LoginPage />);
+      const guestLink = screen.getByRole("link", {
+        name: COPY.login.guestCheckIn,
+      });
+      expect(guestLink).toHaveAttribute("href", "/guest-check-in");
+      const registerLink = screen.getByRole("link", {
+        name: REGISTRATION_COPY.pageTitle,
+      });
+      expect(registerLink).toHaveAttribute("href", "/register");
+    });
+
     test("valid login POSTs credentials, sets presence hint, resolves profile via /me, and redirects without full reload", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
@@ -295,6 +309,26 @@ describe("Shell", () => {
       expect(authCalls).toContain("/api/v1/auth/me");
       // Presence hint is set (non-secret); no legacy session object is stored.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
+    });
+
+    test("valid login with pending guest check-in credential redirects to scanner deep link and clears storage", async () => {
+      writeGuestCredential({ kind: "program_token", value: "tok-guest-1" });
+      const user = userEvent.setup();
+      render(<LoginPage />);
+
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
+      await user.type(
+        screen.getByLabelText(COPY.login.passwordLabel),
+        "pw-pass"
+      );
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith(
+          "/scanner?program_token=tok-guest-1"
+        );
+      });
+      expect(sessionStorage.getItem("efcc_guest_context")).toBeNull();
     });
 
     test("stores no credential/token/session identifier in browser storage", async () => {

@@ -113,6 +113,7 @@ const COPY = {
   statusActive: "有效",
   statusVoided: "已作廢",
   printSheet: "列印聚會簽到表",
+  loginForMember: "登入後以成員身份簽到",
 };
 
 // Seeded fixture identities (tests/e2e/seed-dev-accounts.ts). The member QR
@@ -1134,5 +1135,58 @@ test.describe("ATT-04 QR attendance proof", () => {
     await expect(page.locator("main output[data-tone='error']")).toContainText(
       COPY.invalidPhoneDetail
     );
+  });
+
+  test("M guest login handoff: guest entry → member login link → login → /scanner prefilled with event", async ({
+    page,
+  }) => {
+    await page.goto("/guest-check-in");
+    await page
+      .locator("#attendance-code")
+      .fill(fixtures.eventA.manual_check_in_code);
+    await page.getByRole("link", { name: COPY.loginForMember }).click();
+    await expect(page).toHaveURL("/");
+    await page
+      .locator('input[autocomplete="username"]')
+      .fill(required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER));
+    await page
+      .locator('input[autocomplete="current-password"]')
+      .fill(required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED));
+    await page.getByRole("button", { name: "登入" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/scanner\\?manual_code=${fixtures.eventA.manual_check_in_code}`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("button", { name: COPY.memberSubmit })
+    ).toBeVisible();
+  });
+
+  test("N guest login handoff with unenrolled account: prefilled event revalidates and rejects with ENROLLMENT_REQUIRED", async ({
+    page,
+  }) => {
+    await page.goto("/guest-check-in");
+    await page
+      .locator("#attendance-code")
+      .fill(fixtures.eventA.manual_check_in_code);
+    await page.getByRole("link", { name: COPY.loginForMember }).click();
+    await expect(page).toHaveURL("/");
+    await page
+      .locator('input[autocomplete="username"]')
+      .fill(required("PROGRAMS_STAFF_USERNAME", STAFF_USER));
+    await page
+      .locator('input[autocomplete="current-password"]')
+      .fill(required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED));
+    await page.getByRole("button", { name: "登入" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/scanner\\?manual_code=${fixtures.eventA.manual_check_in_code}`,
+        "u"
+      )
+    );
+    await page.getByRole("button", { name: COPY.memberSubmit }).click();
+    await expect(statusText(page, COPY.enrollmentRequired)).toBeVisible();
   });
 });

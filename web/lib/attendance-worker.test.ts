@@ -424,6 +424,13 @@ describe("attendance Worker routes", () => {
       name: "訪客一",
       phone: "9123 4567",
     };
+    const beforeAccounts = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM accounts")
+      .first<{ count: number }>();
+    const beforeEnrollments = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments")
+      .first<{ count: number }>();
+
     const first = await worker.fetch(
       request("/api/v1/attendance/guest", {
         method: "POST",
@@ -435,6 +442,30 @@ describe("attendance Worker routes", () => {
     const firstBody = await json(first);
     const attendanceId = (firstBody.data as { attendance_id: string })
       .attendance_id;
+
+    const attendanceRow = await testDb()
+      .prepare(
+        "SELECT member_user_id, guest_name, guest_phone, guest_phone_normalized FROM attendances WHERE attendance_id = ?"
+      )
+      .bind(attendanceId)
+      .first<{
+        member_user_id: string | null;
+        guest_name: string;
+        guest_phone: string;
+        guest_phone_normalized: string;
+      }>();
+    assert.strictEqual(attendanceRow?.member_user_id, null);
+    assert.strictEqual(attendanceRow?.guest_name, "訪客一");
+    assert.strictEqual(attendanceRow?.guest_phone_normalized, "hk:85291234567");
+
+    const afterAccounts = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM accounts")
+      .first<{ count: number }>();
+    const afterEnrollments = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments")
+      .first<{ count: number }>();
+    assert.strictEqual(afterAccounts?.count, beforeAccounts?.count);
+    assert.strictEqual(afterEnrollments?.count, beforeEnrollments?.count);
     const duplicate = await worker.fetch(
       request("/api/v1/attendance/guest", {
         method: "POST",
@@ -447,15 +478,16 @@ describe("attendance Worker routes", () => {
     // the guest path used to throw 409 DUPLICATE_ATTENDANCE).
     assert.strictEqual(duplicate.status, 200);
     const duplicateBody = await json(duplicate);
-    const duplicateData = duplicateBody.data as {
-      outcome: string;
-      attendance_id: string;
-    };
+    const duplicateData = duplicateBody.data as Record<string, unknown>;
     assert.strictEqual(duplicateData.outcome, "duplicate");
     // The duplicate points at the original row, so voiding it releases the
     // phone for a genuine re-check-in below.
     assert.strictEqual(duplicateData.attendance_id, attendanceId);
-
+    // Duplicate response reveals no attendee identity or submission time.
+    assert.deepStrictEqual(Object.keys(duplicateData).sort(), [
+      "attendance_id",
+      "outcome",
+    ]);
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const voided = await worker.fetch(
       request(`/api/v1/attendance/${attendanceId}/void`, {
@@ -474,6 +506,31 @@ describe("attendance Worker routes", () => {
       testEnv()
     );
     assert.strictEqual(retry.status, 201);
+  });
+
+  test("guest check-in respects rate limiting when limiter rejects", async () => {
+    const customEnv: Env = {
+      ...testEnv(),
+      RPC_RATE_LIMITER: {
+        limit: () => Promise.resolve({ success: false }),
+      } as unknown as Env["RPC_RATE_LIMITER"],
+    };
+    const response = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客限流",
+          phone: "9111 2222",
+        }),
+      }),
+      customEnv
+    );
+    assert.strictEqual(response.status, 429);
+    const body = await json(response);
+    assert.strictEqual(body.code, "RATE_LIMITED");
   });
 
   test("resolve reports a cancelled Event as 410 EVENT_CANCELLED", async () => {
