@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, test } from "vitest";
+import { beforeAll, describe, test, vi } from "vitest";
 
 import worker from "../worker";
 import type { Env } from "../worker";
@@ -21,6 +21,7 @@ const QR_EVENT = "ATT-EVENT-QR";
 const CLOSED_EVENT = "ATT-EVENT-CLOSED";
 const INACTIVE_EVENT = "ATT-EVENT-INACTIVE";
 const LONG_CODE_EVENT = "ATT-EVENT-LONGCODE";
+const BOUNDARY_EVENT = "ATT-EVENT-BOUNDARY";
 
 function testEnv(): Env {
   return {
@@ -531,6 +532,141 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(checkInBody.code, "EVENT_UNAVAILABLE");
   });
 
+  test("assisted search and check-in reject inactive and cancelled Events", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const beforeEnrollments = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ?")
+      .bind(PROGRAM)
+      .first<{ count: number }>();
+    const beforeInactiveAttendances = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(INACTIVE_EVENT)
+      .first<{ count: number }>();
+    const inactiveSearch = await worker.fetch(
+      request(
+        `/api/v1/attendance/events/${INACTIVE_EVENT}/members?q=ATT-MEMBER-QR`,
+        {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(inactiveSearch.status, 409);
+    const inactiveSearchBody = await json(inactiveSearch);
+    assert.strictEqual(inactiveSearchBody.code, "EVENT_UNAVAILABLE");
+    const inactiveSearchAudit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(inactiveSearchBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(inactiveSearchAudit?.outcome, "DENIED");
+    assert.strictEqual(inactiveSearchAudit?.reason, "EVENT_UNAVAILABLE");
+
+    const inactiveCheckIn = await worker.fetch(
+      request(`/api/v1/attendance/events/${INACTIVE_EVENT}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-MEMBER",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(inactiveCheckIn.status, 409);
+    const inactiveCheckInBody = await json(inactiveCheckIn);
+    assert.strictEqual(inactiveCheckInBody.code, "EVENT_UNAVAILABLE");
+    const inactiveCheckInAudit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(inactiveCheckInBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(inactiveCheckInAudit?.outcome, "DENIED");
+    assert.strictEqual(inactiveCheckInAudit?.reason, "EVENT_UNAVAILABLE");
+
+    const afterInactiveAttendances = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(INACTIVE_EVENT)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      afterInactiveAttendances?.count,
+      beforeInactiveAttendances?.count
+    );
+
+    const beforeCancelledAttendances = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(CANCELLED_EVENT)
+      .first<{ count: number }>();
+    const cancelledSearch = await worker.fetch(
+      request(
+        `/api/v1/attendance/events/${CANCELLED_EVENT}/members?q=ATT-MEMBER-QR`,
+        {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancelledSearch.status, 410);
+    const cancelledSearchBody = await json(cancelledSearch);
+    assert.strictEqual(cancelledSearchBody.code, "EVENT_CANCELLED");
+    const cancelledSearchAudit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(cancelledSearchBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(cancelledSearchAudit?.outcome, "DENIED");
+    assert.strictEqual(cancelledSearchAudit?.reason, "EVENT_CANCELLED");
+
+    const cancelledCheckIn = await worker.fetch(
+      request(`/api/v1/attendance/events/${CANCELLED_EVENT}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-MEMBER",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cancelledCheckIn.status, 410);
+    const cancelledCheckInBody = await json(cancelledCheckIn);
+    assert.strictEqual(cancelledCheckInBody.code, "EVENT_CANCELLED");
+    const cancelledCheckInAudit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(cancelledCheckInBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(cancelledCheckInAudit?.outcome, "DENIED");
+    assert.strictEqual(cancelledCheckInAudit?.reason, "EVENT_CANCELLED");
+
+    const afterCancelledAttendances = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(CANCELLED_EVENT)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      afterCancelledAttendances?.count,
+      beforeCancelledAttendances?.count
+    );
+
+    const afterEnrollments = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ?")
+      .bind(PROGRAM)
+      .first<{ count: number }>();
+    assert.strictEqual(afterEnrollments?.count, beforeEnrollments?.count);
+  });
+
   test("assisted check-in rejects an enrolled but inactive account", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const response = await worker.fetch(
@@ -554,10 +690,74 @@ describe("attendance Worker routes", () => {
       .bind(EVENT, "ATT-INACTIVE")
       .first();
     assert.strictEqual(row, null);
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(body.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(audit?.outcome, "DENIED");
+    assert.strictEqual(audit?.reason, "ACCOUNT_NOT_ACTIVE");
   });
 
-  test("assisted check-in works for an active enrolled member via QR scan", async () => {
+  test("assisted check-in rejects an operator outside the Event Program scope", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const response = await worker.fetch(
+      request("/api/v1/attendance/events/ATT-P2-ACTIVE-CLOSED/check-in", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-MEMBER",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 403);
+    const body = await json(response);
+    assert.strictEqual(body.code, "FORBIDDEN");
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(body.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(audit?.outcome, "DENIED");
+    assert.strictEqual(audit?.reason, "OUT_OF_SCOPE");
+  });
+
+  test("assisted check-in audits an unenrolled member denial", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-ADMIN",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 403);
+    const body = await json(response);
+    assert.strictEqual(body.code, "ENROLLMENT_REQUIRED");
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(body.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(audit?.outcome, "DENIED");
+    assert.strictEqual(audit?.reason, "ACTIVE_ENROLLMENT_REQUIRED");
+  });
+
+  test("assisted check-in records Attendance without creating Enrollment", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const before = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ?")
+      .bind(PROGRAM)
+      .first<{ count: number }>();
     const search = await worker.fetch(
       request(`/api/v1/attendance/events/${QR_EVENT}/members?q=ATT-MEMBER-QR`, {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
@@ -588,10 +788,37 @@ describe("attendance Worker routes", () => {
       assistedId,
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
     );
+    const after = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ?")
+      .bind(PROGRAM)
+      .first<{ count: number }>();
+    assert.strictEqual(after?.count, before?.count);
   });
 
-  test("assisted check-in is capability-gated, not window-gated (US 25 recovery)", async () => {
+  test("assisted member search uses the live Event window gate", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const response = await worker.fetch(
+      request(
+        `/api/v1/attendance/events/${CLOSED_EVENT}/members?q=ATT-MEMBER-QR`,
+        {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 409);
+    const body = await json(response);
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
+  });
+
+  test("assisted check-in rejects a closed-window Event deterministically", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const before = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(CLOSED_EVENT)
+      .first<{ count: number }>();
     const response = await worker.fetch(
       request(`/api/v1/attendance/events/${CLOSED_EVENT}/check-in`, {
         method: "POST",
@@ -603,7 +830,57 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(response.status, 201);
+    assert.strictEqual(response.status, 409);
+    const body = await json(response);
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
+    const after = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(CLOSED_EVENT)
+      .first<{ count: number }>();
+    assert.strictEqual(after?.count, before?.count);
+  });
+
+  test("assisted check-in revalidates the active Program boundary", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    await testDb()
+      .prepare(
+        "UPDATE programs SET lifecycle = 'Archived' WHERE program_id = ?"
+      )
+      .bind(PROGRAM)
+      .run();
+    try {
+      const response = await worker.fetch(
+        request(`/api/v1/attendance/events/${EVENT}/check-in`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          body: JSON.stringify({
+            member_user_id: "ATT-MEMBER",
+            method: "leader_manual_search",
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 403);
+      const body = await json(response);
+      assert.strictEqual(body.code, "FORBIDDEN");
+      const audit = await testDb()
+        .prepare(
+          "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+        )
+        .bind(body.requestId)
+        .first<{ outcome: string; reason: string }>();
+      assert.strictEqual(audit?.outcome, "DENIED");
+      assert.strictEqual(audit?.reason, "PROGRAM_INACTIVE");
+    } finally {
+      await testDb()
+        .prepare(
+          "UPDATE programs SET lifecycle = 'Active' WHERE program_id = ?"
+        )
+        .bind(PROGRAM)
+        .run();
+    }
   });
 
   test("resolve reports cancelled state deterministically when a token matches mixed-status events", async () => {
@@ -630,10 +907,32 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(events[0].event_id, LONG_CODE_EVENT);
   });
 
-  test("operator event chooser lists manageable events for admins", async () => {
+  test("legacy event chooser preserves historical events for operators", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const response = await worker.fetch(
       request("/api/v1/attendance/events", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    const { events } = body.data as {
+      events: { event_id: string }[];
+    };
+    const ids = events.map((event) => event.event_id);
+    assert.ok(ids.includes(EVENT));
+    assert.ok(ids.includes(CANCELLED_EVENT));
+    assert.ok(ids.includes(CLOSED_EVENT));
+    assert.ok(
+      events.every((event) => !("manual_check_in_code" in (event as object)))
+    );
+  });
+
+  test("Scanner event projection returns only open eligible events for admins", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const response = await worker.fetch(
+      request("/api/v1/attendance/scanner-events", {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
       }),
       testEnv()
@@ -645,22 +944,81 @@ describe("attendance Worker routes", () => {
         event_id: string;
         program_name: string;
         availability: string;
+        status: string;
+        check_in_window_opens_at: string;
+        check_in_window_closes_at: string;
       }[];
     };
-    assert.strictEqual(
-      events.find((e) => e.event_id === EVENT)?.availability,
-      "Active"
+    assert.ok(events.some((event) => event.event_id === EVENT));
+    assert.ok(events.some((event) => event.program_name === "Attendance Test"));
+    assert.ok(
+      events.every(
+        (event) =>
+          event.status === "Active" &&
+          event.availability === "Active" &&
+          Date.parse(event.check_in_window_opens_at) <= Date.now() &&
+          Date.parse(event.check_in_window_closes_at) >= Date.now()
+      )
     );
-    const ids = events.map((e) => e.event_id);
-    assert.ok(ids.includes(EVENT));
-    assert.ok(ids.includes(CANCELLED_EVENT));
-    assert.ok(events.some((e) => e.program_name === "Attendance Test"));
+    const ids = events.map((event) => event.event_id);
+    assert.ok(!ids.includes(CANCELLED_EVENT));
+    assert.ok(!ids.includes(INACTIVE_EVENT));
+    assert.ok(
+      events.every((event) => !("manual_check_in_code" in (event as object)))
+    );
+    assert.ok(!ids.includes(CLOSED_EVENT));
+  });
+
+  test("operator event chooser includes exact UTC window boundaries", async () => {
+    const boundary = new Date("2026-08-14T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(boundary);
+    try {
+      const timestamp = boundary.toISOString();
+      await testDb()
+        .prepare(
+          `INSERT INTO events
+            (event_id, program_id, starts_at, ends_at, status, availability,
+             source, manual_check_in_code, check_in_window_opens_at,
+             check_in_window_closes_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          BOUNDARY_EVENT,
+          PROGRAM,
+          new Date(boundary.getTime() - 3_600_000).toISOString(),
+          new Date(boundary.getTime() + 3_600_000).toISOString(),
+          "ATTBOUNDARY",
+          timestamp,
+          timestamp,
+          timestamp,
+          timestamp
+        )
+        .run();
+      const admin = await accessCookieFor("att-admin", "att-admin-password");
+      const response = await worker.fetch(
+        request("/api/v1/attendance/scanner-events", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const body = await json(response);
+      const { events } = body.data as { events: { event_id: string }[] };
+      assert.ok(events.some((event) => event.event_id === BOUNDARY_EVENT));
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(BOUNDARY_EVENT)
+        .run();
+      vi.useRealTimers();
+    }
   });
 
   test("operator event chooser is empty for a member without a leader grant", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const response = await worker.fetch(
-      request("/api/v1/attendance/events", {
+      request("/api/v1/attendance/scanner-events", {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
       }),
       testEnv()
@@ -668,6 +1026,157 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(response.status, 200);
     const body = await json(response);
     assert.strictEqual((body.data as { events: unknown[] }).events.length, 0);
+  });
+
+  test("operator chooser honors an active Program Leader scope", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    await testDb()
+      .prepare(
+        `INSERT INTO program_leaders
+          (program_id, user_id, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(PROGRAM, "ATT-MEMBER", "ATT-ADMIN", new Date().toISOString())
+      .run();
+    try {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/scanner-events", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const body = await json(response);
+      const { data } = body;
+      assert.ok(data && typeof data === "object" && "events" in data);
+      const { events } = data;
+      assert.ok(Array.isArray(events));
+      assert.ok(
+        events.some((event) => {
+          if (!(event && typeof event === "object" && "event_id" in event)) {
+            return false;
+          }
+          const { event_id: eventId } = event;
+          return eventId === EVENT;
+        })
+      );
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
+        )
+        .bind(PROGRAM, "ATT-MEMBER")
+        .run();
+    }
+  });
+
+  test("operator chooser honors an active Department Manager scope", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    await testDb()
+      .prepare(
+        `INSERT INTO department_managers
+          (department_id, user_id, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(
+        "018f3b8a-0000-7000-8000-000000000001",
+        "ATT-MEMBER",
+        "ATT-ADMIN",
+        new Date().toISOString()
+      )
+      .run();
+    try {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/scanner-events", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const body = await json(response);
+      const { data } = body;
+      assert.ok(data && typeof data === "object" && "events" in data);
+      const { events } = data;
+      assert.ok(Array.isArray(events));
+      assert.ok(
+        events.some((event) => {
+          if (!(event && typeof event === "object" && "event_id" in event)) {
+            return false;
+          }
+          const { event_id: eventId } = event;
+          return eventId === EVENT;
+        })
+      );
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM department_managers WHERE department_id = ? AND user_id = ?"
+        )
+        .bind("018f3b8a-0000-7000-8000-000000000001", "ATT-MEMBER")
+        .run();
+    }
+  });
+
+  test("scanner projection excludes revoked scoped grants", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const revokedAt = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO program_leaders
+          (program_id, user_id, granted_by, granted_at, revoked_by, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        PROGRAM,
+        "ATT-MEMBER",
+        "ATT-ADMIN",
+        revokedAt,
+        "ATT-ADMIN",
+        revokedAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO department_managers
+          (department_id, user_id, granted_by, granted_at, revoked_by, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        "018f3b8a-0000-7000-8000-000000000001",
+        "ATT-MEMBER",
+        "ATT-ADMIN",
+        revokedAt,
+        "ATT-ADMIN",
+        revokedAt
+      )
+      .run();
+    try {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/scanner-events", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const body = await json(response);
+      const { data } = body;
+      assert.ok(data && typeof data === "object" && "events" in data);
+      assert.ok(Array.isArray(data.events));
+      assert.strictEqual(data.events.length, 0);
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
+        )
+        .bind(PROGRAM, "ATT-MEMBER")
+        .run();
+      await testDb()
+        .prepare(
+          "DELETE FROM department_managers WHERE department_id = ? AND user_id = ?"
+        )
+        .bind("018f3b8a-0000-7000-8000-000000000001", "ATT-MEMBER")
+        .run();
+    }
   });
 
   test("guest entry that does not match the Event is rejected before check-in", async () => {

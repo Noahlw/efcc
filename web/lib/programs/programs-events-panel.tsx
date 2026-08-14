@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buildCheckInSheet } from "@/lib/check-in-sheet";
-
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -31,13 +30,10 @@ import { qrDataUrl } from "@/lib/qr";
 
 import styles from "@/app/programs/programs.module.css";
 
-
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
 };
-
-
 
 /** HK wall date ("YYYY-MM-DD") and time ("HH:MM") of an ISO instant. */
 function hkWallParts(iso: string): { date: string; time: string } {
@@ -328,8 +324,7 @@ export const EventsPanel = ({
         ),
       () => {
         setExceptions((previous) => {
-          const next = { ...previous };
-          delete next[exception.override_date];
+          const { [exception.override_date]: _, ...next } = previous;
           return next;
         });
         return COPY.programs.exceptionRemovedNotice;
@@ -535,10 +530,20 @@ export const EventsPanel = ({
         ) : events.length === 0 ? (
           <li className={styles.emptyLine}>{COPY.programs.eventsEmpty}</li>
         ) : (
+          // oxlint-disable-next-line complexity
           events.map((event) => {
             const wall = hkWallParts(event.starts_at);
             const rule = ruleForEvent(event, rules ?? []);
             const exception = exceptions[wall.date];
+            const now = Date.now();
+            const opensAt = event.check_in_window_opens_at;
+            const closesAt = event.check_in_window_closes_at;
+            const assistedEligible =
+              event.availability === "Active" &&
+              typeof opensAt === "string" &&
+              typeof closesAt === "string" &&
+              Date.parse(opensAt) <= now &&
+              Date.parse(closesAt) >= now;
             return (
               <li key={event.event_id} className={styles.eventRow}>
                 <span className={styles.eventDate}>
@@ -625,15 +630,7 @@ export const EventsPanel = ({
                           event.event_id
                         )}
                       >
-                        {confirmingCancelId !== event.event_id ? (
-                          <button
-                            type="submit"
-                            disabled={busy}
-                            className={styles.secondaryButton}
-                          >
-                            {COPY.programs.cancelOccurrence}
-                          </button>
-                        ) : (
+                        {confirmingCancelId === event.event_id ? (
                           <div
                             className={styles.confirmation}
                             role="alert"
@@ -656,6 +653,14 @@ export const EventsPanel = ({
                               {COPY.programs.keepOccurrence}
                             </button>
                           </div>
+                        ) : (
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className={styles.secondaryButton}
+                          >
+                            {COPY.programs.cancelOccurrence}
+                          </button>
                         )}
                       </form>
                     </div>
@@ -743,7 +748,11 @@ export const EventsPanel = ({
                     </button>
                     <a
                       className={styles.actionButton}
-                      href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
+                      href={
+                        assistedEligible
+                          ? `/scanner?mode=assisted&event=${encodeURIComponent(event.event_id)}`
+                          : `/events?eventId=${encodeURIComponent(event.event_id)}`
+                      }
                     >
                       {COPY.attendance.assistedOpen}
                     </a>

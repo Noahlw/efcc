@@ -34,6 +34,20 @@ export interface AttendanceEvent {
   status: "Active" | "Cancelled";
   availability: "Active" | "Inactive";
 }
+/** Explicitly safe fields for chooser/context projections; credentials stay server-side. */
+export interface AttendanceEventSummary {
+  event_id: string;
+  program_id: string;
+  program_name: string;
+  name: string | null;
+  location: string | null;
+  starts_at: string;
+  ends_at: string;
+  check_in_window_opens_at: string;
+  check_in_window_closes_at: string;
+  status: "Active" | "Cancelled";
+  availability: "Active" | "Inactive";
+}
 
 export interface AttendanceRow {
   attendance_id: string;
@@ -799,16 +813,20 @@ async function permittedOperator(
   if (actorAccount.role === "Admin" || actorAccount.role === "Staff") {
     return true;
   }
-  if (actorAccount.role !== "Member") {
-    return false;
-  }
-  const leader = await env.DB.prepare(
-    `SELECT 1 FROM program_leaders
-      WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL`
+  const scopedGrant = await env.DB.prepare(
+    `SELECT 1
+       FROM program_leaders
+      WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL
+     UNION ALL
+     SELECT 1
+       FROM department_managers dm
+       JOIN programs p ON p.department_id = dm.department_id
+      WHERE p.program_id = ? AND dm.user_id = ? AND dm.revoked_at IS NULL
+      LIMIT 1`
   )
-    .bind(programId, actorAccount.user_id)
+    .bind(programId, actorAccount.user_id, programId, actorAccount.user_id)
     .first();
-  return Boolean(leader);
+  return Boolean(scopedGrant);
 }
 
 /**
@@ -820,7 +838,8 @@ async function requireEventOperator(
   request: Request,
   env: AttendanceEnv,
   eventId: string,
-  id: string
+  id: string,
+  deniedAction?: string
 ): Promise<{ current: AccountRow; event: AttendanceEvent } | Response> {
   const current = await requireActor(request, env, id);
   if (current instanceof Response) {
@@ -831,9 +850,62 @@ async function requireEventOperator(
     return problem(404, "NOT_FOUND", "找不到聚會。", id);
   }
   if (!(await permittedOperator(env, current, event.program_id))) {
+    if (deniedAction) {
+      await audit(env.DB, {
+        actorUserId: current.user_id,
+        action: deniedAction,
+        entityType: "Event",
+        entityId: event.event_id,
+        outcome: "DENIED",
+        reason: "OUT_OF_SCOPE",
+        correlationId: id,
+      });
+    }
     return problem(403, "FORBIDDEN", "你沒有管理此聚會簽到的權限。", id);
   }
   return { current, event };
+}
+
+/**
+ * Assisted mutations revalidate the same active Program boundary as the
+ * chooser. The legacy roster surface deliberately keeps historical Events
+ * readable, so this gate is scoped to assisted search/check-in only.
+ */
+async function requireAssistedEventOperator(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string,
+  id: string,
+  deniedAction = "attendance.check_in"
+): Promise<{ current: AccountRow; event: AttendanceEvent } | Response> {
+  const operator = await requireEventOperator(
+    request,
+    env,
+    eventId,
+    id,
+    deniedAction
+  );
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const program = await env.DB.prepare(
+    "SELECT lifecycle FROM programs WHERE program_id = ?"
+  )
+    .bind(operator.event.program_id)
+    .first<{ lifecycle: string }>();
+  if (program?.lifecycle !== "Active") {
+    await audit(env.DB, {
+      actorUserId: operator.current.user_id,
+      action: deniedAction,
+      entityType: "Event",
+      entityId: eventId,
+      outcome: "DENIED",
+      reason: "PROGRAM_INACTIVE",
+      correlationId: id,
+    });
+    return problem(403, "FORBIDDEN", "你沒有管理此聚會簽到的權限。", id);
+  }
+  return operator;
 }
 
 async function guestRateLimit(
@@ -967,7 +1039,12 @@ export async function handleAssistedCheckIn(
   eventId: string
 ): Promise<Response> {
   const id = requestId();
-  const operator = await requireEventOperator(request, env, eventId, id);
+  const operator = await requireAssistedEventOperator(
+    request,
+    env,
+    eventId,
+    id
+  );
   if (operator instanceof Response) {
     return operator;
   }
@@ -988,6 +1065,15 @@ export async function handleAssistedCheckIn(
   if (
     !(await hasActiveEnrollment(env.DB, event.program_id, input.member_user_id))
   ) {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "ACTIVE_ENROLLMENT_REQUIRED",
+      correlationId: id,
+    });
     return problem(403, "ENROLLMENT_REQUIRED", "此成員尚未報名此課程。", id);
   }
   return insertAttendance(
@@ -1002,10 +1088,7 @@ export async function handleAssistedCheckIn(
           : "leader_manual_search",
       publicDuplicateMessage: "此成員已完成簽到。",
     },
-    id,
-    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
-    // may still record attendance after the window closes (US 25 recovery).
-    false
+    id
   );
 }
 
@@ -1015,11 +1098,25 @@ export async function handleSearchMembers(
   eventId: string
 ): Promise<Response> {
   const id = requestId();
-  const operator = await requireEventOperator(request, env, eventId, id);
+  const operator = await requireAssistedEventOperator(
+    request,
+    env,
+    eventId,
+    id
+  );
   if (operator instanceof Response) {
     return operator;
   }
-  const { event } = operator;
+  const { current, event } = operator;
+  const gate = await checkInGate(
+    env,
+    event,
+    { actor: current, memberUserId: null },
+    id
+  );
+  if (gate) {
+    return gate;
+  }
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   if (!query) {
     return json(200, { members: [] }, id);
@@ -1036,13 +1133,10 @@ export async function handleSearchMembers(
     .all<AttendanceMember>();
   return json(200, { members: result.results ?? [] }, id);
 }
-
 /**
- * GET /api/v1/attendance/events — the operator chooser (Spec 081 US 20).
- * Lists Events of Programs the actor may assist: Admin/Staff see every
- * Program; a Member sees only Programs where they hold an active leader grant.
- * Events are listed regardless of check-in window (operators act on any
- * Event of their scope).
+ * GET /api/v1/attendance/events — the legacy operator chooser.
+ * It includes historical Events so the stable `/events` roster/void/correction
+ * surface can still open closed or cancelled records.
  */
 export async function handleListManageableEvents(
   request: Request,
@@ -1056,6 +1150,7 @@ export async function handleListManageableEvents(
   const result = await env.DB.prepare(
     `SELECT e.event_id, e.program_id, p.name AS program_name,
             e.name, e.location, e.starts_at, e.ends_at,
+            e.check_in_window_opens_at, e.check_in_window_closes_at,
             e.status, e.availability
        FROM events e
        JOIN programs p ON p.program_id = e.program_id
@@ -1068,12 +1163,76 @@ export async function handleListManageableEvents(
                AND pl.user_id = ?
                AND pl.revoked_at IS NULL
           )
+          OR EXISTS (
+            SELECT 1
+              FROM department_managers dm
+             WHERE dm.department_id = p.department_id
+               AND dm.user_id = ?
+               AND dm.revoked_at IS NULL
+          )
         )
       ORDER BY e.starts_at DESC
       LIMIT 50`
   )
-    .bind(current.role, current.role, current.user_id)
-    .all<AttendanceEvent>();
+    .bind(current.role, current.role, current.user_id, current.user_id)
+    .all<AttendanceEventSummary>();
+  return json(200, { events: result.results ?? [] }, id);
+}
+
+/**
+ * GET /api/v1/attendance/scanner-events — the Assisted Scanner projection.
+ * Only open, active Events in the actor's server-authorized Program scope
+ * reach the browser; check-in credentials are intentionally omitted.
+ */
+export async function handleListScannerEvents(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
+  }
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
+    `SELECT e.event_id, e.program_id, p.name AS program_name,
+            e.name, e.location, e.starts_at, e.ends_at,
+            e.check_in_window_opens_at, e.check_in_window_closes_at,
+            e.status, e.availability
+       FROM events e
+       JOIN programs p ON p.program_id = e.program_id
+      WHERE p.lifecycle = 'Active'
+        AND e.status = 'Active'
+        AND e.availability = 'Active'
+        AND julianday(e.check_in_window_opens_at) <= julianday(?)
+        AND julianday(e.check_in_window_closes_at) >= julianday(?)
+        AND (
+          ? = 'Admin' OR ? = 'Staff'
+          OR EXISTS (
+            SELECT 1 FROM program_leaders pl
+             WHERE pl.program_id = p.program_id
+               AND pl.user_id = ?
+               AND pl.revoked_at IS NULL
+          )
+          OR EXISTS (
+            SELECT 1
+              FROM department_managers dm
+             WHERE dm.department_id = p.department_id
+               AND dm.user_id = ?
+               AND dm.revoked_at IS NULL
+          )
+        )
+      ORDER BY e.starts_at DESC`
+  )
+    .bind(
+      now,
+      now,
+      current.role,
+      current.role,
+      current.user_id,
+      current.user_id
+    )
+    .all<AttendanceEventSummary>();
   return json(200, { events: result.results ?? [] }, id);
 }
 
