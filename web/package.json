@@ -14,15 +14,15 @@
     "test:components": "vitest run --config vitest.components.config.ts"
   },
   "dependencies": {
-    "next": "16.2.12",
+    "next": "16.3.0",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.20.1",
-    "@cloudflare/workers-types": "^5.20260801.1",
-    "@testing-library/jest-dom": "^7.0.0",
+    "@cloudflare/vitest-pool-workers": "^0.21.0",
+    "@cloudflare/workers-types": "^5.20260811.1",
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^26",
@@ -41,6 +41,6 @@
     "msw": "^2.15.0",
     "typescript": "^5",
     "vitest": "^4.1.10",
-    "wrangler": "^4.118.0"
+    "wrangler": "^4.120.1"
   }
 }
