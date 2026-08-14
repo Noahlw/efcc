@@ -22,6 +22,8 @@ export function useQrCamera(input: {
 } {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const generationRef = useRef(0);
   const [cameraOpen, setCameraOpen] = useState(false);
   // The scan loop lives in one effect while the callbacks are re-created
   // every render; keep the latest versions behind refs so a scan never
@@ -31,24 +33,32 @@ export function useQrCamera(input: {
   const onUnavailableRef = useRef(input.onUnavailable);
   onUnavailableRef.current = input.onUnavailable;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
       for (const track of streamRef.current?.getTracks() ?? []) {
         track.stop();
       }
-    },
-    []
-  );
+      streamRef.current = null;
+    };
+  }, []);
 
   function stopCamera() {
+    generationRef.current += 1;
     for (const track of streamRef.current?.getTracks() ?? []) {
       track.stop();
     }
     streamRef.current = null;
-    setCameraOpen(false);
+    if (mountedRef.current) {
+      setCameraOpen(false);
+    }
   }
 
   async function startCamera() {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
     const detector = (
       window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }
     ).BarcodeDetector;
@@ -60,9 +70,18 @@ export function useQrCamera(input: {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       });
+      if (!mountedRef.current || generationRef.current !== generation) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
       streamRef.current = stream;
       setCameraOpen(true);
     } catch {
+      if (!mountedRef.current || generationRef.current !== generation) {
+        return;
+      }
       stopCamera();
       onUnavailableRef.current();
     }
@@ -81,14 +100,18 @@ export function useQrCamera(input: {
     }
     const video = videoRef.current;
     const stream = streamRef.current;
+    const generation = generationRef.current;
     let cancelled = false;
     const scanner = new detector({ formats: ["qr_code"] });
     const scan = async () => {
-      if (cancelled) {
+      if (cancelled || generationRef.current !== generation) {
         return;
       }
       try {
         const codes = await scanner.detect(video);
+        if (cancelled || generationRef.current !== generation) {
+          return;
+        }
         const value = codes[0]?.rawValue;
         if (value) {
           stopCamera();
@@ -97,7 +120,7 @@ export function useQrCamera(input: {
         }
         requestAnimationFrame(() => void scan());
       } catch {
-        if (!cancelled) {
+        if (!cancelled && generationRef.current === generation) {
           stopCamera();
           onUnavailableRef.current();
         }
@@ -109,7 +132,7 @@ export function useQrCamera(input: {
         await video.play();
         await scan();
       } catch {
-        if (!cancelled) {
+        if (!cancelled && generationRef.current === generation) {
           stopCamera();
           onUnavailableRef.current();
         }

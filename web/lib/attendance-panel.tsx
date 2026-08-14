@@ -3,12 +3,13 @@
 import { useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
-import {
-  attendanceEventLabel,
-  attendanceEventMeta,
-  attendanceEventName,
-} from "@/lib/attendance-display";
+import { attendanceEventLabel } from "@/lib/attendance-display";
 import { entryFromValue } from "@/lib/attendance-entry";
+import {
+  ScannerCamera,
+  ScannerEventPicker,
+  ScannerStatusOutput,
+} from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
@@ -18,7 +19,7 @@ import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 import styles from "./attendance-panel.module.css";
 
 /** Public guest check-in surface. Authenticated Self uses SelfCheckInPanel. */
-export const AttendancePanel = ({ title }: { title?: string }) => {
+export const AttendancePanel = () => {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -73,36 +74,15 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
     <div className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
         <h1 id="attendance-title" className={styles.title}>
-          {title ?? COPY.attendance.guestTitle}
+          {COPY.attendance.guestTitle}
         </h1>
         <p className={styles.lead}>{COPY.attendance.signedOutNote}</p>
-        <button
-          className={styles.button}
-          type="button"
-          onClick={() => void flow.startCamera()}
-        >
-          {flow.cameraOpen
-            ? COPY.attendance.cameraRetry
-            : COPY.attendance.camera}
-        </button>
-        {flow.cameraOpen && (
-          <div className={styles.group}>
-            <video
-              ref={flow.videoRef}
-              className={styles.video}
-              muted
-              playsInline
-              aria-label={COPY.attendance.camera}
-            />
-            <button
-              className={styles.buttonSecondary}
-              type="button"
-              onClick={handleCameraClose}
-            >
-              {COPY.attendance.cameraClose}
-            </button>
-          </div>
-        )}
+        <ScannerCamera
+          cameraOpen={flow.cameraOpen}
+          videoRef={flow.videoRef}
+          onStart={() => void flow.startCamera()}
+          onClose={handleCameraClose}
+        />
         <form
           className={styles.inputRow}
           onSubmit={(event) => {
@@ -134,28 +114,11 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
           </button>
         </form>
         {flow.events.length > 1 && (
-          <div className={styles.group} aria-labelledby="choose-event-title">
-            <h2 id="choose-event-title" className={styles.sectionTitle}>
-              {COPY.attendance.chooseEvent}
-            </h2>
-            <ul className={styles.events}>
-              {flow.events.map((event) => (
-                <li key={event.event_id}>
-                  <button
-                    className={styles.eventButton}
-                    type="button"
-                    aria-pressed={flow.selected?.event_id === event.event_id}
-                    onClick={() => flow.setSelected(event)}
-                  >
-                    <strong>{attendanceEventName(event)}</strong>
-                    <span className={styles.eventMeta}>
-                      {attendanceEventMeta(event)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ScannerEventPicker
+            events={flow.events}
+            selectedId={flow.selected?.event_id ?? null}
+            onSelect={(event) => flow.setSelected(event)}
+          />
         )}
         {flow.selected && (
           <form
@@ -210,7 +173,7 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
               aria-busy={flow.busy || submitting}
             >
               {submitting
-                ? COPY.attendance.resolving
+                ? COPY.attendance.guestSubmitting
                 : COPY.attendance.guestSubmit}
             </button>
           </form>
@@ -223,14 +186,7 @@ export const AttendancePanel = ({ title }: { title?: string }) => {
               : ""}
           </p>
         )}
-        <output
-          className={styles.status}
-          data-tone={flow.status ? flow.tone : undefined}
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {flow.status}
-        </output>
+        <ScannerStatusOutput message={flow.status} tone={flow.tone} />
         <div className={styles.group}>
           <a
             className={styles.back}

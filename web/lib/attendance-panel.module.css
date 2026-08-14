@@ -1,8 +1,9 @@
 /* ============================================================================
    Attendance panels (self/guest + operator) — Variant A: Official Civic Minimal
    ----------------------------------------------------------------------------
-   Shared module for AttendancePanel (guest + member self check-in, /scanner)
-   and AttendanceOperatorPanel (/events). Civic neutrals with a restrained
+   Shared module for the attendance surfaces: AttendancePanel (guest check-in),
+   SelfCheckInPanel (/scanner), AssistedScannerPanel (/scanner), and
+   AttendanceOperatorPanel (/events). Civic neutrals with a restrained
    cinnabar accent reserved for primary submission and active selection;
    input borders hairline-strong, focus rings teal, destructive actions
    outlined error red. Phone-first: 44px targets, stacked groups, the guest
@@ -382,6 +383,57 @@
   outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.modeSwitch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.modeButton {
+  min-height: 2.75rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modeButton[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--accent-deep);
+}
+
+.modeButton:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.context {
+  display: grid;
+  gap: 0.45rem;
+  order: 20;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.contextLabel {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.contextHint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 @media (prefers-reduced-motion: reduce) {
