@@ -11,11 +11,14 @@ Thumbs.db
 *.swp
 *.swo
 .idea/
-.vscode/
 
 # AI coding tooling local state (per-project config/caches, not repo content)
 .codex/
 .cursor/
+.claude/
+.opencode/
+.serena/
+.impeccable/config.local.json
 
 # Local scratch notes (never commit)
 local/
