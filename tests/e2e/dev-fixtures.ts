@@ -1,5 +1,5 @@
 /**
- * Dev-testing worker fixtures (PRG-05 #224 / ADR-0028).
+ * Dev-testing worker fixtures (PRG-05 #224 / ADR-0031).
  *
  * Single source of truth for the E2E_ dev accounts: seeded into the
  * dev-testing D1 by seed-dev-accounts.ts, defaulted into the suite by
@@ -50,6 +50,4 @@ export const DEV_LEGACY: DevLegacyFixture = {
   role: "Member",
 };
 
-export const DEV_ADMIN = DEV_ACCOUNTS[0];
-export const DEV_STAFF = DEV_ACCOUNTS[1];
-export const DEV_MEMBER = DEV_ACCOUNTS[2];
+export const [DEV_ADMIN, DEV_STAFF, DEV_MEMBER] = DEV_ACCOUNTS;

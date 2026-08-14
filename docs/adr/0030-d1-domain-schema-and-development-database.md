@@ -1,4 +1,4 @@
-# ADR-0026 — D1 Domain Schema, Generic Audit, and Development-Database Directive
+# ADR-0030 — D1 Domain Schema, Generic Audit, and Development-Database Directive
 
 The D1 Programs/Enrollment domain (Spec #190) starts from an empty baseline and owns the entire relational schema in `docs/specs/080-d1-relational-schema.md`: TEXT UUID PKs, ISO-8601 UTC TEXT timestamps, `ON DELETE RESTRICT` FKs (D1 enforces them by default), and CHECK constraints on every closed vocabulary. The `audit_events` table is rebuilt generically — one immutable append-only stream addressed by `entity_type`/`entity_id` with ADR-0023's `outcome`/`correlation_id` vocabulary — superseding ADR-0023's per-entity-column Sheet shape for D1 (the Sheet `Audit_Log` remains for legacy). The same D1 database is used for development as for production unless a concrete split need appears; the new domain starts fresh from the latest `main` database with no xlsx import, no Sheet adapter, and no dual-write path.
 

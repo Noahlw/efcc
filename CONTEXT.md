@@ -223,7 +223,7 @@ backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023
 
 ## Architecture Decisions
 
-The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0029) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0031) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
 
 ### D1 era (current)
 
@@ -242,6 +242,8 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 | 0027 | D1 Programs Domain: Audit Outcomes and Atomic Approval | Proposed |
 | 0028 | Public Guest Check-In Entry | Proposed — decision locked via grilling; public entry, authenticated handoff, and guest identity rules require implementation and acceptance proof |
 | 0029 | Local-First Testing and Readiness Gate | Accepted |
+| 0030 | D1 Domain Schema, Generic Audit, and Development-Database Directive | Accepted |
+| 0031 | Dev-Testing Worker and E2E Deliverable | Accepted |
 
 ### Apps Script era (historical)
 
