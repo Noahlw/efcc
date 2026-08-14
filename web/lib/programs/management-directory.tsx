@@ -121,12 +121,10 @@ const DepartmentSettingsLauncher = ({
     </button>
   );
 };
-
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
   onCreateProgram?: (departments: Department[]) => void;
 }
-
 export const ManagementDirectory = ({
   onOpenProgram,
   onCreateProgram,
@@ -203,8 +201,8 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-  }, [query, state]);
 
+  }, [query, state]);
   return (
     <section aria-labelledby="programs-management-directory-title">
       <h2

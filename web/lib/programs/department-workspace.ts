@@ -18,6 +18,7 @@ import type {
   ModuleKey,
 } from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
+import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
@@ -30,26 +31,37 @@ import {
   DuplicateEventError,
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
+  EnrollmentAccountInactiveError,
+  EnrollmentDecisionConflictError,
+  EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
+  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
   LeaderNotAssignedError,
   NoScheduleRulesError,
+  PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   ProgramLeaderConflictError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
   SelfDepartmentManagerError,
+  StaleEnrollmentRequestError,
+  StalePreviewPlanError,
 } from "./program-errors";
 import {
   exceptionForEvent,
   hkTodayWallDate,
-  occurrencesForRule,
+  previewOccurrencesForRule,
 } from "./recurrence";
-import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
+import type {
+  PreviewOccurrenceCandidate,
+  RecurrenceKind,
+  ScheduleExceptionAction,
+} from "./recurrence";
 import type {
   AuditInput,
   AuditOutcome,
@@ -62,6 +74,9 @@ import type {
   EventAvailability,
   EventRow,
   GenerateResult,
+  GenerationRunItemRow,
+  PreviewOccurrenceRow,
+  PreviewPlanRow,
   ProgramBehaviorType,
   ProgramDiscoverability,
   ProgramEnrollmentMode,
@@ -70,6 +85,8 @@ import type {
   MemberOptionRow,
   ProgramRow,
   ProgramLeaderRow,
+  ManagementAttentionEventRow,
+  NotificationReadStateInput,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -116,6 +133,82 @@ export interface ManagementDirectoryView {
   departments: ManagementDepartmentView[];
   programs: ManagementProgramView[];
 }
+
+export interface ManagementAttentionProgramView {
+  program_id: string;
+  department_id: string;
+  pending_enrollment_count: number;
+  inactive_event_count: number;
+  cancelled_event_count: number;
+  actionable_count: number;
+}
+
+type ManagementAttentionItemBase = {
+  program_id: string;
+  program_name: string;
+  department_id: string;
+  department_name: string;
+};
+
+export type ManagementAttentionItem =
+  | (ManagementAttentionItemBase & {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+    })
+  | (ManagementAttentionItemBase & {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+    });
+
+export interface ManagementAttentionView {
+  programs: ManagementAttentionProgramView[];
+  items: ManagementAttentionItem[];
+  total_actionable_count: number;
+  has_more: boolean;
+}
+
+interface ManagementNotificationItemBase {
+  source_key: string;
+  source_revision: string;
+  read: boolean;
+  program_id: string;
+  program_name: string;
+  department_id: string;
+  department_name: string;
+}
+
+export type ManagementNotificationItem =
+  | (ManagementNotificationItemBase & {
+      kind: "enrollment";
+      actionable: true;
+      count: number;
+      latest_submitted_at: string;
+    })
+  | (ManagementNotificationItemBase & {
+      kind: "event";
+      actionable: boolean;
+      event_id: string;
+      starts_at: string;
+      status: "Active" | "Cancelled";
+      availability: "Active" | "Inactive";
+      name: string | null;
+      updated_at: string;
+    });
+
+export interface ManagementNotificationsView {
+  items: ManagementNotificationItem[];
+  unread_count: number;
+  has_more: boolean;
+}
+
+export const MANAGEMENT_ATTENTION_LIMIT = 5;
+export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
 export interface ManagementProgramWorkspaceView {
   program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
@@ -144,6 +237,32 @@ export interface ManagementAccessView {
   hasManagementCapability: boolean;
   departmentScopes: number;
   programScopes: number;
+}
+
+/**
+ * Client-safe preview plan projection. Never carries the internal actor id
+ * (created_by) or any other server-only column across the Worker boundary.
+ */
+export interface PreviewPlanView {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
+  rule_count: number;
+  created_at: string;
+}
+
+function previewPlanView(plan: PreviewPlanRow): PreviewPlanView {
+  return {
+    plan_id: plan.plan_id,
+    program_id: plan.program_id,
+    plan_hash: plan.plan_hash,
+    horizon_days: plan.horizon_days,
+    from_date: plan.from_date,
+    rule_count: plan.rule_count,
+    created_at: plan.created_at,
+  };
 }
 
 /**
@@ -263,6 +382,7 @@ export interface CreateScheduleRuleCommand {
   month_day: number | null;
   start_time: string;
   end_time: string;
+  location?: string | null;
 }
 
 export interface UpdateScheduleRuleCommand {
@@ -271,6 +391,7 @@ export interface UpdateScheduleRuleCommand {
   month_day?: number | null;
   start_time?: string;
   end_time?: string;
+  location?: string | null;
 }
 
 export interface CreateScheduleExceptionCommand {
@@ -310,6 +431,11 @@ export interface CancelEventCommand {
 export interface DecideEnrollmentRequestCommand {
   action: "Approved" | "Rejected";
   note: string | null;
+  expectedRequestVersion?: number;
+}
+export interface EnrollmentDecisionResult {
+  request: EnrollmentRequestRow;
+  enrollment: EnrollmentRow | null;
 }
 
 export interface AssistedEnrollCommand {
@@ -484,6 +610,329 @@ export class DepartmentWorkspace {
         .map((department) => this.managementDepartment(department)),
       programs: scopedPrograms,
     };
+  }
+
+  async getManagementAttention(
+    ctx: AuthorizationContext,
+    limit = MANAGEMENT_ATTENTION_LIMIT
+  ): Promise<ManagementAttentionView> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const directory = await this.listManagementDirectory(ctx);
+    const departmentsById = new Map(
+      directory.departments.map((department) => [
+        department.department_id,
+        department,
+      ])
+    );
+    const managedPrograms = directory.programs.filter(
+      ({ capabilities }) => capabilities.manage
+    );
+    const moduleScopes = await Promise.all(
+      managedPrograms.map(async (program) => ({
+        program,
+        enrollment: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.ENROLLMENT
+        ),
+        events: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.EVENTS
+        ),
+      }))
+    );
+    const enrollmentProgramIds = moduleScopes
+      .filter(({ enrollment }) => enrollment)
+      .map(({ program }) => program.program_id);
+    const eventProgramIds = moduleScopes
+      .filter(({ events }) => events)
+      .map(({ program }) => program.program_id);
+    const startsAtOrAfter = new Date().toISOString();
+    const [pendingRows, eventCounts, eventRows] = await Promise.all([
+      this.store.countPendingEnrollmentRequests(enrollmentProgramIds),
+      this.store.countManagementEventAttention(
+        eventProgramIds,
+        startsAtOrAfter
+      ),
+      this.store.listManagementEventAttention(
+        eventProgramIds,
+        startsAtOrAfter,
+        normalizedLimit
+      ),
+    ]);
+    const pendingByProgram = new Map(
+      pendingRows.map(({ program_id, count }) => [program_id, count])
+    );
+    const eventsByProgram = new Map(
+      eventCounts.map(
+        ({ program_id, inactive_event_count, cancelled_event_count }) => [
+          program_id,
+          { inactive_event_count, cancelled_event_count },
+        ]
+      )
+    );
+    const programs = managedPrograms.map((program) => {
+      const pending = pendingByProgram.get(program.program_id) ?? 0;
+      const events = eventsByProgram.get(program.program_id) ?? {
+        inactive_event_count: 0,
+        cancelled_event_count: 0,
+      };
+      return {
+        program_id: program.program_id,
+        department_id: program.department_id,
+        pending_enrollment_count: pending,
+        inactive_event_count: events.inactive_event_count,
+        cancelled_event_count: events.cancelled_event_count,
+        actionable_count: pending + events.inactive_event_count,
+      };
+    });
+    const programById = new Map(
+      managedPrograms.map((program) => [program.program_id, program])
+    );
+    const items: ManagementAttentionItem[] = [];
+    for (const program of programs) {
+      const source = programById.get(program.program_id);
+      const department = departmentsById.get(program.department_id);
+      if (!source || !department) {
+        continue;
+      }
+      if (program.pending_enrollment_count > 0) {
+        items.push({
+          kind: "enrollment",
+          actionable: true,
+          count: program.pending_enrollment_count,
+          program_id: source.program_id,
+          program_name: source.name,
+          department_id: department.department_id,
+          department_name: department.name,
+        });
+      }
+    }
+    for (const event of eventRows) {
+      const program = programById.get(event.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department) {
+        continue;
+      }
+      items.push({
+        kind: "event",
+        actionable:
+          event.status === "Active" && event.availability === "Inactive",
+        event_id: event.event_id,
+        program_id: event.program_id,
+        program_name: program.name,
+        department_id: department.department_id,
+        department_name: department.name,
+        starts_at: event.starts_at,
+        status: event.status,
+        availability: event.availability,
+        name: event.name,
+      });
+    }
+    items.sort((left, right) => {
+      if (left.actionable !== right.actionable) {
+        return left.actionable ? -1 : 1;
+      }
+      if (left.kind === "event" && right.kind === "event") {
+        return (
+          left.starts_at.localeCompare(right.starts_at) ||
+          left.event_id.localeCompare(right.event_id)
+        );
+      }
+      return left.program_name.localeCompare(right.program_name, "zh-Hant");
+    });
+    const totalActionableCount = programs.reduce(
+      (total, program) => total + program.actionable_count,
+      0
+    );
+    const totalItemCount =
+      programs.filter(({ pending_enrollment_count }) => pending_enrollment_count > 0)
+        .length +
+      eventCounts.reduce(
+        (total, { inactive_event_count, cancelled_event_count }) =>
+          total + inactive_event_count + cancelled_event_count,
+        0
+      );
+    return {
+      programs,
+      items: items.slice(0, normalizedLimit),
+      total_actionable_count: totalActionableCount,
+      has_more: totalItemCount > normalizedLimit,
+    };
+  }
+
+  async getManagementNotifications(
+    ctx: AuthorizationContext,
+    limit = MANAGEMENT_NOTIFICATION_LIMIT
+  ): Promise<ManagementNotificationsView> {
+    const normalizedLimit = Math.min(1000, Math.max(1, Math.floor(limit)));
+    const directory = await this.listManagementDirectory(ctx);
+    const managedPrograms = directory.programs.filter(
+      ({ capabilities }) => capabilities.manage
+    );
+    const hasGlobalProgramManagement = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      null
+    );
+    if (!hasGlobalProgramManagement && managedPrograms.length === 0) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+
+    const departmentsById = new Map(
+      directory.departments.map((department) => [
+        department.department_id,
+        department,
+      ])
+    );
+    const moduleScopes = await Promise.all(
+      managedPrograms.map(async (program) => ({
+        program,
+        enrollment: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.ENROLLMENT
+        ),
+        events: await this.isModuleEnabled(
+          program.department_id,
+          MODULE_KEY.EVENTS
+        ),
+      }))
+    );
+    const enrollmentProgramIds = moduleScopes
+      .filter(({ enrollment }) => enrollment)
+      .map(({ program }) => program.program_id);
+    const eventProgramIds = moduleScopes
+      .filter(({ events }) => events)
+      .map(({ program }) => program.program_id);
+    const startsAtOrAfter = new Date().toISOString();
+    const [enrollmentRows, eventRows] = await Promise.all([
+      this.store.listManagementNotificationEnrollments(enrollmentProgramIds),
+      this.store.listManagementNotificationEvents(
+        eventProgramIds,
+        startsAtOrAfter
+      ),
+    ]);
+    const programById = new Map(
+      managedPrograms.map((program) => [program.program_id, program])
+    );
+    const current: {
+      item: ManagementNotificationItem;
+      sortAt: string;
+    }[] = [];
+    for (const enrollment of enrollmentRows) {
+      const program = programById.get(enrollment.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department || enrollment.count <= 0) {
+        continue;
+      }
+      const sourceKey = `enrollment:${program.program_id}`;
+      const sourceRevision = `v1:${enrollment.count}:${enrollment.latest_submitted_at}`;
+      current.push({
+        sortAt: enrollment.latest_submitted_at,
+        item: {
+          source_key: sourceKey,
+          source_revision: sourceRevision,
+          read: false,
+          kind: "enrollment",
+          actionable: true,
+          count: enrollment.count,
+          latest_submitted_at: enrollment.latest_submitted_at,
+          program_id: program.program_id,
+          program_name: program.name,
+          department_id: department.department_id,
+          department_name: department.name,
+        },
+      });
+    }
+    for (const event of eventRows) {
+      const program = programById.get(event.program_id);
+      const department = program
+        ? departmentsById.get(program.department_id)
+        : undefined;
+      if (!program || !department) {
+        continue;
+      }
+      const sourceKey = `event:${event.event_id}`;
+      const sourceRevision = `v1:${event.status}:${event.availability}:${event.updated_at}`;
+      current.push({
+        sortAt: event.updated_at,
+        item: {
+          source_key: sourceKey,
+          source_revision: sourceRevision,
+          read: false,
+          kind: "event",
+          actionable:
+            event.status === "Active" && event.availability === "Inactive",
+          event_id: event.event_id,
+          program_id: program.program_id,
+          program_name: program.name,
+          department_id: department.department_id,
+          department_name: department.name,
+          starts_at: event.starts_at,
+          status: event.status,
+          availability: event.availability,
+          name: event.name,
+          updated_at: event.updated_at,
+        },
+      });
+    }
+    current.sort((left, right) => {
+      if (left.item.actionable !== right.item.actionable) {
+        return left.item.actionable ? -1 : 1;
+      }
+      return (
+        right.sortAt.localeCompare(left.sortAt) ||
+        left.item.source_key.localeCompare(right.item.source_key)
+      );
+    });
+    const readStates = await this.store.listNotificationReadStates(
+      ctx.actorUserId,
+      current.map(({ item }) => item.source_key)
+    );
+    const readKeys = new Set(
+      readStates.map(
+        ({ source_key, source_revision }) => `${source_key}\u0000${source_revision}`
+      )
+    );
+    for (const entry of current) {
+      entry.item.read = readKeys.has(
+        `${entry.item.source_key}\u0000${entry.item.source_revision}`
+      );
+    }
+    return {
+      items: current
+        .slice(0, normalizedLimit)
+        .map(({ item }) => item),
+      unread_count: current.filter(({ item }) => !item.read).length,
+      has_more: current.length > normalizedLimit,
+    };
+  }
+
+  async markManagementNotificationsRead(
+    ctx: AuthorizationContext,
+    requested: readonly NotificationReadStateInput[]
+  ): Promise<number> {
+    if (requested.length === 0) {
+      return 0;
+    }
+    const current = await this.getManagementNotifications(ctx, 1000);
+    const currentKeys = new Set(
+      current.items.map(
+        ({ source_key, source_revision }) =>
+          `${source_key}\u0000${source_revision}`
+      )
+    );
+    const authorized = requested.filter(({ source_key, source_revision }) =>
+      currentKeys.has(`${source_key}\u0000${source_revision}`)
+    );
+    return this.store.markNotificationReadStates(
+      ctx.actorUserId,
+      authorized,
+      new Date().toISOString()
+    );
   }
 
   async getManagementProgram(
@@ -1364,6 +1813,24 @@ export class DepartmentWorkspace {
     return this.store.listScheduleRules(programId);
   }
 
+  async listScheduleExceptions(
+    ctx: AuthorizationContext,
+    programId: string,
+    ruleId: string
+  ): Promise<ScheduleExceptionRow[]> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const rule = await this.store.findScheduleRule(ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return [];
+    }
+    return this.store.listScheduleExceptions([ruleId]);
+  }
+
   getScheduleException(
     _ctx: AuthorizationContext,
     exceptionId: string
@@ -1567,12 +2034,71 @@ export class DepartmentWorkspace {
     );
   }
 
-  async generateEvents(
+  /**
+   * Deterministic SHA-256 hex over the exact plan inputs (sorted so rule and
+   * exception ordering never changes the identity). The hash freezes the
+   * rules/exceptions/horizon/from-date the plan was computed from, which is
+   * what generation re-checks to reject stale plans before any write.
+   */
+  private async computePlanHash(
+    rules: ScheduleRuleRow[],
+    exceptions: ScheduleExceptionRow[],
+    horizonDays: number,
+    fromDate: string
+  ): Promise<string> {
+    const canonical = JSON.stringify({
+      horizon_days: horizonDays,
+      from_date: fromDate,
+      rules: [...rules]
+        .sort((a, b) => a.rule_id.localeCompare(b.rule_id))
+        .map((rule) => ({
+          rule_id: rule.rule_id,
+          recurrence: rule.recurrence,
+          day_of_week: rule.day_of_week,
+          month_day: rule.month_day,
+          start_time: rule.start_time,
+          end_time: rule.end_time,
+          location: rule.location ?? null,
+        })),
+      exceptions: [...exceptions]
+        .sort((a, b) =>
+          a.rule_id === b.rule_id
+            ? a.override_date.localeCompare(b.override_date)
+            : a.rule_id.localeCompare(b.rule_id)
+        )
+        .map((exception) => ({
+          rule_id: exception.rule_id,
+          override_date: exception.override_date,
+          action: exception.action,
+          new_start_time: exception.new_start_time,
+          new_end_time: exception.new_end_time,
+        })),
+    });
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(canonical)
+    );
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * EVT-02 (#252): preview the exact future occurrence set for the current
+   * rules. Server-owned and durable; writes no events and no generation
+   * records. Identical inputs resolve to the same plan identity; changed
+   * inputs produce a new superseding plan. Zero rules is an explicit failed
+   * outcome with a durable FAILED audit record.
+   */
+  async previewEvents(
     ctx: AuthorizationContext,
     programId: string,
     horizonDays: number,
     correlationId: string | null
-  ): Promise<GenerateResult> {
+  ): Promise<{
+    plan: PreviewPlanView;
+    occurrences: PreviewOccurrenceRow[];
+  }> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -1586,7 +2112,7 @@ export class DepartmentWorkspace {
     if (rules.length === 0) {
       await this.audit(
         ctx,
-        "EVENT_GENERATE",
+        "EVENT_PREVIEW",
         "event",
         programId,
         "FAILED",
@@ -1594,69 +2120,437 @@ export class DepartmentWorkspace {
         { rule_count: 0 },
         correlationId
       );
-      throw new NoScheduleRulesError(programId);
+      throw new NoScheduleRulesError();
     }
     const exceptions = await this.store.listScheduleExceptions(
-      rules.map((r) => r.rule_id)
+      rules.map((rule) => rule.rule_id)
+    );
+    const fromDate = hkTodayWallDate();
+    const candidates = this.materializeOccurrences(
+      rules,
+      fromDate,
+      horizonDays,
+      exceptions
+    );
+    // Preview-time duplicate signal: mark occurrences whose starts_at is
+    // already claimed by a live event row, or by an earlier candidate in
+    // this same plan (intra-plan collision), so the operator sees skipped
+    // duplicates BEFORE any write. This is purely advisory: generation's
+    // own INSERT OR IGNORE + findEventByStart check in
+    // attemptGenerationOccurrence stays the authoritative write-time guard
+    // and continues to run exactly as before regardless of this flag.
+    await this.markPreviewDuplicates(programId, candidates);
+    const planHash = await this.computePlanHash(
+      rules,
+      exceptions,
+      horizonDays,
+      fromDate
     );
     const now = new Date().toISOString();
-    const fromDate = hkTodayWallDate();
-    let created = 0;
-    let skipped = 0;
-    const insertions: Promise<boolean>[] = [];
-    for (const rule of rules) {
-      const occurrences = occurrencesForRule(
-        rule,
-        fromDate,
-        horizonDays,
-        exceptions
-      );
-      for (const occurrence of occurrences) {
-        insertions.push(
-          this.store.insertGeneratedEvent({
-            program_id: programId,
-            starts_at: occurrence.starts_at,
-            ends_at: occurrence.ends_at,
-            status: "Active",
-            availability: "Active",
-            source: "SCHEDULE",
-            name: null,
-            location: null,
-            check_in_window_opens_at: null,
-            check_in_window_closes_at: null,
-            cancel_reason: null,
-            created_by: ctx.actorUserId,
-            created_at: now,
-            updated_by: ctx.actorUserId,
-            updated_at: now,
-          })
-        );
-      }
-    }
-    const results = await Promise.all(insertions);
-    for (const inserted of results) {
-      if (inserted) {
-        created += 1;
-      } else {
-        skipped += 1;
-      }
-    }
-    const result: GenerateResult = {
-      created,
-      skipped,
+    // Deterministic plan identity: the same (program, hash) always maps to
+    // the same plan_id, so re-previewing identical inputs resolves to the
+    // same durable plan row and the plan + its occurrence rows commit in
+    // one atomic batch.
+    const plan: PreviewPlanRow = {
+      plan_id: `pln_${programId}_${planHash.slice(0, 24)}`,
+      program_id: programId,
+      plan_hash: planHash,
+      horizon_days: horizonDays,
+      from_date: fromDate,
       rule_count: rules.length,
+      created_by: ctx.actorUserId,
+      created_at: now,
     };
+    const occurrences = candidates.map((candidate) =>
+      this.previewOccurrenceRow(plan.plan_id, candidate)
+    );
+    const persisted = await this.store.replacePreviewPlan(plan, occurrences);
+    // The persisted plan is authoritative (identical inputs resolve to the
+    // existing plan); read its exact rows back so plan identity and
+    // occurrence identities always agree.
+    const storedOccurrences = await this.store.listPreviewOccurrences(
+      persisted.plan_id
+    );
+    await this.audit(
+      ctx,
+      "EVENT_PREVIEW",
+      "event",
+      programId,
+      "SUCCESS",
+      null,
+      {
+        plan_id: persisted.plan_id,
+        plan_hash: persisted.plan_hash,
+        horizon_days: persisted.horizon_days,
+        rule_count: persisted.rule_count,
+        occurrence_count: storedOccurrences.length,
+      },
+      correlationId
+    );
+    return { plan: previewPlanView(persisted), occurrences: storedOccurrences };
+  }
+
+  /**
+   * EVT-02 (#252): generate events from a current preview plan.
+   *
+   * The plan must be current (hash matches the live schedule and no newer
+   * plan supersedes it) before any write; otherwise a deterministic
+   * STALE_PLAN failure leaves the event directory untouched. Generation is
+   * idempotent and resumable: one durable run per plan, one attempt row per
+   * occurrence, and the events (program_id, starts_at) unique index, so
+   * repeat, concurrent, and post-partial-failure retries never duplicate an
+   * already-created event and expose deterministic counts.
+   */
+  async generateEvents(
+    ctx: AuthorizationContext,
+    programId: string,
+    planId: string,
+    correlationId: string | null
+  ): Promise<GenerateResult> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (program.behavior_type !== "Recurring") {
+      throw new ScheduleRuleNotApplicableError(programId);
+    }
+    const plan = await this.store.findPreviewPlan(planId);
+    if (!plan || plan.program_id !== programId) {
+      throw new PreviewPlanNotFoundError(planId);
+    }
+    // Reject stale/ambiguous plans before writes: the live schedule must
+    // still match the plan's frozen inputs, and no newer preview may have
+    // superseded this plan.
+    const rules = await this.store.listScheduleRules(programId);
+    const exceptions = await this.store.listScheduleExceptions(
+      rules.map((rule) => rule.rule_id)
+    );
+    const currentHash = await this.computePlanHash(
+      rules,
+      exceptions,
+      plan.horizon_days,
+      plan.from_date
+    );
+    const latest = await this.store.findLatestPreviewPlan(programId);
+    const superseded =
+      latest !== null &&
+      latest.plan_id !== plan.plan_id &&
+      (latest.created_at > plan.created_at ||
+        (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
+    if (currentHash !== plan.plan_hash || superseded) {
+      // Business-state conflict (schedule changed / plan superseded), not a
+      // system failure: ADR-0023/0027 reserve FAILED for system-level
+      // failures, so this audits CONFLICT.
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "CONFLICT",
+        null,
+        { plan_id: planId, reason: "stale_plan" },
+        correlationId
+      );
+      throw new StalePreviewPlanError(planId, programId);
+    }
+    const occurrences = await this.store.listPreviewOccurrences(planId);
+    if (occurrences.length === 0) {
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "CONFLICT",
+        null,
+        { plan_id: planId, reason: "empty_plan" },
+        correlationId
+      );
+      throw new EmptyPreviewPlanError();
+    }
+    const now = new Date().toISOString();
+    const { run, created: runCreated } = await this.store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: planId,
+      started_at: now,
+      created_by: ctx.actorUserId,
+      correlation_id: correlationId,
+    });
+    const resumed = !runCreated;
+    if (run.status === "completed") {
+      // Deterministic repeat (ADR-0027): the plan was already fully
+      // generated, so this request created nothing and skipped every
+      // occurrence; the repeat still emits its own EVENT_GENERATE audit row
+      // with created = 0, skipped > 0.
+      const skipped = occurrences.length;
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "SUCCESS",
+        null,
+        {
+          run_id: run.run_id,
+          plan_id: planId,
+          status: "completed",
+          created: 0,
+          skipped,
+          failed: 0,
+          resumed: true,
+        },
+        correlationId
+      );
+      return {
+        run_id: run.run_id,
+        plan_id: planId,
+        status: "completed",
+        created: 0,
+        skipped,
+        failed: 0,
+        resumed: true,
+      };
+    }
+    // Each occurrence gets exactly one durable attempt row; repeated and
+    // concurrent requests converge on the same rows (INSERT … ON CONFLICT
+    // only supersedes previously-failed rows), so the item table is the
+    // single source of truth for the final counts. Failed rows are retried;
+    // created/skipped rows are terminal.
+    await this.processGenerationOccurrences(
+      run.run_id,
+      programId,
+      occurrences,
+      ctx.actorUserId,
+      now
+    );
+    // Atomic compare-and-set settlement: finishGenerationRun recomputes
+    // counts/status from the item table in one statement and only the first
+    // finisher writes; every caller reloads the settled row, so the run and
+    // every response converge deterministically.
+    await this.store.finishGenerationRun(run.run_id, new Date().toISOString());
+    const settled = await this.store.findGenerationRunByPlan(planId);
+    if (!settled) {
+      throw new WorkspaceNotFoundError("generation_run", run.run_id);
+    }
     await this.audit(
       ctx,
       "EVENT_GENERATE",
       "event",
       programId,
-      "SUCCESS",
+      settled.status === "completed" ? "SUCCESS" : "FAILED",
       null,
-      result,
+      {
+        run_id: settled.run_id,
+        plan_id: planId,
+        status: settled.status,
+        created: settled.created,
+        skipped: settled.skipped,
+        failed: settled.failed,
+        resumed,
+      },
       correlationId
     );
-    return result;
+    return {
+      run_id: settled.run_id,
+      plan_id: planId,
+      status: settled.status,
+      created: settled.created,
+      skipped: settled.skipped,
+      failed: settled.failed,
+      resumed,
+    };
+  }
+
+  /**
+   * Durably attempt every occurrence of a run. Attempts are independent and
+   * run in parallel; each attempt row is durable, so a crash mid-run leaves
+   * a resumable partial state and retries resume from the item table.
+   * Failed units are retried; created/skipped rows are terminal.
+   */
+  private async processGenerationOccurrences(
+    runId: string,
+    programId: string,
+    occurrences: PreviewOccurrenceRow[],
+    actorUserId: string,
+    now: string
+  ): Promise<void> {
+    const runItems = await this.store.listGenerationRunItems(runId);
+    const processed = new Map(
+      runItems.map((item) => [item.occurrence_id, item])
+    );
+    await Promise.all(
+      occurrences.map((occurrence) =>
+        this.attemptGenerationOccurrence(
+          runId,
+          programId,
+          occurrence,
+          actorUserId,
+          now,
+          processed
+        )
+      )
+    );
+  }
+
+  private async attemptGenerationOccurrence(
+    runId: string,
+    programId: string,
+    occurrence: PreviewOccurrenceRow,
+    actorUserId: string,
+    now: string,
+    processed: ReadonlyMap<string, GenerationRunItemRow>
+  ): Promise<void> {
+    const prior = processed.get(occurrence.occurrence_id);
+    if (prior && prior.outcome !== "failed") {
+      return;
+    }
+    if (occurrence.skip_reason === "CANCEL") {
+      await this.store.recordGenerationRunItem({
+        item_id: `${runId}:${occurrence.occurrence_id}`,
+        run_id: runId,
+        occurrence_id: occurrence.occurrence_id,
+        starts_at: occurrence.starts_at,
+        outcome: "skipped",
+        event_id: null,
+        detail: "CANCEL",
+      });
+      return;
+    }
+    let outcome: "created" | "skipped" | "failed" = "failed";
+    let eventId: string | null = null;
+    let detail: string | null = null;
+    try {
+      const inserted = await this.store.insertGeneratedEvent({
+        program_id: programId,
+        starts_at: occurrence.starts_at,
+        ends_at: occurrence.ends_at,
+        status: "Active",
+        availability: "Active",
+        source: "SCHEDULE",
+        name: null,
+        location: occurrence.location,
+        check_in_window_opens_at: null,
+        check_in_window_closes_at: null,
+        cancel_reason: null,
+        created_by: actorUserId,
+        created_at: now,
+        updated_by: actorUserId,
+        updated_at: now,
+      });
+      if (inserted) {
+        outcome = "created";
+        const createdEvent = await this.store.findEventByStart(
+          programId,
+          occurrence.starts_at
+        );
+        eventId = createdEvent?.event_id ?? null;
+      } else {
+        // INSERT OR IGNORE reported no change. Verify why: only the unique
+        // (program_id, starts_at) index is a benign duplicate; any other
+        // swallowed constraint would have produced no event row at all and
+        // must be surfaced as a system failure, never a false 'skipped'.
+        const existing = await this.store.findEventByStart(
+          programId,
+          occurrence.starts_at
+        );
+        if (existing) {
+          outcome = "skipped";
+          eventId = existing.event_id;
+        } else {
+          outcome = "failed";
+          detail = "event insert ignored without creating an event row";
+        }
+      }
+    } catch (error) {
+      outcome = "failed";
+      detail = error instanceof Error ? error.message : String(error);
+    }
+    await this.store.recordGenerationRunItem({
+      item_id: `${runId}:${occurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: occurrence.occurrence_id,
+      starts_at: occurrence.starts_at,
+      outcome,
+      event_id: eventId,
+      detail,
+    });
+  }
+
+  /** Deterministic, ordered occurrence candidates for every rule. */
+  private materializeOccurrences(
+    rules: ScheduleRuleRow[],
+    fromDate: string,
+    horizonDays: number,
+    exceptions: ScheduleExceptionRow[]
+  ): PreviewOccurrenceCandidate[] {
+    const candidates: PreviewOccurrenceCandidate[] = [];
+    for (const rule of rules) {
+      candidates.push(
+        ...previewOccurrencesForRule(rule, fromDate, horizonDays, exceptions)
+      );
+    }
+    return candidates.sort(
+      (a, b) =>
+        a.occurs_on.localeCompare(b.occurs_on) ||
+        a.starts_at.localeCompare(b.starts_at) ||
+        a.rule_id.localeCompare(b.rule_id)
+    );
+  }
+
+  /**
+   * Mark preview candidates that generation would skip as DUPLICATE. The
+   * candidates arrive sorted (occurs_on, starts_at, rule_id), so the first
+   * candidate to claim a starts_at is the deterministic "earlier" one: any
+   * later candidate with the same starts_at — whether already materialized
+   * as an event row, or produced by another rule in this same plan — is
+   * flagged DUPLICATE. CANCEL rows keep their existing marker and neither
+   * claim nor release a starts_at. Pure preview-time signal; no writes.
+   */
+  private async markPreviewDuplicates(
+    programId: string,
+    candidates: PreviewOccurrenceCandidate[]
+  ): Promise<void> {
+    const existingEvents = await this.store.listEvents(programId);
+    const existingStarts = new Set(
+      existingEvents.map((event) => event.starts_at)
+    );
+    const acceptedStarts = new Set<string>();
+    for (const candidate of candidates) {
+      if (candidate.skip_reason === "CANCEL") {
+        continue;
+      }
+      if (
+        existingStarts.has(candidate.starts_at) ||
+        acceptedStarts.has(candidate.starts_at)
+      ) {
+        candidate.skip_reason = "DUPLICATE";
+      } else {
+        acceptedStarts.add(candidate.starts_at);
+      }
+    }
+  }
+
+  /**
+   * Deterministic occurrence row identity: plan + rule + HK wall date.
+   * Plan-scoped so a superseding plan never collides on the same row ids.
+   */
+  private previewOccurrenceRow(
+    planId: string,
+    candidate: PreviewOccurrenceCandidate
+  ): PreviewOccurrenceRow {
+    return {
+      occurrence_id: `${planId}:${candidate.rule_id}:${candidate.occurs_on}`,
+      plan_id: planId,
+      rule_id: candidate.rule_id,
+      occurs_on: candidate.occurs_on,
+      starts_at: candidate.starts_at,
+      ends_at: candidate.ends_at,
+      location: candidate.location,
+      skip_reason: candidate.skip_reason,
+      exception_id: candidate.exception_id,
+    };
   }
 
   async createEvent(
@@ -1795,6 +2689,30 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    const reschedules =
+      (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) ||
+      (cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at);
+    let hasCheckedIn = false;
+    if (reschedules) {
+      const summary = await this.store.getEventParticipantSummary(
+        eventId,
+        event.program_id
+      );
+      hasCheckedIn = summary.checked_in > 0;
+    }
+    if (hasCheckedIn) {
+      await this.audit(
+        ctx,
+        "EVENT_UPDATE",
+        "event",
+        eventId,
+        "CONFLICT",
+        event,
+        { reason: "attendance_exists" },
+        correlationId
+      );
+      throw new EventRescheduleBlockedError(eventId);
+    }
     if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
       const duplicate = await this.store.findEventByStart(
         event.program_id,
@@ -1977,9 +2895,10 @@ export class DepartmentWorkspace {
 
   searchActiveMembers(
     query: string,
-    limit: number
+    limit: number,
+    programId?: string
   ): Promise<MemberOptionRow[]> {
-    return this.store.searchActiveMembers(query, limit);
+    return this.store.searchActiveMembers(query, limit, programId);
   }
 
   getEnrollment(
@@ -2110,6 +3029,52 @@ export class DepartmentWorkspace {
     });
     return rows.filter((r) => r.member_user_id === ctx.actorUserId);
   }
+  async listEnrollmentSnapshot(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  } | null> {
+    const program = await this.store.findProgramById(programId);
+    if (
+      !program ||
+      !(await this.isModuleEnabled(program.department_id)) ||
+      !(await this.isModuleEnabled(
+        program.department_id,
+        MODULE_KEY.ENROLLMENT
+      ))
+    ) {
+      return null;
+    }
+    const canManage = await this.authorizer.can(
+      ctx,
+      CAPABILITY.PROGRAM_MANAGE,
+      {
+        departmentId: program.department_id,
+        programId: program.program_id,
+      }
+    );
+    const snapshot = await this.store.listEnrollmentSnapshot(programId);
+    if (canManage) {
+      return snapshot;
+    }
+    if (program.discoverability === "Unlisted") {
+      return null;
+    }
+    await this.ensure(ctx, CAPABILITY.PROGRAM_ENROLL, {
+      departmentId: program.department_id,
+      programId: program.program_id,
+    });
+    return {
+      requests: snapshot.requests.filter(
+        (request) => request.member_user_id === ctx.actorUserId
+      ),
+      enrollments: snapshot.enrollments.filter(
+        (enrollment) => enrollment.member_user_id === ctx.actorUserId
+      ),
+    };
+  }
 
   async decideEnrollmentRequest(
     ctx: AuthorizationContext,
@@ -2117,7 +3082,7 @@ export class DepartmentWorkspace {
     requestId: string,
     cmd: DecideEnrollmentRequestCommand,
     correlationId: string | null
-  ): Promise<EnrollmentRequestRow> {
+  ): Promise<EnrollmentDecisionResult> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -2127,12 +3092,92 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    const decisionResult = async (
+      row: EnrollmentRequestRow
+    ): Promise<EnrollmentDecisionResult> => ({
+      request: row,
+      enrollment:
+        row.status === "Approved"
+          ? await this.store.findActiveEnrollment(
+              programId,
+              row.member_user_id
+            )
+          : null,
+    });
+    // ADR-0023 §3 / ADR-0027: DUPLICATE is the SAME actor repeating their own
+    // terminal decision; CONFLICT is a different actor reaching the terminal
+    // state first or an opposite terminal state. Check STATUS before
+    // request-version staleness so a terminal request is never misclassified
+    // as a stale-version CONFLICT (a deciding actor's own idempotent retry
+    // after a network timeout carries an already-advanced version).
+    const classifyObserved = async (
+      latest: EnrollmentRequestRow | null
+    ): Promise<EnrollmentDecisionResult | null> => {
+      if (latest && latest.status !== "Pending") {
+        if (
+          latest.status === cmd.action &&
+          latest.decided_by === ctx.actorUserId
+        ) {
+          await this.audit(
+            ctx,
+            "ENROLLMENT_REQUEST_DECIDE",
+            "enrollment_request",
+            requestId,
+            "DUPLICATE",
+            null,
+            { ...latest, reason: "already_decided" },
+            correlationId
+          );
+          return decisionResult(latest);
+        }
+        await this.audit(
+          ctx,
+          "ENROLLMENT_REQUEST_DECIDE",
+          "enrollment_request",
+          requestId,
+          "CONFLICT",
+          request,
+          {
+            ...latest,
+            reason:
+              latest.status === cmd.action
+                ? "already_decided_by_other_actor"
+                : "terminal_request",
+          },
+          correlationId
+        );
+        throw new EnrollmentDecisionConflictError(requestId, latest.status);
+      }
+      if (
+        latest &&
+        cmd.expectedRequestVersion !== undefined &&
+        cmd.expectedRequestVersion !== latest.request_version
+      ) {
+        await this.audit(
+          ctx,
+          "ENROLLMENT_REQUEST_DECIDE",
+          "enrollment_request",
+          requestId,
+          "CONFLICT",
+          request,
+          { ...latest, reason: "stale_request_version" },
+          correlationId
+        );
+        throw new StaleEnrollmentRequestError(requestId);
+      }
+      return null;
+    };
     const request = await this.store.findEnrollmentRequestById(requestId);
     if (!request || request.program_id !== programId) {
       throw new RequestNotDecidableError(requestId);
     }
+    const alreadyTerminal = await classifyObserved(request);
+    if (alreadyTerminal) {
+      return alreadyTerminal;
+    }
+
     const now = new Date().toISOString();
-    let decided: EnrollmentRequestRow | null;
+    let decided: EnrollmentDecisionResult | null;
     if (cmd.action === "Approved") {
       const enrollmentId = crypto.randomUUID();
       const auditCreate = this.buildAuditRow(
@@ -2157,9 +3202,10 @@ export class DepartmentWorkspace {
         "enrollment_request",
         requestId,
         "SUCCESS",
-        { status: "Pending" },
+        { status: "Pending", request_version: request.request_version },
         {
           ...request,
+          request_version: request.request_version + 1,
           status: "Approved",
           decided_by: ctx.actorUserId,
           decided_at: now,
@@ -2179,8 +3225,9 @@ export class DepartmentWorkspace {
           note: cmd.note,
           auditCreate,
           auditDecide,
+          expected_request_version: cmd.expectedRequestVersion,
         });
-        decided = committed?.request ?? null;
+        decided = committed;
       } catch (error) {
         // ponytail: the (member, program) unique index is the race guard; on
         // constraint violation the whole batch rolled back, so the request is
@@ -2217,9 +3264,10 @@ export class DepartmentWorkspace {
         "enrollment_request",
         requestId,
         "SUCCESS",
-        { status: "Pending" },
+        { status: "Pending", request_version: request.request_version },
         {
           ...request,
+          request_version: request.request_version + 1,
           status: "Rejected",
           decided_by: ctx.actorUserId,
           decided_at: now,
@@ -2227,29 +3275,42 @@ export class DepartmentWorkspace {
         },
         correlationId
       );
-      decided = await this.store.decideRequest(
+      const rejected = await this.store.decideRequest(
         requestId,
         "Rejected",
         ctx.actorUserId,
         now,
         cmd.note,
-        auditDecide
+        auditDecide,
+        cmd.expectedRequestVersion
       );
+      decided = rejected
+        ? { request: rejected, enrollment: null }
+        : null;
     }
-    if (!decided) {
-      await this.audit(
-        ctx,
-        "ENROLLMENT_REQUEST_DECIDE",
-        "enrollment_request",
-        requestId,
-        "DUPLICATE",
-        null,
-        { ...request, reason: "already_decided" },
-        correlationId
-      );
-      return request;
+    if (decided) {
+      return decided;
     }
-    return decided;
+
+    const latest = await this.store.findEnrollmentRequestById(requestId);
+    const observed = await classifyObserved(latest);
+    if (observed) {
+      return observed;
+    }
+    // Defensive: the CAS failed but the re-read is a Pending row matching the
+    // expected version — treat the decision as already applied and return the
+    // observed row so the caller never fabricates a second mutation.
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_DECIDE",
+      "enrollment_request",
+      requestId,
+      "DUPLICATE",
+      null,
+      { ...(latest ?? request), reason: "already_decided" },
+      correlationId
+    );
+    return decisionResult(latest ?? request);
   }
 
   async withdrawEnrollmentRequest(
@@ -2323,20 +3384,39 @@ export class DepartmentWorkspace {
     if (program.enrollment_mode !== "ManagerOnly") {
       throw new EnrollmentNotAllowedError(programId, "ManagerOnly");
     }
-    if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+    if (!(await this.store.isAccountActive(cmd.memberUserId))) {
       await this.audit(
         ctx,
         "ENROLLMENT_CREATE",
         "enrollment",
-        programId,
-        "CONFLICT",
+        cmd.memberUserId,
+        "DENIED",
         null,
-        {
-          member_user_id: cmd.memberUserId,
-          reason: "active_enrollment_exists",
-        },
+        { program_id: programId, reason: "account_inactive_or_unknown" },
         correlationId
       );
+      throw new EnrollmentAccountInactiveError(cmd.memberUserId);
+    }
+    const existing = await this.store.findActiveEnrollment(
+      programId,
+      cmd.memberUserId
+    );
+    if (existing) {
+      const outcome =
+        existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+      await this.audit(
+        ctx,
+        "ENROLLMENT_CREATE",
+        "enrollment",
+        existing.enrollment_id,
+        outcome,
+        existing,
+        { ...existing, reason: "active_enrollment_exists" },
+        correlationId
+      );
+      if (outcome === "DUPLICATE") {
+        return existing;
+      }
       throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
     }
     const now = new Date().toISOString();
@@ -2355,7 +3435,29 @@ export class DepartmentWorkspace {
     } catch (error) {
       // ponytail: partial unique index is the race guard; on constraint
       // violation the member already has an Active enrollment.
-      if (await this.store.hasActiveEnrollment(programId, cmd.memberUserId)) {
+      const existing = await this.store.findActiveEnrollment(
+        programId,
+        cmd.memberUserId
+      );
+      if (existing) {
+        const outcome =
+          existing.created_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
+        await this.audit(
+          ctx,
+          "ENROLLMENT_CREATE",
+          "enrollment",
+          existing.enrollment_id,
+          outcome,
+          existing,
+          {
+            ...existing,
+            reason: "active_enrollment_exists",
+          },
+          correlationId
+        );
+        if (outcome === "DUPLICATE") {
+          return existing;
+        }
         throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
       }
       throw error;

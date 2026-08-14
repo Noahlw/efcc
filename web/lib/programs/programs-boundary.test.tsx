@@ -13,6 +13,7 @@ import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type {
   Department,
+  ManagementNotifications,
   ParticipantCatalogEntry,
   ParticipantProgramDetail,
   Program,
@@ -30,6 +31,11 @@ const mocks = vi.hoisted(() => {
   const router = { push: vi.fn(), replace: vi.fn() };
   return {
     getManagementAccess: vi.fn(),
+    getManagementAttention: vi.fn(),
+    getManagementNotifications: vi.fn<() => Promise<ManagementNotifications>>(),
+    markManagementNotificationsRead: vi.fn<
+      () => Promise<{ marked_count: number }>
+    >(),
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
@@ -43,6 +49,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementAccess: mocks.getManagementAccess,
+  getManagementAttention: mocks.getManagementAttention,
+  getManagementNotifications: mocks.getManagementNotifications,
+  markManagementNotificationsRead: mocks.markManagementNotificationsRead,
   getManagementDirectory: mocks.getManagementDirectory,
   getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
@@ -221,6 +230,29 @@ describe("Programs intent", () => {
     ).toBeTruthy();
   });
 
+  test("keeps management notifications addressable without a Program", () => {
+    expect(
+      parseProgramsIntent("?mode=management&task=notifications")
+    ).toStrictEqual({
+      mode: "management",
+      programId: null,
+      hash: null,
+      task: "notifications",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        task: "notifications",
+      })
+    ).toBe("/programs?mode=management&task=notifications");
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=notifications"
+      ).malformed
+    ).toBeTruthy();
+  });
+
   test("preserves an Event deep link under the management events task", () => {
     expect(
       parseProgramsIntent(
@@ -348,6 +380,21 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/programs");
   sessionStorage.clear();
   mocks.getManagementAccess.mockReset();
+  mocks.getManagementAttention.mockReset();
+  mocks.getManagementAttention.mockResolvedValue({
+    programs: [],
+    items: [],
+    total_actionable_count: 0,
+    has_more: false,
+  });
+  mocks.getManagementNotifications.mockResolvedValue({
+    items: [],
+    unread_count: 0,
+    has_more: false,
+  });
+  mocks.markManagementNotificationsRead.mockResolvedValue({
+    marked_count: 0,
+  });
   mocks.getManagementDirectory.mockReset();
   mocks.getManagementProgram.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
@@ -488,6 +535,53 @@ describe("Programs boundary", () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("routes notification overflow to the dedicated management task", async () => {
+    window.history.replaceState({}, "", "/programs?mode=management");
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
+    mocks.getManagementNotifications.mockResolvedValue({
+      items: [
+        {
+          kind: "enrollment",
+          source_key: "enrollment:program-1",
+          source_revision: "v1:1:2026-01-01T00:00:00.000Z",
+          read: false,
+          actionable: true,
+          count: 1,
+          latest_submitted_at: "2026-01-01T00:00:00.000Z",
+          program_id: "program-1",
+          program_name: "活動",
+          department_id: "dept-1",
+          department_name: "部門",
+        },
+      ],
+      unread_count: 1,
+      has_more: true,
+    });
+
+    render(<ProgramsBoundary />);
+
+    await waitFor(() => {
+      expect(mocks.getManagementNotifications).toHaveBeenCalledWith();
+    });
+    expect(mocks.getManagementAttention).not.toHaveBeenCalled();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.notificationsViewAll,
+      })
+    );
+
+    expect(window.location.search).toBe(
+      "?mode=management&task=notifications"
+    );
+    expect(window.location.hash).toBe("");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   test("supports keyboard mode entry and return", async () => {

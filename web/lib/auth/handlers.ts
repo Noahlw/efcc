@@ -61,6 +61,7 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
+import { hasActiveManagementGrant } from "./management-grants";
 import { sectionsForRole, stableNavigationSections } from "../sections";
 
 export interface AuthEnv {
@@ -760,6 +761,14 @@ export async function handleMe(
       requestId
     );
   }
+  // Only Members can gain `events` from a scoped grant (Staff/Admin already
+  // have it via role); skip the extra query for every other role so the
+  // highest-traffic auth route pays for this check only when it can change
+  // the answer.
+  const hasManagementGrant =
+    resolved.account.role === "Member"
+      ? await hasActiveManagementGrant(env.DB, resolved.account.user_id)
+      : false;
   // The server emits a separate stable navigation projection. It is
   // presentation metadata only; `sections` remains the authorization set.
   return jsonResponse(
@@ -768,7 +777,7 @@ export async function handleMe(
       requestId,
       data: {
         user: secretFreeUser(resolved.account),
-        sections: sectionsForRole(resolved.account.role),
+        sections: sectionsForRole(resolved.account.role, hasManagementGrant),
         navigation: stableNavigationSections(),
       },
     },

@@ -14,7 +14,10 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  Program,
+} from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -240,6 +243,21 @@ describe(ManagementDirectory, () => {
       })
     );
     expect(onCreateProgram).toHaveBeenCalledWith(departments);
+  });
+
+  test("keeps source-specific attention out of the management directory", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+      />
+    );
+
+    const row = await screen.findByRole("button", { name: /查經小組/u });
+    expect(row).toHaveTextContent("查經小組");
+    expect(screen.queryByText("待處理報名")).not.toBeInTheDocument();
+    expect(screen.queryByText("暫停聚會")).not.toBeInTheDocument();
+    expect(screen.queryByText("已取消聚會")).not.toBeInTheDocument();
   });
 
   test("surfaces a forbidden state and retries without exposing records", async () => {

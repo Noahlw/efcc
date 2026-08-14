@@ -353,10 +353,23 @@ async function seedDemo(): Promise<void> {
       }
     );
   }
+  const preview = payload<{
+    plan: { plan_id: string };
+    occurrences: unknown[];
+  }>(
+    await request(
+      "POST",
+      `/api/v1/programs/${encodeURIComponent(recurring.program_id)}/events/preview`,
+      { horizon_days: 90 }
+    )
+  );
+  if (preview.occurrences.length === 0) {
+    throw new Error("The E2E_DEMO recurring program previewed no occurrences");
+  }
   await request(
     "POST",
     `/api/v1/programs/${encodeURIComponent(recurring.program_id)}/events/generate`,
-    { horizon_days: 90 }
+    { plan_id: preview.plan.plan_id }
   );
   const events = payload<{ events: { event_id: string }[] }>(
     await request(

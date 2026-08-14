@@ -63,12 +63,28 @@ const COPY = {
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
   managerOnlyNote: "此課程由管理員安排成員加入。",
   managementDirectoryTitle: "管理課程目錄",
+  attentionTitle: "管理提示",
+  attentionZero: "目前沒有需要處理或檢視的項目。",
+  notificationRegion: "管理通知",
+  notificationBell: "開啟管理通知",
+  notificationTitle: "管理通知",
+  notificationZero: "目前沒有新的管理通知。",
+  notificationViewAll: "查看全部通知",
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
   workspaceNearestEvent: "最近聚會",
   workspaceTaskEvents: "聚會",
   workspaceTaskParticipants: "參與者",
+  workspacePendingRequests: "待處理報名",
+  workspaceActiveParticipants: "活躍參與者",
+  workspaceParticipantsRefresh: "重新整理參與者資料",
+  workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
+  approve: "核准",
+  reject: "拒絕",
+  decisionNote: "決定備註",
+  decisionMade: "已處理申請。",
+  enrollmentHistory: "你的報名紀錄",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
   settingsBasics: "基本資料",
@@ -117,6 +133,8 @@ const COPY = {
   eventAvailabilityActivate: "恢復開放",
   eventAvailabilityConfirmProceed: "確定暫停",
   eventAvailabilityNotice: "聚會已暫停開放。",
+  attentionEventCount: "{count} 場聚會需檢視",
+  attentionCancelledCount: "{count} 場聚會狀態",
   eventAvailabilityRestoredNotice: "聚會已恢復開放。",
   eventAvailabilityUndo: "復原",
   eventEditTitle: "編輯聚會資料",
@@ -798,7 +816,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
@@ -829,6 +850,294 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
     ).toHaveAttribute("aria-current", "page");
+  });
+  test("manager Participants queue shows scoped counts and approves a pending request", async ({
+    page,
+    browser,
+  }) => {
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    let programId = "";
+    let adminReady = false;
+    try {
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
+      expect(programId).toBeTruthy();
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      const enrollmentPanel = memberPage.getByRole("region", {
+        name: COPY.enrollment,
+      });
+      await enrollmentPanel
+        .getByRole("button", { name: COPY.requestEnroll })
+        .click();
+      await expect(
+        enrollmentPanel.getByText(COPY.requestPendingHint)
+      ).toBeVisible();
+
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      adminReady = true;
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.workspaceTaskParticipants,
+          exact: true,
+        })
+      ).toBeVisible();
+      const pendingTab = page.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+      });
+      const activeTab = page.getByRole("tab", {
+        name: new RegExp(`${COPY.workspaceActiveParticipants} \\(\\d+\\)`, "u"),
+      });
+      await expect(pendingTab).toBeVisible();
+      await expect(activeTab).toBeVisible();
+      await expect(pendingTab).toHaveAttribute("aria-selected", "true");
+      await expect(pendingTab).toHaveAttribute(
+        "aria-controls",
+        "participants-pending-panel"
+      );
+      await expect(activeTab).toHaveAttribute(
+        "aria-controls",
+        "participants-active-panel"
+      );
+
+      const requestRow = page
+        .getByRole("listitem")
+        .filter({ hasText: "E2E Member" });
+      await expect(requestRow.getByRole("button", { name: COPY.approve })).toBeVisible();
+      await requestRow.getByRole("button", { name: COPY.approve }).click();
+      await expect(
+        page
+          .getByRole("region", { name: COPY.workspaceTaskParticipants })
+          .getByText(COPY.decisionMade, { exact: true })
+      ).toBeVisible();
+      await expect(activeTab).toContainText("(1)");
+      await activeTab.click();
+      await expect(
+        page.getByRole("list", { name: COPY.workspaceActiveParticipants })
+      ).toContainText("E2E Member");
+
+      // ENR-01 reject path: a second member submits, the manager rejects
+      // with a note, and the rejected request leaves no Active enrollment.
+      const secondUsername = `E2E_reject_${Date.now()}`;
+      const secondPassword = "E2E_reject_pw!1";
+      const secondContext = await browser.newContext();
+      const secondPage = await secondContext.newPage();
+      let secondReady = false;
+      try {
+        const registered = await page.evaluate(
+          async ({ username, password }) => {
+            const response = await fetch("/api/v1/auth/register", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": `e2e-register-${Date.now()}`,
+              },
+              body: JSON.stringify({
+                username,
+                password,
+                name: "E2E Reject Member",
+              }),
+            });
+            return { ok: response.ok, status: response.status };
+          },
+          { username: secondUsername, password: secondPassword }
+        );
+        expect(
+          registered.ok,
+          "second member registration must submit"
+        ).toBe(true);
+        const approved = await page.evaluate(async ({ username }) => {
+          const listResponse = await fetch("/api/v1/auth/registrations");
+          const body = (await listResponse.json()) as {
+            data?: {
+              registrations?: { requestId: string; username: string }[];
+            };
+          };
+          const pending = body.data?.registrations?.find(
+            (row) => row.username === username
+          );
+          if (!pending) {
+            return { ok: false, status: 404 };
+          }
+          const response = await fetch(
+            `/api/v1/auth/registrations/${encodeURIComponent(pending.requestId)}/approve`,
+            {
+              method: "POST",
+              headers: { "Idempotency-Key": `e2e-approve-${Date.now()}` },
+            }
+          );
+          return { ok: response.ok, status: response.status };
+        }, { username: secondUsername });
+        expect(approved.ok, "admin must approve the second member").toBe(true);
+
+        await loginAs(secondPage, secondUsername, secondPassword);
+        secondReady = true;
+        await secondPage.goto(`/programs?program=${programId}#overview`);
+        const secondPanel = secondPage.getByRole("region", {
+          name: COPY.enrollment,
+        });
+        await secondPanel
+          .getByRole("button", { name: COPY.requestEnroll })
+          .click();
+        await expect(
+          secondPanel.getByText(COPY.requestPendingHint)
+        ).toBeVisible();
+
+        await page
+          .getByRole("button", { name: COPY.workspaceParticipantsRefresh })
+          .click();
+        await page
+          .getByRole("tab", {
+            name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+          })
+          .click();
+        const secondRow = page
+          .getByRole("listitem")
+          .filter({ hasText: "E2E Reject Member" });
+        await expect(secondRow).toBeVisible();
+        await secondRow.getByLabel(COPY.decisionNote).fill("時間不合");
+        await secondRow.getByRole("button", { name: COPY.reject }).click();
+        await expect(
+          page
+            .getByRole("region", { name: COPY.workspaceTaskParticipants })
+            .getByText(COPY.decisionMade, { exact: true })
+        ).toBeVisible();
+        await expect(
+          page.getByText(COPY.workspaceParticipantsPendingEmpty)
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole("listitem")
+            .filter({ hasText: "E2E Reject Member" })
+        ).toHaveCount(0);
+        const secondEnrollments = await secondPage.evaluate(
+          async (id) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-snapshot`
+            );
+            const body = (await response.json()) as {
+              data?: { enrollments?: { status: string }[] };
+            };
+            return body.data?.enrollments ?? [];
+          },
+          programId
+        );
+        expect(
+          secondEnrollments.some((row) => row.status === "Active"),
+          "rejected request must not create an Active enrollment"
+        ).toBe(false);
+        const historyTab = page.getByRole("tab", {
+          name: new RegExp(`${COPY.enrollmentHistory} \\(\\d+\\)`, "u"),
+        });
+        await historyTab.click();
+        await expect(
+          page
+            .getByRole("list", { name: COPY.enrollmentHistory })
+            .filter({ hasText: "E2E Reject Member" })
+        ).toContainText("時間不合");
+      } finally {
+        if (secondReady) {
+          await secondPage.evaluate(async (id) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+            );
+            const body = (await response.json()) as {
+              data?: {
+                requests?: {
+                  request_id: string;
+                  status: string;
+                }[];
+              };
+            };
+            const pending = (body.data?.requests ?? []).find(
+              (row) => row.status === "Pending"
+            );
+            if (pending) {
+              await fetch(
+                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(pending.request_id)}/withdraw`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: "{}",
+                }
+              );
+            }
+          }, programId);
+          await secondContext.close();
+        }
+      }
+    } finally {
+      if (programId && adminReady) {
+        await page.evaluate(async (id) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
+          );
+          const body = (await response.json()) as {
+            data?: {
+              enrollments?: {
+                enrollment_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const enrollment = body.data?.enrollments?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
+          );
+          if (enrollment) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+        await memberPage.evaluate(async (id) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+          );
+          const body = (await response.json()) as {
+            data?: {
+              requests?: {
+                request_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const request = body.data?.requests?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
+          );
+          if (request) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+      }
+      await memberContext.close();
+    }
   });
   test("keeps Directory and Workspace entry points keyboard-operable", async ({
     page,
@@ -870,6 +1179,13 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     expect(programId).toBeTruthy();
     await page.goto(
       `/programs?mode=management&program=${programId}&task=settings`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(page.getByText(programId)).toHaveCount(0);
+    await page.goto(
+      `/programs?mode=management&program=${programId}&task=participants`
     );
     await expect(
       page.getByRole("heading", { name: COPY.noManagementScope })
@@ -1732,7 +2048,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
   }
 
@@ -1740,11 +2059,12 @@ test.describe("EVT-01 event operational detail and availability", () => {
     page: Page,
     programId: string,
     name: string,
-    minuteOffsetMinutes: number
+    minuteOffsetMinutes: number,
+    dateOffsetDays = 0
   ): Promise<string> {
     await openEventsTask(page, programId);
     await page.getByRole("button", { name: COPY.eventCreate }).click();
-    const startsAt = eventStart(0, minuteOffsetMinutes);
+    const startsAt = eventStart(dateOffsetDays, minuteOffsetMinutes);
     await page.getByLabel(COPY.eventName).fill(name);
     await page.getByLabel(COPY.eventLocation).fill("測試場地");
     await page.getByLabel(COPY.eventStart).fill(startsAt);
@@ -1837,7 +2157,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       )
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents })
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskEvents,
+        exact: true,
+      })
     ).toBeVisible();
   });
 
@@ -1856,12 +2179,17 @@ test.describe("EVT-01 event operational detail and availability", () => {
       page,
       programId,
       `E2E_EVT_暫停_${Date.now()}`,
-      90
+      90,
+      -121
     );
+
+    const eventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
 
     await page.getByRole("button", { name: COPY.eventAvailabilityDeactivate }).click();
     await expect(
-      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      eventDetail.getByText(COPY.eventAvailabilityNotice, { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
@@ -1870,7 +2198,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await expect(undo).toBeVisible();
     await undo.click();
     await expect(
-      page.getByText(COPY.eventAvailabilityRestoredNotice, { exact: true }).first()
+      eventDetail
+        .getByText(COPY.eventAvailabilityRestoredNotice, { exact: true })
+        .first()
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityDeactivate })
@@ -1909,7 +2239,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     expect(programId).toBeTruthy();
 
-    await createManualEvent(
+    const eventId = await createManualEvent(
       page,
       programId,
       `E2E_EVT_確認_${Date.now()}`,
@@ -1970,7 +2300,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
       .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
       .click();
     await expect(
-      page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+      page
+        .getByRole("region", { name: COPY.eventDetailTitle })
+        .getByText(COPY.eventAvailabilityNotice, { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.eventAvailabilityUndo })
@@ -1990,6 +2322,14 @@ test.describe("EVT-01 event operational detail and availability", () => {
         `/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(enrollment?.enrollment_id ?? "")}/cancel`,
         "POST",
         {}
+      )
+    ).toBe(200);
+    expect(
+      await apiJsonStatus(
+        page,
+        `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+        "PATCH",
+        { availability: "Active" }
       )
     ).toBe(200);
   });
@@ -2072,7 +2412,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
         .getByRole("button", { name: COPY.eventAvailabilityConfirmProceed })
         .click();
       await expect(
-        page.getByText(COPY.eventAvailabilityNotice, { exact: true })
+        page
+          .getByRole("region", { name: COPY.eventDetailTitle })
+          .getByText(COPY.eventAvailabilityNotice, { exact: true })
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: COPY.eventAvailabilityUndo })
@@ -2097,5 +2439,769 @@ test.describe("EVT-01 event operational detail and availability", () => {
         "restoring the event to Active must succeed"
       ).toBe(200);
     }
+  });
+});
+
+test.describe("NTF-01 management attention", () => {
+  test.describe.configure({ mode: "serial" });
+
+  async function createAttentionEvent(
+    page: Page,
+    programId: string,
+    name: string,
+    offsetDays: number
+  ): Promise<string> {
+    const startsAt = new Date(
+      Date.now() + offsetDays * 86_400_000
+    ).toISOString();
+    const response = await page.evaluate(
+      async ({ programId: id, name: eventName, startsAt: start }) => {
+        const result = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/events`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: eventName,
+              location: "NTF-01 測試場地",
+              starts_at: start,
+              ends_at: new Date(
+                new Date(start).getTime() + 90 * 60_000
+              ).toISOString(),
+              check_in_window_opens_at: new Date(
+                new Date(start).getTime() - 30 * 60_000
+              ).toISOString(),
+              check_in_window_closes_at: new Date(
+                new Date(start).getTime() + 120 * 60_000
+              ).toISOString(),
+            }),
+          }
+        );
+        const body = (await result.json()) as {
+          data?: { event?: { event_id?: string } };
+        };
+        return { status: result.status, eventId: body.data?.event?.event_id };
+      },
+      { programId, name, startsAt }
+    );
+    expect(response.status, "attention event creation must succeed").toBe(201);
+    expect(response.eventId, "attention event must return an id").toBeTruthy();
+    return response.eventId ?? "";
+  }
+
+  async function patchAttentionEvent(
+    page: Page,
+    programId: string,
+    eventId: string,
+    body: Record<string, string>
+  ): Promise<number> {
+    return await page.evaluate(
+      async ({ programId: id, eventId: itemId, patch }) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/events/${encodeURIComponent(itemId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+          }
+        );
+        return response.status;
+      },
+      { programId, eventId, patch: body }
+    );
+  }
+
+  test("zero state is explicit and management attention stays scoped", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+
+    const control = page.getByRole("region", { name: COPY.notificationRegion });
+    await expect(control).toBeVisible();
+    const trigger = control.getByRole("button", {
+      name: COPY.notificationBell,
+    });
+    await expect(trigger.locator('[class*="badge"]')).toHaveCount(0);
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
+    await expect(dialog).toBeVisible();
+    const dialogBox = await dialog.boundingBox();
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    expect(dialogBox).not.toBeNull();
+    expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeLessThanOrEqual(
+      viewportWidth
+    );
+    await expect(dialog.getByRole("status")).toHaveText(COPY.notificationZero);
+
+    const memberContext = await browser.newContext();
+    try {
+      const memberPage = await memberContext.newPage();
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await memberPage.goto("/programs?mode=management");
+      await expect(
+        memberPage.getByText(COPY.noManagementScope, { exact: true })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("region", { name: COPY.notificationRegion })
+      ).toHaveCount(0);
+    } finally {
+      await memberContext.close();
+    }
+  });
+
+  test("lists bounded real sources, exact task links, workspace counts, and refreshes after decisions", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const departmentId = required(
+      "E2E_DEMO_MINISTRY department id",
+      await page.evaluate(async () => {
+        const response = await fetch("/api/v1/programs/departments");
+        const body = (await response.json()) as {
+          data?: { departments?: { department_id: string; code: string }[] };
+        };
+        return body.data?.departments?.find(
+          ({ code }) => code === "E2E_DEMO_MINISTRY"
+        )?.department_id;
+      })
+    );
+    const programName = `E2E_NTF256_${Date.now()}`;
+    const program = await page.evaluate(
+      async ({ departmentId: id, name }) => {
+        const response = await fetch(
+          `/api/v1/programs/departments/${encodeURIComponent(id)}/programs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              category: "NTF-01",
+              behavior_type: "OneOff",
+              lifecycle: "Active",
+              discoverability: "Listed",
+              enrollment_mode: "MemberRequest",
+            }),
+          }
+        );
+        const body = (await response.json()) as {
+          data?: { program?: { program_id?: string } };
+        };
+        return { status: response.status, id: body.data?.program?.program_id };
+      },
+      { departmentId, name: programName }
+    );
+    expect(program.status, "attention fixture Program creation").toBe(201);
+    const programId = required("attention fixture program id", program.id);
+    let pendingRequestId = "";
+    let pendingResolved = false;
+    let inactiveEventId = "";
+    let cancelledEventId = "";
+    let memberLeaderAssigned = false;
+    try {
+      const memberContext = await browser.newContext();
+    try {
+      const memberPage = await memberContext.newPage();
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      const request = await memberPage.evaluate(
+        async (requestPath) => {
+          const response = await fetch(requestPath, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          const body = (await response.json()) as {
+            data?: { request?: { request_id?: string } };
+          };
+          return {
+            status: response.status,
+            requestId: body.data?.request?.request_id ?? "",
+          };
+        },
+        `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
+      );
+      pendingRequestId = request.requestId;
+      expect([200, 201]).toContain(request.status);
+    } finally {
+      await memberContext.close();
+    }
+    const memberLeaderStatus = await postProgramLeader(
+      page,
+      programId,
+      DEV_MEMBER.userId,
+      "assign"
+    );
+    expect(memberLeaderStatus).toBe(200);
+    memberLeaderAssigned = true;
+
+    inactiveEventId = await createAttentionEvent(
+      page,
+      programId,
+      `E2E_NTF256_暫停_${Date.now()}`,
+      5
+    );
+    expect(
+      await patchAttentionEvent(page, programId, inactiveEventId, {
+        availability: "Inactive",
+      })
+    ).toBe(200);
+
+    cancelledEventId = await createAttentionEvent(
+      page,
+      programId,
+      `E2E_NTF256_取消_${Date.now()}`,
+      6
+    );
+    expect(
+      await patchAttentionEvent(page, programId, cancelledEventId, {
+        reason: "NTF-01 測試取消",
+      })
+    ).toBe(200);
+
+    const aggregateBeforeUi = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs/notifications?limit=20");
+      const body = (await response.json()) as {
+        data?: { unread_count?: number };
+      };
+      return body.data?.unread_count ?? 0;
+    });
+    await page.goto("/programs?mode=management");
+    const control = page.getByRole("region", { name: COPY.notificationRegion });
+    const trigger = control.getByRole("button", {
+      name: COPY.notificationBell,
+    });
+    await expect(trigger.locator('[class*="badge"]')).toHaveText(
+      String(aggregateBeforeUi)
+    );
+    const markedReadPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().endsWith("/api/v1/programs/notifications/read")
+    );
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
+    await expect(dialog).toBeVisible();
+
+    const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
+    const inactiveHref = `/programs?mode=management&program=${programId}&task=events&event=${inactiveEventId}`;
+    const cancelledHref = `/programs?mode=management&program=${programId}&task=events&event=${cancelledEventId}`;
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
+    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+    await expect(dialog.getByRole("link")).toHaveCount(3);
+
+    const markedRead = await markedReadPromise;
+    expect(markedRead.ok()).toBeTruthy();
+    expect(
+      await page.evaluate(async (eventId) => {
+        const response = await fetch("/api/v1/programs/notifications?limit=20");
+        const body = (await response.json()) as {
+          data?: {
+            items?: { kind: string; event_id?: string; read: boolean }[];
+          };
+        };
+        return body.data?.items?.find(
+          (item) => item.kind === "event" && item.event_id === eventId
+        )?.read;
+      }, inactiveEventId)
+    ).toBe(true);
+
+    expect(
+      await patchAttentionEvent(page, programId, inactiveEventId, {
+        name: `E2E_NTF256_修訂_${Date.now()}`,
+      })
+    ).toBe(200);
+    expect(
+      await page.evaluate(async (eventId) => {
+        const response = await fetch("/api/v1/programs/notifications?limit=20");
+        const body = (await response.json()) as {
+          data?: {
+            items?: { kind: string; event_id?: string; read: boolean }[];
+          };
+        };
+        return body.data?.items?.find(
+          (item) => item.kind === "event" && item.event_id === eventId
+        )?.read;
+      }, inactiveEventId)
+    ).toBe(false);
+
+    await page.goto(pendingHref);
+    const participants = page.getByRole("region", {
+      name: COPY.workspaceTaskParticipants,
+    });
+    await expect(
+      participants.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(1\\)`, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      participants.getByRole("listitem").filter({ hasText: "E2E Member" })
+    ).toBeVisible();
+
+    await page.goto(inactiveHref);
+    const eventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
+    await expect(eventDetail).toBeVisible();
+    await expect(
+      eventDetail.getByRole("button", { name: COPY.eventAvailabilityActivate })
+    ).toBeVisible();
+
+    await page.goto(
+      `/programs?mode=management&program=${programId}&task=events`
+    );
+    const eventsTask = page.getByRole("region", {
+      name: COPY.workspaceTaskEvents,
+    });
+    await expect(
+      eventsTask.getByLabel(COPY.attentionEventCount.replace("{count}", "1"))
+    ).toHaveText("1");
+    await expect(
+      eventsTask.getByLabel(COPY.attentionCancelledCount.replace("{count}", "1"))
+    ).toHaveText("1");
+
+    await page.goto("/programs?mode=management");
+    await expect(control).toBeVisible();
+    await trigger.click();
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+
+    const pending = await page.evaluate(async (requestPath) => {
+      const response = await fetch(requestPath);
+      const body = (await response.json()) as {
+        data?: { requests?: { request_id: string; status: string }[] };
+      };
+      return body.data?.requests?.find((request) => request.status === "Pending");
+    }, `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`);
+    expect(pending?.request_id, "pending source must have an identity").toBeTruthy();
+    pendingRequestId = pending?.request_id ?? pendingRequestId;
+    const decisionStatus = await page.evaluate(
+      async ({ programId: id, requestId }) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "Approved" }),
+          }
+        );
+        return response.status;
+      },
+      { programId, requestId: pending?.request_id ?? "" }
+    );
+    expect(decisionStatus).toBe(200);
+    pendingResolved = decisionStatus === 200;
+    await trigger.click();
+    await expect(dialog).toHaveCount(0);
+    const aggregateAfterApproval = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs/notifications?limit=20");
+      const body = (await response.json()) as {
+        data?: { unread_count?: number };
+      };
+      return body.data?.unread_count ?? 0;
+    });
+    await trigger.click();
+    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toHaveCount(0);
+    await expect(trigger.locator('[class*="badge"]')).toHaveCount(
+      aggregateAfterApproval > 0 ? 1 : 0
+    );
+    if (aggregateAfterApproval > 0) {
+      await expect(trigger.locator('[class*="badge"]')).toHaveText(
+        String(aggregateAfterApproval)
+      );
+    }
+
+    // NTF-01.2: a deep link captured before its source resolved must
+    // re-authorize and re-read current state, never a stale-looking
+    // success -- landing on the (now-approved) pending link must show
+    // the fresh zero count, not the badge's earlier (1).
+    await page.goto(pendingHref);
+    await expect(
+      participants.getByRole("tab", {
+        name: new RegExp(`${COPY.workspacePendingRequests} \\(0\\)`, "u"),
+      })
+    ).toBeVisible();
+
+    await page.goto(inactiveHref);
+    await page.getByRole("button", { name: COPY.eventAvailabilityActivate }).click();
+    await expect(
+      eventDetail.getByText(COPY.eventAvailabilityRestoredNotice, {
+        exact: true,
+      })
+    ).toBeVisible();
+    await page.goto(inactiveHref);
+    const refreshedEventDetail = page.getByRole("region", {
+      name: COPY.eventDetailTitle,
+    });
+    await expect(refreshedEventDetail).toBeVisible();
+    await expect(
+      refreshedEventDetail.getByRole("button", {
+        name: COPY.eventAvailabilityActivate,
+      })
+    ).toHaveCount(0);
+    await expect(
+      refreshedEventDetail.getByRole("button", {
+        name: COPY.eventAvailabilityDeactivate,
+      })
+    ).toBeVisible();
+
+    expect(
+      await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
+    ).toBe(200);
+    memberLeaderAssigned = false;
+    const revokedContext = await browser.newContext();
+    try {
+      const revokedPage = await revokedContext.newPage();
+      await loginAs(
+        revokedPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await revokedPage.goto(inactiveHref);
+      await expect(
+        revokedPage.getByRole("heading", {
+          name: COPY.noManagementScope,
+        })
+      ).toBeVisible();
+      await expect(revokedPage.getByText(programName)).toHaveCount(0);
+    } finally {
+      await revokedContext.close();
+    }
+
+
+    await page.goto("/programs?mode=management");
+    await trigger.click();
+    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
+    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+    } finally {
+      if (memberLeaderAssigned) {
+        await postProgramLeader(
+          page,
+          programId,
+          DEV_MEMBER.userId,
+          "revoke"
+        ).catch(() => undefined);
+      }
+      if (pendingRequestId && !pendingResolved) {
+        await page
+          .evaluate(
+            async ({ programId: id, requestId }) => {
+              const response = await fetch(
+                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "Rejected" }),
+                }
+              );
+              if (!response.ok) {
+                await fetch(
+                  `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/withdraw`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: "{}",
+                  }
+                );
+              }
+            },
+            { programId, requestId: pendingRequestId }
+          )
+          .catch(() => undefined);
+      }
+      if (inactiveEventId) {
+        await patchAttentionEvent(page, programId, inactiveEventId, {
+          availability: "Active",
+        }).catch(() => -1);
+      }
+      if (cancelledEventId) {
+        await patchAttentionEvent(page, programId, cancelledEventId, {
+          starts_at: "2000-01-01T00:00:00.000Z",
+          ends_at: "2000-01-01T01:30:00.000Z",
+          check_in_window_opens_at: "2000-01-01T00:00:00.000Z",
+          check_in_window_closes_at: "2000-01-01T02:00:00.000Z",
+        }).catch(() => -1);
+      }
+    }
+  });
+});
+test.describe("EVT-02 recurring preview and generation", () => {
+  // EVT-02 (#252): reachable Program Workspace preview/generate controls.
+  const previewEvents = "預覽聚會";
+  const previewChanged = "時間表已變更，請重新預覽。";
+  const previewLead = "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
+
+  async function openEventsTask(
+    page: Page,
+    programId: string
+  ): Promise<void> {
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
+    ).toBeVisible();
+  }
+
+  async function eventCount(page: Page, programId: string): Promise<number> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { events?: unknown[] } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/events`
+    );
+    return (body.data?.events ?? []).length;
+  }
+
+  async function scheduleRules(
+    page: Page,
+    programId: string
+  ): Promise<{ rule_id: string; start_time: string }[]> {
+    const body = await page.evaluate(
+      async (requestPath) => {
+        const response = await fetch(requestPath);
+        return (await response.json()) as { data?: { rules?: unknown[] } };
+      },
+      `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`
+    );
+    return (body.data?.rules ?? []) as { rule_id: string; start_time: string }[];
+  }
+
+  async function patchRule(
+    page: Page,
+    programId: string,
+    ruleId: string,
+    patch: Record<string, unknown>
+  ): Promise<number> {
+    return page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return response.status;
+      },
+      {
+        requestPath: `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
+        body: patch,
+      }
+    );
+  }
+
+  /**
+   * Create a disposable recurring program (with one weekly rule) under the
+   * demo department so generation tests are deterministic: no prior plans,
+   * runs, or events exist for it, and the deterministic plan identity can
+   * never collide with state left by an earlier suite run.
+   */
+  async function createRecurringProgram(
+    page: Page,
+    prefix: string
+  ): Promise<string> {
+    const catalog = await fetchCatalog(page);
+    const departmentId = catalog[0]?.department.department_id;
+    expect(departmentId).toBeTruthy();
+    const name = `${prefix}_${Date.now()}`;
+    const created = await page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return {
+          status: response.status,
+          body: (await response.json()) as { data?: { program?: { program_id?: string } } },
+        };
+      },
+      {
+        requestPath: `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
+        body: {
+          name,
+          description: null,
+          category: "測試類別",
+          behavior_type: "Recurring",
+          lifecycle: "Draft",
+          discoverability: "Unlisted",
+          enrollment_mode: "MemberRequest",
+          display_order: 0,
+        },
+      }
+    );
+    expect(created.status).toBe(201);
+    const programId = created.body.data?.program?.program_id;
+    expect(programId).toBeTruthy();
+    const ruleStatus = await page.evaluate(
+      async ({ requestPath, body }) => {
+        const response = await fetch(requestPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        return response.status;
+      },
+      {
+        requestPath: `/api/v1/programs/${encodeURIComponent(programId ?? "")}/schedule-rules`,
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 3,
+          start_time: "19:30",
+          end_time: "20:45",
+        },
+      }
+    );
+    expect(ruleStatus).toBe(201);
+    return programId ?? "";
+  }
+
+  test("preview materializes exact rows without writing events", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+    await openEventsTask(page, id);
+
+    const before = await eventCount(page, id);
+    await expect(
+      page.getByRole("button", { name: previewEvents })
+    ).toBeVisible();
+    await page.getByRole("button", { name: previewEvents }).click();
+
+    // Server-owned plan identity + exact occurrence rows in the DOM.
+    await expect(page.getByText(previewLead)).toBeVisible();
+    await expect(page.getByText(/^方案 /u).first()).toBeVisible();
+    await expect(
+      page.locator("[aria-label='預覽聚會'] > li").first()
+    ).toBeVisible();
+    // The generate control becomes reachable only with a current plan.
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+
+    // Non-mutating: the observable event directory is unchanged.
+    expect(await eventCount(page, id)).toBe(before);
+  });
+
+  test("generation reports deterministic created/skipped counts and refreshes the directory", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_產生");
+    await openEventsTask(page, id);
+    const before = await eventCount(page, id);
+    expect(before).toBe(0);
+    await page.getByRole("button", { name: previewEvents }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect
+      .poll(async () => eventCount(page, id))
+      .toBeGreaterThan(before);
+
+    // Deterministic repeat: the same plan generates nothing new.
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已接續上次產生，新增 0 場，跳過 \d+ 場。$/u).first()
+    ).toBeVisible();
+    expect(await eventCount(page, id)).toBeGreaterThan(before);
+  });
+
+  test("a stale plan is rejected before writes and requires a fresh preview", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_過期");
+    const rules = await scheduleRules(page, id);
+    const rule = rules[0];
+    expect(rule).toBeTruthy();
+
+    await openEventsTask(page, id);
+    const before = await eventCount(page, id);
+    await page.getByRole("button", { name: previewEvents }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeVisible();
+
+    // Change a rule after the preview, then generate with the stale plan.
+    const patchStatus = await patchRule(page, id, rule.rule_id, {
+      start_time: "19:45",
+    });
+    expect(patchStatus).toBe(200);
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+
+    const staleAlert = page.getByRole("alert").filter({
+      hasText: previewChanged,
+    });
+    await expect(staleAlert).toBeVisible();
+    // The stale plan is cleared; the UI requires a new preview.
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
+    expect(await eventCount(page, id)).toBe(before);
+  });
+
+  test("preview/generate controls are unreachable without the manage capability", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("fixture program id", programId);
+    // A member without Program Manage cannot enter management mode at all:
+    // the capability-shaped boundary renders the no-management-scope state,
+    // so no preview/generate control is reachable.
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(id)}&task=events`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.noManagementScope })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: previewEvents })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toHaveCount(0);
   });
 });

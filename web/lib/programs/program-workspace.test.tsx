@@ -15,8 +15,10 @@ import type {
   DepartmentModule,
   Enrollment,
   EnrollmentRequest,
+  PreviewResult,
   Program,
   ProgramEvent,
+  ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
 
@@ -24,24 +26,38 @@ const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
+  listEnrollmentSnapshot: vi.fn(),
   listEnrollments: vi.fn(),
-  getEvent: vi.fn(),
+  decideEnrollmentRequest: vi.fn(),
+  assistedEnroll: vi.fn(),
+  searchMemberOptions: vi.fn(),
   createEvent: vi.fn(),
+  getEvent: vi.fn(),
   updateEvent: vi.fn(),
   setEventAvailability: vi.fn(),
   cancelEvent: vi.fn(),
+  listScheduleRules: vi.fn(),
+  previewEvents: vi.fn(),
+  generateEvents: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
+  listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
   listEnrollments: mocks.listEnrollments,
-  createEvent: mocks.createEvent,
+  decideEnrollmentRequest: mocks.decideEnrollmentRequest,
+  assistedEnroll: mocks.assistedEnroll,
+  searchMemberOptions: mocks.searchMemberOptions,
   getEvent: mocks.getEvent,
+  createEvent: mocks.createEvent,
   updateEvent: mocks.updateEvent,
   setEventAvailability: mocks.setEventAvailability,
   cancelEvent: mocks.cancelEvent,
+  listScheduleRules: mocks.listScheduleRules,
+  previewEvents: mocks.previewEvents,
+  generateEvents: mocks.generateEvents,
 }));
 
 const program: Program = {
@@ -140,6 +156,55 @@ const enrollment: Enrollment = {
   member_name: "李同工",
 };
 
+const rule: ScheduleRule = {
+  rule_id: "rule-1",
+  program_id: "program-1",
+  recurrence: "WEEKLY",
+  day_of_week: 3,
+  month_day: null,
+  start_time: "19:30",
+  end_time: "21:00",
+  location: "主堂",
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+};
+
+const plan: PreviewResult = {
+  plan: {
+    plan_id: "plan-abc123",
+    program_id: "program-1",
+    plan_hash: "hash-abc123",
+    horizon_days: 14,
+    from_date: "2026-08-13",
+    rule_count: 1,
+    created_at: "2026-08-13T00:00:00.000Z",
+  },
+  occurrences: [
+    {
+      occurrence_id: "rule-1:2026-08-19",
+      plan_id: "plan-abc123",
+      rule_id: "rule-1",
+      occurs_on: "2026-08-19",
+      starts_at: "2026-08-19T11:30:00.000Z",
+      ends_at: "2026-08-19T13:00:00.000Z",
+      location: "主堂",
+      skip_reason: null,
+      exception_id: null,
+    },
+    {
+      occurrence_id: "rule-1:2026-08-26",
+      plan_id: "plan-abc123",
+      rule_id: "rule-1",
+      occurs_on: "2026-08-26",
+      starts_at: "2026-08-26T12:30:00.000Z",
+      ends_at: "2026-08-26T14:00:00.000Z",
+      location: "主堂",
+      skip_reason: "CANCEL",
+      exception_id: null,
+    },
+  ],
+};
+
 function mockWorkspace() {
   mocks.getManagementProgram.mockResolvedValue({
     program,
@@ -149,16 +214,26 @@ function mockWorkspace() {
   mocks.listEvents.mockResolvedValue({ events: [event] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
-}
+  mocks.listEnrollmentSnapshot.mockResolvedValue({
+    requests: [request],
+    enrollments: [enrollment],
+  });
 
+}
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
+  mocks.listEnrollmentSnapshot.mockReset();
+  mocks.assistedEnroll.mockReset();
+  mocks.searchMemberOptions.mockReset();
   mocks.createEvent.mockReset();
+  mocks.listScheduleRules.mockReset();
+  mocks.previewEvents.mockReset();
+  mocks.generateEvents.mockReset();
+  mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
 });
-
 afterEach(() => {
   cleanup();
 });
@@ -296,6 +371,279 @@ describe(ProgramWorkspace, () => {
     );
   });
 });
+describe("ENR-01 participants workspace", () => {
+  test("renders pending, active, and history tabs from server state", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockResolvedValue({
+      request: { ...request, status: "Approved" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
+    );
+    expect(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    ).toHaveAttribute("aria-controls", "participants-active-panel");
+    expect(
+      screen.getByRole("button", { name: COPY.programs.approve })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.reject })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+      })
+    );
+    expect(await screen.findByText("李同工")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.approve })
+    ).not.toBeInTheDocument();
+  });
+
+  test("sends the request version and keeps stale decisions visible", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockRejectedValue(
+      new RpcError({
+        code: "STALE",
+        status: 409,
+        detail: COPY.programs.workspaceParticipantsStale,
+      })
+    );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.approve })
+    );
+    await waitFor(() =>
+      expect(mocks.decideEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        "request-1",
+        "Approved",
+        undefined,
+        1
+      )
+    );
+    expect(
+      await screen.findByText(COPY.programs.workspaceParticipantsStale)
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+  });
+
+  test("keeps the queue visible when assisted enrollment fails", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, enrollment_mode: "ManagerOnly" },
+      department,
+      modules,
+    });
+    mocks.searchMemberOptions.mockResolvedValue({
+      members: [
+        { user_id: "member-3", name: "王同工", username: "wang" },
+      ],
+    });
+    mocks.assistedEnroll.mockRejectedValue(
+      new RpcError({
+        code: "ENROLLMENT_DUPLICATE",
+        status: 409,
+        detail: COPY.programs.enrollmentDuplicate,
+      })
+    );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const picker = await screen.findByRole("combobox", {
+      name: COPY.programs.memberId,
+    });
+    await userEvent.type(picker, "王同");
+    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.assistedEnroll })
+    );
+    expect(
+      await screen.findByText(
+        `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+  });
+
+  test("an approved request whose enrollment is later cancelled counts once in history", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [
+        {
+          ...request,
+          status: "Approved",
+          request_version: 2,
+          decided_by: "manager-1",
+          decided_at: "2026-08-03T00:00:00.000Z",
+        },
+      ],
+      enrollments: [
+        {
+          ...enrollment,
+          request_id: "request-1",
+          status: "Cancelled",
+          cancelled_at: "2026-08-04T00:00:00.000Z",
+          cancelled_by: "member-1",
+        },
+      ],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.enrollmentHistory} (1)`,
+      })
+    );
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
+    expect(history.querySelectorAll("li")).toHaveLength(1);
+    expect(history).toHaveTextContent(COPY.programs.enrollmentCancelled);
+  });
+
+  test("keeps the queue rendered when the post-decision refresh fails", async () => {
+    mockWorkspace();
+    mocks.decideEnrollmentRequest.mockResolvedValue({
+      request: { ...request, status: "Approved" },
+    });
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [request],
+        enrollments: [enrollment],
+      })
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "NETWORK",
+          status: 0,
+          detail: "refresh failed",
+        })
+      );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.approve })
+    );
+    expect(
+      await screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.workspaceTaskParticipantsRetry,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("submits an assisted enrollment from the ManagerOnly queue", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, enrollment_mode: "ManagerOnly" },
+      department,
+      modules,
+    });
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [],
+      enrollments: [],
+    });
+    mocks.searchMemberOptions.mockResolvedValue({
+      members: [
+        { user_id: "member-3", name: "王同工", username: "wang" },
+      ],
+    });
+    mocks.assistedEnroll.mockResolvedValue({
+      enrollment: { ...enrollment, member_user_id: "member-3" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const picker = await screen.findByRole("combobox", {
+      name: COPY.programs.memberId,
+    });
+    await userEvent.type(picker, "王同");
+    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.assistedEnroll })
+    );
+    await waitFor(() =>
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
+        "program-1",
+        "member-3"
+      )
+    );
+  });
+});
 
 describe("EVT-01 workspace Event deep link (#251)", () => {
   beforeEach(() => {
@@ -404,5 +752,228 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       screen.getByRole("button", { name: COPY.programs.eventDetailBack })
     );
     expect(onEventChange).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("EVT-02 recurring preview and generation UI (#252)", () => {
+  function renderEventsTask() {
+    mockWorkspace();
+    return render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+  }
+
+  test("preview controls are reachable and render an exact plan with exception state", async () => {
+    const user = userEvent.setup();
+    renderEventsTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    expect(mocks.previewEvents).toHaveBeenCalledWith("program-1", 90);
+
+    await expect(
+      screen.findByText(
+        COPY.programs.previewPlanLabel.replace("{id}", "plan-abc"),
+        { exact: false }
+      )
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.previewOccurrenceSkipped)
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("主堂").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeInTheDocument();
+  });
+
+  test("a stale plan error surfaces, clears the plan, and requires a new preview", async () => {
+    const user = userEvent.setup();
+    renderEventsTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockRejectedValue(
+      new RpcError({ code: "STALE_PLAN", status: 409 })
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByRole("alert")
+    ).resolves.toHaveTextContent(COPY.programs.previewChanged);
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeInTheDocument();
+  });
+
+  test("generation reports deterministic counts and refreshes the event list", async () => {
+    const user = userEvent.setup();
+    renderEventsTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockResolvedValue({
+      generated: {
+        run_id: "run-1",
+        plan_id: "plan-abc123",
+        status: "completed",
+        created: 1,
+        skipped: 1,
+        failed: 0,
+        resumed: false,
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByText("已產生 1 場聚會，跳過 1 場重複。")
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.generateEvents).toHaveBeenCalledWith(
+        "program-1",
+        "plan-abc123"
+      )
+    );
+  });
+
+  test("a schedule-rules load failure keeps the Preview form reachable next to the error alert", async () => {
+    mocks.listScheduleRules.mockRejectedValue(
+      new RpcError({ code: "FORBIDDEN", status: 403 })
+    );
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    // The failure is communicated by the existing error alert…
+    await expect(
+      screen.findByRole("alert")
+    ).resolves.toHaveTextContent(COPY.error.forbidden);
+    // …but the Preview form must stay reachable (rules stays null on error,
+    // so the no-rules empty state is NOT shown and the horizon input lives
+    // on). A transient rules-load failure must not masquerade as "no
+    // schedule configured".
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(COPY.programs.previewHorizon)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsScheduleNone)
+    ).not.toBeInTheDocument();
+  });
+
+  test("a partial generation reports through the alert treatment and stays retryable", async () => {
+    const user = userEvent.setup();
+    renderEventsTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockResolvedValue({
+      generated: {
+        run_id: "run-1",
+        plan_id: "plan-abc123",
+        status: "partial",
+        created: 1,
+        skipped: 0,
+        failed: 1,
+        resumed: false,
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    // partial/failed output uses the alert treatment, not the plain notice
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      COPY.programs.generatedPartial
+        .replace("{created}", "1")
+        .replace("{skipped}", "0")
+        .replace("{failed}", "1")
+    );
+    expect(
+      screen.queryByText(COPY.programs.generated)
+    ).not.toBeInTheDocument();
+    // The plan is kept and Generate stays enabled so the operator can
+    // immediately retry the failed units on the same plan.
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeEnabled();
+  });
+
+  test("an empty schedule hides preview controls behind an explicit empty state", async () => {
+    mocks.listScheduleRules.mockResolvedValue({ rules: [] });
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await expect(
+      screen.findByText(COPY.programs.settingsScheduleNone)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+  });
+
+  test("preview controls stay hidden without the manage capability", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, capabilities: { ...program.capabilities, manage: false } },
+      department,
+      modules,
+    });
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceTaskEvents,
+    });
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeInTheDocument();
   });
 });

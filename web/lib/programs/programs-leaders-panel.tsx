@@ -25,9 +25,11 @@ function errorMessage(err: unknown): string {
 export const LeadersPanel = ({
   program,
   canManage,
+  onAttentionRefresh,
 }: {
   program: Program;
   canManage: boolean;
+  onAttentionRefresh?: () => void;
 }) => {
   const [leaders, setLeaders] = useState<ProgramLeader[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export const LeadersPanel = ({
         if (!mounted.current) {
           return;
         }
+        onAttentionRefresh?.();
         await load();
         if (!mounted.current) {
           return;
@@ -92,7 +95,7 @@ export const LeadersPanel = ({
         }
       }
     },
-    [load]
+    [load, onAttentionRefresh]
   );
 
   const handleAssign = (event: React.FormEvent<HTMLFormElement>) => {

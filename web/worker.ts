@@ -381,6 +381,9 @@ export default {
         handleListDepartments,
         handleListManagementAccess,
         handleListManagementDirectory,
+        handleGetManagementAttention,
+        handleGetManagementNotifications,
+        handleMarkManagementNotificationsRead,
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
@@ -397,10 +400,12 @@ export default {
         handleSearchMemberOptions,
         handleSetModule,
         handleListScheduleRules,
+        handleListScheduleExceptions,
         handleCreateScheduleRule,
         handleUpdateScheduleRule,
         handleCreateScheduleException,
         handleDeleteScheduleException,
+        handlePreviewEvents,
         handleGenerateEvents,
         handleCreateEvent,
         handleListEvents,
@@ -408,6 +413,7 @@ export default {
         handleEventUpdate,
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
+        handleListEnrollmentSnapshot,
         handleDecideEnrollmentRequest,
         handleWithdrawEnrollmentRequest,
         handleAssistedEnroll,
@@ -429,6 +435,24 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/attention" &&
+        request.method === "GET"
+      ) {
+        return handleGetManagementAttention(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notifications" &&
+        request.method === "GET"
+      ) {
+        return handleGetManagementNotifications(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notifications/read" &&
+        request.method === "POST"
+      ) {
+        return handleMarkManagementNotificationsRead(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/catalog" &&
@@ -614,6 +638,14 @@ export default {
           scheduleExceptions.groups?.ruleId ?? ""
         );
       }
+      if (scheduleExceptions && request.method === "GET") {
+        return handleListScheduleExceptions(
+          request,
+          programEnv,
+          scheduleExceptions.groups?.id ?? "",
+          scheduleExceptions.groups?.ruleId ?? ""
+        );
+      }
       const scheduleException = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions\/(?<exceptionId>[^/]+)$/u
       );
@@ -623,6 +655,16 @@ export default {
           programEnv,
           scheduleException.groups?.id ?? "",
           scheduleException.groups?.exceptionId ?? ""
+        );
+      }
+      const programPreview = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/preview$/u
+      );
+      if (programPreview && request.method === "POST") {
+        return handlePreviewEvents(
+          request,
+          programEnv,
+          programPreview.groups?.id ?? ""
         );
       }
       const programGenerate = url.pathname.match(
@@ -686,6 +728,16 @@ export default {
           request,
           programEnv,
           enrollmentRequests.groups?.id ?? ""
+        );
+      }
+      const enrollmentSnapshot = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-snapshot$/u
+      );
+      if (enrollmentSnapshot && request.method === "GET") {
+        return handleListEnrollmentSnapshot(
+          request,
+          programEnv,
+          enrollmentSnapshot.groups?.id ?? ""
         );
       }
       const enrollmentRequest = url.pathname.match(

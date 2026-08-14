@@ -119,6 +119,256 @@
   background: var(--success-surface);
 }
 
+.attentionControl {
+  position: relative;
+  margin: 0 0 1rem;
+}
+
+.attentionTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.attentionTrigger:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.attentionPopover {
+  width: min(100%, 30rem);
+  max-height: 24rem;
+  overflow: auto;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 0.5rem 1rem rgb(23 26 29 / 12%);
+}
+
+.attentionList {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attentionItem {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.attentionActionable {
+  border-color: var(--success-border);
+}
+
+.attentionInformational {
+  background: var(--surface);
+}
+
+.attentionItemLink {
+  display: grid;
+  gap: 0.1875rem;
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.attentionItemLink:hover {
+  color: var(--accent);
+}
+
+.attentionItemLink span {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.attentionViewAll {
+  display: inline-block;
+  margin-top: 0.75rem;
+  min-height: 44px;
+  padding: 0.625rem 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.attentionState,
+.attentionZero {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.notificationControl {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 1rem;
+}
+
+.notificationTrigger {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.notificationTrigger:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notificationBellIcon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.notificationBadge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.45rem;
+  min-width: 1.35rem;
+  padding-inline: 0.3rem;
+  text-align: center;
+}
+
+.notificationPopover {
+  position: absolute;
+  z-index: 2;
+  top: 3rem;
+  left: auto;
+  right: 0;
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 0.5rem 1rem rgb(23 26 29 / 12%);
+}
+
+.notificationPopoverHeader,
+.notificationsPageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notificationPopoverHeader {
+  margin-bottom: 0.75rem;
+}
+
+.notificationList {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notificationItem {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.notificationUnread {
+  border-color: var(--success-border);
+}
+
+.notificationRead {
+  opacity: 0.78;
+}
+
+.notificationItemLink {
+  display: grid;
+  gap: 0.1875rem;
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.notificationItemLink:hover {
+  color: var(--accent);
+}
+
+.notificationItemLink > span:not(.notificationItemTopline) {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.notificationItemTopline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notificationUnreadLabel {
+  color: var(--success);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.notificationViewAll {
+  display: inline-block;
+  min-height: 44px;
+  margin-top: 0.75rem;
+  padding: 0.625rem 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.notificationState {
+  display: block;
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.notificationsPage {
+  max-width: 42rem;
+  padding-top: 0.5rem;
+}
+
+.notificationsPageHeader {
+  margin-bottom: 1rem;
+}
+
+.notificationsLead {
+  max-width: 60ch;
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
 .detail {
   border-top: 1px solid var(--line);
   padding: 1rem;
@@ -181,6 +431,8 @@
 .actionButton:focus-visible,
 .dangerButton:focus-visible,
 .secondaryButton:focus-visible,
+.notificationTrigger:focus-visible,
+.notificationViewAll:focus-visible,
 .dangerOutline:focus-visible,
 .successOutline:focus-visible {
   outline: 3px solid var(--focus);
@@ -240,7 +492,8 @@
   cursor: pointer;
 }
 
-.taskButton[aria-pressed="true"] {
+.taskButton[aria-pressed="true"],
+.taskButton[aria-selected="true"] {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--surface-raised);
@@ -893,6 +1146,17 @@
   letter-spacing: -0.02em;
 }
 
+.managementHeaderRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.managementHeaderRow .boundaryLead {
+  margin-bottom: 0;
+}
+
 .boundaryLead {
   max-width: 65ch;
   margin: 0 0 1.25rem;
@@ -1084,7 +1348,6 @@
   text-align: left;
   cursor: pointer;
 }
-
 .directoryCard:hover {
   border-color: var(--accent);
 }
@@ -1436,6 +1699,24 @@
   align-items: center;
   gap: 0.5rem;
   flex: 1 1 100%;
+  width: 100%;
+}
+
+.settingsExceptionList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settingsExceptionList > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .settingsCurrent {
@@ -1546,6 +1827,14 @@
     flex-direction: column;
   }
 
+  .managementHeaderRow {
+    gap: 0.75rem;
+  }
+
+  .notificationControl {
+    margin-left: auto;
+  }
+
   .managementEntry .button,
   .managementEntry .secondaryButton {
     width: 100%;
@@ -1555,6 +1844,29 @@
   .workspaceActions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settingsForm {
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+
+  .settingsForm > .field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settingsActions {
+    align-items: stretch;
+    flex-direction: column;
+    flex: 0 0 auto;
+  }
+
+  .settingsActions > button,
+  .settingsActions > .confirmRow,
+  .settingsExceptionList .successOutline {
+    width: 100%;
+    max-width: 100%;
   }
 
   .managementWorkspace > .programDetailBack,

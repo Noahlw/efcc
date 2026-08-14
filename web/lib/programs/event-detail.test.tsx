@@ -114,12 +114,14 @@ describe("EVT-01 event detail", () => {
       event: { ...detailFixture().event, name: "改名聚會" },
     });
     const user = userEvent.setup();
+    const onAttentionRefresh = vi.fn();
     render(
       <EventDetail
         programId="program-1"
         eventId="event-1"
         canManage
         onBack={() => {}}
+        onAttentionRefresh={onAttentionRefresh}
       />
     );
     await user.click(
@@ -134,6 +136,7 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.eventSavedNotice)
     ).resolves.toBeInTheDocument();
+    expect(onAttentionRefresh).toHaveBeenCalledOnce();
     expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
       name: "改名聚會",
       location: "教會禮堂",

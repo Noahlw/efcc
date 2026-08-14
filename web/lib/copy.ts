@@ -208,11 +208,46 @@ export const COPY = {
     workspaceAttention: "需要留意",
     workspacePendingRequests: "待處理報名",
     workspaceActiveParticipants: "活躍參與者",
+    workspaceInactiveEvents: "暫停中的聚會",
+    workspaceCancelledEvents: "已取消聚會（供檢視）",
     workspaceNoAttention: "目前沒有待處理項目。",
+    attentionControlLabel: "管理提示",
+    attentionTitle: "管理提示",
+    attentionCount: "{count} 項可處理提示",
+    attentionLoading: "正在載入管理提示…",
+    attentionRetry: "重試載入提示",
+    attentionZero: "目前沒有需要處理或檢視的項目。",
+    attentionListLabel: "管理提示清單",
+    attentionViewAll: "查看全部管理提示",
+    attentionEnrollmentLabel: "待處理報名",
+    attentionEventCount: "{count} 場聚會需檢視",
+    attentionCancelledCount: "{count} 場聚會狀態",
+    attentionEnrollmentCount: "{count} 項申請",
+    attentionEnrollmentBadge: "待處理報名 {count} 項",
+    attentionEventBadge: "暫停聚會 {count} 場",
+    attentionCancelledBadge: "已取消聚會 {count} 場",
+    attentionEventLabel: "聚會需檢視",
+    attentionEventInformationalLabel: "聚會狀態",
+    notificationBellLabel: "管理通知",
+    notificationBellTitle: "開啟管理通知",
+    notificationsTitle: "管理通知",
+    notificationsLead: "只顯示目前管理範圍內仍需留意的最新狀態。",
+    notificationsLoading: "正在載入管理通知…",
+    notificationsEmpty: "目前沒有新的管理通知。",
+    notificationsListLabel: "管理通知清單",
+    notificationsRetry: "重試載入通知",
+    notificationsViewAll: "查看全部通知",
+    notificationsCount: "{count} 項未讀通知",
+    notificationsUnread: "未讀",
+    notificationsEnrollmentLabel: "待處理報名",
+    notificationsEnrollmentCount: "{count} 項申請",
+    notificationsEventLabel: "聚會需要處理",
+    notificationsEventInformationalLabel: "聚會狀態更新",
     workspaceTaskLabel: "管理工作",
     workspaceTaskEvents: "聚會",
     workspaceTaskParticipants: "參與者",
     workspaceTaskSettings: "課程設定",
+    workspaceTaskNotifications: "管理通知",
     workspaceTaskEventsLead:
       "查看這個課程的聚會記錄；建立聚會並於聚會詳情中編輯。",
     workspaceTaskParticipantsLead:
@@ -250,8 +285,8 @@ export const COPY = {
       "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
     settingsAttendanceUnavailable:
       "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
-    settingsExceptionsUnavailable:
-      "既有例外清單目前無法讀取；在此工作階段建立或移除的例外會即時反映。",
+    settingsExceptionsLoadError: "無法載入既有例外安排，請重試時間表。",
+    settingsExistingExceptions: "既有例外安排",
     settingsScheduleLoading: "正在載入時間表規則…",
     settingsScheduleLoadError: "無法載入時間表規則。",
     settingsScheduleRetry: "重試載入時間表",
@@ -268,6 +303,7 @@ export const COPY = {
     settingsExceptionNewEnd: "新結束時間",
     settingsExceptionSave: "儲存例外",
     settingsExceptionRestore: "移除例外",
+    settingsExceptionDateValidation: "請選擇有效的例外日期。",
     settingsExceptionDuplicate: "此日期已有例外安排，無法重複新增。",
     settingsScheduleEventsLink: "前往聚會工作流程",
     settingsAttendanceOpens: "開始前可簽到分鐘",
@@ -281,6 +317,15 @@ export const COPY = {
     workspaceTaskParticipantsError: "無法載入參與者資料",
     workspaceTaskParticipantsRetry: "重試載入參與者資料",
     workspaceTaskParticipantsEmpty: "目前沒有報名或活躍參與者。",
+    workspaceParticipantsRefresh: "重新整理參與者資料",
+    workspaceParticipantsRefreshSuccess: "參與者資料已更新。",
+    workspaceParticipantsRefreshFailed: "更新參與者資料失敗，畫面顯示上次已知結果。",
+    workspaceParticipantsForbidden: "你目前無法操作這個課程的參與者資料。",
+    workspaceParticipantsStale: "這項報名資料已過時，請重新整理後再試。",
+    workspaceParticipantsConflict: "這項操作與另一項更新衝突，資料未有改變。",
+    workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
+    workspaceParticipantsActiveEmpty: "目前沒有活躍參與者。",
+    workspaceParticipantsHistoryEmpty: "目前沒有歷史或撤回紀錄。",
     workspaceTaskSettingsCapabilities: "目前能力",
     workspaceTaskSettingsNoCapabilities: "目前沒有可用的課程管理能力。",
     workspaceTaskUnavailable: "這項工作目前未在所屬部門啟用。",
@@ -460,6 +505,32 @@ export const COPY = {
     startTime: "開始時間",
     endTime: "結束時間",
     addRule: "新增時間表",
+    // EVT-02 (#252): recurring preview and generation.
+    ruleLocation: "地點",
+    ruleLocationPlaceholder: "輸入地點（可留空）",
+    previewEvents: "預覽聚會",
+    previewing: "預覽中…",
+    previewed: "已預覽 {count} 場聚會。",
+    previewRequiresRecurring: "只有定期課程可預覽聚會。",
+    previewError: "無法預覽聚會。",
+    previewHorizon: "預覽範圍（天數）",
+    previewLead:
+      "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。",
+    previewPlanLabel: "方案 {id}",
+    previewPlanMeta: "由 {rules} 條規則組成，範圍 {days} 天（香港時間）。",
+    previewOccurrenceDate: "日期",
+    previewOccurrenceTime: "時間",
+    previewOccurrenceLocation: "地點",
+    previewOccurrenceRule: "來源規則",
+    previewOccurrenceSkipped: "本次已取消",
+    previewOccurrenceDuplicate: "已存在，將略過",
+    previewOccurrenceRescheduled: "已改期",
+    previewNone: "尚未預覽。請先按「預覽聚會」產生未來聚會清單。",
+    previewEmpty: "此範圍內沒有符合時間表的聚會。",
+    previewChanged: "時間表已變更，請重新預覽。",
+    generateRequiresPreview: "請先預覽時間表再產生聚會。",
+    generatedPartial: "已產生 {created} 場，跳過 {skipped} 場，{failed} 場失敗。",
+    generatedResumed: "已接續上次產生，新增 {created} 場，跳過 {skipped} 場。",
     generateEvents: "產生聚會",
     generating: "產生中…",
     generated: "已產生 {created} 場聚會，跳過 {skipped} 場重複。",
@@ -549,6 +620,8 @@ export const COPY = {
     revokeLeader: "移除負責人",
     confirmRevokeLeader: "確定要移除此事工負責人嗎？",
     confirmRevoke: "確定移除",
+    enrollmentAccountInactive:
+      "無法新增報名：此帳戶不存在或尚未啟用。請選取狀態為「啟用」的帳戶。",
     cancelRevoke: "取消",
     leaderUserId: "選擇會友",
     leaderUserIdPlaceholder: "輸入姓名或用戶名稱",
@@ -594,6 +667,7 @@ export const COPY = {
     eventCreatedNotice: "聚會已建立。",
     eventAvailabilityConfirmRequired:
       "此聚會有進行中的操作，需確認後才能暫停。",
+    eventRescheduleBlocked: "此聚會已有出席紀錄，不能更改時間。",
     eventUnavailableCheckIn: "此聚會已暫停開放，不能簽到。",
     eventCheckInWindow: "簽到時間",
     eventCheckInWindowOpensAt: "開放簽到",
@@ -638,6 +712,12 @@ export function errorCopyFor(
   if (code === "CONFLICT") {
     return COPY.error.conflict;
   }
+  if (code === "STALE") {
+    return COPY.programs.workspaceParticipantsStale;
+  }
+  if (code === "ENROLLMENT_ACCOUNT_INACTIVE") {
+    return COPY.programs.enrollmentAccountInactive;
+  }
   if (code === "ACCOUNT_INACTIVE") {
     return COPY.programs.leaderAccountInactive;
   }
@@ -664,6 +744,15 @@ export function errorCopyFor(
   }
   if (code === "CONFIRMATION_REQUIRED") {
     return COPY.programs.eventAvailabilityConfirmRequired;
+  }
+  if (code === "EVENT_RESCHEDULE_BLOCKED") {
+    return COPY.programs.eventRescheduleBlocked;
+  }
+  if (code === "STALE_PLAN") {
+    return COPY.programs.previewChanged;
+  }
+  if (code === "PLAN_NOT_FOUND") {
+    return COPY.programs.previewNone;
   }
   if (code === "EVENT_UNAVAILABLE") {
     return COPY.programs.eventUnavailableCheckIn;

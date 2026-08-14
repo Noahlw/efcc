@@ -1,6 +1,10 @@
 export type ProgramsMode = "participant" | "management";
 
-export type ProgramsTask = "events" | "participants" | "settings";
+export type ProgramsTask =
+  | "events"
+  | "participants"
+  | "settings"
+  | "notifications";
 
 export interface ProgramsIntent {
   mode: ProgramsMode;
@@ -29,6 +33,7 @@ const PROGRAM_TASKS: readonly ProgramsTask[] = [
   "events",
   "participants",
   "settings",
+  "notifications",
 ];
 
 function isProgramsTask(value: string): value is ProgramsTask {
@@ -87,11 +92,15 @@ function parseTask(
 ): { value: ProgramsTask | undefined; malformed: boolean } {
   const value =
     rawTask !== null && isProgramsTask(rawTask) ? rawTask : undefined;
+  const programlessTask = value === "notifications";
   return {
     value,
     malformed:
       rawTask !== null &&
-      (value === undefined || mode !== "management" || programId === null),
+      (value === undefined ||
+        mode !== "management" ||
+        (programId === null && !programlessTask) ||
+        (programId !== null && programlessTask)),
   };
 }
 
@@ -169,10 +178,19 @@ export function buildProgramsHref({
   if (mode === "management") {
     params.set("mode", "management");
   }
-  if (programId && SAFE_PROGRAM_ID.test(programId)) {
+  if (
+    programId &&
+    SAFE_PROGRAM_ID.test(programId) &&
+    task !== "notifications"
+  ) {
     params.set("program", programId);
   }
-  if (mode === "management" && task && isProgramsTask(task) && programId) {
+  if (
+    mode === "management" &&
+    task &&
+    isProgramsTask(task) &&
+    (programId || task === "notifications")
+  ) {
     params.set("task", task);
     if (task === "events" && eventId && SAFE_EVENT_ID.test(eventId)) {
       params.set("event", eventId);

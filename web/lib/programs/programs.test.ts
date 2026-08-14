@@ -251,6 +251,7 @@ describe("PRG-01: schema", () => {
       "enrollment_requests",
       "enrollments",
       "program_leaders",
+      "program_notification_reads",
       "attendances",
       "audit_events",
       "role_capabilities",
@@ -808,6 +809,490 @@ describe("MUI-01: capability-aware management reads", () => {
     );
   });
 });
+describe("NTF-01: management attention", () => {
+  async function attentionFor(access: string): Promise<{
+    programs: {
+      program_id: string;
+      department_id: string;
+      pending_enrollment_count: number;
+      inactive_event_count: number;
+      cancelled_event_count: number;
+      actionable_count: number;
+    }[];
+    items: {
+      kind: string;
+      actionable: boolean;
+      count?: number;
+      program_id: string;
+      department_id?: string;
+      event_id?: string;
+      status?: string;
+      availability?: string;
+    }[];
+    total_actionable_count: number;
+    has_more: boolean;
+  }> {
+    const response = await worker.fetch(
+      programsRequest("/api/v1/programs/attention", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = (await assertCorrelated(response)) as {
+      data: {
+        programs: {
+          program_id: string;
+          department_id: string;
+          pending_enrollment_count: number;
+          inactive_event_count: number;
+          cancelled_event_count: number;
+          actionable_count: number;
+        }[];
+        items: {
+          kind: string;
+          actionable: boolean;
+          count?: number;
+          program_id: string;
+          department_id?: string;
+          event_id?: string;
+          status?: string;
+          availability?: string;
+        }[];
+        total_actionable_count: number;
+        has_more: boolean;
+      };
+    };
+    return body.data;
+  }
+
+  test("projects current scoped queues and resolves approval, rejection, and Event state", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "NTF-01-ATTENTION",
+      name: "Attention Test Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Attention Test Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+
+    const pending = await submitRequest(memberAccess, program.program_id);
+    const initial = await attentionFor(adminAccess);
+    const initialProgram = initial.programs.find(
+      ({ program_id }) => program_id === program.program_id
+    );
+    assert.deepStrictEqual(initialProgram, {
+      program_id: program.program_id,
+      department_id: department.department_id,
+      pending_enrollment_count: 1,
+      inactive_event_count: 0,
+      cancelled_event_count: 0,
+      actionable_count: 1,
+    });
+    assert.strictEqual(initial.total_actionable_count, 1);
+    assert.deepStrictEqual(initial.items[0], {
+      kind: "enrollment",
+      actionable: true,
+      count: 1,
+      program_id: program.program_id,
+      program_name: program.name,
+      department_id: department.department_id,
+      department_name: department.name,
+    });
+
+    const memberAttention = await attentionFor(memberAccess);
+    assert.strictEqual(
+      memberAttention.programs.some(
+        ({ program_id }) => program_id === program.program_id
+      ),
+      false,
+      "unmanaged actors must not receive the Program attention projection"
+    );
+    assert.strictEqual(memberAttention.total_actionable_count, 0);
+
+    const approved = await decideRequest(
+      adminAccess,
+      program.program_id,
+      pending.request_id,
+      "Approved"
+    );
+    assert.strictEqual(approved.status, 200);
+    const afterApproval = await attentionFor(adminAccess);
+    assert.strictEqual(
+      afterApproval.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.pending_enrollment_count,
+      0
+    );
+
+    const startsAt = new Date(Date.now() + 2 * 86_400_000);
+    const inactiveEvent = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "需要恢復的聚會",
+      location: "禮堂",
+      check_in_window_opens_at: new Date(
+        startsAt.getTime() - 30 * 60_000
+      ).toISOString(),
+      check_in_window_closes_at: new Date(
+        startsAt.getTime() + 2 * 60 * 60_000
+      ).toISOString(),
+    });
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: new Date(startsAt.getTime() + 86_400_000).toISOString(),
+        ends_at: new Date(startsAt.getTime() + 25 * 60 * 60_000).toISOString(),
+        name: "已取消的聚會",
+        location: "禮堂",
+        check_in_window_opens_at: new Date(
+          startsAt.getTime() + 23.5 * 60 * 60_000
+        ).toISOString(),
+        check_in_window_closes_at: new Date(
+          startsAt.getTime() + 26 * 60 * 60_000
+        ).toISOString(),
+      }
+    );
+
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${inactiveEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地維修" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const withEvents = await attentionFor(adminAccess);
+    const eventProgram = withEvents.programs.find(
+      ({ program_id }) => program_id === program.program_id
+    );
+    assert.strictEqual(eventProgram?.pending_enrollment_count, 0);
+    assert.strictEqual(eventProgram?.inactive_event_count, 1);
+    assert.strictEqual(eventProgram?.cancelled_event_count, 1);
+    assert.strictEqual(eventProgram?.actionable_count, 1);
+    assert.strictEqual(withEvents.total_actionable_count, 1);
+    assert.deepStrictEqual(
+      withEvents.items
+        .filter(({ kind }) => kind === "event")
+        .map(({ event_id, actionable, status, availability }) => ({
+          event_id,
+          actionable,
+          status,
+          availability,
+        })),
+      [
+        {
+          event_id: inactiveEvent.event_id,
+          actionable: true,
+          status: "Active",
+          availability: "Inactive",
+        },
+        {
+          event_id: cancelledEvent.event_id,
+          actionable: false,
+          status: "Cancelled",
+          availability: "Active",
+        },
+      ]
+    );
+    const rejectionProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Attention Rejection Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+
+    const rejectedRequest = await submitRequest(
+      memberAccess,
+      rejectionProgram.program_id
+    );
+    const beforeReject = await attentionFor(adminAccess);
+    assert.strictEqual(
+      beforeReject.programs.find(
+        ({ program_id }) => program_id === rejectionProgram.program_id
+      )?.pending_enrollment_count,
+      1
+    );
+    const rejected = await decideRequest(
+      adminAccess,
+      rejectionProgram.program_id,
+      rejectedRequest.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(rejected.status, 200);
+    const afterReject = await attentionFor(adminAccess);
+    assert.strictEqual(
+      afterReject.programs.find(
+        ({ program_id }) => program_id === rejectionProgram.program_id
+      )?.actionable_count,
+      0,
+      "rejection removes the enrollment source"
+    );
+    assert.strictEqual(
+      afterReject.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "rejection leaves the inactive Event source"
+    );
+  });
+  test("filters scoped leadership and honors enrollment and events module gates", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-01-SCOPE-${Date.now()}`,
+      name: "Attention Scope Department",
+    });
+    const scopedProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Scoped Attention Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+    const unscopedProgram = await createProgram(
+      adminAccess,
+      department.department_id,
+      {
+        name: "Unscoped Attention Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+    const leaderGrant = await assignLeader(
+      adminAccess,
+      scopedProgram.program_id,
+      "U002"
+    );
+    assert.strictEqual(leaderGrant.status, 200);
+
+    const pending = await submitRequest(
+      memberAccess,
+      scopedProgram.program_id
+    );
+    const startsAt = new Date(Date.now() + 3 * 86_400_000);
+    const event = await createEventFor(adminAccess, scopedProgram.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "需處理的聚會",
+      location: "禮堂",
+    });
+    const inactive = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${scopedProgram.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(inactive.status, 200);
+
+    const scopedAttention = await attentionFor(memberAccess);
+    assert.deepStrictEqual(
+      scopedAttention.programs.find(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      ),
+      {
+        program_id: scopedProgram.program_id,
+        department_id: department.department_id,
+        pending_enrollment_count: 1,
+        inactive_event_count: 1,
+        cancelled_event_count: 0,
+        actionable_count: 2,
+      }
+    );
+    assert.strictEqual(
+      scopedAttention.programs.some(
+        ({ program_id }) => program_id === unscopedProgram.program_id
+      ),
+      false,
+      "Program Leader scope must not expose another Program"
+    );
+    assert.strictEqual(scopedAttention.total_actionable_count, 2);
+    assert.deepStrictEqual(
+      scopedAttention.items.map(({ kind, program_id }) => ({
+        kind,
+        program_id,
+      })),
+      [
+        { kind: "enrollment", program_id: scopedProgram.program_id },
+        { kind: "event", program_id: scopedProgram.program_id },
+      ]
+    );
+
+    for (const moduleKey of ["enrollment", "events"] as const) {
+      const disabled = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${department.department_id}/modules/${moduleKey}/disable`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(disabled.status, 200);
+    }
+    const afterModulesDisabled = await attentionFor(memberAccess);
+    const scopedAfterModulesDisabled =
+      afterModulesDisabled.programs.find(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      );
+    assert.deepStrictEqual(scopedAfterModulesDisabled, {
+      program_id: scopedProgram.program_id,
+      department_id: department.department_id,
+      pending_enrollment_count: 0,
+      inactive_event_count: 0,
+      cancelled_event_count: 0,
+      actionable_count: 0,
+    });
+    assert.strictEqual(afterModulesDisabled.total_actionable_count, 0);
+    assert.strictEqual(
+      afterModulesDisabled.items.some(
+        ({ program_id }) => program_id === scopedProgram.program_id
+      ),
+      false
+    );
+    assert.ok(pending.request_id);
+  });
+  test("revoking a Program Leader's capability drops the program from their attention aggregate", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-01-REVOKE-${Date.now()}`,
+      name: "Attention Revoke Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Attention Revoke Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const leaderGrant = await assignLeader(
+      adminAccess,
+      program.program_id,
+      "U002"
+    );
+    assert.strictEqual(leaderGrant.status, 200);
+
+    const startsAt = new Date(Date.now() + 4 * 86_400_000);
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+      name: "撤銷前需處理的聚會",
+      location: "禮堂",
+    });
+    const deactivate = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deactivate.status, 200);
+
+    const beforeRevoke = await attentionFor(leaderAccess);
+    assert.strictEqual(
+      beforeRevoke.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "the granted leader must see the scoped program's actionable count"
+    );
+
+    const revoke = await revokeLeader(adminAccess, program.program_id, "U002");
+    assert.strictEqual(revoke.status, 200);
+
+    const afterRevoke = await attentionFor(leaderAccess);
+    assert.strictEqual(
+      afterRevoke.programs.some(
+        ({ program_id }) => program_id === program.program_id
+      ),
+      false,
+      "a revoked leader's aggregate must never keep serving the former Program"
+    );
+    assert.strictEqual(
+      afterRevoke.items.some(
+        (item) => item.program_id === program.program_id
+      ),
+      false
+    );
+    assert.strictEqual(afterRevoke.total_actionable_count, 0);
+
+    const stillAdmin = await attentionFor(adminAccess);
+    assert.strictEqual(
+      stillAdmin.programs.find(
+        ({ program_id }) => program_id === program.program_id
+      )?.actionable_count,
+      1,
+      "revoking the leader must not affect the Admin's own authorized aggregate"
+    );
+  });
+});
 
 describe("PRG-01: programs", () => {
   test("Admin can create a program under a department", async () => {
@@ -1166,11 +1651,12 @@ describe("PRG-01: programs", () => {
       enrollment_mode: "ManagerOnly",
     });
     const search = async (
-      q: string
+      q: string,
+      excludeEnrolled = false
     ): Promise<{ user_id: string; name: string; username: string }[]> => {
       const res = await worker.fetch(
         programsRequest(
-          `/api/v1/programs/${program.program_id}/member-options?q=${q}`,
+          `/api/v1/programs/${program.program_id}/member-options?q=${q}${excludeEnrolled ? "&excludeEnrolled=true" : ""}`,
           {
             headers: {
               Origin: HOST,
@@ -1192,9 +1678,27 @@ describe("PRG-01: programs", () => {
     assert.deepStrictEqual(await search("Alice"), [
       { user_id: "U001", name: "Alice Chan", username: "alice" },
     ]);
-    assert.deepStrictEqual(await search("Bob"), [
-      { user_id: "U002", name: "Bob Lee", username: "bob" },
-    ]);
+    const enrolled = await assistedEnrollFor(
+      adminAccess,
+      program.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrolled.status, 201);
+    assert.deepStrictEqual(
+      await search("Bob"),
+      [{ user_id: "U002", name: "Bob Lee", username: "bob" }],
+      "without excludeEnrolled, an already-enrolled active account stays selectable (Program Leader picker)"
+    );
+    assert.deepStrictEqual(
+      await search("Bob", true),
+      [],
+      "with excludeEnrolled=true, an already-enrolled active account is excluded (assisted enrollment)"
+    );
+    assert.deepStrictEqual(
+      await search("U004"),
+      [],
+      "inactive accounts are excluded from the picker"
+    );
   });
 
   test("Member cannot create a program", async () => {
@@ -1426,6 +1930,7 @@ async function createRule(
     month_day?: number;
     start_time: string;
     end_time: string;
+    location?: string;
   }
 ): Promise<{ rule_id: string }> {
   const res = await worker.fetch(
@@ -1447,13 +1952,26 @@ async function createRule(
   return result.data.rule;
 }
 
-async function generate(
+async function preview(
   access: string,
   programId: string,
   horizonDays = 14
-): Promise<{ created: number; skipped: number; rule_count: number }> {
+): Promise<{
+  plan_id: string;
+  rule_count: number;
+  occurrences: {
+    occurrence_id: string;
+    rule_id: string;
+    occurs_on: string;
+    starts_at: string;
+    ends_at: string;
+    location: string | null;
+    skip_reason: string | null;
+    exception_id: string | null;
+  }[];
+}> {
   const res = await worker.fetch(
-    programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+    programsRequest(`/api/v1/programs/${programId}/events/preview`, {
       method: "POST",
       headers: {
         Origin: HOST,
@@ -1467,10 +1985,53 @@ async function generate(
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
     data: {
-      generated: { created: number; skipped: number; rule_count: number };
+      plan: { plan_id: string; rule_count: number };
+      occurrences: {
+        occurrence_id: string;
+        rule_id: string;
+        occurs_on: string;
+        starts_at: string;
+        ends_at: string;
+        location: string | null;
+        skip_reason: string | null;
+        exception_id: string | null;
+      }[];
     };
   };
-  return result.data.generated;
+  return {
+    plan_id: result.data.plan.plan_id,
+    rule_count: result.data.plan.rule_count,
+    occurrences: result.data.occurrences,
+  };
+}
+
+async function generate(
+  access: string,
+  programId: string,
+  horizonDays = 14
+): Promise<{ created: number; skipped: number; rule_count: number }> {
+  const plan = await preview(access, programId, horizonDays);
+  const res = await worker.fetch(
+    programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+      method: "POST",
+      headers: {
+        Origin: HOST,
+        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+        "Content-Type": "application/json",
+      },
+      body: { plan_id: plan.plan_id },
+    }),
+    testEnv()
+  );
+  assert.strictEqual(res.status, 200);
+  const result = (await assertCorrelated(res)) as {
+    data: { generated: { created: number; skipped: number } };
+  };
+  return {
+    created: result.data.generated.created,
+    skipped: result.data.generated.skipped,
+    rule_count: plan.rule_count,
+  };
 }
 
 async function listEventsFor(
@@ -1951,6 +2512,24 @@ describe("PRG-02: generation", () => {
     );
     assert.strictEqual(res.status, 201);
 
+    const listedExceptions = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(listedExceptions.status, 200);
+    const listedBody = (await listedExceptions.json()) as {
+      data?: { exceptions?: { exception_id: string }[] };
+    };
+    assert.strictEqual(listedBody.data?.exceptions?.length, 1);
+
     const result = await generate(adminAccess, programId, 14);
     assert.strictEqual(result.created, 1, "one of two occurrences suppressed");
     const events = await listEventsFor(adminAccess, programId);
@@ -2081,12 +2660,30 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(problem.code, "VALIDATION");
   });
 
-  test("generation on a OneOff program returns 422; generation is audited", async () => {
+  test("preview and generation on a OneOff program return 422 without writes", async () => {
     const oneOff = await createProgram(adminAccess, deptId, {
       name: "Generation OneOff",
       behavior_type: "OneOff",
     });
     const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${oneOff.program_id}/events/preview`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { horizon_days: 14 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const problem = await problemOf(res);
+    assert.strictEqual(problem.code, "VALIDATION");
+
+    // Generation on a OneOff is rejected the same way, before any plan
+    // lookup, even with a fabricated plan id.
+    const generateRes = await worker.fetch(
       programsRequest(`/api/v1/programs/${oneOff.program_id}/events/generate`, {
         method: "POST",
         headers: {
@@ -2094,29 +2691,34 @@ describe("PRG-02: generation", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
           "Content-Type": "application/json",
         },
-        body: {},
+        body: { plan_id: "pln_whatever" },
       }),
       testEnv()
     );
-    assert.strictEqual(res.status, 422);
+    assert.strictEqual(generateRes.status, 422);
+    const generateProblem = await problemOf(generateRes);
+    assert.strictEqual(generateProblem.code, "VALIDATION");
 
-    const rows = await testDb()
-      .prepare(
-        "SELECT action, outcome FROM audit_events WHERE action = 'EVENT_GENERATE'"
-      )
-      .all<{ action: string; outcome: string }>();
-    const row = rows.results?.find((r) => r.outcome === "SUCCESS");
-    assert.ok(row, "EVENT_GENERATE audit row must exist");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(oneOff.program_id)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0, "no events may be written");
+    const runs = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .bind(oneOff.program_id)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0, "no generation runs may be written");
   });
 
-  test("generation on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
+  test("preview on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
     const noRules = await createProgram(adminAccess, deptId, {
       name: "Generation No Rules",
       behavior_type: "Recurring",
     });
     const res = await worker.fetch(
       programsRequest(
-        `/api/v1/programs/${noRules.program_id}/events/generate`,
+        `/api/v1/programs/${noRules.program_id}/events/preview`,
         {
           method: "POST",
           headers: {
@@ -2124,7 +2726,7 @@ describe("PRG-02: generation", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: {},
+          body: { horizon_days: 14 },
         }
       ),
       testEnv()
@@ -2133,12 +2735,12 @@ describe("PRG-02: generation", () => {
     const audit = await testDb()
       .prepare(
         `SELECT outcome FROM audit_events
-         WHERE action = 'EVENT_GENERATE' AND outcome = 'FAILED'
+         WHERE action = 'EVENT_PREVIEW' AND outcome = 'FAILED'
            AND entity_id = ?`
       )
       .bind(noRules.program_id)
       .first<{ outcome: string }>();
-    assert.ok(audit, "zero-rule generation must write a FAILED audit row");
+    assert.ok(audit, "zero-rule preview must write a FAILED audit row");
   });
 
   test("exception created after materialization is attached to the event row", async () => {
@@ -2229,6 +2831,1253 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(second.status, 409);
     const body = await problemOf(second);
     assert.strictEqual(body.code, "CONFLICT");
+  });
+});
+
+function auditRowsFor(
+  programId: string,
+  action: string
+): Promise<
+  { outcome: string; new_value_json: string | null; correlation_id: string | null }[]
+> {
+  return testDb()
+    .prepare(
+      `SELECT outcome, new_value_json, correlation_id FROM audit_events
+       WHERE action = ? AND entity_id = ? ORDER BY inserted_at ASC`
+    )
+    .bind(action, programId)
+    .all<{
+      outcome: string;
+      new_value_json: string | null;
+      correlation_id: string | null;
+    }>()
+    .then((result) => result.results ?? []);
+}
+
+describe("EVT-02: recurring preview and generation (#252)", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let deptId = "";
+
+  beforeAll(async () => {
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "EVT-02",
+      name: "Recurring Preview Department",
+    });
+    deptId = dept.department_id;
+  });
+
+  async function freshProgram(name: string): Promise<string> {
+    const program = await createProgram(adminAccess, deptId, {
+      name,
+      behavior_type: "Recurring",
+    });
+    return program.program_id;
+  }
+
+  async function createException(
+    programId: string,
+    ruleId: string,
+    body: {
+      override_date: string;
+      action: "CANCEL" | "RESCHEDULE";
+      new_start_time?: string;
+      new_end_time?: string;
+    }
+  ): Promise<void> {
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${ruleId}/exceptions`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body,
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 201);
+  }
+
+  function generateRequest(
+    programId: string,
+    planId: string,
+    access = adminAccess
+  ): Promise<Response> {
+    return worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          "Content-Type": "application/json",
+        },
+        body: { plan_id: planId },
+      }),
+      testEnv()
+    );
+  }
+
+  test("EVT-02.1 preview materializes exact weekly/monthly occurrences with locations and exceptions, without writing events", async () => {
+    const programId = await freshProgram("EVT-02 Exact Preview");
+    const weekly = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "主堂",
+    });
+    await createRule(adminAccess, programId, {
+      recurrence: "MONTHLY",
+      month_day: 15,
+      start_time: "10:00",
+      end_time: "11:00",
+      location: "副堂",
+    });
+    const today = hkTodayWallDate();
+    const firstTuesday = addWallDays(
+      today,
+      (2 - wallWeekday(today) + 7) % 7
+    );
+    const cancelDate = addWallDays(firstTuesday, 14);
+    const rescheduleDate = addWallDays(firstTuesday, 21);
+    assert.strictEqual(wallWeekday(cancelDate), 2, "exception lands on the rule weekday");
+    assert.strictEqual(wallWeekday(rescheduleDate), 2);
+    await createException(programId, weekly.rule_id, {
+      override_date: cancelDate,
+      action: "CANCEL",
+    });
+    await createException(programId, weekly.rule_id, {
+      override_date: rescheduleDate,
+      action: "RESCHEDULE",
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+    });
+
+    const plan = await preview(adminAccess, programId, 40);
+    assert.strictEqual(plan.rule_count, 2);
+    const weeklyDates = plan.occurrences
+      .filter((o) => o.rule_id === weekly.rule_id)
+      .map((o) => o.occurs_on);
+    assert.ok(
+      weeklyDates.length >= 5,
+      "weekly rule must materialize every Tuesday in the horizon"
+    );
+    assert.ok(
+      weeklyDates.includes(cancelDate),
+      "cancelled date stays visible as a skip row"
+    );
+    const cancelled = plan.occurrences.find((o) => o.occurs_on === cancelDate);
+    assert.strictEqual(cancelled?.skip_reason, "CANCEL");
+    assert.ok(
+      cancelled?.exception_id,
+      "skip row attributes its CANCEL exception"
+    );
+    assert.strictEqual(
+      cancelled?.starts_at,
+      `${cancelDate}T11:30:00.000Z`,
+      "skip row keeps the original rule times"
+    );
+    const rescheduled = plan.occurrences.find(
+      (o) => o.occurs_on === rescheduleDate
+    );
+    assert.strictEqual(rescheduled?.skip_reason, null);
+    assert.ok(rescheduled?.exception_id, "reschedule row carries the exception");
+    assert.strictEqual(
+      rescheduled?.starts_at,
+      `${rescheduleDate}T12:30:00.000Z`,
+      "reschedule overrides the HK wall start time"
+    );
+    assert.strictEqual(
+      rescheduled?.ends_at,
+      `${rescheduleDate}T14:00:00.000Z`,
+      "reschedule overrides the HK wall end time"
+    );
+    for (const occurrence of plan.occurrences) {
+      assert.strictEqual(
+        occurrence.location,
+        occurrence.rule_id === weekly.rule_id ? "主堂" : "副堂",
+        "occurrence carries its rule location"
+      );
+      assert.strictEqual(
+        occurrence.occurrence_id,
+        `${plan.plan_id}:${occurrence.rule_id}:${occurrence.occurs_on}`,
+        "occurrence identity is deterministic and plan-scoped"
+      );
+    }
+    const dates = plan.occurrences.map((o) => o.occurs_on);
+    assert.deepStrictEqual(
+      dates,
+      [...dates].sort(),
+      "occurrences are deterministically ordered by wall date"
+    );
+    // Deterministic plan identity: identical inputs repeat the same plan.
+    const repeat = await preview(adminAccess, programId, 40);
+    assert.strictEqual(
+      repeat.plan_id,
+      plan.plan_id,
+      "identical preview inputs resolve to the same plan identity"
+    );
+    assert.deepStrictEqual(
+      repeat.occurrences.map((o) => o.occurrence_id),
+      plan.occurrences.map((o) => o.occurrence_id),
+      "identical preview inputs repeat the same occurrence ordering"
+    );
+    // Non-mutating: no events, no generation/creation audit records.
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0, "preview must not write events");
+    const generateAudits = await auditRowsFor(programId, "EVENT_GENERATE");
+    const createAudits = await auditRowsFor(programId, "EVENT_CREATE");
+    assert.strictEqual(
+      generateAudits.length,
+      0,
+      "preview must not write generation audit records"
+    );
+    assert.strictEqual(
+      createAudits.length,
+      0,
+      "preview must not write event-creation audit records"
+    );
+    const previewAudits = await auditRowsFor(programId, "EVENT_PREVIEW");
+    assert.ok(
+      previewAudits.some((row) => row.outcome === "SUCCESS"),
+      "preview success is audited"
+    );
+  });
+
+  test("EVT-02.1 preview marks occurrences already existing as events as DUPLICATE without writing anything", async () => {
+    const programId = await freshProgram("EVT-02 Duplicate Preview");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const seeded = await preview(adminAccess, programId, 14);
+    assert.strictEqual(seeded.occurrences.length, 2);
+    const existingStarts = seeded.occurrences[0].starts_at;
+    // Materialize one event row at the first occurrence's start time (as a
+    // manual event or an earlier generation would), then preview a
+    // DIFFERENT horizon so a fresh plan is computed with the event in place.
+    const created = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: existingStarts,
+          ends_at: seeded.occurrences[0].ends_at,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+
+    const plan = await preview(adminAccess, programId, 15);
+    const duplicate = plan.occurrences.find(
+      (occurrence) => occurrence.starts_at === existingStarts
+    );
+    assert.ok(duplicate, "the pre-existing start time is still previewed");
+    assert.strictEqual(duplicate.skip_reason, "DUPLICATE");
+    for (const occurrence of plan.occurrences) {
+      if (occurrence.starts_at === existingStarts) {
+        continue;
+      }
+      assert.strictEqual(
+        occurrence.skip_reason,
+        null,
+        "unclaimed occurrences stay creatable"
+      );
+    }
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      events?.count ?? 0,
+      1,
+      "duplicate-marked preview still writes zero events"
+    );
+    const previewAudits = await auditRowsFor(programId, "EVENT_PREVIEW");
+    assert.ok(
+      previewAudits.some((row) => row.outcome === "SUCCESS"),
+      "duplicate-marked preview is still audited SUCCESS"
+    );
+  });
+
+  test("EVT-02.1 re-previewing an already-generated plan refreshes stale DUPLICATE badges", async () => {
+    const programId = await freshProgram("EVT-02 Stale Duplicate Refresh");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "09:00",
+      end_time: "10:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+    for (const occurrence of plan.occurrences) {
+      assert.strictEqual(
+        occurrence.skip_reason,
+        null,
+        "fresh plan has no duplicates before generation"
+      );
+    }
+    const generated = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(generated.status, 200);
+    const generatedBody = (await assertCorrelated(generated)) as {
+      data: { generated: { created: number; skipped: number } };
+    };
+    assert.strictEqual(generatedBody.data.generated.created, 2);
+    assert.strictEqual(generatedBody.data.generated.skipped, 0);
+
+    // Re-preview the SAME plan after generation: every occurrence now
+    // exists as an event, so the persisted rows must refresh to DUPLICATE
+    // instead of silently keeping their original null skip_reason.
+    const repeat = await preview(adminAccess, programId, 14);
+    assert.strictEqual(repeat.plan_id, plan.plan_id, "identical inputs resolve to the same plan");
+    for (const occurrence of repeat.occurrences) {
+      assert.strictEqual(
+        occurrence.skip_reason,
+        "DUPLICATE",
+        "re-preview must report every already-generated occurrence as skippable"
+      );
+    }
+
+    // A repeat generate call against the refreshed plan must actually skip
+    // everything, matching what the refreshed preview promised.
+    const repeatGenerate = await generateRequest(programId, repeat.plan_id);
+    assert.strictEqual(repeatGenerate.status, 200);
+    const repeatGenerateBody = (await assertCorrelated(repeatGenerate)) as {
+      data: { generated: { created: number; skipped: number; resumed: boolean } };
+    };
+    assert.strictEqual(repeatGenerateBody.data.generated.created, 0);
+    assert.strictEqual(repeatGenerateBody.data.generated.skipped, 2);
+  });
+
+  test("EVT-02.1 two rules producing the same starts_at surface the later one as DUPLICATE", async () => {
+    const programId = await freshProgram("EVT-02 Intra-plan Duplicate");
+    const first = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const second = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(
+      plan.occurrences.length,
+      4,
+      "two rules over the horizon's two Tuesdays"
+    );
+    const byDate = new Map<string, { rule_id: string; skip_reason: string | null }[]>();
+    for (const occurrence of plan.occurrences) {
+      const rows = byDate.get(occurrence.occurs_on) ?? [];
+      rows.push({
+        rule_id: occurrence.rule_id,
+        skip_reason: occurrence.skip_reason,
+      });
+      byDate.set(occurrence.occurs_on, rows);
+    }
+    assert.strictEqual(byDate.size, 2, "two distinct dates in the horizon");
+    for (const rows of byDate.values()) {
+      assert.strictEqual(rows.length, 2, "both rules materialize the same date");
+      const unmarked = rows.filter((row) => row.skip_reason === null);
+      const duplicates = rows.filter((row) => row.skip_reason === "DUPLICATE");
+      assert.strictEqual(unmarked.length, 1, "exactly one rule keeps the start");
+      assert.strictEqual(
+        duplicates.length,
+        1,
+        "the colliding rule is marked DUPLICATE"
+      );
+    }
+    // Deterministic per the existing sort (occurs_on, starts_at, rule_id):
+    // the lexicographically earlier rule_id claims the start.
+    const firstDate = plan.occurrences[0].occurs_on;
+    const kept = plan.occurrences.find(
+      (occurrence) =>
+        occurrence.occurs_on === firstDate && occurrence.skip_reason === null
+    );
+    assert.ok(kept, "the kept occurrence is present");
+    assert.strictEqual(
+      kept.rule_id,
+      first.rule_id < second.rule_id ? first.rule_id : second.rule_id,
+      "the earlier rule_id claims the start deterministically"
+    );
+  });
+
+  test("EVT-02.2 generation with a stale plan is rejected before writes", async () => {
+    const programId = await freshProgram("EVT-02 Stale Plan");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    const before = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+
+    // Change a rule after the preview, then generate with the old plan.
+    const patch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "20:00" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(patch.status, 200);
+
+    const stale = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(stale.status, 409);
+    const problem = await problemOf(stale);
+    assert.strictEqual(problem.code, "STALE_PLAN");
+    const after = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      after?.count ?? 0,
+      before?.count ?? 0,
+      "stale generation must not write events"
+    );
+    const staleAudits = await auditRowsFor(programId, "EVENT_GENERATE");
+    assert.ok(
+      staleAudits.some(
+        (row) => row.outcome === "CONFLICT" && row.new_value_json?.includes("stale_plan")
+      ),
+      "stale generation audits CONFLICT (business conflict, not FAILED)"
+    );
+
+    // A fresh preview supersedes the old plan and generates cleanly.
+    const fresh = await preview(adminAccess, programId, 14);
+    assert.notStrictEqual(
+      fresh.plan_id,
+      plan.plan_id,
+      "changed rules produce a new plan identity"
+    );
+    const ok = await generateRequest(programId, fresh.plan_id);
+    assert.strictEqual(ok.status, 200);
+  });
+
+  test("EVT-02.3 generation is idempotent, deterministic, and audited", async () => {
+    const programId = await freshProgram("EVT-02 Idempotent");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+
+    const first = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(first.status, 200);
+    const firstBody = (await assertCorrelated(first)) as {
+      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+    };
+    assert.strictEqual(firstBody.data.generated.status, "completed");
+    assert.strictEqual(firstBody.data.generated.created, 2);
+    assert.strictEqual(firstBody.data.generated.skipped, 0);
+    assert.strictEqual(firstBody.data.generated.resumed, false);
+
+    const second = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(second.status, 200);
+    const secondBody = (await assertCorrelated(second)) as {
+      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+    };
+    assert.strictEqual(
+      secondBody.data.generated.run_id,
+      firstBody.data.generated.run_id,
+      "repeating generation reuses the same durable run"
+    );
+    assert.strictEqual(secondBody.data.generated.status, "completed");
+    assert.strictEqual(secondBody.data.generated.created, 0);
+    assert.strictEqual(secondBody.data.generated.skipped, 2);
+    assert.strictEqual(secondBody.data.generated.resumed, true);
+
+    const events = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ starts_at: string }>();
+    assert.strictEqual(
+      events.results?.length,
+      2,
+      "no duplicate event rows after repeated generation"
+    );
+    const starts = events.results?.map((e) => e.starts_at) ?? [];
+    assert.strictEqual(new Set(starts).size, 2, "unique (program, starts_at)");
+
+    const run = await testDb()
+      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .bind(plan.plan_id)
+      .first<{ status: string; created: number; skipped: number; failed: number }>();
+    assert.ok(run, "a durable generation-run record exists");
+    assert.strictEqual(run.status, "completed");
+    assert.strictEqual(run.created, 2);
+    assert.strictEqual(run.skipped, 0);
+    assert.strictEqual(run.failed, 0);
+    const successAudits = await auditRowsFor(programId, "EVENT_GENERATE");
+    assert.ok(
+      successAudits.some((row) => row.outcome === "SUCCESS"),
+      "generation success is audited"
+    );
+    const repeatAudit = [...successAudits]
+      .reverse()
+      .find(
+        (row) =>
+          row.outcome === "SUCCESS" &&
+          row.new_value_json?.includes('"created":0') &&
+          row.new_value_json?.includes('"skipped":2')
+      );
+    assert.ok(
+      repeatAudit,
+      "deterministic repeat emits its own EVENT_GENERATE audit with created=0, skipped>0 (ADR-0027)"
+    );
+  });
+
+  test("EVT-02.3 a member without Program Manage is forbidden and writes nothing", async () => {
+    const programId = await createProgram(adminAccess, deptId, {
+      name: "EVT-02 Scope",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    }).then((program) => program.program_id);
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 5,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    const res = await generateRequest(programId, plan.plan_id, memberAccess);
+    assert.strictEqual(res.status, 403);
+    const problem = await problemOf(res);
+    assert.strictEqual(problem.code, "FORBIDDEN");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0, "forbidden generation writes no events");
+    const runs = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0, "forbidden generation creates no run records");
+  });
+
+  test("EVT-02.4 generation resumes from a durable partial run without duplicating events", async () => {
+    const programId = await freshProgram("EVT-02 Resume");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+    const [firstOccurrence] = plan.occurrences;
+
+    // Simulate a crashed partial run: one failed attempt recorded durably.
+    // finished_at is ALREADY set (the first finishGenerationRun call writes
+    // it even for partial/failed outcomes), so the retry can only re-settle
+    // the run if finishGenerationRun's guard is `status != 'completed'`
+    // rather than `finished_at IS NULL`.
+    const runId = "evt02-resume-run";
+    const finishedAt = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO program_generation_runs (run_id, program_id, plan_id, status,
+           created, skipped, failed, started_at, finished_at, created_by, correlation_id)
+         VALUES (?, ?, ?, 'partial', 0, 0, 1, ?, ?, 'U001', NULL)`
+      )
+      .bind(runId, programId, plan.plan_id, finishedAt, finishedAt)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO program_generation_run_items (item_id, run_id, occurrence_id,
+           starts_at, outcome, event_id, detail)
+         VALUES (?, ?, ?, ?, 'failed', NULL, 'simulated transient failure')`
+      )
+      .bind(
+        `${runId}:${firstOccurrence.occurrence_id}`,
+        runId,
+        firstOccurrence.occurrence_id,
+        firstOccurrence.starts_at
+      )
+      .run();
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { generated: { run_id: string; status: string; created: number; skipped: number; failed: number; resumed: boolean } };
+    };
+    assert.strictEqual(
+      body.data.generated.run_id,
+      runId,
+      "retry resumes the same durable run"
+    );
+    assert.strictEqual(body.data.generated.resumed, true);
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.strictEqual(body.data.generated.created, 2, "failed unit is retried");
+    assert.strictEqual(body.data.generated.failed, 0);
+    // The durable run row itself must be re-settled by the retry, not stuck
+    // at the stale partial/failed snapshot the first settlement wrote.
+    const settledRun = await testDb()
+      .prepare(
+        "SELECT status, created, skipped, failed, finished_at FROM program_generation_runs WHERE run_id = ?"
+      )
+      .bind(runId)
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+        finished_at: string | null;
+      }>();
+    assert.strictEqual(
+      settledRun?.status,
+      "completed",
+      "retry re-settles the partial run to completed"
+    );
+    assert.strictEqual(settledRun?.created, 2, "recomputed created count");
+    assert.strictEqual(settledRun?.failed, 0, "no failures remain after retry");
+    assert.ok(settledRun?.finished_at, "the settled run keeps a finished_at");
+
+    const events = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC")
+      .bind(programId)
+      .all<{ starts_at: string }>();
+    assert.strictEqual(events.results?.length, 2);
+    const starts = events.results?.map((e) => e.starts_at) ?? [];
+    assert.strictEqual(
+      new Set(starts).size,
+      2,
+      "resume never duplicates an already-created event"
+    );
+    const items = await testDb()
+      .prepare(
+        "SELECT occurrence_id, outcome FROM program_generation_run_items WHERE run_id = ?"
+      )
+      .bind(runId)
+      .all<{ occurrence_id: string; outcome: string }>();
+    assert.strictEqual(items.results?.length, 2);
+    assert.ok(
+      items.results?.every((item) => item.outcome === "created"),
+      "the failed unit transitions to created after retry"
+    );
+  });
+
+  test("EVT-02.4 two concurrent generation attempts create at most one event per start", async () => {
+    const programId = await freshProgram("EVT-02 Concurrent");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 0,
+      start_time: "09:30",
+      end_time: "10:30",
+    });
+    const plan = await preview(adminAccess, programId, 30);
+    assert.ok(plan.occurrences.length >= 4);
+
+    const [first, second] = await Promise.all([
+      generateRequest(programId, plan.plan_id),
+      generateRequest(programId, plan.plan_id),
+    ]);
+    assert.strictEqual(first.status, 200);
+    assert.strictEqual(second.status, 200);
+    const firstBody = (await assertCorrelated(first)) as {
+      data: { generated: { run_id: string; status: string } };
+    };
+    const secondBody = (await assertCorrelated(second)) as {
+      data: { generated: { run_id: string; status: string } };
+    };
+    assert.strictEqual(
+      firstBody.data.generated.run_id,
+      secondBody.data.generated.run_id,
+      "concurrent attempts converge on one durable run"
+    );
+
+    const events = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ starts_at: string }>();
+    const starts = events.results?.map((e) => e.starts_at) ?? [];
+    assert.strictEqual(
+      new Set(starts).size,
+      starts.length,
+      "at most one event per unique (program, starts_at)"
+    );
+    assert.strictEqual(
+      starts.length,
+      plan.occurrences.length,
+      "every preview occurrence materializes exactly once"
+    );
+    const run = await testDb()
+      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .bind(plan.plan_id)
+      .first<{ status: string; created: number; skipped: number; failed: number }>();
+    assert.ok(run, "a single durable run records the settled outcome");
+    assert.strictEqual(
+      run.created + run.skipped + run.failed,
+      plan.occurrences.length,
+      "run counts account for every occurrence"
+    );
+  });
+
+  test("EVT-02.4 malformed or unknown plans are rejected before writes", async () => {
+    const programId = await freshProgram("EVT-02 Malformed");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 6,
+      start_time: "15:00",
+      end_time: "16:00",
+    });
+    const missing = await generateRequest(programId, "no-such-plan");
+    assert.strictEqual(missing.status, 404);
+    const missingProblem = await problemOf(missing);
+    assert.strictEqual(missingProblem.code, "PLAN_NOT_FOUND");
+
+    const badBody = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(badBody.status, 422);
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0, "rejected plans write no events");
+    const runs = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0, "rejected plans create no run records");
+  });
+
+  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
+    const programId = await freshProgram("EVT-02 Malformed Preview Body");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 6,
+      start_time: "15:00",
+      end_time: "16:00",
+    });
+    const headers = {
+      Origin: HOST,
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+      "Content-Type": "application/json",
+    };
+    const previewPath = `/api/v1/programs/${programId}/events/preview`;
+
+    const notJson = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+        body: "not json",
+      }),
+      testEnv()
+    );
+    assert.strictEqual(notJson.status, 422);
+    assert.strictEqual((await problemOf(notJson)).code, "VALIDATION");
+
+    const nonObject = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+        body: [1, 2, 3],
+      }),
+      testEnv()
+    );
+    assert.strictEqual(nonObject.status, 422);
+    assert.strictEqual((await problemOf(nonObject)).code, "VALIDATION");
+
+    // Rejected bodies must not persist a preview plan or write an audit row.
+    const plans = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_preview_plans WHERE program_id = ?"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(plans?.count ?? 0, 0, "no preview plan is persisted");
+    const audits = await auditRowsFor(programId, "EVENT_PREVIEW");
+    assert.strictEqual(audits.length, 0, "no EVENT_PREVIEW audit row is written");
+
+    // Empty body (no Content-Length) keeps the existing 90-day default.
+    const empty = await worker.fetch(
+      programsRequest(previewPath, {
+        method: "POST",
+        headers,
+      }),
+      testEnv()
+    );
+    assert.strictEqual(empty.status, 200);
+    const result = (await assertCorrelated(empty)) as {
+      data: { plan: { horizon_days: number; rule_count: number } };
+    };
+    assert.strictEqual(
+      result.data.plan.horizon_days,
+      90,
+      "empty body defaults to 90 days"
+    );
+    assert.ok(result.data.plan.rule_count >= 1, "the default preview materializes");
+  });
+
+  test("EVT-02.3 CANCEL exceptions are skipped and RESCHEDULE moves the generated event", async () => {
+    const programId = await freshProgram("EVT-02 Exceptions Generate");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const today = hkTodayWallDate();
+    const firstWednesday = addWallDays(
+      today,
+      (3 - wallWeekday(today) + 7) % 7
+    );
+    const cancelDate = addWallDays(firstWednesday, 7);
+    const rescheduleDate = addWallDays(firstWednesday, 14);
+    assert.strictEqual(wallWeekday(cancelDate), 3);
+    assert.strictEqual(wallWeekday(rescheduleDate), 3);
+    await createException(programId, rule.rule_id, {
+      override_date: cancelDate,
+      action: "CANCEL",
+    });
+    await createException(programId, rule.rule_id, {
+      override_date: rescheduleDate,
+      action: "RESCHEDULE",
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+    });
+    const plan = await preview(adminAccess, programId, 21);
+    assert.ok(plan.occurrences.some((o) => o.skip_reason === "CANCEL"));
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { generated: { status: string; created: number; skipped: number } };
+    };
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.strictEqual(
+      body.data.generated.created + body.data.generated.skipped,
+      plan.occurrences.length,
+      "every preview row is accounted for"
+    );
+    assert.strictEqual(
+      body.data.generated.skipped,
+      1,
+      "the CANCEL occurrence is skipped deterministically"
+    );
+    const events = await testDb()
+      .prepare("SELECT starts_at, ends_at, location FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ starts_at: string; ends_at: string; location: string | null }>();
+    const starts = events.results?.map((e) => e.starts_at) ?? [];
+    assert.ok(
+      !starts.some((s) => s.startsWith(`${cancelDate}T`)),
+      "no event materializes on the CANCEL date"
+    );
+    assert.ok(
+      starts.some((s) => s === `${rescheduleDate}T12:30:00.000Z`),
+      "RESCHEDULE moves the generated event to the new HK wall time"
+    );
+    const moved = events.results?.find((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`);
+    assert.strictEqual(moved?.ends_at, `${rescheduleDate}T14:00:00.000Z`);
+    const items = await testDb()
+      .prepare(
+        `SELECT detail FROM program_generation_run_items
+         WHERE run_id = (SELECT run_id FROM program_generation_runs WHERE plan_id = ?)
+           AND outcome = 'skipped'`
+      )
+      .bind(plan.plan_id)
+      .all<{ detail: string | null }>();
+    assert.ok(
+      items.results?.some((item) => item.detail === "CANCEL"),
+      "skipped units record the CANCEL reason durably"
+    );
+  });
+
+  test("EVT-02.1 rule locations flow into generated events", async () => {
+    const programId = await freshProgram("EVT-02 Rule Location");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "副堂 A",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.ok(
+      plan.occurrences.every((o) => o.location === "副堂 A"),
+      "preview occurrences carry the rule location"
+    );
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const events = await testDb()
+      .prepare("SELECT location FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ location: string | null }>();
+    assert.ok(
+      events.results?.every((e) => e.location === "副堂 A"),
+      "generated events carry the rule location"
+    );
+  });
+
+  test("EVT-02.3 exceptions are rule-scoped and never cross-affect same-date rules", async () => {
+    const programId = await freshProgram("EVT-02 Exception Scope");
+    const ruleA = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "20:30",
+    });
+    const ruleB = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "21:00",
+      end_time: "22:00",
+    });
+    const today = hkTodayWallDate();
+    const firstTuesday = addWallDays(today, (2 - wallWeekday(today) + 7) % 7);
+    const targetDate = addWallDays(firstTuesday, 7);
+    await createException(programId, ruleA.rule_id, {
+      override_date: targetDate,
+      action: "CANCEL",
+    });
+
+    const plan = await preview(adminAccess, programId, 21);
+    const ruleARows = plan.occurrences.filter((o) => o.rule_id === ruleA.rule_id);
+    const ruleBRows = plan.occurrences.filter((o) => o.rule_id === ruleB.rule_id);
+    assert.ok(
+      ruleARows.some((o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"),
+      "rule A occurrence on the date is cancelled"
+    );
+    assert.ok(
+      ruleBRows.some((o) => o.occurs_on === targetDate && o.skip_reason === null),
+      "rule B occurrence on the same date is untouched by rule A's exception"
+    );
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const events = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE program_id = ?")
+      .bind(programId)
+      .all<{ starts_at: string }>();
+    assert.ok(
+      events.results?.some((e) => e.starts_at === `${targetDate}T13:00:00.000Z`),
+      "rule B's 21:00 HK wall occurrence materializes despite rule A's cancel"
+    );
+    assert.ok(
+      !events.results?.some((e) => e.starts_at === `${targetDate}T11:30:00.000Z`),
+      "rule A's 19:30 HK wall occurrence is skipped"
+    );
+  });
+
+  test("EVT-02.2 clearing a rule location persists and malformed location is rejected", async () => {
+    const programId = await freshProgram("EVT-02 Location Clear");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "主堂",
+    });
+
+    const malformed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { location: 5 },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(malformed.status, 422, "non-string location fails closed");
+
+    const clear = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { location: null },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(clear.status, 200);
+    const cleared = (await assertCorrelated(clear)) as {
+      data: { rule: { location: string | null } };
+    };
+    assert.strictEqual(
+      cleared.data.rule.location,
+      null,
+      "explicit null clears the stored location"
+    );
+  });
+
+  test("EVT-02.1 re-preview repairs a plan whose occurrence rows are missing", async () => {
+    const programId = await freshProgram("EVT-02 Plan Repair");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const first = await preview(adminAccess, programId, 14);
+    assert.ok(first.occurrences.length > 0);
+
+    // Simulate a crash between the plan-row insert and occurrence inserts:
+    // wipe the occurrence rows, then re-preview the identical inputs.
+    await testDb()
+      .prepare("DELETE FROM program_preview_occurrences WHERE plan_id = ?")
+      .bind(first.plan_id)
+      .run();
+    const repaired = await preview(adminAccess, programId, 14);
+    assert.strictEqual(
+      repaired.plan_id,
+      first.plan_id,
+      "identical inputs resolve to the same plan identity"
+    );
+    assert.strictEqual(
+      repaired.occurrences.length,
+      first.occurrences.length,
+      "re-preview restores the full occurrence set"
+    );
+    assert.deepStrictEqual(
+      repaired.occurrences.map((o) => o.occurrence_id),
+      first.occurrences.map((o) => o.occurrence_id),
+      "repaired occurrence identities match the original plan"
+    );
+  });
+
+  test("EVT-02.1 preview persists schedules larger than D1's batch statement limit across chunked batches", async () => {
+    const programId = await freshProgram("EVT-02 Large Preview");
+    // 20 weekly rules over the full 365-day horizon produce >1000 occurrence
+    // rows (>1000 INSERT statements), which exceeds D1's single db.batch()
+    // limit; replacePreviewPlan must chunk the inserts to persist them all.
+    const ruleCount = 20;
+    for (let i = 0; i < ruleCount; i += 1) {
+      await createRule(adminAccess, programId, {
+        recurrence: "WEEKLY",
+        day_of_week: i % 7,
+        start_time: `${String(9 + (i % 10)).padStart(2, "0")}:00`,
+        end_time: `${String(10 + (i % 10)).padStart(2, "0")}:00`,
+      });
+    }
+    const plan = await preview(adminAccess, programId, 365);
+    assert.strictEqual(plan.rule_count, ruleCount);
+    assert.ok(
+      plan.occurrences.length > 500,
+      `chunking is exercised (got ${plan.occurrences.length} occurrences)`
+    );
+    const persisted = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_preview_occurrences WHERE plan_id = ?"
+      )
+      .bind(plan.plan_id)
+      .first<{ count: number }>();
+    assert.strictEqual(
+      persisted?.count ?? 0,
+      plan.occurrences.length,
+      "every previewed occurrence row is durably persisted"
+    );
+  });
+
+  test("EVT-02.6 checked-in seed reset order clears preview/run rows before their parents", async () => {
+    const programId = await freshProgram(`E2E_EVT02_Reset_${Date.now()}`);
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "18:00",
+      end_time: "19:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+
+    // Durable EVT-02 rows now reference the program/rule/events with
+    // ON DELETE RESTRICT; the reset must delete them before their parents.
+    const durable = await testDb()
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM program_preview_plans WHERE program_id = ?1) AS plans,
+           (SELECT COUNT(*) FROM program_preview_occurrences WHERE plan_id IN
+              (SELECT plan_id FROM program_preview_plans WHERE program_id = ?1)) AS occurrences,
+           (SELECT COUNT(*) FROM program_generation_runs WHERE program_id = ?1) AS runs,
+           (SELECT COUNT(*) FROM program_generation_run_items WHERE run_id IN
+              (SELECT run_id FROM program_generation_runs WHERE program_id = ?1)) AS items,
+           (SELECT COUNT(*) FROM events WHERE program_id = ?1) AS events`
+      )
+      .bind(programId)
+      .first<{
+        plans: number;
+        occurrences: number;
+        runs: number;
+        items: number;
+        events: number;
+      }>();
+    assert.ok((durable?.plans ?? 0) >= 1, "a preview plan exists");
+    assert.ok((durable?.occurrences ?? 0) >= 1, "preview occurrences exist");
+    assert.ok((durable?.runs ?? 0) >= 1, "a generation run exists");
+    assert.ok((durable?.items ?? 0) >= 1, "run items exist");
+    assert.ok((durable?.events ?? 0) >= 1, "generated events exist");
+
+    // Replay tests/e2e/seed-dev-accounts.ts --reset ordering verbatim
+    // (children first): EVT-02 tables, then exceptions/rules/events, then
+    // programs and departments. Any FK-order regression fails here.
+    const e2eProgramIds = `(SELECT p.program_id FROM programs AS p LEFT JOIN departments AS d ON d.department_id = p.department_id WHERE p.name GLOB 'E2E_*' OR d.code GLOB 'E2E_*' OR d.name GLOB 'E2E_*')`;
+    const resetStatements = [
+      `DELETE FROM program_generation_run_items WHERE run_id IN (SELECT run_id FROM program_generation_runs WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_generation_runs WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_preview_occurrences WHERE plan_id IN (SELECT plan_id FROM program_preview_plans WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds})`,
+      `DELETE FROM events WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM enrollment_requests WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM programs WHERE program_id IN ${e2eProgramIds}`,
+      "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
+      "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
+      "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*'",
+      "DELETE FROM registration_requests WHERE username GLOB 'E2E_*'",
+    ];
+    for (const statement of resetStatements) {
+      await testDb().prepare(statement).run();
+    }
+    const gone = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM programs WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(gone?.count ?? 0, 0, "the E2E_ program is reset");
+    const remaining = await testDb()
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM program_preview_plans WHERE program_id = ?1) +
+           (SELECT COUNT(*) FROM program_generation_runs WHERE program_id = ?1) +
+           (SELECT COUNT(*) FROM events WHERE program_id = ?1) AS total`
+      )
+      .bind(programId)
+      .first<{ total: number }>();
+    assert.strictEqual(remaining?.total ?? 0, 0, "no durable rows remain");
+  });
+
+  test("EVT-02.4 skipped duplicate attempts carry the existing event id", async () => {
+    const programId = await freshProgram("EVT-02 Skipped Event Id");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 5,
+      start_time: "10:00",
+      end_time: "11:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    // Seed a duplicate event row so every non-CANCEL attempt is a uniqueness
+    // duplicate, not a fresh create: the run must record outcome 'skipped'
+    // WITH the existing event_id, never a false 'created' or null id.
+    await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: plan.occurrences[0].starts_at,
+          ends_at: plan.occurrences[0].ends_at,
+          name: null,
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+      }),
+      testEnv()
+    );
+
+    const res = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: { generated: { status: string; created: number; skipped: number } };
+    };
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.ok(
+      body.data.generated.skipped >= 1,
+      "the pre-existing occurrence is counted as skipped"
+    );
+    const items = await testDb()
+      .prepare(
+        `SELECT occurrence_id, outcome, event_id, detail FROM program_generation_run_items
+         WHERE run_id = (SELECT run_id FROM program_generation_runs WHERE plan_id = ?)`
+      )
+      .bind(plan.plan_id)
+      .all<{
+        occurrence_id: string;
+        outcome: string;
+        event_id: string | null;
+        detail: string | null;
+      }>();
+    const duplicateItem = items.results?.find(
+      (item) => item.occurrence_id === plan.occurrences[0].occurrence_id
+    );
+    assert.ok(duplicateItem, "the duplicate occurrence has a run item");
+    assert.strictEqual(duplicateItem.outcome, "skipped");
+    assert.ok(
+      duplicateItem.event_id,
+      "skipped duplicate attempt records the existing event id"
+    );
   });
 });
 
@@ -2784,6 +4633,93 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
+  test("PATCH rejects rescheduling once Attendance exists, but allows non-schedule edits", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2026-09-15T20:00:00.000Z",
+      ends_at: "2026-09-15T21:00:00.000Z",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
+      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .run();
+
+    const reschedule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: "2026-09-15T20:15:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(reschedule.status, 409);
+    const rescheduleProblem = await problemOf(reschedule);
+    assert.strictEqual(rescheduleProblem.code, "EVENT_RESCHEDULE_BLOCKED");
+    const unchanged = await testDb()
+      .prepare("SELECT starts_at FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ starts_at: string }>();
+    assert.strictEqual(
+      unchanged?.starts_at,
+      "2026-09-15T20:00:00.000Z",
+      "blocked reschedule must not move the event"
+    );
+
+    const endsChange = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { ends_at: "2026-09-15T22:00:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(
+      endsChange.status,
+      409,
+      "ends_at is also a schedule field and must be blocked identically"
+    );
+
+    const nameChange = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "改名但不改時間", location: "副堂" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(
+      nameChange.status,
+      200,
+      "non-schedule edits stay allowed once Attendance exists"
+    );
+    const nameChangeBody = (await assertCorrelated(nameChange)) as {
+      data: { event: Record<string, unknown> };
+    };
+    assert.strictEqual(nameChangeBody.data.event.name, "改名但不改時間");
+  });
+
   test("PATCH absent window fields preserve the window; explicit null clears it", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-20T10:00:00.000Z",
@@ -3265,7 +5201,8 @@ function decideRequest(
   access: string,
   programId: string,
   requestId: string,
-  action: "Approved" | "Rejected"
+  action: "Approved" | "Rejected",
+  requestVersion?: number
 ): Promise<Response> {
   return worker.fetch(
     programsRequest(
@@ -3277,7 +5214,12 @@ function decideRequest(
           Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
           "Content-Type": "application/json",
         },
-        body: { action },
+        body: {
+          action,
+          ...(requestVersion === undefined
+            ? {}
+            : { request_version: requestVersion }),
+        },
       }
     ),
     testEnv()
@@ -3576,6 +5518,30 @@ describe("PRG-03: enrollment requests", () => {
       "Approved"
     );
     assert.strictEqual(res.status, 200);
+    const responseBody = (await assertCorrelated(res)) as {
+      data: {
+        request: {
+          request_id: string;
+          status: string;
+          request_version: number;
+        };
+        enrollment: {
+          enrollment_id: string;
+          request_id: string | null;
+          status: string;
+        } | null;
+      };
+    };
+    assert.strictEqual(
+      responseBody.data.request.request_id,
+      request.request_id
+    );
+    assert.strictEqual(responseBody.data.request.status, "Approved");
+    assert.strictEqual(responseBody.data.request.request_version, 2);
+    const responseEnrollment = responseBody.data.enrollment;
+    assert.ok(responseEnrollment, "approval response must include enrollment");
+    assert.strictEqual(responseEnrollment.request_id, request.request_id);
+    assert.strictEqual(responseEnrollment.status, "Active");
 
     const requestRow = await testDb()
       .prepare(
@@ -3602,14 +5568,35 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(enrollmentRow?.member_user_id, "U002");
     assert.strictEqual(enrollmentRow?.request_id, request.request_id);
 
-    const audits = await testDb()
+    const decisionAudit = await testDb()
       .prepare(
-        "SELECT action FROM audit_events WHERE action IN ('ENROLLMENT_REQUEST_DECIDE', 'ENROLLMENT_CREATE')"
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
       )
-      .all<{ action: string }>();
-    const actions = new Set((audits.results ?? []).map((r) => r.action));
-    assert.ok(actions.has("ENROLLMENT_REQUEST_DECIDE"));
-    assert.ok(actions.has("ENROLLMENT_CREATE"));
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(decisionAudit, "approval decision audit row must exist");
+    const decisionOld = JSON.parse(decisionAudit.old_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    const decisionNew = JSON.parse(decisionAudit.new_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(decisionOld.status, "Pending");
+    assert.strictEqual(decisionOld.request_version, 1);
+    assert.strictEqual(decisionNew.status, "Approved");
+    assert.strictEqual(decisionNew.request_version, 2);
+    const enrollmentAudit = await testDb()
+      .prepare(
+        "SELECT action FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(responseEnrollment.enrollment_id)
+      .first<{ action: string }>();
+    assert.ok(enrollmentAudit, "approval enrollment audit row must exist");
   });
 
   test("REQ-5 rejection leaves the request Rejected and no enrollment", async () => {
@@ -3622,6 +5609,16 @@ describe("PRG-03: enrollment requests", () => {
       "Rejected"
     );
     assert.strictEqual(res.status, 200);
+    const responseBody = (await assertCorrelated(res)) as {
+      data: {
+        request: { request_id: string; status: string; request_version: number };
+        enrollment: null;
+      };
+    };
+    assert.strictEqual(responseBody.data.request.request_id, request.request_id);
+    assert.strictEqual(responseBody.data.request.status, "Rejected");
+    assert.strictEqual(responseBody.data.request.request_version, 2);
+    assert.strictEqual(responseBody.data.enrollment, null);
     const row = await testDb()
       .prepare("SELECT status FROM enrollment_requests WHERE request_id = ?")
       .bind(request.request_id)
@@ -3632,6 +5629,71 @@ describe("PRG-03: enrollment requests", () => {
       .bind(request.request_id)
       .all<{ enrollment_id: string }>();
     assert.strictEqual(enrollments.results?.length, 0);
+    const decisionAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(decisionAudit, "rejection decision audit row must exist");
+    const decisionOld = JSON.parse(decisionAudit.old_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    const decisionNew = JSON.parse(decisionAudit.new_value_json ?? "{}") as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(decisionOld.status, "Pending");
+    assert.strictEqual(decisionOld.request_version, 1);
+    assert.strictEqual(decisionNew.status, "Rejected");
+    assert.strictEqual(decisionNew.request_version, 2);
+  });
+  test("REQ-5A stale request versions and opposite terminal decisions fail closed", async () => {
+    const staleProgramId = await freshRequestProgram("REQ-5A Stale Program");
+    const staleRequest = await submitRequest(memberAccess, staleProgramId);
+    const stale = await decideRequest(
+      adminAccess,
+      staleProgramId,
+      staleRequest.request_id,
+      "Rejected",
+      99
+    );
+    assert.strictEqual(stale.status, 409);
+    const staleBody = await problemOf(stale);
+    assert.strictEqual(staleBody.code, "STALE");
+    const staleRow = await testDb()
+      .prepare(
+        "SELECT status, request_version FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(staleRequest.request_id)
+      .first<{ status: string; request_version: number }>();
+    assert.strictEqual(staleRow?.status, "Pending");
+    assert.strictEqual(staleRow?.request_version, 1);
+
+    const terminalProgramId = await freshRequestProgram(
+      "REQ-5A Terminal Program"
+    );
+    const terminalRequest = await submitRequest(memberAccess, terminalProgramId);
+    const approved = await decideRequest(
+      adminAccess,
+      terminalProgramId,
+      terminalRequest.request_id,
+      "Approved"
+    );
+    assert.strictEqual(approved.status, 200);
+    const opposite = await decideRequest(
+      adminAccess,
+      terminalProgramId,
+      terminalRequest.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(opposite.status, 409);
+    const oppositeBody = await problemOf(opposite);
+    assert.strictEqual(oppositeBody.code, "CONFLICT");
   });
 
   test("REQ-6 withdrawal is self-service, only while Pending", async () => {
@@ -3658,6 +5720,24 @@ describe("PRG-03: enrollment requests", () => {
       .bind(request.request_id)
       .first<{ status: string }>();
     assert.strictEqual(row?.status, "Withdrawn");
+    const withdrawalAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM audit_events WHERE action = 'ENROLLMENT_REQUEST_WITHDRAW' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(request.request_id)
+      .first<{
+        old_value_json: string | null;
+        new_value_json: string | null;
+      }>();
+    assert.ok(withdrawalAudit, "withdrawal audit row must exist");
+    const withdrawalNew = JSON.parse(
+      withdrawalAudit.new_value_json ?? "{}"
+    ) as {
+      status?: string;
+      request_version?: number;
+    };
+    assert.strictEqual(withdrawalNew.status, "Withdrawn");
+    assert.strictEqual(withdrawalNew.request_version, 2);
 
     const afterWithdraw = await worker.fetch(
       programsRequest(
@@ -3806,6 +5886,49 @@ describe("PRG-03: enrollment requests", () => {
       )
     );
   });
+  test("REQ-8A manager enrollment snapshot returns the request and atomic enrollment result", async () => {
+    const programId = await freshRequestProgram("REQ-8A Snapshot Program");
+    const request = await submitRequest(memberAccess, programId);
+    const decision = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(decision.status, 200);
+
+    const snapshotResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/enrollment-snapshot`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(snapshotResponse.status, 200);
+    const snapshotBody = (await assertCorrelated(snapshotResponse)) as {
+      data: {
+        requests: { request_id: string; status: string }[];
+        enrollments: {
+          enrollment_id: string;
+          request_id: string | null;
+          status: string;
+        }[];
+      };
+    };
+    assert.ok(
+      snapshotBody.data.requests.some(
+        (row) => row.request_id === request.request_id && row.status === "Approved"
+      )
+    );
+    assert.ok(
+      snapshotBody.data.enrollments.some(
+        (row) =>
+          row.request_id === request.request_id && row.status === "Active"
+      )
+    );
+  });
 
   test("REQ-10 X-Request-Id is a fresh per-request id, never the Idempotency-Key", async () => {
     const programId = await freshRequestProgram("REQ-10 Program");
@@ -3910,22 +6033,46 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(wrongMode.status, 422);
   });
 
-  test("ENR-2 assisted enrollment for an unknown member is 422", async () => {
-    const res = await assistedEnrollFor(
+  test("ENR-2 inactive and unknown assisted members are rejected and audited", async () => {
+    const inactive = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U004"
+    );
+    assert.strictEqual(inactive.status, 422);
+    const inactiveBody = await problemOf(inactive);
+    assert.strictEqual(inactiveBody.code, "ENROLLMENT_ACCOUNT_INACTIVE");
+    const inactiveEnrollment = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U004' AND status = 'Active'"
+      )
+      .bind(managerOnlyId)
+      .all<{ enrollment_id: string }>();
+    assert.strictEqual(inactiveEnrollment.results?.length, 0);
+    const inactiveAudit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_type = 'enrollment' AND entity_id = 'U004' ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .first<{ outcome: string }>();
+    assert.strictEqual(inactiveAudit?.outcome, "DENIED");
+
+    const unknown = await assistedEnrollFor(
       adminAccess,
       managerOnlyId,
       crypto.randomUUID()
     );
-    assert.strictEqual(res.status, 422);
+    assert.strictEqual(unknown.status, 422);
+    const unknownBody = await problemOf(unknown);
+    assert.strictEqual(unknownBody.code, "ENROLLMENT_ACCOUNT_INACTIVE");
   });
 
-  test("ENR-3 concurrent assisted enrollment yields at most one Active row", async () => {
+  test("ENR-3 concurrent assisted enrollment keeps one Active row and quiets same-actor duplicates", async () => {
     const [first, second] = await Promise.all([
       assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
       assistedEnrollFor(adminAccess, managerOnlyId, "U003"),
     ]);
     const statuses = [first.status, second.status].sort();
-    assert.deepStrictEqual(statuses, [201, 409]);
+    assert.deepStrictEqual(statuses, [201, 201]);
     const rows = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
@@ -3933,13 +6080,26 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .all<{ enrollment_id: string }>();
     assert.strictEqual(rows.results?.length, 1);
+    const duplicateAudit = await testDb()
+      .prepare(
+        "SELECT entity_id FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND outcome = 'DUPLICATE' AND entity_type = 'enrollment' AND entity_id = ?"
+      )
+      .bind(rows.results?.[0]?.enrollment_id)
+      .first<{ entity_id: string }>();
+    assert.strictEqual(
+      duplicateAudit?.entity_id,
+      rows.results?.[0]?.enrollment_id,
+      "same-actor race duplicate audits the existing enrollment"
+    );
   });
 
   test("ENR-4 members cancel their own enrollment; managers cancel in scope; cross-member is 403", async () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
-    assert.strictEqual(res.status, 409, "U002 already active from ENR-1");
-    const dupEnrollBody = await problemOf(res);
-    assert.strictEqual(dupEnrollBody.code, "ENROLLMENT_DUPLICATE");
+    assert.strictEqual(res.status, 201, "same-actor repeat is a quiet success");
+    const dupEnrollBody = (await assertCorrelated(res)) as {
+      data: { enrollment: { enrollment_id: string; status: string } };
+    };
+    assert.strictEqual(dupEnrollBody.data.enrollment.status, "Active");
     const bobEnrollment = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
@@ -3947,6 +6107,10 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .first<{ enrollment_id: string }>();
     assert.ok(bobEnrollment);
+    assert.strictEqual(
+      dupEnrollBody.data.enrollment.enrollment_id,
+      bobEnrollment.enrollment_id
+    );
 
     const ownCancel = await cancelEnrollmentFor(
       memberAccess,
@@ -3967,12 +6131,6 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(cancelled.data.enrollment.cancelled_by, "U002");
     assert.ok(cancelled.data.enrollment.cancelled_at);
 
-    const thirdParty = await assistedEnrollFor(
-      adminAccess,
-      managerOnlyId,
-      "U003"
-    );
-    assert.strictEqual(thirdParty.status, 409, "U003 active from ENR-3");
     const carolEnrollment = await testDb()
       .prepare(
         "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = 'U003' AND status = 'Active'"
@@ -3980,6 +6138,25 @@ describe("PRG-03: enrollments", () => {
       .bind(managerOnlyId)
       .first<{ enrollment_id: string }>();
     assert.ok(carolEnrollment);
+    await testDb()
+      .prepare("UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?")
+      .bind(carolEnrollment.enrollment_id)
+      .run();
+    const thirdParty = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U003"
+    );
+    assert.strictEqual(thirdParty.status, 409, "cross-actor repeat conflicts");
+    const thirdPartyBody = await problemOf(thirdParty);
+    assert.strictEqual(thirdPartyBody.code, "ENROLLMENT_DUPLICATE");
+    const conflictAudit = await testDb()
+      .prepare(
+        "SELECT entity_id FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND outcome = 'CONFLICT' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(carolEnrollment.enrollment_id)
+      .first<{ entity_id: string }>();
+    assert.strictEqual(conflictAudit?.entity_id, carolEnrollment.enrollment_id);
     const crossMember = await cancelEnrollmentFor(
       memberAccess,
       managerOnlyId,
@@ -4146,6 +6323,136 @@ describe("PRG-03: enrollments", () => {
       .bind(request.request_id)
       .first<{ outcome: string }>();
     assert.ok(audit, "decide-on-decided must write a DUPLICATE audit row");
+  });
+
+  test("REQ-9B same-actor retry with a stale version after success is a quiet DUPLICATE, not STALE", async () => {
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Same-Actor Retry Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(first.status, 200);
+    // The retry carries the caller's last-observed version (1), but the
+    // request is now terminal at version 2. ADR-0023/0027: the deciding
+    // actor's own repeat is DUPLICATE, never a stale-version CONFLICT.
+    const retry = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved",
+      1
+    );
+    assert.strictEqual(retry.status, 200, "same-actor retry is a quiet success");
+    const body = (await assertCorrelated(retry)) as {
+      data: { request: { status: string; request_version: number } };
+    };
+    assert.strictEqual(body.data.request.status, "Approved");
+    assert.strictEqual(
+      body.data.request.request_version,
+      2,
+      "terminal request version must not advance on a repeat"
+    );
+    const dupAudit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'DUPLICATE'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(request.request_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(dupAudit, "same-actor retry must audit DUPLICATE");
+    assert.strictEqual(
+      (JSON.parse(dupAudit.new_value_json) as { reason?: string }).reason,
+      "already_decided"
+    );
+  });
+
+  test("REQ-9C a different actor repeating an already-decided action audits CONFLICT", async () => {
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Cross-Actor Repeat Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const first = await decideRequest(
+      adminAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(first.status, 200);
+    const repeat = await decideRequest(
+      staffAccess,
+      programId,
+      request.request_id,
+      "Approved"
+    );
+    assert.strictEqual(repeat.status, 409, "cross-actor repeat must conflict");
+    const repeatBody = await problemOf(repeat);
+    assert.strictEqual(repeatBody.code, "CONFLICT");
+    const conflictAudit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND outcome = 'CONFLICT'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(request.request_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(conflictAudit, "cross-actor repeat must audit CONFLICT");
+    assert.strictEqual(
+      (JSON.parse(conflictAudit.new_value_json) as { reason?: string }).reason,
+      "already_decided_by_other_actor"
+    );
+  });
+
+  test("REQ-9D concurrent decisions by different actors yield one SUCCESS and one CONFLICT", async () => {
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Cross-Actor Race Program",
+        behavior_type: "Recurring",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      })
+    ).program_id;
+    const request = await submitRequest(memberAccess, programId);
+    const [first, second] = await Promise.all([
+      decideRequest(adminAccess, programId, request.request_id, "Approved"),
+      decideRequest(staffAccess, programId, request.request_id, "Approved"),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409]);
+    const outcomes = await testDb()
+      .prepare(
+        `SELECT outcome, COUNT(*) AS n FROM audit_events
+         WHERE action = 'ENROLLMENT_REQUEST_DECIDE' AND entity_id = ?
+         GROUP BY outcome`
+      )
+      .bind(request.request_id)
+      .all<{ outcome: string; n: number }>();
+    const byOutcome = new Map(
+      (outcomes.results ?? []).map((r) => [r.outcome, r.n])
+    );
+    assert.strictEqual(byOutcome.get("SUCCESS"), 1, "one committed decision");
+    assert.strictEqual(
+      byOutcome.get("CONFLICT"),
+      1,
+      "cross-actor race loser audits CONFLICT (never a quiet DUPLICATE)"
+    );
   });
 
   test("REQ-10 withdraw-on-withdrawn is a quiet 200 with a DUPLICATE audit row", async () => {
@@ -5522,5 +7829,208 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
       "Active"
     );
     assert.ok(!JSON.stringify(approved.data.detail).includes("member_user_id"));
+  });
+});
+
+describe("NTF-01: management notification read state (#256)", () => {
+  test("projects scoped sources, reads them idempotently, and reopens a revised source", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      ["U006", "Eve Member", "eve", "3456", "Member", "Active"],
+    ]);
+    await completeCredentialUpgrade(testDb(), {
+      userId: "U006",
+      legacyPin: "3456",
+      newCredential: "eve-secret",
+    });
+    const memberAccess = await accessCookieFor("eve", "eve-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `NTF-${crypto.randomUUID().slice(0, 8)}`,
+      name: `Notification Department ${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `Notification Program ${crypto.randomUUID().slice(0, 8)}`,
+      behavior_type: "OneOff",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    await submitRequest(memberAccess, program.program_id);
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: "2099-08-14T10:00:00.000Z",
+      ends_at: "2099-08-14T11:00:00.000Z",
+      name: "Notification Event",
+    });
+
+    const inactive = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(inactive.status, 200);
+
+    const list = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications?limit=20", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(list.status, 200);
+    const listed = (await assertCorrelated(list)) as {
+      data: {
+        items: {
+          kind: string;
+          source_key: string;
+          source_revision: string;
+          read: boolean;
+          program_id: string;
+          event_id?: string;
+        }[];
+        unread_count: number;
+        has_more: boolean;
+      };
+    };
+    const scopedItems = listed.data.items.filter(
+      (item) => item.program_id === program.program_id
+    );
+    assert.strictEqual(scopedItems.length, 2);
+    const initialUnreadCount = listed.data.unread_count;
+    assert.ok(scopedItems.some((item) => item.kind === "enrollment"));
+    const inactiveItem = scopedItems.find(
+      (item) => item.kind === "event"
+    );
+    assert.ok(inactiveItem);
+    assert.strictEqual(inactiveItem?.read, false);
+
+    const read = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications/read", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          items: scopedItems.map(
+            ({ source_key, source_revision }) => ({
+              source_key,
+              source_revision,
+            })
+          ),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(read.status, 200);
+    const readBody = (await assertCorrelated(read)) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(readBody.data.marked_count, 2);
+
+    const idempotent = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications/read", {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          items: scopedItems.map(
+            ({ source_key, source_revision }) => ({
+              source_key,
+              source_revision,
+            })
+          ),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(idempotent.status, 200);
+    const idempotentBody = (await assertCorrelated(idempotent)) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(idempotentBody.data.marked_count, 0);
+
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "changed notification state" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const revised = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications?limit=20", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(revised.status, 200);
+    const revisedBody = (await assertCorrelated(revised)) as {
+      data: {
+        items: {
+          kind: string;
+          status?: string;
+          source_revision: string;
+          read: boolean;
+          program_id: string;
+        }[];
+        unread_count: number;
+      };
+    };
+    const cancelledItem = revisedBody.data.items.find(
+      (item) =>
+        item.kind === "event" && item.program_id === program.program_id
+    );
+    assert.ok(cancelledItem);
+    assert.strictEqual(cancelledItem?.status, "Cancelled");
+    assert.strictEqual(cancelledItem?.read, false);
+    assert.strictEqual(revisedBody.data.unread_count, initialUnreadCount - 1);
+
+    const memberList = await worker.fetch(
+      programsRequest("/api/v1/programs/notifications", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberList.status, 403);
+    const memberProblem = await problemOf(memberList);
+    assert.strictEqual(memberProblem.code, "FORBIDDEN");
+
+    const readRows = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_notification_reads WHERE user_id = 'U001'"
+      )
+      .first<{ count: number }>();
+    assert.ok(Number(readRows?.count) >= 2);
   });
 });
