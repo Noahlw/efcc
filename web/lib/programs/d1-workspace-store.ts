@@ -10,7 +10,6 @@ import type {
   GenerationRunItemInput,
   GenerationRunItemRow,
   GenerationRunRow,
-  GenerationRunStatus,
   ProgramAccessRow,
   DepartmentInput,
   DepartmentManagerGrantInput,
@@ -46,6 +45,14 @@ import type {
   ScheduleRuleUpdate,
   WorkspaceStore,
 } from "./workspace-store";
+
+function chunk<T>(items: readonly T[], size = 50): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size) as T[]);
+  }
+  return chunks;
+}
 
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class WorkspaceNotFoundError extends Error {
@@ -717,73 +724,85 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
 
   async countPendingEnrollmentRequests(
     programIds: readonly string[]
-  ): Promise<Array<{ program_id: string; count: number }>> {
+  ): Promise<{ program_id: string; count: number }[]> {
     if (programIds.length === 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT program_id, COUNT(*) AS count
-           FROM enrollment_requests
-          WHERE status = 'Pending'
-            AND program_id IN (${placeholders})
-          GROUP BY program_id`
-      )
-      .bind(...programIds)
-      .all<{ program_id: string; count: number }>();
-    return (result.results ?? []).map((row) => ({
-      program_id: row.program_id,
-      count: Number(row.count),
-    }));
+    const chunks = chunk(programIds, 50);
+    const results = await Promise.all(
+      chunks.map(async (batch) => {
+        const placeholders = batch.map(() => "?").join(", ");
+        const result = await this.db
+          .prepare(
+            `SELECT program_id, COUNT(*) AS count
+               FROM enrollment_requests
+              WHERE status = 'Pending'
+                AND program_id IN (${placeholders})
+              GROUP BY program_id`
+          )
+          .bind(...batch)
+          .all<{ program_id: string; count: number }>();
+        return (result.results ?? []).map((row) => ({
+          program_id: row.program_id,
+          count: Number(row.count),
+        }));
+      })
+    );
+    return results.flat();
   }
 
   async countManagementEventAttention(
     programIds: readonly string[],
     startsAtOrAfter: string
   ): Promise<
-    Array<{
+    {
       program_id: string;
       inactive_event_count: number;
       cancelled_event_count: number;
-    }>
+    }[]
   > {
     if (programIds.length === 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT program_id,
-                SUM(
-                  CASE
-                    WHEN status = 'Active' AND availability = 'Inactive' THEN 1
-                    ELSE 0
-                  END
-                ) AS inactive_event_count,
-                SUM(
-                  CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END
-                ) AS cancelled_event_count
-           FROM events
-          WHERE starts_at >= ?
-            AND program_id IN (${placeholders})
-            AND (
-              status = 'Cancelled'
-              OR (status = 'Active' AND availability = 'Inactive')
-            )
-          GROUP BY program_id`
-      )
-      .bind(startsAtOrAfter, ...programIds)
-      .all<{
-        program_id: string;
-        inactive_event_count: number;
-        cancelled_event_count: number;
-      }>();
-    return (result.results ?? []).map((row) => ({
-      program_id: row.program_id,
-      inactive_event_count: Number(row.inactive_event_count),
-      cancelled_event_count: Number(row.cancelled_event_count),
-    }));
+    const chunks = chunk(programIds, 50);
+    const results = await Promise.all(
+      chunks.map(async (batch) => {
+        const placeholders = batch.map(() => "?").join(", ");
+        const result = await this.db
+          .prepare(
+            `SELECT program_id,
+                    SUM(
+                      CASE
+                        WHEN status = 'Active' AND availability = 'Inactive' THEN 1
+                        ELSE 0
+                      END
+                    ) AS inactive_event_count,
+                    SUM(
+                      CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END
+                    ) AS cancelled_event_count
+               FROM events
+              WHERE starts_at >= ?
+                AND program_id IN (${placeholders})
+                AND (
+                  status = 'Cancelled'
+                  OR (status = 'Active' AND availability = 'Inactive')
+                )
+              GROUP BY program_id`
+          )
+          .bind(startsAtOrAfter, ...batch)
+          .all<{
+            program_id: string;
+            inactive_event_count: number;
+            cancelled_event_count: number;
+          }>();
+        return (result.results ?? []).map((row) => ({
+          program_id: row.program_id,
+          inactive_event_count: Number(row.inactive_event_count),
+          cancelled_event_count: Number(row.cancelled_event_count),
+        }));
+      })
+    );
+    return results.flat();
   }
 
   async listManagementEventAttention(
@@ -825,22 +844,28 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     if (programIds.length === 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT program_id, COUNT(*) AS count, MAX(submitted_at) AS latest_submitted_at
-           FROM enrollment_requests
-          WHERE status = 'Pending'
-            AND program_id IN (${placeholders})
-          GROUP BY program_id`
-      )
-      .bind(...programIds)
-      .all<ManagementNotificationEnrollmentRow>();
-    return (result.results ?? []).map((row) => ({
-      program_id: row.program_id,
-      count: Number(row.count),
-      latest_submitted_at: row.latest_submitted_at,
-    }));
+    const chunks = chunk(programIds, 50);
+    const results = await Promise.all(
+      chunks.map(async (batch) => {
+        const placeholders = batch.map(() => "?").join(", ");
+        const result = await this.db
+          .prepare(
+            `SELECT program_id, COUNT(*) AS count, MAX(submitted_at) AS latest_submitted_at
+               FROM enrollment_requests
+              WHERE status = 'Pending'
+                AND program_id IN (${placeholders})
+              GROUP BY program_id`
+          )
+          .bind(...batch)
+          .all<ManagementNotificationEnrollmentRow>();
+        return (result.results ?? []).map((row) => ({
+          program_id: row.program_id,
+          count: Number(row.count),
+          latest_submitted_at: row.latest_submitted_at,
+        }));
+      })
+    );
+    return results.flat();
   }
 
   async listManagementNotificationEvents(
@@ -850,22 +875,28 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     if (programIds.length === 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT event_id, program_id, starts_at, status, availability, name,
-                updated_at
-           FROM events
-          WHERE starts_at >= ?
-            AND program_id IN (${placeholders})
-            AND (
-              status = 'Cancelled'
-              OR (status = 'Active' AND availability = 'Inactive')
-            )`
-      )
-      .bind(startsAtOrAfter, ...programIds)
-      .all<ManagementNotificationEventRow>();
-    return result.results ?? [];
+    const chunks = chunk(programIds, 50);
+    const results = await Promise.all(
+      chunks.map(async (batch) => {
+        const placeholders = batch.map(() => "?").join(", ");
+        const result = await this.db
+          .prepare(
+            `SELECT event_id, program_id, starts_at, status, availability, name,
+                    updated_at
+               FROM events
+              WHERE starts_at >= ?
+                AND program_id IN (${placeholders})
+                AND (
+                  status = 'Cancelled'
+                  OR (status = 'Active' AND availability = 'Inactive')
+                )`
+          )
+          .bind(startsAtOrAfter, ...batch)
+          .all<ManagementNotificationEventRow>();
+        return result.results ?? [];
+      })
+    );
+    return results.flat();
   }
 
   async listNotificationReadStates(
@@ -875,17 +906,23 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     if (sourceKeys.length === 0) {
       return [];
     }
-    const placeholders = sourceKeys.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT source_key, source_revision, read_at
-           FROM program_notification_reads
-          WHERE user_id = ?
-            AND source_key IN (${placeholders})`
-      )
-      .bind(userId, ...sourceKeys)
-      .all<NotificationReadStateRow>();
-    return result.results ?? [];
+    const chunks = chunk(sourceKeys, 50);
+    const results = await Promise.all(
+      chunks.map(async (batch) => {
+        const placeholders = batch.map(() => "?").join(", ");
+        const result = await this.db
+          .prepare(
+            `SELECT source_key, source_revision, read_at
+               FROM program_notification_reads
+              WHERE user_id = ?
+                AND source_key IN (${placeholders})`
+          )
+          .bind(userId, ...batch)
+          .all<NotificationReadStateRow>();
+        return result.results ?? [];
+      })
+    );
+    return results.flat();
   }
 
   async markNotificationReadStates(
@@ -906,7 +943,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         .bind(userId, source_key, source_revision, readAt)
     );
     const results = await this.db.batch(statements);
-    return results.reduce((count, result) => count + (result.meta?.changes ?? 0), 0);
+    return results.reduce(
+      (count, result) => count + (result.meta?.changes ?? 0),
+      0
+    );
   }
 
   async cancelEvent(
@@ -1102,11 +1142,19 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       planStatement,
       ...occurrenceStatements(occurrences.slice(0, CHUNK_SIZE)),
     ]);
-    for (let offset = CHUNK_SIZE; offset < occurrences.length; offset += CHUNK_SIZE) {
-      await this.db.batch(
-        occurrenceStatements(occurrences.slice(offset, offset + CHUNK_SIZE))
+    const additionalBatches = [];
+    for (
+      let offset = CHUNK_SIZE;
+      offset < occurrences.length;
+      offset += CHUNK_SIZE
+    ) {
+      additionalBatches.push(
+        this.db.batch(
+          occurrenceStatements(occurrences.slice(offset, offset + CHUNK_SIZE))
+        )
       );
     }
+    await Promise.all(additionalBatches);
     const persisted = await this.db
       .prepare(
         `SELECT * FROM program_preview_plans
@@ -1120,7 +1168,9 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return persisted;
   }
 
-  async findGenerationRunByPlan(planId: string): Promise<GenerationRunRow | null> {
+  async findGenerationRunByPlan(
+    planId: string
+  ): Promise<GenerationRunRow | null> {
     const row = await this.db
       .prepare("SELECT * FROM program_generation_runs WHERE plan_id = ?")
       .bind(planId)
