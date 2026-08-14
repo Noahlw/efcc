@@ -64,6 +64,13 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+function assertNoGuestLeakage(body: Record<string, unknown>): void {
+  assert.strictEqual("attendances" in body, false);
+  assert.strictEqual("guest_name" in body, false);
+  assert.strictEqual("guest_phone" in body, false);
+  assert.strictEqual("guest_phone_normalized" in body, false);
+}
+
 describe("attendance Worker routes", () => {
   beforeAll(async () => {
     await applyMigrations();
@@ -488,24 +495,63 @@ describe("attendance Worker routes", () => {
       "attendance_id",
       "outcome",
     ]);
-    const admin = await accessCookieFor("att-admin", "att-admin-password");
-    const voided = await worker.fetch(
-      request(`/api/v1/attendance/${attendanceId}/void`, {
-        method: "POST",
-        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
-        body: JSON.stringify({ reason: "輸入錯誤" }),
-      }),
-      testEnv()
-    );
-    assert.strictEqual(voided.status, 200);
-    const retry = await worker.fetch(
-      request("/api/v1/attendance/guest", {
-        method: "POST",
-        body: JSON.stringify({ ...payload, phone: "+852 9123-4567" }),
-      }),
-      testEnv()
-    );
-    assert.strictEqual(retry.status, 201);
+    const unrelatedRowId = "ATT-UNRELATED-ATTENDANCE-PRESERVED";
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, NULL, '無關出席紀錄', '6123 9999', 'hk:85261239999', 'guest_manual_code', 'Active', ?, NULL)`
+      )
+      .bind(unrelatedRowId, EVENT, now)
+      .run();
+
+    try {
+      const beforeVoidEnrollments = await testDb()
+        .prepare("SELECT * FROM enrollments ORDER BY enrollment_id ASC")
+        .all();
+      const admin = await accessCookieFor("att-admin", "att-admin-password");
+      const voided = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          body: JSON.stringify({ reason: "輸入錯誤" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voided.status, 200);
+      const afterVoidEnrollments = await testDb()
+        .prepare("SELECT * FROM enrollments ORDER BY enrollment_id ASC")
+        .all();
+      assert.deepStrictEqual(
+        afterVoidEnrollments.results,
+        beforeVoidEnrollments.results
+      );
+      const unrelatedRow = await testDb()
+        .prepare(
+          "SELECT status, guest_name, guest_phone FROM attendances WHERE attendance_id = ?"
+        )
+        .bind(unrelatedRowId)
+        .first<{ status: string; guest_name: string; guest_phone: string }>();
+      assert.strictEqual(unrelatedRow?.status, "Active");
+      assert.strictEqual(unrelatedRow?.guest_name, "無關出席紀錄");
+      assert.strictEqual(unrelatedRow?.guest_phone, "6123 9999");
+
+      const retry = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, phone: "+852 9123-4567" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(retry.status, 201);
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(unrelatedRowId)
+        .run();
+    }
   });
 
   test("guest check-in respects rate limiting when limiter rejects", async () => {
@@ -1363,7 +1409,7 @@ describe("attendance Worker routes", () => {
         headers: header,
         body: JSON.stringify({
           name: "訪客更正甲",
-          phone: phoneB,
+          phone: "+852 6666-6666",
           reason: "電話更正測試",
         }),
       }),
@@ -1414,6 +1460,47 @@ describe("attendance Worker routes", () => {
     assert.ok(row, "corrected row must remain on the roster");
     assert.strictEqual(row.guest_name, "訪客更正甲改");
     assert.strictEqual(row.guest_phone, phoneC);
+
+    const dbRow = await testDb()
+      .prepare(
+        "SELECT guest_name, guest_phone, guest_phone_normalized FROM attendances WHERE attendance_id = ?"
+      )
+      .bind(rowA.attendance_id)
+      .first<{
+        guest_name: string;
+        guest_phone: string;
+        guest_phone_normalized: string;
+      }>();
+    assert.strictEqual(dbRow?.guest_name, "訪客更正甲改");
+    assert.strictEqual(dbRow?.guest_phone, phoneC);
+    assert.strictEqual(dbRow?.guest_phone_normalized, "hk:85267777777");
+
+    const audit = await testDb()
+      .prepare("SELECT * FROM audit_events WHERE correlation_id = ?")
+      .bind(correctedBody.requestId)
+      .first<{
+        action: string;
+        outcome: string;
+        actor_user_id: string;
+        entity_type: string;
+        entity_id: string;
+        old_value_json: string;
+        new_value_json: string;
+        reason: string;
+      }>();
+    assert.strictEqual(audit?.action, "attendance.guest_correct");
+    assert.strictEqual(audit?.outcome, "SUCCESS");
+    assert.strictEqual(audit?.actor_user_id, "ATT-ADMIN");
+    assert.strictEqual(audit?.entity_id, rowA.attendance_id);
+    assert.strictEqual(audit?.reason, "電話更正測試");
+    assert.deepStrictEqual(JSON.parse(audit?.old_value_json ?? "{}"), {
+      name: "訪客更正甲",
+      phone: phoneA,
+    });
+    assert.deepStrictEqual(JSON.parse(audit?.new_value_json ?? "{}"), {
+      name: "訪客更正甲改",
+      phone: phoneC,
+    });
   });
 
   test("void requires a non-blank reason (422 VALIDATION)", async () => {
@@ -1514,5 +1601,293 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(corrected.status, 422);
     const body = await json(corrected);
     assert.strictEqual(body.code, "VALIDATION");
+  });
+
+  test("repeat void on an already voided record returns 200 already_voided and logs DUPLICATE audit event", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客重複作廢測試",
+          phone: "6777 0001",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 201);
+    const checkInBody = await json(checkIn);
+    const { attendance_id } = checkInBody.data as { attendance_id: string };
+
+    const firstVoid = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/void`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({ reason: "初次作廢" }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(firstVoid.status, 200);
+    const firstVoidBody = await json(firstVoid);
+    assert.strictEqual(
+      (firstVoidBody.data as { outcome: string }).outcome,
+      "voided"
+    );
+
+    const voidRow = await testDb()
+      .prepare(
+        "SELECT status, void_reason, voided_by, voided_at FROM attendances WHERE attendance_id = ?"
+      )
+      .bind(attendance_id)
+      .first<{
+        status: string;
+        void_reason: string;
+        voided_by: string;
+        voided_at: string;
+      }>();
+    assert.strictEqual(voidRow?.status, "Voided");
+    assert.strictEqual(voidRow?.void_reason, "初次作廢");
+    assert.strictEqual(voidRow?.voided_by, "ATT-ADMIN");
+    assert.ok(voidRow?.voided_at);
+
+    const firstAudit = await testDb()
+      .prepare(
+        "SELECT action, outcome, reason, actor_user_id FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(firstVoidBody.requestId)
+      .first<{
+        action: string;
+        outcome: string;
+        reason: string;
+        actor_user_id: string;
+      }>();
+    assert.strictEqual(firstAudit?.action, "attendance.void");
+    assert.strictEqual(firstAudit?.outcome, "SUCCESS");
+    assert.strictEqual(firstAudit?.reason, "初次作廢");
+    assert.strictEqual(firstAudit?.actor_user_id, "ATT-ADMIN");
+    const secondVoid = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/void`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({ reason: "再次作廢" }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(secondVoid.status, 200);
+    const secondVoidBody = await json(secondVoid);
+    assert.strictEqual(
+      (secondVoidBody.data as { outcome: string }).outcome,
+      "already_voided"
+    );
+
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome, reason FROM audit_events WHERE correlation_id = ?"
+      )
+      .bind(secondVoidBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.strictEqual(audit?.outcome, "DUPLICATE");
+    assert.strictEqual(audit?.reason, "ALREADY_VOIDED");
+  });
+
+  test("cross-scope operator and ordinary member are denied on roster, void, and guest correction (403 FORBIDDEN)", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const attendanceId = "ATT-P2-GUEST-CROSS-SCOPE";
+    const now = new Date().toISOString();
+    // Give member program leader scope for PROGRAM, so they are a genuine operator
+    // for PROGRAM but cross-scope / unauthorized for PROGRAM2 (ATT-P2-ACTIVE-CLOSED).
+    await testDb()
+      .prepare(
+        `INSERT INTO program_leaders
+          (program_id, user_id, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(PROGRAM, "ATT-MEMBER", "ATT-ADMIN", now)
+      .run();
+
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, 'ATT-P2-ACTIVE-CLOSED', NULL, '跨範圍訪客', '6666 1111', 'hk:85266661111', 'guest_manual_code', 'Active', ?, NULL)`
+      )
+      .bind(attendanceId, now)
+      .run();
+
+    try {
+      const roster = await worker.fetch(
+        request("/api/v1/attendance/events/ATT-P2-ACTIVE-CLOSED/roster", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(roster.status, 403);
+      const rosterBody = await json(roster);
+      assert.strictEqual(rosterBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(rosterBody);
+      const voidAttempt = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          body: JSON.stringify({ reason: "未授權作廢" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voidAttempt.status, 403);
+      const voidBody = await json(voidAttempt);
+      assert.strictEqual(voidBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(voidBody);
+      const correctionAttempt = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/guest-correction`, {
+          method: "PATCH",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          body: JSON.stringify({
+            name: "改名",
+            phone: "6666 2222",
+            reason: "未授權更正",
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(correctionAttempt.status, 403);
+      const correctionBody = await json(correctionAttempt);
+      assert.strictEqual(correctionBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(correctionBody);
+      const row = await testDb()
+        .prepare(
+          "SELECT guest_name, guest_phone, status FROM attendances WHERE attendance_id = ?"
+        )
+        .bind(attendanceId)
+        .first<{ guest_name: string; guest_phone: string; status: string }>();
+      assert.strictEqual(row?.guest_name, "跨範圍訪客");
+      assert.strictEqual(row?.guest_phone, "6666 1111");
+      assert.strictEqual(row?.status, "Active");
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
+        )
+        .bind(PROGRAM, "ATT-MEMBER")
+        .run();
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+    }
+  });
+
+  test("plain ordinary member without any operator grants is denied on roster, void, and guest correction (403 FORBIDDEN)", async () => {
+    const plainMember = await accessCookieFor(
+      "att-member",
+      "att-member-password"
+    );
+    const attendanceId = "ATT-PLAIN-MEMBER-DENIED-ROW";
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, NULL, '普通成員拒絕測試', '6999 1234', 'hk:85269991234', 'guest_manual_code', 'Active', ?, NULL)`
+      )
+      .bind(attendanceId, EVENT, now)
+      .run();
+
+    try {
+      const roster = await worker.fetch(
+        request(`/api/v1/attendance/events/${EVENT}/roster`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${plainMember}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(roster.status, 403);
+      const rosterBody = await json(roster);
+      assert.strictEqual(rosterBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(rosterBody);
+
+      const voidAttempt = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${plainMember}` },
+          body: JSON.stringify({ reason: "普通成員嘗試作廢" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voidAttempt.status, 403);
+      const voidBody = await json(voidAttempt);
+      assert.strictEqual(voidBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(voidBody);
+
+      const correctionAttempt = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/guest-correction`, {
+          method: "PATCH",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${plainMember}` },
+          body: JSON.stringify({
+            name: "普通成員嘗試改名",
+            phone: "6999 4321",
+            reason: "無權限更正",
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(correctionAttempt.status, 403);
+      const correctionBody = await json(correctionAttempt);
+      assert.strictEqual(correctionBody.code, "FORBIDDEN");
+      assertNoGuestLeakage(correctionBody);
+      const dbRow = await testDb()
+        .prepare(
+          "SELECT guest_name, guest_phone, status FROM attendances WHERE attendance_id = ?"
+        )
+        .bind(attendanceId)
+        .first<{ guest_name: string; guest_phone: string; status: string }>();
+      assert.strictEqual(dbRow?.guest_name, "普通成員拒絕測試");
+      assert.strictEqual(dbRow?.guest_phone, "6999 1234");
+      assert.strictEqual(dbRow?.status, "Active");
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+    }
+  });
+
+  test("correcting a member record via guest correction returns 404 NOT_FOUND", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const memberCheckIn = await worker.fetch(
+      request(`/api/v1/attendance/events/${QR_EVENT}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-MEMBER",
+          method: "leader_qr_scan",
+        }),
+      }),
+      testEnv()
+    );
+    assert.ok(memberCheckIn.status === 200 || memberCheckIn.status === 201);
+    const memberCheckInBody = await json(memberCheckIn);
+    const { attendance_id } = memberCheckInBody.data as {
+      attendance_id: string;
+    };
+
+    const correction = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          name: "嘗試更正成員",
+          phone: "9123 4567",
+          reason: "測試",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(correction.status, 404);
+    const correctionBody = await json(correction);
+    assert.strictEqual(correctionBody.code, "NOT_FOUND");
   });
 });
