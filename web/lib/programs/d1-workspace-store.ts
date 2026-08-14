@@ -54,6 +54,25 @@ function chunk<T>(items: readonly T[], size = 50): T[][] {
   return chunks;
 }
 
+/**
+ * Runs `query` once per 50-id batch in parallel and flattens the rows, keeping
+ * every IN (...) predicate under D1's SQL variable limit. The per-site closure
+ * owns the SQL text and any extra bound parameters (e.g. a date bound before
+ * the batch). The shared shape is: chunk, Promise.all over the batches, flat.
+ */
+async function chunkedQuery<T>(
+  ids: readonly string[],
+  query: (batch: string[]) => Promise<T[]>
+): Promise<T[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+  const results = await Promise.all(
+    chunk(ids, 50).map((batch) => query(batch))
+  );
+  return results.flat();
+}
+
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class WorkspaceNotFoundError extends Error {
   constructor(entity: string, id: string) {
@@ -722,36 +741,29 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async countPendingEnrollmentRequests(
+  countPendingEnrollmentRequests(
     programIds: readonly string[]
   ): Promise<{ program_id: string; count: number }[]> {
-    if (programIds.length === 0) {
-      return [];
-    }
-    const chunks = chunk(programIds, 50);
-    const results = await Promise.all(
-      chunks.map(async (batch) => {
-        const placeholders = batch.map(() => "?").join(", ");
-        const result = await this.db
-          .prepare(
-            `SELECT program_id, COUNT(*) AS count
-               FROM enrollment_requests
-              WHERE status = 'Pending'
-                AND program_id IN (${placeholders})
-              GROUP BY program_id`
-          )
-          .bind(...batch)
-          .all<{ program_id: string; count: number }>();
-        return (result.results ?? []).map((row) => ({
-          program_id: row.program_id,
-          count: Number(row.count),
-        }));
-      })
-    );
-    return results.flat();
+    return chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT program_id, COUNT(*) AS count
+             FROM enrollment_requests
+            WHERE status = 'Pending'
+              AND program_id IN (${placeholders})
+            GROUP BY program_id`
+        )
+        .bind(...batch)
+        .all<{ program_id: string; count: number }>();
+      return (result.results ?? []).map((row) => ({
+        program_id: row.program_id,
+        count: Number(row.count),
+      }));
+    });
   }
 
-  async countManagementEventAttention(
+  countManagementEventAttention(
     programIds: readonly string[],
     startsAtOrAfter: string
   ): Promise<
@@ -761,48 +773,41 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       cancelled_event_count: number;
     }[]
   > {
-    if (programIds.length === 0) {
-      return [];
-    }
-    const chunks = chunk(programIds, 50);
-    const results = await Promise.all(
-      chunks.map(async (batch) => {
-        const placeholders = batch.map(() => "?").join(", ");
-        const result = await this.db
-          .prepare(
-            `SELECT program_id,
-                    SUM(
-                      CASE
-                        WHEN status = 'Active' AND availability = 'Inactive' THEN 1
-                        ELSE 0
-                      END
-                    ) AS inactive_event_count,
-                    SUM(
-                      CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END
-                    ) AS cancelled_event_count
-               FROM events
-              WHERE starts_at >= ?
-                AND program_id IN (${placeholders})
-                AND (
-                  status = 'Cancelled'
-                  OR (status = 'Active' AND availability = 'Inactive')
-                )
-              GROUP BY program_id`
-          )
-          .bind(startsAtOrAfter, ...batch)
-          .all<{
-            program_id: string;
-            inactive_event_count: number;
-            cancelled_event_count: number;
-          }>();
-        return (result.results ?? []).map((row) => ({
-          program_id: row.program_id,
-          inactive_event_count: Number(row.inactive_event_count),
-          cancelled_event_count: Number(row.cancelled_event_count),
-        }));
-      })
-    );
-    return results.flat();
+    return chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT program_id,
+                  SUM(
+                    CASE
+                      WHEN status = 'Active' AND availability = 'Inactive' THEN 1
+                      ELSE 0
+                    END
+                  ) AS inactive_event_count,
+                  SUM(
+                    CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END
+                  ) AS cancelled_event_count
+             FROM events
+            WHERE starts_at >= ?
+              AND program_id IN (${placeholders})
+              AND (
+                status = 'Cancelled'
+                OR (status = 'Active' AND availability = 'Inactive')
+              )
+            GROUP BY program_id`
+        )
+        .bind(startsAtOrAfter, ...batch)
+        .all<{
+          program_id: string;
+          inactive_event_count: number;
+          cancelled_event_count: number;
+        }>();
+      return (result.results ?? []).map((row) => ({
+        program_id: row.program_id,
+        inactive_event_count: Number(row.inactive_event_count),
+        cancelled_event_count: Number(row.cancelled_event_count),
+      }));
+    });
   }
 
   async listManagementEventAttention(
@@ -838,91 +843,70 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return result.results ?? [];
   }
 
-  async listManagementNotificationEnrollments(
+  listManagementNotificationEnrollments(
     programIds: readonly string[]
   ): Promise<ManagementNotificationEnrollmentRow[]> {
-    if (programIds.length === 0) {
-      return [];
-    }
-    const chunks = chunk(programIds, 50);
-    const results = await Promise.all(
-      chunks.map(async (batch) => {
-        const placeholders = batch.map(() => "?").join(", ");
-        const result = await this.db
-          .prepare(
-            `SELECT program_id, COUNT(*) AS count, MAX(submitted_at) AS latest_submitted_at
-               FROM enrollment_requests
-              WHERE status = 'Pending'
-                AND program_id IN (${placeholders})
-              GROUP BY program_id`
-          )
-          .bind(...batch)
-          .all<ManagementNotificationEnrollmentRow>();
-        return (result.results ?? []).map((row) => ({
-          program_id: row.program_id,
-          count: Number(row.count),
-          latest_submitted_at: row.latest_submitted_at,
-        }));
-      })
-    );
-    return results.flat();
+    return chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT program_id, COUNT(*) AS count, MAX(submitted_at) AS latest_submitted_at
+             FROM enrollment_requests
+            WHERE status = 'Pending'
+              AND program_id IN (${placeholders})
+            GROUP BY program_id`
+        )
+        .bind(...batch)
+        .all<ManagementNotificationEnrollmentRow>();
+      return (result.results ?? []).map((row) => ({
+        program_id: row.program_id,
+        count: Number(row.count),
+        latest_submitted_at: row.latest_submitted_at,
+      }));
+    });
   }
 
-  async listManagementNotificationEvents(
+  listManagementNotificationEvents(
     programIds: readonly string[],
     startsAtOrAfter: string
   ): Promise<ManagementNotificationEventRow[]> {
-    if (programIds.length === 0) {
-      return [];
-    }
-    const chunks = chunk(programIds, 50);
-    const results = await Promise.all(
-      chunks.map(async (batch) => {
-        const placeholders = batch.map(() => "?").join(", ");
-        const result = await this.db
-          .prepare(
-            `SELECT event_id, program_id, starts_at, status, availability, name,
-                    updated_at
-               FROM events
-              WHERE starts_at >= ?
-                AND program_id IN (${placeholders})
-                AND (
-                  status = 'Cancelled'
-                  OR (status = 'Active' AND availability = 'Inactive')
-                )`
-          )
-          .bind(startsAtOrAfter, ...batch)
-          .all<ManagementNotificationEventRow>();
-        return result.results ?? [];
-      })
-    );
-    return results.flat();
+    return chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT event_id, program_id, starts_at, status, availability, name,
+                  updated_at
+             FROM events
+            WHERE starts_at >= ?
+              AND program_id IN (${placeholders})
+              AND (
+                status = 'Cancelled'
+                OR (status = 'Active' AND availability = 'Inactive')
+              )`
+        )
+        .bind(startsAtOrAfter, ...batch)
+        .all<ManagementNotificationEventRow>();
+      return result.results ?? [];
+    });
   }
 
-  async listNotificationReadStates(
+  listNotificationReadStates(
     userId: string,
     sourceKeys: readonly string[]
   ): Promise<NotificationReadStateRow[]> {
-    if (sourceKeys.length === 0) {
-      return [];
-    }
-    const chunks = chunk(sourceKeys, 50);
-    const results = await Promise.all(
-      chunks.map(async (batch) => {
-        const placeholders = batch.map(() => "?").join(", ");
-        const result = await this.db
-          .prepare(
-            `SELECT source_key, source_revision, read_at
-               FROM program_notification_reads
-              WHERE user_id = ?
-                AND source_key IN (${placeholders})`
-          )
-          .bind(userId, ...batch)
-          .all<NotificationReadStateRow>();
-        return result.results ?? [];
-      })
-    );
-    return results.flat();
+    return chunkedQuery(sourceKeys, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT source_key, source_revision, read_at
+             FROM program_notification_reads
+            WHERE user_id = ?
+              AND source_key IN (${placeholders})`
+        )
+        .bind(userId, ...batch)
+        .all<NotificationReadStateRow>();
+      return result.results ?? [];
+    });
   }
 
   async markNotificationReadStates(

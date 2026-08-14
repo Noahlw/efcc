@@ -11,6 +11,7 @@ import {
   attendanceEventLabel,
   attendanceEventName,
 } from "@/lib/attendance-display";
+import { ScannerStatusOutput } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -72,6 +73,8 @@ export const AssistedScannerPanel = ({
       if (!eventId || eventId !== currentEventRef.current) {
         return;
       }
+      // scanMember is a hoisted function declaration in this component; the
+      // repo lint requires the disable even though the declaration is hoisted.
       // eslint-disable-next-line no-use-before-define
       void scanMember(value, eventId);
     },
@@ -392,14 +395,7 @@ export const AssistedScannerPanel = ({
             {COPY.attendance.assistedContextHint}
           </p>
         </div>
-        <output
-          className={styles.status}
-          data-tone={status ? tone : undefined}
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {status}
-        </output>
+        <ScannerStatusOutput message={status} tone={tone} />
       </section>
     </div>
   );

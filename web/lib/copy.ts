@@ -60,6 +60,7 @@ export const COPY = {
     guestFields: "訪客資料",
     guestPhoneHint: "例如：9123 4567 或 +852 9123 4567",
     guestSubmit: "送出訪客簽到",
+    guestSubmitting: "送出中…",
     success: "簽到成功。",
     duplicate: "你已完成此聚會簽到。",
     guestDuplicate: "此電話已簽到。如需協助，請聯絡聚會負責人。",

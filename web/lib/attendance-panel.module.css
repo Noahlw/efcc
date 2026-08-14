@@ -1,8 +1,9 @@
 /* ============================================================================
    Attendance panels (self/guest + operator) — Variant A: Official Civic Minimal
    ----------------------------------------------------------------------------
-   Shared module for AttendancePanel (guest + member self check-in, /scanner)
-   and AttendanceOperatorPanel (/events). Civic neutrals with a restrained
+   Shared module for the attendance surfaces: AttendancePanel (guest check-in),
+   SelfCheckInPanel (/scanner), AssistedScannerPanel (/scanner), and
+   AttendanceOperatorPanel (/events). Civic neutrals with a restrained
    cinnabar accent reserved for primary submission and active selection;
    input borders hairline-strong, focus rings teal, destructive actions
    outlined error red. Phone-first: 44px targets, stacked groups, the guest

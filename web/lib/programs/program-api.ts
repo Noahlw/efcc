@@ -1069,7 +1069,10 @@ export function cancelEvent(
 
 export interface AttendanceResult {
   outcome: "success" | "duplicate" | "already_voided" | "voided" | "corrected";
-  attendance_id: string;
+  /** Present on success/void/correction; deliberately ABSENT on duplicate
+   *  (Spec #244 dec 14: duplicate responses must not echo the existing
+   *  record's id — it would be an identity oracle for public guests). */
+  attendance_id?: string;
 }
 
 /** GET /api/v1/attendance/resolve */

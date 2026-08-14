@@ -703,15 +703,10 @@ async function insertAttendance(
       // Members and guests share one duplicate shape (200 + outcome) so the
       // client treats both as neutral already-done notices; only the
       // un-look-up-able case (no normalized phone on a guest insert) stays a
-      // problem+json 409.
-      return json(
-        200,
-        {
-          outcome: "duplicate",
-          attendance_id: existing.attendance_id,
-        },
-        id
-      );
+      // problem+json 409. The existing record's id is never returned to the
+      // caller (Spec #244 dec 14 / #259 AC4: duplicate responses reveal no
+      // existing guest identity or time — the id would be an oracle).
+      return json(200, { outcome: "duplicate" }, id);
     }
     return problem(
       409,
@@ -1088,7 +1083,11 @@ export async function handleAssistedCheckIn(
           : "leader_manual_search",
       publicDuplicateMessage: "此成員已完成簽到。",
     },
-    id
+    id,
+    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
+    // may still record attendance after the window closes (US 25 recovery).
+    // Cancelled/Inactive events remain rejected by checkInGate regardless.
+    false
   );
 }
 
@@ -1108,11 +1107,15 @@ export async function handleSearchMembers(
     return operator;
   }
   const { current, event } = operator;
+  // Member search is window-exempt (US 25 recovery): the operator must be
+  // able to find the member for a post-window recording. Cancelled and
+  // Inactive events remain rejected — check-in on those can never succeed.
   const gate = await checkInGate(
     env,
     event,
     { actor: current, memberUserId: null },
-    id
+    id,
+    false
   );
   if (gate) {
     return gate;

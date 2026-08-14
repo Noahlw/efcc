@@ -419,8 +419,12 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(second.status, 200);
     const secondBody = await json(second);
     const firstData = firstBody.data as { attendance_id: string };
-    const secondData = secondBody.data as { attendance_id: string };
-    assert.strictEqual(secondData.attendance_id, firstData.attendance_id);
+    const secondData = secondBody.data as Record<string, unknown>;
+    // The duplicate shape carries only the neutral outcome; the original
+    // record's id is never echoed back (Spec #244 dec 14).
+    assert.strictEqual(secondData.outcome, "duplicate");
+    assert.deepStrictEqual(Object.keys(secondData).sort(), ["outcome"]);
+    assert.ok(firstData.attendance_id);
   });
 
   test("guest phone forms share a duplicate guard, then void releases it", async () => {
@@ -487,14 +491,10 @@ describe("attendance Worker routes", () => {
     const duplicateBody = await json(duplicate);
     const duplicateData = duplicateBody.data as Record<string, unknown>;
     assert.strictEqual(duplicateData.outcome, "duplicate");
-    // The duplicate points at the original row, so voiding it releases the
-    // phone for a genuine re-check-in below.
-    assert.strictEqual(duplicateData.attendance_id, attendanceId);
-    // Duplicate response reveals no attendee identity or submission time.
-    assert.deepStrictEqual(Object.keys(duplicateData).sort(), [
-      "attendance_id",
-      "outcome",
-    ]);
+    // Duplicate response reveals no attendee identity, submission time, or
+    // the existing record's id (Spec #244 dec 14 / #259 AC4). The void below
+    // targets the id captured from the FIRST (201) response instead.
+    assert.deepStrictEqual(Object.keys(duplicateData).sort(), ["outcome"]);
     const unrelatedRowId = "ATT-UNRELATED-ATTENDANCE-PRESERVED";
     const now = new Date().toISOString();
     await testDb()
@@ -898,7 +898,7 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(after?.count, before?.count);
   });
 
-  test("assisted member search uses the live Event window gate", async () => {
+  test("assisted member search stays available after the window closes (US 25 recovery)", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const response = await worker.fetch(
       request(
@@ -909,12 +909,17 @@ describe("attendance Worker routes", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(response.status, 409);
+    // Assisted check-in is capability-gated only (Spec 081 L88), so the
+    // operator must still be able to find the member for a post-window
+    // recording.
+    assert.strictEqual(response.status, 200);
     const body = await json(response);
-    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
+    const { members } = body.data as { members: { user_id: string }[] };
+    assert.strictEqual(members.length, 1);
+    assert.strictEqual(members[0].user_id, "ATT-MEMBER");
   });
 
-  test("assisted check-in rejects a closed-window Event deterministically", async () => {
+  test("assisted check-in still records attendance after the window closes (US 25 recovery)", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const before = await testDb()
       .prepare(
@@ -933,16 +938,17 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(response.status, 409);
-    const body = await json(response);
-    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
+    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
+    // may record attendance after the window closes (US 25 recovery). This is
+    // the regression test for that path — it must record, not reject.
+    assert.strictEqual(response.status, 201);
     const after = await testDb()
       .prepare(
         "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
       )
       .bind(CLOSED_EVENT)
       .first<{ count: number }>();
-    assert.strictEqual(after?.count, before?.count);
+    assert.strictEqual(after?.count, (before?.count ?? 0) + 1);
   });
 
   test("assisted check-in revalidates the active Program boundary", async () => {
