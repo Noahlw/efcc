@@ -2,7 +2,6 @@
 # Branch protection/required reviewers remain a manual admin action (see CONTRIBUTING.md).
 * @noahwong-hue
 
-# High-risk paths: shared governance, web (Cloudflare/Next), and Google Apps Script.
+# High-risk paths: shared governance and web (Cloudflare/Next).
 .github/ @noahwong-hue
 web/ @noahwong-hue
-src/gas/ @noahwong-hue

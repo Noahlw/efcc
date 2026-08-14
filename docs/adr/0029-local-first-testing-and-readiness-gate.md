@@ -16,7 +16,7 @@ The repository needs one deterministic gate that maintainers can run without tou
 1. The required repository `READY` gate is the relevant deterministic checks plus 100% pass of the relevant Playwright suite against local `wrangler dev` and local D1 at `http://127.0.0.1:8787`.
 2. `pnpm dev:local` is the standard local entry point. `pnpm db:seed:local` creates disposable `E2E_` account fixtures, and `pnpm db:seed:demo` creates an idempotent local `E2E_DEMO_` department/program walkthrough with generated events.
 3. Cloudflare deployment is optional/manual production-promotion evidence. Optional deployed runs must use a fresh allowlisted `efcc-auth-*` or `efcc-dev-*` Worker hostname, disposable `E2E_` fixtures, and the existing fail-closed workflow/config validation. A missing deployed run never blocks repository `READY`.
-4. The legacy Apps Script `/exec` Playwright suite, Google storage-state capture helper, and clasp deployment helper are retired. Deterministic `tests/gas/` coverage remains for transitional Apps Script code; an Apps Script browser smoke requires an explicitly scoped operator decision.
+4. The legacy Apps Script `/exec` Playwright suite, Google storage-state capture helper, and clasp deployment helper are retired, along with `src/gas/`, `tests/gas/`, and the `/api/v1/rpc` proxy. Deterministic coverage is the `web/` workerd suite plus `tests/prototype/`; an Apps Script browser smoke requires an explicitly scoped operator decision.
 5. Acceptance evidence is appended only when a maintainer explicitly runs `tests/e2e/plan-doc-appender.ts` with a named plan, artifact, heading, and target URL.
 
 ## Consequences

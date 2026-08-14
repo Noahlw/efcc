@@ -51,6 +51,27 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.5
         version: 6.0.5(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1))
+      '@vitest/expect':
+        specifier: 4.1.10
+        version: 4.1.10
+      '@vitest/mocker':
+        specifier: 4.1.10
+        version: 4.1.10(msw@2.15.0(@types/node@26.1.2)(typescript@5.9.3))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1))
+      '@vitest/pretty-format':
+        specifier: 4.1.10
+        version: 4.1.10
+      '@vitest/runner':
+        specifier: 4.1.10
+        version: 4.1.10
+      '@vitest/snapshot':
+        specifier: 4.1.10
+        version: 4.1.10
+      '@vitest/spy':
+        specifier: 4.1.10
+        version: 4.1.10
+      '@vitest/utils':
+        specifier: 4.1.10
+        version: 4.1.10
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1

@@ -13,11 +13,10 @@
     "db:seed:demo": "tsx tests/e2e/seed-demo.ts",
     "verify": "pnpm typecheck && pnpm test && pnpm --dir web typecheck && pnpm --dir web test && pnpm --dir web test:components && pnpm test:shell-responsive",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/e2e/tsconfig.json",
-    "test": "vitest run tests/gas tests/prototype",
-    "test:gas": "vitest run tests/gas",
+    "test": "vitest run tests/prototype",
     "test:prototype": "vitest run tests/prototype",
     "test:shell-responsive": "playwright test --config=tests/e2e/responsive.config.ts",
-    "build": "echo No build step; see src/gas/",
+    "build": "echo No root build step; the web app is built and served by the Worker (see web/).",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },

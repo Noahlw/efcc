@@ -12,7 +12,7 @@ body:
     attributes:
       label: Affected boundary
       description: Which part of the system exhibits the bug?
-      placeholder: e.g. Cloudflare Worker / D1, Google Apps Script (src/gas/), or web frontend (web/)
+      placeholder: e.g. Cloudflare Worker / D1, or web frontend (web/)
     validations:
       required: true
   - type: textarea

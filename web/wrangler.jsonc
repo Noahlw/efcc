@@ -13,13 +13,7 @@
   "observability": {
     "enabled": true,
   },
-  "vars": {
-    // PROTOTYPE (issue #129): overwrite before deploy with the isolated
-    // Apps Script versioned deployment's /exec URL (never the production
-    // deployment). Prefer `wrangler secret put APPS_SCRIPT_EXEC_URL`
-    // for anything beyond a throwaway prototype.
-    "APPS_SCRIPT_EXEC_URL": "",
-  },
+  "vars": {},
   // D1 identity database (ADR-0020 / AUTH-01 #159). Sole system of record
   // for accounts, credentials, sessions, and registration requests. The
   // database_id is a placeholder - replace with the real D1 database id
@@ -34,9 +28,8 @@
       "migrations_dir": "migrations",
     },
   ],
-  // Rate Limiting binding (ADR-0018 §9). Session-keyed, never IP - the
-  // Worker reads X-Efcc-Session-Id or the login body's username and calls
-  // env.RPC_RATE_LIMITER.limit({ key }). Limits are per-Cloudflare-location
+  // Rate Limiting binding. Keyed per event for guest check-in on the
+  // Attendance surface, never IP. Limits are per-Cloudflare-location
   // and eventually consistent (a tripwire, not an exact global cap).
   // The namespace_id must be a unique integer for the Cloudflare account;
   // replace 1001 with a real id before `wrangler deploy`. In dev/test the

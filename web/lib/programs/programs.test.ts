@@ -41,7 +41,6 @@ const HOST = "https://efcc.example";
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...(env as unknown as Env),
-    APPS_SCRIPT_EXEC_URL: "https://script.google.com/macros/s/fake/exec",
     EFCC_ACCESS_TOKEN_SECRET: SECRET,
     ...overrides,
   };

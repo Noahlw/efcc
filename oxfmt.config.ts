@@ -11,6 +11,5 @@ export default defineConfig({
     "index.html",
     "程式碼.js",
     "prototype/scanner/vendor/**",
-    "src/gas/jsqr.js.html",
   ],
 });

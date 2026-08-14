@@ -39,11 +39,11 @@ pnpm run bootstrap && pnpm run verify
 
 **Local/manual smoke** (what you ran on your machine, not yet deployed):
 
-<!-- **Official deployed evidence** (only if applicable — link to the deployed Worker/D1, Apps Script release, or web export): -->
+<!-- **Official deployed evidence** (only if applicable — link to the deployed Worker/D1 or web export): -->
 
 ## Migration / deployment notes
 
-<!-- Any schema, D1 migration, Apps Script release, or deployment step required. If none, say "None — no migration or deployment step required." -->
+<!-- Any schema, D1 migration, or deployment step required. If none, say "None — no migration or deployment step required." -->
 
 ## Safety confirmation
 

@@ -4,11 +4,11 @@ The rebuilt login boundary is the Cloudflare Worker `/api/v1/auth/*` surface bac
 
 ## How the checks behave
 
-- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root GAS/prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
+- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
 - **D1 auth contract check** (`e2e.yml`, `auth-contract` job) also needs no secrets or deployment. It runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool and covers the cookie-only transport, legacy-PIN upgrade, session lifecycle, and forbidden header/CORS paths.
 - **Optional deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is operational evidence only; it is not required for repository `READY` and never writes to a production database.
 
-The branch's signed-out UI still calls the retained Apps Script `/api/v1/rpc` path; it is not presented as the rebuilt D1 login. The optional deployed smoke therefore targets `/api/v1/auth/*` directly with Playwright's request context until the browser client is fully rewired in the follow-up login/UI work.
+The browser talks directly to the Worker/D1 surfaces (`/api/v1/auth/*`, `/api/v1/programs/*`, `/api/v1/attendance*`); there is no Apps Script proxy in the request path.
 
 ## Repository variable
 
@@ -73,6 +73,6 @@ One-time provisioning runbook (all wrangler commands from `web/`):
 
 Then run the suite against that worker: `PROGRAMS_TARGET_URL=https://efcc-dev-testing.efcc-ggc.workers.dev pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` (omit the override to run local-first against `wrangler dev`).
 
-## Legacy Apps Script suite
+## Retired Apps Script suite
 
-The deployed Apps Script `/exec` Playwright suite, Google storage-state fixtures, and clasp deployment helper are retired. `tests/gas/` remains the deterministic VM-harness coverage for transitional Apps Script code. A future Apps Script browser trace would require an explicit new scope and operator decision; it is not part of the D1 `READY` gate.
+The deployed Apps Script `/exec` Playwright suite, Google storage-state fixtures, clasp deployment helper, `src/gas/`, and `tests/gas/` VM-harness are retired and removed. An Apps Script browser trace is out of scope and would require an explicit new operator decision; it is not part of the D1 `READY` gate.

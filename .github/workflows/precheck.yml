@@ -1,7 +1,7 @@
 # CI precheck: deterministic checks only.
 #
 # These jobs are self-contained checks against the code on the branch: no
-# deployment, network-harnessed Apps Script, Google session state, or remote
+# deployment, network-harnessed services, Google session state, or remote
 # E2E target.
 #
 # The root and `web/` trees are SEPARATE pnpm workspaces with their own
@@ -11,7 +11,7 @@
 # Coverage map (ownership explicit per tree):
 #   root-precheck
 #     pnpm typecheck                 root tooling + tests/e2e TS
-#     pnpm test                      tests/gas vm-harness + tests/prototype
+#     pnpm test                      tests/prototype
 #   web-precheck
 #     pnpm --dir web typecheck       Next app tsconfig + worker/auth tsconfig
 #     pnpm --dir web test            workerd pool: rebuilt cookie-only D1 auth,
@@ -25,11 +25,6 @@
 #                                          target, storage states, or Sheets
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`.
-#
-# NOTE: untracked #151 service-envelope files (tests/gas/service-envelope.test.js,
-# src/gas/service-envelope.gs, web/lib/service-envelope.ts, web/lib/service-envelope.test.ts)
-# are not part of this branch's PR surface and are absent from CI checkouts, so
-# they never run here. They are exercised by ticket #151's own work.
 
 name: Precheck (Deterministic PR gate)
 
@@ -41,7 +36,7 @@ on:
 
 jobs:
   root-precheck:
-    name: Root typecheck & unit (gas + prototype)
+    name: Root typecheck & unit (prototype)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -67,7 +62,7 @@ jobs:
       - name: Typecheck (root tooling + tests/e2e)
         run: pnpm typecheck
 
-      - name: Unit tests (GAS vm-harness + prototype)
+      - name: Unit tests (prototype)
         run: pnpm test
 
   web-precheck:

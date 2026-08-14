@@ -2,13 +2,12 @@
 
 ## Purpose
 
-This trace defines the observable checks required before PR #166 is considered merge-ready as the staged Worker/D1 platform starting point.
+This trace defined the observable checks required before PR #166 was considered merge-ready as the staged Worker/D1 platform starting point.
 
 ## Ownership boundary
 
-- **Worker + D1** owns identity, credentials, login, refresh, logout, legacy-credential upgrade, registration, approval, and authenticated profile data.
-- **Apps Script + Google Sheets** remains the transitional domain backend for Programs, Events, Attendance, Enrollments, and other domain operations until each capability has a Worker/D1 replacement.
-- The repository must not claim a transitional capability is complete for the new website merely because legacy Apps Script code exists.
+- **Worker + D1** owns identity, credentials, login, refresh, logout, legacy-credential upgrade, registration, approval, authenticated profile data, and the domain capabilities (Programs, Events, Attendance, Enrollments).
+- **Apps Script + Google Sheets** was the transitional domain backend; it is now **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the transitional `/api/v1/rpc` proxy were removed once every capability had a Worker/D1 replacement and no live caller remained.
 
 ## Acceptance criteria
 
@@ -23,10 +22,10 @@ This trace defines the observable checks required before PR #166 is considered m
 | WEB-1 | Cold boot without an auth hint renders the login page and does not attempt restore. | Component test and fresh static deployment browser assertion. |
 | WEB-2 | Responsive navigation renders the phone bottom navigation below 768px and desktop rail at or above 768px for an authenticated test session. | Fresh deployed browser trace at 375px and 1280px. |
 | WEB-3 | The new website labels domain capabilities according to their actual state: placeholder/target work is not presented as complete. | Roadmap and UI copy review; no false completion claims. |
-| MIG-1 | The transitional Apps Script domain boundary remains intact until replacement capability acceptance is complete. | Static route/reference review and legacy domain test suite. |
+| MIG-1 | ~~The transitional Apps Script domain boundary remains intact until replacement capability acceptance is complete.~~ **Complete (2026-08-15):** every domain capability has a Worker/D1 replacement and the Apps Script boundary, proxy, and tests were removed. | Static route/reference review and the `web/` workerd + `tests/prototype/` suites. |
 | SAFE-1 | Destructive E2E upgrade tests accept only explicitly marked disposable usernames beginning with `E2E_`. | Test configuration assertion and a negative test with a non-`E2E_` username. |
 | SAFE-2 | No credential, token, PIN, or cookie value appears in test output or uploaded artifacts. | Secret-safe test assertions and artifact review. |
 
 ## Fresh deployment gate
 
-All criteria must pass against a fresh deployed `/exec` or isolated Worker deployment appropriate to the surface. A partial local test run is not sufficient for READY status.
+The D1-era criteria are verified against local `wrangler dev` + local D1 (the default `READY` gate, ADR-0029); an isolated Worker deployment is optional operational evidence. The legacy `/exec` surface no longer exists.

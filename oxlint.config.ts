@@ -11,7 +11,6 @@ export default defineConfig({
     "docs/**",
     "index.html",
     "程式碼.js",
-    "src/gas/template-reference/**",
     "prototype/scanner/vendor/**",
   ],
   rules: {

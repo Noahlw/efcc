@@ -24,8 +24,6 @@
  *     idempotent replay, and conflict/404 handling.
  *   - Every response carries `X-Request-Id` matching the body `requestId`.
  *   - No credential or token value appears in any response body or log.
- *   - The preserved `/api/v1/rpc` proxy still answers OPTIONS with CORS
- *     headers (the two surfaces have different transport contracts).
  */
 import assert from "node:assert/strict";
 
@@ -55,7 +53,6 @@ const HOST = "https://efcc.example";
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...(env as unknown as Env),
-    APPS_SCRIPT_EXEC_URL: "https://script.google.com/macros/s/fake/exec",
     EFCC_ACCESS_TOKEN_SECRET: SECRET,
     ...overrides,
   };
@@ -1215,22 +1212,5 @@ describe("AUTH-05: registration queue listing", () => {
     assert.strictEqual(res.status, 404);
     const body = await problemOf(res);
     assert.strictEqual(body.code, "NOT_FOUND");
-  });
-});
-
-describe("AUTH-06: preserved /api/v1/rpc proxy still has CORS (regression)", () => {
-  test("OPTIONS on /api/v1/rpc still returns 204 with CORS headers", async () => {
-    const res = await worker.fetch(
-      authRequest("/api/v1/rpc", {
-        method: "OPTIONS",
-        headers: { Origin: HOST },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(res.status, 204);
-    assert.ok(res.headers.get("Access-Control-Allow-Origin"));
-    const methods = res.headers.get("Access-Control-Allow-Methods");
-    assert.ok(methods);
-    assert.ok(methods.includes("POST"));
   });
 });

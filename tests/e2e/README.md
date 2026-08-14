@@ -1,6 +1,6 @@
 # Playwright end-to-end tests
 
-The browser suites under `tests/e2e/` exercise the rebuilt Worker/D1 application. They are separate from the deterministic Apps Script VM tests under `tests/gas/`, and none of them uploads code or mutates the production Sheet.
+The browser suites under `tests/e2e/` exercise the rebuilt Worker/D1 application, and none of them uploads code or mutates the production Sheet.
 
 ## Test ownership
 
@@ -14,7 +14,7 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `live-ui.config.ts` | `pnpm exec playwright test -c tests/e2e/live-ui.config.ts` | Rebuilt Next UI shell, Profile, Account Settings, approval flow, and responsive browser states. |
 | `responsive.config.ts` | `pnpm test:shell-responsive` | Deterministic static-shell responsive/accessibility checks with an in-browser RPC stub. |
 
-The retired Apps Script `/exec` Playwright suite, Google storage-state capture helper, and clasp deployment helper were removed. `tests/gas/` remains the deterministic VM-harness suite for transitional Apps Script code.
+The retired Apps Script `/exec` Playwright suite, Google storage-state capture helper, clasp deployment helper, `src/gas/`, and `tests/gas/` VM-harness were removed with the GAS retirement.
 
 ## Local-first run
 
@@ -80,4 +80,4 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
 
 ## Implemented-scope rule
 
-Only implemented behavior may be asserted as acceptance coverage. The D1 suites exercise the Worker routes that exist in this branch; unfinished domain capabilities remain transitional or planned in the linked specification/ticket.
+Only implemented behavior may be asserted as acceptance coverage. The D1 suites exercise the Worker routes that exist in this branch; unfinished domain capabilities remain planned in the linked specification/ticket.

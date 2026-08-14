@@ -8,7 +8,6 @@ This document is the entry point for a developer working from a fresh clone. It 
 - **Node.js 22** — pinned in [`.node-version`](.node-version) and used by CI. Select it with `fnm use`, `mise install`, or `asdf install` from the repo root.
 - **pnpm 11.7.0** — pinned in the root `packageManager` field. `corepack enable` makes the pinned version available.
 - **Chromium** — installed automatically for Playwright by `pnpm run bootstrap`.
-- **`clasp`** — only for Apps Script deployment (optional; see [Apps Script boundary](#apps-script-optional-boundary)).
 
 ## Fresh clone
 
@@ -72,9 +71,8 @@ None of these deploy anything or require secrets. Prefer `pnpm run verify` befor
 
 Run only the relevant suite when iterating locally:
 
-- **GAS domain code (`src/gas/`):** `pnpm test:gas`
 - **Prototype/scanner code:** `pnpm test:prototype`
-- **Worker/auth and client contract (`web/`):** `pnpm --dir web test`
+- **Worker/auth/programs/attendance and client contract (`web/`):** `pnpm --dir web test`
 - **Web components (`web/`):** `pnpm --dir web test:components`
 - **Responsive/accessibility shell:** `pnpm test:shell-responsive`
 - **Static/lint checks (optional, not part of the CI gate):** `pnpm check`
@@ -92,14 +90,13 @@ Cloudflare deployment is optional/manual production-promotion evidence. If an op
 
 ## Local environment and secrets
 
-- The Worker reads local variables from `web/.dev.vars` (gitignored). A safe template lives at `web/.dev.vars.example`.
-- To exercise the transitional `/api/v1/rpc` proxy locally, copy the template and point it at an **isolated** Apps Script deployment's `/exec` URL:
+- The Worker reads local variables from `web/.dev.vars` (gitignored). A safe template lives at `web/.dev.vars.example`:
 
   ```sh
   cp web/.dev.vars.example web/.dev.vars
   ```
 
-- `web/.dev.vars` is a copy/reference with placeholder values only — never put production credentials, PINs, cookies, or tokens in it, and never commit real values. Prefer `wrangler secret put APPS_SCRIPT_EXEC_URL` for anything beyond a throwaway prototype.
+- `web/.dev.vars` is a copy/reference with placeholder values only — never put production credentials, PINs, cookies, or tokens in it, and never commit real values. Prefer `wrangler secret put` for anything beyond a throwaway prototype.
 - `.env`, `web/.dev.vars`, `.wrangler/`, `.auth/`, and test artifacts are gitignored and must stay that way. Do not loosen secret ignores.
 
 ## Pre-commit
@@ -111,29 +108,26 @@ The repository uses [husky](https://typicode.github.io/husky/) with a pre-commit
 
 The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` script). If it fails, fix the reported formatting or type errors and re-stage; the commit is blocked until it passes.
 
-## Apps Script optional boundary
+## Apps Script retirement note
 
-Apps Script / Google Sheets is the **transitional domain backend**, not the primary platform. Work there is optional, gated by the rules in [`AGENTS.md`](AGENTS.md) — do not invent new deployment instructions:
+Apps Script / Google Sheets is **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the Worker's transitional `/api/v1/rpc` proxy were removed once every capability had a Worker/D1 replacement and no live caller remained. Do not reintroduce Apps Script or Sheets deployment paths; the platform is Cloudflare Worker + D1.
 
-- Agents never modify the production Google Sheet.
-- Every Apps Script API, manifest key, clasp directive, or deployment requires official documentation evidence.
-- Apps Script browser deployment is not an automatic gate. The retired `/exec` Playwright suite is deleted; use `tests/gas/` deterministic VM tests for the transitional Apps Script code, and run an operator `/exec` smoke only when a ticket explicitly scopes it.
-
-If your change does not touch `src/gas/`, `tests/gas/`, or the transitional RPC proxy, you do not need `clasp`.
+- Agents never modify the production Google Sheet; the operator performs sheet changes manually.
+- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) and `tests/prototype/`.
 
 When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This repository pins a breaking Next.js version; the relevant version-specific guide under `web/node_modules/next/dist/docs/` is required reading before editing framework code.
 
 ## Pull requests and deployments
 
 - **PR scope:** describe the change, the acceptance evidence, the exact test commands run, and a confirmation that no secrets or data were exposed.
-- **Do not deploy** to production Cloudflare resources, Apps Script deployments, or Google Sheets from this repository. Deployments target isolated acceptance resources only.
+- **Do not deploy** to production Cloudflare resources or Google Sheets from this repository. Deployments target isolated acceptance resources only.
 - Branch protection, required checks, Actions secrets/variables, teams, and deployment ownership are repository-administrator concerns and are not managed by contributors.
 
 ### Administrator handoff
 
 Configure these in GitHub repository settings; committed files cannot enable them:
 
-- Protect `main`: require pull requests, conversation resolution, and the four deterministic checks `Root typecheck & unit (gas + prototype)`, `Web typecheck & tests (workerd + components)`, `Shell responsive (static shell, 375px + 1280px)`, and `D1 auth contract (workerd)`; prevent force-pushes and branch deletion.
+- Protect `main`: require pull requests, conversation resolution, and the four deterministic checks `Root typecheck & unit (prototype)`, `Web typecheck & tests (workerd + components)`, `Shell responsive (static shell, 375px + 1280px)`, and `D1 auth contract (workerd)`; prevent force-pushes and branch deletion.
 - Grant the next developer access through the appropriate GitHub team or repository role. Never share personal access tokens.
 - Configure `AUTH_TARGET_URL` and the five `AUTH_*` values as Actions inputs only if the optional deployed D1 smoke is needed. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
-- Keep Cloudflare and Apps Script deployment ownership separate from repository write access. Dispatch the optional deployed D1 smoke only after rotating the isolated target and acceptance fixtures; retain its Playwright artifact as operational evidence, not as the local `READY` gate.
+- Keep Cloudflare deployment ownership separate from repository write access. Dispatch the optional deployed D1 smoke only after rotating the isolated target and acceptance fixtures; retain its Playwright artifact as operational evidence, not as the local `READY` gate.

@@ -35,6 +35,14 @@ for capabilities not yet migrated, but it is no longer the platform the
 architecture is built around, and no new Apps Script-facing decision should
 be added without a D1 counterpart.
 
+> **Amendment (2026-08-15): migration complete.** Every capability the
+> web application uses — identity, auth, Programs, Events, Attendance,
+> Enrollments — is Worker/D1-native, and no live caller of the Apps Script
+> domain backend remains. `src/gas/`, `tests/gas/`, the clasp configuration,
+> and the Worker's transitional `/api/v1/rpc` proxy were removed. The Apps
+> Script + Google Sheets backend is retired, not merely transitional; the
+> paragraphs below remain as the record of the restart decision.
+
 For the pre-D1 decision record, adopt a **per-ADR status** rather than a
 blanket "historical" label, so that domain decisions which survive the
 restart keep their authority:

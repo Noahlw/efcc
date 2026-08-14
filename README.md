@@ -2,22 +2,18 @@
 
 EFCC is the church-management system for the Evangelical Free Church of China — Glorious Grace Church (播道會顯恩堂).
 
-The repository has **restarted on the D1 platform** (ADR-0024): Cloudflare Worker + D1 owns identity, credentials, sessions, login, registration, and approval (merged foundation PRs #166/#167). The Apps Script + Google Sheets backend is historical — it remains the transitional domain backend for Programs, Events, Attendance, Enrollments, and related capabilities until each has a Worker/D1 replacement and fresh acceptance proof.
+The repository runs on the **Cloudflare Worker + D1 platform** (ADR-0024): identity, credentials, sessions, login, registration, approval, and the domain capabilities — Programs, Events, Attendance, Enrollments — are all Worker/D1-native. The Apps Script + Google Sheets backend is retired; its source (`src/gas/`), VM-harness tests (`tests/gas/`), clasp configuration, and the transitional `/api/v1/rpc` proxy were removed.
 
 ## Current architecture
 
 | Boundary | Current owner | Responsibility |
 | --- | --- | --- |
 | Identity Authority | Cloudflare Worker + D1 | Accounts, credentials, login, refresh, logout, sessions, legacy-PIN upgrade, registration, approval |
-| Domain Backend | Apps Script + Google Sheets | Programs, Events, Attendance, Enrollments, and remaining church-management RPCs during migration |
-| Web application | Next.js static export served by the Worker | Login, registration, approval queue, profile, navigation shell, and current section placeholders |
-| Transitional bridge | Worker `/api/v1/rpc` proxy | Forwards remaining domain RPCs to the Apps Script deployment |
+| Domain Backend | Cloudflare Worker + D1 | Programs, Events, Attendance, Enrollments, and remaining church-management capabilities |
+| Web application | Next.js static export served by the Worker | Login, registration, approval queue, profile, navigation shell, and current section surfaces |
+| Transitional bridge | Removed | The `/api/v1/rpc` Apps Script proxy is retired; the browser talks directly to Worker/D1 |
 
-The ownership rule is deliberate:
-
-> D1 owns identity and authentication. Apps Script owns domain capabilities until each capability is migrated and accepted. Do not delete the Apps Script domain backend merely because D1 authentication is complete.
-
-Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the two-era ADR table, and [`docs/adr/0022-staged-worker-d1-platform-migration.md`](docs/adr/0022-staged-worker-d1-platform-migration.md) for the boundary decision.
+Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the two-era ADR table, and [`docs/adr/0022-staged-worker-d1-platform-migration.md`](docs/adr/0022-staged-worker-d1-platform-migration.md) for the migration boundary that has now completed.
 
 ## Feature roadmap
 
@@ -31,12 +27,11 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the tw
 | Self-service registration | Complete (local gate) | Web registration page + D1 | Worker + D1 | Optional isolated deployed smoke for promotion |
 | Admin/Staff approval | Complete (local gate) | Web approval queue + D1 | Worker + D1 | Expand role and rejection-path acceptance coverage |
 | Member profile | Complete (local gate) | Web profile page + D1 profile DTO | Worker + D1 | Add editable profile requirements when specified |
-| Programs | Transitional | Apps Script RPC; new web page is a placeholder | Worker + D1 | Define Worker/D1 read and mutation contracts |
-| Events | Transitional | Apps Script repositories/RPCs; new web page is a placeholder | Worker + D1 | Define event lifecycle and recurrence migration |
-| Attendance/check-in | Transitional | Apps Script check-in RPC and external scanner | Worker + D1 | Migrate event selection, QR resolution, and audited check-in |
+| Programs | Complete (local gate) | Worker + D1 `/api/v1/programs/*` | Worker + D1 | Programs E2E against the dev-testing worker (ADR-0031) |
+| Events | Complete (local gate) | Worker + D1 schedule rules and event lifecycle | Worker + D1 | Event recurrence exception acceptance expansion |
+| Attendance/check-in | Complete (local gate) | Worker + D1 `/api/v1/attendance*` | Worker + D1 | Assisted scanner and guest check-in E2E coverage |
 | Care dashboard | Planned | New web page placeholder; no accepted Worker/D1 capability | Worker + D1 | Define data contract, privacy boundary, and acceptance plan |
 | Permissions/program leadership | Planned | Existing role vocabulary and legacy authorization rules | Worker + D1 | Implement capability matrix and scoped Program Leader permissions |
-| Apps Script domain backend retirement | Planned | Required by the transitional bridge | Not applicable | Retire only after every domain capability has replacement proof |
 
 ### Migration phases
 
@@ -44,33 +39,26 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the tw
    - D1 established as the Identity Authority.
    - Cookie-only authentication and session lifecycle shipped.
    - Legacy credential upgrade, registration, approval, profile, and the authenticated web shell shipped.
-   - Apps Script domain backend kept operational.
 2. **Capability parity**
-   - Migrate Programs, Events, Attendance, and Enrollments one capability at a time.
-   - Define the Worker/D1 contract before implementation.
-   - Verify each migrated capability against observable acceptance criteria.
+   - Programs, Events, Attendance, and Enrollments migrated to Worker/D1 one capability at a time, each with a defined contract and observable acceptance criteria.
 3. **Traffic cutover**
-   - Move the web application from the corresponding Apps Script RPC to the Worker/D1 implementation.
-   - Remove the old caller only after the new path is deployed and accepted.
-   - Keep rollback evidence until the cutover is stable.
-4. **Retirement**
-   - Remove the legacy `/api/v1/rpc` proxy and Apps Script domain code only after no live caller remains.
-   - Remove obsolete Apps Script deployment configuration and tests in the same capability-specific migration, not in the auth foundation PR.
+   - The web application moved from Apps Script RPCs to the Worker/D1 implementations; no live caller of the legacy RPC proxy remains.
+4. **Retirement — complete**
+   - The legacy `/api/v1/rpc` proxy, `src/gas/` Apps Script domain code, `tests/gas/` VM-harness suite, and clasp configuration are removed; the browser talks only to Worker/D1.
 
 ## Onboarding — where to start
 
 You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The platform is restarting on D1 (ADR-0024); the Apps Script era ADRs (0001–0016) are read for rationale and surviving domain rules, not as the current architecture.
 
 1. **Read the landscape.** [`CONTEXT.md`](CONTEXT.md) (glossary, data model, two-era ADR table) → [`docs/adr/0024-d1-platform-restart-relationship-to-apps-script.md`](docs/adr/0024-d1-platform-restart-relationship-to-apps-script.md) → ADR-0020/0022 for the identity boundary and migration staging. Then [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow.
-2. **Pick the next migration.** Start with the roadmap row marked **In progress** (first one will be a domain capability — Programs or Events), read its linked spec/ADR (D1-era specs under `docs/specs/074`–`078`), write its acceptance trace, then migrate one domain capability without broad deletion.
-3. **Follow the gates.** Every web change needs an acceptance trace written before code (AGENTS.md headless gate); every Apps Script API/clasp claim needs official docs evidence; run the relevant local `wrangler dev` + D1 E2E before `READY`; the production Google Sheet is edited by the operator only.
+2. **Pick the next capability.** The domain stack is Worker/D1-native; start with the roadmap row marked **In progress** or **Planned** (Care dashboard or Permissions/program leadership), read its linked spec/ADR (D1-era specs under `docs/specs/074`–`080`), write its acceptance trace, then implement it without broad deletion.
+3. **Follow the gates.** Every web change needs an acceptance trace written before code (AGENTS.md headless gate); run the relevant local `wrangler dev` + D1 E2E before `READY`; the production Google Sheet is edited by the operator only.
 
 ## Ground rules
 
 - **Google Sheet safety:** agents must not modify the production Google Sheet. The user performs sheet, column, row, and seed-data changes manually. See [`AGENTS.md`](AGENTS.md).
-- **Apps Script evidence:** Apps Script APIs, manifest keys, clasp behavior, and deployments require official documentation evidence before implementation.
 - **Acceptance before implementation:** web changes require a written acceptance trace before code changes. The current migration trace is [`docs/specs/078-staged-platform-migration-acceptance-plan.md`](docs/specs/078-staged-platform-migration-acceptance-plan.md).
-- **Local-first gate:** local tests plus a fresh local `wrangler dev`/D1 browser trace are required for `READY`; a fresh `/exec` or isolated Worker deployment is an optional operator smoke, never an automatic repository gate.
+- **Local-first gate:** local tests plus a fresh local `wrangler dev`/D1 browser trace are required for `READY`; an isolated Worker deployment is an optional operator smoke, never an automatic repository gate.
 - **Secret safety:** never commit credentials, PINs, cookies, tokens, storage states, or deployment secrets.
 - **Disposable E2E data:** destructive upgrade tests must use explicitly marked usernames beginning with `E2E_`; never run them against a real member.
 
@@ -80,9 +68,9 @@ You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The pl
 | --- | --- |
 | [`web/`](web/) | Next.js static frontend and Cloudflare Worker |
 | [`web/lib/auth/`](web/lib/auth/) | D1 accounts, credentials, sessions, lockout, upgrade, and registration logic |
+| [`web/lib/programs/`](web/lib/programs/) | D1 Programs domain: workspace, departments, events, enrollment |
+| [`web/lib/attendance.ts`](web/lib/attendance.ts) | D1 Attendance domain handlers |
 | [`web/migrations/`](web/migrations/) | D1 schema and migrations |
-| [`src/gas/`](src/gas/) | Transitional Apps Script domain backend and legacy deployment source |
-| [`tests/gas/`](tests/gas/) | Deterministic Apps Script VM-harness tests |
 | [`tests/prototype/`](tests/prototype/) | Standalone scanner/prototype tests |
 | [`tests/e2e/`](tests/e2e/) | Playwright acceptance and deployment test configuration |
 | [`docs/specs/`](docs/specs/) | Behavioral specifications and acceptance traces |
@@ -104,9 +92,9 @@ fnm use   # or: mise install / asdf install — selects Node 22 from .node-versi
 pnpm run bootstrap
 ```
 
-Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chromium for Playwright. Apps Script deployment additionally requires an authenticated `clasp` client.
+Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chromium for Playwright.
 
-`pnpm run bootstrap` is the single fresh-clone dependency command. It installs the root dependencies (GAS/prototype tooling, TypeScript, Playwright) and then the `web/` dependencies (Next.js, Cloudflare Wrangler/D1, Vitest) using the frozen root and `web/` lockfiles, and installs the Playwright Chromium browser through the root install lifecycle.
+`pnpm run bootstrap` is the single fresh-clone dependency command. It installs the root dependencies (TypeScript, Playwright, prototype tooling) and then the `web/` dependencies (Next.js, Cloudflare Wrangler/D1, Vitest) using the frozen root and `web/` lockfiles, and installs the Playwright Chromium browser through the root install lifecycle.
 
 ### Verify the repository
 
@@ -114,7 +102,7 @@ Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chr
 pnpm run verify
 ```
 
-`pnpm run verify` runs the deterministic CI gate locally in the same order as the Precheck workflow: root typecheck, root GAS/prototype tests, `web/` typecheck, `web/` workerd tests, `web/` component tests, then the responsive-shell Playwright suite. It requires no deployment credentials.
+`pnpm run verify` runs the deterministic CI gate locally in the same order as the Precheck workflow: root typecheck, root prototype tests, `web/` typecheck, `web/` workerd tests, `web/` component tests, then the responsive-shell Playwright suite. It requires no deployment credentials.
 
 ### Lockfiles and the two install boundaries
 
@@ -135,28 +123,16 @@ pnpm build
 npx wrangler dev
 ```
 
-The Worker requires a local `web/.dev.vars` with an Apps Script `/exec` target when exercising the transitional RPC proxy. Do not place secrets in tracked files.
+The Worker reads local variables from `web/.dev.vars` (see `web/.dev.vars.example`); `EFCC_ACCESS_TOKEN_SECRET` is required for auth/programs/attendance routes. Do not place secrets in tracked files.
 
 ### Deploy the isolated Worker
 
 Use the relevant Wrangler configuration under `web/` and deploy only to the isolated test resources intended for acceptance. Record the deployed URL and run the D1 acceptance suite with disposable accounts. Do not point tests at production resources.
 
-### Deploy the transitional Apps Script backend
-
-The clasp root is `src/gas/`:
-
-```sh
-clasp push
-clasp deploy
-```
-
-A fresh Apps Script deployment creates a new `/exec` URL. Follow the Apps Script evidence and fresh-deployment rules in [`AGENTS.md`](AGENTS.md) and the E2E guide before using it.
-
 ## Verification layers
 
 - **Worker/auth unit and integration:** `pnpm --dir web test`
 - **Web component behavior:** `pnpm --dir web test:components`
-- **Apps Script VM harness:** `pnpm test:gas`
 - **Prototype tests:** `pnpm test:prototype`
 - **Root and E2E type checks:** `pnpm typecheck`
 - **Static/lint checks:** `pnpm check`

@@ -6,7 +6,7 @@
 
 ## Domain Glossary
 
-Terms marked **(legacy)** describe the retained transitional Apps Script/Sheets surface; the D1 platform is the current target unless a term is marked legacy.
+Terms marked **(legacy)** or **(retired)** describe the historical Apps Script/Sheets surface that the Worker/D1 platform replaced; they are retained for domain rationale and reading old records, not as current implementation targets.
 
 | Term (English) | Term (Chinese) | Definition |
 | --- | --- | --- |
@@ -162,53 +162,30 @@ The expandable Department model is implemented through deep modules, not a gener
 
 ## Platform Ownership
 
-The staged migration has two concurrent platform boundaries:
+The staged migration completed: the repository runs on Worker/D1.
 
-- **Cloudflare Worker + D1** is the Identity Authority and the target owner for every migrated capability. PR #166 establishes the identity/auth boundary and the authenticated static web shell. Since ADR-0024 the repository is treated as **restarting on D1**. Issue #184 conditionally establishes D1 as the canonical owner for a new, empty Programs/Enrollment domain; legacy Sheet domain data is not imported and no dual-write path exists.
-- **Apps Script + Google Sheets** is the transitional Domain Backend. Its existing Programs, Events, Attendance, Enrollments, and related RPCs remain operational until each capability has a Worker/D1 replacement and fresh acceptance proof.
+- **Cloudflare Worker + D1** is the Identity Authority and the Domain Backend. PR #166 established the identity/auth boundary and the authenticated static web shell; since ADR-0024 the repository restarted on D1. Programs, Events, Attendance, and Enrollments are Worker/D1-native (`/api/v1/programs/*`, `/api/v1/attendance*`), with no legacy Sheet adapter and no dual-write path.
+- **Apps Script + Google Sheets** is **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the transitional `/api/v1/rpc` proxy were removed; the browser talks only to Worker/D1.
 
-The feature roadmap in [`README.md`](README.md#feature-roadmap) records both the current Feature State and the Target Owner. A capability implemented in the legacy backend is not automatically Complete for the new website.
+The feature roadmap in [`README.md`](README.md#feature-roadmap) records the current Feature State and Target Owner for each capability.
 
 ---
 
-## Transitional Apps Script Architecture (`src/gas/`)
+## Retired Apps Script Architecture (`src/gas/`)
 
-Read this section before opening `src/gas/` source files cold — it is the
-file map and contract cheat sheet a fresh session otherwise has to
-reconstruct by reading every file's header comment. This is the **legacy**
-backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023).
-
-### File map
-
-| File | Responsibility |
-| --- | --- |
-| `Code.gs` | Server entry point. `doGet()` (data-free, per ADR-0010 — must not read Sheets or validate sessions). `SECTION_KEYS` const + `bootstrapSectionsForRole_(role, userId)` (the single source of truth for which Sections a role sees). Public RPCs: `api_loginUser`, `api_restoreApp`, `api_logoutUser`, all returning the `AuthenticatedBootstrap` DTO. |
-| `rpc-envelope.gs` | Shared `RpcSuccess`/`RpcFailure` envelope builders (`rpcSuccess_`, `rpcFailure_`), `RPC_CODES` (`AUTH_REQUIRED`, `FORBIDDEN`, `VALIDATION`, `NOT_FOUND`, `CONFLICT`, `BUSY`, `UNAVAILABLE`, …), and `rpcLog_`/`rpcRequestId_` structured diagnostics (no PII). |
-| `session.js.gs` | Session issue/verify/revoke against `PropertiesService`, HMAC-signed tokens, PIN normalization. Non-expiring sessions until revoked (issue #73). |
-| `users-repository.gs` | `Users` sheet resolver — header-name matched, tolerant of extra/reordered columns (see [Users sheet](#users-sheet)). |
-| `program-leaders-repository.gs` | `Program_Leaders` sheet — active-assignment lookup used to grant Scanner access to Program Leaders. |
-| `appsscript.json` | Manifest: V8 runtime, `webapp.access = ANYONE`, `webapp.executeAs = USER_DEPLOYING`. |
-| `App.html` | The one stable HTML Service document (ADR-0010). Shell skeleton (`#app`, `#app-content` outlet, `#app-nav-phone`/`#app-nav-desktop`), server-includes `styles.html` + `view-login.html` (initial SSR), then `shell.js.html` and `shell-session.js.html` in that order. |
-| `shell.js.html` | Flips `data-app-state` to `SIGNED_OUT` on load. The static-shell contract (issue #65, enforced by `tests/gas/app-shell.contract.test.js`) forbids RPC calls in this file. |
-| `shell-session.js.html` | The live client controller: the `data-app-state` machine (`BOOTING → SIGNED_OUT → AUTHENTICATING/RESTORING → LOADING_SECTION → READY`, plus `RECOVERABLE_ERROR`), the `efccSession` `localStorage` key, login/logout wiring, bootstrap-on-load, and root-Section navigation (`navigateTo_`/`renderSection_`) rendering phone bottom nav + desktop side rail from the server-authorized `sections_` list. |
-| `form-guard.js.html` | Form state machine, safe rendering, and discard-confirmation module (issue #70). Included in App.html before shell-session.js.html. |
-| `view-login.html` | Markup-only Login fragment (SSR'd once by `doGet()`; `shell-session.js.html` rebuilds the same DOM client-side after logout/expiry — IDs must stay in sync between the two). |
-| `styles.html` | Single stylesheet, mobile-first with a 768px desktop breakpoint. |
-
-### Client/server contracts
-
-- **RPC envelope**: `{success:true, requestId, data}` or `{success:false, requestId, error:{code, message}}`. Every `google.script.run` call MUST register both a success and a failure handler (contract-tested).
-- **`AuthenticatedBootstrap` DTO** (returned identically by `api_loginUser` and `api_restoreApp`): `{session:{userId,name,role,qrCodeString,sessionId,sessionToken}, sections:[{key,label,capability}], profile:{userId,name,username,phone,role,status,qrCodeString}}`.
-- **`SECTION_KEYS`**: `profile`, `programs`, `events`, `scanner`, `care`, `permissions`. Defined independently in `Code.gs` (server) and `shell-session.js.html` (client) — the two JS realms cannot share a binding, so the strings are intentionally duplicated; drift is caught by `tests/gas/role-navigation.test.js`.
-- **Current Section content status**: Profile is fully wired to real bootstrap data. Programs/Events/Scanner/Care/Permissions render placeholder text only — their read RPCs (`api_getPrograms`, `api_getEvents`, `api_getScannerEvents`, `api_getCareData`, `api_getPermissionsData`) do not exist yet (see `docs/specs/067-follow-up-section-rpcs.md`, not yet filed as a tracked issue).
-- **Navigation model**: in-memory client router per issue #64's Implementation Decisions — no browser URL hash routing, no `google.script.history` sync in Day 1 (this supersedes the older `/exec#/<section-key>` sketch in `docs/specs/009-phone-first-shell-navigation.md`'s Route Contract, which predates that decision).
-- **Demo form RPC**: `api_submitDemoTaskForm(userId, sessionId, sessionToken, requestKey, fieldValue)` — returns `{echoedValue, submittedAt, idempotent}` on success. Idempotency enforced server-side via CacheService using the requestKey. Added in issue #70. |
+The Apps Script + Google Sheets backend is **retired**. `src/gas/`, its
+VM-harness tests (`tests/gas/`), the clasp configuration (`.clasp.json`,
+`.claspignore`), and the Worker's transitional `/api/v1/rpc` proxy were
+removed once every capability had a Worker/D1 replacement and no live caller
+remained. Git history retains the legacy source; the D1-era ADRs
+(0017–0031) and the Apps Script-era ADRs (0001–0016, read for rationale and
+surviving domain rules) document the decisions that replaced it.
 
 ### Testing & deployment quick reference
 
 - `pnpm typecheck` — Runs TypeScript compiler (`tsc --noEmit`) sequentially across root `tsconfig.json` and `tests/e2e/tsconfig.json` (ADR-0014).
-- `pnpm test:gas` — Vitest over `tests/gas/*.test.js`. Each file loads real `.gs`/`.html` source into a `node:vm` context against a purpose-built fake DOM / Sheet / `PropertiesService` — no live Apps Script or network calls. Fast, deterministic unit layer.
-- `pnpm --dir web test` — Vitest in the real Cloudflare workerd pool for the rebuilt D1 cookie-only Worker/auth boundary, D1 migrations, sessions, lockout, and client contracts.
+- `pnpm test` — Vitest over `tests/prototype`.
+- `pnpm --dir web test` — Vitest in the real Cloudflare workerd pool for the D1 cookie-only Worker/auth boundary, D1 migrations, sessions, lockout, programs, attendance, and client contracts.
 - `pnpm dev:local` — builds the Next static export, applies local D1 migrations, and starts `wrangler dev` on `127.0.0.1:8787`.
 - `pnpm db:seed:local` — seeds disposable local `E2E_` accounts, including the resettable legacy-PIN auth fixture.
 - `pnpm db:seed:demo` — seeds the local `E2E_DEMO_` department, programs, and generated recurring events.
@@ -216,26 +193,25 @@ backend surface; new capability work targets D1 (see the D1-era ADRs 0017–0023
 - `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` — local cookie/auth smoke by default; set the five `AUTH_*` values only when targeting an optional deployed Worker.
 - `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
 - GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes optional deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0029).
-- `clasp push && clasp deploy` — optional transitional Apps Script operation only when a ticket explicitly scopes it; official docs and any operator `/exec` smoke are required for that ticket, never for the default D1 `READY` gate.
-- Full step-by-step workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md) for clone/install/branching, plus `README.md` sections "Build and run the web Worker locally" and "Deploy the transitional Apps Script backend".
+- Full step-by-step workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md) for clone/install/branching, plus `README.md` sections "Build and run the web Worker locally" and "Deploy the isolated Worker".
 
 ---
 
 ## Architecture Decisions
 
-The repository restarted on D1 (ADR-0024). The table is grouped into two eras: the **D1 era** (current platform, 0017–0031) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
+The repository restarted on D1 (ADR-0024) and the staged migration completed (ADR-0022 phase 4). The table is grouped into two eras: the **D1 era** (current platform, 0017–0031) and the **Apps Script era** (historical, 0001–0016). Per-ADR status records what each decision still means — a decision can be a *live domain basis* (its rule survives, its Apps Script mechanism superseded) or *superseded* (mechanism gone).
 
 ### D1 era (current)
 
 | #    | Title                                         | Status   |
 | ---- | --------------------------------------------- | -------- |
 | 0017 | Frontend Repository, Rendering, and Cloudflare Deployment Boundary | Proposed — decision locked via grilling on #127; local implementation checks are the default gate under ADR-0029, while deployed Cloudflare proof remains optional infrastructure evidence |
-| 0018 | Frontend HTTP Boundary, Authentication, and API Contract | Proposed — decision locked via grilling on #128; CF0/CF1 implementation evidence pending |
+| 0018 | Frontend HTTP Boundary, Authentication, and API Contract | Accepted — implemented; the legacy `/api/v1/rpc` Apps Script proxy it described was removed with the GAS retirement |
 | 0019 | Permissions and Program Leadership HTTP Contract (CF2 / #133) | Proposed — decision locked via grilling; downstream verification belongs to CF2 implementation |
-| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Proposed — decision locked via grilling; local/preview proof in AUTH-01/AUTH-02, optional deployed smoke remains operational evidence for the map goal |
+| 0020 | Cloudflare D1 Identity, Session, and Auth Boundary (Map #158) | Accepted — local/preview proof in AUTH-01/AUTH-02, optional deployed smoke remains operational evidence for the map goal |
 | 0021 | D1 → Sheets Identity-Metadata Review Mirror (AUTH-03 / #161) | Deferred — optional and not authorized for the current PR; revisit only after separate operator confirmation |
-| 0022 | Staged Worker/D1 Platform Migration | Accepted |
-| 0023 | Single-Lock Mutation and Audit Contract | Proposed — official Apps Script API support verified; deployed `/exec` proof pending (renumbered from 0015, 2026-08-06) |
+| 0022 | Staged Worker/D1 Platform Migration | Accepted — complete; the legacy Apps Script domain backend, `/api/v1/rpc` proxy, and clasp config were removed |
+| 0023 | Single-Lock Mutation and Audit Contract | Accepted — superseded on the D1 side by ADR-0030's generic `audit_events` stream (renumbered from 0015, 2026-08-06) |
 | 0024 | D1 Platform Restart: Relationship to the Apps Script/Google Sheets Backend | Accepted |
 | 0025 | Staff Role Vocabulary and Frontend Specification Boundary | Accepted — domain decision; implementation migration pending (`Teacher`→`Staff` migration handled in current PR stack) |
 | 0026 | Programs Module State and Scoped Management UI | Proposed |
@@ -249,10 +225,10 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 
 | #    | Title                                         | Status   |
 | ---- | --------------------------------------------- | -------- |
-| 0001 | Google Sheets as Database | Live domain basis — Sheets remains the church-domain database; mechanism runs in Apps Script until each capability migrates (ADR-0022) |
+| 0001 | Google Sheets as Database | Historical — Sheets remains the canonical reference for member/domain records, but the running system is D1; the Apps Script mechanism is retired |
 | 0002 | PIN-Based Authentication | Superseded by ADR-0020 — D1 owns credentials; PIN survives only as the legacy-PIN upgrade path |
 | 0003 | Client-Server RPC via google.script.run | Superseded by ADR-0018 — browser talks to the Worker over the HTTP boundary |
-| 0004 | Monthly Recurring Event Generation | Live domain basis — mechanism remains in Apps Script until Events migrate to D1 |
+| 0004 | Monthly Recurring Event Generation | Superseded — Events and recurrence run on D1 (schedule rules + generation) |
 | 0005 | Role-Based Access Control (RBAC) via PIN Auth | Accepted — Amended by 0006; role model carries into D1 (ADR-0020 global role) |
 | 0006 | Admin Capability Matrix, Program Leader Model & Approval Flow | Live domain basis — capability matrix and Program Leader model carry into D1/CF2 |
 | 0007 | Vanilla Multi-Page HTML Service Architecture | Superseded by ADR-0017 — frontend moved to Next.js static export on Cloudflare |
@@ -260,11 +236,11 @@ The repository restarted on D1 (ADR-0024). The table is grouped into two eras: t
 | 0009 | Audit Log Write Pattern (LockService + Extended Schema) | Superseded by ADR-0023 — write-pattern shape and schema; non-repudiation principle carried forward |
 | 0010 | Stable App Document and Expandable Sections | Superseded by ADR-0017/ADR-0020 — no HtmlService App Document on the D1 platform |
 | 0011 | One Active Session per Member | Superseded by ADR-0020 — multi-device sessions implemented (PR #166) |
-| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Superseded — deployed `/exec` storage-state suite retired; deterministic local Playwright/D1 suites and `tests/gas/` replace it |
-| 0013 | Google Sheets Database Structure | Live domain basis — canonical sheet reference; governs the Sheets side of the migration |
+| 0012 | E2E Testing Strategy (Playwright Storage-State Pattern) | Superseded — deployed `/exec` storage-state suite retired; deterministic local Playwright/D1 suites replace it |
+| 0013 | Google Sheets Database Structure | Historical — canonical sheet reference for the retired Sheets side; the running schema is D1 (spec 080) |
 | 0014 | GitHub Merge Precheck & Pre-commit Typecheck Standardization | Accepted — tooling, unchanged by the restart |
-| 0015 | Camera QR Capture (External HTTPS Origin) | Proposed — mechanism flagged for replacement pending #136; trust-boundary rules carry forward |
-| 0016 | Operational Attendances Sheet Migration | Proposed — Apps Script mechanism; superseded on D1 by the Attendance migration (ADR-0022) |
+| 0015 | Camera QR Capture (External HTTPS Origin) | Superseded by the D1 scanner surface — trust-boundary rules carry forward |
+| 0016 | Operational Attendances Sheet Migration | Superseded on D1 by the Attendance migration (ADR-0022) |
 
 ---
 
