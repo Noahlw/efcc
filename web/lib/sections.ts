@@ -33,7 +33,7 @@ const MANAGEMENT_NAVIGATION_KEYS: Section["key"][] = [
  * Home is a safe authenticated shell destination for every account.
  */
 const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
-  Member: ["home", "profile", "programs"],
+  Member: ["home", "profile", "programs", "scanner", "notices"],
   Staff: [
     "home",
     "profile",
@@ -42,6 +42,8 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
     "scanner",
     "care",
     "permissions",
+    "management",
+    "notices",
   ],
   Admin: [
     "home",
@@ -51,6 +53,8 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
     "scanner",
     "care",
     "permissions",
+    "management",
+    "notices",
   ],
 };
 
@@ -163,8 +167,17 @@ export function sectionsForRole(
     ? ROLE_SECTION_KEYS[role]
     : undefined;
   const keys = allowed ?? ROLE_SECTION_KEYS.Member;
-  if (hasManagementGrant && !keys.includes("events")) {
-    return materializeSections([...keys, "events"]);
+  if (hasManagementGrant) {
+    const additional: Section["key"][] = [];
+    if (!keys.includes("events")) {
+      additional.push("events");
+    }
+    if (!keys.includes("management")) {
+      additional.push("management");
+    }
+    if (additional.length > 0) {
+      return materializeSections([...keys, ...additional]);
+    }
   }
   return materializeSections(keys);
 }

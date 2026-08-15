@@ -1223,19 +1223,19 @@ describe("Shell", () => {
       expect(link).toHaveAttribute("href", "/profile");
     });
 
-    test("Member deep-linking to scanner renders forbidden view (S15)", () => {
+    test("Member deep-linking to management renders forbidden view (S15)", () => {
       render(
         <AppProvider
           bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
           onSignOut={() => {}}
         >
-          <GuardedSection sectionKey="scanner">
-            <p>scanner content</p>
+          <GuardedSection sectionKey="management">
+            <p>management content</p>
           </GuardedSection>
         </AppProvider>
       );
       expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
-      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
+      expect(screen.queryByText("management content")).not.toBeInTheDocument();
     });
   });
 

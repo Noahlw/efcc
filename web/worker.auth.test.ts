@@ -542,6 +542,8 @@ describe("AUTH-06: login", () => {
         "scanner",
         "care",
         "permissions",
+        "management",
+        "notices",
       ]
     );
     assert.deepStrictEqual(
@@ -569,7 +571,7 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       memberBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs"]
+      ["home", "profile", "programs", "scanner", "notices"]
     );
     assert.deepStrictEqual(
       memberBody.data.navigation.map((s) => s.key),
