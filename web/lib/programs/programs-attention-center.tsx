@@ -108,7 +108,15 @@ export const ProgramsAttentionCenter = ({
 
   useEffect(() => {
     if (open) {
-      panelRef.current?.focus();
+      const panel = panelRef.current;
+      if (panel) {
+        if (typeof panel.showModal === "function") {
+          if (!panel.open) panel.showModal();
+        } else {
+          panel.setAttribute("open", "");
+        }
+      }
+      panel?.focus();
       void load();
       return;
     }
@@ -218,10 +226,10 @@ export const ProgramsAttentionCenter = ({
           id="attention-center-panel"
           ref={panelRef}
           className={styles.panel}
-          open
           aria-modal="true"
           aria-label={COPY.attention.title}
           tabIndex={-1}
+          onCancel={() => setOpen(false)}
         >
           <header className={styles.header}>
             <h2>{COPY.attention.title}</h2>

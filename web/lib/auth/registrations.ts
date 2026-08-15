@@ -20,6 +20,8 @@
  * returned.
  */
 
+import type { D1Result } from "@cloudflare/workers-types";
+
 import { findAccountByUserId, findAccountByUsername } from "./accounts";
 import { normalizeUsername } from "./credentials";
 
@@ -44,6 +46,7 @@ export interface RegistrationRequestRow {
   reviewed_by: string | null;
   reviewed_at: number | null;
   review_decision: string | null;
+  rejection_note: string | null;
 }
 
 /** Raise when the `:id` names no registration request (→ 404). */
@@ -63,9 +66,22 @@ export class RegistrationConflictError extends Error {
   }
 }
 
+/**
+ * Raise when a registration action is missing required input (→ 422).
+ * Rejection requires a non-empty note so the reviewer's decision is always
+ * explainable.
+ */
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class RegistrationValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RegistrationValidationError";
+  }
+}
+
 const REQUEST_COLUMNS = `request_id, user_id, username, username_normalized,
   name, phone, credential_hash, credential_kind, account_status, role,
-  submitted_at, reviewed_by, reviewed_at, review_decision`;
+  submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 /** Look up a registration request by its opaque request_id, or null. */
 export async function findRegistrationById(
@@ -203,6 +219,7 @@ export async function createRegistrationRequest(
     reviewed_by: null,
     reviewed_at: null,
     review_decision: null,
+    rejection_note: null,
   };
 }
 
@@ -256,6 +273,9 @@ export async function approveRegistration(
   // request still being Pending, then the compare-and-set state transition is
   // the transaction's final statement. A concurrent reject/approve therefore
   // either wins the Pending transition or produces no account at all.
+  // The account role is hardcoded to `Member`: approval can never create an
+  // elevated account, even if a request row's `role` column was tampered with
+  // out-of-band (canonical Member role, AUTH-06 #295).
   let results: D1Result<unknown>[];
   try {
     results = await db.batch([
@@ -267,7 +287,7 @@ export async function approveRegistration(
              account_status, role, phone, created_at, updated_at
            )
            SELECT user_id, name, username, username_normalized,
-                  credential_hash, credential_kind, 1, 'Active', role,
+                  credential_hash, credential_kind, 1, 'Active', 'Member',
                   phone, ?, ?
              FROM registration_requests
             WHERE request_id = ? AND account_status = 'Pending'`
@@ -311,11 +331,18 @@ export async function approveRegistration(
 /**
  * Reject a Pending registration without creating an account. Idempotent: an
  * already-rejected request returns `rejected`. Conflicts: rejecting an
- * approved request (the account already exists).
+ * approved request (the account already exists). Rejection requires a
+ * non-empty note (RegistrationValidationError); the trimmed note is persisted
+ * on the request row.
  */
 export async function rejectRegistration(
   db: D1Database,
-  options: { requestId: string; reviewerId: string; now?: number }
+  options: {
+    requestId: string;
+    reviewerId: string;
+    note: string;
+    now?: number;
+  }
 ): Promise<"rejected"> {
   const now = options.now ?? Date.now();
   const request = await requireRequest(db, options.requestId);
@@ -328,15 +355,21 @@ export async function rejectRegistration(
       "Cannot reject a registration that was already approved."
     );
   }
+  const note = options.note.trim();
+  if (!note) {
+    throw new RegistrationValidationError(
+      "A non-empty rejection note is required."
+    );
+  }
 
   const result = await db
     .prepare(
       `UPDATE registration_requests
           SET account_status = 'Rejected', reviewed_by = ?, reviewed_at = ?,
-              review_decision = 'Rejected'
+              review_decision = 'Rejected', rejection_note = ?
         WHERE request_id = ? AND account_status = 'Pending'`
     )
-    .bind(options.reviewerId, now, request.request_id)
+    .bind(options.reviewerId, now, note, request.request_id)
     .run();
 
   if ((result.meta?.changes ?? 0) !== 1) {

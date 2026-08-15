@@ -25,6 +25,7 @@ import type {
   EventInput,
   EventRow,
   ManagementAttentionEventRow,
+  ManagementMemberSearchRow,
   ManagementNotificationEnrollmentRow,
   ManagementNotificationEventRow,
   NotificationReadStateInput,
@@ -221,6 +222,48 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.requireDepartment(id);
   }
 
+  /**
+   * Archive a department atomically: the UPDATE only matches when no Draft or
+   * Active child program exists, so the archive validation and the write are a
+   * single statement. Returns null when the condition fails (changes = 0).
+   */
+  async archiveDepartmentIfClear(
+    id: string,
+    update: DepartmentUpdate
+  ): Promise<DepartmentRow | null> {
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+    if (update.name !== undefined) {
+      fields.push("name = ?");
+      values.push(update.name);
+    }
+    if (update.description !== undefined) {
+      fields.push("description = ?");
+      values.push(update.description ?? null);
+    }
+    if (update.display_order !== undefined) {
+      fields.push("display_order = ?");
+      values.push(update.display_order);
+    }
+    fields.push("lifecycle = 'Archived'", "updated_by = ?", "updated_at = ?");
+    values.push(update.updated_by, update.updated_at, id);
+    const result = await this.db
+      .prepare(
+        `UPDATE departments
+            SET ${fields.join(", ")}
+          WHERE department_id = ?
+            AND NOT EXISTS (
+              SELECT 1
+                FROM programs
+               WHERE programs.department_id = departments.department_id
+                 AND programs.lifecycle IN ('Draft', 'Active')
+            )`
+      )
+      .bind(...values)
+      .run();
+    return (result.meta?.changes ?? 0) > 0 ? this.requireDepartment(id) : null;
+  }
+
   async createProgram(input: ProgramInput): Promise<ProgramRow> {
     const id = crypto.randomUUID();
     await this.db
@@ -315,6 +358,136 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .bind(pattern, pattern, programId ?? null, programId ?? null, limit)
       .all<MemberOptionRow>();
+    return result.results ?? [];
+  }
+
+  async listManagedDepartmentIds(userId: string): Promise<string[]> {
+    if (!userId) {
+      return [];
+    }
+    const result = await this.db
+      .prepare(
+        `SELECT department_id FROM department_managers
+          WHERE user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(userId)
+      .all<{ department_id: string }>();
+    return (result.results ?? []).map((row) => row.department_id);
+  }
+
+  async searchActiveMembersInDepartments(
+    query: string,
+    limit: number,
+    departmentIds: readonly string[]
+  ): Promise<MemberOptionRow[]> {
+    if (departmentIds.length === 0) {
+      return [];
+    }
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const placeholders = departmentIds.map(() => "?").join(", ");
+    const result = await this.db
+      .prepare(
+        `SELECT DISTINCT accounts.user_id, accounts.name, accounts.username
+           FROM accounts
+           JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           JOIN programs
+             ON programs.program_id = enrollments.program_id
+          WHERE accounts.account_status = 'Active'
+            AND (accounts.name LIKE ? ESCAPE '\\'
+                 OR accounts.username LIKE ? ESCAPE '\\')
+            AND programs.department_id IN (${placeholders})
+          ORDER BY accounts.name ASC, accounts.username ASC
+          LIMIT ?`
+      )
+      .bind(pattern, pattern, ...departmentIds, limit)
+      .all<MemberOptionRow>();
+    return result.results ?? [];
+  }
+  async searchManagementMembers(
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ): Promise<ManagementMemberSearchRow[]> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const scopedDepartmentIds = departmentIds ?? [];
+    const scoped = departmentIds !== undefined;
+    if (scopedDepartmentIds.length === 0 && scoped) {
+      return [];
+    }
+    const placeholders = scoped
+      ? scopedDepartmentIds.map(() => "?").join(", ")
+      : "";
+    const scopePredicate = scoped
+      ? `AND EXISTS (
+           SELECT 1
+             FROM enrollments scoped_enrollments
+             JOIN programs scoped_programs
+               ON scoped_programs.program_id = scoped_enrollments.program_id
+            WHERE scoped_enrollments.member_user_id = accounts.user_id
+              AND scoped_enrollments.status = 'Active'
+              AND scoped_programs.department_id IN (${placeholders})
+         )`
+      : "";
+    const departmentPredicate = scoped
+      ? `AND departments.department_id IN (${placeholders})`
+      : "";
+    const result = await this.db
+      .prepare(
+        `WITH matched_accounts AS (
+           SELECT accounts.user_id
+             FROM accounts
+            WHERE accounts.account_status = 'Active'
+              AND (
+                accounts.name LIKE ? ESCAPE '\\'
+                OR accounts.username LIKE ? ESCAPE '\\'
+                OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+              )
+              ${scopePredicate}
+            ORDER BY accounts.name ASC, accounts.username ASC
+            LIMIT ?
+         )
+         SELECT DISTINCT
+                accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                departments.department_id,
+                departments.code AS department_code,
+                departments.name AS department_name
+           FROM matched_accounts
+           JOIN accounts ON accounts.user_id = matched_accounts.user_id
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+            ${departmentPredicate}
+          ORDER BY accounts.name ASC,
+                   accounts.username ASC,
+                   departments.display_order ASC,
+                   departments.name ASC`
+      )
+      .bind(
+        ...(scoped
+          ? [
+              pattern,
+              pattern,
+              pattern,
+              ...scopedDepartmentIds,
+              normalizedLimit,
+              ...scopedDepartmentIds,
+            ]
+          : [pattern, pattern, pattern, normalizedLimit])
+      )
+      .all<ManagementMemberSearchRow>();
     return result.results ?? [];
   }
 
@@ -933,6 +1106,16 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     );
   }
 
+  async countActiveAttendance(eventId: string): Promise<number> {
+    const row = await this.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    return Number(row?.count ?? 0);
+  }
+
   async cancelEvent(
     id: string,
     reason: string,
@@ -941,9 +1124,14 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   ): Promise<EventRow | null> {
     const result = await this.db
       .prepare(
-        `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
-           updated_by = ?, updated_at = ?
-         WHERE event_id = ? AND status = 'Active'`
+        `UPDATE events SET status = 'Cancelled', manual_check_in_code = NULL,
+           cancel_reason = ?, updated_by = ?, updated_at = ?
+         WHERE event_id = ? AND status = 'Active'
+           AND NOT EXISTS (
+             SELECT 1 FROM attendances
+              WHERE attendances.event_id = events.event_id
+                AND attendances.status = 'Active'
+           )`
       )
       .bind(reason, updatedBy, updatedAt, id)
       .run();

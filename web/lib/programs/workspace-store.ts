@@ -126,6 +126,26 @@ export interface MemberOptionRow {
   username: string;
 }
 
+export interface ManagementMemberDepartmentRow {
+  department_id: string;
+  code: string;
+  name: string;
+}
+
+/** Flat D1 rows used to assemble the read-only management directory projection. */
+export interface ManagementMemberSearchRow {
+  user_id: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  role: string;
+  department_id: string | null;
+  department_code: string | null;
+  department_name: string | null;
+}
+
+
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -477,6 +497,10 @@ export interface WorkspaceStore {
     id: string,
     update: DepartmentUpdate
   ) => Promise<DepartmentRow>;
+  archiveDepartmentIfClear: (
+    id: string,
+    update: DepartmentUpdate
+  ) => Promise<DepartmentRow | null>;
 
   createProgram: (input: ProgramInput) => Promise<ProgramRow>;
   listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
@@ -493,6 +517,28 @@ export interface WorkspaceStore {
     limit: number,
     programId?: string
   ) => Promise<MemberOptionRow[]>;
+  /** Department ids the user actively manages (revoked_at IS NULL). */
+  listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /**
+   * Active accounts with an Active enrollment in a program of any of the
+   * given departments — the assigned-department scope for the management
+   * member directory (Department Managers only; AUTH-06 #295).
+   */
+  searchActiveMembersInDepartments: (
+    query: string,
+    limit: number,
+    departmentIds: readonly string[]
+  ) => Promise<MemberOptionRow[]>;
+  /**
+   * Active accounts matching identity/contact fields, optionally constrained to
+   * active enrollments under the supplied departments. Rows are flattened by
+   * department so the domain layer can assemble a stable read-only projection.
+   */
+  searchManagementMembers: (
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ) => Promise<ManagementMemberSearchRow[]>;
 
   setDepartmentModule: (
     departmentId: string,
@@ -572,6 +618,7 @@ export interface WorkspaceStore {
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
+  countActiveAttendance: (eventId: string) => Promise<number>;
   updateEvent: (
     id: string,
     update: {

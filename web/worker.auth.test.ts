@@ -544,6 +544,7 @@ describe("AUTH-06: login", () => {
         "permissions",
         "management",
         "notices",
+        "home-cms",
       ]
     );
     assert.deepStrictEqual(
@@ -868,6 +869,16 @@ describe("AUTH-06: registrations approve/reject", () => {
     assert.strictEqual(body.data.accountStatus, "active");
     assertBodyHasNoTokenKeys(body);
 
+    // Approval always creates a canonical Member account (AUTH-06 #295).
+    const account = await testDb()
+      .prepare(
+        "SELECT role, account_status FROM accounts WHERE username_normalized = ?"
+      )
+      .bind("hugo")
+      .first<{ role: string; account_status: string }>();
+    assert.strictEqual(account?.account_status, "Active");
+    assert.strictEqual(account?.role, "Member");
+
     // The approved account can now log in with its registered credential.
     const login = await worker.fetch(
       authRequest("/api/v1/auth/login", {
@@ -947,6 +958,55 @@ describe("AUTH-06: registrations approve/reject", () => {
     assert.strictEqual(Number(row?.n ?? 0), 1);
   });
 
+  test("approval cannot create a non-Member account even from a tampered request", async () => {
+    // A request row with an elevated role, as if tampered out-of-band — the
+    // approval INSERT hardcodes 'Member' so no elevated account can result.
+    const tamperedId = crypto.randomUUID();
+    const tamperedUserId = crypto.randomUUID();
+    await testDb()
+      .prepare(
+        `INSERT INTO registration_requests (
+           request_id, user_id, username, username_normalized, name, phone,
+           credential_hash, credential_kind, account_status, role, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, NULL, ?, 'password', 'Pending', 'Admin', ?)`
+      )
+      .bind(
+        tamperedId,
+        tamperedUserId,
+        "tampered-role",
+        "tampered-role",
+        "Tampered Role",
+        "not-a-real-hash",
+        Date.now()
+      )
+      .run();
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${tamperedId}/approve`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `efcc_access=${adminAccess}`,
+          "Idempotency-Key": "idem-tampered-approve",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const account = await testDb()
+      .prepare(
+        "SELECT role, account_status FROM accounts WHERE user_id = ?"
+      )
+      .bind(tamperedUserId)
+      .first<{ role: string; account_status: string }>();
+    assert.ok(account, "tampered request must still approve into an account");
+    assert.strictEqual(account?.account_status, "Active");
+    assert.strictEqual(
+      account?.role,
+      "Member",
+      "approval must never create an elevated role"
+    );
+  });
+
   test("reject marks a Pending registration as rejected without an account", async () => {
     const reg = await worker.fetch(
       authRequest("/api/v1/auth/register", {
@@ -970,6 +1030,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           Cookie: `efcc_access=${adminAccess}`,
           "Idempotency-Key": "idem-reject-1",
         },
+        body: { note: "Duplicate of an existing member." },
       }),
       testEnv()
     );
@@ -978,6 +1039,22 @@ describe("AUTH-06: registrations approve/reject", () => {
       data: { accountStatus: string };
     };
     assert.strictEqual(body.data.accountStatus, "rejected");
+
+    // The rejection note persists on the request row.
+    const stored = await testDb()
+      .prepare(
+        `SELECT account_status, review_decision, rejection_note
+           FROM registration_requests WHERE request_id = ?`
+      )
+      .bind(requestId)
+      .first<{
+        account_status: string;
+        review_decision: string | null;
+        rejection_note: string | null;
+      }>();
+    assert.strictEqual(stored?.account_status, "Rejected");
+    assert.strictEqual(stored?.review_decision, "Rejected");
+    assert.strictEqual(stored?.rejection_note, "Duplicate of an existing member.");
 
     // The rejected user cannot log in (no account was created).
     const login = await worker.fetch(
@@ -988,6 +1065,50 @@ describe("AUTH-06: registrations approve/reject", () => {
       testEnv()
     );
     assert.strictEqual(login.status, 401);
+  });
+
+  test("reject without a note is rejected (422) and leaves the request Pending", async () => {
+    const reg = await worker.fetch(
+      authRequest("/api/v1/auth/register", {
+        headers: { Origin: HOST, "Idempotency-Key": "idem-reject-note-1" },
+        body: {
+          username: "no-note",
+          password: "no-note-password",
+          name: "No Note",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+    const requestId = await registrationIdFor("no-note");
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+
+    for (const body of [undefined, {}, { note: "" }, { note: "   " }]) {
+      const res = await worker.fetch(
+        authRequest(`/api/v1/auth/registrations/${requestId}/reject`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${adminAccess}`,
+            "Idempotency-Key": `idem-reject-note-${String(body ?? "empty")}`,
+          },
+          ...(body === undefined ? {} : { body }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422, `body ${JSON.stringify(body)}`);
+      const problem = (await res.json()) as { code: string };
+      assert.strictEqual(problem.code, "VALIDATION");
+    }
+
+    const stored = await testDb()
+      .prepare(
+        `SELECT account_status, rejection_note FROM registration_requests
+          WHERE request_id = ?`
+      )
+      .bind(requestId)
+      .first<{ account_status: string; rejection_note: string | null }>();
+    assert.strictEqual(stored?.account_status, "Pending");
+    assert.strictEqual(stored?.rejection_note, null);
   });
 
   test("reject an already-rejected request is an idempotent no-op success", async () => {

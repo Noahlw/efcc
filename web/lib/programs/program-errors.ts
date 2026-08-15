@@ -47,6 +47,19 @@ export class ProgramArchiveBlockedError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class DepartmentArchiveBlockedError extends Error {
+  readonly blockingProgramCount: number;
+
+  constructor(departmentId: string, blockingProgramCount: number) {
+    super(
+      `Department ${departmentId} cannot be archived: ${blockingProgramCount} program(s) are not Archived.`
+    );
+    this.name = "DepartmentArchiveBlockedError";
+    this.blockingProgramCount = blockingProgramCount;
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidModuleKeyError extends Error {
   constructor(key: string) {
     super(`Unknown module key: ${key}`);
@@ -122,6 +135,17 @@ export class EventRescheduleBlockedError extends Error {
     );
     this.name = "EventRescheduleBlockedError";
     this.eventId = eventId;
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventCancellationBlockedError extends Error {
+  readonly activeAttendanceCount: number;
+  constructor(activeAttendanceCount: number) {
+    super(
+      `Event cannot be cancelled: ${activeAttendanceCount} active attendance record(s) exist. Void all attendance with a reason before cancelling.`
+    );
+    this.name = "EventCancellationBlockedError";
+    this.activeAttendanceCount = activeAttendanceCount;
   }
 }
 // oxlint-disable-next-line eslint/max-classes-per-file

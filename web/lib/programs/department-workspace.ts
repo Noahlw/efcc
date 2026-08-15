@@ -24,6 +24,7 @@ import type {
   CapabilityAuthorizer,
 } from "./capability-authorizer";
 import {
+  DepartmentArchiveBlockedError,
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
   DuplicateDepartmentCodeError,
@@ -36,6 +37,7 @@ import {
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancellationBlockedError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
@@ -82,11 +84,12 @@ import type {
   ProgramEnrollmentMode,
   ProgramLifecycle,
   DepartmentModuleRow,
+  ManagementAttentionEventRow,
+  ManagementMemberDepartmentRow,
   MemberOptionRow,
+  NotificationReadStateInput,
   ProgramRow,
   ProgramLeaderRow,
-  ManagementAttentionEventRow,
-  NotificationReadStateInput,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -132,6 +135,15 @@ export type ManagementDepartmentModuleView = Omit<
 export interface ManagementDirectoryView {
   departments: ManagementDepartmentView[];
   programs: ManagementProgramView[];
+}
+
+export interface ManagementMemberView {
+  user_id: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  role: string;
+  departments: ManagementMemberDepartmentRow[];
 }
 
 export interface ManagementAttentionProgramView {
@@ -1084,11 +1096,41 @@ export class DepartmentWorkspace {
         departmentId: id,
       });
     }
-    const row = await this.store.updateDepartment(id, {
+    if (update.lifecycle === "Archived") {
+      // Strict archival guard: a department with Draft or Active child
+      // programs cannot be archived (422). Archived-only child programs are
+      // the terminal state and do not block. The same condition is enforced
+      // atomically inside the store's conditional UPDATE, so no race window
+      // exists between this guard and the department UPDATE.
+      const programs = await this.store.listProgramsForDepartment(id);
+      const blockingPrograms = programs.filter(
+        (program) =>
+          program.lifecycle === "Draft" || program.lifecycle === "Active"
+      );
+      if (blockingPrograms.length > 0) {
+        throw new DepartmentArchiveBlockedError(id, blockingPrograms.length);
+      }
+    }
+    const updateWithAudit: DepartmentUpdate = {
       ...update,
       updated_by: ctx.actorUserId,
       updated_at: new Date().toISOString(),
-    });
+    };
+    const row =
+      update.lifecycle === "Archived"
+        ? await this.store.archiveDepartmentIfClear(id, updateWithAudit)
+        : await this.store.updateDepartment(id, updateWithAudit);
+    if (!row) {
+      // A child program raced into Draft/Active between the guard above and
+      // the conditional UPDATE, which refused the archive. Map the failed
+      // conditional update to the same 422 archive-blocked error.
+      const programs = await this.store.listProgramsForDepartment(id);
+      const blockingPrograms = programs.filter(
+        (program) =>
+          program.lifecycle === "Draft" || program.lifecycle === "Active"
+      );
+      throw new DepartmentArchiveBlockedError(id, blockingPrograms.length);
+    }
     await this.audit(
       ctx,
       "DEPARTMENT_UPDATE",
@@ -2854,6 +2896,28 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    // Course Cockpit guardrail (#294): cancellation is blocked while any
+    // attendance row is still Active; operators must void every row (with a
+    // reason) first. Audited like the reschedule conflict so attempts trace.
+    const activeAttendanceCount = await this.store.countActiveAttendance(
+      eventId
+    );
+    if (activeAttendanceCount > 0) {
+      await this.audit(
+        ctx,
+        "EVENT_CANCEL",
+        "event",
+        eventId,
+        "CONFLICT",
+        event,
+        {
+          reason: "active_attendance",
+          active_attendance_count: activeAttendanceCount,
+        },
+        correlationId
+      );
+      throw new EventCancellationBlockedError(activeAttendanceCount);
+    }
     const updated = await this.store.cancelEvent(
       eventId,
       cmd.reason,
@@ -2861,6 +2925,31 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
+      const activeAttendanceAfterRace =
+        event.status === "Active"
+          ? await this.store.countActiveAttendance(eventId)
+          : 0;
+      if (activeAttendanceAfterRace > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_CANCEL",
+          "event",
+          eventId,
+          "CONFLICT",
+          event,
+          {
+            reason: "active_attendance",
+            active_attendance_count: activeAttendanceAfterRace,
+          },
+          correlationId
+        );
+        throw new EventCancellationBlockedError(activeAttendanceAfterRace);
+      }
+      // The conditional UPDATE matched no row: another writer cancelled the
+      // event between the snapshot above and the UPDATE (or this is an
+      // idempotent retry of a cancellation that already landed). Return the
+      // persisted row, not the stale pre-race snapshot.
+      const current = await this.store.findEventById(eventId);
       await this.audit(
         ctx,
         "EVENT_CANCEL",
@@ -2868,10 +2957,10 @@ export class DepartmentWorkspace {
         eventId,
         "DUPLICATE",
         null,
-        { ...event, reason: "already_cancelled" },
+        { ...(current ?? event), reason: "already_cancelled" },
         correlationId
       );
-      return event;
+      return current ?? event;
     }
     await this.audit(
       ctx,
@@ -2899,6 +2988,64 @@ export class DepartmentWorkspace {
     programId?: string
   ): Promise<MemberOptionRow[]> {
     return this.store.searchActiveMembers(query, limit, programId);
+  }
+
+  /**
+   * Management member directory (AUTH-06 #295): Admin/Staff roles resolve
+   * church-wide over all Active accounts; a Department Manager resolves only
+   * over members with an Active enrollment in a program of one of their
+   * assigned departments. Anyone else is denied (403) — an unrelated
+   * department's enrolled members are never visible.
+   */
+  async searchManagementMembers(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number
+  ): Promise<ManagementMemberView[]> {
+    let departmentIds: readonly string[] | undefined;
+    if (!(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, null))) {
+      departmentIds = await this.store.listManagedDepartmentIds(
+        ctx.actorUserId
+      );
+      if (departmentIds.length === 0) {
+        throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+      }
+    }
+    const rows = await this.store.searchManagementMembers(
+      query,
+      limit,
+      departmentIds
+    );
+    const members = new Map<string, ManagementMemberView>();
+    for (const row of rows) {
+      let member = members.get(row.user_id);
+      if (!member) {
+        member = {
+          user_id: row.user_id,
+          name: row.name,
+          username: row.username,
+          phone: row.phone,
+          role: row.role,
+          departments: [],
+        };
+        members.set(row.user_id, member);
+      }
+      if (
+        row.department_id &&
+        row.department_code &&
+        row.department_name &&
+        !member.departments.some(
+          ({ department_id }) => department_id === row.department_id
+        )
+      ) {
+        member.departments.push({
+          department_id: row.department_id,
+          code: row.department_code,
+          name: row.department_name,
+        });
+      }
+    }
+    return [...members.values()];
   }
 
   getEnrollment(

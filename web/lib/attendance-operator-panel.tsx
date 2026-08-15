@@ -21,12 +21,31 @@ import type {
   AttendanceRow,
 } from "@/lib/programs/program-api";
 import { useQrCamera } from "@/lib/use-qr-camera";
+import { QrCode } from "@/lib/qr-code";
 
 import styles from "./attendance-panel.module.css";
 
 type StatusTone = "info" | "success" | "error";
 
-export const AttendanceOperatorPanel = () => {
+export interface AttendanceOperatorPanelProps {
+  /** Optional management deep-link context; skips the legacy chooser. */
+  eventId?: string | null;
+  /** Optional real program check-in token; omitted means no QR is rendered. */
+  programToken?: string | null;
+}
+
+export function maskPhoneForPrint(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const localDigits =
+    digits.startsWith("852") && digits.length >= 11 ? digits.slice(3) : digits;
+  return localDigits.length > 4 ? `${localDigits.slice(0, 4)}****` : "****";
+}
+
+export const AttendanceOperatorPanel = ({
+  eventId: requestedEventId = null,
+  programToken = null,
+}: AttendanceOperatorPanelProps) => {
+  const fixedEventId = requestedEventId?.trim() || null;
   const [eventId, setEventId] = useState("");
   const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
     []
@@ -42,6 +61,7 @@ export const AttendanceOperatorPanel = () => {
   const [voidReason, setVoidReason] = useState("");
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
+  const [printOpen, setPrintOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   /** Status + tone are updated together on every feedback path. */
@@ -141,21 +161,23 @@ export const AttendanceOperatorPanel = () => {
     },
     onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
   });
-
   useEffect(() => {
     // The events list deep-links here (e.g. /events?eventId=...); keep the
     // static-export-friendly window.location.search read, same as the scanner.
     const params = new URLSearchParams(window.location.search);
-    const id = params.get("eventId");
+    const id = fixedEventId ?? params.get("eventId");
     if (id) {
       setEventId(id);
       void loadRoster(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fixedEventId]);
 
   useEffect(() => {
     // Operator chooser (Spec 081 US 20): list Events the actor can assist.
+    if (fixedEventId) {
+      return;
+    }
     void (async () => {
       try {
         const result = await listManageableEvents();
@@ -165,7 +187,7 @@ export const AttendanceOperatorPanel = () => {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fixedEventId]);
 
   async function voidRow(row: AttendanceRow) {
     if (!voidReason.trim()) {
@@ -204,6 +226,13 @@ export const AttendanceOperatorPanel = () => {
     }
   }
 
+  const resolvedProgramToken =
+    programToken ?? event?.program_check_in_token ?? null;
+  const programQrValue =
+    resolvedProgramToken && typeof window !== "undefined"
+      ? `${window.location.origin}/guest-check-in?program_token=${encodeURIComponent(resolvedProgramToken)}`
+      : null;
+
   return (
     <div className={styles.page}>
       <section className={styles.card} aria-labelledby="operator-title">
@@ -211,7 +240,7 @@ export const AttendanceOperatorPanel = () => {
           {COPY.sections.events}
         </h1>
         <p className={styles.lead}>{COPY.attendance.operatorTitle}</p>
-        {chooserEvents.length > 0 && (
+        {chooserEvents.length > 0 && !fixedEventId && (
           <div className={styles.form}>
             <label className={styles.field} htmlFor="event-chooser">
               <span className={styles.fieldLabel}>
@@ -467,13 +496,68 @@ export const AttendanceOperatorPanel = () => {
           </div>
         )}
         {event && event.status === "Active" && (
-          <button
-            className={styles.buttonSecondary}
-            type="button"
-            onClick={() => window.print()}
-          >
-            {COPY.attendance.printSheet}
-          </button>
+          <>
+            <button
+              className={styles.buttonSecondary}
+              type="button"
+              onClick={() => {
+                setPrintOpen(true);
+                window.setTimeout(() => window.print(), 0);
+              }}
+            >
+              {COPY.attendance.printSheet}
+            </button>
+            {printOpen && (
+            <section
+              className={styles.printSheet}
+              data-print-sheet=""
+              aria-label={COPY.attendance.printSheet}
+            >
+              <header className={styles.printHeader}>
+                <h2>{event.program_name}</h2>
+                <p>
+                  <strong>{COPY.attendance.sheetEventTime}:</strong>{" "}
+                  {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
+                </p>
+              </header>
+              <div className={styles.printCodes}>
+                <div className={styles.printCodeBlock}>
+                  <strong>{COPY.attendance.sheetProgramQr}</strong>
+                  {programQrValue ? (
+                    <QrCode
+                      value={programQrValue}
+                      label={COPY.attendance.sheetProgramQr}
+                      className={styles.printQr}
+                    />
+                  ) : (
+                    <span>{COPY.attendance.sheetProgramQrUnavailable}</span>
+                  )}
+                </div>
+                <div className={styles.printCodeBlock}>
+                  <strong>{COPY.attendance.sheetManualCode}</strong>
+                  <code>{event.manual_check_in_code}</code>
+                </div>
+              </div>
+              <h3>{COPY.attendance.sheetRoster}</h3>
+              {rows.length === 0 ? (
+                <p>{COPY.attendance.sheetNoAttendees}</p>
+              ) : (
+                <ol className={styles.printRows}>
+                  {rows.map((row) => (
+                    <li key={row.attendance_id}>
+                      <span>{row.guest_name ?? row.member_user_id}</span>
+                      <span>
+                        {row.guest_phone
+                          ? maskPhoneForPrint(row.guest_phone)
+                          : COPY.attendance.method[row.method]}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+            )}
+          </>
         )}
         <output
           className={styles.status}

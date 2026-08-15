@@ -16,6 +16,7 @@ import {
   generateEvents,
   listEnrollments,
   listEvents,
+  getEvent,
   listScheduleRules,
   previewEvents,
 } from "@/lib/programs/program-api";
@@ -24,6 +25,7 @@ import type {
   DepartmentModule,
   Enrollment,
   EnrollmentRequest,
+  EventDetail as ProgramEventDetail,
   ManagementAttention,
   PreviewResult,
   Program,
@@ -74,9 +76,9 @@ type SummaryRead<T> =
   | { status: "loading" }
   | { status: "ready"; value: T }
   | { status: "unavailable"; message: string };
-
 interface SummaryState {
   events: SummaryRead<ProgramEvent[]>;
+  eventProgress: SummaryRead<ProgramEventDetail["participant_summary"] | null>;
   pendingRequests: SummaryRead<number>;
   activeParticipants: SummaryRead<number>;
 }
@@ -92,8 +94,15 @@ function hasModule(
 function initialSummary(
   modules: readonly DepartmentModule[] = []
 ): SummaryState {
+  const eventsEnabled = hasModule(modules, "events");
   return {
-    events: hasModule(modules, "events")
+    events: eventsEnabled
+      ? { status: "loading" }
+      : {
+          status: "unavailable",
+          message: COPY.programs.workspaceTaskUnavailable,
+        },
+    eventProgress: eventsEnabled
       ? { status: "loading" }
       : {
           status: "unavailable",
@@ -160,6 +169,16 @@ function formatEventTime(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Hong_Kong",
   }).format(date);
+}
+
+function isFutureActiveEvent(event: ProgramEvent, now = Date.now()): boolean {
+  const startsAt = new Date(event.starts_at).getTime();
+  return (
+    event.status === "Active" &&
+    (event.availability === undefined || event.availability === "Active") &&
+    Number.isFinite(startsAt) &&
+    startsAt > now
+  );
 }
 
 function lifecycleLabel(value: Program["lifecycle"]): string {
@@ -250,30 +269,176 @@ const WorkspaceOverview = ({
   department,
   summary,
   onEdit,
+  onTaskChange,
 }: {
   program: Program;
   department: Department | null;
   summary: SummaryState;
   onEdit: () => void;
+  onTaskChange: (task: ProgramsTask | null) => void;
 }) => {
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
-  const nearestEvent = useMemo(
+  const upcomingEvents = useMemo(
     () =>
-      eventRead?.find(
-        ({ status, starts_at }) =>
-          status === "Active" && new Date(starts_at).getTime() >= Date.now()
-      ) ?? eventRead?.find(({ status }) => status === "Active"),
+      eventRead
+        ?.filter((event) => isFutureActiveEvent(event))
+        .sort(
+          (left, right) =>
+            new Date(left.starts_at).getTime() -
+            new Date(right.starts_at).getTime()
+        ) ?? [],
     [eventRead]
   );
-  const attentionReads = [summary.pendingRequests, summary.activeParticipants];
-  const attentionReady = attentionReads.every(
-    (read): read is { status: "ready"; value: number } =>
-      read.status === "ready"
-  );
+  const nextEvent =
+    program.behavior_type === "Recurring" ? (upcomingEvents[0] ?? null) : null;
+  const activeParticipants =
+    summary.activeParticipants.status === "ready"
+      ? summary.activeParticipants.value
+      : null;
+  const pendingRequests =
+    summary.pendingRequests.status === "ready"
+      ? summary.pendingRequests.value
+      : null;
+  const eventCount =
+    summary.events.status === "ready" ? upcomingEvents.length : null;
+  const eventTaskHref = `/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=events`;
+  const participantTaskHref = `/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=participants`;
 
   return (
     <>
+      {nextEvent && (
+        <section
+          className={styles.workspaceHero}
+          aria-labelledby="programs-workspace-next-event"
+        >
+          <h4
+            id="programs-workspace-next-event"
+            className={styles.workspaceHeroHeading}
+          >
+            {COPY.programs.workspaceNextEvent}
+          </h4>
+          <div className={styles.workspaceHeroMeta}>
+            <strong>{formatEventTime(nextEvent.starts_at)}</strong>
+            <span>
+              {nextEvent.source === "SCHEDULE"
+                ? COPY.programs.eventScheduleSource
+                : COPY.programs.eventManualSource}
+            </span>
+          </div>
+          <div className={styles.workspaceHeroProgress}>
+            {summary.eventProgress.status === "ready" &&
+            summary.eventProgress.value ? (
+              <strong>
+                {COPY.programs.workspaceCheckInProgress.replace(
+                  "{checked}",
+                  String(summary.eventProgress.value.checked_in)
+                ).replace(
+                  "{active}",
+                  String(summary.eventProgress.value.active_enrollments)
+                )}
+              </strong>
+            ) : summary.eventProgress.status === "loading" ? (
+              <output aria-busy="true">
+                {COPY.programs.workspaceSummaryLoading}
+              </output>
+            ) : (
+              <output className={styles.programDetailMuted} aria-live="polite">
+                {COPY.programs.workspaceSummaryUnavailable}
+              </output>
+            )}
+          </div>
+          <a
+            className={`${styles.button} ${styles.workspaceHeroCta}`}
+            href={`/events?eventId=${encodeURIComponent(nextEvent.event_id)}`}
+          >
+            {COPY.programs.workspaceRosterCta}
+          </a>
+        </section>
+      )}
+
+      <section
+        className={styles.workspaceOperations}
+        aria-labelledby="programs-workspace-operations"
+      >
+        <h4
+          id="programs-workspace-operations"
+          className={styles.workspaceHeading}
+        >
+          {COPY.programs.workspaceOperations}
+        </h4>
+        <div className={styles.workspaceOperationGrid}>
+          <a
+            className={styles.workspaceOperationTile}
+            href={eventTaskHref}
+            onClick={(event) => {
+              event.preventDefault();
+              onTaskChange("events");
+            }}
+          >
+            <span className={styles.workspaceOperationLabel}>
+              {COPY.programs.workspaceTaskEvents}
+              <span className="sr-only">
+                {COPY.programs.workspaceUpcomingEvents}
+              </span>
+            </span>
+            <strong className={styles.workspaceOperationCount}>
+              {eventCount === null
+                ? COPY.programs.workspaceSummaryCountUnavailable
+                : COPY.programs.workspaceUpcomingEventCount.replace(
+                    "{count}",
+                    String(eventCount)
+                  )}
+            </strong>
+          </a>
+          <a
+            className={styles.workspaceOperationTile}
+            href={participantTaskHref}
+            onClick={(event) => {
+              event.preventDefault();
+              onTaskChange("participants");
+            }}
+          >
+            <span className={styles.workspaceOperationLabel}>
+              {COPY.programs.workspaceTaskParticipants}
+              <span className="sr-only">
+                {COPY.programs.workspaceActiveParticipants}
+              </span>
+            </span>
+            <strong className={styles.workspaceOperationCount}>
+              {activeParticipants === null
+                ? COPY.programs.workspaceSummaryCountUnavailable
+                : activeParticipants}
+            </strong>
+            {pendingRequests !== null && pendingRequests > 0 && (
+              <span className={styles.workspaceOperationBadge}>
+                <span className="sr-only">
+                  {COPY.programs.workspacePendingRequests}
+                </span>
+                {COPY.programs.workspacePendingApprovals.replace(
+                  "{count}",
+                  String(pendingRequests)
+                )}
+              </span>
+            )}
+          </a>
+        </div>
+        {(summary.events.status === "loading" ||
+          summary.pendingRequests.status === "loading" ||
+          summary.activeParticipants.status === "loading") && (
+          <output aria-busy="true">
+            {COPY.programs.workspaceSummaryLoading}
+          </output>
+        )}
+        {(summary.events.status === "unavailable" ||
+          summary.pendingRequests.status === "unavailable" ||
+          summary.activeParticipants.status === "unavailable") && (
+          <output className={styles.programDetailMuted} aria-live="polite">
+            {COPY.programs.workspaceSummaryUnavailable}
+          </output>
+        )}
+      </section>
+
       <section
         className={styles.workspaceSection}
         aria-labelledby="programs-workspace-identity"
@@ -328,80 +493,6 @@ const WorkspaceOverview = ({
             </div>
           )}
         </dl>
-      </section>
-
-      <section
-        className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-event"
-      >
-        <h4 id="programs-workspace-event" className={styles.workspaceHeading}>
-          {COPY.programs.workspaceNearestEvent}
-        </h4>
-        {summary.events.status === "loading" ? (
-          <output aria-busy="true">
-            {COPY.programs.workspaceSummaryLoading}
-          </output>
-        ) : summary.events.status === "unavailable" ? (
-          <output className={styles.programDetailMuted} aria-live="polite">
-            {summary.events.message}
-          </output>
-        ) : nearestEvent ? (
-          <p className={styles.workspaceEventSummary}>
-            <strong>{formatEventTime(nearestEvent.starts_at)}</strong>
-            <span>
-              {nearestEvent.source === "SCHEDULE"
-                ? COPY.programs.eventScheduleSource
-                : COPY.programs.eventManualSource}
-            </span>
-          </p>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.workspaceNearestEventNone}
-          </p>
-        )}
-      </section>
-
-      <section
-        className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-attention"
-      >
-        <h4
-          id="programs-workspace-attention"
-          className={styles.workspaceHeading}
-        >
-          {COPY.programs.workspaceAttention}
-        </h4>
-        <dl className={styles.workspaceAttention}>
-          {summary.pendingRequests.status === "ready" && (
-            <div>
-              <dt>{COPY.programs.workspacePendingRequests}</dt>
-              <dd>{summary.pendingRequests.value}</dd>
-            </div>
-          )}
-          {summary.activeParticipants.status === "ready" && (
-            <div>
-              <dt>{COPY.programs.workspaceActiveParticipants}</dt>
-              <dd>{summary.activeParticipants.value}</dd>
-            </div>
-          )}
-        </dl>
-        {attentionReads.some((read) => read.status === "loading") && (
-          <output aria-busy="true">
-            {COPY.programs.workspaceSummaryLoading}
-          </output>
-        )}
-        {attentionReads.some((read) => read.status === "unavailable") && (
-          <output className={styles.programDetailMuted} aria-live="polite">
-            {COPY.programs.workspaceSummaryUnavailable}
-          </output>
-        )}
-        {attentionReady &&
-          attentionReads[0].value === 0 &&
-          attentionReads[1].value === 0 && (
-            <p className={styles.programDetailMuted}>
-              {COPY.programs.workspaceNoAttention}
-            </p>
-          )}
       </section>
     </>
   );
@@ -1760,7 +1851,10 @@ export const ProgramWorkspace = ({
   }, [loadWorkspace]);
 
   const loadSummary = useCallback(
-    async (modules: readonly DepartmentModule[]) => {
+    async (
+      modules: readonly DepartmentModule[],
+      behaviorType: Program["behavior_type"]
+    ) => {
       const events = hasModule(modules, "events")
         ? readSummary(listEvents(programId), ({ events: value }) => value)
         : Promise.resolve(
@@ -1792,11 +1886,35 @@ export const ProgramWorkspace = ({
         pendingRequests,
         activeParticipants,
       ]);
+      let eventProgress: SummaryRead<
+        ProgramEventDetail["participant_summary"] | null
+      >;
+      if (!hasModule(modules, "events")) {
+        eventProgress = unavailableSummary(
+          COPY.programs.workspaceTaskUnavailable
+        );
+      } else if (eventRead.status === "loading") {
+        eventProgress = { status: "loading" };
+      } else if (eventRead.status === "unavailable") {
+        eventProgress = unavailableSummary(eventRead.message);
+      } else {
+        const nextEvent =
+          behaviorType === "Recurring"
+            ? eventRead.value.find((event) => isFutureActiveEvent(event))
+            : undefined;
+        eventProgress = nextEvent
+          ? await readSummary(
+              getEvent(programId, nextEvent.event_id),
+              ({ participant_summary }) => participant_summary
+            )
+          : { status: "ready", value: null };
+      }
       if (!mounted.current) {
         return;
       }
       setSummary({
         events: eventRead,
+        eventProgress,
         pendingRequests: pendingRead,
         activeParticipants: activeRead,
       });
@@ -1808,8 +1926,9 @@ export const ProgramWorkspace = ({
     if (state.kind !== "ready" || task !== undefined) {
       return;
     }
-    void loadSummary(state.modules);
+    void loadSummary(state.modules, state.program.behavior_type);
   }, [loadSummary, state, task]);
+
 
   if (state.kind === "loading") {
     return (
@@ -1923,6 +2042,7 @@ export const ProgramWorkspace = ({
           department={state.department}
           summary={summary}
           onEdit={() => setEditing(true)}
+          onTaskChange={onTaskChange}
         />
       )}
     </section>

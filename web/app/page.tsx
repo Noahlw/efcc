@@ -114,7 +114,11 @@ const LoginPage = () => {
         return;
       }
       const deepLink = consumeDeepLink();
-      router.replace(deepLink || `/${firstSection(bootstrap.sections)}`);
+      if (deepLink) {
+        window.location.replace(deepLink);
+        return;
+      }
+      router.replace(`/${firstSection(bootstrap.sections)}`);
     },
     [router]
   );

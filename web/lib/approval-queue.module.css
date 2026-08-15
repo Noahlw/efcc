@@ -227,3 +227,103 @@
   font-weight: 700;
   text-decoration: underline;
 }
+.secondary {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: var(--accent, #9c302c);
+  color: var(--accent-deep, #76231f);
+}
+
+.secondary:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.details {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface, #f4f5f3);
+}
+
+.detailsTitle {
+  margin: 0 0 1rem;
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+
+.detailsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+}
+
+.detailsList div {
+  min-width: 0;
+}
+
+.detailsList dt {
+  margin-bottom: 0.1875rem;
+  color: var(--ink-muted, #59636a);
+  font-size: 0.8125rem;
+}
+
+.detailsList dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.rejectionForm {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.rejectionLabel {
+  font-weight: 700;
+}
+
+.rejectionInput {
+  width: 100%;
+  min-height: 7rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.rejectionInput:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+.validationError {
+  margin: 0;
+  color: var(--error, #b3261e);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.detailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

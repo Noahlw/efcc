@@ -1,0 +1,467 @@
+.homeSection,
+.editorSection {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 2rem clamp(1.25rem, 4vw, 2.75rem) 5rem;
+}
+
+.homeHeader,
+.editorHeader {
+  display: grid;
+  gap: 0.35rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.5rem;
+}
+
+.homeHeader h1,
+.editorHeader h1 {
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.editorHeader p:last-child {
+  color: var(--ink-muted);
+  max-width: 56rem;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.state,
+.stateError,
+.emptyState {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  min-height: 16rem;
+  align-content: center;
+  padding: 2rem;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.state {
+  color: var(--ink-muted);
+}
+
+.stateError {
+  color: var(--error);
+  border-color: var(--error-border);
+  background: var(--error-surface);
+}
+
+.emptyState h2 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.emptyState p:not(.eyebrow) {
+  color: var(--ink-muted);
+  max-width: 32rem;
+}
+
+.eventHero,
+.announcement {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.35rem, 4vw, 2.75rem);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.eventHero {
+  max-width: 760px;
+}
+
+.eventHero h2,
+.announcement h2 {
+  font-size: clamp(1.8rem, 5vw, 3.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.fallbackNotice {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.eventFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.eventFacts div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.eventFacts dt {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.eventFacts dd {
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  width: fit-content;
+  padding: 0.7rem 1.15rem;
+  border-radius: var(--radius-sm);
+  font-weight: 750;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.primaryAction {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.primaryAction:hover {
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+}
+
+.secondaryAction {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+}
+
+.secondaryAction:hover {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+.primaryAction:disabled,
+.secondaryAction:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.announcement {
+  max-width: 760px;
+}
+
+.announcementImage {
+  display: block;
+  width: 100%;
+  max-height: 22rem;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.summary {
+  color: var(--ink-muted);
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.body {
+  display: grid;
+  gap: 0.85rem;
+  line-height: 1.7;
+}
+
+.body :global(h2),
+.body :global(h3) {
+  margin-top: 0.65rem;
+  line-height: 1.25;
+}
+
+.body :global(ul),
+.body :global(ol) {
+  padding-inline-start: 1.3rem;
+}
+
+.body :global(a) {
+  color: var(--focus);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.bodyEmpty {
+  color: var(--ink-muted);
+}
+
+.externalMark {
+  display: inline-block;
+  margin-inline-start: 0.5rem;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.conflictBanner {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--pending-border);
+  border-inline-start: 4px solid var(--pending);
+  border-radius: var(--radius-sm);
+  background: var(--pending-surface);
+}
+
+.conflictBanner p {
+  color: var(--ink-muted);
+}
+
+.editorGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
+  gap: clamp(1.25rem, 4vw, 3rem);
+  align-items: start;
+}
+
+.editorForm {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.templateChooser,
+.scheduleChooser {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  border: 0;
+}
+
+.templateChooser legend,
+.scheduleChooser legend {
+  width: 100%;
+  margin-bottom: 0.1rem;
+  font-weight: 800;
+}
+
+.templateChooser label,
+.scheduleChooser label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.templateChooser label:has(input:checked),
+.scheduleChooser label:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-raised));
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field > span {
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.field input,
+.field textarea {
+  min-height: 44px;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field small,
+.scheduleFields p,
+.previewHint {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.scheduleFields {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.formNotice {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.historyPanel {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.historyPanel h2 {
+  font-size: 1.1rem;
+}
+
+.historyMuted {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.historyList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.9rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.historyTemplate {
+  font-weight: 750;
+}
+
+.historyItem time {
+  margin-inline-start: auto;
+  color: var(--ink-muted);
+}
+
+.previewPanel {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.previewPanel h2 {
+  width: 100%;
+  font-size: 1.1rem;
+}
+
+.previewHint {
+  width: 100%;
+}
+
+.phoneFrame {
+  width: 375px;
+  max-width: 100%;
+  padding: 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 24px;
+  background: var(--ink);
+}
+
+.phoneViewport {
+  width: 100%;
+  height: 667px;
+  overflow: auto;
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+
+.phoneViewport .eventHero,
+.phoneViewport .announcement,
+.phoneViewport .emptyState {
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+}
+
+.phoneViewport .eventHero h2,
+.phoneViewport .announcement h2 {
+  font-size: 1.75rem;
+}
+
+@media (max-width: 860px) {
+  .editorGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .previewPanel {
+    position: static;
+    justify-items: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .homeSection,
+  .editorSection {
+    padding-inline: 1rem;
+  }
+
+  .eventHero,
+  .announcement,
+  .editorForm {
+    padding: 1rem;
+  }
+
+  .editorActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editorActions .primaryAction,
+  .editorActions .secondaryAction {
+    width: 100%;
+  }
+}

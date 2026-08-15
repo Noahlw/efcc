@@ -15,6 +15,12 @@
  *
  *   * `/api/v1/programs/*` — D1-native Programs domain (PRG-01 #197).
  *
+ *   * `/api/v1/management/*` — Management hub domain (AUTH-06 #295):
+ *     capability-scoped member directory.
+ *
+ *
+ *   * `/api/v1/home*` — public home projection plus capability-scoped Home
+ *     Content CMS drafts, publishing, and scheduled expiry.
  *   * `/api/v1/attendance*` — D1-native Attendance domain.
  *
  * Non-/api paths fall through to the ASSETS binding (static export).
@@ -30,6 +36,20 @@ import {
   handleGetSubscriptions,
   handleUpdateSubscription,
 } from "./lib/auth/subscriptions";
+import {
+  handleGetHome,
+  handleGetHomeEditor,
+  handleGetHomeHistory,
+  handlePutHomeDraft,
+  handlePublishHome,
+  runHomeContentExpiry,
+} from "./lib/home-content";
+import type {
+  ExecutionContext,
+  ExportedHandler,
+  Fetcher,
+  ScheduledController,
+} from "@cloudflare/workers-types";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -806,6 +826,37 @@ export default {
       );
     }
 
+    // ---- Management hub domain: cookie-only transport, no CORS ----------
+    if (url.pathname.startsWith("/api/v1/management/")) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const managementEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const { handleSearchManagementMembers } = await import(
+        "./lib/programs/program-handlers"
+      );
+      if (
+        url.pathname === "/api/v1/management/members" &&
+        request.method === "GET"
+      ) {
+        return handleSearchManagementMembers(request, managementEnv);
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown management route."
+      );
+    }
+
     if (url.pathname.startsWith("/api/v1/attendance")) {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
         return authProblemResponse(
@@ -929,6 +980,64 @@ export default {
       );
     }
 
+    // ---- Home Content CMS -----------------------------------------------
+    if (
+      url.pathname === "/api/v1/home" ||
+      url.pathname === "/api/v1/home/editor" ||
+      url.pathname === "/api/v1/home/history" ||
+      url.pathname === "/api/v1/home/drafts" ||
+      url.pathname === "/api/v1/home/publish"
+    ) {
+      if (url.pathname === "/api/v1/home" && request.method === "GET") {
+        return handleGetHome(request, {
+          DB: env.DB,
+          EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET ?? "",
+        });
+      }
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const homeEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      };
+      if (
+        url.pathname === "/api/v1/home/editor" &&
+        request.method === "GET"
+      ) {
+        return handleGetHomeEditor(request, homeEnv);
+      }
+      if (
+        url.pathname === "/api/v1/home/history" &&
+        request.method === "GET"
+      ) {
+        return handleGetHomeHistory(request, homeEnv);
+      }
+      if (
+        url.pathname === "/api/v1/home/drafts" &&
+        request.method === "PUT"
+      ) {
+        return handlePutHomeDraft(request, homeEnv);
+      }
+      if (
+        url.pathname === "/api/v1/home/publish" &&
+        request.method === "POST"
+      ) {
+        return handlePublishHome(request, homeEnv);
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown home route."
+      );
+    }
+
     // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {
       // Should not normally be reached (run_worker_first scopes this
@@ -937,5 +1046,12 @@ export default {
     }
 
     return authProblemResponse(404, "NOT_FOUND", "Not found", "Unknown route.");
+  },
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    await runHomeContentExpiry(env.DB);
   },
 } satisfies ExportedHandler<Env>;

@@ -73,7 +73,7 @@ const COPY = {
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
-  workspaceNearestEvent: "最近聚會",
+  workspaceNearestEvent: "下一聚會",
   workspaceTaskEvents: "聚會",
   workspaceTaskParticipants: "參與者",
   workspacePendingRequests: "待處理報名",

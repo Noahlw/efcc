@@ -50,6 +50,13 @@
   z-index: 200;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
   background: var(--surface-raised);
   color: var(--ink);
   overflow-y: auto;
@@ -238,13 +245,15 @@
 
 @media (min-width: 920px) {
   .panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+    position: fixed;
+    top: 64px;
     inset-inline: auto;
+    right: 16px;
     bottom: auto;
     left: auto;
     width: min(560px, calc(100vw - 32px));
+    max-width: min(560px, calc(100vw - 32px));
+    height: auto;
     max-height: min(720px, calc(100vh - 96px));
     border: 1px solid var(--line);
     border-radius: var(--radius-md);

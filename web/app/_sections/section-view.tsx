@@ -2,6 +2,7 @@
 
 import { GuardedSection } from "@/lib/guarded-section";
 import { COPY } from "@/lib/copy";
+import { HomeSurface } from "@/lib/home-content-ui";
 import styles from "./section-view.module.css";
 
 /**
@@ -14,9 +15,8 @@ import styles from "./section-view.module.css";
  * are NOT production copy and are intentionally omitted so the accessible heading
  * name matches the centralized COPY constant exactly.
  *
- * ponytail: this component is deliberately presentational only — it adds no
- * network calls, no route handlers, no data writes, and no scanner authority.
- * Domain surfaces will replace the building state when their RPCs land.
+ * Home delegates its real published surface to HomeSurface; the transitional
+ * sections remain presentational and add no network calls or domain writes.
  */
 export function SectionView({
   sectionKey,
@@ -28,16 +28,20 @@ export function SectionView({
   const headingId = `section-${sectionKey}-title`;
   return (
     <GuardedSection sectionKey={sectionKey}>
-      <section className={styles.section} aria-labelledby={headingId}>
-        <header className={styles.sectionHead}>
-          <h2 id={headingId} className={styles.sectionTitle}>
-            {title}
-          </h2>
-        </header>
-        <div className={styles.stateCenter}>
-          <p className={styles.placeholderText}>{COPY.sections.placeholder}</p>
-        </div>
-      </section>
+      {sectionKey === "home" ? (
+        <HomeSurface title={title} />
+      ) : (
+        <section className={styles.section} aria-labelledby={headingId}>
+          <header className={styles.sectionHead}>
+            <h2 id={headingId} className={styles.sectionTitle}>
+              {title}
+            </h2>
+          </header>
+          <div className={styles.stateCenter}>
+            <p className={styles.placeholderText}>{COPY.sections.placeholder}</p>
+          </div>
+        </section>
+      )}
     </GuardedSection>
   );
 }

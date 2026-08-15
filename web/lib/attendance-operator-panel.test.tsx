@@ -6,7 +6,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import type {
   AttendanceEvent,
@@ -73,11 +73,11 @@ function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   );
 }
 
-function renderWithLiveRegion() {
+function renderWithLiveRegion(props?: { eventId?: string; programToken?: string }) {
   render(
     <>
       <LiveRegion />
-      <AttendanceOperatorPanel />
+      <AttendanceOperatorPanel {...props} />
     </>
   );
 }
@@ -87,6 +87,7 @@ describe(AttendanceOperatorPanel, () => {
   afterEach(() => {
     cleanup();
     server.resetHandlers();
+    vi.restoreAllMocks();
   });
 
   afterAll(() => server.close());
@@ -193,6 +194,56 @@ describe(AttendanceOperatorPanel, () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.attendance.printSheet })
+    ).not.toBeInTheDocument();
+  });
+
+  test("print sheet masks guest phone numbers in print-only markup", async () => {
+    const guestRow: AttendanceRow = {
+      ...ROW,
+      attendance_id: "att-print-guest",
+      member_user_id: null,
+      guest_name: "紙本訪客",
+      guest_phone: "9123 4567",
+      guest_phone_normalized: "hk:85291234567",
+      method: "guest_manual_code",
+    };
+    server.use(
+      http.get("/api/v1/attendance/events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      rosterHandler(ACTIVE, [guestRow])
+    );
+    vi.spyOn(window, "print").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await user.selectOptions(
+      await screen.findByLabelText(COPY.attendance.chooseEvent),
+      ACTIVE.event_id
+    );
+    await screen.findByText(guestRow.guest_name ?? "");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.printSheet })
+    );
+    await waitFor(() =>
+      expect(document.querySelector("[data-print-sheet]")).toBeTruthy()
+    );
+    const printMarkup = document.querySelector("[data-print-sheet]");
+    expect(printMarkup?.textContent).toContain("9123****");
+    expect(printMarkup?.textContent).not.toContain("9123 4567");
+  });
+
+  test("loads a selected event directly without the chooser", async () => {
+    server.use(rosterHandler(ACTIVE, []));
+    renderWithLiveRegion({ eventId: ACTIVE.event_id });
+    await screen.findByText(
+      new RegExp(`${ACTIVE.program_name} ·`, "u")
+    );
+    expect(
+      screen.queryByLabelText(COPY.attendance.chooseEvent)
     ).not.toBeInTheDocument();
   });
 

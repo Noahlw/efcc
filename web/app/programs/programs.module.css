@@ -426,6 +426,8 @@
 .directoryCard:focus-visible,
 .programDetailBack:focus-visible,
 .workspaceTaskLink:focus-visible,
+.workspaceHeroCta:focus-visible,
+.workspaceOperationTile:focus-visible,
 .memberOption:focus-visible,
 .taskButton:focus-visible,
 .actionButton:focus-visible,
@@ -1557,6 +1559,109 @@
 .workspaceTask {
   display: grid;
   gap: 0.75rem;
+}
+
+.workspaceHero {
+  display: grid;
+  gap: 0.875rem;
+  padding: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.workspaceHeroHeading {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.workspaceHeroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.workspaceHeroMeta strong {
+  font-size: 1.25rem;
+}
+
+.workspaceHeroMeta span {
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.workspaceHeroProgress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.workspaceHeroProgress span {
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.workspaceHeroCta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+
+.workspaceOperations {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspaceOperationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.workspaceOperationTile {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.workspaceOperationTile:hover {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.workspaceOperationLabel {
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.workspaceOperationCount {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.workspaceOperationBadge {
+  justify-self: start;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--pending-border);
+  border-radius: var(--radius-pill);
+  background: var(--pending-surface);
+  color: var(--pending);
+  font-size: 0.8125rem;
+  font-weight: 800;
 }
 
 .workspaceHeading {

@@ -272,6 +272,79 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("leads with live next-event progress and a direct roster link", async () => {
+    mockWorkspace();
+    mocks.getEvent.mockResolvedValue({
+      event,
+      leaders: [],
+      participant_summary: { active_enrollments: 4, checked_in: 2 },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.workspaceNextEvent })
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("已簽到 2/4")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.workspaceRosterCta })
+    ).toHaveAttribute("href", "/events?eventId=event-1");
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.workspaceOperations })
+    ).toBeInTheDocument();
+  });
+
+  test("omits the next-event hero for OneOff programs", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, behavior_type: "OneOff" },
+      department,
+      modules,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByText(COPY.programs.workspaceIdentity);
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.workspaceNextEvent })
+    ).not.toBeInTheDocument();
+  });
+
+  test("omits the next-event hero when recurring events are complete", async () => {
+    mockWorkspace();
+    mocks.listEvents.mockResolvedValue({
+      events: [
+        {
+          ...event,
+          starts_at: "2020-08-20T11:00:00.000Z",
+          ends_at: "2020-08-20T13:00:00.000Z",
+        },
+      ],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByText(COPY.programs.workspaceIdentity);
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.workspaceNextEvent })
+    ).not.toBeInTheDocument();
+  });
+
   test("renders Events with the management create entry point", async () => {
     mockWorkspace();
     const onTaskChange = vi.fn();

@@ -33,6 +33,8 @@ export interface AttendanceEvent {
   check_in_window_closes_at: string;
   status: "Active" | "Cancelled";
   availability: "Active" | "Inactive";
+  /** Included only in the authorized operator roster projection. */
+  program_check_in_token?: string | null;
 }
 /** Explicitly safe fields for chooser/context projections; credentials stay server-side. */
 export interface AttendanceEventSummary {
@@ -1020,12 +1022,24 @@ export async function handleListRoster(
     return operator;
   }
   const { event } = operator;
+  const token = await env.DB
+    .prepare(
+      `SELECT p.check_in_token AS program_check_in_token
+         FROM programs p
+        WHERE p.program_id = ?`
+    )
+    .bind(event.program_id)
+    .first<{ program_check_in_token: string | null }>();
+  const rosterEvent: AttendanceEvent = {
+    ...event,
+    program_check_in_token: token?.program_check_in_token ?? null,
+  };
   const result = await env.DB.prepare(
     `SELECT * FROM attendances WHERE event_id = ? ORDER BY checked_in_at ASC`
   )
     .bind(eventId)
     .all<AttendanceRow>();
-  return json(200, { event, attendances: result.results ?? [] }, id);
+  return json(200, { event: rosterEvent, attendances: result.results ?? [] }, id);
 }
 
 export async function handleAssistedCheckIn(

@@ -709,8 +709,11 @@ export function markManagementNotificationsRead(
 }
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
-export function getManagementAccess(): Promise<ProgramsManagementAccess> {
-  return programsFetch("/api/v1/programs/access", "GET");
+export function getManagementAccess(
+  requireManagementCapability = false
+): Promise<ProgramsManagementAccess> {
+  const surface = requireManagementCapability ? "?surface=management" : "";
+  return programsFetch(`/api/v1/programs/access${surface}`, "GET");
 }
 
 /** GET /api/v1/programs/catalog — narrow participant directory projection. */

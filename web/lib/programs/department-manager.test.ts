@@ -613,4 +613,148 @@ describe("AUTH-01: Department Manager scope", () => {
       true
     );
   });
+
+  test("management member directory scopes Department Managers to assigned-department enrollments", async () => {
+    const admin = await login("alice", "alice-secret");
+    const staff = await login("staff", "staff-secret");
+    const manager = await login("bob", "bob-secret");
+    const departmentA = await createDepartment(
+      admin,
+      `MGMT-A-${crypto.randomUUID().slice(0, 8)}`
+    );
+    const programA = await createProgram(
+      admin,
+      departmentA,
+      `Alpha-${crypto.randomUUID().slice(0, 8)}`
+    );
+    const departmentB = await createDepartment(
+      admin,
+      `MGMT-B-${crypto.randomUUID().slice(0, 8)}`
+    );
+    const programB = await createProgram(
+      admin,
+      departmentB,
+      `Beta-${crypto.randomUUID().slice(0, 8)}`
+    );
+    const grant = await worker.fetch(
+      request(`/api/v1/programs/departments/${departmentA}/managers`, admin, {
+        method: "POST",
+        body: { user_id: "U002" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(grant.status, 200);
+
+    // carol (U003) is enrolled in departmentA; staff (U005) only in the
+    // unrelated departmentB.
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments (
+           enrollment_id, program_id, member_user_id, status, enrolled_at, created_at
+         ) VALUES (?, ?, ?, 'Active', ?, ?)`
+      )
+      .bind(crypto.randomUUID(), programA, "U003", now, now)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments (
+           enrollment_id, program_id, member_user_id, status, enrolled_at, created_at
+         ) VALUES (?, ?, ?, 'Active', ?, ?)`
+      )
+      .bind(crypto.randomUUID(), programB, "U005", now, now)
+      .run();
+
+    async function memberIds(access: string, q: string): Promise<string[]> {
+      const res = await worker.fetch(
+        request(`/api/v1/management/members?q=${q}`, access),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200, `${q} search must succeed`);
+      const body = (await res.json()) as {
+        data: { members: { user_id: string }[] };
+      };
+      return body.data.members.map(({ user_id }) => user_id);
+    }
+
+    // Admin and Staff resolve church-wide: both enrolled members are visible.
+    assert.deepStrictEqual(await memberIds(admin, "carol"), ["U003"]);
+    assert.deepStrictEqual(await memberIds(admin, "staff"), ["U005"]);
+    assert.deepStrictEqual(await memberIds(staff, "staff"), ["U005"]);
+
+    // The departmentA manager sees carol (enrolled in A) but never staff,
+    // who is enrolled only in the unrelated departmentB.
+    assert.deepStrictEqual(await memberIds(manager, "carol"), ["U003"]);
+    assert.deepStrictEqual(
+      await memberIds(manager, "staff"),
+      [],
+      "unrelated department's enrolled members must not be visible"
+    );
+    assert.deepStrictEqual(
+      await memberIds(manager, "alice"),
+      [],
+      "a member not enrolled in an assigned department is not visible"
+    );
+  });
+
+  test("management member directory requires a 2+ character query (422)", async () => {
+    const admin = await login("alice", "alice-secret");
+    const res = await worker.fetch(
+      request("/api/v1/management/members?q=a", admin),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const problem = (await res.json()) as { code: string };
+    assert.strictEqual(problem.code, "VALIDATION");
+  });
+
+  test("management member directory denies a Member with no manager grant (403)", async () => {
+    const admin = await login("alice", "alice-secret");
+    // A fresh Member who has never been granted any department.
+    const username = `plain-${crypto.randomUUID().slice(0, 8)}`;
+    const reg = await worker.fetch(
+      new Request(`${HOST}/api/v1/auth/register`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `idem-plain-${username}`,
+        },
+        body: JSON.stringify({
+          username,
+          password: "plain-password-1",
+          name: "Plain Member",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+    const requestRow = await testDb()
+      .prepare(
+        "SELECT request_id FROM registration_requests WHERE username_normalized = ?"
+      )
+      .bind(username)
+      .first<{ request_id: string }>();
+    assert.ok(requestRow);
+    const approve = await worker.fetch(
+      new Request(`${HOST}/api/v1/auth/registrations/${requestRow?.request_id ?? ""}/approve`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${admin}`,
+          "Idempotency-Key": `idem-approve-${username}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(approve.status, 200);
+    const member = await login(username, "plain-password-1");
+    const res = await worker.fetch(
+      request("/api/v1/management/members?q=alice", member),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 403);
+    const problem = (await res.json()) as { code: string };
+    assert.strictEqual(problem.code, "FORBIDDEN");
+  });
 });

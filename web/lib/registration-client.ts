@@ -109,16 +109,22 @@ export async function fetchPendingRegistrations(): Promise<
 
 /**
  * POST /api/v1/auth/registrations/:id/{approve|reject} — Staff/Admin
- * resolves a Pending request. Idempotent server-side against a repeated
- * action; opposite/redundant transitions are deterministic errors.
+ * resolves a Pending request. Rejection sends the required explanation note;
+ * approval keeps an empty body. Idempotency is enforced server-side.
  */
 export async function decideRegistration(
   id: string,
-  decision: Decision
+  decision: Decision,
+  note?: string
 ): Promise<void> {
+  const isReject = decision === "reject";
   const res = await fetch(`/api/v1/auth/registrations/${id}/${decision}`, {
     method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey() },
+    headers: {
+      ...(isReject ? { "Content-Type": "application/json" } : {}),
+      "Idempotency-Key": idempotencyKey(),
+    },
+    ...(isReject ? { body: JSON.stringify({ note: note ?? "" }) } : {}),
   });
   if (!res.ok) throw await parseError(res);
 }

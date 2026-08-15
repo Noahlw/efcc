@@ -25,6 +25,7 @@
  */
 
 import { navigationForRole, sectionsForRole } from "../sections";
+import { COPY } from "../copy";
 import {
   AccountConflictError,
   AccountStatusError,
@@ -53,6 +54,7 @@ import {
   rejectRegistration,
   RegistrationConflictError,
   RegistrationNotFoundError,
+  RegistrationValidationError,
 } from "./registrations";
 import {
   AuthError,
@@ -769,6 +771,29 @@ export async function handleMe(
     resolved.account.role === "Member"
       ? await hasActiveManagementGrant(env.DB, resolved.account.user_id)
       : false;
+  // Home CMS capability is a server-projected section, not a role guess.
+  const sections = sectionsForRole(
+    resolved.account.role,
+    hasManagementGrant
+  );
+  const hasHomeCapability =
+    (resolved.account.role === "Admin" || resolved.account.role === "Staff") &&
+    Boolean(
+      await env.DB
+        .prepare(
+          "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = 'home.publish'"
+        )
+        .bind(resolved.account.role)
+        .first()
+    );
+  if (hasHomeCapability) {
+    sections.push({
+      key: "home-cms",
+      label: COPY.management.homeContent,
+      capability: "home.publish",
+      requiresServerAuth: true,
+    });
+  }
   // The server emits a separate stable navigation projection. It is
   // presentation metadata only; `sections` remains the authorization set.
   return jsonResponse(
@@ -777,7 +802,7 @@ export async function handleMe(
       requestId,
       data: {
         user: secretFreeUser(resolved.account),
-        sections: sectionsForRole(resolved.account.role, hasManagementGrant),
+        sections,
         navigation: navigationForRole(
           resolved.account.role,
           hasManagementGrant
@@ -1106,7 +1131,8 @@ export async function handleApprove(
  *
  * Teacher/Admin rejects a Pending registration without creating an account.
  * Idempotency-Key required; rejecting an already-rejected request is a no-op
- * success. Body: empty or optional note (ignored).
+ * success. Body: `{ note: string }` — a non-empty note is required for a
+ * Pending request (422 otherwise) and is persisted on the request row.
  */
 export async function handleReject(
   request: Request,
@@ -1128,11 +1154,34 @@ export async function handleReject(
     return auth;
   }
 
+  // Lenient body handling preserves idempotent replay: an empty body (or any
+  // body) on an already-rejected request must stay a no-op success. The note
+  // requirement is enforced by rejectRegistration only when the request is
+  // actually Pending (RegistrationValidationError -> 422 below).
+  let note = "";
+  const rawBody = await request.text();
+  if (rawBody.trim() !== "") {
+    let body: { note?: unknown } | null;
+    try {
+      body = JSON.parse(rawBody) as typeof body;
+    } catch {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        "Body must be JSON.",
+        requestId
+      );
+    }
+    note = typeof body?.note === "string" ? body.note.trim() : "";
+  }
+
   let accountStatus: string;
   try {
     accountStatus = await rejectRegistration(env.DB, {
       requestId: registrationId,
       reviewerId: auth.caller.user_id,
+      note,
     });
   } catch (error) {
     if (error instanceof RegistrationNotFoundError) {
@@ -1146,6 +1195,15 @@ export async function handleReject(
     }
     if (error instanceof RegistrationConflictError) {
       return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof RegistrationValidationError) {
+      return problem(
+        422,
+        "VALIDATION",
+        "Validation failed",
+        error.message,
+        requestId
+      );
     }
     throw error;
   }

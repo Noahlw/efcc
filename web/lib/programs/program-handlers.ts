@@ -27,6 +27,7 @@ import type {
   UpdateScheduleRuleCommand,
 } from "./department-workspace";
 import {
+  DepartmentArchiveBlockedError,
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
   DuplicateDepartmentCodeError,
@@ -39,6 +40,7 @@ import {
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancellationBlockedError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
@@ -325,6 +327,26 @@ function mapWorkspaceError(
       requestId
     );
   }
+  if (error instanceof EventCancellationBlockedError) {
+    return problem(
+      422,
+      "EVENT_CANCELLATION_BLOCKED",
+      "Cancellation blocked",
+      error.message,
+      requestId,
+      { active_attendance_count: error.activeAttendanceCount }
+    );
+  }
+  if (error instanceof DepartmentArchiveBlockedError) {
+    return problem(
+      422,
+      "DEPARTMENT_ARCHIVE_BLOCKED",
+      "Archive blocked",
+      "Departments with Draft or Active programs cannot be archived. Archive or remove the programs first.",
+      requestId,
+      { blocking_program_count: error.blockingProgramCount }
+    );
+  }
   return null;
 }
 function jsonResponse(
@@ -548,6 +570,17 @@ export async function handleListManagementAccess(
 
   const { workspace } = await getModule(env);
   const access = await workspace.getManagementAccess(ctxFrom(auth.account));
+  const managementSurface =
+    new URL(request.url).searchParams.get("surface") === "management";
+  if (managementSurface && !access.hasManagementCapability) {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Management capability is required.",
+      requestId
+    );
+  }
   return jsonResponse(200, access, requestId);
 }
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
@@ -921,6 +954,46 @@ export async function handleSearchDepartmentMemberOptions(
   }
   const members = await workspace.searchActiveMembers(query, 20);
   return jsonResponse(200, { members }, requestId);
+}
+
+/**
+ * GET /api/v1/management/members?q=... (AUTH-06 #295)
+ *
+ * Management hub member directory. Admin/Staff resolve church-wide over all
+ * Active accounts; an active Department Manager resolves only over members
+ * with an Active enrollment in a program of one of their assigned
+ * departments. Anyone else is denied (403). The search requires at least two
+ * characters and returns at most 20 read-only identity, role, department, and
+ * contact projections.
+ */
+export async function handleSearchManagementMembers(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const members = await workspace.searchManagementMembers(
+      ctxFrom(auth.account),
+      query,
+      20
+    );
+    return jsonResponse(200, { members }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** PATCH /api/v1/programs/departments/:id */

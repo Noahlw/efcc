@@ -27,7 +27,13 @@ export const LegacyRouteRedirect = ({ route }: { route: LegacyRoute }) => {
 
   useEffect(() => {
     const permitted = isPermitted(bootstrap.sections, route);
-    router.replace(redirectFor(route, bootstrap.profile.role, permitted));
+    const target = redirectFor(route, bootstrap.profile.role, permitted);
+    const eventId =
+      route === "events" && permitted
+        ? new URLSearchParams(window.location.search).get("eventId")
+        : null;
+    const suffix = eventId ? `&eventId=${encodeURIComponent(eventId)}` : "";
+    router.replace(`${target}${suffix}`);
   }, [bootstrap, route, router]);
 
   return (

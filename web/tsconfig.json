@@ -47,7 +47,7 @@
     "lib/programs/department-manager.test.ts",
     "lib/programs/programs.test.ts",
     "lib/programs/programs-250.test.ts",
-    "lib/service-envelope.ts",
-    "lib/service-envelope.test.ts"
+    "lib/service-envelope.test.ts",
+    "lib/home-content.test.ts"
   ]
 }

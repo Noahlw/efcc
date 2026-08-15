@@ -51,6 +51,69 @@ describe("ApprovalQueue", () => {
     expect(screen.getByRole("button", { name: QUEUE_COPY.reject })).toBeInTheDocument();
   });
 
+  test("requires and submits a rejection note from the request details", async () => {
+    let rejected = false;
+    let attempts = 0;
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-note",
+          data: { registrations: rejected ? [] : PENDING_ONE },
+        })
+      ),
+      http.post(
+        "/api/v1/auth/registrations/req-1/reject",
+        async ({ request }) => {
+          attempts += 1;
+          expect(request.headers.get("idempotency-key")).toBeTruthy();
+          expect(request.headers.get("content-type")).toContain(
+            "application/json"
+          );
+          expect(await request.json()).toStrictEqual({
+            note: "資料不足，請補充後再申請。",
+          });
+          if (attempts === 1) {
+            return HttpResponse.json(
+              { code: "UNAVAILABLE", detail: "temporarily unavailable" },
+              { status: 503 }
+            );
+          }
+          rejected = true;
+          return HttpResponse.json({
+            requestId: "rid-note-decision",
+            data: { accountStatus: "rejected" },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: `${QUEUE_COPY.reject}`,
+      })
+    );
+    const note = screen.getByRole("textbox", {
+      name: QUEUE_COPY.rejectionNoteLabel,
+    });
+    await user.click(
+      screen.getByRole("button", { name: QUEUE_COPY.confirmReject })
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      QUEUE_COPY.rejectionNoteRequired
+    );
+    await user.type(note, "資料不足，請補充後再申請。");
+    await user.click(
+      screen.getByRole("button", { name: QUEUE_COPY.confirmReject })
+    );
+    expect(await screen.findByText(QUEUE_COPY.unavailable)).toBeInTheDocument();
+    expect(note).toHaveValue("資料不足，請補充後再申請。");
+    await user.click(
+      screen.getByRole("button", { name: QUEUE_COPY.confirmReject })
+    );
+    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+  });
+
   test("shows an empty state when there are no pending requests", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>

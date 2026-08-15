@@ -436,6 +436,77 @@
   line-height: 1.5;
 }
 
+
+.printSheet {
+  display: none;
+}
+
+.printHeader {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.printHeader h2,
+.printSheet h3 {
+  margin: 0;
+}
+
+.printHeader p {
+  margin: 0;
+}
+
+.printCodes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.printCodeBlock {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.printQr {
+  width: 180px;
+  max-width: 100%;
+}
+
+.printRows {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.printRows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.35rem 0;
+}
+
+@media print {
+  :global(body) * {
+    visibility: hidden;
+  }
+
+  .printSheet,
+  .printSheet * {
+    visibility: visible;
+  }
+
+  .printSheet {
+    display: grid;
+    position: absolute;
+    inset: 0;
+    gap: 1rem;
+    width: 100%;
+    padding: 1rem;
+    color: #000;
+    background: #fff;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .button,
   .buttonSecondary,

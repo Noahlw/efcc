@@ -1453,12 +1453,19 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(roster.status, 200);
     const rosterBody = await json(roster);
     const rows = rosterBody.data as {
+      event: {
+        program_check_in_token?: string | null;
+      };
       attendances: {
         attendance_id: string;
         guest_name: string;
         guest_phone: string;
       }[];
     };
+    assert.strictEqual(
+      rows.event.program_check_in_token,
+      "ATTENDANCE-PROGRAM-TOKEN"
+    );
     const row = rows.attendances.find(
       (candidate) => candidate.attendance_id === rowA.attendance_id
     );

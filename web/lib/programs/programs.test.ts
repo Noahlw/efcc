@@ -106,6 +106,7 @@ async function problemOf(
   status: number;
   requestId: string;
   open_operations?: number;
+  active_attendance_count?: number;
 }> {
   assert.strictEqual(
     res.headers.get("Content-Type"),
@@ -116,6 +117,7 @@ async function problemOf(
     status: number;
     requestId: string;
     open_operations?: number;
+    active_attendance_count?: number;
   };
   assert.strictEqual(body.requestId, res.headers.get("X-Request-Id"));
   return body;
@@ -351,6 +353,18 @@ describe("PRG-01: departments", () => {
     assert.strictEqual(memberBody.data.hasManagementCapability, false);
     assert.ok(!("check_in_token" in memberBody.data));
 
+    const managementResponse = await worker.fetch(
+      programsRequest("/api/v1/programs/access?surface=management", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(managementResponse.status, 403);
+    const managementProblem = await problemOf(managementResponse);
+    assert.strictEqual(managementProblem.code, "FORBIDDEN");
     const adminResponse = await worker.fetch(
       programsRequest("/api/v1/programs/access", {
         headers: {
@@ -601,6 +615,102 @@ describe("PRG-01: departments", () => {
       testEnv()
     );
     assert.strictEqual(valid.status, 200);
+  });
+
+  test("department archive is blocked (422) while any child program is Draft or Active", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "ARCHIVE-GUARD",
+      name: "Archive Guard",
+    });
+    await createProgram(adminAccess, dept.department_id, {
+      name: "Guard Draft Program",
+      behavior_type: "OneOff",
+    });
+
+    const blocked = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${dept.department_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(blocked.status, 422);
+    const problem = await problemOf(blocked);
+    assert.strictEqual(problem.code, "DEPARTMENT_ARCHIVE_BLOCKED");
+
+    const stored = await testDb()
+      .prepare("SELECT lifecycle FROM departments WHERE department_id = ?")
+      .bind(dept.department_id)
+      .first<{ lifecycle: string }>();
+    assert.strictEqual(
+      stored?.lifecycle,
+      "Draft",
+      "the blocked archive must not change the department lifecycle"
+    );
+  });
+
+  test("department archive succeeds once every child program is Archived", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "ARCHIVE-CLEAR",
+      name: "Archive Clear",
+    });
+    const program = await createProgram(adminAccess, dept.department_id, {
+      name: "Clear Program",
+      behavior_type: "OneOff",
+    });
+    // Promote the program to Active, then archive it (Draft -> Active ->
+    // Archived) so the department archive is no longer blocked.
+    const promote = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(promote.status, 200);
+    const archiveProgram = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(archiveProgram.status, 200);
+
+    const archive = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${dept.department_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(archive.status, 200);
+    const body = (await assertCorrelated(archive)) as {
+      data: { department: { lifecycle: string } };
+    };
+    assert.strictEqual(body.data.department.lifecycle, "Archived");
   });
 });
 
@@ -4195,7 +4305,7 @@ describe("PRG-02: events", () => {
     assert.strictEqual(dupBody.code, "CONFLICT");
   });
 
-  test("cancellation is soft, audited, and preserves attendance", async () => {
+  test("cancellation is blocked by active attendance (422), then succeeds after voiding", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const created = await worker.fetch(
       programsRequest(`/api/v1/programs/${programId}/events`, {
@@ -4219,11 +4329,55 @@ describe("PRG-02: events", () => {
       data: { event: { event_id: string } };
     };
 
+    const attendanceId = crypto.randomUUID();
     await testDb()
       .prepare(
         "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
       )
-      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .bind(attendanceId, event.event_id, new Date().toISOString())
+      .run();
+
+    // Course Cockpit guardrail (#294): cancellation with an Active row is 422
+    // and leaves the event status untouched.
+    const blocked = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "惡劣天氣" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(blocked.status, 422);
+    const blockedBody = await problemOf(blocked);
+    assert.strictEqual(blockedBody.code, "EVENT_CANCELLATION_BLOCKED");
+    assert.strictEqual(blockedBody.active_attendance_count, 1);
+    const untouched = await testDb()
+      .prepare("SELECT status FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ status: string }>();
+    assert.strictEqual(untouched?.status, "Active");
+    const conflictAudit = await testDb()
+      .prepare(
+        "SELECT action, entity_type, outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_CANCEL' AND outcome = 'CONFLICT'"
+      )
+      .bind(event.event_id)
+      .first<{ action: string; entity_type: string; outcome: string }>();
+    assert.ok(conflictAudit, "blocked cancellation must write a CONFLICT audit row");
+    assert.strictEqual(conflictAudit.entity_type, "event");
+
+    // Void the row with its required reason (mirrors the void handler's write).
+    await testDb()
+      .prepare(
+        "UPDATE attendances SET status = 'Voided', voided_by = 'U001', voided_at = ?, void_reason = ? WHERE attendance_id = ? AND status = 'Active'"
+      )
+      .bind(new Date().toISOString(), "test-void", attendanceId)
       .run();
 
     const cancelled = await worker.fetch(
@@ -4249,23 +4403,28 @@ describe("PRG-02: events", () => {
     assert.strictEqual(result.data.event.cancel_reason, "惡劣天氣");
 
     const attendances = await testDb()
+      .prepare("SELECT status, void_reason FROM attendances WHERE event_id = ?")
+      .bind(event.event_id)
+      .all<{ status: string; void_reason: string | null }>();
+    assert.strictEqual(attendances.results?.length, 1);
+    assert.strictEqual(attendances.results?.[0]?.status, "Voided");
+    assert.strictEqual(attendances.results?.[0]?.void_reason, "test-void");
+    const cancelledEvent = await testDb()
       .prepare(
-        "SELECT status, checked_in_at FROM attendances WHERE event_id = ?"
+        "SELECT manual_check_in_code FROM events WHERE event_id = ?"
       )
       .bind(event.event_id)
-      .all<{ status: string; checked_in_at: string }>();
-    assert.strictEqual(attendances.results?.length, 1);
-    assert.strictEqual(attendances.results?.[0]?.status, "Active");
+      .first<{ manual_check_in_code: string | null }>();
+    assert.strictEqual(cancelledEvent?.manual_check_in_code, null);
 
-    const audit = await testDb()
+    const successAudit = await testDb()
       .prepare(
-        "SELECT action, entity_type, outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_CANCEL'"
+        "SELECT action, entity_type, outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_CANCEL' AND outcome = 'SUCCESS'"
       )
       .bind(event.event_id)
       .first<{ action: string; entity_type: string; outcome: string }>();
-    assert.ok(audit, "EVENT_CANCEL audit row must exist");
-    assert.strictEqual(audit.entity_type, "event");
-    assert.strictEqual(audit.outcome, "SUCCESS");
+    assert.ok(successAudit, "EVENT_CANCEL SUCCESS audit row must exist");
+    assert.strictEqual(successAudit.entity_type, "event");
   });
 
   test("Members see only Active events; managers see all", async () => {

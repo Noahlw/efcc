@@ -1,12 +1,11 @@
 "use client";
 
-import { SectionView } from "@/app/_sections/section-view";
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
+import { ManagementHub } from "@/lib/management-hub";
 
 const ManagementPage = () => (
   <AppShell>
-    <SectionView sectionKey="management" title={COPY.sections.management} />
+    <ManagementHub />
   </AppShell>
 );
 
