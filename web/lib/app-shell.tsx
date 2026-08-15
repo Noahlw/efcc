@@ -12,6 +12,10 @@ import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
+  loadingNavigationSections,
+  stableNavigationSections,
+} from "@/lib/sections";
+import {
   clearAuthHint,
   clearDeepLink,
   rememberDeepLink,
@@ -33,58 +37,8 @@ const SKELETON_BOOTSTRAP: Bootstrap = {
     status: "Active",
     qrCodeString: "",
   },
-  sections: [
-    {
-      key: "home",
-      label: "首頁",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "programs",
-      label: "課程",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "profile",
-      label: "個人檔案",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-  ],
-  navigation: [
-    {
-      key: "home",
-      label: "首頁",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "programs",
-      label: "課程",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "scanner",
-      label: "掃描",
-      capability: "AUTH",
-      requiresServerAuth: false,
-    },
-    {
-      key: "slot4-skeleton",
-      label: "",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-    {
-      key: "profile",
-      label: "帳戶",
-      capability: "READ",
-      requiresServerAuth: false,
-    },
-  ],
+  sections: stableNavigationSections(false),
+  navigation: loadingNavigationSections(),
 };
 
 const ShellFrame = ({
@@ -142,7 +96,7 @@ const LoadingShell = () => {
             <span className={styles.title}>{COPY.appFullName}</span>
           </div>
         </header>
-        <NavBar isRestoring />
+        <NavBar />
         <main id="shell-content" className="shell-content">
           <div className={styles.state}>
             <span className={styles.spinner} aria-hidden="true" />

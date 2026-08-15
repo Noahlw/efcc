@@ -1176,6 +1176,22 @@ describe("Shell", () => {
       adminView.unmount();
     });
 
+    test("renders a visible 44px slot-four skeleton during restore", () => {
+      renderWithProvider(sectionsForRole("Member"), "/home", [
+        ...stableNavigationSections(false).slice(0, 3),
+        {
+          key: "slot4-skeleton",
+          label: "",
+          capability: "READ",
+          requiresServerAuth: false,
+        },
+        ...stableNavigationSections(false).slice(4),
+      ]);
+      expect(
+        screen.getAllByRole("navigation")[0].querySelector(".nav-item-skeleton")
+      ).toBeTruthy();
+    });
+
     test("marks active section with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
       const [active] = screen.getAllByText(COPY.sections.programs);

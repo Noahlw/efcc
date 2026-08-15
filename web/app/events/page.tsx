@@ -1,14 +1,11 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
-import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
-import { GuardedSection } from "@/lib/guarded-section";
+import { LegacyRouteRedirect } from "@/lib/legacy-route-redirect";
 
 const EventsPage = () => (
   <AppShell>
-    <GuardedSection sectionKey="events">
-      <AttendanceOperatorPanel />
-    </GuardedSection>
+    <LegacyRouteRedirect route="events" />
   </AppShell>
 );
 

@@ -1,15 +1,11 @@
 "use client";
 
-import { SectionView } from "@/app/_sections/section-view";
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
+import { LegacyRouteRedirect } from "@/lib/legacy-route-redirect";
 
 const PermissionsPage = () => (
   <AppShell>
-    <SectionView
-      sectionKey="permissions"
-      title={COPY.sections.permissionsHeading}
-    />
+    <LegacyRouteRedirect route="permissions" />
   </AppShell>
 );
 

@@ -1,12 +1,11 @@
 "use client";
 
-import { SectionView } from "@/app/_sections/section-view";
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
+import { LegacyRouteRedirect } from "@/lib/legacy-route-redirect";
 
 const CarePage = () => (
   <AppShell>
-    <SectionView sectionKey="care" title={COPY.sections.care} />
+    <LegacyRouteRedirect route="care" />
   </AppShell>
 );
 

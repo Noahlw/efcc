@@ -137,6 +137,18 @@ export function stableNavigationSections(isManagement = false): Section[] {
     isManagement ? MANAGEMENT_NAVIGATION_KEYS : PARTICIPANT_NAVIGATION_KEYS
   );
 }
+/** Neutral five-slot navigation used while the authenticated profile restores. */
+export function loadingNavigationSections(): Section[] {
+  return stableNavigationSections(false).map((section, index) =>
+    index === 3
+      ? {
+          ...section,
+          key: "slot4-skeleton",
+          label: "",
+        }
+      : section
+  );
+}
 
 export function navigationForRole(
   role: string,
