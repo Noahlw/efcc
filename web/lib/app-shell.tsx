@@ -23,13 +23,77 @@ import styles from "./auth-shell.module.css";
 
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 
-function ShellFrame({
+const SKELETON_BOOTSTRAP: Bootstrap = {
+  profile: {
+    userId: "",
+    name: "",
+    username: "",
+    phone: "",
+    role: "Member",
+    status: "Active",
+    qrCodeString: "",
+  },
+  sections: [
+    {
+      key: "home",
+      label: "首頁",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "programs",
+      label: "課程",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "profile",
+      label: "個人檔案",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+  ],
+  navigation: [
+    {
+      key: "home",
+      label: "首頁",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "programs",
+      label: "課程",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "scanner",
+      label: "掃描",
+      capability: "AUTH",
+      requiresServerAuth: false,
+    },
+    {
+      key: "slot4-skeleton",
+      label: "",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "profile",
+      label: "帳戶",
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+  ],
+};
+
+const ShellFrame = ({
   bootstrap,
   children,
 }: {
   bootstrap: Bootstrap;
   children: React.ReactNode;
-}) {
+}) => {
   const router = useRouter();
 
   const handleSignOut = useCallback(async () => {
@@ -62,22 +126,35 @@ function ShellFrame({
       </div>
     </AppProvider>
   );
-}
+};
+const handleNoopSignOut = () => Promise.resolve();
 
-function LoadingShell() {
+const LoadingShell = () => {
   useEffect(() => {
     announce(COPY.restore.loading);
   }, []);
 
   return (
-    <main className={styles.state}>
-      <span className={styles.spinner} aria-hidden="true" />
-      <p>{COPY.restore.loading}</p>
-    </main>
+    <AppProvider bootstrap={SKELETON_BOOTSTRAP} onSignOut={handleNoopSignOut}>
+      <div className="shell">
+        <header className={styles.header}>
+          <div className={styles.brand}>
+            <span className={styles.title}>{COPY.appFullName}</span>
+          </div>
+        </header>
+        <NavBar isRestoring />
+        <main id="shell-content" className="shell-content">
+          <div className={styles.state}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <p>{COPY.restore.loading}</p>
+          </div>
+        </main>
+      </div>
+    </AppProvider>
   );
-}
+};
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<
@@ -176,4 +253,4 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return <ShellFrame bootstrap={state.bootstrap}>{children}</ShellFrame>;
-}
+};

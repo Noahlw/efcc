@@ -31,17 +31,32 @@ const iconForSection = (key: string): IconName => {
   }
 };
 
-export const NavBar = () => {
+export const NavBar = ({ isRestoring = false }: { isRestoring?: boolean }) => {
   const { bootstrap } = useApp();
   const pathname = usePathname();
+  const safePathname = pathname ?? "/home";
+
   // Prefix-aware: /profile/settings (and future sub-routes) still highlight
   // the owning section.
-  const current = pathname.replace(/^\//u, "").split("/")[0] || "home";
+  const current = safePathname.replace(/^\//u, "").split("/")[0] || "home";
 
   return (
     <>
       <nav aria-label={COPY.nav.label} className="nav-phone">
         {bootstrap.navigation.map((s) => {
+          if (
+            s.key === "slot4-skeleton" ||
+            (isRestoring && s.key === "management")
+          ) {
+            return (
+              <div
+                key="slot4-skeleton"
+                className="nav-item"
+                aria-hidden="true"
+                style={{ minHeight: 44, opacity: 0.15 }}
+              />
+            );
+          }
           const isScan = s.key === "scanner";
           const isCurrent = s.key === current;
           const iconName = iconForSection(s.key);
@@ -60,6 +75,19 @@ export const NavBar = () => {
       </nav>
       <nav aria-label={COPY.nav.label} className="nav-desktop">
         {bootstrap.navigation.map((s) => {
+          if (
+            s.key === "slot4-skeleton" ||
+            (isRestoring && s.key === "management")
+          ) {
+            return (
+              <div
+                key="slot4-skeleton"
+                className="nav-item"
+                aria-hidden="true"
+                style={{ minHeight: 48, opacity: 0.15 }}
+              />
+            );
+          }
           const isCurrent = s.key === current;
           const iconName = iconForSection(s.key);
           return (
