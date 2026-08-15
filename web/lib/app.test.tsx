@@ -208,6 +208,17 @@ const DEFAULT_HANDLER = [
       },
     });
   }),
+  http.get("/api/v1/attention", () =>
+    HttpResponse.json({
+      requestId: "r-attention",
+      data: {
+        actionable_count: 0,
+        unread_count: 0,
+        tasks: [],
+        notifications: [],
+      },
+    })
+  ),
   http.post("/api/v1/auth/logout", () => {
     authCalls.push("/api/v1/auth/logout");
     return new HttpResponse(null, { status: 204 });
@@ -1458,31 +1469,22 @@ describe("Shell", () => {
       });
     });
 
-    test("events page renders COPY.sections.events title", async () => {
+    test("events page redirects permitted operators to Management Hub", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: COPY.sections.events })
-        ).toBeInTheDocument();
+        expect(replaceMock).toHaveBeenCalledWith("/management?module=events");
       });
     });
 
-    test("events page gates the operator panel behind the events section", async () => {
-      // The server-shaped Member projection omits events, so GuardedSection
-      // must render ForbiddenView instead of the operator panel.
+    test("events page redirects members to Programs", async () => {
       withAuthRestore(PUBLIC_USER);
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
-        expect(screen.getByRole("alert")).toHaveTextContent(
-          COPY.error.forbidden
-        );
+        expect(replaceMock).toHaveBeenCalledWith("/programs");
       });
-      expect(
-        screen.queryByRole("heading", { name: COPY.sections.events })
-      ).not.toBeInTheDocument();
     });
 
     test("scanner page renders COPY.sections.scanner title", async () => {
@@ -1535,39 +1537,23 @@ describe("Shell", () => {
       }
     });
 
-    test("care page renders COPY.sections.care title", async () => {
+    test("care page redirects permitted pastoral staff to Management Hub", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<CarePage />);
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: COPY.sections.care })
-        ).toBeInTheDocument();
+        expect(replaceMock).toHaveBeenCalledWith("/management?module=care");
       });
     });
 
-    test("permissions page renders the S10 permissionsHeading title", async () => {
+    test("permissions page redirects Admins to Management Hub", async () => {
       withAuthRestore(ADMIN_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", {
-            name: COPY.sections.permissionsHeading,
-          })
-        ).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("server-shaped bootstrap authorization", () => {
-    test("uses the server projection instead of deriving sections from role", () => {
-      expect(
-        buildBootstrap(ADMIN_USER, MEMBER_SECTIONS, NAVIGATION)
-      ).toStrictEqual({
-        profile: ADMIN_USER,
-        sections: MEMBER_SECTIONS,
-        navigation: NAVIGATION,
+        expect(replaceMock).toHaveBeenCalledWith(
+          "/management?module=permissions"
+        );
       });
     });
 

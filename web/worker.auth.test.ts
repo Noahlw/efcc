@@ -1224,3 +1224,145 @@ describe("AUTH-05: registration queue listing", () => {
     assert.strictEqual(body.code, "NOT_FOUND");
   });
 });
+
+describe("ATT-01: universal attention and subscriptions", () => {
+  test("members can read and update editorial subscriptions", async () => {
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const initial = await worker.fetch(
+      authRequest("/api/v1/subscriptions", {
+        method: "GET",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(initial.status, 200);
+    const updated = await worker.fetch(
+      authRequest("/api/v1/subscriptions", {
+        method: "PUT",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+        body: {
+          topic_key: "church_news",
+          is_subscribed: false,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(updated.status, 200);
+    const body = (await assertCorrelated(updated)) as {
+      data: { subscriptions: { topic_key: string; is_subscribed: boolean }[] };
+    };
+    assert.deepStrictEqual(body.data.subscriptions, [
+      {
+        topic_key: "church_news",
+        is_subscribed: false,
+        updated_at: body.data.subscriptions[0].updated_at,
+      },
+    ]);
+  });
+
+  test("subscription validation rejects non-boolean preferences", async () => {
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const response = await worker.fetch(
+      authRequest("/api/v1/subscriptions", {
+        method: "PUT",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+        body: { topic_key: "church_news", is_subscribed: 1 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+    const invalidProblem = await problemOf(response);
+    assert.strictEqual(invalidProblem.code, "VALIDATION");
+  });
+
+  test("only Admin can mutate a current attention task priority", async () => {
+    const requestId = crypto.randomUUID();
+    await testDb()
+      .prepare(
+        `INSERT INTO registration_requests (
+           request_id, user_id, username, username_normalized, name, phone,
+           credential_hash, credential_kind, account_status, role, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, NULL, ?, 'password', 'Pending', 'Member', ?)`
+      )
+      .bind(
+        requestId,
+        crypto.randomUUID(),
+        `attention-${requestId.slice(0, 8)}`,
+        `attention-${requestId.slice(0, 8)}`,
+        "Attention Test",
+        "not-a-real-credential",
+        Date.now()
+      )
+      .run();
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const attention = await worker.fetch(
+      authRequest("/api/v1/attention", {
+        method: "GET",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(attention.status, 200);
+    const attentionBody = (await assertCorrelated(attention)) as {
+      data: { tasks: { task_id: string }[] };
+    };
+    const task = attentionBody.data.tasks.find(
+      ({ task_id }) => task_id === `registration:${requestId}`
+    );
+    assert.ok(task);
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const denied = await worker.fetch(
+      authRequest(
+        `/api/v1/attention/tasks/${encodeURIComponent(task.task_id)}/priority`,
+        {
+          method: "PUT",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+          body: { priority: "high" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(denied.status, 403);
+    const deniedProblem = await problemOf(denied);
+    assert.strictEqual(deniedProblem.code, "FORBIDDEN");
+    const changed = await worker.fetch(
+      authRequest(
+        `/api/v1/attention/tasks/${encodeURIComponent(task.task_id)}/priority`,
+        {
+          method: "PUT",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+          body: { priority: "high" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(changed.status, 200);
+    const audit = await testDb()
+      .prepare(
+        `SELECT action FROM audit_events
+          WHERE entity_type = 'task_priority' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(task.task_id)
+      .first<{ action: string }>();
+    assert.strictEqual(audit?.action, "ATTENTION_TASK_PRIORITY_UPDATED");
+  });
+});

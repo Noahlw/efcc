@@ -21,6 +21,15 @@
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
  */
+import {
+  handleGetAttention,
+  handleMarkAttentionNotificationsRead,
+  handleUpdateTaskPriority,
+} from "./lib/attention";
+import {
+  handleGetSubscriptions,
+  handleUpdateSubscription,
+} from "./lib/auth/subscriptions";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -277,6 +286,63 @@ export default {
           requestId
         );
       }
+    }
+
+    // ---- Attention and editorial subscriptions --------------------------
+    if (
+      url.pathname === "/api/v1/subscriptions" ||
+      url.pathname === "/api/v1/attention" ||
+      url.pathname.startsWith("/api/v1/attention/")
+    ) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const attentionEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      if (
+        url.pathname === "/api/v1/subscriptions" &&
+        request.method === "GET"
+      ) {
+        return handleGetSubscriptions(request, attentionEnv);
+      }
+      if (
+        url.pathname === "/api/v1/subscriptions" &&
+        request.method === "PUT"
+      ) {
+        return handleUpdateSubscription(request, attentionEnv);
+      }
+      if (url.pathname === "/api/v1/attention" && request.method === "GET") {
+        return handleGetAttention(request, attentionEnv);
+      }
+      if (
+        url.pathname === "/api/v1/attention/notifications/read" &&
+        request.method === "POST"
+      ) {
+        return handleMarkAttentionNotificationsRead(request, attentionEnv);
+      }
+      const priority = url.pathname.match(
+        /^\/api\/v1\/attention\/tasks\/(?<taskId>[^/]+)\/priority$/u
+      );
+      if (priority && request.method === "PUT") {
+        return handleUpdateTaskPriority(
+          request,
+          attentionEnv,
+          decodeURIComponent(priority.groups?.taskId ?? "")
+        );
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown attention route."
+      );
     }
 
     // ---- Programs domain: cookie-only transport, no CORS ----------------
@@ -870,11 +936,6 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    return authProblemResponse(
-      404,
-      "NOT_FOUND",
-      "Not found",
-      "Unknown route."
-    );
+    return authProblemResponse(404, "NOT_FOUND", "Not found", "Unknown route.");
   },
 } satisfies ExportedHandler<Env>;
