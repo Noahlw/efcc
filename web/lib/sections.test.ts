@@ -55,13 +55,7 @@ const permissions: Section = {
 };
 
 const MEMBER_SECTIONS = [home, profile, programs];
-const STAFF_SECTIONS = [
-  ...MEMBER_SECTIONS,
-  events,
-  scanner,
-  care,
-  permissions,
-];
+const STAFF_SECTIONS = [...MEMBER_SECTIONS, events, scanner, care, permissions];
 
 describe(firstSection, () => {
   test("returns first section key for MEMBER", () => {
@@ -126,6 +120,8 @@ describe(defaultSections, () => {
       "scanner",
       "care",
       "permissions",
+      "management",
+      "notices",
     ]);
     expect(firstSection(sections)).toBe("profile");
     expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
@@ -133,12 +129,19 @@ describe(defaultSections, () => {
 });
 
 describe(stableNavigationSections, () => {
-  test("projects the stable five in the approved order", () => {
-    expect(stableNavigationSections().map((s) => s.key)).toStrictEqual([
+  test("projects the stable 5-slot navigation for Participant and Management", () => {
+    expect(stableNavigationSections(false).map((s) => s.key)).toStrictEqual([
       "home",
       "programs",
-      "events",
       "scanner",
+      "notices",
+      "profile",
+    ]);
+    expect(stableNavigationSections(true).map((s) => s.key)).toStrictEqual([
+      "home",
+      "programs",
+      "scanner",
+      "management",
       "profile",
     ]);
   });
@@ -152,15 +155,8 @@ describe(sectionsForRole, () => {
     "scanner",
     "care",
     "permissions",
+    "management",
   ];
-
-  test("Admin receives authorized sections, with permissions server-projected", () => {
-    expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual(staffKeys);
-  });
-
-  test("Staff receives authorized sections, with permissions server-projected", () => {
-    expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual(staffKeys);
-  });
 
   test("Member receives Home, Profile, and Programs only", () => {
     expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual(
@@ -190,9 +186,10 @@ describe(sectionsForRole, () => {
   });
 
   test("Member with an active management grant additionally receives Events (#215)", () => {
-    expect(
-      sectionsForRole("Member", true).map((s) => s.key)
-    ).toStrictEqual([...memberKeys, "events"]);
+    expect(sectionsForRole("Member", true).map((s) => s.key)).toStrictEqual([
+      ...memberKeys,
+      "events",
+    ]);
   });
 
   test("Member without a management grant still receives no Events (default false)", () => {
@@ -202,8 +199,8 @@ describe(sectionsForRole, () => {
   });
 
   test("hasManagementGrant is a no-op for roles that already include Events", () => {
-    expect(
-      sectionsForRole("Staff", true).map((s) => s.key)
-    ).toStrictEqual(staffKeys);
+    expect(sectionsForRole("Staff", true).map((s) => s.key)).toStrictEqual(
+      staffKeys
+    );
   });
 });

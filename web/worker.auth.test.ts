@@ -528,17 +528,26 @@ describe("AUTH-06: login", () => {
     assert.strictEqual(adminRes.status, 200);
     const adminBody = (await assertCorrelated(adminRes)) as {
       data: {
-        sections: Array<{ key: string }>;
-        navigation: Array<{ key: string }>;
+        sections: { key: string }[];
+        navigation: { key: string }[];
       };
     };
     assert.deepStrictEqual(
       adminBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs", "events", "scanner", "care", "permissions"]
+      [
+        "home",
+        "profile",
+        "programs",
+        "events",
+        "scanner",
+        "care",
+        "permissions",
+        "management",
+      ]
     );
     assert.deepStrictEqual(
       adminBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "management", "profile"]
     );
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -555,8 +564,8 @@ describe("AUTH-06: login", () => {
     assert.strictEqual(memberRes.status, 200);
     const memberBody = (await assertCorrelated(memberRes)) as {
       data: {
-        sections: Array<{ key: string }>;
-        navigation: Array<{ key: string }>;
+        sections: { key: string }[];
+        navigation: { key: string }[];
       };
     };
     assert.deepStrictEqual(
@@ -565,7 +574,7 @@ describe("AUTH-06: login", () => {
     );
     assert.deepStrictEqual(
       memberBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "notices", "profile"]
     );
   });
 

@@ -1120,69 +1120,80 @@ describe("Shell", () => {
       );
     }
 
-    test("renders the stable navigation projection for Member", () => {
-      renderWithProvider(sectionsForRole("Member"), "/home");
+    test("renders the 5-slot navigation projection for Member", () => {
+      renderWithProvider(
+        sectionsForRole("Member"),
+        "/home",
+        stableNavigationSections(false)
+      );
       expect(
         [
           COPY.sections.home,
           COPY.sections.programs,
-          COPY.sections.events,
           COPY.sections.scanner,
+          COPY.sections.notices,
           COPY.sections.profile,
         ].every((section) => screen.getAllByText(section).length >= 1)
       ).toBeTruthy();
       expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
-    test("keeps stable navigation order for Member and Admin", () => {
-      const expected = [
+    test("keeps 5-slot navigation order for Member and Management personas", () => {
+      const memberExpected = [
         "/home",
         "/programs",
-        "/events",
         "/scanner",
+        "/notices",
         "/profile",
       ];
       const memberView = renderWithProvider(
         sectionsForRole("Member"),
         "/home",
-        stableNavigationSections()
+        stableNavigationSections(false)
       );
       const memberLinks = within(screen.getAllByRole("navigation")[0])
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"));
-      expect(memberLinks).toStrictEqual(expected);
+      expect(memberLinks).toStrictEqual(memberExpected);
       memberView.unmount();
 
+      const adminExpected = [
+        "/home",
+        "/programs",
+        "/scanner",
+        "/management",
+        "/profile",
+      ];
       const adminView = renderWithProvider(
         sectionsForRole("Admin"),
         "/home",
-        stableNavigationSections()
+        stableNavigationSections(true)
       );
       const adminLinks = within(screen.getAllByRole("navigation")[0])
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"));
-      expect(adminLinks).toStrictEqual(expected);
+      expect(adminLinks).toStrictEqual(adminExpected);
       adminView.unmount();
     });
 
     test("marks active section with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
       const [active] = screen.getAllByText(COPY.sections.programs);
-      expect(active).toHaveAttribute("aria-current", "page");
+      expect(active.closest("a")).toHaveAttribute("aria-current", "page");
     });
 
     test("does not mark inactive sections with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
       const [inactive] = screen.getAllByText(COPY.sections.profile);
-      expect(inactive).not.toHaveAttribute("aria-current");
+      expect(inactive.closest("a")).not.toHaveAttribute("aria-current");
     });
 
     test("/profile/settings highlights the profile section (prefix-aware)", () => {
       renderWithProvider(MEMBER_SECTIONS, "/profile/settings");
       const [profile] = screen.getAllByText(COPY.sections.profile);
       const [programs] = screen.getAllByText(COPY.sections.programs);
-      expect(profile).toHaveAttribute("aria-current", "page");
-      expect(programs).not.toHaveAttribute("aria-current");
+      expect(profile.closest("a")).toHaveAttribute("aria-current", "page");
+      expect(programs.closest("a")).not.toHaveAttribute("aria-current");
     });
   });
 

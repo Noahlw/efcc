@@ -141,6 +141,8 @@ export const COPY = {
     scanner: "掃描簽到",
     care: "關懷儀表板",
     permissions: "權限管理",
+    management: "管理",
+    notices: "通知",
     // S10 heading: distinguishes the permissions SECTION label from the
     // page title (roles + permissions table, Spec #079 §S10).
     permissionsHeading: "權限與角色管理",

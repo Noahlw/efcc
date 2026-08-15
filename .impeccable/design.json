@@ -63,6 +63,13 @@
           "#eb9d9a",
           "#f7cfcd"
         ]
+      },
+      "pending": {
+        "role": "status-pending",
+        "displayName": "Amber Pending",
+        "canonical": "#8a5b16",
+        "surface": "#f3eee8",
+        "border": "#c1ad95"
       }
     },
     "typographyMeta": {

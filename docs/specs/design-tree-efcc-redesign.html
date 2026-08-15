@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EFCC 顯恩堂系統 — 應用程式架構設計樹（55 Logical Screens）</title>
+<style>
+/* ============================================================================
+   Variant A: Official Civic Minimal — design reference (single file, no deps)
+   Tokens mirror web/app/globals.css + DESIGN.md + .impeccable/design.json
+   ========================================================================== */
+:root {
+  --surface: #f4f5f3;
+  --surface-raised: #ffffff;
+  --ink: #171a1d;
+  --ink-muted: #59636a;
+  --line: #d6dcde;
+  --line-strong: #aeb8bc;
+  --accent: #9c302c;
+  --accent-deep: #76231f;
+  --focus: #176a87;
+  --success: #2e6b37;
+  --success-surface: #eef4ef;
+  --success-border: #b9cfbe;
+  --pending: #8a5b16;
+  --pending-surface: #f3eee8;
+  --pending-border: #c1ad95;
+  --error: #b3261e;
+  --error-surface: #fbeeed;
+  --error-border: #e5b4b0;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+    "Microsoft JhengHei", Arial, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.6;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--focus); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button {
+  font-family: inherit;
+  font-size: 0.9rem;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+button:hover { border-color: var(--ink); }
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 3px solid rgba(23, 106, 135, 0.32);
+  border-color: var(--focus);
+  outline-offset: 1px;
+}
+input[type="search"] {
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: 44px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* ---- Header ---- */
+.site-header {
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
+  padding: 28px 20px 20px;
+}
+.site-header .inner { max-width: 1180px; margin: 0 auto; }
+.site-header .seal {
+  display: inline-grid;
+  place-items: center;
+  width: 48px; height: 48px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+.site-header h1 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.site-header .sub {
+  color: var(--ink-muted);
+  margin-top: 6px;
+  font-size: 0.95rem;
+}
+.site-header .badges { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+}
+.badge.accent { border-color: var(--accent); color: var(--accent); background: var(--surface-raised); }
+.badge.success { border-color: var(--success-border); color: var(--success); background: var(--success-surface); }
+.badge.pending { border-color: var(--pending-border); color: var(--pending); background: var(--pending-surface); }
+.badge.error { border-color: var(--error-border); color: var(--error); background: var(--error-surface); }
+
+/* ---- Controls ---- */
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(244, 245, 243, 0.96);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 20px;
+}
+.controls .inner { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.controls .search { flex: 1 1 220px; max-width: 320px; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill {
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pill[aria-pressed="true"] {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+/* ---- Dock topology ---- */
+.dock-section { max-width: 1180px; margin: 0 auto; padding: 28px 20px 0; }
+.dock-section h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.dock-section .hint { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 16px; }
+.docks { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.dock {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 18px;
+}
+.dock .dock-title { font-size: 0.82rem; font-weight: 700; color: var(--ink-muted); letter-spacing: 0.04em; margin-bottom: 12px; }
+.dock .dock-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.dock .slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.dock .slot.scan {
+  background: var(--surface-raised);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  transform: translateY(-6px);
+}
+.dock .slot .slot-zh { font-size: 0.85rem; }
+.dock .slot .slot-en { font-size: 0.66rem; color: var(--ink-muted); font-weight: 400; }
+.dock .slot .swap { position: absolute; top: -9px; right: -9px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.6rem; display: grid; place-items: center; }
+
+/* ---- Architecture tree ---- */
+.tree-section { max-width: 1180px; margin: 0 auto; padding: 28px 20px; }
+.tree-section h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: 6px; }
+.tree-section .hint { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 18px; }
+.tree {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 20px 12px;
+  overflow-x: auto;
+}
+.tree ol { list-style: none; }
+.tree li { position: relative; padding-left: 26px; margin: 3px 0; }
+.tree li::before {
+  content: "";
+  position: absolute;
+  left: 10px; top: -6px; bottom: 0;
+  width: 1px;
+  background: var(--line-strong);
+}
+.tree li:last-child::before { bottom: 50%; }
+.tree li::after {
+  content: "";
+  position: absolute;
+  left: 10px; top: 18px;
+  width: 14px; height: 1px;
+  background: var(--line-strong);
+}
+.tree > ol > li { padding-left: 0; }
+.tree > ol > li::before, .tree > ol > li::after { display: none; }
+.node {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.node .nid {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  padding: 0 7px;
+  line-height: 18px;
+  letter-spacing: 0.03em;
+}
+.node.root { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 800; }
+.node.root .nid { color: #d6dcde; border-color: #59636a; }
+.node.shell { background: var(--surface-raised); border-color: var(--line-strong); }
+.node.auth { border-color: var(--focus); color: var(--focus); background: var(--surface-raised); }
+.node.part { border-color: var(--success-border); color: var(--success); background: var(--success-surface); }
+.node.mgmt { border-color: var(--accent); color: var(--accent-deep); background: var(--surface-raised); }
+.node.modal { border-style: dashed; }
+
+/* ---- Screen cards ---- */
+.inventory { max-width: 1180px; margin: 0 auto; padding: 0 20px 40px; }
+.inventory h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: 6px; }
+.inventory .hint { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 18px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover { border-color: var(--line-strong); box-shadow: 0 4px 16px rgba(23, 26, 29, 0.06); }
+.card[hidden] { display: none; }
+.card .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card .card-id {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  line-height: 22px;
+}
+.card[data-group="auth"] .card-id { background: var(--focus); }
+.card[data-group="participant"] .card-id { background: var(--success); }
+.card[data-group="cockpit"] .card-id { background: var(--accent); }
+.card[data-group="hub"] .card-id { background: var(--accent-deep); }
+.card .card-title { font-size: 1.02rem; font-weight: 800; flex: 1; }
+.card .card-route {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+  width: fit-content;
+}
+.card .job { font-size: 0.88rem; color: var(--ink); }
+.card .job b { color: var(--ink-muted); font-weight: 700; }
+.card .states { font-size: 0.8rem; color: var(--ink-muted); }
+.card .states b { color: var(--ink-muted); }
+.card .states .chip {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin: 2px 3px 0 0;
+  font-size: 0.72rem;
+  background: var(--surface);
+}
+.card .rules {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  font-size: 0.78rem;
+  color: var(--pending);
+}
+.card .rules b { font-weight: 700; }
+
+/* ---- Rules reference ---- */
+.rules-section { max-width: 1180px; margin: 0 auto; padding: 0 20px 40px; }
+.rules-section h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: 6px; }
+.rules-section .hint { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 18px; }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.rule-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+.rule-card .r-title { font-weight: 800; font-size: 0.9rem; margin-bottom: 6px; }
+.rule-card .r-body { font-size: 0.83rem; color: var(--ink-muted); line-height: 1.55; }
+
+footer {
+  border-top: 1px solid var(--line);
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  background: var(--surface-raised);
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================= HEADER ============================= -->
+<header class="site-header">
+  <div class="inner">
+    <div class="seal" aria-hidden="true">恩</div>
+    <h1>中國基督教播道會顯恩堂系統 — 應用程式架構設計樹</h1>
+    <p class="sub">Management Workspace &amp; Phone-First Redesign · 55 Logical Screens · 設計參考文件（非代碼）</p>
+    <div class="badges">
+      <span class="badge accent">5-Slot Bottom Dock</span>
+      <span class="badge success">Course Cockpit</span>
+      <span class="badge pending">Attention Center</span>
+      <span class="badge error">Universal Bell</span>
+      <span class="badge">Home Content CMS</span>
+      <span class="badge">Cron 5-min HK</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============================= CONTROLS ============================= -->
+<div class="controls">
+  <div class="inner">
+    <input type="search" id="search" placeholder="搜尋畫面（名稱 / ID / 功能）…" aria-label="搜尋畫面" />
+    <div class="pill-row" role="group" aria-label="畫面分類篩選">
+      <button class="pill" data-filter="all" aria-pressed="true">全部 55</button>
+      <button class="pill" data-filter="auth" aria-pressed="false">身份與公開 8</button>
+      <button class="pill" data-filter="participant" aria-pressed="false">參與者功能 16</button>
+      <button class="pill" data-filter="cockpit" aria-pressed="false">課程工作台 15</button>
+      <button class="pill" data-filter="hub" aria-pressed="false">管理樞紐 16</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= DOCK TOPOLOGY ============================= -->
+<section class="dock-section" aria-labelledby="dock-heading">
+  <h2 id="dock-heading">五格底部導航（Dock）拓撲</h2>
+  <p class="hint">同一 5 格 dock 按帳戶能力於第 4 格切換：參與者見「通知」；具管理能力帳戶見「管理」。中央掃描格升高、≥44px 目標、safe-area padding。</p>
+  <div class="docks">
+    <div class="dock">
+      <div class="dock-title">參與者 Dock（Participant）</div>
+      <div class="dock-slots">
+        <div class="slot"><span class="slot-zh">首頁</span><span class="slot-en">/home</span></div>
+        <div class="slot"><span class="slot-zh">課程</span><span class="slot-en">/programs</span></div>
+        <div class="slot scan"><span class="slot-zh">掃描</span><span class="slot-en">/scanner</span></div>
+        <div class="slot"><span class="slot-zh">通知</span><span class="slot-en">/notices</span></div>
+        <div class="slot"><span class="slot-zh">帳戶</span><span class="slot-en">/profile</span></div>
+      </div>
+    </div>
+    <div class="dock">
+      <div class="dock-title">管理角色 Dock（Management-Role）</div>
+      <div class="dock-slots">
+        <div class="slot"><span class="slot-zh">首頁</span><span class="slot-en">/home</span></div>
+        <div class="slot"><span class="slot-zh">課程</span><span class="slot-en">/programs</span></div>
+        <div class="slot scan"><span class="slot-zh">掃描</span><span class="slot-en">/scanner</span></div>
+        <div class="slot"><span class="slot-zh">管理</span><span class="slot-en">/management</span><span class="swap">⇄</span></div>
+        <div class="slot"><span class="slot-zh">帳戶</span><span class="slot-en">/profile</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= ARCHITECTURE TREE ============================= -->
+<section class="tree-section" aria-labelledby="tree-heading">
+  <h2 id="tree-heading">架構流程樹</h2>
+  <p class="hint">登入入口 → 5 格 Shell → 各分頁作業區；管理進入分兩層（課程內模式切換 + 管理樞紐）。</p>
+  <div class="tree" role="tree" aria-label="應用程式架構樹">
+    <ol>
+      <li><span class="node root">Shell 入口 <span class="nid">ROOT</span></span>
+        <ol>
+          <li><span class="node auth">A-01 登入 / 舊 PIN 升級 / 註冊 / 訪客簽到 <span class="nid">AUTH</span></span>
+            <ol>
+              <li><span class="node auth">A-02 舊 PIN 設定新密碼 <span class="nid">A-02</span></span></li>
+              <li><span class="node auth">A-03 註冊申請 → A-04 結果 <span class="nid">A-03</span></span></li>
+              <li><span class="node auth">A-05 訪客簽到 → A-06 選擇 → A-07 資料 → A-08 結果 <span class="nid">A-05</span></span></li>
+            </ol>
+          </li>
+          <li><span class="node shell">5-Slot Shell + 頂欄（身份 + Bell + 模式切換）<span class="nid">SHELL</span></span>
+            <ol>
+              <li><span class="node modal">Bell → 待處理與通知中心（M-23 / P-13）<span class="nid">ATTN</span></span></li>
+              <li><span class="node part">Slot 1 · 首頁 → P-01 Template A/B → P-02 消息詳情 <span class="nid">HOME</span></span></li>
+              <li><span class="node part">Slot 2 · 課程（參與者｜管理 切換）<span class="nid">PROG</span></span>
+                <ol>
+                  <li><span class="node part">參與者：P-03 探索 → P-04 詳情 → P-05/P-06 報名 → P-07 聚會詳情 <span class="nid">P</span></span></li>
+                  <li><span class="node mgmt">管理：M-01 課程選擇 → M-02 Course Cockpit <span class="nid">M</span></span>
+                    <ol>
+                      <li><span class="node mgmt">下一聚會 Block → M-10 出席名冊 <span class="nid">M-02</span></span></li>
+                      <li><span class="node mgmt">聚會管理 M-06 → M-07 時間表 → M-08 預覽生成 → M-09 聚會操作 <span class="nid">M-06</span></span></li>
+                      <li><span class="node mgmt">參與者 M-11（待審批 M-12 / 活躍 M-13 代報名 / 歷史）<span class="nid">M-11</span></span></li>
+                      <li><span class="node mgmt">M-03 課程資料 / M-04 編輯 / M-14 設定 / M-15 消息 <span class="nid">M-03</span></span></li>
+                    </ol>
+                  </li>
+                </ol>
+              </li>
+              <li><span class="node part">Slot 3 · 掃描（中央升高）→ P-08 相機 → P-09 手動碼 → P-10 選擇 → P-11 確認 → P-12 結果 <span class="nid">SCAN</span></span></li>
+              <li><span class="node mgmt">Slot 4 · 管理樞紐 → M-16 管理工作總目錄 <span class="nid">HUB</span></span>
+                <ol>
+                  <li><span class="node mgmt">會員與權限：M-24/25 註冊審批 · M-26 帳戶權限 · M-27 會員名冊 <span class="nid">G1</span></span></li>
+                  <li><span class="node mgmt">事工營運：M-17/18/19 部門設定（含 M-05 建立課程）· M-20 代簽 · M-21 更正 · M-22 列印 <span class="nid">G2</span></span></li>
+                  <li><span class="node mgmt">內容與系統：M-28/29/30/31 首頁內容 · 訂閱 · 簽到/時區設定 <span class="nid">G3</span></span></li>
+                </ol>
+              </li>
+              <li><span class="node part">Slot 5 · 帳戶 → P-14 QR 主頁 → P-15 資料 → P-16 設定 <span class="nid">ACCT</span></span></li>
+            </ol>
+          </li>
+        </ol>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================= INVENTORY ============================= -->
+<section class="inventory" aria-labelledby="inv-heading">
+  <h2 id="inv-heading">55 個邏輯畫面詳細規格</h2>
+  <p class="hint" id="count-label">顯示：全部 55 個畫面</p>
+  <div class="grid" id="grid"><!-- JS renders cards --></div>
+</section>
+
+<!-- ============================= RULES ============================= -->
+<section class="rules-section" aria-labelledby="rules-heading">
+  <h2 id="rules-heading">已鎖定領域規則與不變量</h2>
+  <p class="hint">經 grill-with-docs 確認的跨畫面約束；實作時必須逐條滿足。</p>
+  <div class="rules-grid">
+    <div class="rule-card"><div class="r-title">事件取消防護</div><div class="r-body">任何 Active 出席存在時禁止取消聚會；全部出席先作廢（需原因）後方可取消，取消不可撤銷且需原因與審計。</div></div>
+    <div class="rule-card"><div class="r-title">部門封存防護</div><div class="r-body">部門仍存在 Draft / Active 子課程時禁止封存；所有子課程須先封存。</div></div>
+    <div class="rule-card"><div class="r-title">課程封存可逆（僅 Admin）</div><div class="r-body">課程封存保留全部歷史唯讀；Admin 可附審計原因恢復為 Active。</div></div>
+    <div class="rule-card"><div class="r-title">訪客出席更正</div><div class="r-body">就地更新姓名/電話，寫入不可變 `GUEST_ATTENDANCE_CORRECTED` 審計事件（舊/新值、操作者、原因、時間）；時間戳與聚會綁定不變。</div></div>
+    <div class="rule-card"><div class="r-title">簽到單隱私</div><div class="r-body">列印紙本電話中間四碼遮罩（`9123****`）；App 內授權領袖仍見完整號碼。</div></div>
+    <div class="rule-card"><div class="r-title">掃描器降級</div><div class="r-body">相機拒絕/不支援自動內聯轉到手動 6 位聚會碼輸入（P-09），附清晰說明；手動碼在相機可用時亦常駐可達。</div></div>
+    <div class="rule-card"><div class="r-title">排程發佈 Cron</div><div class="r-body">Cloudflare Scheduled Worker `*/5 * * * *` 於 `Asia/Hong_Kong` 評估 Home 內容生效/過期；過期自動回退至最新仍有效版本，否則顯示安全系統首頁。</div></div>
+    <div class="rule-card"><div class="r-title">發佈衝突（嚴格樂觀鎖）</div><div class="r-body">並行編輯偵測到較新版本時必須重新載入最新版再套用；不提供強制覆寫。</div></div>
+    <div class="rule-card"><div class="r-title">Home 發佈權限</div><div class="r-body">`home.publish`：Admin 依預設政策取得；Staff 需明確 capability grant。</div></div>
+    <div class="rule-card"><div class="r-title">Template B 格式</div><div class="r-body">消毒後 Markdown（H2/H3、粗斜體、列表、引言、連結、外部 HTTPS 圖片 URL）；拒絕原始 HTML、script、embed。</div></div>
+    <div class="rule-card"><div class="r-title">Template A 回退</div><div class="r-body">手動主打聚會無效（取消/已過期）時自動回退至全教會最早未來 Active Event。</div></div>
+    <div class="rule-card"><div class="r-title">註冊審批角色</div><div class="r-body">核准即建立 Active 帳戶，預設角色為 Member；升等為個別管理能力。</div></div>
+    <div class="rule-card"><div class="r-title">會員名冊範圍</div><div class="r-body">Admin/Staff 全教會 Active 帳戶；Department Manager 僅見所屬部門課程內已報名會員。</div></div>
+    <div class="rule-card"><div class="r-title">成員自取消</div><div class="r-body">成員自取消報名只需確認、不需原因；管理者代取消需 Member 可見原因。</div></div>
+    <div class="rule-card"><div class="r-title">代報名錯誤</div><div class="r-body">目標會員不符合條件（已在名單 / 未生效）時以彈窗明示原因，不靜默失敗。</div></div>
+    <div class="rule-card"><div class="r-title">會話過期恢復</div><div class="r-body">保存消毒後完整 query（含 `?mode=&program=&task=`）；重新登入後伺服器重新授權，仍有效則還原原任務，否則安全回退 /home。</div></div>
+    <div class="rule-card"><div class="r-title">多聚會選擇返回</div><div class="r-body">多個同時開放聚會選擇畫面按「返回」回掃描取景器，不中斷掃描意圖。</div></div>
+    <div class="rule-card"><div class="r-title">管理員重設密碼</div><div class="r-body">本階段會員名冊唯讀；Admin 重設密碼功能延後至 #227。</div></div>
+    <div class="rule-card"><div class="r-title">狀態色階</div><div class="r-body">三態徽章使用 `--success` / `--pending`(#8a5b16) / `--error` 文字+邊框+底色；狀態永不單靠顏色傳達。</div></div>
+    <div class="rule-card"><div class="r-title">順序與密度</div><div class="r-body">目錄群組固定順序（會員/審批 → 課程 → 聚會/出席 → 首頁內容）；每畫面一個主 CTA、最多 5 元素群、44px 觸控目標。</div></div>
+  </div>
+</section>
+
+<footer>
+  中國基督教播道會顯恩堂系統 · 設計參考文件 v1.0 · Variant A: Official Civic Minimal · 與 docs/specs/079、080、082、ADR-0032 對齊
+</footer>
+
+<script>
+/* ============================================================================
+   Screen inventory data — mirrors ADR-0032, CONTEXT.md, phone-first plan registry
+   ========================================================================== */
+const GROUPS = {
+  auth:         "身份與公開",
+  participant:  "參與者功能",
+  cockpit:      "課程工作台",
+  hub:          "管理樞紐",
+};
+
+const SCREENS = [
+  /* ---------------- AUTH & PUBLIC (A-01 .. A-08) ---------------- */
+  { id:"A-01", group:"auth", zh:"登入", route:"auth-login",
+    job:"密碼登入並恢復合法 intent；進入註冊 / 訪客簽到 / 舊 PIN 升級。",
+    controls:"登入 → 合法 returnTo 或首頁 · 建立帳戶 → A-03 · 訪客簽到 → A-05 · 舊帳戶 → A-02",
+    states:["restoring","invalid credentials","offline","expired session","unsafe returnTo rejected"],
+    rules:"登入後預設落點 /home；深連結保留完整 query 並於重新授權後還原。" },
+  { id:"A-02", group:"auth", zh:"舊 PIN 設定新密碼", route:"auth-legacy-upgrade",
+    job:"以舊 4 位 PIN 證明身份並設定 8 字元以上新密碼。",
+    controls:"設定並登入 → 合法 intent · 返回登入 → A-01",
+    states:["PIN invalid","password validation","submitting","success","server failure"],
+    rules:"5 次失敗鎖 5 分鐘、再 5 次鎖 15 分鐘；再失敗需 Admin/Staff 解鎖。" },
+  { id:"A-03", group:"auth", zh:"註冊申請", route:"auth-register",
+    job:"提交帳戶申請（姓名 / 登入名稱 / 電話 / 密碼）。",
+    controls:"提交申請 → A-04 · 返回登入 → A-01",
+    states:["field validation","duplicate username","offline","submitting"],
+    rules:"使用者名稱以正規化唯一鍵保留（含並行變更）。" },
+  { id:"A-04", group:"auth", zh:"註冊結果", route:"auth-registration-result",
+    job:"解釋 pending / failed 結果與下一步。",
+    controls:"返回登入 → A-01 · 重新提交 → A-03",
+    states:["pending","duplicate submission","recoverable failure"],
+    rules:"核准由 Admin/Staff 完成；核准建立預設 Member 角色 Active 帳戶。" },
+  { id:"A-05", group:"auth", zh:"訪客簽到入口", route:"guest-check-in-resolve",
+    job:"掃課程 QR 或輸入聚會碼以解析目標。",
+    controls:"開相機 · 輸入代碼 · 解析 → A-06/A-07 · 會員登入 → A-01 帶 returnTo",
+    states:["permission denied","unsupported","invalid","no eligible event","offline"],
+    rules:"相機不可用自動轉手動碼輸入；訪客不需 Session。" },
+  { id:"A-06", group:"auth", zh:"訪客聚會選擇", route:"guest-event-chooser",
+    job:"多個同時開放聚會中選擇一個。",
+    controls:"聚會 row → A-07 · 返回重掃 → A-05",
+    states:["one/many/none eligible","stale event"],
+    rules:"「返回」回掃描取景器，不中斷掃描意圖。" },
+  { id:"A-07", group:"auth", zh:"訪客資料填寫", route:"guest-check-in-details",
+    job:"填姓名 + 必要電話並確認簽到。",
+    controls:"提交 → A-08 · 更改聚會 → A-06/A-05",
+    states:["validation","rate limit","submitting","ambiguous network"],
+    rules:"正規化電話對同一聚會最多一條 Active 訪客出席。" },
+  { id:"A-08", group:"auth", zh:"訪客簽到結果", route:"guest-check-in-result",
+    job:"清楚交代 check-in outcome。",
+    controls:"完成 → A-01 · 再試 → A-05 · 會員登入 → A-01 帶 intent",
+    states:["success","quiet duplicate","voided/retry-allowed","privacy-safe failure"],
+    rules:"與已登入 Self Check-In 為獨立出席紀錄，永不自動合併。" },
+
+  /* ---------------- PARTICIPANT (P-01 .. P-16) ---------------- */
+  { id:"P-01", group:"participant", zh:"參與者首頁", route:"participant-home",
+    job:"兩秒內知道下一步：Template A（主打聚會）或 Template B（教會消息）+ 真實聚會區塊。",
+    controls:"主打聚會 → P-07 · 探索課程 → P-03 · 消息 → P-02 · dock routes",
+    states:["Template A/B","honest empty","loading","stale featured fallback"],
+    rules:"絕不顯示虛構 Event/count/metric；A 主打失效自動回退全教會最早未來 Active Event。" },
+  { id:"P-02", group:"participant", zh:"教會消息詳情", route:"church-announcement",
+    job:"閱讀單則教會消息完整消毒內容。",
+    controls:"返回 → P-01 · internal link → app screen · external link → safe new context",
+    states:["rich content","missing media","expired/unavailable"],
+    rules:"Template B 主體為消毒 Markdown；外部連結標示「外部連結」並以安全新分頁開啟。" },
+  { id:"P-03", group:"participant", zh:"探索課程", route:"program-directory",
+    job:"搜尋並找到合適課程。",
+    controls:"search/filter · row → P-04 · management mode → M-01（capability only）",
+    states:["loading","empty catalogue","no match","long names","direct-link unavailable"],
+    rules:"管理入口僅於 server projection 授權時出現；只顯示 Active Listed。" },
+  { id:"P-04", group:"participant", zh:"課程詳情", route:"program-detail",
+    job:"理解課程並執行關係感知單一動作。",
+    controls:"next meeting → P-07 · 報名/撤回/取消 → P-05 · 返回 → P-03 · management → M-02 carry program",
+    states:["Listed/Unlisted","Draft/Active/Archived","none/pending/active/cancelled enrollment"],
+    rules:"ManagerOnly 顯示「此課程由同工安排參加」唯讀說明。" },
+  { id:"P-05", group:"participant", zh:"報名操作", route:"enrollment-action",
+    job:"確認並完成 enrollment mutation（申請 / 撤回 / 取消）。",
+    controls:"確認 → P-06 · 取消 → P-04 · Undo → restore previous relation",
+    states:["request","withdraw","cancel","approval-required","duplicate","conflict","offline"],
+    rules:"自取消只需確認不需原因；撤回不需原因。" },
+  { id:"P-06", group:"participant", zh:"報名結果", route:"enrollment-outcome",
+    job:"解釋報名結果與下一步（PENDING 須等待審批）。",
+    controls:"返回課程 → P-04 · 前往掃描 → P-07（eligible only）",
+    states:["requested","active","withdrawn","cancelled","failed","stale"],
+    rules:"成功狀態跨 refresh 存活；Pending 不誤示為 Active。" },
+  { id:"P-07", group:"participant", zh:"聚會詳情", route:"meeting-detail",
+    job:"查看課程範圍聚會資料與簽到窗口狀態。",
+    controls:"前往掃描 → P-08 · 返回課程 → P-04",
+    states:["upcoming","check-in open/closed","cancelled","rescheduled","unavailable"],
+    rules:"Inactive/Cancelled 聚會對參與者隱藏且不產生通知。" },
+  { id:"P-08", group:"participant", zh:"相機簽到", route:"self-scanner",
+    job:"Self 相機簽到（中央 dock 目標）。",
+    controls:"開始/重試相機 · manual → P-09 · resolve → P-10/P-11 · 離開 → camera cleanup",
+    states:["permission","unsupported","active capture","invalid","offline","expired session"],
+    rules:"相機拒絕/不支援自動轉手動碼；手動碼為 first-class 路徑。" },
+  { id:"P-09", group:"participant", zh:"手動簽到碼", route:"self-manual-code",
+    job:"無相機時輸入 6 位聚會碼。",
+    controls:"resolve → P-10/P-11 · 返回相機 → P-08",
+    states:["validation","invalid","rate limit","offline"],
+    rules:"手動碼每聚會唯一、永不重用、僅開放窗口有效。" },
+  { id:"P-10", group:"participant", zh:"多聚會選擇", route:"self-event-chooser",
+    job:"多 Event 同時開放時選擇一個。",
+    controls:"event row → P-11 · 重新掃描 → P-08",
+    states:["multiple eligible","stale selection","none eligible"],
+    rules:"「返回」回取景器。" },
+  { id:"P-11", group:"participant", zh:"簽到確認", route:"self-check-in-confirm",
+    job:"確認本人與聚會。",
+    controls:"確認 → P-12 · 不是這個聚會 → P-10/P-08",
+    states:["enrolled","unenrolled denial","window closed","inactive/cancelled"],
+    rules:"未報名拒絕且永不隱式報名。" },
+  { id:"P-12", group:"participant", zh:"簽到結果", route:"self-check-in-result",
+    job:"交代 attendance outcome。",
+    controls:"返回首頁 → P-01 · 再次簽到 → P-08 · 查看聚會 → P-07",
+    states:["success","quiet duplicate","ambiguous","denied","retryable failure"],
+    rules:"重複簽到為中性安靜結果，不當失敗。" },
+  { id:"P-13", group:"participant", zh:"通知中心", route:"participant-attention",
+    job:"處理資訊通知；標示已讀不影響待處理。",
+    controls:"tab 切換 · info row → owning screen · 全部已讀只影響 info · dock routes",
+    states:["info-only","actionable+info","empty","stale deep link","capability revoked"],
+    rules:"開 bell：有待處理→待處理，否則→通知；已讀通知保留 90 日。" },
+  { id:"P-14", group:"participant", zh:"帳戶主頁", route:"account",
+    job:"出示會員 QR 憑證（220×220px hero）。",
+    controls:"帳戶資料 → P-15 · 帳戶設定 → P-16 · 登出 → A-01",
+    states:["QR available","QR missing","offline-safe credential","expired session"],
+    rules:"QR 為非秘密身份識別碼；身份與授權一律伺服器端解析。" },
+  { id:"P-15", group:"participant", zh:"帳戶資料", route:"account-details",
+    job:"漸進式揭露查看身份資料。",
+    controls:"返回帳戶 → P-14 · 設定 → P-16",
+    states:["mapped role/status","missing phone","long identity values"],
+    rules:"使用者名稱/電話/角色/狀態於漸進揭露後；技術 ID 不入 UI。" },
+  { id:"P-16", group:"participant", zh:"帳戶設定", route:"account-settings",
+    job:"更改登入名稱或密碼；成功後撤銷 session。",
+    controls:"儲存 username · 更改 password · 成功 credential mutation → A-01 · 返回 → P-14",
+    states:["unchanged no-op","validation","wrong current password","success revoke","failure"],
+    rules:"密碼須 ≥8 字元；更改後撤銷全部 refresh session 並重新登入。" },
+
+  /* ---------------- COURSE COCKPIT & OPERATIONS (M-01 .. M-15) ---------------- */
+  { id:"M-01", group:"cockpit", zh:"管理課程選擇", route:"management-course-picker",
+    job:"從授權範圍（部門/課程）揀選課程。",
+    controls:"search · row → M-02 · participant mode → P-03 · management dock → M-16",
+    states:["mixed grants","empty scope","no match","revoked scope"],
+    rules:"只列 server 授權範圍；不因 role label 推斷。" },
+  { id:"M-02", group:"cockpit", zh:"Course Cockpit 課程工作台", route:"course-cockpit",
+    job:"判斷課程下一個營運工作（status-first，非 tabs 平排）。",
+    controls:"下一聚會 → M-10 · 聚會 → M-06 · 參與者 → M-11 · 資料 → M-03 · 設定 → M-14 · 通知 → M-15",
+    states:["next meeting","no upcoming","pending badge","Draft setup","scope lost"],
+    rules:"全部聚會完成時省略下一聚會 block，保留 2-up 營運卡。" },
+  { id:"M-03", group:"cockpit", zh:"課程資料", route:"course-facts",
+    job:"閱讀課程當前 facts（唯讀）。",
+    controls:"編輯 → M-04 · 返回 cockpit → M-02",
+    states:["complete/incomplete","Draft/Active/Archived","capability read-only"],
+    rules:"landing 讀作 status 而非 form。" },
+  { id:"M-04", group:"cockpit", zh:"編輯課程", route:"course-edit",
+    job:"編輯課程基本資料（名稱/簡介/類別/報名模式）。",
+    controls:"儲存 → M-03 · 取消 → M-03 · archive confirmation in-page",
+    states:["validation","unsaved","conflict","success","denied","archive consequence"],
+    rules:"封存確認顯示受影響報名人數並要求 Member 可見原因。" },
+  { id:"M-05", group:"cockpit", zh:"建立課程草稿", route:"course-create",
+    job:"建立最小 Draft（名稱 + 簡介 + 行為類型）。",
+    controls:"建立 → M-02 · 取消 → M-18",
+    states:["Recurring/OneOff","validation","duplicate","denied","success checklist"],
+    rules:"只存在於部門詳情內；建立即 Draft，未發佈前不列。" },
+  { id:"M-06", group:"cockpit", zh:"聚會管理", route:"course-meetings",
+    job:"管理 schedule / 聚會集合。",
+    controls:"schedule → M-07 · meeting row → M-09 · 返回 → M-02",
+    states:["recurring","one-off single collapsed","one-off multiple","empty","exceptions"],
+    rules:"已有出席記錄的聚會不能取消；編輯會記錄原因與時間。" },
+  { id:"M-07", group:"cockpit", zh:"時間表與例外編輯", route:"schedule-editor",
+    job:"編輯 recurring rule / 例外（cancel/reschedule/restore）。",
+    controls:"更新預覽 → M-08 · 取消 → M-06",
+    states:["cancel/reschedule/restore exception","validation","unsaved"],
+    rules:"重複標記（無/每週/每月）為資訊性；規則產生為真實且經審計。" },
+  { id:"M-08", group:"cockpit", zh:"聚會預覽與生成", route:"schedule-preview",
+    job:"檢查將生成的聚會。",
+    controls:"確認生成 → M-06 · 返回修改 → M-07",
+    states:["preview diff","conflict","partial invalid","success","ambiguous failure"],
+    rules:"零規則生成 → 422；每次生成寫一條 `EVENT_GENERATE` 審計；冪等（計劃 hash）。" },
+  { id:"M-09", group:"cockpit", zh:"聚會操作", route:"meeting-operations",
+    job:"操作單一聚會（開放/取消/重排/出席）。",
+    controls:"roster → M-10 · scanner → M-20 · edit availability · overflow cancel/reschedule/print",
+    states:["Active/Inactive","check-in window","cancelled","completed","scope lost"],
+    rules:"取消需原因、無 Undo、審計、保留歷史；有 Active 出席時拒絕。" },
+  { id:"M-10", group:"cockpit", zh:"出席點名名冊", route:"attendance-roster",
+    job:"點名、代簽、作廢、修正、列印。",
+    controls:"member row/action sheet · 代簽 · 作廢 reason · 修正 guest · 列印",
+    states:["loading","empty","offline banner","duplicate","voided","long roster","retry"],
+    rules:"已簽到 x/y 實時統計；訪客更正寫 `GUEST_ATTENDANCE_CORRECTED`。" },
+  { id:"M-11", group:"cockpit", zh:"參與者管理", route:"course-participants",
+    job:"處理 enrollment relationships（3 tabs）。",
+    controls:"pending/active/history tabs · request → M-12 · 代報名 → M-13",
+    states:["empty","long list","optimistic row","failed mutation","revoked scope"],
+    rules:"待審批 badge 只算可操作數；代報名不會自動簽到。" },
+  { id:"M-12", group:"cockpit", zh:"報名審批詳情", route:"enrollment-request-detail",
+    job:"核准/拒絕單一報名申請。",
+    controls:"核准 · 拒絕 + note · 返回 → M-11",
+    states:["stale","already decided","conflict","success","denied"],
+    rules:"原子交易：決策 + Enrollment 建立同 commit；Enrollment row 為終局證據。" },
+  { id:"M-13", group:"cockpit", zh:"代報名搜尋", route:"assisted-enrollment",
+    job:"搜尋 Active 會員並代為報名。",
+    controls:"search/pick · 確認 → M-11 · 取消 → M-11",
+    states:["no match","already enrolled","ineligible","success","failure"],
+    rules:"不合格（已在名單/未生效）以彈窗明示原因；直接建 Active Enrollment，不製造假申請。" },
+  { id:"M-14", group:"cockpit", zh:"課程設定", route:"program-settings",
+    job:"管理 program-scoped 設定（群組化）。",
+    controls:"focused groups · leaders picker · save · 返回 → M-02",
+    states:["Basics/Enrollment/Discoverability/Schedule/Leaders/Attendance","read-only","dependency disabled"],
+    rules:"OneOff 不顯示 Schedule Rule 設定；負責人名單檢視人人可，編輯需委派能力。" },
+  { id:"M-15", group:"cockpit", zh:"課程消息與提醒", route:"program-notifications",
+    job:"管理課程範圍消息與訂閱偏好。",
+    controls:"create/edit preview · mark read · deep link · 返回 → M-02",
+    states:["info/action semantics","empty","stale","failed destination","capability lost"],
+    rules:"訂閱偏好持久化於 D1 `account_subscriptions`。" },
+
+  /* ---------------- MANAGEMENT HUB & SERVICES (M-16 .. M-31) ---------------- */
+  { id:"M-16", group:"hub", zh:"管理工作總目錄", route:"management-hub",
+    job:"SaaS 式分組目錄揀管理模組（非 task launcher）。",
+    controls:"registration → M-24 · permissions → M-26 · departments → M-17 · attendance → M-09 · members → M-27 · Home → M-28",
+    states:["capability-filtered groups","empty capability","blocked module","no fake counts"],
+    rules:"群組固定順序：會員與權限 / 事工營運 / 內容與系統；未授權群組直接省略不重排。" },
+  { id:"M-17", group:"hub", zh:"部門目錄", route:"department-directory",
+    job:"揀選授權部門。",
+    controls:"search · row → M-18 · 返回 → M-16",
+    states:["mixed scope","empty","no match","revoked scope"],
+    rules:"部門狀態：Draft / PendingDevelopment / Active / Archived。" },
+  { id:"M-18", group:"hub", zh:"部門詳情與模組", route:"department-detail",
+    job:"管理部門設定、5 模組開關、DM 指派與建立課程入口。",
+    controls:"toggles · DM → M-19 · 建立課程 → M-05 · 返回 → M-17",
+    states:["5 module toggles","read-only","unsaved","conflict","success"],
+    rules:"5 模組：課程目錄/報名/聚會/出席/自訂表單（後者為 roadmap 唯開關）。" },
+  { id:"M-19", group:"hub", zh:"部門管理者指派", route:"department-manager-picker",
+    job:"搜尋 Active 會員並新增/移除 Department Manager。",
+    controls:"search Active member · add/remove confirmation · 返回 → M-18",
+    states:["no match","already assigned","self-scope denied","success","failure"],
+    rules:"DM 繼承部門內 program 能力但不可自授 DM；Admin/Staff 全局政策。" },
+  { id:"M-20", group:"hub", zh:"Pinned 聚會代簽", route:"assisted-scanner",
+    job:"固定 Event context 代為簽到。",
+    controls:"mode switch self · Event picker · scan/search member · result reset",
+    states:["no eligible Event","permission denied","cross-scope denial","duplicate","queue continuity"],
+    rules:"代簽不自動報名；每次變更重新驗證 Program Active + operator scope。" },
+  { id:"M-21", group:"hub", zh:"出席更正與作廢", route:"attendance-correction",
+    job:"修正訪客資料或作廢出席（需原因）。",
+    controls:"save correction · void + reason · cancel → M-10",
+    states:["validation","audit preview","conflict","success","denied"],
+    rules:"作廢改變 Active → Voided 不刪除；允許日後重新簽到。" },
+  { id:"M-22", group:"hub", zh:"列印簽到單", route:"print-check-in-sheet",
+    job:"預覽可列印名單。",
+    controls:"print · 返回 → M-10",
+    states:["long roster","page break","privacy-limited fields","empty"],
+    rules:"紙本電話中間四碼遮罩（`9123****`）；含聚會 QR + 手動碼。" },
+  { id:"M-23", group:"hub", zh:"管理待處理與通知中心", route:"management-attention",
+    job:"跨模組待辦與通知處理。",
+    controls:"grouped task → owning screen · info mark read · bell close → origin",
+    states:["actionable badge","info dot","empty","stale","capability revoked"],
+    rules:"待處理按模組分組；`全部標示已讀` 只影響 info；優先權高/一般/低僅 Admin 可改。" },
+  { id:"M-24", group:"hub", zh:"註冊審批隊列", route:"registration-approvals",
+    job:"處理帳戶申請（待審批 + 已處理歷史）。",
+    controls:"request row → M-25 · refresh · 返回 → M-16",
+    states:["empty","loading","long queue","offline","forbidden"],
+    rules:"入口於「待處理」內可發現，永不直接 URL。" },
+  { id:"M-25", group:"hub", zh:"註冊審批操作", route:"registration-approval-detail",
+    job:"核准/拒絕帳戶申請。",
+    controls:"approve · reject + reason · 返回 → M-24",
+    states:["stale","already decided","success","failure","forbidden"],
+    rules:"核准建立 Active 帳戶（預設 Member 角色），申請人即可登入。" },
+  { id:"M-26", group:"hub", zh:"帳戶與權限檢視", route:"account-permissions",
+    job:"查看管理員帳戶與角色能力摘要（本階段唯讀）。",
+    controls:"account row · 返回 → settings hub",
+    states:["read-only","role summary","capability badges"],
+    rules:"真實投影 `role_capabilities`；完整政策編輯屬後續管理工具。" },
+  { id:"M-27", group:"hub", zh:"會員名冊搜尋", route:"member-directory",
+    job:"搜尋會員資料（範圍依能力）。",
+    controls:"search/filter · member detail sheet · 返回 → M-16",
+    states:["empty","no match","long values","privacy-limited","denied"],
+    rules:"Admin/Staff 全教會；DM 限所屬部門課程內會員；重設密碼延後 #227。" },
+  { id:"M-28", group:"hub", zh:"首頁發佈管理", route:"home-content-library",
+    job:"揀 draft/published Home 設定。",
+    controls:"template row → M-29 · new draft → M-29 · audit → M-31 · 返回 → M-16",
+    states:["A/B drafts","published marker","empty","unauthorized"],
+    rules:"A/B 各自獨立 draft；切換不覆寫已發佈版本。" },
+  { id:"M-29", group:"hub", zh:"A/B 範本編輯器", route:"home-content-editor",
+    job:"編輯 A/B slots、草稿、預覽、發佈/排程。",
+    controls:"save draft · preview → M-30 · publish/schedule confirmation · 返回 → M-28",
+    states:["unsaved","validation","invalid featured event fallback","conflict","success"],
+    rules:"衝突時必須重新載入最新版（無強制覆寫）；排程以 HK 時間顯示確認。" },
+  { id:"M-30", group:"hub", zh:"手機發佈預覽", route:"home-content-preview",
+    job:"手機精確預覽發佈結果。",
+    controls:"back edit → M-29 · publish confirmation · viewport toggle",
+    states:["Template A/B","missing image","long copy","invalid link","stale draft"],
+    rules:"預覽與 participant projection 完全一致；draft 資料絕不洩漏。" },
+  { id:"M-31", group:"hub", zh:"發佈歷史審計", route:"home-content-audit",
+    job:"查看 CMS 操作者/時間戳歷史。",
+    controls:"record detail sheet · 返回 → M-28",
+    states:["empty","long history","privacy-safe actor display"],
+    rules:"每發佈記錄 editor、timestamp、前後版本；並行編輯拒絕舊版本。" },
+];
+
+/* ============================================================================
+   Render
+   ========================================================================== */
+const grid = document.getElementById("grid");
+const countLabel = document.getElementById("count-label");
+const search = document.getElementById("search");
+let activeFilter = "all";
+
+function cardFor(s) {
+  const el = document.createElement("article");
+  el.className = "card";
+  el.dataset.group = s.group;
+  el.dataset.id = s.id;
+  el.dataset.search = `${s.id} ${s.zh} ${s.route} ${s.job}`.toLowerCase();
+  el.innerHTML = `
+    <div class="card-head">
+      <span class="card-id">${s.id}</span>
+      <span class="card-title">${s.zh}</span>
+    </div>
+    <span class="card-route">${s.route}</span>
+    <p class="job"><b>主任務：</b>${s.job}</p>
+    <p class="states"><b>操作/去向：</b>${s.controls}</p>
+    <p class="states"><b>必要狀態：</b>${s.states.map(x => `<span class="chip">${x}</span>`).join("")}</p>
+    ${s.rules ? `<p class="rules"><b>領域規則：</b>${s.rules}</p>` : ""}
+  `;
+  return el;
+}
+
+const allCards = SCREENS.map(cardFor);
+allCards.forEach(c => grid.appendChild(c));
+
+function applyFilter() {
+  const q = search.value.trim().toLowerCase();
+  let shown = 0;
+  allCards.forEach(card => {
+    const okGroup = activeFilter === "all" || card.dataset.group === activeFilter;
+    const okQuery = !q || card.dataset.search.includes(q);
+    const visible = okGroup && okQuery;
+    card.hidden = !visible;
+    if (visible) shown++;
+  });
+  const groupName = activeFilter === "all" ? "全部" : GROUPS[activeFilter];
+  countLabel.textContent = `顯示：${groupName} 共 ${shown} 個畫面`;
+}
+
+document.querySelectorAll(".pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".pill").forEach(p => p.setAttribute("aria-pressed", "false"));
+    pill.setAttribute("aria-pressed", "true");
+    activeFilter = pill.dataset.filter;
+    applyFilter();
+  });
+});
+
+search.addEventListener("input", applyFilter);
+applyFilter();
+</script>
+</body>
+</html>

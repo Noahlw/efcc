@@ -37,6 +37,9 @@
   --error: #b3261e;
   --error-surface: #fbeeed;
   --error-border: #e5b4b0;
+  --pending: #8a5b16;
+  --pending-surface: #f3eee8;
+  --pending-border: #c1ad95;
   --font-sans:
     -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
     "Microsoft JhengHei", Arial, sans-serif;
@@ -96,14 +99,16 @@ a {
    authenticated NavBar component (Ui02 owns that component file). */
 
 .nav-phone {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   background: var(--surface-raised);
   border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding: 6px 8px env(safe-area-inset-bottom, 0);
   z-index: 100;
 }
 
@@ -111,7 +116,7 @@ a {
   display: none;
 }
 
-@media (min-width: 800px) {
+@media (min-width: 920px) {
   .nav-phone {
     display: none;
   }
@@ -119,45 +124,101 @@ a {
   .nav-desktop {
     display: flex;
     flex-direction: column;
+    gap: 6px;
     position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
+    top: 72px;
+    left: max(20px, calc((100vw - 1180px) / 2));
     width: 200px;
     background: var(--surface-raised);
-    border-right: 1px solid var(--line);
-    padding: 1rem;
-    z-index: 100;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    z-index: 10;
   }
 
   .shell-content {
-    margin-left: 200px;
+    margin-left: 230px;
   }
 }
 
 .nav-item {
-  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   min-height: 44px;
-  padding: 0.5rem;
-  font-size: 0.875rem;
+  padding: 4px 2px;
+  font-size: 0.72rem;
+  font-weight: 550;
   text-decoration: none;
-  color: var(--ink);
+  color: var(--ink-muted);
   border: none;
   background: none;
   cursor: pointer;
   text-align: center;
+  transition: color 120ms ease;
 }
 
 .nav-item[aria-current="page"] {
-  font-weight: 800;
+  font-weight: 700;
   color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 
+.nav-item-scan {
+  position: relative;
+  min-height: 64px;
+  min-width: 64px;
+  align-self: start;
+  margin-top: -18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgba(23, 26, 29, 0.12);
+  text-decoration: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.nav-item-scan[aria-current="page"] {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+@media (min-width: 920px) {
+  .nav-desktop .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 48px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 550;
+    color: var(--ink);
+  }
+
+  .nav-desktop .nav-item[aria-current="page"] {
+    background: var(--surface);
+    color: var(--accent);
+  }
+
+  .nav-desktop .nav-item:hover {
+    background: var(--surface);
+  }
+}
 /* Focus-visible ring for keyboard users (CF0-06 / matrix) */
 :focus-visible {
   outline: 2px solid var(--focus);

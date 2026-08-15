@@ -17,6 +17,9 @@ colors:
   error: "#b3261e"
   error-surface: "#fbeeed"
   error-border: "#e5b4b0"
+  pending: "#8a5b16"
+  pending-surface: "#f3eee8"
+  pending-border: "#c1ad95"
 typography:
   display:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif"

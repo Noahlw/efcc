@@ -24,8 +24,7 @@
  * and return a Response. They are tested directly via the workerd runtime.
  */
 
-import { findAccountByUserId, findAccountByUsername } from "./accounts";
-import type { AccountRow } from "./accounts";
+import { navigationForRole, sectionsForRole } from "../sections";
 import {
   AccountConflictError,
   AccountStatusError,
@@ -34,6 +33,8 @@ import {
   changeUsername,
 } from "./account-settings";
 import type { UsernameChangeResult } from "./account-settings";
+import { findAccountByUserId, findAccountByUsername } from "./accounts";
+import type { AccountRow } from "./accounts";
 import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
@@ -44,6 +45,7 @@ import {
 } from "./cookies";
 import { verifyCredential, hashCredential } from "./credentials";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
+import { hasActiveManagementGrant } from "./management-grants";
 import {
   approveRegistration,
   listPendingRegistrations,
@@ -61,8 +63,6 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
-import { hasActiveManagementGrant } from "./management-grants";
-import { sectionsForRole, stableNavigationSections } from "../sections";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -778,7 +778,10 @@ export async function handleMe(
       data: {
         user: secretFreeUser(resolved.account),
         sections: sectionsForRole(resolved.account.role, hasManagementGrant),
-        navigation: stableNavigationSections(),
+        navigation: navigationForRole(
+          resolved.account.role,
+          hasManagementGrant
+        ),
       },
     },
     requestId
@@ -853,13 +856,7 @@ export async function handleChangeUsername(
       return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     if (error instanceof AccountStatusError) {
-      return problem(
-        403,
-        "FORBIDDEN",
-        "Forbidden",
-        error.message,
-        requestId
-      );
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     throw error;
   }
@@ -982,13 +979,7 @@ export async function handleChangePassword(
       );
     }
     if (error instanceof AccountStatusError) {
-      return problem(
-        403,
-        "FORBIDDEN",
-        "Forbidden",
-        error.message,
-        requestId
-      );
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     throw error;
   }
