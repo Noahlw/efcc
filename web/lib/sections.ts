@@ -42,7 +42,6 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
     "scanner",
     "care",
     "permissions",
-    "management",
   ],
   Admin: [
     "home",
@@ -52,7 +51,6 @@ const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
     "scanner",
     "care",
     "permissions",
-    "management",
   ],
 };
 

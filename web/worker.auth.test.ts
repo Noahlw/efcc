@@ -542,7 +542,6 @@ describe("AUTH-06: login", () => {
         "scanner",
         "care",
         "permissions",
-        "management",
       ]
     );
     assert.deepStrictEqual(

@@ -149,14 +149,7 @@ describe(stableNavigationSections, () => {
 
 describe(sectionsForRole, () => {
   const memberKeys = ["home", "profile", "programs"];
-  const staffKeys = [
-    ...memberKeys,
-    "events",
-    "scanner",
-    "care",
-    "permissions",
-    "management",
-  ];
+  const staffKeys = [...memberKeys, "events", "scanner", "care", "permissions"];
 
   test("Member receives Home, Profile, and Programs only", () => {
     expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual(
