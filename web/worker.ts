@@ -17,6 +17,8 @@
  *
  *   * `/api/v1/attendance*` — D1-native Attendance domain.
  *
+ *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
+ *
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -860,6 +862,37 @@ export default {
         "NOT_FOUND",
         "Not found",
         "Unknown attendance route."
+      );
+    }
+
+    // ---- Home domain: cookie-only transport, public participant projection
+    if (
+      url.pathname === "/api/v1/home" ||
+      url.pathname.startsWith("/api/v1/home/")
+    ) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const homeEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const { handleGetHome } = await import("./lib/home-handlers");
+
+      if (url.pathname === "/api/v1/home" && request.method === "GET") {
+        return handleGetHome(request, homeEnv);
+      }
+
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown home route."
       );
     }
 

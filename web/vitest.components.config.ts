@@ -19,6 +19,7 @@ export default defineProject({
       "lib/approval-queue.test.tsx",
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
+      "lib/home.test.tsx",
       "lib/qr-code.test.tsx",
       "lib/programs/programs-events-panel.test.tsx",
       "lib/programs/programs-enrollment-panel.test.tsx",
