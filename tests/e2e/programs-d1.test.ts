@@ -1049,7 +1049,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
-        name: new RegExp(COPY.cockpitParticipantsTile, "u"),
+        name: new RegExp(`^${COPY.cockpitParticipantsTile}\\s`, "u"),
       })
     ).toBeVisible();
     await expect(
@@ -1390,13 +1390,23 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       .getByRole("list", { name: "可管理課程" })
       .getByRole("button")
       .first();
+    // Capture the row's program name before navigating (the directory
+    // unmounts once the Cockpit opens).
+    const firstProgramName = (await firstProgram.innerText())
+      .split("\n")[0]
+      .trim();
     await firstProgram.focus();
     await firstProgram.press("Enter");
+    // The status-first Cockpit leads with the program-name heading (no
+    // tabbed workspace header); the 聚會 operational tile is the events
+    // entry point.
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceIdentity })
+      page.getByRole("heading", { name: firstProgramName })
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
+      page.getByRole("button", {
+        name: new RegExp(`^${COPY.cockpitEventsTile}\\s`, "u"),
+      })
     ).toBeVisible();
   });
 
