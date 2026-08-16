@@ -209,10 +209,32 @@ export interface ManagementNotificationsView {
 
 export const MANAGEMENT_ATTENTION_LIMIT = 5;
 export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
+export interface ManagementCockpitNextEvent {
+  event_id: string;
+  program_id: string;
+  title: string | null;
+  name: string | null;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  source: "SCHEDULE" | "MANUAL";
+  is_recurring: boolean;
+  checked_in_count: number;
+  roster_count: number;
+}
+
+export interface ManagementCockpitView {
+  program_id: string;
+  next_event: ManagementCockpitNextEvent | null;
+  active_event_count: number;
+  pending_enrollment_count: number;
+}
+
 export interface ManagementProgramWorkspaceView {
   program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
+  cockpit: ManagementCockpitView;
 }
 export interface EventDetailView {
   event: EventRow;
@@ -984,10 +1006,112 @@ export class DepartmentWorkspace {
     ) {
       return null;
     }
+    const cockpit = await this.computeManagementCockpit(ctx, row);
     return {
       program,
       department: this.managementDepartment(department),
       modules,
+      cockpit,
+    };
+  }
+
+  async getManagementCockpit(
+    ctx: AuthorizationContext,
+    id: string
+  ): Promise<ManagementCockpitView | null> {
+    const row = await this.store.findProgramById(id);
+    if (!row || !(await this.isModuleEnabled(row.department_id))) {
+      return null;
+    }
+    const departmentRow = await this.store.findDepartmentById(
+      row.department_id
+    );
+    if (!departmentRow) {
+      return null;
+    }
+    const department = await this.departmentView(ctx, departmentRow);
+    const program = this.managementProgramSettings(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
+    if (
+      !hasDepartmentManagementScope(department) &&
+      !hasProgramManagementScope(program)
+    ) {
+      return null;
+    }
+    return this.computeManagementCockpit(ctx, row);
+  }
+
+  private async computeManagementCockpit(
+    _ctx: AuthorizationContext,
+    row: ProgramRow
+  ): Promise<ManagementCockpitView> {
+    const isEventsEnabled = await this.isModuleEnabled(
+      row.department_id,
+      MODULE_KEY.EVENTS
+    );
+    const isEnrollmentEnabled = await this.isModuleEnabled(
+      row.department_id,
+      MODULE_KEY.ENROLLMENT
+    );
+
+    let next_event: ManagementCockpitNextEvent | null = null;
+    let active_event_count = 0;
+
+    if (isEventsEnabled) {
+      const events = await this.store.listEvents(row.program_id);
+      const activeEvents = events.filter(
+        (e) => e.status === "Active" && e.availability === "Active"
+      );
+      active_event_count = activeEvents.length;
+      const now = Date.now();
+      const futureEvents = activeEvents
+        .filter(
+          (e) =>
+            Number.isFinite(Date.parse(e.starts_at)) &&
+            Date.parse(e.starts_at) >= now
+        )
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+
+      const firstFuture = futureEvents[0] ?? null;
+      if (firstFuture) {
+        const isRecurring =
+          row.behavior_type === "Recurring" ||
+          firstFuture.source === "SCHEDULE";
+        const summary = await this.store.getEventParticipantSummary(
+          firstFuture.event_id,
+          row.program_id
+        );
+        next_event = {
+          event_id: firstFuture.event_id,
+          program_id: firstFuture.program_id,
+          title: firstFuture.name ?? null,
+          name: firstFuture.name ?? null,
+          starts_at: firstFuture.starts_at,
+          ends_at: firstFuture.ends_at,
+          location: firstFuture.location ?? null,
+          source: firstFuture.source,
+          is_recurring: isRecurring,
+          checked_in_count: summary.checked_in,
+          roster_count: summary.active_enrollments,
+        };
+      }
+    }
+
+    let pending_enrollment_count = 0;
+    if (isEnrollmentEnabled) {
+      const pendingRows = await this.store.countPendingEnrollmentRequests([
+        row.program_id,
+      ]);
+      pending_enrollment_count = pendingRows[0]?.count ?? 0;
+    }
+
+    return {
+      program_id: row.program_id,
+      next_event,
+      active_event_count,
+      pending_enrollment_count,
     };
   }
 

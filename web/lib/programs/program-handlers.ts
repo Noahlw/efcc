@@ -705,6 +705,28 @@ export async function handleGetManagementProgram(
   return jsonResponse(200, result, requestId);
 }
 
+/** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
+export async function handleGetManagementCockpit(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const result = await workspace.getManagementCockpit(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (!result) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { cockpit: result }, requestId);
+}
+
 /**
  * GET /api/v1/programs/catalog — narrow participant Programs directory
  * (PUI-02 / Issue #246). Server projects visibility and strips check-in

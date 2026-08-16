@@ -12,7 +12,7 @@ export interface ProgramsIntent {
   hash: string | null;
   /** Management task carried by a direct Program workspace link. */
   task?: ProgramsTask;
-  /** Management Event deep link, valid only with task === "events". */
+  /** Management Event deep link, valid only with task === "events" or "participants". */
   eventId?: string;
   malformed: boolean;
 }
@@ -21,7 +21,7 @@ export interface ProgramsHrefIntent {
   mode: ProgramsMode;
   programId?: string | null;
   task?: ProgramsTask | null;
-  /** Event deep link; emitted only for management task "events". */
+  /** Event deep link; emitted for management tasks "events" and "participants". */
   eventId?: string | null;
   hash?: string | null;
 }
@@ -118,7 +118,7 @@ function parseEvent(
       raw !== null &&
       (value === undefined ||
         mode !== "management" ||
-        task !== "events" ||
+        (task !== "events" && task !== "participants") ||
         programId === null),
   };
 }
@@ -192,7 +192,11 @@ export function buildProgramsHref({
     (programId || task === "notifications")
   ) {
     params.set("task", task);
-    if (task === "events" && eventId && SAFE_EVENT_ID.test(eventId)) {
+    if (
+      (task === "events" || task === "participants") &&
+      eventId &&
+      SAFE_EVENT_ID.test(eventId)
+    ) {
       params.set("event", eventId);
     }
   }

@@ -807,6 +807,268 @@ describe("MUI-01: capability-aware management reads", () => {
       )
     );
   });
+
+  test("cockpit projection reauthorizes scope, selects next event, and counts live attendance/roster", async () => {
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      ["U999", "Tester Carol", "carol_tester", "9012", "Member", "Active"],
+    ]);
+    await completeCredentialUpgrade(testDb(), {
+      userId: "U999",
+      legacyPin: "9012",
+      newCredential: "carol-tester-secret",
+    });
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const memberAccess = await accessCookieFor(
+      "carol_tester",
+      "carol-tester-secret"
+    );
+
+    const department = await createDepartment(adminAccess, {
+      code: "COCKPIT-01",
+      name: "Cockpit Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Cockpit Test Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+
+    // 1. Unauthorized actor is denied (404 privacy-preserving)
+    const deniedCockpit = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(deniedCockpit.status, 404);
+
+    // Grant bob leader scope on this program
+    const grantLeader = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/leaders`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { user_id: "U002" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(grantLeader.status, 200);
+
+    // 2. Initially no events -> next_event is null, counts 0
+    const initialCockpit = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(initialCockpit.status, 200);
+    const initialBody = (await assertCorrelated(initialCockpit)) as {
+      data: {
+        cockpit: {
+          program_id: string;
+          next_event: unknown;
+          active_event_count: number;
+          pending_enrollment_count: number;
+        };
+      };
+    };
+    assert.strictEqual(initialBody.data.cockpit.program_id, program.program_id);
+    assert.strictEqual(initialBody.data.cockpit.next_event, null);
+    assert.strictEqual(initialBody.data.cockpit.active_event_count, 0);
+    assert.strictEqual(initialBody.data.cockpit.pending_enrollment_count, 0);
+
+    // 3. Create events: past, earlier future, later future, cancelled future
+    const pastStarts = "2020-01-01T10:00:00.000Z";
+    const pastEnds = "2020-01-01T11:00:00.000Z";
+    const nextStarts = "2099-06-01T10:00:00.000Z";
+    const nextEnds = "2099-06-01T11:00:00.000Z";
+    const laterStarts = "2099-06-15T10:00:00.000Z";
+    const laterEnds = "2099-06-15T11:00:00.000Z";
+    const cancelledStarts = "2099-05-01T10:00:00.000Z";
+    const cancelledEnds = "2099-05-01T11:00:00.000Z";
+
+    await createEventFor(adminAccess, program.program_id, {
+      starts_at: pastStarts,
+      ends_at: pastEnds,
+      name: "Past Event",
+      location: "Room A",
+    });
+    const nextEventRow = await createEventFor(adminAccess, program.program_id, {
+      starts_at: nextStarts,
+      ends_at: nextEnds,
+      name: "Next Upcoming Event",
+      location: "Room B",
+    });
+    await createEventFor(adminAccess, program.program_id, {
+      starts_at: laterStarts,
+      ends_at: laterEnds,
+      name: "Later Event",
+      location: "Room C",
+    });
+    const cancelledEvent = await createEventFor(adminAccess, program.program_id, {
+      starts_at: cancelledStarts,
+      ends_at: cancelledEnds,
+      name: "Cancelled Event",
+      location: "Room D",
+    });
+    // Cancel the cancelled event
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "Weather" },
+        }
+      ),
+      testEnv()
+    );
+
+    // Add enrollments and attendance:
+    // 1 active enrollment for Carol
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at)
+         VALUES ('enr-c1', ?, 'U999', 'Active', datetime('now'), 'U001', datetime('now'))`
+      )
+      .bind(program.program_id)
+      .run();
+
+    // 1 active check-in for nextEvent
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances (attendance_id, event_id, member_user_id, method, status, checked_in_at)
+         VALUES ('att-1', ?, 'U999', 'self_qr_scan', 'Active', datetime('now'))`
+      )
+      .bind(nextEventRow.event_id)
+      .run();
+
+    // 1 pending enrollment request
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollment_requests (request_id, program_id, member_user_id, status, submitted_at, request_version)
+         VALUES ('req-1', ?, 'U002', 'Pending', datetime('now'), 1)`
+      )
+      .bind(program.program_id)
+      .run();
+
+    // 4. Fetch Cockpit projection via GET /api/v1/programs/:id/cockpit
+    const cockpitRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cockpitRes.status, 200);
+    const cockpitData = (await assertCorrelated(cockpitRes)) as {
+      data: {
+        cockpit: {
+          program_id: string;
+          next_event: {
+            event_id: string;
+            program_id: string;
+            title: string | null;
+            name: string | null;
+            starts_at: string;
+            ends_at: string;
+            location: string | null;
+            source: string;
+            is_recurring: boolean;
+            checked_in_count: number;
+            roster_count: number;
+          } | null;
+          active_event_count: number;
+          pending_enrollment_count: number;
+        };
+      };
+    };
+
+    const cockpit = cockpitData.data.cockpit;
+    assert.strictEqual(cockpit.program_id, program.program_id);
+    assert.strictEqual(cockpit.active_event_count, 3); // 3 active events (past, next, later)
+    assert.strictEqual(cockpit.pending_enrollment_count, 1);
+    assert.ok(cockpit.next_event);
+    assert.strictEqual(cockpit.next_event.event_id, nextEventRow.event_id);
+    assert.strictEqual(cockpit.next_event.title, "Next Upcoming Event");
+    assert.strictEqual(cockpit.next_event.name, "Next Upcoming Event");
+    assert.strictEqual(cockpit.next_event.starts_at, nextStarts);
+    assert.strictEqual(cockpit.next_event.location, "Room B");
+    assert.strictEqual(cockpit.next_event.is_recurring, true);
+    assert.strictEqual(cockpit.next_event.checked_in_count, 1);
+    assert.strictEqual(cockpit.next_event.roster_count, 1);
+    assert.ok(!("manual_check_in_code" in (cockpit.next_event as Record<string, unknown>)));
+
+    // 5. Also verify getManagementProgram includes the exact same cockpit projection
+    const mgmtRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/management`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(mgmtRes.status, 200);
+    const mgmtData = (await assertCorrelated(mgmtRes)) as {
+      data: {
+        cockpit: typeof cockpit;
+      };
+    };
+
+    // Clean up test rows so other suites in this file remain unaffected
+    await testDb()
+      .prepare("DELETE FROM enrollment_requests WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM attendances WHERE event_id = ?")
+      .bind(nextEventRow.event_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM enrollments WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM events WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM program_leaders WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM programs WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM department_modules WHERE department_id = ?")
+      .bind(department.department_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM departments WHERE department_id = ?")
+      .bind(department.department_id)
+      .run();
+    assert.deepStrictEqual(mgmtData.data.cockpit, cockpit);
+  });
 });
 describe("NTF-01: management attention", () => {
   async function attentionFor(access: string): Promise<{

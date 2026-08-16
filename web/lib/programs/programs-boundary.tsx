@@ -115,7 +115,7 @@ export function ProgramsBoundary() {
     return () => {
       request.cancelled = true;
     };
-  }, [intent.malformed, loadAccess, locationReady]);
+  }, [intent.malformed, intent.mode, loadAccess, locationReady]);
 
   const managementModeReady =
     access.kind === "ready" && access.projection.hasManagementCapability;
@@ -184,7 +184,10 @@ export function ProgramsBoundary() {
     setSearch(href.slice("/programs".length));
     announce(COPY.programs.programSelected);
   };
-  const navigateManagementTask = (task: ProgramsTask | null) => {
+  const navigateManagementTask = (
+    task: ProgramsTask | null,
+    eventId?: string | null
+  ) => {
     if (!intent.programId && task !== "notifications") {
       return;
     }
@@ -192,6 +195,7 @@ export function ProgramsBoundary() {
       mode: "management",
       programId: task === "notifications" ? null : intent.programId,
       task,
+      eventId,
       hash: intent.hash,
     });
     if (typeof window === "undefined") {
@@ -262,8 +266,9 @@ export function ProgramsBoundary() {
         ? requestedMode
         : previousMode.current !== null && previousMode.current !== intent.mode
           ? intent.mode
-          : null;
-    previousMode.current = intent.mode;
+          : intent.mode === "management" && showModeTabs
+            ? "management"
+            : null;
     if (!locationReady || mode === null) {
       return;
     }
@@ -275,7 +280,13 @@ export function ProgramsBoundary() {
     if (!tab) {
       return;
     }
+    previousMode.current = intent.mode;
     tab.focus();
+    queueMicrotask(() => {
+      if (document.contains(tab)) {
+        tab.focus();
+      }
+    });
     focusMode.current = null;
   }, [intent.malformed, intent.mode, locationReady, showModeTabs]);
 
@@ -465,7 +476,10 @@ function ManagementPanel({
   onParticipant: () => void;
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string) => void;
-  onTaskChange: (task: ProgramsTask | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null
+  ) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
 }) {

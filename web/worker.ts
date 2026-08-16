@@ -306,6 +306,7 @@ export default {
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
+        handleGetManagementCockpit,
         handleGetDepartment,
         handleListDepartmentManagers,
         handleAssignDepartmentManager,
@@ -387,6 +388,16 @@ export default {
           request,
           programEnv,
           managementProgram.groups?.id ?? ""
+        );
+      }
+      const cockpit = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/cockpit$/u
+      );
+      if (cockpit && request.method === "GET") {
+        return handleGetManagementCockpit(
+          request,
+          programEnv,
+          cockpit.groups?.id ?? ""
         );
       }
       const participantDetail = url.pathname.match(

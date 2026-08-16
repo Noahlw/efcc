@@ -15,6 +15,7 @@ import type {
   DepartmentModule,
   Enrollment,
   EnrollmentRequest,
+  ManagementCockpitView,
   PreviewResult,
   Program,
   ProgramEvent,
@@ -205,6 +206,32 @@ const plan: PreviewResult = {
   ],
 };
 
+const cockpitWithNext: ManagementCockpitView = {
+  program_id: "program-1",
+  next_event: {
+    event_id: "event-1",
+    program_id: "program-1",
+    title: "查經小組 第 1 節",
+    name: "查經小組 第 1 節",
+    starts_at: "2030-08-20T11:00:00.000Z",
+    ends_at: "2030-08-20T13:00:00.000Z",
+    location: "副堂 201",
+    source: "SCHEDULE",
+    is_recurring: true,
+    checked_in_count: 8,
+    roster_count: 12,
+  },
+  active_event_count: 5,
+  pending_enrollment_count: 3,
+};
+
+const cockpitNoNext: ManagementCockpitView = {
+  program_id: "program-1",
+  next_event: null,
+  active_event_count: 2,
+  pending_enrollment_count: 0,
+};
+
 function mockWorkspace() {
   mocks.getManagementProgram.mockResolvedValue({
     program,
@@ -239,8 +266,105 @@ afterEach(() => {
 });
 
 describe(ProgramWorkspace, () => {
-  test("shows identity, operational facts, nearest Event, and restrained counts", async () => {
-    mockWorkspace();
+  test("renders status-first Cockpit layout with next-meeting card, live check-in counts, and operational tiles", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitWithNext,
+    });
+    const onTaskChange = vi.fn();
+    const onEventChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+        onEventChange={onEventChange}
+      />
+    );
+
+    // Header with quiet edit button and pills
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
+    ).toBeInTheDocument();
+    expect(screen.getByText("青年事工 · YOUTH")).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.lifecycleActive)).toBeInTheDocument();
+
+    // 下一聚會 card with live counts
+    expect(
+      screen.getByText(COPY.programs.cockpitNextMeeting)
+    ).toBeInTheDocument();
+    expect(screen.getByText("查經小組 第 1 節")).toBeInTheDocument();
+    expect(screen.getByText(/副堂 201/u)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitAutoScheduled)
+    ).toBeInTheDocument();
+    expect(screen.getByText("8/12")).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitCheckedIn)
+    ).toBeInTheDocument();
+
+    // 前往管理名單 carries event context
+    const rosterButton = screen.getByRole("button", {
+      name: COPY.programs.cockpitManageRoster,
+    });
+    await userEvent.click(rosterButton);
+    expect(onEventChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith("participants", "event-1");
+
+    // 2-up operational tiles
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.cockpitOperations })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitWeeklyWork)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*5 個聚會`, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*待審批報名 ×3`, "u"),
+      })
+    ).toBeInTheDocument();
+
+    // 低頻設定 quiet rows
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.cockpitOthers })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitLowFrequency)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.programs.cockpitSettings, "u"),
+      })
+    ).toBeInTheDocument();
+
+    // No tabs in the Cockpit
+    expect(
+      screen.queryByRole("nav", { name: COPY.programs.workspaceTaskLabel })
+    ).not.toBeInTheDocument();
+  });
+
+  test("omits next-meeting block entirely when no upcoming meeting exists", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitNoNext,
+    });
     render(
       <ProgramWorkspace
         programId="program-1"
@@ -252,24 +376,80 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
+
+    // Next-meeting block completely absent
+    expect(
+      screen.queryByText(COPY.programs.cockpitNextMeeting)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cockpitManageRoster })
+    ).not.toBeInTheDocument();
+
+    // Operational tiles still render with live counts
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitNoPending}`, "u"),
+      })
+    ).toBeInTheDocument();
+  });
+
+  test("navigates to tasks and toggles Course Facts view from Cockpit", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitWithNext,
+    });
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
     await expect(
-      screen.findByText("青年事工 · YOUTH")
+      screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
+
+    // Click events tile
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.programs.cockpitEventsTile, "u"),
+      })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith("events");
+
+    // Click course facts
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
+      })
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: COPY.programs.cockpitCourseFacts,
+      })
+    ).toBeInTheDocument();
     expect(
       screen.getByText(COPY.programs.detailBehaviorRecurring)
     ).toBeInTheDocument();
+
+    // Return to overview
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.backToOverview })
+    );
     expect(
-      screen.getByText(COPY.programs.discoverabilityListed)
+      await screen.findByRole("heading", {
+        name: COPY.programs.cockpitOperations,
+      })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(COPY.programs.detailParticipationMemberRequest)
-    ).toBeInTheDocument();
-    await expect(
-      screen.findByText(COPY.programs.workspacePendingRequests)
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText(COPY.programs.workspaceActiveParticipants)
-    ).resolves.toBeInTheDocument();
   });
 
   test("renders Events with the management create entry point", async () => {

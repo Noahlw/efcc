@@ -285,4 +285,52 @@ describe(ManagementDirectory, () => {
       expect(mocks.getManagementDirectory).toHaveBeenCalledTimes(2)
     );
   });
+
+  test("renders honest empty-scope state when account has zero management scope", async () => {
+    mocks.getManagementDirectory.mockResolvedValue({
+      departments: [],
+      programs: [],
+    });
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.cockpitEmptyScopeTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitEmptyScopeHint)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  test("reflects revoked scope upon reload without showing stale records", async () => {
+    mocks.getManagementDirectory.mockResolvedValueOnce({
+      departments,
+      programs: programsByDepartment.flat(),
+    });
+    const { unmount } = render(
+      <ManagementDirectory onOpenProgram={vi.fn()} />
+    );
+
+    await expect(
+      screen.findByRole("button", { name: /查經小組/u })
+    ).resolves.toBeInTheDocument();
+    unmount();
+
+    mocks.getManagementDirectory.mockResolvedValueOnce({
+      departments: [],
+      programs: [],
+    });
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.cockpitEmptyScopeTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /查經小組/u })
+    ).not.toBeInTheDocument();
+  });
 });

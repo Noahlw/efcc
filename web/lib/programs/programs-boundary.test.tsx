@@ -289,7 +289,7 @@ describe("Programs intent", () => {
     ).toBe(
       "/programs?mode=management&program=program-1&task=events&event=event-42"
     );
-    // Non-events tasks and participant mode never carry the param.
+    // Participant task also preserves the event param for roster deep linking.
     expect(
       buildProgramsHref({
         mode: "management",
@@ -297,7 +297,21 @@ describe("Programs intent", () => {
         task: "participants",
         eventId: "event-42",
       })
-    ).toBe("/programs?mode=management&program=program-1&task=participants");
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=participants&event=event-42"
+    );
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=participants&event=event-42"
+      )
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "participants",
+      eventId: "event-42",
+      malformed: false,
+    });
     expect(
       buildProgramsHref({
         mode: "participant",

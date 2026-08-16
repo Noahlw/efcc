@@ -98,6 +98,19 @@ const COPY = {
   workspaceTaskParticipants: "參與者",
   workspacePendingRequests: "待處理報名",
   workspaceActiveParticipants: "活躍參與者",
+  cockpitNextMeeting: "下一聚會",
+  cockpitOperations: "營運",
+  cockpitWeeklyWork: "每週工作",
+  cockpitEventsTile: "聚會",
+  cockpitParticipantsTile: "參與者",
+  cockpitEventsCount: "{count} 個聚會",
+  cockpitPendingLabel: "待審批報名 ×{count}",
+  cockpitNoPending: "查看活躍名單",
+  cockpitManageRoster: "前往管理名單",
+  cockpitCheckedIn: "已簽到",
+  cockpitAutoScheduled: "自動排程",
+  cockpitOthers: "其他",
+  cockpitLowFrequency: "低頻設定",
   workspaceParticipantsRefresh: "重新整理參與者資料",
   workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
   approve: "核准",
@@ -991,7 +1004,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
   });
 });
 test.describe("MUI-01 management Directory and Workspace", () => {
-  test("admin searches the scoped Directory and navigates focused Workspace tasks", async ({
+  test("admin opens the status-first Cockpit and carries meeting/program context", async ({
     page,
   }) => {
     await loginAs(
@@ -1007,18 +1020,8 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
-    const directory = page.getByRole("list", { name: "可管理課程" });
-    const demoDirectoryRows = directory
-      .getByRole("button")
-      .filter({ hasText: /^E2E_DEMO_/u });
-    await expect(demoDirectoryRows).toHaveCount(4);
-    expect(
-      await directory
-        .getByRole("listitem")
-        .filter({ hasText: "E2E_DEMO_MINISTRY" })
-        .count()
-    ).toBeGreaterThanOrEqual(4);
 
+    const directory = page.getByRole("list", { name: "可管理課程" });
     const search = page.getByRole("searchbox", {
       name: COPY.managementDirectorySearchLabel,
     });
@@ -1028,60 +1031,55 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.workspaceIdentity })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: COPY.workspaceNearestEvent })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: COPY.workspaceTitle })
-    ).toHaveAttribute("aria-current", "page");
 
-    await page
-      .getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
-      .click();
-    await expect(page).toHaveURL(
-      new RegExp(
-        `/programs\\?mode=management&program=${programId}&task=events$`,
-        "u"
-      )
-    );
+    // Status-first header and operational tiles are sourced from real D1 data.
     await expect(
-      page.getByRole("heading", {
-        name: COPY.workspaceTaskEvents,
-        exact: true,
+      page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.cockpitOperations })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.cockpitWeeklyWork)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(`${COPY.cockpitEventsTile}.*個聚會`, "u"),
       })
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: COPY.workspaceTaskEvents, exact: true })
-    ).toHaveAttribute("aria-current", "page");
+      page.getByRole("button", {
+        name: new RegExp(COPY.cockpitParticipantsTile, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.cockpitOthers })
+    ).toBeVisible();
 
-    await page
-      .getByRole("link", { name: COPY.workspaceTaskParticipants, exact: true })
-      .click();
+    const nextMeeting = page.getByRole("button", {
+      name: COPY.cockpitManageRoster,
+    });
+    await expect(nextMeeting).toBeVisible();
+    await nextMeeting.click();
     await expect(page).toHaveURL(
       new RegExp(
-        `/programs\\?mode=management&program=${programId}&task=participants$`,
+        `/programs\\?mode=management&program=${programId}&task=participants&event=[^&]+$`,
         "u"
       )
     );
-    await expect(
-      page.getByRole("heading", {
-        name: COPY.workspaceTaskParticipants,
-        exact: true,
-      })
-    ).toBeVisible();
 
-    await page
-      .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
-      .click();
+    // Returning from participant mode keeps the same program context.
+    await page.getByRole("tab", { name: COPY.participantMode }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?program=${programId}`, "u")
+    );
+    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
+    );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskSettings })
+      page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
     ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
-    ).toHaveAttribute("aria-current", "page");
   });
   test("manager Participants queue shows scoped counts and approves a pending request", async ({
     page,

@@ -293,12 +293,21 @@ export const ManagementDirectory = ({
       {state.kind === "ready" && state.rows.length === 0 && (
         <section
           id="programs-management-directory-state"
+          tabIndex={-1}
           className={styles.boundaryState}
+          role="status"
+          aria-live="polite"
         >
           <h3 className={styles.boundaryTitle}>
-            {COPY.programs.managementDirectoryEmpty}
+            {state.departments.length === 0
+              ? COPY.programs.cockpitEmptyScopeTitle
+              : COPY.programs.managementDirectoryEmpty}
           </h3>
-          <p>{COPY.programs.managementDirectoryEmptyHint}</p>
+          <p>
+            {state.departments.length === 0
+              ? COPY.programs.cockpitEmptyScopeHint
+              : COPY.programs.managementDirectoryEmptyHint}
+          </p>
         </section>
       )}
 

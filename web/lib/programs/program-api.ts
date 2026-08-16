@@ -100,6 +100,27 @@ export interface ManagementDirectory {
   programs: ManagementProgram[];
 }
 
+export interface ManagementCockpitNextEvent {
+  event_id: string;
+  program_id: string;
+  title: string | null;
+  name: string | null;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  source: "SCHEDULE" | "MANUAL";
+  is_recurring: boolean;
+  checked_in_count: number;
+  roster_count: number;
+}
+
+export interface ManagementCockpitView {
+  program_id: string;
+  next_event: ManagementCockpitNextEvent | null;
+  active_event_count: number;
+  pending_enrollment_count: number;
+}
+
 export interface ManagementAttentionProgram {
   program_id: string;
   department_id: string;
@@ -495,7 +516,10 @@ async function programsFetch<T>(
   path: string,
   method: "POST" | "GET" | "PATCH" | "DELETE",
   body?: unknown,
-  options: { idempotencyKey?: string | null } = {}
+  options: {
+    idempotencyKey?: string | null;
+    cache?: "no-store";
+  } = {}
 ): Promise<T> {
   let res: Response;
   try {
@@ -506,6 +530,7 @@ async function programsFetch<T>(
         ...idempotencyHeaders(method, options.idempotencyKey),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(options.cache === undefined ? {} : { cache: options.cache }),
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
@@ -697,7 +722,12 @@ export function listDepartments(): Promise<{
 }
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
-  return programsFetch("/api/v1/programs/management-directory", "GET");
+  return programsFetch(
+    "/api/v1/programs/management-directory",
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
 }
 
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
@@ -791,10 +821,25 @@ export function getManagementProgram(programId: string): Promise<{
   program: ManagementProgramSettings;
   department: Department;
   modules: DepartmentModule[];
+  cockpit: ManagementCockpitView;
 }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/management`,
-    "GET"
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
+export function getManagementCockpit(
+  programId: string
+): Promise<{ cockpit: ManagementCockpitView }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/cockpit`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
   );
 }
 /** POST /api/v1/programs/departments/:id/programs */

@@ -103,6 +103,24 @@ const modules: DepartmentModule[] = [
     enabled_at: "2026-01-01T00:00:00.000Z",
   },
 ];
+const cockpit = {
+  program_id: "program-1",
+  next_event: {
+    event_id: "event-1",
+    program_id: "program-1",
+    title: "查經小組 第 1 節",
+    name: null,
+    starts_at: "2099-01-01T10:00:00.000Z",
+    ends_at: "2099-01-01T11:00:00.000Z",
+    location: "副堂 201",
+    source: "SCHEDULE" as const,
+    is_recurring: true,
+    checked_in_count: 1,
+    roster_count: 3,
+  },
+  active_event_count: 5,
+  pending_enrollment_count: 3,
+};
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/programs?mode=management");
@@ -127,8 +145,8 @@ beforeEach(() => {
     program,
     department,
     modules,
+    cockpit,
   });
-  mocks.listEvents.mockResolvedValue({ events: [] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
 });
@@ -138,7 +156,7 @@ afterEach(() => {
 });
 
 describe("Programs management boundary", () => {
-  test("routes from scoped Directory into one Program workspace and a focused task", async () => {
+  test("routes from scoped Directory into a status-first Program Cockpit and focused task", async () => {
     render(<ProgramsBoundary />);
 
     const row = await screen.findByRole("button", { name: /查經小組/u });
@@ -149,9 +167,14 @@ describe("Programs management boundary", () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.workspaceTaskEvents })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitParticipantsTile)
+    ).toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole("link", { name: COPY.programs.workspaceTaskEvents })
+      screen.getByRole("button", { name: /聚會.*個聚會/u })
     );
     expect(window.location.search).toBe(
       "?mode=management&program=program-1&task=events"
@@ -161,6 +184,26 @@ describe("Programs management boundary", () => {
         name: COPY.programs.workspaceTaskEvents,
       })
     ).resolves.toBeInTheDocument();
+  });
+  test("carries the next meeting event into the participants roster task", async () => {
+    render(<ProgramsBoundary />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /查經小組/u })
+    );
+    await screen.findByRole("button", {
+      name: COPY.programs.cockpitManageRoster,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: COPY.programs.cockpitManageRoster,
+      })
+    );
+
+    expect(window.location.search).toBe(
+      "?mode=management&program=program-1&task=participants&event=event-1"
+    );
   });
 
   test("direct revoked links show a generic unavailable state without record leakage", async () => {
