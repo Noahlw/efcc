@@ -576,58 +576,176 @@ test.describe("PUI-02 participant Programs directory", () => {
 
   test("filter pills allow filtering by viewer relationship", async ({
     page,
+    browser,
   }) => {
+    // A fresh member makes the viewer-relative states deterministic: the
+    // shared local D1 accumulates enrollment history across earlier tests,
+    // so the stock E2E_member's relationship to the demo programs is not
+    // guaranteed pristine. Register + approve a unique member here.
+    const freshUsername = `E2E_filter_${Date.now()}`;
+    const freshPassword = "E2E_filter_pw!1";
+    const freshName = `E2E Filter ${Date.now()}`;
     await loginAs(
       page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
+    const registered = await page.evaluate(
+      async ({ username, password, name }) => {
+        const response = await fetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": `e2e-register-${Date.now()}`,
+          },
+          body: JSON.stringify({
+            username,
+            password,
+            name,
+            phone: "555-0200",
+          }),
+        });
+        return { ok: response.ok, status: response.status };
+      },
+      { username: freshUsername, password: freshPassword, name: freshName }
+    );
+    expect(
+      registered.ok,
+      "fresh member registration must submit"
+    ).toBe(true);
+    const approved = await page.evaluate(async ({ username }) => {
+      const listResponse = await fetch("/api/v1/auth/registrations");
+      const body = (await listResponse.json()) as {
+        data?: {
+          registrations?: { requestId: string; username: string }[];
+        };
+      };
+      const pending = body.data?.registrations?.find(
+        (row) => row.username === username
+      );
+      if (!pending) {
+        return { ok: false, status: 404 };
+      }
+      const response = await fetch(
+        `/api/v1/auth/registrations/${encodeURIComponent(pending.requestId)}/approve`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": `e2e-approve-${Date.now()}` },
+        }
+      );
+      return { ok: response.ok, status: response.status };
+    }, { username: freshUsername });
+    expect(approved.ok, "admin must approve the fresh member").toBe(true);
 
-    const filterGroup = page.getByRole("group", {
-      name: COPY.filterGroupLabel,
-    });
-    await expect(filterGroup).toBeVisible();
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    try {
+      await loginAs(memberPage, freshUsername, freshPassword);
 
-    const allPill = filterGroup.getByRole("button", { name: COPY.filterAll });
-    const eligiblePill = filterGroup.getByRole("button", {
-      name: COPY.filterEligible,
-    });
-    const pendingPill = filterGroup.getByRole("button", {
-      name: COPY.filterPending,
-    });
+      const filterGroup = memberPage.getByRole("group", {
+        name: COPY.filterGroupLabel,
+      });
+      await expect(filterGroup).toBeVisible();
 
-    await expect(allPill).toHaveAttribute("aria-pressed", "true");
+      const allPill = filterGroup.getByRole("button", {
+        name: COPY.filterAll,
+      });
+      const eligiblePill = filterGroup.getByRole("button", {
+        name: COPY.filterEligible,
+      });
+      const activePill = filterGroup.getByRole("button", {
+        name: COPY.filterActive,
+      });
+      const pendingPill = filterGroup.getByRole("button", {
+        name: COPY.filterPending,
+      });
 
-    // Filter: 可報名
-    await eligiblePill.click();
-    await expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
-    await expect(allPill).toHaveAttribute("aria-pressed", "false");
-    await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
-    ).toHaveCount(0);
+      await expect(allPill).toHaveAttribute("aria-pressed", "true");
 
-    // Filter: 待審批 (zero matches for fresh member)
-    await pendingPill.click();
-    await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      page.getByRole("heading", { name: COPY.catalogEmpty })
-    ).toBeVisible();
+      // Filter: 可報名 — the fresh member is eligible for every MemberRequest
+      // program and never for the ManagerOnly one.
+      await eligiblePill.click();
+      await expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
+      await expect(allPill).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+      ).toHaveCount(0);
 
-    // Filter: 全部 restores all rows
-    await allPill.click();
-    await expect(allPill).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
-    ).toBeVisible();
+      // Filter: 待審批 — submit a real enrollment request, then the pill
+      // shows exactly the requested program.
+      const [programId] = await catalogProgramIds(
+        memberPage,
+        "E2E_DEMO_成人查經"
+      );
+      expect(programId).toBeTruthy();
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      const enrollmentPanel = memberPage.getByRole("region", {
+        name: COPY.enrollment,
+      });
+      await enrollmentPanel
+        .getByRole("button", { name: COPY.requestEnroll })
+        .click();
+      await expect(
+        enrollmentPanel.getByText(COPY.requestPendingHint)
+      ).toBeVisible();
+      await memberPage.goto("/programs");
+      await pendingPill.click();
+      await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      ).toHaveCount(0);
+
+      // Filter: 已參加 — the admin approves the fresh request; the member's
+      // relationship becomes Active and the pill shows the enrolled program.
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+      );
+      const requestRow = page
+        .getByRole("listitem")
+        .filter({ hasText: freshName });
+      await expect(
+        requestRow.getByRole("button", { name: COPY.approve })
+      ).toBeVisible();
+      await requestRow.getByRole("button", { name: COPY.approve }).click();
+      await expect(
+        page
+          .getByRole("region", { name: COPY.workspaceTaskParticipants })
+          .getByText(COPY.decisionMade, { exact: true })
+      ).toBeVisible();
+      await memberPage.goto("/programs");
+      await activePill.click();
+      await expect(activePill).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      ).toHaveCount(0);
+
+      // Filter: 全部 restores every listed row, including the ManagerOnly one.
+      await allPill.click();
+      await expect(allPill).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+      ).toBeVisible();
+    } finally {
+      await memberContext.close();
+    }
   });
 
   test("search narrows the catalog and clearing restores the same rows", async ({
