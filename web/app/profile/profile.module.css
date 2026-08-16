@@ -1,171 +1,258 @@
-/* Profile surface (matrix S5). Root fills `.shell-content` (Ui01Shell's
-   scroll box) so QR centers without page scroll on a 667px phone. Tokens
-   reference design.json names with literal fallbacks. */
+/* Account surface follows the participant prototype's quiet, document-like cards. */
 
 .page {
+  width: min(100%, 680px);
   min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: clamp(0.75rem, 2vw, 1.5rem);
-  overflow: visible;
-}
-
-.profileBar {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-  flex-wrap: wrap;
-}
-
-.avatar {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--accent, #9c302c);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  font-weight: 800;
-}
-
-.profileMeta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.profileName {
-  font-size: 1.05rem;
-  font-weight: 800;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 1.5rem) 2rem;
   color: var(--ink, #171a1d);
 }
 
-.profileUsername {
-  font-size: 0.85rem;
-  color: var(--ink-muted, #59636a);
+.header {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
 }
 
-.roleTag {
-  display: inline-block;
-  align-self: flex-start;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+.intro {
+  padding: 8px 0 22px;
+}
+
+.intro h1 {
+  margin: 0;
+  font-size: clamp(1.72rem, 6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.intro p {
+  margin: 8px 0 0;
   color: var(--ink-muted, #59636a);
-  background: var(--surface, #f4f5f3);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.qrCard,
+.detailsCard {
+  background: var(--surface-raised, #ffffff);
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 10px;
+}
+
+.qrCard {
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  padding: 4px 9px;
   border: 1px solid var(--line, #d6dcde);
   border-radius: var(--radius-pill, 999px);
-  padding: 0.2rem 0.6rem;
-  white-space: nowrap;
-}
-
-.infoGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
   background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-}
-
-.infoCell dt {
-  font-size: 0.8rem;
   color: var(--ink-muted, #59636a);
-  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 550;
 }
 
-.infoCell dd {
-  margin: 0;
-  font-weight: 700;
-  color: var(--ink, #171a1d);
-  word-break: break-word;
-}
-
-.qrCenter {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-}
-
-.qrSquare {
-  width: 220px;
-  height: 220px;
-  aspect-ratio: 1 / 1;
-  background: #ffffff;
-  color: var(--ink, #171a1d);
-  border: 2px solid var(--line, #d6dcde);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+.qrDisplay {
+  width: min(220px, 72vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 16px auto 20px;
+  padding: 14px;
   overflow: hidden;
-}
-
-/* 帳戶資料 entry — a 44px-tall full-width target linking to /profile/settings. */
-/* Account Settings action — card-style link to the dedicated /profile/settings
-   route (removed the inline 帳戶資料 form from this surface). Keyboard-focused
-   like any link: real navigation, 3px #176a87 ring. */
-.settingsAction {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem 1.125rem;
-  background: var(--surface-raised, #ffffff);
   border: 1px solid var(--line, #d6dcde);
-  border-radius: 12px;
-  text-decoration: none;
-  color: var(--ink, #171a1d);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  border-radius: 8px;
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink-muted, #59636a);
 }
 
-.settingsAction:hover {
-  border-color: var(--accent, #9c302c);
+.qrDisplay > span {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.qrDisplay :global(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.qrCard h2 {
+  margin: 0;
+  font-size: 1.42rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.statusText {
+  margin: 12px 0 0;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--success-border, #b9cfbe);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--success-surface, #eef4ef);
+  color: var(--success, #2e6b37);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.detailsCard {
+  margin-top: 12px;
+  padding: 20px;
+}
+
+.details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+.details summary::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: var(--ink-muted, #59636a);
+  transition: transform 0.15s ease;
+}
+
+.details[open] .chevron {
+  transform: rotate(90deg);
+}
+
+.detailList {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 0 4px;
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.detailRow dt {
+  color: var(--ink-muted, #59636a);
+}
+
+.detailRow dd {
+  min-width: 0;
+  margin: 0;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  margin-top: 26px;
+}
+
+.actions h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.actionList {
+  display: grid;
+  gap: 12px;
+}
+
+.actionRow {
+  width: 100%;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line-strong, #868182);
+  border-radius: 10px;
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.actionRow:hover {
+  border-color: var(--line-strong, #868182);
   background: var(--surface, #f4f5f3);
 }
 
-.settingsAction:focus-visible {
-  outline: 3px solid var(--focus);
+.actionRow:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
 }
 
-.settingsActionTitle {
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--accent, #9c302c);
+.actionTitle,
+.actionDescription {
+  display: block;
 }
 
-.settingsActionHint {
-  font-size: 0.875rem;
+.actionTitle,
+.logoutTitle {
+  font-weight: 600;
+}
+
+.actionDescription {
+  margin-top: 5px;
   color: var(--ink-muted, #59636a);
+  font-size: 0.86rem;
+}
+
+.logoutTitle {
+  color: var(--error, #b3261e);
 }
 
 @media (max-width: 799px) {
   .page {
-    gap: 0.75rem;
+    padding-bottom: 1.5rem;
   }
 
-  .settingsAction {
-    padding: 0.75rem 1rem;
+  .qrCard {
+    padding: 20px 16px;
+  }
+
+  .detailsCard {
+    padding: 16px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settingsAction {
+  .chevron,
+  .actionRow {
     transition: none;
   }
 }

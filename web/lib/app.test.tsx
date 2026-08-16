@@ -992,7 +992,7 @@ describe("Shell", () => {
       setAuthHint();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       expect(signOutButton).toBeInTheDocument();
@@ -1005,7 +1005,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -1056,7 +1056,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -1091,7 +1091,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -1115,7 +1115,7 @@ describe("Shell", () => {
     test("renders the QR identity as an img with a descriptive label and the immutable code", async () => {
       renderRestoredProfile();
       // Await the shell so the profile surface is mounted.
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
       // The QR slot is a fixed 220px square — no proportional min() clamp
@@ -1133,7 +1133,7 @@ describe("Shell", () => {
 
     test("renders the phone and status info grid with their values", async () => {
       renderRestoredProfile();
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
       expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
       expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
@@ -1157,7 +1157,7 @@ describe("Shell", () => {
         )
       );
       renderRestoredProfile();
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       expect(screen.getByText(COPY.profile.qrEmpty)).toBeInTheDocument();
       expect(
         screen.queryByRole("img", { name: COPY.profile.qrCode })

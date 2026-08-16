@@ -172,7 +172,7 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
   }
 });
 
-test("profile page fits the shell-content scroll box at 375x812", async ({
+test("profile page fits the shell-content without horizontal overflow at 375x812", async ({
   page,
 }, testInfo) => {
   test.skip(!isMobile(testInfo.project.name), "mobile-only");
@@ -183,9 +183,9 @@ test("profile page fits the shell-content scroll box at 375x812", async ({
     if (!el) {
       return false;
     }
-    return el.scrollHeight <= el.clientHeight;
+    return el.scrollWidth <= el.clientWidth;
   });
-  expect(fits, "profile overflows the shell-content scroll box").toBeTruthy();
+  expect(fits, "profile horizontally overflows the shell-content scroll box").toBeTruthy();
 });
 
 test("bottom nav and page outlet reserve safe-area inset", async ({
@@ -330,7 +330,9 @@ test("exactly one polite live region announces shell status", async ({
 
 test("primary controls are at least 44x44", async ({ page }) => {
   await page.goto("/profile.html");
-  const signOut = page.getByRole("button", { name: COPY.logout.submit });
+  const signOut = page
+    .getByRole("button", { name: COPY.logout.submit })
+    .first();
   await expect(signOut).toBeVisible();
   const box = await signOut.boundingBox();
   expect(box, "Sign Out bounding box").not.toBeNull();
