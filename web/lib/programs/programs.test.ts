@@ -99,9 +99,7 @@ async function assertCorrelated(res: Response): Promise<unknown> {
   return body;
 }
 
-async function problemOf(
-  res: Response
-): Promise<{
+async function problemOf(res: Response): Promise<{
   code: string;
   status: number;
   requestId: string;
@@ -918,12 +916,16 @@ describe("MUI-01: capability-aware management reads", () => {
       name: "Later Event",
       location: "Room C",
     });
-    const cancelledEvent = await createEventFor(adminAccess, program.program_id, {
-      starts_at: cancelledStarts,
-      ends_at: cancelledEnds,
-      name: "Cancelled Event",
-      location: "Room D",
-    });
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: cancelledStarts,
+        ends_at: cancelledEnds,
+        name: "Cancelled Event",
+        location: "Room D",
+      }
+    );
     // Cancel the cancelled event
     await worker.fetch(
       programsRequest(
@@ -1016,7 +1018,12 @@ describe("MUI-01: capability-aware management reads", () => {
     assert.strictEqual(cockpit.next_event.is_recurring, true);
     assert.strictEqual(cockpit.next_event.checked_in_count, 1);
     assert.strictEqual(cockpit.next_event.roster_count, 1);
-    assert.ok(!("manual_check_in_code" in (cockpit.next_event as Record<string, unknown>)));
+    assert.ok(
+      !(
+        "manual_check_in_code" in
+        (cockpit.next_event as Record<string, unknown>)
+      )
+    );
 
     // 5. Also verify getManagementProgram includes the exact same cockpit projection
     const mgmtRes = await worker.fetch(
@@ -1196,18 +1203,22 @@ describe("NTF-01: management attention", () => {
     );
 
     const startsAt = new Date(Date.now() + 2 * 86_400_000);
-    const inactiveEvent = await createEventFor(adminAccess, program.program_id, {
-      starts_at: startsAt.toISOString(),
-      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
-      name: "需要恢復的聚會",
-      location: "禮堂",
-      check_in_window_opens_at: new Date(
-        startsAt.getTime() - 30 * 60_000
-      ).toISOString(),
-      check_in_window_closes_at: new Date(
-        startsAt.getTime() + 2 * 60 * 60_000
-      ).toISOString(),
-    });
+    const inactiveEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: startsAt.toISOString(),
+        ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+        name: "需要恢復的聚會",
+        location: "禮堂",
+        check_in_window_opens_at: new Date(
+          startsAt.getTime() - 30 * 60_000
+        ).toISOString(),
+        check_in_window_closes_at: new Date(
+          startsAt.getTime() + 2 * 60 * 60_000
+        ).toISOString(),
+      }
+    );
     const cancelledEvent = await createEventFor(
       adminAccess,
       program.program_id,
@@ -1373,10 +1384,7 @@ describe("NTF-01: management attention", () => {
     );
     assert.strictEqual(leaderGrant.status, 200);
 
-    const pending = await submitRequest(
-      memberAccess,
-      scopedProgram.program_id
-    );
+    const pending = await submitRequest(memberAccess, scopedProgram.program_id);
     const startsAt = new Date(Date.now() + 3 * 86_400_000);
     const event = await createEventFor(adminAccess, scopedProgram.program_id, {
       starts_at: startsAt.toISOString(),
@@ -1451,10 +1459,9 @@ describe("NTF-01: management attention", () => {
       assert.strictEqual(disabled.status, 200);
     }
     const afterModulesDisabled = await attentionFor(memberAccess);
-    const scopedAfterModulesDisabled =
-      afterModulesDisabled.programs.find(
-        ({ program_id }) => program_id === scopedProgram.program_id
-      );
+    const scopedAfterModulesDisabled = afterModulesDisabled.programs.find(
+      ({ program_id }) => program_id === scopedProgram.program_id
+    );
     assert.deepStrictEqual(scopedAfterModulesDisabled, {
       program_id: scopedProgram.program_id,
       department_id: department.department_id,
@@ -1538,9 +1545,7 @@ describe("NTF-01: management attention", () => {
       "a revoked leader's aggregate must never keep serving the former Program"
     );
     assert.strictEqual(
-      afterRevoke.items.some(
-        (item) => item.program_id === program.program_id
-      ),
+      afterRevoke.items.some((item) => item.program_id === program.program_id),
       false
     );
     assert.strictEqual(afterRevoke.total_actionable_count, 0);
@@ -2967,10 +2972,16 @@ describe("PRG-02: generation", () => {
       .first<{ count: number }>();
     assert.strictEqual(events?.count ?? 0, 0, "no events may be written");
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(oneOff.program_id)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "no generation runs may be written");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "no generation runs may be written"
+    );
   });
 
   test("preview on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
@@ -2979,18 +2990,15 @@ describe("PRG-02: generation", () => {
       behavior_type: "Recurring",
     });
     const res = await worker.fetch(
-      programsRequest(
-        `/api/v1/programs/${noRules.program_id}/events/preview`,
-        {
-          method: "POST",
-          headers: {
-            Origin: HOST,
-            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-            "Content-Type": "application/json",
-          },
-          body: { horizon_days: 14 },
-        }
-      ),
+      programsRequest(`/api/v1/programs/${noRules.program_id}/events/preview`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { horizon_days: 14 },
+      }),
       testEnv()
     );
     assert.strictEqual(res.status, 422);
@@ -3100,7 +3108,11 @@ function auditRowsFor(
   programId: string,
   action: string
 ): Promise<
-  { outcome: string; new_value_json: string | null; correlation_id: string | null }[]
+  {
+    outcome: string;
+    new_value_json: string | null;
+    correlation_id: string | null;
+  }[]
 > {
   return testDb()
     .prepare(
@@ -3203,13 +3215,14 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       location: "副堂",
     });
     const today = hkTodayWallDate();
-    const firstTuesday = addWallDays(
-      today,
-      (2 - wallWeekday(today) + 7) % 7
-    );
+    const firstTuesday = addWallDays(today, (2 - wallWeekday(today) + 7) % 7);
     const cancelDate = addWallDays(firstTuesday, 14);
     const rescheduleDate = addWallDays(firstTuesday, 21);
-    assert.strictEqual(wallWeekday(cancelDate), 2, "exception lands on the rule weekday");
+    assert.strictEqual(
+      wallWeekday(cancelDate),
+      2,
+      "exception lands on the rule weekday"
+    );
     assert.strictEqual(wallWeekday(rescheduleDate), 2);
     await createException(programId, weekly.rule_id, {
       override_date: cancelDate,
@@ -3250,7 +3263,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       (o) => o.occurs_on === rescheduleDate
     );
     assert.strictEqual(rescheduled?.skip_reason, null);
-    assert.ok(rescheduled?.exception_id, "reschedule row carries the exception");
+    assert.ok(
+      rescheduled?.exception_id,
+      "reschedule row carries the exception"
+    );
     assert.strictEqual(
       rescheduled?.starts_at,
       `${rescheduleDate}T12:30:00.000Z`,
@@ -3412,7 +3428,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     // exists as an event, so the persisted rows must refresh to DUPLICATE
     // instead of silently keeping their original null skip_reason.
     const repeat = await preview(adminAccess, programId, 14);
-    assert.strictEqual(repeat.plan_id, plan.plan_id, "identical inputs resolve to the same plan");
+    assert.strictEqual(
+      repeat.plan_id,
+      plan.plan_id,
+      "identical inputs resolve to the same plan"
+    );
     for (const occurrence of repeat.occurrences) {
       assert.strictEqual(
         occurrence.skip_reason,
@@ -3426,7 +3446,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const repeatGenerate = await generateRequest(programId, repeat.plan_id);
     assert.strictEqual(repeatGenerate.status, 200);
     const repeatGenerateBody = (await assertCorrelated(repeatGenerate)) as {
-      data: { generated: { created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: { created: number; skipped: number; resumed: boolean };
+      };
     };
     assert.strictEqual(repeatGenerateBody.data.generated.created, 0);
     assert.strictEqual(repeatGenerateBody.data.generated.skipped, 2);
@@ -3452,7 +3474,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       4,
       "two rules over the horizon's two Tuesdays"
     );
-    const byDate = new Map<string, { rule_id: string; skip_reason: string | null }[]>();
+    const byDate = new Map<
+      string,
+      { rule_id: string; skip_reason: string | null }[]
+    >();
     for (const occurrence of plan.occurrences) {
       const rows = byDate.get(occurrence.occurs_on) ?? [];
       rows.push({
@@ -3463,10 +3488,18 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     }
     assert.strictEqual(byDate.size, 2, "two distinct dates in the horizon");
     for (const rows of byDate.values()) {
-      assert.strictEqual(rows.length, 2, "both rules materialize the same date");
+      assert.strictEqual(
+        rows.length,
+        2,
+        "both rules materialize the same date"
+      );
       const unmarked = rows.filter((row) => row.skip_reason === null);
       const duplicates = rows.filter((row) => row.skip_reason === "DUPLICATE");
-      assert.strictEqual(unmarked.length, 1, "exactly one rule keeps the start");
+      assert.strictEqual(
+        unmarked.length,
+        1,
+        "exactly one rule keeps the start"
+      );
       assert.strictEqual(
         duplicates.length,
         1,
@@ -3537,7 +3570,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const staleAudits = await auditRowsFor(programId, "EVENT_GENERATE");
     assert.ok(
       staleAudits.some(
-        (row) => row.outcome === "CONFLICT" && row.new_value_json?.includes("stale_plan")
+        (row) =>
+          row.outcome === "CONFLICT" &&
+          row.new_value_json?.includes("stale_plan")
       ),
       "stale generation audits CONFLICT (business conflict, not FAILED)"
     );
@@ -3567,7 +3602,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const first = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(first.status, 200);
     const firstBody = (await assertCorrelated(first)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(firstBody.data.generated.status, "completed");
     assert.strictEqual(firstBody.data.generated.created, 2);
@@ -3577,7 +3620,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const second = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(second.status, 200);
     const secondBody = (await assertCorrelated(second)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(
       secondBody.data.generated.run_id,
@@ -3602,9 +3653,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(new Set(starts).size, 2, "unique (program, starts_at)");
 
     const run = await testDb()
-      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
       .bind(plan.plan_id)
-      .first<{ status: string; created: number; skipped: number; failed: number }>();
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
     assert.ok(run, "a durable generation-run record exists");
     assert.strictEqual(run.status, "completed");
     assert.strictEqual(run.created, 2);
@@ -3651,12 +3709,22 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(events?.count ?? 0, 0, "forbidden generation writes no events");
+    assert.strictEqual(
+      events?.count ?? 0,
+      0,
+      "forbidden generation writes no events"
+    );
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "forbidden generation creates no run records");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "forbidden generation creates no run records"
+    );
   });
 
   test("EVT-02.4 generation resumes from a durable partial run without duplicating events", async () => {
@@ -3703,7 +3771,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const res = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(res.status, 200);
     const body = (await assertCorrelated(res)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; failed: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          failed: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(
       body.data.generated.run_id,
@@ -3712,7 +3789,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
     assert.strictEqual(body.data.generated.resumed, true);
     assert.strictEqual(body.data.generated.status, "completed");
-    assert.strictEqual(body.data.generated.created, 2, "failed unit is retried");
+    assert.strictEqual(
+      body.data.generated.created,
+      2,
+      "failed unit is retried"
+    );
     assert.strictEqual(body.data.generated.failed, 0);
     // The durable run row itself must be re-settled by the retry, not stuck
     // at the stale partial/failed snapshot the first settlement wrote.
@@ -3738,7 +3819,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.ok(settledRun?.finished_at, "the settled run keeps a finished_at");
 
     const events = await testDb()
-      .prepare("SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC")
+      .prepare(
+        "SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC"
+      )
       .bind(programId)
       .all<{ starts_at: string }>();
     assert.strictEqual(events.results?.length, 2);
@@ -3806,9 +3889,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "every preview occurrence materializes exactly once"
     );
     const run = await testDb()
-      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
       .bind(plan.plan_id)
-      .first<{ status: string; created: number; skipped: number; failed: number }>();
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
     assert.ok(run, "a single durable run records the settled outcome");
     assert.strictEqual(
       run.created + run.skipped + run.failed,
@@ -3849,10 +3939,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .first<{ count: number }>();
     assert.strictEqual(events?.count ?? 0, 0, "rejected plans write no events");
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "rejected plans create no run records");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "rejected plans create no run records"
+    );
   });
 
   test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
@@ -3901,7 +3997,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .first<{ count: number }>();
     assert.strictEqual(plans?.count ?? 0, 0, "no preview plan is persisted");
     const audits = await auditRowsFor(programId, "EVENT_PREVIEW");
-    assert.strictEqual(audits.length, 0, "no EVENT_PREVIEW audit row is written");
+    assert.strictEqual(
+      audits.length,
+      0,
+      "no EVENT_PREVIEW audit row is written"
+    );
 
     // Empty body (no Content-Length) keeps the existing 90-day default.
     const empty = await worker.fetch(
@@ -3920,7 +4020,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       90,
       "empty body defaults to 90 days"
     );
-    assert.ok(result.data.plan.rule_count >= 1, "the default preview materializes");
+    assert.ok(
+      result.data.plan.rule_count >= 1,
+      "the default preview materializes"
+    );
   });
 
   test("EVT-02.3 CANCEL exceptions are skipped and RESCHEDULE moves the generated event", async () => {
@@ -3932,10 +4035,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       end_time: "21:00",
     });
     const today = hkTodayWallDate();
-    const firstWednesday = addWallDays(
-      today,
-      (3 - wallWeekday(today) + 7) % 7
-    );
+    const firstWednesday = addWallDays(today, (3 - wallWeekday(today) + 7) % 7);
     const cancelDate = addWallDays(firstWednesday, 7);
     const rescheduleDate = addWallDays(firstWednesday, 14);
     assert.strictEqual(wallWeekday(cancelDate), 3);
@@ -3970,7 +4070,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "the CANCEL occurrence is skipped deterministically"
     );
     const events = await testDb()
-      .prepare("SELECT starts_at, ends_at, location FROM events WHERE program_id = ?")
+      .prepare(
+        "SELECT starts_at, ends_at, location FROM events WHERE program_id = ?"
+      )
       .bind(programId)
       .all<{ starts_at: string; ends_at: string; location: string | null }>();
     const starts = events.results?.map((e) => e.starts_at) ?? [];
@@ -3982,7 +4084,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       starts.some((s) => s === `${rescheduleDate}T12:30:00.000Z`),
       "RESCHEDULE moves the generated event to the new HK wall time"
     );
-    const moved = events.results?.find((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`);
+    const moved = events.results?.find(
+      (e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`
+    );
     assert.strictEqual(moved?.ends_at, `${rescheduleDate}T14:00:00.000Z`);
     const items = await testDb()
       .prepare(
@@ -4047,14 +4151,22 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     });
 
     const plan = await preview(adminAccess, programId, 21);
-    const ruleARows = plan.occurrences.filter((o) => o.rule_id === ruleA.rule_id);
-    const ruleBRows = plan.occurrences.filter((o) => o.rule_id === ruleB.rule_id);
+    const ruleARows = plan.occurrences.filter(
+      (o) => o.rule_id === ruleA.rule_id
+    );
+    const ruleBRows = plan.occurrences.filter(
+      (o) => o.rule_id === ruleB.rule_id
+    );
     assert.ok(
-      ruleARows.some((o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"),
+      ruleARows.some(
+        (o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"
+      ),
       "rule A occurrence on the date is cancelled"
     );
     assert.ok(
-      ruleBRows.some((o) => o.occurs_on === targetDate && o.skip_reason === null),
+      ruleBRows.some(
+        (o) => o.occurs_on === targetDate && o.skip_reason === null
+      ),
       "rule B occurrence on the same date is untouched by rule A's exception"
     );
 
@@ -4065,11 +4177,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .bind(programId)
       .all<{ starts_at: string }>();
     assert.ok(
-      events.results?.some((e) => e.starts_at === `${targetDate}T13:00:00.000Z`),
+      events.results?.some(
+        (e) => e.starts_at === `${targetDate}T13:00:00.000Z`
+      ),
       "rule B's 21:00 HK wall occurrence materializes despite rule A's cancel"
     );
     assert.ok(
-      !events.results?.some((e) => e.starts_at === `${targetDate}T11:30:00.000Z`),
+      !events.results?.some(
+        (e) => e.starts_at === `${targetDate}T11:30:00.000Z`
+      ),
       "rule A's 19:30 HK wall occurrence is skipped"
     );
   });
@@ -4099,7 +4215,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(malformed.status, 422, "non-string location fails closed");
+    assert.strictEqual(
+      malformed.status,
+      422,
+      "non-string location fails closed"
+    );
 
     const clear = await worker.fetch(
       programsRequest(
@@ -5917,11 +6037,18 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(res.status, 200);
     const responseBody = (await assertCorrelated(res)) as {
       data: {
-        request: { request_id: string; status: string; request_version: number };
+        request: {
+          request_id: string;
+          status: string;
+          request_version: number;
+        };
         enrollment: null;
       };
     };
-    assert.strictEqual(responseBody.data.request.request_id, request.request_id);
+    assert.strictEqual(
+      responseBody.data.request.request_id,
+      request.request_id
+    );
     assert.strictEqual(responseBody.data.request.status, "Rejected");
     assert.strictEqual(responseBody.data.request.request_version, 2);
     assert.strictEqual(responseBody.data.enrollment, null);
@@ -5983,7 +6110,10 @@ describe("PRG-03: enrollment requests", () => {
     const terminalProgramId = await freshRequestProgram(
       "REQ-5A Terminal Program"
     );
-    const terminalRequest = await submitRequest(memberAccess, terminalProgramId);
+    const terminalRequest = await submitRequest(
+      memberAccess,
+      terminalProgramId
+    );
     const approved = await decideRequest(
       adminAccess,
       terminalProgramId,
@@ -6225,7 +6355,8 @@ describe("PRG-03: enrollment requests", () => {
     };
     assert.ok(
       snapshotBody.data.requests.some(
-        (row) => row.request_id === request.request_id && row.status === "Approved"
+        (row) =>
+          row.request_id === request.request_id && row.status === "Approved"
       )
     );
     assert.ok(
@@ -6308,7 +6439,7 @@ describe("PRG-03: enrollments", () => {
     unlistedId = unlisted.program_id;
   });
 
-  test("ENR-1 assisted enrollment creates an Active record with no fake request", async () => {
+  test("ENR-1 assisted enrollment is capability-gated, mode-independent, and audited atomically", async () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
     assert.strictEqual(res.status, 201);
     const result = (await assertCorrelated(res)) as {
@@ -6323,6 +6454,13 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(result.data.enrollment.status, "Active");
     assert.strictEqual(result.data.enrollment.request_id, null);
 
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(result.data.enrollment.enrollment_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(audit?.outcome, "SUCCESS");
     const requests = await testDb()
       .prepare(
         "SELECT request_id FROM enrollment_requests WHERE program_id = ?"
@@ -6331,12 +6469,23 @@ describe("PRG-03: enrollments", () => {
       .all<{ request_id: string }>();
     assert.strictEqual(requests.results?.length, 0, "no fake request row");
 
-    const wrongMode = await assistedEnrollFor(
+    const memberRequest = await assistedEnrollFor(
       adminAccess,
       requestProgramId,
       "U002"
     );
-    assert.strictEqual(wrongMode.status, 422);
+    assert.strictEqual(
+      memberRequest.status,
+      201,
+      "program enrollment mode must not block a manager"
+    );
+
+    const denied = await assistedEnrollFor(
+      memberAccess,
+      requestProgramId,
+      "U003"
+    );
+    assert.strictEqual(denied.status, 403, "manage scope is required");
   });
 
   test("ENR-2 inactive and unknown assisted members are rejected and audited", async () => {
@@ -6445,7 +6594,9 @@ describe("PRG-03: enrollments", () => {
       .first<{ enrollment_id: string }>();
     assert.ok(carolEnrollment);
     await testDb()
-      .prepare("UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?")
+      .prepare(
+        "UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?"
+      )
       .bind(carolEnrollment.enrollment_id)
       .run();
     const thirdParty = await assistedEnrollFor(
@@ -6658,7 +6809,11 @@ describe("PRG-03: enrollments", () => {
       "Approved",
       1
     );
-    assert.strictEqual(retry.status, 200, "same-actor retry is a quiet success");
+    assert.strictEqual(
+      retry.status,
+      200,
+      "same-actor retry is a quiet success"
+    );
     const body = (await assertCorrelated(retry)) as {
       data: { request: { status: string; request_version: number } };
     };
@@ -7880,7 +8035,10 @@ describe("PUI-02: participant catalog", () => {
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
     });
-    const reqWithdrawn = await submitRequest(memberAccess, pWithdrawn.program_id);
+    const reqWithdrawn = await submitRequest(
+      memberAccess,
+      pWithdrawn.program_id
+    );
     const withdrawRes = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${pWithdrawn.program_id}/enrollment-requests/${reqWithdrawn.request_id}/withdraw`,
@@ -7938,15 +8096,18 @@ describe("PUI-02: participant catalog", () => {
       "U002"
     );
     await worker.fetch(
-      programsRequest(`/api/v1/programs/${pArchivedWithEnrollment.program_id}`, {
-        method: "PATCH",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { lifecycle: "Archived" },
-      }),
+      programsRequest(
+        `/api/v1/programs/${pArchivedWithEnrollment.program_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { lifecycle: "Archived" },
+        }
+      ),
       testEnv()
     );
 
@@ -8089,7 +8250,10 @@ describe("PUI-02: participant catalog", () => {
       (p) => p.program_id === programWithEvents.program_id
     );
     assert.ok(pWithEvents);
-    assert.strictEqual(pWithEvents.nextEventStartsAt, "2028-06-01T10:00:00.000Z");
+    assert.strictEqual(
+      pWithEvents.nextEventStartsAt,
+      "2028-06-01T10:00:00.000Z"
+    );
     assert.strictEqual(pWithEvents.upcomingEventCount, 2);
   });
 });
@@ -8574,9 +8738,7 @@ describe("NTF-01: management notification read state (#256)", () => {
     assert.strictEqual(scopedItems.length, 2);
     const initialUnreadCount = listed.data.unread_count;
     assert.ok(scopedItems.some((item) => item.kind === "enrollment"));
-    const inactiveItem = scopedItems.find(
-      (item) => item.kind === "event"
-    );
+    const inactiveItem = scopedItems.find((item) => item.kind === "event");
     assert.ok(inactiveItem);
     assert.strictEqual(inactiveItem?.read, false);
 
@@ -8589,12 +8751,10 @@ describe("NTF-01: management notification read state (#256)", () => {
           "Content-Type": "application/json",
         },
         body: {
-          items: scopedItems.map(
-            ({ source_key, source_revision }) => ({
-              source_key,
-              source_revision,
-            })
-          ),
+          items: scopedItems.map(({ source_key, source_revision }) => ({
+            source_key,
+            source_revision,
+          })),
         },
       }),
       testEnv()
@@ -8614,12 +8774,10 @@ describe("NTF-01: management notification read state (#256)", () => {
           "Content-Type": "application/json",
         },
         body: {
-          items: scopedItems.map(
-            ({ source_key, source_revision }) => ({
-              source_key,
-              source_revision,
-            })
-          ),
+          items: scopedItems.map(({ source_key, source_revision }) => ({
+            source_key,
+            source_revision,
+          })),
         },
       }),
       testEnv()
@@ -8670,8 +8828,7 @@ describe("NTF-01: management notification read state (#256)", () => {
       };
     };
     const cancelledItem = revisedBody.data.items.find(
-      (item) =>
-        item.kind === "event" && item.program_id === program.program_id
+      (item) => item.kind === "event" && item.program_id === program.program_id
     );
     assert.ok(cancelledItem);
     assert.strictEqual(cancelledItem?.status, "Cancelled");

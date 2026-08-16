@@ -612,9 +612,7 @@ export interface WorkspaceStore {
 
   findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
   findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
-  listPreviewOccurrences: (
-    planId: string
-  ) => Promise<PreviewOccurrenceRow[]>;
+  listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
   /** Persist a preview plan and its exact occurrence rows idempotently. */
   replacePreviewPlan: (
     plan: PreviewPlanRow,
@@ -632,9 +630,7 @@ export interface WorkspaceStore {
   }) => Promise<{ run: GenerationRunRow; created: boolean }>;
   listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
   /** Record one attempt durably; false when the row already exists. */
-  recordGenerationRunItem: (
-    input: GenerationRunItemInput
-  ) => Promise<boolean>;
+  recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
   /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,
@@ -696,6 +692,10 @@ export interface WorkspaceStore {
   ) => Promise<EnrollmentRequestRow | null>;
 
   createEnrollment: (input: EnrollmentInput) => Promise<EnrollmentRow>;
+  createEnrollmentWithAudit: (
+    input: EnrollmentInput,
+    audit: AuditInput
+  ) => Promise<EnrollmentRow>;
   hasActiveEnrollment: (
     programId: string,
     memberUserId: string

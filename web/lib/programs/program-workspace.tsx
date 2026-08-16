@@ -1581,13 +1581,11 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 const ParticipantsTask = ({
   programId,
   canManage,
-  enrollmentMode,
   attention,
   onAttentionRefresh,
 }: {
   programId: string;
   canManage: boolean;
-  enrollmentMode: Program["enrollment_mode"];
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
 }) => {
@@ -1774,7 +1772,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.pending.length === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsPendingEmpty}
+          {COPY.programs.tabsEmpty.pending}
         </p>
       );
     }
@@ -1848,7 +1846,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.active.length === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsActiveEmpty}
+          {COPY.programs.tabsEmpty.active}
         </p>
       );
     }
@@ -1884,7 +1882,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.counts.history === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsHistoryEmpty}
+          {COPY.programs.tabsEmpty.history}
         </p>
       );
     }
@@ -1943,8 +1941,11 @@ const ParticipantsTask = ({
           {COPY.programs.workspaceParticipantsRefreshFailed}
         </output>
       )}
-      {canManage && enrollmentMode === "ManagerOnly" && (
+      {canManage && (
         <form className={styles.ruleForm} onSubmit={handleAssisted}>
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.assistedEnrollAck}
+          </p>
           <MemberPicker
             programId={programId}
             name="member_user_id"
@@ -1994,11 +1995,11 @@ const ParticipantsTask = ({
                 [
                   [
                     "pending",
-                    COPY.programs.workspacePendingRequests,
+                    COPY.programs.tabsPending,
                     pendingAttentionCount ?? queue.counts.pending,
                   ],
-                  ["active", COPY.programs.workspaceActiveParticipants, queue.counts.active],
-                  ["history", COPY.programs.enrollmentHistory, queue.counts.history],
+                  ["active", COPY.programs.tabsActive, queue.counts.active],
+                  ["history", COPY.programs.tabsHistory, queue.counts.history],
                 ] as const
               ).map(([value, label, count]) => (
                 <button
@@ -2130,7 +2131,6 @@ const WorkspaceTask = ({
       <ParticipantsTask
         programId={program.program_id}
         canManage={program.capabilities.manage}
-        enrollmentMode={program.enrollment_mode}
         attention={attention}
         onAttentionRefresh={onAttentionRefresh}
       />

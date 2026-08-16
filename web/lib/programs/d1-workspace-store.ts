@@ -1635,6 +1635,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     }
     return row;
   }
+  async createEnrollmentWithAudit(
+    input: EnrollmentInput,
+    audit: AuditInput
+  ): Promise<EnrollmentRow> {
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+             request_id, status, enrolled_at, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          input.enrollment_id,
+          input.program_id,
+          input.member_user_id,
+          input.request_id,
+          input.status,
+          input.enrolled_at,
+          input.created_by,
+          input.created_at
+        ),
+      this.auditInsertGated(audit, input.enrollment_id),
+    ]);
+    const row = await this.findEnrollmentById(input.enrollment_id);
+    if (!row) {
+      throw new WorkspaceNotFoundError("enrollment", input.enrollment_id);
+    }
+    return row;
+  }
 
   async hasActiveEnrollment(
     programId: string,
