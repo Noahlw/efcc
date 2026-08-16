@@ -119,6 +119,18 @@ function ProfileContent() {
             </span>
             <ChevronIcon />
           </Link>
+          <Link
+            href="/management?module=settings"
+            className={styles.actionRow}
+          >
+            <span>
+              <span className={styles.actionTitle}>{COPY.profile.settingsEntry}</span>
+              <span className={styles.actionDescription}>
+                {COPY.profile.settingsEntryHint}
+              </span>
+            </span>
+            <ChevronIcon />
+          </Link>
           <button type="button" className={styles.actionRow} onClick={signOut}>
             <span className={styles.logoutTitle}>{COPY.profile.logout}</span>
             <ChevronIcon />
