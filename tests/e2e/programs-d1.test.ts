@@ -78,6 +78,7 @@ const COPY = {
   withdrawRequest: "撤回申請",
   requestWithdrawnNotice: "申請已撤回。",
   cancelEnrollment: "取消報名",
+  enrollmentCancelledNotice: "報名已取消。",
   enrollmentScheduleAdvisory:
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
   managerOnlyNote: "此課程由管理員安排成員加入。",
@@ -639,6 +640,7 @@ test.describe("PUI-02 participant Programs directory", () => {
 
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
+    let programId = "";
     try {
       await loginAs(memberPage, freshUsername, freshPassword);
 
@@ -678,10 +680,13 @@ test.describe("PUI-02 participant Programs directory", () => {
       ).toHaveCount(0);
 
       // Filter: 待審批 — submit a real enrollment request, then the pill
-      // shows exactly the requested program.
-      const [programId] = await catalogProgramIds(
+      // shows exactly the requested program. Use 青年團契 (not 成人查經):
+      // the 成人查經 roster counts are asserted exactly by MUI-01/EVT-01
+      // tests running concurrently on other viewport workers against the
+      // same shared D1, so this test must never write enrollments to it.
+      [programId] = await catalogProgramIds(
         memberPage,
-        "E2E_DEMO_成人查經"
+        "E2E_DEMO_青年團契"
       );
       expect(programId).toBeTruthy();
       await memberPage.goto(`/programs?program=${programId}#overview`);
@@ -698,10 +703,10 @@ test.describe("PUI-02 participant Programs directory", () => {
       await pendingPill.click();
       await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
 
       // Filter: 已參加 — the admin approves the fresh request; the member's
@@ -725,10 +730,10 @@ test.describe("PUI-02 participant Programs directory", () => {
       await activePill.click();
       await expect(activePill).toHaveAttribute("aria-pressed", "true");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
 
       // Filter: 全部 restores every listed row, including the ManagerOnly one.
@@ -744,6 +749,26 @@ test.describe("PUI-02 participant Programs directory", () => {
         memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
       ).toBeVisible();
     } finally {
+      // Best-effort cleanup on every path: cancel the fresh member's Active
+      // enrollment so the shared D1 returns to its pre-test enrollment
+      // state — an extra Active enrollment would break the queue-count and
+      // event 已報名 count assertions in later tests on the same database.
+      try {
+        if (programId) {
+          await memberPage.goto(`/programs?program=${programId}#overview`);
+          const cleanupPanel = memberPage.getByRole("region", {
+            name: COPY.enrollment,
+          });
+          const cancel = cleanupPanel.getByRole("button", {
+            name: COPY.cancelEnrollment,
+          });
+          if (await cancel.isVisible()) {
+            await cancel.click();
+          }
+        }
+      } catch {
+        // Cleanup is best-effort; the test outcome is already decided.
+      }
       await memberContext.close();
     }
   });
