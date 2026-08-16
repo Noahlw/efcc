@@ -170,6 +170,16 @@ const DEFAULT_HANDLER = [
     authCalls.push("/api/v1/auth/logout");
     return new HttpResponse(null, { status: 204 });
   }),
+  http.get("/api/v1/home", () =>
+    HttpResponse.json({
+      requestId: "r-home",
+      data: {
+        featuredEvent: null,
+        announcement: null,
+        exploreProgram: null,
+      },
+    })
+  ),
 ];
 
 const server = setupServer(...DEFAULT_HANDLER);
@@ -1457,13 +1467,15 @@ describe("Shell", () => {
       );
     }
 
-    test("home page renders COPY.sections.home title for a Member", async () => {
+    test("home page renders the prototype greeting heading for a Member", async () => {
       withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
       render(<HomePage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.home })
+          screen.getByRole("heading", {
+            name: `${COPY.home.greeting}，${PUBLIC_USER.name}`,
+          })
         ).toBeInTheDocument();
       });
     });
