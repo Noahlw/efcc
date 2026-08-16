@@ -18,6 +18,7 @@ import {
   listEvents,
   listScheduleRules,
   previewEvents,
+  updateProgram,
 } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -35,7 +36,6 @@ import { rememberDeepLink } from "@/lib/session";
 import { hkWallDateTimeLabel, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 import { ProgramSettings } from "./program-settings";
 
-import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import { MemberPicker } from "./member-picker";
 import type { ProgramsTask } from "./programs-intent";
@@ -198,6 +198,250 @@ function taskLabel(task: ProgramsTask): string {
       : COPY.programs.workspaceTaskSettings;
 }
 
+function courseMutationError(caught: unknown): string {
+  if (!(caught instanceof RpcError)) {
+    return COPY.programs.programTransportAmbiguous;
+  }
+  if (
+    caught.problem.code === "NETWORK_ERROR" ||
+    caught.problem.code === "MALFORMED_RESPONSE" ||
+    caught.problem.code === "MALFORMED_REQUEST" ||
+    caught.problem.code === "UNAVAILABLE"
+  ) {
+    return COPY.programs.programTransportAmbiguous;
+  }
+  if (caught.problem.code === "CONFLICT") {
+    return COPY.programs.programConflict;
+  }
+  return errorCopyFor(caught.problem.code, caught.problem.detail);
+}
+
+const CourseFacts = ({
+  program,
+  department,
+  notice,
+  onBack,
+  onEdit,
+}: {
+  program: Program;
+  department: Department | null;
+  notice: string | null;
+  onBack: () => void;
+  onEdit: () => void;
+}) => {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
+  return (
+    <section
+      className={styles.workspaceSection}
+      aria-labelledby="programs-workspace-facts-title"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button
+          type="button"
+          className={styles.programDetailBack}
+          onClick={onBack}
+        >
+          {COPY.programs.backToOverview}
+        </button>
+        <h4
+          id="programs-workspace-facts-title"
+          className={styles.workspaceHeading}
+          ref={headingRef}
+          tabIndex={-1}
+        >
+          {COPY.programs.courseFacts}
+        </h4>
+      </div>
+      {notice !== null && (
+        <output className={styles.panelNotice} aria-live="polite">
+          {notice}
+        </output>
+      )}
+      <dl className={styles.workspaceFacts}>
+        <div>
+          <dt>{COPY.programs.factsName}</dt>
+          <dd>{program.name}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsDepartment}</dt>
+          <dd>{department?.name ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsPurpose}</dt>
+          <dd>{program.description ?? COPY.programs.programDescriptionEmpty}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsLifecycle}</dt>
+          <dd>{lifecycleLabel(program.lifecycle)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsDiscoverability}</dt>
+          <dd>{discoverabilityLabel(program.discoverability)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsEnrollmentMode}</dt>
+          <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.workspaceBehavior}</dt>
+          <dd>{behaviorLabel(program.behavior_type)}</dd>
+        </div>
+      </dl>
+      {program.capabilities.manage && (
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={onEdit}
+        >
+          {COPY.programs.editTitle}
+        </button>
+      )}
+    </section>
+  );
+};
+
+const CourseEdit = ({
+  program,
+  onBack,
+  onSaved,
+}: {
+  program: Program;
+  onBack: () => void;
+  onSaved: (program: Program) => void;
+}) => {
+  const [name, setName] = useState(program.name);
+  const [purpose, setPurpose] = useState(program.description ?? "");
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    const trimmedPurpose = purpose.trim();
+    if (!trimmedName || !trimmedPurpose) {
+      setFormError(COPY.programs.editRequired);
+      announce(COPY.programs.editRequired);
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      const result = await updateProgram(program.program_id, {
+        name: trimmedName,
+        description: trimmedPurpose,
+      });
+      if (mounted.current) {
+        onSaved(result.program);
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const message = courseMutationError(error);
+        setFormError(message);
+        announce(message);
+      }
+    } finally {
+      if (mounted.current) {
+        setBusy(false);
+      }
+    }
+  };
+
+  const invalidName = formError !== null && !name.trim();
+  const invalidPurpose = formError !== null && !purpose.trim();
+
+  return (
+    <section
+      className={styles.workspaceTask}
+      aria-labelledby="programs-workspace-course-edit-title"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button
+          type="button"
+          className={styles.programDetailBack}
+          onClick={onBack}
+          aria-label={COPY.programs.backToOverview}
+        >
+          {COPY.programs.backToOverview}
+        </button>
+        <h4
+          id="programs-workspace-course-edit-title"
+          className={styles.workspaceHeading}
+          ref={headingRef}
+          tabIndex={-1}
+        >
+          {COPY.programs.editTitle}
+        </h4>
+      </div>
+      {formError !== null && (
+        <p className={styles.panelError} id="programs-workspace-course-edit-error" role="alert">
+          {formError}
+        </p>
+      )}
+      <form className={styles.form} onSubmit={submit} noValidate>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="programs-course-name">
+            {COPY.programs.editNameLabel}
+          </label>
+          <input
+            id="programs-course-name"
+            className={styles.input}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            disabled={busy}
+            aria-invalid={invalidName || undefined}
+            aria-describedby={
+              formError !== null
+                ? "programs-workspace-course-edit-error"
+                : undefined
+            }
+          />
+        </div>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="programs-course-purpose">
+            {COPY.programs.editPurposeLabel}
+          </label>
+          <textarea
+            id="programs-course-purpose"
+            className={styles.textarea}
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            rows={4}
+            required
+            disabled={busy}
+            aria-invalid={invalidPurpose || undefined}
+            aria-describedby={
+              formError !== null
+                ? "programs-workspace-course-edit-error"
+                : undefined
+            }
+          />
+        </div>
+        <div className={styles.workspaceActions}>
+          <button className={styles.button} type="submit" disabled={busy}>
+            {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+};
+
+
 const WorkspaceNavigation = ({
   programId,
   task,
@@ -252,17 +496,16 @@ const WorkspaceOverview = ({
   department,
   cockpit,
   summary,
-  onEdit,
+  onOpenFacts,
   onTaskChange,
 }: {
   program: Program;
   department: Department | null;
   cockpit?: ManagementCockpitView | null;
   summary: SummaryState;
-  onEdit: () => void;
+  onOpenFacts: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
-  const [factsOpen, setFactsOpen] = useState(false);
 
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
@@ -308,67 +551,6 @@ const WorkspaceOverview = ({
         ? summary.pendingRequests.value
         : 0;
 
-  if (factsOpen) {
-    return (
-      <section
-        className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-facts-title"
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            type="button"
-            className={styles.programDetailBack}
-            onClick={() => setFactsOpen(false)}
-          >
-            {COPY.programs.backToOverview}
-          </button>
-          <h4
-            id="programs-workspace-facts-title"
-            className={styles.workspaceHeading}
-          >
-            {COPY.programs.cockpitCourseFacts}
-          </h4>
-        </div>
-        {program.description ? (
-          <p className={styles.programDetailDescription}>
-            {program.description}
-          </p>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.programDescriptionEmpty}
-          </p>
-        )}
-        <dl className={styles.workspaceFacts}>
-          <div>
-            <dt>{COPY.programs.workspaceDepartment}</dt>
-            <dd>{department?.name ?? COPY.programs.workspaceDepartment}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceBehavior}</dt>
-            <dd>{behaviorLabel(program.behavior_type)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceLifecycle}</dt>
-            <dd>{lifecycleLabel(program.lifecycle)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceDiscoverability}</dt>
-            <dd>{discoverabilityLabel(program.discoverability)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceEnrollmentMode}</dt>
-            <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-          </div>
-          {program.category && (
-            <div>
-              <dt>{COPY.programs.workspaceCategory}</dt>
-              <dd>{program.category}</dd>
-            </div>
-          )}
-        </dl>
-      </section>
-    );
-  }
 
   return (
     <>
@@ -567,7 +749,7 @@ const WorkspaceOverview = ({
               cursor: "pointer",
               background: "transparent",
             }}
-            onClick={() => setFactsOpen(true)}
+            onClick={onOpenFacts}
           >
             <div>
               <span style={{ fontWeight: 600, display: "block" }}>
@@ -1921,7 +2103,12 @@ export const ProgramWorkspace = ({
   onEventChange,
 }: ProgramWorkspaceProps) => {
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
-  const [editing, setEditing] = useState(false);
+  const [courseView, setCourseView] = useState<"overview" | "facts" | "edit">(
+    "overview"
+  );
+  const [courseProgramOverride, setCourseProgramOverride] =
+    useState<Program | null>(null);
+  const [courseNotice, setCourseNotice] = useState<string | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -1929,6 +2116,11 @@ export const ProgramWorkspace = ({
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    setCourseView("overview");
+    setCourseProgramOverride(null);
+    setCourseNotice(null);
+  }, [programId]);
   const { state, run: loadWorkspace, retry } = useAsyncResource<
     {
       program: Program;
@@ -2048,6 +2240,32 @@ export const ProgramWorkspace = ({
     }
     void loadSummary(state.modules);
   }, [loadSummary, state, task]);
+  const openCourseFacts = () => {
+    setCourseNotice(null);
+    setCourseView("facts");
+    announce(COPY.programs.courseFacts);
+  };
+  const openCourseEdit = () => {
+    setCourseNotice(null);
+    setCourseView("edit");
+    announce(COPY.programs.editTitle);
+  };
+  const returnToCockpit = () => {
+    setCourseNotice(null);
+    setCourseView("overview");
+    announce(COPY.programs.workspaceTitle);
+  };
+  const returnToFacts = () => {
+    setCourseNotice(null);
+    setCourseView("facts");
+    announce(COPY.programs.courseFacts);
+  };
+  const handleCourseSaved = (updatedProgram: Program) => {
+    setCourseProgramOverride(updatedProgram);
+    setCourseNotice(COPY.programs.courseSaved);
+    setCourseView("facts");
+    announce(COPY.programs.courseSaved);
+  };
 
   if (state.kind === "loading") {
     return (
@@ -2093,6 +2311,7 @@ export const ProgramWorkspace = ({
       </section>
     );
   }
+  const workspaceProgram = courseProgramOverride ?? state.program;
 
   return (
     <section
@@ -2116,17 +2335,19 @@ export const ProgramWorkspace = ({
           }}
         >
           <h3 id="programs-workspace-title" className={styles.boundaryTitle}>
-            {state.program.name}
+            {workspaceProgram.name}
           </h3>
-          {state.program.capabilities.manage && (
-            <button
-              className={styles.button}
-              type="button"
-              onClick={() => setEditing(true)}
-            >
-              {COPY.programs.cockpitEditProgram}
-            </button>
-          )}
+          {task === undefined &&
+            courseView === "overview" &&
+            workspaceProgram.capabilities.manage && (
+              <button
+                className={styles.button}
+                type="button"
+                onClick={openCourseEdit}
+              >
+                {COPY.programs.cockpitEditProgram}
+              </button>
+            )}
         </div>
         <div
           style={{
@@ -2142,9 +2363,9 @@ export const ProgramWorkspace = ({
               : COPY.programs.workspaceDepartment}
           </span>
           <span
-            className={`${styles.directoryStatus} ${styles[`directoryStatus${state.program.lifecycle}`]}`}
+            className={`${styles.directoryStatus} ${styles[`directoryStatus${workspaceProgram.lifecycle}`]}`}
           >
-            {lifecycleLabel(state.program.lifecycle)}
+            {lifecycleLabel(workspaceProgram.lifecycle)}
           </span>
         </div>
       </header>
@@ -2155,32 +2376,38 @@ export const ProgramWorkspace = ({
           task={task}
           modules={state.modules}
           onTaskChange={(nextTask) => {
-            setEditing(false);
+            setCourseView("overview");
+            setCourseNotice(null);
             onTaskChange(nextTask);
           }}
         />
       )}
 
-      {editing ? (
-        <ProgramForm
-          initial={state.program}
-          onSaved={() => {
-            setEditing(false);
-            void loadWorkspace();
-          }}
-          onCancel={() => setEditing(false)}
+      {courseView === "facts" ? (
+        <CourseFacts
+          program={workspaceProgram}
+          department={state.department}
+          notice={courseNotice}
+          onBack={returnToCockpit}
+          onEdit={openCourseEdit}
+        />
+      ) : courseView === "edit" ? (
+        <CourseEdit
+          program={workspaceProgram}
+          onBack={returnToFacts}
+          onSaved={handleCourseSaved}
         />
       ) : task && task === "events" && eventId ? (
         <EventDetail
           programId={programId}
           eventId={eventId}
-          canManage={state.program.capabilities.manage}
+          canManage={workspaceProgram.capabilities.manage}
           onAttentionRefresh={onAttentionRefresh}
           onBack={() => onEventChange?.(null)}
         />
       ) : task ? (
         <WorkspaceTask
-          program={state.program}
+          program={workspaceProgram}
           task={task}
           modules={state.modules}
           attention={attention}
@@ -2190,11 +2417,11 @@ export const ProgramWorkspace = ({
         />
       ) : (
         <WorkspaceOverview
-          program={state.program}
+          program={workspaceProgram}
           department={state.department}
           cockpit={state.cockpit}
           summary={summary}
-          onEdit={() => setEditing(true)}
+          onOpenFacts={openCourseFacts}
           onTaskChange={onTaskChange}
         />
       )}

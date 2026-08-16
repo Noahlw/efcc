@@ -150,6 +150,22 @@ const COPY = {
   cockpitAutoScheduled: "自動排程",
   cockpitOthers: "其他",
   cockpitLowFrequency: "低頻設定",
+  cockpitCourseFacts: "課程資料",
+  cockpitCourseFactsHint: "只讀摘要與分類標籤",
+  courseFacts: "課程資料",
+  courseFactsHint: "只讀摘要與分類標籤",
+  factsName: "課程名稱",
+  factsDepartment: "所屬部門",
+  factsPurpose: "課程簡介",
+  factsLifecycle: "課程狀態",
+  factsDiscoverability: "可見性",
+  factsEnrollmentMode: "報名方式",
+  editTitle: "編輯課程",
+  editNameLabel: "課程名稱",
+  editPurposeLabel: "課程簡介",
+  saveCourse: "儲存課程",
+  courseSaved: "課程已更新",
+  editRequired: "請完成課程名稱及簡介",
   workspaceParticipantsRefresh: "重新整理參與者資料",
   workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
   approve: "核准",
@@ -1342,6 +1358,106 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
     ).toBeVisible();
+  });
+  test("admin opens Course Facts, edits course name and purpose, and verifies server persistence", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    expect(programId).toBeTruthy();
+    const id = required("target program", programId);
+
+    await page.goto(`/programs?mode=management&program=${id}`);
+    await expect(
+      page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
+    ).toBeVisible();
+
+    // 1. Select 課程資料 quiet row in Cockpit
+    await page
+      .getByRole("button", {
+        name: new RegExp(
+          `${COPY.cockpitCourseFacts}.*${COPY.cockpitCourseFactsHint}`,
+          "u"
+        ),
+      })
+      .click();
+
+    // 2. Facts screen renders read-only fields (no textboxes/inputs)
+    await expect(
+      page.getByRole("heading", { name: COPY.courseFacts })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.factsDepartment)).toBeVisible();
+    await expect(page.getByText(COPY.factsDiscoverability)).toBeVisible();
+    await expect(page.getByText(COPY.factsEnrollmentMode)).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
+
+    // 3. Select 編輯課程
+    await page.getByRole("button", { name: COPY.editProgram }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.editProgram })
+    ).toBeVisible();
+
+    // 4. Pre-filled values
+    const nameInput = page.getByRole("textbox", { name: COPY.editNameLabel });
+    const purposeInput = page.getByRole("textbox", {
+      name: COPY.editPurposeLabel,
+    });
+    await expect(nameInput).toHaveValue("E2E_DEMO_成人查經");
+
+    const originalPurpose = await purposeInput.inputValue();
+
+    try {
+      // 5. Test validation: clear name and attempt to save
+      await nameInput.fill("");
+      await page.getByRole("button", { name: COPY.saveProgram }).click();
+      await expect(page.getByText(COPY.editRequired)).toBeVisible();
+
+      // 6. Fill updated values and save
+      const updatedPurpose = `${originalPurpose} (已更新)`;
+      await nameInput.fill("E2E_DEMO_成人查經");
+      await purposeInput.fill(updatedPurpose);
+      await page.getByRole("button", { name: COPY.saveProgram }).click();
+
+      // 7. Toast / announcement + return to Course Facts with updated purpose
+      await expect(
+        page.getByRole("heading", { name: COPY.courseFacts })
+      ).toBeVisible();
+      await expect(page.getByText(updatedPurpose)).toBeVisible();
+
+      // 8. Server persistence: reload and verify
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
+      ).toBeVisible();
+      await page
+        .getByRole("button", {
+          name: new RegExp(
+            `${COPY.cockpitCourseFacts}.*${COPY.cockpitCourseFactsHint}`,
+            "u"
+          ),
+        })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: COPY.courseFacts })
+      ).toBeVisible();
+      await expect(page.getByText(updatedPurpose)).toBeVisible();
+    } finally {
+      // Cleanup / restore original values
+      await page.getByRole("button", { name: COPY.editProgram }).click();
+      const editPurpose = page.getByRole("textbox", {
+        name: COPY.editPurposeLabel,
+      });
+      await editPurpose.fill(originalPurpose);
+      await page.getByRole("button", { name: COPY.saveProgram }).click();
+      await expect(page.getByText(originalPurpose)).toBeVisible();
+    }
   });
   test("manager Participants queue shows scoped counts and approves a pending request", async ({
     page,
