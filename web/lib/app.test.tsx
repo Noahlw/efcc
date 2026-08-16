@@ -25,7 +25,6 @@ import {
 } from "vitest";
 
 import CarePage from "@/app/care/page";
-import EventsPage from "@/app/events/page";
 import HomePage from "@/app/home/page";
 import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
@@ -1080,13 +1079,24 @@ describe("Shell", () => {
       expect(qrSquare).not.toContain("min(");
     });
 
-    test("renders the phone and status info grid with their values", async () => {
-      renderRestoredProfile();
+    test("progressively discloses phone and status details", async () => {
+      const { user } = renderRestoredProfile();
       await screen.findByRole("button", { name: COPY.logout.submit });
-      expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
-      expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.status)).toBeInTheDocument();
+
+      const summary = screen.getByText(COPY.profile.accountDetails);
+      const disclosure = summary.closest("details");
+      if (!disclosure) {
+        throw new Error("Account details disclosure is missing");
+      }
+      expect(disclosure).not.toHaveAttribute("open");
+      await user.click(summary);
+      expect(disclosure).toHaveAttribute("open");
+      expect(
+        within(disclosure).getByText(PUBLIC_USER.phone)
+      ).toBeInTheDocument();
+      expect(
+        within(disclosure).getByText(PUBLIC_USER.status)
+      ).toBeInTheDocument();
     });
 
     test("renders the empty state when the profile carries no QR data", async () => {
@@ -1469,31 +1479,13 @@ describe("Shell", () => {
       });
     });
 
-    test("events page redirects permitted operators to Management Hub", async () => {
-      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
-      setAuthHint();
-      render(<EventsPage />);
-      await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith("/management?module=events");
-      });
-    });
-
-    test("events page redirects members to Programs", async () => {
-      withAuthRestore(PUBLIC_USER);
-      setAuthHint();
-      render(<EventsPage />);
-      await waitFor(() => {
-        expect(replaceMock).toHaveBeenCalledWith("/programs");
-      });
-    });
-
-    test("scanner page renders COPY.sections.scanner title", async () => {
+    test("scanner page renders the self check-in title", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.selfTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1504,7 +1496,7 @@ describe("Shell", () => {
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.selfTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1526,7 +1518,7 @@ describe("Shell", () => {
         // eslint-disable-next-line no-await-in-loop
         await waitFor(() => {
           expect(
-            screen.getByRole("heading", { name: COPY.sections.scanner })
+            screen.getByRole("heading", { name: COPY.attendance.selfTitle })
           ).toBeInTheDocument();
         });
         expect(

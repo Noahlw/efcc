@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+
 import styles from "./prototype.module.css";
 
 /* System copy constants drawn from real product behavior (Spec 000 / Spec 074 / Spec 077) */
@@ -17,12 +18,11 @@ const SYSTEM_TITLE = "中國基督教播道會顯恩堂";
  * FIRST VIEWPORT: login — 2-col on desktop (minimal system copy left, form
  * right); stacked on phone with the form first.
  * FORM: Variant switch A/B/C over token sets; role switch Staff/Member for
-  * shell gating; viewport switch for the response doctrine.
+ * shell gating; viewport switch for the response doctrine.
  * FINISH: unreviewed and undocumented is unfinished; this build ends with the
  * finish review, the verdict, and DESIGN.md.
  */
-const SYSTEM_DESCRIPTION =
-  "會友與教會同工的內部營運系統。";
+const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
 
 type Variant = "A" | "B" | "C";
 type Viewport = "mobile" | "desktop";
@@ -85,22 +85,25 @@ export default function RedesignPrototypePage() {
   // designer walk every surface without a live backend. It is compiled
   // out of the production build (NODE_ENV guard) so no production
   // credential backdoor survives.
-  const handlePrototypeLogin = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const username = (fd.get("username") as string).trim();
-    const password = fd.get("password") as string;
-    if (
-      process.env.NODE_ENV !== "production" &&
-      username === "noah" &&
-      password === "6883"
-    ) {
-      setLoginError(null);
-      setSurface("profile");
-    } else {
-      setLoginError("用戶名稱或密碼不正確。");
-    }
-  }, []);
+  const handlePrototypeLogin = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      const username = (fd.get("username") as string).trim();
+      const password = fd.get("password") as string;
+      if (
+        process.env.NODE_ENV !== "production" &&
+        username === "noah" &&
+        password === "6883"
+      ) {
+        setLoginError(null);
+        setSurface("profile");
+      } else {
+        setLoginError("用戶名稱或密碼不正確。");
+      }
+    },
+    []
+  );
 
   return (
     <div className={`${styles.container} ${styles[`variant${variant}`]}`}>
@@ -181,7 +184,10 @@ export default function RedesignPrototypePage() {
       </header>
 
       {/* Surface Selector Navigation */}
-      <nav className={styles.surfaceNav} aria-label="Prototype Surface Selector">
+      <nav
+        className={styles.surfaceNav}
+        aria-label="Prototype Surface Selector"
+      >
         <span className={styles.navGroupLabel}>Public & Auth:</span>
         <button
           className={surface === "login" ? styles.activeSurface : ""}
@@ -296,8 +302,8 @@ export default function RedesignPrototypePage() {
             viewport={viewport}
             role={role}
             onNavigate={(nextSurface) => setSurface(nextSurface)}
-          onLogin={handlePrototypeLogin}
-          loginError={loginError}
+            onLogin={handlePrototypeLogin}
+            loginError={loginError}
           />
         </div>
       </main>
@@ -307,23 +313,38 @@ export default function RedesignPrototypePage() {
         <h3>Current System Primitives — Variant {variant}</h3>
         <div className={styles.tokenGrid}>
           <div className={styles.tokenCard}>
-            <span className={styles.swatch} style={{ background: "var(--bg-primary)" }} />
+            <span
+              className={styles.swatch}
+              style={{ background: "var(--bg-primary)" }}
+            />
             <span>Base Surface</span>
           </div>
           <div className={styles.tokenCard}>
-            <span className={styles.swatch} style={{ background: "var(--bg-card)" }} />
+            <span
+              className={styles.swatch}
+              style={{ background: "var(--bg-card)" }}
+            />
             <span>Card Surface</span>
           </div>
           <div className={styles.tokenCard}>
-            <span className={styles.swatch} style={{ background: "var(--txt-primary)" }} />
+            <span
+              className={styles.swatch}
+              style={{ background: "var(--txt-primary)" }}
+            />
             <span>Ink Primary</span>
           </div>
           <div className={styles.tokenCard}>
-            <span className={styles.swatch} style={{ background: "var(--accent)" }} />
+            <span
+              className={styles.swatch}
+              style={{ background: "var(--accent)" }}
+            />
             <span>Action Accent</span>
           </div>
           <div className={styles.tokenCard}>
-            <span className={styles.swatch} style={{ background: "var(--border)" }} />
+            <span
+              className={styles.swatch}
+              style={{ background: "var(--border)" }}
+            />
             <span>Divider Rule</span>
           </div>
         </div>
@@ -350,15 +371,15 @@ function RenderSurface({
   loginError: string | null;
 }) {
   switch (surface) {
-    case "login":
+    case "login": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
-         <div
-           className={`${styles.mockBodyCenter} ${
-             viewport === "mobile" ? styles.mockBodyCenterMobile : ""
-           }`}
-         >
+          <div
+            className={`${styles.mockBodyCenter} ${
+              viewport === "mobile" ? styles.mockBodyCenterMobile : ""
+            }`}
+          >
             <div
               className={`${styles.splitLogin} ${
                 viewport === "mobile" ? styles.splitLoginMobile : ""
@@ -371,7 +392,7 @@ function RenderSurface({
                 <p className={styles.cardLead}>使用你的用戶名稱與密碼。</p>
                 <form onSubmit={onLogin} className={styles.form}>
                   <div className={styles.field}>
-                   <label htmlFor="prototype-login-username">用戶名稱</label>
+                    <label htmlFor="prototype-login-username">用戶名稱</label>
                     <input
                       id="prototype-login-username"
                       name="username"
@@ -382,7 +403,7 @@ function RenderSurface({
                     />
                   </div>
                   <div className={styles.field}>
-                   <label htmlFor="prototype-login-password">密碼</label>
+                    <label htmlFor="prototype-login-password">密碼</label>
                     <input
                       id="prototype-login-password"
                       name="password"
@@ -393,13 +414,15 @@ function RenderSurface({
                     />
                   </div>
                   {loginError && (
-                    <p role="alert" className={styles.fieldError}>{loginError}</p>
+                    <p role="alert" className={styles.fieldError}>
+                      {loginError}
+                    </p>
                   )}
                   <button type="submit" className={styles.btnPrimary}>
                     登入
                   </button>
                   <p className={styles.fieldNote}>
-                   登入後，將進入你獲授權的功能頁面。
+                    登入後，將進入你獲授權的功能頁面。
                   </p>
                 </form>
               </div>
@@ -411,8 +434,9 @@ function RenderSurface({
           </div>
         </div>
       );
+    }
 
-    case "upgrade":
+    case "upgrade": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
@@ -424,18 +448,44 @@ function RenderSurface({
               <div className={styles.noticeAlert} role="alert">
                 此帳戶需要先設定新密碼才能登入。
               </div>
-              <form onSubmit={(e) => e.preventDefault()} className={styles.form}>
+              <form
+                onSubmit={(e) => e.preventDefault()}
+                className={styles.form}
+              >
                 <div className={styles.field}>
-                 <label htmlFor="prototype-upgrade-username">用戶名稱</label>
-                   <input id="prototype-upgrade-username" type="text" placeholder="E2E_ test fixture" disabled autoComplete="username" />
+                  <label htmlFor="prototype-upgrade-username">用戶名稱</label>
+                  <input
+                    id="prototype-upgrade-username"
+                    type="text"
+                    placeholder="E2E_ test fixture"
+                    disabled
+                    autoComplete="username"
+                  />
                 </div>
                 <div className={styles.field}>
-                 <label htmlFor="prototype-upgrade-pin">舊 PIN 碼</label>
-                   <input id="prototype-upgrade-pin" type="password" placeholder="—" autoComplete="current-password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} required />
+                  <label htmlFor="prototype-upgrade-pin">舊 PIN 碼</label>
+                  <input
+                    id="prototype-upgrade-pin"
+                    type="password"
+                    placeholder="—"
+                    autoComplete="current-password"
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    minLength={4}
+                    maxLength={4}
+                    required
+                  />
                 </div>
                 <div className={styles.field}>
-                 <label htmlFor="prototype-upgrade-new">新密碼</label>
-                   <input id="prototype-upgrade-new" type="password" placeholder="—" autoComplete="new-password" minLength={8} required />
+                  <label htmlFor="prototype-upgrade-new">新密碼</label>
+                  <input
+                    id="prototype-upgrade-new"
+                    type="password"
+                    placeholder="—"
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                  />
                 </div>
                 <button type="submit" className={styles.btnPrimary}>
                   設定新密碼並登入
@@ -445,31 +495,63 @@ function RenderSurface({
           </div>
         </div>
       );
+    }
 
-    case "register":
+    case "register": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
           <div className={styles.mockBody}>
             <div className={styles.formCardSingle}>
               <h3>註冊帳戶</h3>
-              <p className={styles.cardLead}>填寫資料以申請顯恩堂系統會友帳戶。</p>
-              <form onSubmit={(e) => e.preventDefault()} className={styles.form}>
+              <p className={styles.cardLead}>
+                填寫資料以申請顯恩堂系統會友帳戶。
+              </p>
+              <form
+                onSubmit={(e) => e.preventDefault()}
+                className={styles.form}
+              >
                 <div className={styles.field}>
-                 <label htmlFor="prototype-register-name">中文姓名</label>
-                 <input id="prototype-register-name" type="text" placeholder="—" autoComplete="name" required />
+                  <label htmlFor="prototype-register-name">中文姓名</label>
+                  <input
+                    id="prototype-register-name"
+                    type="text"
+                    placeholder="—"
+                    autoComplete="name"
+                    required
+                  />
                 </div>
                 <div className={styles.field}>
-                 <label htmlFor="prototype-register-username">用戶名稱</label>
-                 <input id="prototype-register-username" type="text" placeholder="建議使用英文或數字" autoComplete="username" required />
+                  <label htmlFor="prototype-register-username">用戶名稱</label>
+                  <input
+                    id="prototype-register-username"
+                    type="text"
+                    placeholder="建議使用英文或數字"
+                    autoComplete="username"
+                    required
+                  />
                 </div>
                 <div className={styles.field}>
-                 <label htmlFor="prototype-register-phone">聯絡電話</label>
-                 <input id="prototype-register-phone" type="tel" placeholder="8 位數香港電話號碼" autoComplete="tel" inputMode="tel" required />
+                  <label htmlFor="prototype-register-phone">聯絡電話</label>
+                  <input
+                    id="prototype-register-phone"
+                    type="tel"
+                    placeholder="8 位數香港電話號碼"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    required
+                  />
                 </div>
                 <div className={styles.field}>
-                 <label htmlFor="prototype-register-password">密碼</label>
-                 <input id="prototype-register-password" type="password" placeholder="請設定登入密碼" autoComplete="new-password" minLength={8} required />
+                  <label htmlFor="prototype-register-password">密碼</label>
+                  <input
+                    id="prototype-register-password"
+                    type="password"
+                    placeholder="請設定登入密碼"
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                  />
                 </div>
                 <button type="submit" className={styles.btnPrimary}>
                   提交註冊申請
@@ -479,8 +561,9 @@ function RenderSurface({
           </div>
         </div>
       );
+    }
 
-    case "approval":
+    case "approval": {
       if (role === "Member") {
         return (
           <div className={styles.mockShell}>
@@ -490,12 +573,21 @@ function RenderSurface({
                 <div className={styles.noticeAlert} role="alert">
                   您沒有權限執行此操作。
                 </div>
-                <button type="button" className={styles.btnPrimary} onClick={() => onNavigate("profile")}>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={() => onNavigate("profile")}
+                >
                   返回個人檔案
                 </button>
               </div>
             </div>
-            <MockNav active="profile" viewport={viewport} role={role} onNavigate={onNavigate} />
+            <MockNav
+              active="profile"
+              viewport={viewport}
+              role={role}
+              onNavigate={onNavigate}
+            />
           </div>
         );
       }
@@ -505,27 +597,39 @@ function RenderSurface({
           <div className={styles.mockBody}>
             <div className={styles.sectionHead}>
               <h2>註冊審核隊列</h2>
-             <span className={styles.badgeCount}>N 筆待審核</span>
+              <span className={styles.badgeCount}>N 筆待審核</span>
             </div>
             <div className={styles.dataGrid}>
               <div className={styles.dataRow}>
                 <div>
-                 <strong className={styles.placeholder}>— 申請者 —</strong>
-                 <span className={`${styles.subText} ${styles.placeholder}`}>— 電話 — • — 申請日期 —</span>
+                  <strong className={styles.placeholder}>— 申請者 —</strong>
+                  <span className={`${styles.subText} ${styles.placeholder}`}>
+                    — 電話 — • — 申請日期 —
+                  </span>
                 </div>
                 <div className={styles.actionRow}>
-                  <button type="button" className={styles.btnSmSuccess}>批准 Member</button>
-                  <button type="button" className={styles.btnSmDanger}>拒絕</button>
+                  <button type="button" className={styles.btnSmSuccess}>
+                    批准 Member
+                  </button>
+                  <button type="button" className={styles.btnSmDanger}>
+                    拒絕
+                  </button>
                 </div>
               </div>
               <div className={styles.dataRow}>
                 <div>
-                 <strong className={styles.placeholder}>— 申請者 —</strong>
-                 <span className={`${styles.subText} ${styles.placeholder}`}>— 電話 — • — 申請日期 —</span>
+                  <strong className={styles.placeholder}>— 申請者 —</strong>
+                  <span className={`${styles.subText} ${styles.placeholder}`}>
+                    — 電話 — • — 申請日期 —
+                  </span>
                 </div>
                 <div className={styles.actionRow}>
-                  <button type="button" className={styles.btnSmSuccess}>批准 Member</button>
-                  <button type="button" className={styles.btnSmDanger}>拒絕</button>
+                  <button type="button" className={styles.btnSmSuccess}>
+                    批准 Member
+                  </button>
+                  <button type="button" className={styles.btnSmDanger}>
+                    拒絕
+                  </button>
                 </div>
               </div>
             </div>
@@ -533,46 +637,54 @@ function RenderSurface({
           <MockNav active="permissions" viewport={viewport} role={role} />
         </div>
       );
+    }
 
-    case "profile":
+    case "profile": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
-         <div className={styles.profileLayout}>
-           <div className={styles.profileBar}>
-               <div className={styles.avatar}>—</div>
-             <div className={styles.profileMeta}>
-               <span className={`${styles.profileName} ${styles.placeholder}`}>— 姓名 (用戶名稱) —</span>
+          <div className={styles.profileLayout}>
+            <div className={styles.profileBar}>
+              <div className={styles.avatar}>—</div>
+              <div className={styles.profileMeta}>
+                <span className={`${styles.profileName} ${styles.placeholder}`}>
+                  — 姓名 (用戶名稱) —
+                </span>
                 <span className={styles.roleTag}>{role}</span>
-                </div>
-             <div className={styles.profileQuickInfo}>
-                 <span className={styles.placeholder}>— 電話 —</span>
-                 <span>— 狀態 —</span>
               </div>
-                </div>
-          <div className={styles.profileActions}>
-            <button
-              type="button"
-              className={styles.btnSecondary}
-              onClick={() => onNavigate("settings")}
-            >
-              帳戶資料
-            </button>
-          </div>
-           <div className={styles.qrCenter}>
-            <div className={styles.qrSquare} role="img" aria-label="簽到 QR 碼（示意）">
-              <span className={styles.qrFind} data-corner="tl" />
-              <span className={styles.qrFind} data-corner="tr" />
-              <span className={styles.qrFind} data-corner="bl" />
+              <div className={styles.profileQuickInfo}>
+                <span className={styles.placeholder}>— 電話 —</span>
+                <span>— 狀態 —</span>
+              </div>
             </div>
-            <p className={styles.qrCaption}>簽到 QR 碼（示意）</p>
-                </div>
-                </div>
-          <MockNav active="profile" viewport={viewport} role={role} />
+            <div className={styles.profileActions}>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={() => onNavigate("settings")}
+              >
+                帳戶資料
+              </button>
+            </div>
+            <div className={styles.qrCenter}>
+              <div
+                className={styles.qrSquare}
+                role="img"
+                aria-label="簽到 QR 碼（示意）"
+              >
+                <span className={styles.qrFind} data-corner="tl" />
+                <span className={styles.qrFind} data-corner="tr" />
+                <span className={styles.qrFind} data-corner="bl" />
               </div>
+              <p className={styles.qrCaption}>簽到 QR 碼（示意）</p>
+            </div>
+          </div>
+          <MockNav active="profile" viewport={viewport} role={role} />
+        </div>
       );
+    }
 
-    case "programs":
+    case "programs": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -580,15 +692,16 @@ function RenderSurface({
             <div className={styles.sectionHead}>
               <h2>課程與活動</h2>
             </div>
-           <div className={styles.stateCenter}>
-             <p className={styles.placeholderText}>內容建置中</p>
+            <div className={styles.stateCenter}>
+              <p className={styles.placeholderText}>內容建置中</p>
             </div>
-              </div>
+          </div>
           <MockNav active="programs" viewport={viewport} role={role} />
-                </div>
+        </div>
       );
+    }
 
-    case "events":
+    case "events": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -596,15 +709,16 @@ function RenderSurface({
             <div className={styles.sectionHead}>
               <h2>聚會管理</h2>
             </div>
-           <div className={styles.stateCenter}>
-             <p className={styles.placeholderText}>內容建置中</p>
+            <div className={styles.stateCenter}>
+              <p className={styles.placeholderText}>內容建置中</p>
             </div>
-              </div>
+          </div>
           <MockNav active="events" viewport={viewport} role={role} />
-                </div>
+        </div>
       );
+    }
 
-    case "scanner":
+    case "scanner": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -612,15 +726,16 @@ function RenderSurface({
             <div className={styles.sectionHead}>
               <h2>掃描簽到</h2>
             </div>
-           <div className={styles.stateCenter}>
-             <p className={styles.placeholderText}>內容建置中</p>
+            <div className={styles.stateCenter}>
+              <p className={styles.placeholderText}>內容建置中</p>
             </div>
-            </div>
+          </div>
           <MockNav active="scanner" viewport={viewport} role={role} />
-            </div>
+        </div>
       );
+    }
 
-    case "care":
+    case "care": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -628,15 +743,16 @@ function RenderSurface({
             <div className={styles.sectionHead}>
               <h2>關懷儀表板</h2>
             </div>
-           <div className={styles.stateCenter}>
-             <p className={styles.placeholderText}>內容建置中</p>
+            <div className={styles.stateCenter}>
+              <p className={styles.placeholderText}>內容建置中</p>
             </div>
-              </div>
+          </div>
           <MockNav active="care" viewport={viewport} role={role} />
-                </div>
+        </div>
       );
+    }
 
-    case "permissions":
+    case "permissions": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -644,31 +760,32 @@ function RenderSurface({
             <div className={styles.sectionHead}>
               <h2>權限與角色管理</h2>
             </div>
-          <div className={styles.permCard}>
-            <div className={styles.permRow}>
-              <span className={styles.permLabel}>本帳戶角色</span>
-              <span className={styles.roleTag}>{role}</span>
-            </div>
-            <div className={styles.permRow}>
-              <span className={styles.permLabel}>可瀏覽區塊</span>
-              <span className={styles.permValue}>
-                {SECTION_ITEMS.filter(
-                  (item) => SECTION_IDS_FOR_ROLE[role][item.id]
-                )
-                  .map((item) => item.label)
-                  .join("・")}
-              </span>
-            </div>
-            <p className={styles.permNote}>
-              角色與權限調整屬管理範圍；此頁僅顯示目前狀態。
-            </p>
-          </div>
+            <div className={styles.permCard}>
+              <div className={styles.permRow}>
+                <span className={styles.permLabel}>本帳戶角色</span>
+                <span className={styles.roleTag}>{role}</span>
               </div>
+              <div className={styles.permRow}>
+                <span className={styles.permLabel}>可瀏覽區塊</span>
+                <span className={styles.permValue}>
+                  {SECTION_ITEMS.filter(
+                    (item) => SECTION_IDS_FOR_ROLE[role][item.id]
+                  )
+                    .map((item) => item.label)
+                    .join("・")}
+                </span>
+              </div>
+              <p className={styles.permNote}>
+                角色與權限調整屬管理範圍；此頁僅顯示目前狀態。
+              </p>
+            </div>
+          </div>
           <MockNav active="permissions" viewport={viewport} role={role} />
-                </div>
+        </div>
       );
+    }
 
-    case "settings":
+    case "settings": {
       return (
         <AccountSettings
           viewport={viewport}
@@ -676,8 +793,9 @@ function RenderSurface({
           onNavigate={onNavigate}
         />
       );
+    }
 
-    case "loading":
+    case "loading": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
@@ -687,8 +805,9 @@ function RenderSurface({
           </div>
         </div>
       );
+    }
 
-    case "empty":
+    case "empty": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} authenticated />
@@ -697,14 +816,15 @@ function RenderSurface({
               <h2>課程與活動</h2>
             </div>
             <div className={styles.stateCenter}>
-             <p className={styles.placeholderText}>目前沒有課程資料。</p>
+              <p className={styles.placeholderText}>目前沒有課程資料。</p>
             </div>
           </div>
           <MockNav active="programs" viewport={viewport} role={role} />
         </div>
       );
+    }
 
-    case "error":
+    case "error": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
@@ -712,12 +832,15 @@ function RenderSurface({
             <div className={styles.noticeAlert} role="alert">
               您沒有權限執行此操作。
             </div>
-            <button type="button" className={styles.btnSecondary}>返回個人檔案</button>
+            <button type="button" className={styles.btnSecondary}>
+              返回個人檔案
+            </button>
           </div>
         </div>
       );
+    }
 
-    case "recovery":
+    case "recovery": {
       return (
         <div className={styles.mockShell}>
           <MockHeader title={SYSTEM_TITLE} />
@@ -725,10 +848,13 @@ function RenderSurface({
             <div className={styles.noticeAlert} role="alert">
               無法連接伺服器，請檢查網路後再試。
             </div>
-            <button type="button" className={styles.btnPrimary}>重試連接</button>
+            <button type="button" className={styles.btnPrimary}>
+              重試連接
+            </button>
           </div>
         </div>
       );
+    }
   }
 }
 
@@ -793,8 +919,8 @@ function AccountSettings({
                   type="password"
                   placeholder="—"
                   autoComplete="current-password"
-                   aria-describedby="prototype-settings-current-error"
-                   aria-invalid
+                  aria-describedby="prototype-settings-current-error"
+                  aria-invalid
                   required
                 />
               </div>
@@ -817,7 +943,10 @@ function AccountSettings({
               >
                 目前密碼不正確
               </div>
-              <p id="prototype-settings-password-hint" className={styles.formHint}>
+              <p
+                id="prototype-settings-password-hint"
+                className={styles.formHint}
+              >
                 密碼須至少 8 個字元。
               </p>
               <button type="submit" className={styles.btnPrimary}>

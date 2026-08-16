@@ -48,6 +48,7 @@
    focused at the door. */
 .page main {
   width: min(100%, 480px);
+  margin: 0 auto;
 }
 
 @media (min-width: 800px) {

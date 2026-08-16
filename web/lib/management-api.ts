@@ -40,7 +40,9 @@ async function parseError(response: Response): Promise<ManagementMembersError> {
       code?: unknown;
       detail?: unknown;
     };
-    if (typeof body.code === "string") code = body.code;
+    if (typeof body.code === "string") {
+      code = body.code;
+    }
     if (typeof body.detail === "string" && body.detail.trim()) {
       detail = body.detail;
     }
@@ -58,7 +60,9 @@ export async function searchManagementMembers(
     `/api/v1/management/members?q=${encodeURIComponent(query.trim())}`,
     { method: "GET", headers: { Accept: "application/json" } }
   );
-  if (!response.ok) throw await parseError(response);
+  if (!response.ok) {
+    throw await parseError(response);
+  }
   const body = (await response.json()) as ManagementMembersResponse;
   return body.data?.members ?? [];
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import type { AttendanceEvent } from "@/lib/attendance";
 import {
@@ -8,6 +8,7 @@ import {
   attendanceEventName,
 } from "@/lib/attendance-display";
 import { COPY } from "@/lib/copy";
+import { Icon } from "@/lib/icons";
 
 import styles from "./attendance-panel.module.css";
 
@@ -46,18 +47,17 @@ export const ScannerCamera = ({
   videoRef,
   onStart,
   onClose,
+  startLabel,
 }: {
   cameraOpen: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
   onStart: () => void;
   onClose: () => void;
+  startLabel?: string;
 }) => (
-  <>
-    <button className={styles.button} type="button" onClick={onStart}>
-      {cameraOpen ? COPY.attendance.cameraRetry : COPY.attendance.camera}
-    </button>
-    {cameraOpen && (
-      <div className={styles.group}>
+  <div className={styles.cameraCard}>
+    <div className={styles.viewfinder}>
+      {cameraOpen ? (
         <video
           ref={videoRef}
           className={styles.video}
@@ -65,6 +65,31 @@ export const ScannerCamera = ({
           playsInline
           aria-label={COPY.attendance.camera}
         />
+      ) : (
+        <div className={styles.viewfinderPlaceholder} aria-hidden="true">
+          <svg
+            className={styles.cameraIcon}
+            viewBox="0 0 48 48"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M8 16h7l3-4h12l3 4h7a3 3 0 0 1 3 3v17a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V19a3 3 0 0 1 3-3Z" />
+            <circle cx="24" cy="27" r="7" />
+          </svg>
+        </div>
+      )}
+      <div className={styles.viewfinderFrame} aria-hidden="true" />
+    </div>
+    <div className={styles.cameraActions}>
+      <button className={styles.button} type="button" onClick={onStart}>
+        {cameraOpen
+          ? COPY.attendance.cameraRetry
+          : (startLabel ?? COPY.attendance.camera)}
+      </button>
+      {cameraOpen && (
         <button
           className={styles.buttonSecondary}
           type="button"
@@ -72,9 +97,51 @@ export const ScannerCamera = ({
         >
           {COPY.attendance.cameraClose}
         </button>
-      </div>
-    )}
-  </>
+      )}
+    </div>
+  </div>
+);
+
+export const ScannerCameraUnavailable = () => (
+  <div
+    className={`${styles.status} ${styles.cameraUnavailable}`}
+    data-tone="error"
+    role="alert"
+    aria-live="assertive"
+  >
+    <strong>{COPY.attendance.cameraUnavailableTitle}</strong>
+    <p>{COPY.attendance.cameraUnavailableGuidance}</p>
+  </div>
+);
+
+export const ScannerResultCard = ({
+  headingId,
+  tone,
+  heading,
+  message,
+  children,
+}: {
+  headingId: string;
+  tone: "info" | "success";
+  heading: string;
+  message: string;
+  children: ReactNode;
+}) => (
+  <article className={styles.resultCard} aria-labelledby={headingId}>
+    <div
+      className={`${styles.resultIcon} ${
+        tone === "success" ? styles.resultIconSuccess : styles.resultIconInfo
+      }`}
+      aria-hidden="true"
+    >
+      <Icon name={tone === "success" ? "check" : "info"} size={34} />
+    </div>
+    <h1 id={headingId} className={styles.resultTitle}>
+      {heading}
+    </h1>
+    <p className={styles.resultCopy}>{message}</p>
+    <div className={styles.resultActions}>{children}</div>
+  </article>
 );
 
 /**

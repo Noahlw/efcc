@@ -33,6 +33,8 @@ export interface HomeContent {
   content_id?: string;
   contentId?: string;
   version?: number;
+  published_at?: string | null;
+  updated_at?: string | null;
   template_type?: HomeTemplateType;
   templateType?: HomeTemplateType;
   template?: HomeTemplateType;
@@ -113,6 +115,21 @@ export interface HomePublishInput {
   end_at?: string;
 }
 
+/** Published content fields returned for the expandable history diff. */
+export interface HomeHistorySnapshot {
+  version: number;
+  template_type: HomeTemplateType;
+  status: "Draft" | "Published" | "Archived";
+  title: string | null;
+  summary: string | null;
+  body_markdown: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  image_url: string | null;
+  image_alt: string | null;
+  featured_event_id: string | null;
+}
+
 export interface HomeHistoryEntry {
   content_id?: string;
   version?: number;
@@ -121,13 +138,13 @@ export interface HomeHistoryEntry {
   published_by?: string | null;
   published_by_name?: string | null;
   published_at?: string | null;
+  before?: HomeHistorySnapshot | null;
+  after?: HomeHistorySnapshot | null;
 }
 
 export interface HomeHistoryResponse {
   history?: HomeHistoryEntry[];
 }
-
-
 
 function recordFrom(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -159,8 +176,7 @@ function problemFromPayload(
       problem[key] = value;
     }
   }
-  problem.status =
-    typeof source.status === "number" ? source.status : status;
+  problem.status = typeof source.status === "number" ? source.status : status;
   if (requestId && !problem.requestId) {
     problem.requestId = requestId;
   }
@@ -232,7 +248,7 @@ async function homeFetch<T>(
       requestId,
     });
   }
-  const data = parsed.data;
+  const { data } = parsed;
   return data as T;
 }
 

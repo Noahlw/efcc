@@ -1,8 +1,8 @@
+import { cleanup, render, screen } from "@testing-library/react";
 // AUTH-05 (#163) — component tests for the Staff/Admin approval queue.
 // MSW intercepts the Worker queue endpoints (the same seam used by
 // lib/app.test.tsx). Fixtures carry no credential material.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
@@ -30,9 +30,10 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
 });
+
 afterAll(() => server.close());
 
-describe("ApprovalQueue", () => {
+describe(ApprovalQueue, () => {
   test("lists Pending registrations", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
@@ -43,12 +44,14 @@ describe("ApprovalQueue", () => {
       )
     );
     render(<ApprovalQueue />);
-    expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
+    await expect(screen.findByText("Dave Ng")).resolves.toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: `${QUEUE_COPY.approve} Member` })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: QUEUE_COPY.reject })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: QUEUE_COPY.reject })
+    ).toBeInTheDocument();
   });
 
   test("requires and submits a rejection note from the request details", async () => {
@@ -69,7 +72,7 @@ describe("ApprovalQueue", () => {
           expect(request.headers.get("content-type")).toContain(
             "application/json"
           );
-          expect(await request.json()).toStrictEqual({
+          await expect(request.json()).resolves.toStrictEqual({
             note: "資料不足，請補充後再申請。",
           });
           if (attempts === 1) {
@@ -106,12 +109,16 @@ describe("ApprovalQueue", () => {
     await user.click(
       screen.getByRole("button", { name: QUEUE_COPY.confirmReject })
     );
-    expect(await screen.findByText(QUEUE_COPY.unavailable)).toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.unavailable)
+    ).resolves.toBeInTheDocument();
     expect(note).toHaveValue("資料不足，請補充後再申請。");
     await user.click(
       screen.getByRole("button", { name: QUEUE_COPY.confirmReject })
     );
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
   });
 
   test("shows an empty state when there are no pending requests", async () => {
@@ -121,7 +128,9 @@ describe("ApprovalQueue", () => {
       )
     );
     render(<ApprovalQueue />);
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
   });
 
   test("approve posts with an Idempotency-Key and reloads the list", async () => {
@@ -147,10 +156,14 @@ describe("ApprovalQueue", () => {
     const user = userEvent.setup();
     render(<ApprovalQueue />);
     await user.click(
-      await screen.findByRole("button", { name: `${QUEUE_COPY.approve} Member` })
+      await screen.findByRole("button", {
+        name: `${QUEUE_COPY.approve} Member`,
+      })
     );
     // After the approve round-trip the queue reloads and the row is gone.
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
   });
 
   test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
@@ -164,7 +177,10 @@ describe("ApprovalQueue", () => {
             code: "FORBIDDEN",
             requestId: "rid-5",
           },
-          { status: 403, headers: { "Content-Type": "application/problem+json" } }
+          {
+            status: 403,
+            headers: { "Content-Type": "application/problem+json" },
+          }
         )
       )
     );

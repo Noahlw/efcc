@@ -10,9 +10,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
-import { COPY } from "../../web/lib/copy";
-import { LANDING } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import { COPY, LANDING } from "../../web/lib/copy";
+import {
+  defaultSections,
+  stableNavigationSections,
+} from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -148,13 +150,20 @@ test("shell header brand sits beside the desktop side rail, not under it", async
   // The brand (first content in the header) must be fully inside the visible
   // area right of the rail — elementFromPoint at the rail's right edge inside
   // the header row must resolve to the header content, not the rail.
-  const topmostAtRailEdge = await page.evaluate(({ x, y }) => {
-    const el = document.elementFromPoint(x, y);
-    return el ? (el.closest(".nav-desktop") !== null ? "rail" : "header") : null;
-  }, {
-    x: 208,
-    y: headerBox.y + headerBox.height / 2,
-  });
+  const topmostAtRailEdge = await page.evaluate(
+    ({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      return el
+        ? el.closest(".nav-desktop") === null
+          ? "header"
+          : "rail"
+        : null;
+    },
+    {
+      x: 208,
+      y: headerBox.y + headerBox.height / 2,
+    }
+  );
   expect(topmostAtRailEdge).toBe("header");
 });
 
@@ -440,7 +449,8 @@ test("register page fits 375x667 without vertical scroll", async ({ page }) => {
   await page.goto("/register.html");
   const fits = await page.evaluate(
     () =>
-      document.documentElement.scrollHeight <= document.documentElement.clientHeight
+      document.documentElement.scrollHeight <=
+      document.documentElement.clientHeight
   );
   expect(fits, "register exceeds the 375x667 viewport").toBeTruthy();
 });

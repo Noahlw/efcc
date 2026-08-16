@@ -6,10 +6,11 @@ p1_count: 4
 timestamp: 2026-08-07T00-50-14Z
 slug: web-app-programs
 ---
+
 #### Design Health Score
 
 | # | Heuristic | Score | Key Issue |
-|---|---|---:|---|
+| --- | --- | --: | --- |
 | 1 | Visibility of System Status | 2/4 | Loading and action states exist but are not consistently scoped or announced. |
 | 2 | Match System / Real World | 2/4 | Scheduling exposes technical recurrence and UTC concepts to church operators. |
 | 3 | User Control and Freedom | 2/4 | Deeply nested details make it difficult to inspect or exit one operational task. |
@@ -20,7 +21,7 @@ slug: web-app-programs
 | 8 | Aesthetic and Minimalist Design | 2/4 | Restrained civic styling is sound, but the expanded surface becomes a mega-panel. |
 | 9 | Error Recovery | 2/4 | Retry exists, but picker failures and some panel failures lose useful context. |
 | 10 | Help and Documentation | 1/4 | Few task-level explanations help users understand modules, recurrence, or permissions. |
-| **Total** | | **18/40** | **Poor** |
+| **Total** |  | **18/40** | **Poor** |
 
 #### Anti-Patterns Verdict
 

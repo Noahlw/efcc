@@ -13,6 +13,22 @@
   border-bottom: 1px solid var(--line);
   margin-bottom: 1.5rem;
 }
+.noticeBack {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface-raised);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.noticeBack:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .homeHeader h1,
 .editorHeader h1 {
@@ -171,6 +187,71 @@
 .announcement {
   max-width: 760px;
 }
+.announcementTeaserSection {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 760px;
+}
+
+.announcementHeading {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.announcementDate {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.announcementRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.875rem;
+  min-height: 72px;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 120ms ease-out;
+}
+
+.announcementRow:hover {
+  background: var(--surface);
+}
+
+.announcementRow:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.announcementRowText {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.announcementRowTitle {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcementRowMeta {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcementRow svg {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
 
 .announcementImage {
   display: block;
@@ -242,6 +323,9 @@
   grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
   gap: clamp(1.25rem, 4vw, 3rem);
   align-items: start;
+}
+.editorGridWide {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, min(760px, 60vw));
 }
 
 .editorForm {
@@ -367,22 +451,93 @@
 }
 
 .historyItem {
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.historyDetails {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.historySummary {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.35rem 0.9rem;
-  padding: 0.55rem 0;
-  border-top: 1px solid var(--line);
-  font-size: 0.9rem;
+  min-height: 44px;
+  padding: 0.55rem 0.2rem;
+  cursor: pointer;
+}
+
+.historySummary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .historyTemplate {
   font-weight: 750;
 }
 
-.historyItem time {
+.historySummary time {
   margin-inline-start: auto;
   color: var(--ink-muted);
+}
+
+.historyDisclosure {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.historyDiff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem 0.2rem 0.25rem 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.historyDiffColumn {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.historyDiffColumn h3 {
+  font-size: 0.9rem;
+}
+
+.historyDiffFields {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.historyDiffFields div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.historyDiffFields dt {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.historyDiffFields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.historyDiffEmpty {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
 }
 
 .previewPanel {
@@ -401,6 +556,53 @@
 .previewHint {
   width: 100%;
 }
+.previewControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.previewControlsLabel {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.previewToggle {
+  display: inline-flex;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.previewToggleButton {
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.previewToggleButton:hover {
+  background: var(--surface-raised);
+}
+
+.previewToggleButton[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--surface-raised);
+}
+
+.previewToggleButton:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
 
 .phoneFrame {
   width: 375px;
@@ -410,6 +612,14 @@
   border-radius: 24px;
   background: var(--ink);
 }
+.phoneFrameDesktop {
+  width: min(760px, 100%);
+  border-radius: var(--radius-md);
+}
+
+.phoneFrameDesktop .phoneViewport {
+  border-radius: var(--radius-sm);
+}
 
 .phoneViewport {
   width: 100%;
@@ -418,7 +628,6 @@
   border-radius: 16px;
   background: var(--surface);
 }
-
 
 .phoneViewport .eventHero,
 .phoneViewport .announcement,
@@ -453,6 +662,24 @@
   .announcement,
   .editorForm {
     padding: 1rem;
+  }
+
+  .previewControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .previewToggle {
+    width: 100%;
+  }
+
+  .previewToggleButton {
+    flex: 1;
+  }
+
+  .historyDiff {
+    grid-template-columns: 1fr;
+    padding-inline-start: 0.75rem;
   }
 
   .editorActions {

@@ -88,7 +88,7 @@ function parseArgs(): {
       process.stdout.write(
         "usage: tsx tests/e2e/plan-doc-appender.ts " +
           "--plan <plan.md> [--results <e2e-results.json>] " +
-          "[--heading <\"## Executed results\">] [--target-url <url>]\n"
+          '[--heading <"## Executed results">] [--target-url <url>]\n'
       );
       process.exit(0);
     } else {
@@ -208,11 +208,7 @@ function headingLevel(line: string): number {
  * Replace an existing block headed by `heading`, or append a new one. The
  * block is terminated by the next heading of the same or higher level.
  */
-function upsertSection(
-  doc: string,
-  section: string,
-  heading: string
-): string {
+function upsertSection(doc: string, section: string, heading: string): string {
   const lines = doc.split(/\r?\n/u);
   const startIdx = lines.findIndex((l) => l.trim() === heading);
   if (startIdx === -1) {
@@ -236,7 +232,12 @@ function upsertSection(
 }
 
 async function main(): Promise<void> {
-  const { planDoc, resultsJson, targetUrl: rawTargetUrl, heading } = parseArgs();
+  const {
+    planDoc,
+    resultsJson,
+    targetUrl: rawTargetUrl,
+    heading,
+  } = parseArgs();
   const targetUrl = sanitizeTargetUrl(rawTargetUrl);
   const timestamp = new Date().toISOString();
 

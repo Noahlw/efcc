@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { COPY } from "./copy";
 import { buildCheckInSheet } from "./check-in-sheet";
+import { COPY } from "./copy";
 
 describe(buildCheckInSheet, () => {
   test("embeds the QR image of the check-in URL and the manual code", async () => {

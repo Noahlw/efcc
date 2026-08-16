@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   cleanup,
   fireEvent,
@@ -20,6 +21,7 @@ import type {
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
+import type { ProgramsTask } from "@/lib/programs/programs-intent";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
 
 const mocks = vi.hoisted(() => ({
@@ -39,6 +41,21 @@ const mocks = vi.hoisted(() => ({
   listScheduleRules: vi.fn(),
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
+}));
+vi.mock(import("@/lib/attendance-operator-panel"), () => ({
+  AttendanceOperatorPanel: ({
+    eventId,
+    programToken,
+  }: {
+    eventId?: string | null;
+    programToken?: string | null;
+  }) => (
+    <div
+      data-testid="attendance-operator-panel"
+      data-event-id={eventId ?? ""}
+      data-program-token={programToken ?? ""}
+    />
+  ),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -70,6 +87,7 @@ const program: Program = {
   lifecycle: "Active",
   discoverability: "Listed",
   enrollment_mode: "MemberRequest",
+  check_in_token: "program-check-in-token",
   display_order: 0,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
@@ -220,6 +238,20 @@ function mockWorkspace() {
   });
 
 }
+
+function AssistedEnrollmentHarness() {
+  const [task, setTask] = useState<ProgramsTask | undefined>(
+    "assisted-enrollment"
+  );
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task}
+      onBack={vi.fn()}
+      onTaskChange={(nextTask) => setTask(nextTask ?? undefined)}
+    />
+  );
+}
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
   mocks.listEvents.mockReset();
@@ -272,6 +304,55 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("demotes settings and notifications to quiet workspace rows", async () => {
+    mockWorkspace();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.workspaceOther })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: COPY.programs.workspaceTaskSettings,
+      })
+    ).not.toBeInTheDocument();
+
+    const factsLink = screen.getByRole("link", {
+      name: new RegExp(`^${COPY.programs.workspaceOtherFacts}`),
+    });
+    expect(factsLink).toHaveAttribute(
+      "href",
+      "#programs-workspace-identity"
+    );
+
+    const settingsLink = screen.getByRole("link", {
+      name: new RegExp(`^${COPY.programs.workspaceOtherSettings}`),
+    });
+    expect(settingsLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=settings"
+    );
+    await userEvent.click(settingsLink);
+    expect(onTaskChange).toHaveBeenCalledWith("settings");
+
+    const notificationsLink = screen.getByRole("link", {
+      name: new RegExp(`^${COPY.programs.workspaceOtherNotifications}`),
+    });
+    expect(notificationsLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&task=notifications"
+    );
+    await userEvent.click(notificationsLink);
+    expect(onTaskChange).toHaveBeenCalledWith("notifications");
+  });
+
   test("leads with live next-event progress and a direct roster link", async () => {
     mockWorkspace();
     mocks.getEvent.mockResolvedValue({
@@ -293,7 +374,10 @@ describe(ProgramWorkspace, () => {
     expect(screen.getByText("已簽到 2/4")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: COPY.programs.workspaceRosterCta })
-    ).toHaveAttribute("href", "/events?eventId=event-1");
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=roster&event=event-1"
+    );
     expect(
       screen.getByRole("heading", { name: COPY.programs.workspaceOperations })
     ).toBeInTheDocument();
@@ -314,7 +398,9 @@ describe(ProgramWorkspace, () => {
       />
     );
 
-    await screen.findByText(COPY.programs.workspaceIdentity);
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceIdentity,
+    });
     expect(
       screen.queryByRole("heading", { name: COPY.programs.workspaceNextEvent })
     ).not.toBeInTheDocument();
@@ -339,7 +425,9 @@ describe(ProgramWorkspace, () => {
       />
     );
 
-    await screen.findByText(COPY.programs.workspaceIdentity);
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceIdentity,
+    });
     expect(
       screen.queryByRole("heading", { name: COPY.programs.workspaceNextEvent })
     ).not.toBeInTheDocument();
@@ -366,8 +454,26 @@ describe(ProgramWorkspace, () => {
       screen.findByText(COPY.programs.eventScheduleSource)
     ).resolves.toBeInTheDocument();
     expect(
+      screen.getByRole("link", { name: COPY.programs.workspaceTaskRoster })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=roster&event=event-1"
+    );
+    expect(
       screen.getByRole("button", { name: COPY.programs.eventCreate })
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+    const scheduleLink = screen.getByRole("link", {
+      name: COPY.programs.settingsSchedule,
+    });
+    expect(scheduleLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=schedule"
+    );
+    await userEvent.click(scheduleLink);
+    expect(onTaskChange).toHaveBeenCalledWith("schedule");
 
     await userEvent.click(
       screen.getByRole("link", {
@@ -375,6 +481,38 @@ describe(ProgramWorkspace, () => {
       })
     );
     expect(onTaskChange).toHaveBeenCalledWith("participants");
+  });
+
+  test("renders the attendance roster task with URL context and program token", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules: [
+        ...modules,
+        {
+          department_id: "dept-1",
+          module_key: "attendance",
+          enabled: 1,
+          enabled_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="roster"
+        eventId="event-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const panel = await screen.findByTestId("attendance-operator-panel");
+    expect(panel).toHaveAttribute("data-event-id", "event-1");
+    expect(panel).toHaveAttribute(
+      "data-program-token",
+      "program-check-in-token"
+    );
   });
 
   test("shows a privacy-preserving revoked state for an unauthorized direct link", async () => {
@@ -536,7 +674,38 @@ describe("ENR-01 participants workspace", () => {
     expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
 
-  test("keeps the queue visible when assisted enrollment fails", async () => {
+  test("exposes assisted enrollment as a separate task link", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program: { ...program, enrollment_mode: "ManagerOnly" },
+      department,
+      modules,
+    });
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    const link = await screen.findByRole("link", {
+      name: COPY.programs.workspaceTaskAssistedEnrollment,
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=assisted-enrollment"
+    );
+    expect(
+      screen.queryByRole("combobox", { name: COPY.programs.memberId })
+    ).not.toBeInTheDocument();
+    await userEvent.click(link);
+    expect(onTaskChange).toHaveBeenCalledWith("assisted-enrollment");
+  });
+
+  test("keeps assisted enrollment errors visible", async () => {
     mockWorkspace();
     mocks.getManagementProgram.mockResolvedValue({
       program: { ...program, enrollment_mode: "ManagerOnly" },
@@ -558,7 +727,7 @@ describe("ENR-01 participants workspace", () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        task="participants"
+        task="assisted-enrollment"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
@@ -567,6 +736,14 @@ describe("ENR-01 participants workspace", () => {
     const picker = await screen.findByRole("combobox", {
       name: COPY.programs.memberId,
     });
+    const participantLinks = screen.getAllByRole("link", {
+      name: COPY.programs.workspaceTaskParticipants,
+    });
+    expect(participantLinks).toHaveLength(2);
+    expect(participantLinks[1]).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=participants"
+    );
     await userEvent.type(picker, "王同");
     await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
     await userEvent.click(
@@ -577,12 +754,11 @@ describe("ENR-01 participants workspace", () => {
         `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("陳同工")).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", {
-        name: `${COPY.programs.workspacePendingRequests} (1)`,
+      screen.queryByRole("heading", {
+        name: COPY.programs.workspaceTaskParticipants,
       })
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   test("an approved request whose enrollment is later cancelled counts once in history", async () => {
@@ -673,7 +849,7 @@ describe("ENR-01 participants workspace", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("submits an assisted enrollment from the ManagerOnly queue", async () => {
+  test("confirms assisted enrollment and returns to the participant task", async () => {
     mockWorkspace();
     mocks.getManagementProgram.mockResolvedValue({
       program: { ...program, enrollment_mode: "ManagerOnly" },
@@ -692,20 +868,18 @@ describe("ENR-01 participants workspace", () => {
     mocks.assistedEnroll.mockResolvedValue({
       enrollment: { ...enrollment, member_user_id: "member-3" },
     });
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        task="participants"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
+    render(<AssistedEnrollmentHarness />);
 
     const picker = await screen.findByRole("combobox", {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
     await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    expect(mocks.searchMemberOptions).toHaveBeenCalledWith(
+      "program-1",
+      "王同",
+      { excludeEnrolled: true }
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
@@ -714,6 +888,14 @@ describe("ENR-01 participants workspace", () => {
         "program-1",
         "member-3"
       )
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
     );
   });
 });
@@ -829,21 +1011,50 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
 });
 
 describe("EVT-02 recurring preview and generation UI (#252)", () => {
-  function renderEventsTask() {
+  function renderScheduleTask() {
     mockWorkspace();
     return render(
       <ProgramWorkspace
         programId="program-1"
-        task="events"
+        task="schedule"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
     );
   }
 
+  test("renders the schedule task with a back link to Events", async () => {
+    mockWorkspace();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="schedule"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsSchedule })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    ).toBeInTheDocument();
+    const backLink = screen.getByRole("link", {
+      name: COPY.programs.settingsScheduleEventsLink,
+    });
+    expect(backLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events"
+    );
+    await userEvent.click(backLink);
+    expect(onTaskChange).toHaveBeenCalledWith("events");
+  });
+
   test("preview controls are reachable and render an exact plan with exception state", async () => {
     const user = userEvent.setup();
-    renderEventsTask();
+    renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
 
@@ -869,7 +1080,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("a stale plan error surfaces, clears the plan, and requires a new preview", async () => {
     const user = userEvent.setup();
-    renderEventsTask();
+    renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
     mocks.generateEvents.mockRejectedValue(
@@ -892,9 +1103,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("generation reports deterministic counts and refreshes the event list", async () => {
+  test("generation reports deterministic counts without refreshing the sibling event list", async () => {
     const user = userEvent.setup();
-    renderEventsTask();
+    renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
     mocks.generateEvents.mockResolvedValue({
@@ -926,6 +1137,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         "plan-abc123"
       )
     );
+    expect(mocks.listEvents).not.toHaveBeenCalled();
   });
 
   test("a schedule-rules load failure keeps the Preview form reachable next to the error alert", async () => {
@@ -936,7 +1148,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        task="events"
+        task="schedule"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
@@ -962,7 +1174,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("a partial generation reports through the alert treatment and stays retryable", async () => {
     const user = userEvent.setup();
-    renderEventsTask();
+    renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
     mocks.generateEvents.mockResolvedValue({
@@ -1009,7 +1221,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        task="events"
+        task="schedule"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
@@ -1034,13 +1246,13 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        task="events"
+        task="schedule"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
     );
     await screen.findByRole("heading", {
-      name: COPY.programs.workspaceTaskEvents,
+      name: COPY.programs.settingsSchedule,
     });
     expect(
       screen.queryByRole("button", { name: COPY.programs.previewEvents })

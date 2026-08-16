@@ -20,8 +20,8 @@ import type {
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/programs/program-api";
-import { useQrCamera } from "@/lib/use-qr-camera";
 import { QrCode } from "@/lib/qr-code";
+import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
 
@@ -35,7 +35,7 @@ export interface AttendanceOperatorPanelProps {
 }
 
 export function maskPhoneForPrint(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
+  const digits = phone.replaceAll(/\D/gu, "");
   const localDigits =
     digits.startsWith("852") && digits.length >= 11 ? digits.slice(3) : digits;
   return localDigits.length > 4 ? `${localDigits.slice(0, 4)}****` : "****";
@@ -162,8 +162,9 @@ export const AttendanceOperatorPanel = ({
     onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
   });
   useEffect(() => {
-    // The events list deep-links here (e.g. /events?eventId=...); keep the
-    // static-export-friendly window.location.search read, same as the scanner.
+    // The Course Cockpit roster task passes the parsed Event context; keep the
+    // static-export-friendly window.location.search fallback for standalone
+    // mounts, same as the scanner.
     const params = new URLSearchParams(window.location.search);
     const id = fixedEventId ?? params.get("eventId");
     if (id) {
@@ -508,54 +509,55 @@ export const AttendanceOperatorPanel = ({
               {COPY.attendance.printSheet}
             </button>
             {printOpen && (
-            <section
-              className={styles.printSheet}
-              data-print-sheet=""
-              aria-label={COPY.attendance.printSheet}
-            >
-              <header className={styles.printHeader}>
-                <h2>{event.program_name}</h2>
-                <p>
-                  <strong>{COPY.attendance.sheetEventTime}:</strong>{" "}
-                  {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
-                </p>
-              </header>
-              <div className={styles.printCodes}>
-                <div className={styles.printCodeBlock}>
-                  <strong>{COPY.attendance.sheetProgramQr}</strong>
-                  {programQrValue ? (
-                    <QrCode
-                      value={programQrValue}
-                      label={COPY.attendance.sheetProgramQr}
-                      className={styles.printQr}
-                    />
-                  ) : (
-                    <span>{COPY.attendance.sheetProgramQrUnavailable}</span>
-                  )}
+              <section
+                className={styles.printSheet}
+                data-print-sheet=""
+                aria-label={COPY.attendance.printSheet}
+              >
+                <header className={styles.printHeader}>
+                  <h2>{event.program_name}</h2>
+                  <p>
+                    <strong>{COPY.attendance.sheetEventTime}:</strong>{" "}
+                    {hkWallLabel(event.starts_at)} –{" "}
+                    {hkWallLabel(event.ends_at)}
+                  </p>
+                </header>
+                <div className={styles.printCodes}>
+                  <div className={styles.printCodeBlock}>
+                    <strong>{COPY.attendance.sheetProgramQr}</strong>
+                    {programQrValue ? (
+                      <QrCode
+                        value={programQrValue}
+                        label={COPY.attendance.sheetProgramQr}
+                        className={styles.printQr}
+                      />
+                    ) : (
+                      <span>{COPY.attendance.sheetProgramQrUnavailable}</span>
+                    )}
+                  </div>
+                  <div className={styles.printCodeBlock}>
+                    <strong>{COPY.attendance.sheetManualCode}</strong>
+                    <code>{event.manual_check_in_code}</code>
+                  </div>
                 </div>
-                <div className={styles.printCodeBlock}>
-                  <strong>{COPY.attendance.sheetManualCode}</strong>
-                  <code>{event.manual_check_in_code}</code>
-                </div>
-              </div>
-              <h3>{COPY.attendance.sheetRoster}</h3>
-              {rows.length === 0 ? (
-                <p>{COPY.attendance.sheetNoAttendees}</p>
-              ) : (
-                <ol className={styles.printRows}>
-                  {rows.map((row) => (
-                    <li key={row.attendance_id}>
-                      <span>{row.guest_name ?? row.member_user_id}</span>
-                      <span>
-                        {row.guest_phone
-                          ? maskPhoneForPrint(row.guest_phone)
-                          : COPY.attendance.method[row.method]}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
+                <h3>{COPY.attendance.sheetRoster}</h3>
+                {rows.length === 0 ? (
+                  <p>{COPY.attendance.sheetNoAttendees}</p>
+                ) : (
+                  <ol className={styles.printRows}>
+                    {rows.map((row) => (
+                      <li key={row.attendance_id}>
+                        <span>{row.guest_name ?? row.member_user_id}</span>
+                        <span>
+                          {row.guest_phone
+                            ? maskPhoneForPrint(row.guest_phone)
+                            : COPY.attendance.method[row.method]}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
             )}
           </>
         )}

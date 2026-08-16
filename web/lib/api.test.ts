@@ -157,6 +157,7 @@ describe("api.ts: AUTH-04 cookie surface", () => {
       fetchMock.restore();
     }
   });
+
   test("authLogin parses the {requestId,data} auth envelope (no success flag)", async () => {
     const fetchMock = installFetch(() =>
       makeResponse(200, { requestId: "r-1", data: LOGIN_RESULT })

@@ -24,8 +24,8 @@
  * and return a Response. They are tested directly via the workerd runtime.
  */
 
-import { navigationForRole, sectionsForRole } from "../sections";
 import { COPY } from "../copy";
+import { navigationForRole, sectionsForRole } from "../sections";
 import {
   AccountConflictError,
   AccountStatusError,
@@ -772,17 +772,13 @@ export async function handleMe(
       ? await hasActiveManagementGrant(env.DB, resolved.account.user_id)
       : false;
   // Home CMS capability is a server-projected section, not a role guess.
-  const sections = sectionsForRole(
-    resolved.account.role,
-    hasManagementGrant
-  );
+  const sections = sectionsForRole(resolved.account.role, hasManagementGrant);
   const hasHomeCapability =
     (resolved.account.role === "Admin" || resolved.account.role === "Staff") &&
     Boolean(
-      await env.DB
-        .prepare(
-          "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = 'home.publish'"
-        )
+      await env.DB.prepare(
+        "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = 'home.publish'"
+      )
         .bind(resolved.account.role)
         .first()
     );

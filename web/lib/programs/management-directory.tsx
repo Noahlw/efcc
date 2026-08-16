@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -14,6 +14,7 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { DepartmentManagerPicker } from "./department-manager-picker";
 import { DepartmentSettingsPanel } from "./department-settings-panel";
 import { useAsyncResource } from "./use-async-resource";
 
@@ -74,68 +75,73 @@ type DirectoryState =
       departments: Department[];
     }
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
-const DepartmentSettingsLauncher = ({
-  department,
-}: {
-  department: Department;
-}) => {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const [returnFocusPending, setReturnFocusPending] = useState(false);
 
-  useEffect(() => {
-    if (!open) {
-      if (returnFocusPending) {
-        triggerRef.current?.focus();
-        setReturnFocusPending(false);
-      }
-      return;
-    }
-    // getElementById, not querySelector: department_id is a UUID and can
-    // start with a digit, which is not a valid leading character for an
-    // unescaped CSS id selector (throws SyntaxError at runtime).
-    const panel = document.getElementById(
-      `${department.department_id}-settings-panel`
-    );
-    panel?.focus();
-  }, [open, department.department_id, returnFocusPending]);
-
-  const close = () => {
-    setReturnFocusPending(true);
-    setOpen(false);
-  };
-
-  return open ? (
-    <DepartmentSettingsPanel department={department} onClose={close} />
-  ) : (
-    <button
-      ref={triggerRef}
-      className={styles.directoryCard}
-      type="button"
-      onClick={() => setOpen(true)}
-    >
-      <span className={styles.directoryCardTitle}>{department.name}</span>
-      <span className={styles.directoryCardMeta}>
-        {department.code} · {COPY.programs.departmentSettings}
-      </span>
-    </button>
-  );
-};
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string) => void;
   onCreateProgram?: (departments: Department[]) => void;
+  departmentId?: string | null;
+  departmentView?: "managers" | null;
+  onOpenDepartment?: (departmentId: string) => void;
+  onOpenDepartmentManagers?: (departmentId: string) => void;
+  onBackToDirectory?: () => void;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
   onCreateProgram,
+  departmentId,
+  departmentView,
+  onOpenDepartment,
+  onOpenDepartmentManagers,
+  onBackToDirectory,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const { state, run: loadDirectory, retry } = useAsyncResource<
+  const [localDepartmentId, setLocalDepartmentId] = useState<string | null>(
+    null
+  );
+  const [localDepartmentView, setLocalDepartmentView] = useState<
+    "managers" | null
+  >(null);
+  const routedDepartmentId =
+    departmentId === undefined ? localDepartmentId : departmentId;
+  const routedDepartmentView =
+    departmentView === undefined ? localDepartmentView : departmentView;
+
+  const openDepartment = (nextDepartmentId: string) => {
+    if (onOpenDepartment) {
+      onOpenDepartment(nextDepartmentId);
+      return;
+    }
+    setLocalDepartmentId(nextDepartmentId);
+    setLocalDepartmentView(null);
+  };
+
+  const openDepartmentManagers = (nextDepartmentId: string) => {
+    if (onOpenDepartmentManagers) {
+      onOpenDepartmentManagers(nextDepartmentId);
+      return;
+    }
+    setLocalDepartmentId(nextDepartmentId);
+    setLocalDepartmentView("managers");
+  };
+
+  const backToDirectory = () => {
+    if (onBackToDirectory) {
+      onBackToDirectory();
+      return;
+    }
+    setLocalDepartmentId(null);
+    setLocalDepartmentView(null);
+  };
+  const {
+    state,
+    run: loadDirectory,
+    retry,
+  } = useAsyncResource<
     { departments: Department[]; programs: ManagementProgramRecord[] },
     DirectoryState
   >(
-    async () => getManagementDirectory(),
+    () => getManagementDirectory(),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: ({ departments, programs }) => {
@@ -201,8 +207,36 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-
   }, [query, state]);
+  const selectedDepartment =
+    state.kind === "ready" && routedDepartmentId !== null
+      ? (state.departments.find(
+          ({ department_id }) => department_id === routedDepartmentId
+        ) ?? null)
+      : null;
+
+  if (selectedDepartment) {
+    if (
+      routedDepartmentView === "managers" &&
+      selectedDepartment.capabilities.manager_assign
+    ) {
+      return (
+        <DepartmentManagerPicker
+          department={selectedDepartment}
+          onBack={() => openDepartment(selectedDepartment.department_id)}
+        />
+      );
+    }
+    return (
+      <DepartmentSettingsPanel
+        department={selectedDepartment}
+        onClose={backToDirectory}
+        onOpenManagerPicker={() =>
+          openDepartmentManagers(selectedDepartment.department_id)
+        }
+      />
+    );
+  }
   return (
     <section aria-labelledby="programs-management-directory-title">
       <h2
@@ -283,7 +317,18 @@ export const ManagementDirectory = ({
                     key={department.department_id}
                     className={styles.deptItem}
                   >
-                    <DepartmentSettingsLauncher department={department} />
+                    <button
+                      className={styles.directoryCard}
+                      type="button"
+                      onClick={() => openDepartment(department.department_id)}
+                    >
+                      <span className={styles.directoryCardTitle}>
+                        {department.name}
+                      </span>
+                      <span className={styles.directoryCardMeta}>
+                        {department.code} · {COPY.programs.departmentSettings}
+                      </span>
+                    </button>
                   </li>
                 ))}
             </ul>

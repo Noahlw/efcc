@@ -22,6 +22,7 @@ describe("member picker keyboard navigation", () => {
     cleanup();
     server.resetHandlers();
   });
+
   afterAll(() => server.close());
 
   function renderPicker() {

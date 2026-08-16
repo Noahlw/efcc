@@ -6,6 +6,7 @@ import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 
 import { AccountSettings } from "../account-settings";
+
 import styles from "./settings.module.css";
 
 export default function SettingsPage() {

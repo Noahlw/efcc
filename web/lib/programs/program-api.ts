@@ -228,6 +228,11 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  /** Participant-safe context; omitted by legacy fixtures. */
+  name?: string | null;
+  location?: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {

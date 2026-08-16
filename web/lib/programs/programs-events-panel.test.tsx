@@ -292,10 +292,16 @@ describe("PRG-02 events panel", () => {
   test("U8 rescheduling posts a RESCHEDULE exception for the event's wall date", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+        HttpResponse.json({
+          requestId: "rid-1",
+          data: { rules: [WEEKLY_RULE] },
+        })
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [TUESDAY_EVENT] } })
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: { events: [TUESDAY_EVENT] },
+        })
       ),
       http.post(
         "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
@@ -306,7 +312,7 @@ describe("PRG-02 events panel", () => {
             new_start_time: string;
             new_end_time: string;
           };
-          expect(body).toEqual({
+          expect(body).toStrictEqual({
             override_date: "2026-08-11",
             action: "RESCHEDULE",
             new_start_time: "20:30",
@@ -358,7 +364,10 @@ describe("PRG-02 events panel", () => {
     let deleted = false;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+        HttpResponse.json({
+          requestId: "rid-1",
+          data: { rules: [WEEKLY_RULE] },
+        })
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
         HttpResponse.json({ requestId: "rid-2", data: { events } })
@@ -370,7 +379,7 @@ describe("PRG-02 events panel", () => {
             override_date: string;
             action: string;
           };
-          expect(body).toEqual({
+          expect(body).toStrictEqual({
             override_date: "2026-08-11",
             action: "CANCEL",
           });
@@ -402,7 +411,9 @@ describe("PRG-02 events panel", () => {
       screen.getByText(COPY.programs.cancelOccurrenceConfirm)
     ).toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.confirmCancelOccurrence })
+      screen.getByRole("button", {
+        name: COPY.programs.confirmCancelOccurrence,
+      })
     );
     await expect(
       screen.findByText(COPY.programs.exceptionUpdatedNotice)
@@ -414,7 +425,7 @@ describe("PRG-02 events panel", () => {
     await expect(
       screen.findByText(COPY.programs.exceptionRemovedNotice)
     ).resolves.toBeInTheDocument();
-    expect(deleted).toBe(true);
+    expect(deleted).toBeTruthy();
     await expect(
       screen.findByRole("button", { name: COPY.programs.cancelOccurrence })
     ).resolves.toBeInTheDocument();
@@ -435,7 +446,10 @@ describe("PRG-02 events panel", () => {
     const events = [TUESDAY_EVENT, cancelled, manual];
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+        HttpResponse.json({
+          requestId: "rid-1",
+          data: { rules: [WEEKLY_RULE] },
+        })
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
         HttpResponse.json({ requestId: "rid-2", data: { events } })
@@ -456,7 +470,10 @@ describe("PRG-02 events panel", () => {
     // rows do not (the cancelled row shows its reason instead).
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [WEEKLY_RULE] } })
+        HttpResponse.json({
+          requestId: "rid-1",
+          data: { rules: [WEEKLY_RULE] },
+        })
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
         HttpResponse.json({ requestId: "rid-2", data: { events } })
@@ -569,8 +586,8 @@ describe("PRG-02 events panel", () => {
     await expect(
       screen.findByText(COPY.programs.eventCancelledBadge)
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.getAllByText(COPY.programs.eventCancelledBadge)
-    ).toHaveLength(1);
+    expect(screen.getAllByText(COPY.programs.eventCancelledBadge)).toHaveLength(
+      1
+    );
   });
 });

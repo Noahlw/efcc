@@ -18,11 +18,11 @@ import type {
   ModuleKey,
 } from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
-import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
+import { WorkspaceNotFoundError } from "./d1-workspace-store";
 import {
   DepartmentArchiveBlockedError,
   DepartmentManagerConflictError,
@@ -84,7 +84,6 @@ import type {
   ProgramEnrollmentMode,
   ProgramLifecycle,
   DepartmentModuleRow,
-  ManagementAttentionEventRow,
   ManagementMemberDepartmentRow,
   MemberOptionRow,
   NotificationReadStateInput,
@@ -155,12 +154,12 @@ export interface ManagementAttentionProgramView {
   actionable_count: number;
 }
 
-type ManagementAttentionItemBase = {
+interface ManagementAttentionItemBase {
   program_id: string;
   program_name: string;
   department_id: string;
   department_name: string;
-};
+}
 
 export type ManagementAttentionItem =
   | (ManagementAttentionItemBase & {
@@ -327,6 +326,10 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  name: string | null;
+  location: string | null;
+  check_in_window_opens_at: string | null;
+  check_in_window_closes_at: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -639,19 +642,33 @@ export class DepartmentWorkspace {
     const managedPrograms = directory.programs.filter(
       ({ capabilities }) => capabilities.manage
     );
-    const moduleScopes = await Promise.all(
-      managedPrograms.map(async (program) => ({
-        program,
-        enrollment: await this.isModuleEnabled(
-          program.department_id,
-          MODULE_KEY.ENROLLMENT
-        ),
-        events: await this.isModuleEnabled(
-          program.department_id,
-          MODULE_KEY.EVENTS
-        ),
-      }))
+    const uniqueDeptIds = [
+      ...new Set(managedPrograms.map((p) => p.department_id)),
+    ];
+    const deptModuleMap = new Map<
+      string,
+      { enrollment: boolean; events: boolean }
+    >();
+    await Promise.all(
+      uniqueDeptIds.map(async (deptId) => {
+        const [enrollment, events] = await Promise.all([
+          this.isModuleEnabled(deptId, MODULE_KEY.ENROLLMENT),
+          this.isModuleEnabled(deptId, MODULE_KEY.EVENTS),
+        ]);
+        deptModuleMap.set(deptId, { enrollment, events });
+      })
     );
+    const moduleScopes = managedPrograms.map((program) => {
+      const modules = deptModuleMap.get(program.department_id) ?? {
+        enrollment: false,
+        events: false,
+      };
+      return {
+        program,
+        enrollment: modules.enrollment,
+        events: modules.events,
+      };
+    });
     const enrollmentProgramIds = moduleScopes
       .filter(({ enrollment }) => enrollment)
       .map(({ program }) => program.program_id);
@@ -759,8 +776,9 @@ export class DepartmentWorkspace {
       0
     );
     const totalItemCount =
-      programs.filter(({ pending_enrollment_count }) => pending_enrollment_count > 0)
-        .length +
+      programs.filter(
+        ({ pending_enrollment_count }) => pending_enrollment_count > 0
+      ).length +
       eventCounts.reduce(
         (total, { inactive_event_count, cancelled_event_count }) =>
           total + inactive_event_count + cancelled_event_count,
@@ -798,19 +816,33 @@ export class DepartmentWorkspace {
         department,
       ])
     );
-    const moduleScopes = await Promise.all(
-      managedPrograms.map(async (program) => ({
-        program,
-        enrollment: await this.isModuleEnabled(
-          program.department_id,
-          MODULE_KEY.ENROLLMENT
-        ),
-        events: await this.isModuleEnabled(
-          program.department_id,
-          MODULE_KEY.EVENTS
-        ),
-      }))
+    const uniqueDeptIds = [
+      ...new Set(managedPrograms.map((p) => p.department_id)),
+    ];
+    const deptModuleMap = new Map<
+      string,
+      { enrollment: boolean; events: boolean }
+    >();
+    await Promise.all(
+      uniqueDeptIds.map(async (deptId) => {
+        const [enrollment, events] = await Promise.all([
+          this.isModuleEnabled(deptId, MODULE_KEY.ENROLLMENT),
+          this.isModuleEnabled(deptId, MODULE_KEY.EVENTS),
+        ]);
+        deptModuleMap.set(deptId, { enrollment, events });
+      })
     );
+    const moduleScopes = managedPrograms.map((program) => {
+      const modules = deptModuleMap.get(program.department_id) ?? {
+        enrollment: false,
+        events: false,
+      };
+      return {
+        program,
+        enrollment: modules.enrollment,
+        events: modules.events,
+      };
+    });
     const enrollmentProgramIds = moduleScopes
       .filter(({ enrollment }) => enrollment)
       .map(({ program }) => program.program_id);
@@ -906,7 +938,8 @@ export class DepartmentWorkspace {
     );
     const readKeys = new Set(
       readStates.map(
-        ({ source_key, source_revision }) => `${source_key}\u0000${source_revision}`
+        ({ source_key, source_revision }) =>
+          `${source_key}\u0000${source_revision}`
       )
     );
     for (const entry of current) {
@@ -915,9 +948,7 @@ export class DepartmentWorkspace {
       );
     }
     return {
-      items: current
-        .slice(0, normalizedLimit)
-        .map(({ item }) => item),
+      items: current.slice(0, normalizedLimit).map(({ item }) => item),
       unread_count: current.filter(({ item }) => !item.read).length,
       has_more: current.length > normalizedLimit,
     };
@@ -1334,6 +1365,10 @@ export class DepartmentWorkspace {
           ends_at: event.ends_at,
           status: "Active" as const,
           source: event.source,
+          name: event.name,
+          location: event.location,
+          check_in_window_opens_at: event.check_in_window_opens_at,
+          check_in_window_closes_at: event.check_in_window_closes_at,
         })),
       enrollment: enrollmentState.snapshot,
       enrollment_access: enrollmentState.access,
@@ -1545,10 +1580,7 @@ export class DepartmentWorkspace {
         update.check_in_opens_at_minutes_before_start === undefined &&
         update.check_in_closes_at_minutes_after_end === undefined;
       if (old.lifecycle === "Archived") {
-        if (!onlyLifecycle) {
-          // Metadata edits on an archived program are still allowed; fall
-          // through to the generic update path below.
-        } else {
+        if (onlyLifecycle) {
           // Terminal repeat: same-actor is a quiet DUPLICATE (never silent),
           // a different actor observes a CONFLICT against the archived row.
           const sameActor = old.updated_by === ctx.actorUserId;
@@ -1569,10 +1601,11 @@ export class DepartmentWorkspace {
             );
           }
           throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+        } else {
+          // Metadata edits on an archived program are still allowed; fall
+          // through to the generic update path below.
         }
-      } else if (old.lifecycle !== "Active") {
-        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
-      } else {
+      } else if (old.lifecycle === "Active") {
         const row = await this.store.archiveProgramIfClear(
           id,
           updateWithAudit,
@@ -1647,6 +1680,8 @@ export class DepartmentWorkspace {
           row,
           await this.programCapabilities(ctx, row)
         );
+      } else {
+        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -2280,7 +2315,8 @@ export class DepartmentWorkspace {
       latest !== null &&
       latest.plan_id !== plan.plan_id &&
       (latest.created_at > plan.created_at ||
-        (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
+        (latest.created_at === plan.created_at &&
+          latest.plan_id > plan.plan_id));
     if (currentHash !== plan.plan_hash || superseded) {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
@@ -2853,9 +2889,7 @@ export class DepartmentWorkspace {
           event,
           correlationId
         );
-        throw new EventAvailabilityConfirmationRequiredError(
-          impactCount
-        );
+        throw new EventAvailabilityConfirmationRequiredError(impactCount);
       }
     }
     const updated = await this.store.updateEvent(
@@ -2899,9 +2933,8 @@ export class DepartmentWorkspace {
     // Course Cockpit guardrail (#294): cancellation is blocked while any
     // attendance row is still Active; operators must void every row (with a
     // reason) first. Audited like the reschedule conflict so attempts trace.
-    const activeAttendanceCount = await this.store.countActiveAttendance(
-      eventId
-    );
+    const activeAttendanceCount =
+      await this.store.countActiveAttendance(eventId);
     if (activeAttendanceCount > 0) {
       await this.audit(
         ctx,
@@ -3245,10 +3278,7 @@ export class DepartmentWorkspace {
       request: row,
       enrollment:
         row.status === "Approved"
-          ? await this.store.findActiveEnrollment(
-              programId,
-              row.member_user_id
-            )
+          ? await this.store.findActiveEnrollment(programId, row.member_user_id)
           : null,
     });
     // ADR-0023 §3 / ADR-0027: DUPLICATE is the SAME actor repeating their own
@@ -3431,9 +3461,7 @@ export class DepartmentWorkspace {
         auditDecide,
         cmd.expectedRequestVersion
       );
-      decided = rejected
-        ? { request: rejected, enrollment: null }
-        : null;
+      decided = rejected ? { request: rejected, enrollment: null } : null;
     }
     if (decided) {
       return decided;

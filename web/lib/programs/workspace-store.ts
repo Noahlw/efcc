@@ -144,8 +144,6 @@ export interface ManagementMemberSearchRow {
   department_name: string | null;
 }
 
-
-
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -580,16 +578,16 @@ export interface WorkspaceStore {
   listEvents: (programId: string) => Promise<EventRow[]>;
   countPendingEnrollmentRequests: (
     programIds: readonly string[]
-  ) => Promise<Array<{ program_id: string; count: number }>>;
+  ) => Promise<{ program_id: string; count: number }[]>;
   countManagementEventAttention: (
     programIds: readonly string[],
     startsAtOrAfter: string
   ) => Promise<
-    Array<{
+    {
       program_id: string;
       inactive_event_count: number;
       cancelled_event_count: number;
-    }>
+    }[]
   >;
   listManagementEventAttention: (
     programIds: readonly string[],
@@ -645,9 +643,7 @@ export interface WorkspaceStore {
 
   findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
   findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
-  listPreviewOccurrences: (
-    planId: string
-  ) => Promise<PreviewOccurrenceRow[]>;
+  listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
   /** Persist a preview plan and its exact occurrence rows idempotently. */
   replacePreviewPlan: (
     plan: PreviewPlanRow,
@@ -665,9 +661,7 @@ export interface WorkspaceStore {
   }) => Promise<{ run: GenerationRunRow; created: boolean }>;
   listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
   /** Record one attempt durably; false when the row already exists. */
-  recordGenerationRunItem: (
-    input: GenerationRunItemInput
-  ) => Promise<boolean>;
+  recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
   /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,

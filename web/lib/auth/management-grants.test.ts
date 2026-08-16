@@ -5,11 +5,18 @@
  */
 import { describe, test, expect, beforeAll } from "vitest";
 
-import { applyMigrations, testDb } from "./test-bootstrap";
 import { importLegacyUsers } from "./accounts";
 import { hasActiveManagementGrant } from "./management-grants";
+import { applyMigrations, testDb } from "./test-bootstrap";
 
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"];
+const HEADER = [
+  "User_ID",
+  "Name",
+  "Username",
+  "PIN_Code",
+  "System_Role",
+  "Status",
+];
 
 beforeAll(async () => {
   await applyMigrations();
@@ -18,7 +25,14 @@ beforeAll(async () => {
     ["U-GRANT-1", "Grant Leader", "grant.leader", "1234", "Member", "Active"],
     ["U-GRANT-2", "Grant Manager", "grant.manager", "1234", "Member", "Active"],
     ["U-GRANT-3", "No Grant", "no.grant", "1234", "Member", "Active"],
-    ["U-GRANT-4", "Revoked Leader", "revoked.leader", "1234", "Member", "Active"],
+    [
+      "U-GRANT-4",
+      "Revoked Leader",
+      "revoked.leader",
+      "1234",
+      "Member",
+      "Active",
+    ],
   ]);
   const now = new Date().toISOString();
   await testDb()
@@ -65,24 +79,32 @@ beforeAll(async () => {
 
 describe(hasActiveManagementGrant, () => {
   test("true for an active Program Leader grant", async () => {
-    expect(await hasActiveManagementGrant(testDb(), "U-GRANT-1")).toBe(true);
+    await expect(
+      hasActiveManagementGrant(testDb(), "U-GRANT-1")
+    ).resolves.toBeTruthy();
   });
 
   test("true for an active Department Manager grant", async () => {
-    expect(await hasActiveManagementGrant(testDb(), "U-GRANT-2")).toBe(true);
+    await expect(
+      hasActiveManagementGrant(testDb(), "U-GRANT-2")
+    ).resolves.toBeTruthy();
   });
 
   test("false for an account with neither grant", async () => {
-    expect(await hasActiveManagementGrant(testDb(), "U-GRANT-3")).toBe(false);
+    await expect(
+      hasActiveManagementGrant(testDb(), "U-GRANT-3")
+    ).resolves.toBeFalsy();
   });
 
   test("false once the only grant is revoked", async () => {
-    expect(await hasActiveManagementGrant(testDb(), "U-GRANT-4")).toBe(false);
+    await expect(
+      hasActiveManagementGrant(testDb(), "U-GRANT-4")
+    ).resolves.toBeFalsy();
   });
 
   test("false for an unknown user id", async () => {
-    expect(await hasActiveManagementGrant(testDb(), "U-NO-SUCH-USER")).toBe(
-      false
-    );
+    await expect(
+      hasActiveManagementGrant(testDb(), "U-NO-SUCH-USER")
+    ).resolves.toBeFalsy();
   });
 });

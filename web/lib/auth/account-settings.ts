@@ -152,7 +152,10 @@ export async function changeUsername(
       "An account with that username already exists."
     );
   }
-  const existingRequest = await findRegistrationByUsername(db, options.username);
+  const existingRequest = await findRegistrationByUsername(
+    db,
+    options.username
+  );
   if (existingRequest) {
     throw new AccountConflictError(
       "An account with that username already exists."

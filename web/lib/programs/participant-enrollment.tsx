@@ -31,11 +31,18 @@ export interface ParticipantEnrollmentProps {
   onRefresh: () => Promise<void>;
 }
 
-type HistoryItem = {
+interface HistoryItem {
   id: string;
   label: string;
   at: string;
-};
+}
+
+type ConfirmingAction = "withdraw" | "cancel";
+
+interface EnrollmentOutcome {
+  tone: "success" | "error";
+  message: string;
+}
 
 function errorMessage(error: unknown): string {
   if (!(error instanceof RpcError)) {
@@ -54,14 +61,19 @@ function requestStatusLabel(
   status: ParticipantEnrollmentRequest["status"]
 ): string | null {
   switch (status) {
-    case "Pending":
+    case "Pending": {
       return COPY.programs.requestPending;
-    case "Rejected":
+    }
+    case "Rejected": {
       return COPY.programs.requestRejected;
-    case "Withdrawn":
+    }
+    case "Withdrawn": {
       return COPY.programs.requestWithdrawn;
+    }
     case "Approved":
+    default: {
       return null;
+    }
   }
 }
 
@@ -80,9 +92,11 @@ export const ParticipantEnrollment = ({
   onRefresh,
 }: ParticipantEnrollmentProps) => {
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<EnrollmentOutcome | null>(null);
+  const [confirmingAction, setConfirmingAction] =
+    useState<ConfirmingAction | null>(null);
   const mounted = useRef(true);
+  const confirmationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -91,25 +105,30 @@ export const ParticipantEnrollment = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (confirmingAction !== null) {
+      confirmationRef.current?.querySelector("button")?.focus();
+    }
+  }, [confirmingAction]);
+
   const runAction = useCallback(
     async (action: () => Promise<unknown>, successCopy: string) => {
       setBusy(true);
-      setNotice(null);
-      setActionError(null);
+      setOutcome(null);
       try {
         await action();
         await onRefresh();
         if (!mounted.current) {
           return;
         }
-        setNotice(successCopy);
+        setOutcome({ tone: "success", message: successCopy });
         announce(successCopy);
       } catch (error) {
         if (!mounted.current) {
           return;
         }
         const message = errorMessage(error);
-        setActionError(message);
+        setOutcome({ tone: "error", message });
         announce(message);
         try {
           await onRefresh();
@@ -193,10 +212,18 @@ export const ParticipantEnrollment = ({
       COPY.programs.requestSubmitted
     );
   };
-  const handleWithdraw = () => {
+  const beginWithdraw = () => {
+    if (!pendingRequest || busy) {
+      return;
+    }
+    setOutcome(null);
+    setConfirmingAction("withdraw");
+  };
+  const confirmWithdraw = () => {
     if (!pendingRequest) {
       return;
     }
+    setConfirmingAction(null);
     void runAction(
       () =>
         withdrawEnrollmentRequest(
@@ -206,10 +233,18 @@ export const ParticipantEnrollment = ({
       COPY.programs.requestWithdrawnNotice
     );
   };
-  const handleCancel = () => {
+  const beginCancel = () => {
+    if (!activeEnrollment || busy) {
+      return;
+    }
+    setOutcome(null);
+    setConfirmingAction("cancel");
+  };
+  const confirmCancel = () => {
     if (!activeEnrollment) {
       return;
     }
+    setConfirmingAction(null);
     void runAction(
       () =>
         cancelEnrollment(program.program_id, activeEnrollment.enrollment_id),
@@ -223,12 +258,15 @@ export const ParticipantEnrollment = ({
       aria-labelledby="program-enrollment-title"
       aria-busy={busy}
     >
-      {notice !== null && (
-        <output className={styles.panelNotice}>{notice}</output>
-      )}
-      {actionError !== null && (
-        <output className={styles.panelError} role="alert">
-          {actionError}
+      {outcome !== null && (
+        <output
+          className={styles.enrollmentStatus}
+          data-tone={outcome.tone}
+          role={outcome.tone === "error" ? "alert" : undefined}
+          aria-live={outcome.tone === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
+        >
+          {outcome.message}
         </output>
       )}
       <h3 id="program-enrollment-title" className={styles.panelHeading}>
@@ -237,84 +275,185 @@ export const ParticipantEnrollment = ({
 
       {activeEnrollment ? (
         <>
-          <p className={styles.emptyLine}>{COPY.programs.enrollmentActive}</p>
+          <output
+            className={styles.enrollmentStatus}
+            data-tone="success"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {COPY.programs.enrollmentActive}
+          </output>
           <p className={styles.programDetailMuted}>
             {COPY.programs.enrollmentActiveHint}
           </p>
-          <button
-            type="button"
-            className={styles.dangerButton}
-            disabled={busy}
-            onClick={handleCancel}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.cancelEnrollment}
-          </button>
+          {confirmingAction === "cancel" ? (
+            <div
+              ref={confirmationRef}
+              className={styles.confirmRow}
+              role="alert"
+              aria-label={COPY.programs.confirmCancelEnrollment}
+            >
+              <span>{COPY.programs.confirmCancelEnrollment}</span>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                disabled={busy}
+                onClick={confirmCancel}
+              >
+                {COPY.programs.confirmCancelEnrollmentAction}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => setConfirmingAction(null)}
+              >
+                {COPY.programs.cancelEnrollmentConfirmation}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={styles.dangerButton}
+              disabled={busy}
+              onClick={beginCancel}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.cancelEnrollment}
+            </button>
+          )}
         </>
       ) : pendingRequest ? (
         <>
-          <p className={styles.emptyLine}>{COPY.programs.requestPending}</p>
+          <output
+            className={styles.enrollmentStatus}
+            data-tone="pending"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {COPY.programs.requestPending}
+          </output>
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestPendingHint}
           </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={handleWithdraw}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.withdrawRequest}
-          </button>
+          {confirmingAction === "withdraw" ? (
+            <div
+              ref={confirmationRef}
+              className={styles.confirmRow}
+              role="alert"
+              aria-label={COPY.programs.confirmWithdrawRequest}
+            >
+              <span>{COPY.programs.confirmWithdrawRequest}</span>
+              <button
+                type="button"
+                className={styles.actionButton}
+                disabled={busy}
+                onClick={confirmWithdraw}
+              >
+                {COPY.programs.confirmWithdrawRequestAction}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => setConfirmingAction(null)}
+              >
+                {COPY.programs.cancelEnrollmentConfirmation}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionButton}
+              disabled={busy}
+              onClick={beginWithdraw}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.withdrawRequest}
+            </button>
+          )}
         </>
-      ) : program.lifecycle !== "Active" ? (
-        <p className={styles.emptyLine}>{closedCopy(program.lifecycle)}</p>
-      ) : enrollmentAccess === "Unavailable" ? (
-        <p className={styles.emptyLine}>
-          {COPY.programs.enrollmentUnavailableNote}
-        </p>
-      ) : program.enrollment_mode === "ManagerOnly" ? (
-        <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>
-      ) : enrollment === null ? (
-        <p className={styles.emptyLine}>
-          {COPY.programs.enrollmentIneligibleNote}
-        </p>
-      ) : latestRequest?.status === "Rejected" ? (
-        <>
-          <p className={styles.emptyLine}>{COPY.programs.requestRejected}</p>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.requestRejectedHint}
-          </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={handleRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
-          </button>
-        </>
-      ) : latestRequest?.status === "Withdrawn" ? (
-        <>
-          <p className={styles.emptyLine}>{COPY.programs.requestWithdrawn}</p>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.requestWithdrawnHint}
-          </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={handleRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
-          </button>
-        </>
-      ) : cancelledEnrollment ? (
-        <>
+      ) : program.lifecycle === "Active" ? (
+        enrollmentAccess === "Unavailable" ? (
           <p className={styles.emptyLine}>
-            {COPY.programs.enrollmentCancelled}
+            {COPY.programs.enrollmentUnavailableNote}
           </p>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.enrollmentCancelledHint}
+        ) : program.enrollment_mode === "ManagerOnly" ? (
+          <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>
+        ) : enrollment === null ? (
+          <p className={styles.emptyLine}>
+            {COPY.programs.enrollmentIneligibleNote}
           </p>
+        ) : latestRequest?.status === "Rejected" ? (
+          <>
+            <output
+              className={styles.enrollmentStatus}
+              data-tone="error"
+              aria-live="polite"
+            >
+              {COPY.programs.requestRejected}
+            </output>
+            <p className={styles.programDetailMuted}>
+              {COPY.programs.requestRejectedHint}
+            </p>
+            <button
+              type="button"
+              className={styles.actionButton}
+              disabled={busy}
+              onClick={handleRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
+            </button>
+          </>
+        ) : latestRequest?.status === "Withdrawn" ? (
+          <>
+            <output
+              className={styles.enrollmentStatus}
+              data-tone="info"
+              aria-live="polite"
+            >
+              {COPY.programs.requestWithdrawn}
+            </output>
+            <p className={styles.programDetailMuted}>
+              {COPY.programs.requestWithdrawnHint}
+            </p>
+            <button
+              type="button"
+              className={styles.actionButton}
+              disabled={busy}
+              onClick={handleRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
+            </button>
+          </>
+        ) : cancelledEnrollment ? (
+          <>
+            <output
+              className={styles.enrollmentStatus}
+              data-tone="info"
+              aria-live="polite"
+            >
+              {COPY.programs.enrollmentCancelled}
+            </output>
+            <p className={styles.programDetailMuted}>
+              {COPY.programs.enrollmentCancelledHint}
+            </p>
+            <button
+              type="button"
+              className={styles.actionButton}
+              disabled={busy}
+              onClick={handleRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
+            </button>
+          </>
+        ) : latestRequest?.status === "Approved" ? (
+          <output
+            className={styles.enrollmentStatus}
+            data-tone="info"
+            aria-live="polite"
+          >
+            {COPY.programs.enrollmentUnavailableNote}
+          </output>
+        ) : (
           <button
             type="button"
             className={styles.actionButton}
@@ -323,20 +462,9 @@ export const ParticipantEnrollment = ({
           >
             {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
           </button>
-        </>
-      ) : latestRequest?.status === "Approved" ? (
-        <p className={styles.emptyLine}>
-          {COPY.programs.enrollmentUnavailableNote}
-        </p>
+        )
       ) : (
-        <button
-          type="button"
-          className={styles.actionButton}
-          disabled={busy}
-          onClick={handleRequest}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
-        </button>
+        <p className={styles.emptyLine}>{closedCopy(program.lifecycle)}</p>
       )}
 
       {showScheduleAdvisory && (

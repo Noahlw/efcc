@@ -140,9 +140,7 @@ describe("PRG-04 leaders panel", () => {
     expect(
       screen.getByText((text) => normalized(text) === "2026/08/01 08:00")
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText("2026-08-01T00:00:00.000Z")
-    ).toBeNull();
+    expect(screen.queryByText("2026-08-01T00:00:00.000Z")).toBeNull();
   });
 
   test("UI-3 assigning an inactive account shows the friendly popup, not a raw code", async () => {
@@ -156,7 +154,8 @@ describe("PRG-04 leaders panel", () => {
             title: "Validation failed",
             status: 422,
             code: "ACCOUNT_INACTIVE",
-            detail: "Cannot assign U004 as Program Leader: account is not Active.",
+            detail:
+              "Cannot assign U004 as Program Leader: account is not Active.",
           },
           { status: 422 }
         )
@@ -165,8 +164,13 @@ describe("PRG-04 leaders panel", () => {
     const user = userEvent.setup();
     render(<LeadersPanel program={PROGRAM} canManage />);
     await screen.findByText(COPY.programs.noLeaders);
-    await user.type(screen.getByLabelText(COPY.programs.leaderUserId), "ghost-user");
-    await user.click(await screen.findByRole("button", { name: /ghost-user/u }));
+    await user.type(
+      screen.getByLabelText(COPY.programs.leaderUserId),
+      "ghost-user"
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /ghost-user/u })
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.assignLeader })
     );

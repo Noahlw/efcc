@@ -130,9 +130,7 @@ export class DuplicateEventError extends Error {
 export class EventRescheduleBlockedError extends Error {
   readonly eventId: string;
   constructor(eventId: string) {
-    super(
-      `Event ${eventId} cannot be rescheduled: Attendance already exists.`
-    );
+    super(`Event ${eventId} cannot be rescheduled: Attendance already exists.`);
     this.name = "EventRescheduleBlockedError";
     this.eventId = eventId;
   }

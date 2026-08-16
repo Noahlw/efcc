@@ -58,6 +58,8 @@ const COPY = {
   requestPendingHint: "申請已送出，等待課程負責人處理。",
   withdrawRequest: "撤回申請",
   requestWithdrawnNotice: "申請已撤回。",
+  confirmWithdrawRequest: "確定要撤回這次申請嗎？",
+  confirmWithdrawRequestAction: "確定撤回申請",
   cancelEnrollment: "取消報名",
   enrollmentScheduleAdvisory:
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
@@ -86,6 +88,7 @@ const COPY = {
   decisionMade: "已處理申請。",
   enrollmentHistory: "你的報名紀錄",
   workspaceTaskSettings: "課程設定",
+  workspaceOtherSettings: "設定",
   workspaceUnavailable: "課程管理範圍已失效",
   settingsBasics: "基本資料",
   settingsEnrollment: "報名與可見性",
@@ -165,12 +168,15 @@ const COPY = {
   departmentManagerAssignedNotice: "已新增部門管理者。",
   departmentManagerRevokedNotice: "已移除部門管理者。",
   noDepartmentManagers: "目前沒有部門管理者。",
-  settingsScheduleUnavailable: "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
-  settingsAttendanceUnavailable: "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
+  settingsScheduleUnavailable:
+    "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+  settingsAttendanceUnavailable:
+    "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
   discoverabilityListed: "公開",
   discoverabilityUnlisted: "不公開",
   settingsSaveEnrollment: "儲存報名與可見性",
-  settingsConfirmEnrollment: "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
+  settingsConfirmEnrollment:
+    "確認後會影響日後的新報名與課程目錄顯示；既有紀錄不會改變。",
   settingsConfirmChange: "確認變更",
   settingsSaved: "課程設定已儲存。",
   eventAvailabilityConfirmBody:
@@ -264,7 +270,7 @@ async function loginAs(
   ).toBeVisible();
 }
 
-async function postProgramLeader(
+function postProgramLeader(
   page: Page,
   programId: string,
   userId: string,
@@ -724,6 +730,12 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
       .getByRole("button", { name: COPY.withdrawRequest })
       .click();
     await expect(
+      enrollmentPanel.getByText(COPY.confirmWithdrawRequest)
+    ).toBeVisible();
+    await enrollmentPanel
+      .getByRole("button", { name: COPY.confirmWithdrawRequestAction })
+      .click();
+    await expect(
       enrollmentPanel.getByText(COPY.requestWithdrawnNotice)
     ).toBeVisible();
     await expect(
@@ -841,15 +853,24 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       })
     ).toBeVisible();
 
+    await page.getByRole("link", { name: COPY.workspaceTitle }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
+    );
     await page
-      .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
+      .getByRole("link", {
+        name: new RegExp(`^${COPY.workspaceOtherSettings}`, "u"),
+      })
       .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${programId}&task=settings$`,
+        "u"
+      )
+    );
     await expect(
       page.getByRole("heading", { name: COPY.workspaceTaskSettings })
     ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
-    ).toHaveAttribute("aria-current", "page");
   });
   test("manager Participants queue shows scoped counts and approves a pending request", async ({
     page,
@@ -914,7 +935,9 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       const requestRow = page
         .getByRole("listitem")
         .filter({ hasText: "E2E Member" });
-      await expect(requestRow.getByRole("button", { name: COPY.approve })).toBeVisible();
+      await expect(
+        requestRow.getByRole("button", { name: COPY.approve })
+      ).toBeVisible();
       await requestRow.getByRole("button", { name: COPY.approve }).click();
       await expect(
         page
@@ -953,32 +976,34 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           },
           { username: secondUsername, password: secondPassword }
         );
-        expect(
-          registered.ok,
-          "second member registration must submit"
-        ).toBe(true);
-        const approved = await page.evaluate(async ({ username }) => {
-          const listResponse = await fetch("/api/v1/auth/registrations");
-          const body = (await listResponse.json()) as {
-            data?: {
-              registrations?: { requestId: string; username: string }[];
+        expect(registered.ok, "second member registration must submit").toBe(
+          true
+        );
+        const approved = await page.evaluate(
+          async ({ username }) => {
+            const listResponse = await fetch("/api/v1/auth/registrations");
+            const body = (await listResponse.json()) as {
+              data?: {
+                registrations?: { requestId: string; username: string }[];
+              };
             };
-          };
-          const pending = body.data?.registrations?.find(
-            (row) => row.username === username
-          );
-          if (!pending) {
-            return { ok: false, status: 404 };
-          }
-          const response = await fetch(
-            `/api/v1/auth/registrations/${encodeURIComponent(pending.requestId)}/approve`,
-            {
-              method: "POST",
-              headers: { "Idempotency-Key": `e2e-approve-${Date.now()}` },
+            const pending = body.data?.registrations?.find(
+              (row) => row.username === username
+            );
+            if (!pending) {
+              return { ok: false, status: 404 };
             }
-          );
-          return { ok: response.ok, status: response.status };
-        }, { username: secondUsername });
+            const response = await fetch(
+              `/api/v1/auth/registrations/${encodeURIComponent(pending.requestId)}/approve`,
+              {
+                method: "POST",
+                headers: { "Idempotency-Key": `e2e-approve-${Date.now()}` },
+              }
+            );
+            return { ok: response.ok, status: response.status };
+          },
+          { username: secondUsername }
+        );
         expect(approved.ok, "admin must approve the second member").toBe(true);
 
         await loginAs(secondPage, secondUsername, secondPassword);
@@ -999,7 +1024,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           .click();
         await page
           .getByRole("tab", {
-            name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+            name: new RegExp(
+              `${COPY.workspacePendingRequests} \\(\\d+\\)`,
+              "u"
+            ),
           })
           .click();
         const secondRow = page
@@ -1017,22 +1045,17 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           page.getByText(COPY.workspaceParticipantsPendingEmpty)
         ).toBeVisible();
         await expect(
-          page
-            .getByRole("listitem")
-            .filter({ hasText: "E2E Reject Member" })
+          page.getByRole("listitem").filter({ hasText: "E2E Reject Member" })
         ).toHaveCount(0);
-        const secondEnrollments = await secondPage.evaluate(
-          async (id) => {
-            const response = await fetch(
-              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-snapshot`
-            );
-            const body = (await response.json()) as {
-              data?: { enrollments?: { status: string }[] };
-            };
-            return body.data?.enrollments ?? [];
-          },
-          programId
-        );
+        const secondEnrollments = await secondPage.evaluate(async (id) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-snapshot`
+          );
+          const body = (await response.json()) as {
+            data?: { enrollments?: { status: string }[] };
+          };
+          return body.data?.enrollments ?? [];
+        }, programId);
         expect(
           secondEnrollments.some((row) => row.status === "Active"),
           "rejected request must not create an Active enrollment"
@@ -1264,7 +1287,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         .getByRole("button")
         .filter({ hasText: /^E2E_DEMO_/u });
       await expect
-        .poll(async () => inheritedDemoRows.count())
+        .poll(() => inheritedDemoRows.count())
         .toBeGreaterThanOrEqual(4);
       await expect(
         inheritedDirectory.getByRole("button", {
@@ -1314,7 +1337,6 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("button", { name: COPY.workspaceBack })
     ).toBeVisible();
-
   });
 });
 
@@ -1361,9 +1383,9 @@ test.describe("CFG-01 Program Settings", () => {
       page.getByRole("heading", { name: COPY.settingsSchedule })
     ).toBeVisible();
     await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: COPY.addRule })
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
+      0
+    );
   });
 
   test("renders unavailable copy for Schedule and Attendance when their modules are disabled", async ({
@@ -1374,21 +1396,16 @@ test.describe("CFG-01 Program Settings", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    const [gateProgramId] = await catalogProgramIds(
-      page,
-      "E2E_模組停用課程"
-    );
+    const [gateProgramId] = await catalogProgramIds(page, "E2E_模組停用課程");
     const id = required("module-gate program id", gateProgramId);
 
-    await page.goto(
-      `/programs?mode=management&program=${id}&task=settings`
-    );
+    await page.goto(`/programs?mode=management&program=${id}&task=settings`);
     await expect(
       page.getByText(COPY.settingsScheduleUnavailable)
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: COPY.addRule })
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
+      0
+    );
     await expect(
       page.getByText(COPY.settingsAttendanceUnavailable)
     ).toBeVisible();
@@ -1409,9 +1426,7 @@ test.describe("CFG-01 Program Settings", () => {
     const id = required("program id", programId);
 
     try {
-      await page.goto(
-        `/programs?mode=management&program=${id}&task=settings`
-      );
+      await page.goto(`/programs?mode=management&program=${id}&task=settings`);
       const discoverabilitySelect = page.getByRole("combobox", {
         name: COPY.discoverabilityListed,
       });
@@ -1466,10 +1481,9 @@ test.describe("CFG-01 Program Settings", () => {
         });
         return res.status;
       }, id);
-      expect(
-        status,
-        "safety-net restore of discoverability must succeed"
-      ).toBe(200);
+      expect(status, "safety-net restore of discoverability must succeed").toBe(
+        200
+      );
     }
   });
 });
@@ -1514,18 +1528,14 @@ test.describe("AUTH-01 Program Leader administration", () => {
       { programId: id, memberUserId: DEV_MEMBER.userId }
     );
 
-    await page.goto(
-      `/programs?mode=management&program=${id}&task=settings`
-    );
+    await page.goto(`/programs?mode=management&program=${id}&task=settings`);
     const leadersPanel = page.getByRole("region", {
       name: COPY.programLeaders,
     });
     await expect(leadersPanel).toBeVisible();
     // Wait for the async leader-list load to settle before interacting,
     // so a throttled (phone) profile doesn't race the initial fetch.
-    await expect(
-      leadersPanel.getByText(/E2E Member/).first()
-    ).toBeVisible();
+    await expect(leadersPanel.getByText(/E2E Member/u).first()).toBeVisible();
 
     const combo = leadersPanel.getByRole("combobox", {
       name: COPY.leaderUserId,
@@ -1537,9 +1547,7 @@ test.describe("AUTH-01 Program Leader administration", () => {
       // not touch that grant.
       await combo.click();
       await combo.fill("E2E_staff");
-      await leadersPanel
-        .getByRole("option", { name: /E2E Staff/ })
-        .click();
+      await leadersPanel.getByRole("option", { name: /E2E Staff/u }).click();
       await leadersPanel
         .getByRole("button", { name: COPY.assignLeader })
         .click();
@@ -1550,9 +1558,7 @@ test.describe("AUTH-01 Program Leader administration", () => {
       // Revoke: a real state transition, not a duplicate-grant no-op.
       // The self-denial error above does not reload the list (runAction
       // only reloads on success), so E2E Member is still here.
-      await expect(
-        leadersPanel.getByText(/E2E Member/).first()
-      ).toBeVisible();
+      await expect(leadersPanel.getByText(/E2E Member/u).first()).toBeVisible();
       await leadersPanel
         .getByRole("button", { name: COPY.revokeLeader })
         .click();
@@ -1563,15 +1569,15 @@ test.describe("AUTH-01 Program Leader administration", () => {
         .getByRole("button", { name: COPY.confirmRevoke })
         .click();
       await expect(
-        leadersPanel.getByText(COPY.leaderRevokedNotice, { exact: true }).first()
+        leadersPanel
+          .getByText(COPY.leaderRevokedNotice, { exact: true })
+          .first()
       ).toBeVisible();
 
       // Re-grant: exercise the real grant path and its notice.
       await combo.click();
       await combo.fill("E2E_member");
-      await leadersPanel
-        .getByRole("option", { name: /E2E Member/ })
-        .click();
+      await leadersPanel.getByRole("option", { name: /E2E Member/u }).click();
       await leadersPanel
         .getByRole("button", { name: COPY.assignLeader })
         .click();
@@ -1580,17 +1586,13 @@ test.describe("AUTH-01 Program Leader administration", () => {
           .getByText(COPY.leaderAssignedNotice, { exact: true })
           .first()
       ).toBeVisible();
-      await expect(
-        leadersPanel.getByText(/E2E Member/).first()
-      ).toBeVisible();
+      await expect(leadersPanel.getByText(/E2E Member/u).first()).toBeVisible();
     } finally {
       // Failure-safe restoration: guarantee E2E_member ends the test as
       // leader regardless of where an assertion above failed.
       await page.evaluate(
         async ({ programId, memberUserId }) => {
-          const listRes = await fetch(
-            `/api/v1/programs/${programId}/leaders`
-          );
+          const listRes = await fetch(`/api/v1/programs/${programId}/leaders`);
           const listBody = (await listRes.json()) as {
             data?: { leaders?: { user_id: string }[] };
           };
@@ -1633,22 +1635,22 @@ test.describe("AUTH-01 Department Manager administration", () => {
           ?.department_id ?? null
       );
     });
-    const deptId = required("E2E_DEMO_MINISTRY department id", departmentId ?? undefined);
+    const deptId = required(
+      "E2E_DEMO_MINISTRY department id",
+      departmentId ?? undefined
+    );
 
     try {
       await page.goto("/programs?mode=management");
       await page
-        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
+        .click();
+      await page
+        .getByRole("button", { name: COPY.departmentManagers, exact: true })
         .click();
 
-      // The panel's notice/error live in the OUTER "部門設定: ..." section,
-      // as a sibling of the "部門管理者" sub-region below -- not nested
-      // inside it (unlike the single-purpose LeadersPanel).
-      const deptPanel = page.getByRole("region", {
-        name: /部門設定.*E2E_DEMO_示範事工/,
-      });
-      const managersPanel = deptPanel.getByRole("region", {
-        name: COPY.departmentManagers,
+      const managersPanel = page.getByRole("region", {
+        name: new RegExp(`${COPY.departmentManagers}.*E2E_DEMO_示範事工`, "u"),
       });
       await expect(managersPanel).toBeVisible();
       // Confirmed empty at fixture baseline (no prior grant for this dept).
@@ -1661,19 +1663,17 @@ test.describe("AUTH-01 Department Manager administration", () => {
       });
       await combo.click();
       await combo.fill("E2E_member");
-      await managersPanel
-        .getByRole("option", { name: /E2E Member/ })
-        .click();
+      await managersPanel.getByRole("option", { name: /E2E Member/u }).click();
       await managersPanel
         .getByRole("button", { name: COPY.assignDepartmentManager })
         .click();
       await expect(
-        deptPanel
+        managersPanel
           .getByText(COPY.departmentManagerAssignedNotice, { exact: true })
           .first()
       ).toBeVisible();
       await expect(
-        managersPanel.getByText(/E2E Member/).first()
+        managersPanel.getByText(/E2E Member/u).first()
       ).toBeVisible();
 
       // Scope inheritance: E2E_member should now see the whole department
@@ -1693,11 +1693,11 @@ test.describe("AUTH-01 Department Manager administration", () => {
         "E2E_DEMO_管理安排",
       ]) {
         await expect(
-          page.getByRole("button", { name: new RegExp(programName) })
+          page.getByRole("button", { name: new RegExp(programName, "u") })
         ).toBeVisible();
       }
       await expect(
-        page.getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        page.getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
       ).toBeVisible();
 
       // Revoke, back as Admin.
@@ -1709,16 +1709,16 @@ test.describe("AUTH-01 Department Manager administration", () => {
       );
       await page.goto("/programs?mode=management");
       await page
-        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
+        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
         .click();
-      const deptPanel2 = page.getByRole("region", {
-        name: /部門設定.*E2E_DEMO_示範事工/,
-      });
-      const managersPanel2 = deptPanel2.getByRole("region", {
-        name: COPY.departmentManagers,
+      await page
+        .getByRole("button", { name: COPY.departmentManagers, exact: true })
+        .click();
+      const managersPanel2 = page.getByRole("region", {
+        name: new RegExp(`${COPY.departmentManagers}.*E2E_DEMO_示範事工`, "u"),
       });
       await expect(
-        managersPanel2.getByText(/E2E Member/).first()
+        managersPanel2.getByText(/E2E Member/u).first()
       ).toBeVisible();
       await managersPanel2
         .getByRole("button", { name: COPY.revokeDepartmentManager })
@@ -1730,7 +1730,7 @@ test.describe("AUTH-01 Department Manager administration", () => {
         .getByRole("button", { name: COPY.confirmRevoke })
         .click();
       await expect(
-        deptPanel2
+        managersPanel2
           .getByText(COPY.departmentManagerRevokedNotice, { exact: true })
           .first()
       ).toBeVisible();
@@ -2040,10 +2040,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     return (body.data?.enrollments ?? []) as EvtEnrollment[];
   }
 
-  async function openEventsTask(
-    page: Page,
-    programId: string
-  ): Promise<void> {
+  async function openEventsTask(page: Page, programId: string): Promise<void> {
     await page.goto(
       `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
     );
@@ -2084,13 +2081,12 @@ test.describe("EVT-01 event operational detail and availability", () => {
         "u"
       )
     );
-    const match = page
-      .url()
-      .match(/[?&]event=([A-Za-z0-9-]+)$/u);
-    expect(match?.[1], "create must navigate to the new event detail").toBeTruthy();
-    await expect(
-      page.getByRole("heading", { name })
-    ).toBeVisible();
+    const match = page.url().match(/[?&]event=([A-Za-z0-9-]+)$/u);
+    expect(
+      match?.[1],
+      "create must navigate to the new event detail"
+    ).toBeTruthy();
+    await expect(page.getByRole("heading", { name })).toBeVisible();
     return match?.[1] ?? "";
   }
 
@@ -2119,9 +2115,15 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await expect(
       page.getByText(`${hkWallLabel(startsAt)} — ${hkWallLabel(endsAt)}`)
     ).toBeVisible();
-    await expect(page.getByText(COPY.eventManualSource, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.eventActive, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.eventAvailable, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventManualSource, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventActive, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventAvailable, { exact: true })
+    ).toBeVisible();
     await expect(
       page.getByText(
         `${COPY.eventCheckInWindowOpensAt} ${hkWallLabel(opensAt)}；${COPY.eventCheckInWindowClosesAt} ${hkWallLabel(closesAt)}`
@@ -2140,14 +2142,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await expect(
       page.getByText(COPY.eventSavedNotice, { exact: true }).first()
     ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: renamed })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
 
     await page.reload();
-    await expect(
-      page.getByRole("heading", { name: renamed })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
 
     await page.getByRole("button", { name: COPY.eventDetailBack }).click();
     await expect(page).toHaveURL(
@@ -2187,7 +2185,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
       name: COPY.eventDetailTitle,
     });
 
-    await page.getByRole("button", { name: COPY.eventAvailabilityDeactivate }).click();
+    await page
+      .getByRole("button", { name: COPY.eventAvailabilityDeactivate })
+      .click();
     await expect(
       eventDetail.getByText(COPY.eventAvailabilityNotice, { exact: true })
     ).toBeVisible();
@@ -2266,9 +2266,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
           {}
         )
       ).toBeGreaterThanOrEqual(200);
-      expect(
-        await apiJsonStatus(memberPage, "/api/v1/programs/access")
-      ).toBe(200);
+      expect(await apiJsonStatus(memberPage, "/api/v1/programs/access")).toBe(
+        200
+      );
     } finally {
       await memberContext.close();
     }
@@ -2358,9 +2358,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
           body: JSON.stringify({
             starts_at: new Date(now - 30 * 60_000).toISOString(),
             ends_at: new Date(now + 30 * 60_000).toISOString(),
-            check_in_window_opens_at: new Date(
-              now - 15 * 60_000
-            ).toISOString(),
+            check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
             check_in_window_closes_at: new Date(
               now + 45 * 60_000
             ).toISOString(),
@@ -2370,7 +2368,10 @@ test.describe("EVT-01 event operational detail and availability", () => {
       const body = (await res.json()) as {
         data?: { event?: { event_id?: string } };
       };
-      return { status: res.status, eventId: body.data?.event?.event_id ?? null };
+      return {
+        status: res.status,
+        eventId: body.data?.event?.event_id ?? null,
+      };
     }, programId);
     expect(created.status, "event creation must succeed").toBe(201);
     const id = required("open-window event id", created.eventId ?? undefined);
@@ -2434,10 +2435,9 @@ test.describe("EVT-01 event operational detail and availability", () => {
         },
         { programId, eventId: id }
       );
-      expect(
-        restoreStatus,
-        "restoring the event to Active must succeed"
-      ).toBe(200);
+      expect(restoreStatus, "restoring the event to Active must succeed").toBe(
+        200
+      );
     }
   });
 });
@@ -2615,282 +2615,301 @@ test.describe("NTF-01 management attention", () => {
     let memberLeaderAssigned = false;
     try {
       const memberContext = await browser.newContext();
-    try {
-      const memberPage = await memberContext.newPage();
-      await loginAs(
-        memberPage,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      try {
+        const memberPage = await memberContext.newPage();
+        await loginAs(
+          memberPage,
+          required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+          required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+        );
+        const request = await memberPage.evaluate(
+          async (requestPath) => {
+            const response = await fetch(requestPath, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            const body = (await response.json()) as {
+              data?: { request?: { request_id?: string } };
+            };
+            return {
+              status: response.status,
+              requestId: body.data?.request?.request_id ?? "",
+            };
+          },
+          `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
+        );
+        pendingRequestId = request.requestId;
+        expect([200, 201]).toContain(request.status);
+      } finally {
+        await memberContext.close();
+      }
+      const memberLeaderStatus = await postProgramLeader(
+        page,
+        programId,
+        DEV_MEMBER.userId,
+        "assign"
       );
-      const request = await memberPage.evaluate(
-        async (requestPath) => {
-          const response = await fetch(requestPath, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          });
+      expect(memberLeaderStatus).toBe(200);
+      memberLeaderAssigned = true;
+
+      inactiveEventId = await createAttentionEvent(
+        page,
+        programId,
+        `E2E_NTF256_暫停_${Date.now()}`,
+        5
+      );
+      expect(
+        await patchAttentionEvent(page, programId, inactiveEventId, {
+          availability: "Inactive",
+        })
+      ).toBe(200);
+
+      cancelledEventId = await createAttentionEvent(
+        page,
+        programId,
+        `E2E_NTF256_取消_${Date.now()}`,
+        6
+      );
+      expect(
+        await patchAttentionEvent(page, programId, cancelledEventId, {
+          reason: "NTF-01 測試取消",
+        })
+      ).toBe(200);
+
+      const aggregateBeforeUi = await page.evaluate(async () => {
+        const response = await fetch("/api/v1/programs/notifications?limit=20");
+        const body = (await response.json()) as {
+          data?: { unread_count?: number };
+        };
+        return body.data?.unread_count ?? 0;
+      });
+      await page.goto("/programs?mode=management");
+      const control = page.getByRole("region", {
+        name: COPY.notificationRegion,
+      });
+      const trigger = control.getByRole("button", {
+        name: COPY.notificationBell,
+      });
+      await expect(trigger.locator('[class*="badge"]')).toHaveText(
+        String(aggregateBeforeUi)
+      );
+      const markedReadPromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().endsWith("/api/v1/programs/notifications/read")
+      );
+      await trigger.click();
+      const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
+      await expect(dialog).toBeVisible();
+
+      const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
+      const inactiveHref = `/programs?mode=management&program=${programId}&task=events&event=${inactiveEventId}`;
+      const cancelledHref = `/programs?mode=management&program=${programId}&task=events&event=${cancelledEventId}`;
+      await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+      await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
+      await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+      await expect(dialog.getByRole("link")).toHaveCount(3);
+
+      const markedRead = await markedReadPromise;
+      expect(markedRead.ok()).toBeTruthy();
+      expect(
+        await page.evaluate(async (eventId) => {
+          const response = await fetch(
+            "/api/v1/programs/notifications?limit=20"
+          );
           const body = (await response.json()) as {
-            data?: { request?: { request_id?: string } };
+            data?: {
+              items?: { kind: string; event_id?: string; read: boolean }[];
+            };
           };
-          return {
-            status: response.status,
-            requestId: body.data?.request?.request_id ?? "",
+          return body.data?.items?.find(
+            (item) => item.kind === "event" && item.event_id === eventId
+          )?.read;
+        }, inactiveEventId)
+      ).toBe(true);
+
+      expect(
+        await patchAttentionEvent(page, programId, inactiveEventId, {
+          name: `E2E_NTF256_修訂_${Date.now()}`,
+        })
+      ).toBe(200);
+      expect(
+        await page.evaluate(async (eventId) => {
+          const response = await fetch(
+            "/api/v1/programs/notifications?limit=20"
+          );
+          const body = (await response.json()) as {
+            data?: {
+              items?: { kind: string; event_id?: string; read: boolean }[];
+            };
           };
+          return body.data?.items?.find(
+            (item) => item.kind === "event" && item.event_id === eventId
+          )?.read;
+        }, inactiveEventId)
+      ).toBe(false);
+
+      await page.goto(pendingHref);
+      const participants = page.getByRole("region", {
+        name: COPY.workspaceTaskParticipants,
+      });
+      await expect(
+        participants.getByRole("tab", {
+          name: new RegExp(`${COPY.workspacePendingRequests} \\(1\\)`, "u"),
+        })
+      ).toBeVisible();
+      await expect(
+        participants.getByRole("listitem").filter({ hasText: "E2E Member" })
+      ).toBeVisible();
+
+      await page.goto(inactiveHref);
+      const eventDetail = page.getByRole("region", {
+        name: COPY.eventDetailTitle,
+      });
+      await expect(eventDetail).toBeVisible();
+      await expect(
+        eventDetail.getByRole("button", {
+          name: COPY.eventAvailabilityActivate,
+        })
+      ).toBeVisible();
+
+      await page.goto(
+        `/programs?mode=management&program=${programId}&task=events`
+      );
+      const eventsTask = page.getByRole("region", {
+        name: COPY.workspaceTaskEvents,
+      });
+      await expect(
+        eventsTask.getByLabel(COPY.attentionEventCount.replace("{count}", "1"))
+      ).toHaveText("1");
+      await expect(
+        eventsTask.getByLabel(
+          COPY.attentionCancelledCount.replace("{count}", "1")
+        )
+      ).toHaveText("1");
+
+      await page.goto("/programs?mode=management");
+      await expect(control).toBeVisible();
+      await trigger.click();
+      await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
+
+      const pending = await page.evaluate(
+        async (requestPath) => {
+          const response = await fetch(requestPath);
+          const body = (await response.json()) as {
+            data?: { requests?: { request_id: string; status: string }[] };
+          };
+          return body.data?.requests?.find(
+            (request) => request.status === "Pending"
+          );
         },
         `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`
       );
-      pendingRequestId = request.requestId;
-      expect([200, 201]).toContain(request.status);
-    } finally {
-      await memberContext.close();
-    }
-    const memberLeaderStatus = await postProgramLeader(
-      page,
-      programId,
-      DEV_MEMBER.userId,
-      "assign"
-    );
-    expect(memberLeaderStatus).toBe(200);
-    memberLeaderAssigned = true;
-
-    inactiveEventId = await createAttentionEvent(
-      page,
-      programId,
-      `E2E_NTF256_暫停_${Date.now()}`,
-      5
-    );
-    expect(
-      await patchAttentionEvent(page, programId, inactiveEventId, {
-        availability: "Inactive",
-      })
-    ).toBe(200);
-
-    cancelledEventId = await createAttentionEvent(
-      page,
-      programId,
-      `E2E_NTF256_取消_${Date.now()}`,
-      6
-    );
-    expect(
-      await patchAttentionEvent(page, programId, cancelledEventId, {
-        reason: "NTF-01 測試取消",
-      })
-    ).toBe(200);
-
-    const aggregateBeforeUi = await page.evaluate(async () => {
-      const response = await fetch("/api/v1/programs/notifications?limit=20");
-      const body = (await response.json()) as {
-        data?: { unread_count?: number };
-      };
-      return body.data?.unread_count ?? 0;
-    });
-    await page.goto("/programs?mode=management");
-    const control = page.getByRole("region", { name: COPY.notificationRegion });
-    const trigger = control.getByRole("button", {
-      name: COPY.notificationBell,
-    });
-    await expect(trigger.locator('[class*="badge"]')).toHaveText(
-      String(aggregateBeforeUi)
-    );
-    const markedReadPromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        response.url().endsWith("/api/v1/programs/notifications/read")
-    );
-    await trigger.click();
-    const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
-    await expect(dialog).toBeVisible();
-
-    const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
-    const inactiveHref = `/programs?mode=management&program=${programId}&task=events&event=${inactiveEventId}`;
-    const cancelledHref = `/programs?mode=management&program=${programId}&task=events&event=${cancelledEventId}`;
-    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
-    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
-    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
-    await expect(dialog.getByRole("link")).toHaveCount(3);
-
-    const markedRead = await markedReadPromise;
-    expect(markedRead.ok()).toBeTruthy();
-    expect(
-      await page.evaluate(async (eventId) => {
+      expect(
+        pending?.request_id,
+        "pending source must have an identity"
+      ).toBeTruthy();
+      pendingRequestId = pending?.request_id ?? pendingRequestId;
+      const decisionStatus = await page.evaluate(
+        async ({ programId: id, requestId }) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "Approved" }),
+            }
+          );
+          return response.status;
+        },
+        { programId, requestId: pending?.request_id ?? "" }
+      );
+      expect(decisionStatus).toBe(200);
+      pendingResolved = decisionStatus === 200;
+      await trigger.click();
+      await expect(dialog).toHaveCount(0);
+      const aggregateAfterApproval = await page.evaluate(async () => {
         const response = await fetch("/api/v1/programs/notifications?limit=20");
         const body = (await response.json()) as {
-          data?: {
-            items?: { kind: string; event_id?: string; read: boolean }[];
-          };
+          data?: { unread_count?: number };
         };
-        return body.data?.items?.find(
-          (item) => item.kind === "event" && item.event_id === eventId
-        )?.read;
-      }, inactiveEventId)
-    ).toBe(true);
-
-    expect(
-      await patchAttentionEvent(page, programId, inactiveEventId, {
-        name: `E2E_NTF256_修訂_${Date.now()}`,
-      })
-    ).toBe(200);
-    expect(
-      await page.evaluate(async (eventId) => {
-        const response = await fetch("/api/v1/programs/notifications?limit=20");
-        const body = (await response.json()) as {
-          data?: {
-            items?: { kind: string; event_id?: string; read: boolean }[];
-          };
-        };
-        return body.data?.items?.find(
-          (item) => item.kind === "event" && item.event_id === eventId
-        )?.read;
-      }, inactiveEventId)
-    ).toBe(false);
-
-    await page.goto(pendingHref);
-    const participants = page.getByRole("region", {
-      name: COPY.workspaceTaskParticipants,
-    });
-    await expect(
-      participants.getByRole("tab", {
-        name: new RegExp(`${COPY.workspacePendingRequests} \\(1\\)`, "u"),
-      })
-    ).toBeVisible();
-    await expect(
-      participants.getByRole("listitem").filter({ hasText: "E2E Member" })
-    ).toBeVisible();
-
-    await page.goto(inactiveHref);
-    const eventDetail = page.getByRole("region", {
-      name: COPY.eventDetailTitle,
-    });
-    await expect(eventDetail).toBeVisible();
-    await expect(
-      eventDetail.getByRole("button", { name: COPY.eventAvailabilityActivate })
-    ).toBeVisible();
-
-    await page.goto(
-      `/programs?mode=management&program=${programId}&task=events`
-    );
-    const eventsTask = page.getByRole("region", {
-      name: COPY.workspaceTaskEvents,
-    });
-    await expect(
-      eventsTask.getByLabel(COPY.attentionEventCount.replace("{count}", "1"))
-    ).toHaveText("1");
-    await expect(
-      eventsTask.getByLabel(COPY.attentionCancelledCount.replace("{count}", "1"))
-    ).toHaveText("1");
-
-    await page.goto("/programs?mode=management");
-    await expect(control).toBeVisible();
-    await trigger.click();
-    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
-
-    const pending = await page.evaluate(async (requestPath) => {
-      const response = await fetch(requestPath);
-      const body = (await response.json()) as {
-        data?: { requests?: { request_id: string; status: string }[] };
-      };
-      return body.data?.requests?.find((request) => request.status === "Pending");
-    }, `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`);
-    expect(pending?.request_id, "pending source must have an identity").toBeTruthy();
-    pendingRequestId = pending?.request_id ?? pendingRequestId;
-    const decisionStatus = await page.evaluate(
-      async ({ programId: id, requestId }) => {
-        const response = await fetch(
-          `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "Approved" }),
-          }
+        return body.data?.unread_count ?? 0;
+      });
+      await trigger.click();
+      await expect(dialog.locator(`a[href="${pendingHref}"]`)).toHaveCount(0);
+      await expect(trigger.locator('[class*="badge"]')).toHaveCount(
+        aggregateAfterApproval > 0 ? 1 : 0
+      );
+      if (aggregateAfterApproval > 0) {
+        await expect(trigger.locator('[class*="badge"]')).toHaveText(
+          String(aggregateAfterApproval)
         );
-        return response.status;
-      },
-      { programId, requestId: pending?.request_id ?? "" }
-    );
-    expect(decisionStatus).toBe(200);
-    pendingResolved = decisionStatus === 200;
-    await trigger.click();
-    await expect(dialog).toHaveCount(0);
-    const aggregateAfterApproval = await page.evaluate(async () => {
-      const response = await fetch("/api/v1/programs/notifications?limit=20");
-      const body = (await response.json()) as {
-        data?: { unread_count?: number };
-      };
-      return body.data?.unread_count ?? 0;
-    });
-    await trigger.click();
-    await expect(dialog.locator(`a[href="${pendingHref}"]`)).toHaveCount(0);
-    await expect(trigger.locator('[class*="badge"]')).toHaveCount(
-      aggregateAfterApproval > 0 ? 1 : 0
-    );
-    if (aggregateAfterApproval > 0) {
-      await expect(trigger.locator('[class*="badge"]')).toHaveText(
-        String(aggregateAfterApproval)
-      );
-    }
+      }
 
-    // NTF-01.2: a deep link captured before its source resolved must
-    // re-authorize and re-read current state, never a stale-looking
-    // success -- landing on the (now-approved) pending link must show
-    // the fresh zero count, not the badge's earlier (1).
-    await page.goto(pendingHref);
-    await expect(
-      participants.getByRole("tab", {
-        name: new RegExp(`${COPY.workspacePendingRequests} \\(0\\)`, "u"),
-      })
-    ).toBeVisible();
-
-    await page.goto(inactiveHref);
-    await page.getByRole("button", { name: COPY.eventAvailabilityActivate }).click();
-    await expect(
-      eventDetail.getByText(COPY.eventAvailabilityRestoredNotice, {
-        exact: true,
-      })
-    ).toBeVisible();
-    await page.goto(inactiveHref);
-    const refreshedEventDetail = page.getByRole("region", {
-      name: COPY.eventDetailTitle,
-    });
-    await expect(refreshedEventDetail).toBeVisible();
-    await expect(
-      refreshedEventDetail.getByRole("button", {
-        name: COPY.eventAvailabilityActivate,
-      })
-    ).toHaveCount(0);
-    await expect(
-      refreshedEventDetail.getByRole("button", {
-        name: COPY.eventAvailabilityDeactivate,
-      })
-    ).toBeVisible();
-
-    expect(
-      await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
-    ).toBe(200);
-    memberLeaderAssigned = false;
-    const revokedContext = await browser.newContext();
-    try {
-      const revokedPage = await revokedContext.newPage();
-      await loginAs(
-        revokedPage,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await revokedPage.goto(inactiveHref);
+      // NTF-01.2: a deep link captured before its source resolved must
+      // re-authorize and re-read current state, never a stale-looking
+      // success -- landing on the (now-approved) pending link must show
+      // the fresh zero count, not the badge's earlier (1).
+      await page.goto(pendingHref);
       await expect(
-        revokedPage.getByRole("heading", {
-          name: COPY.noManagementScope,
+        participants.getByRole("tab", {
+          name: new RegExp(`${COPY.workspacePendingRequests} \\(0\\)`, "u"),
         })
       ).toBeVisible();
-      await expect(revokedPage.getByText(programName)).toHaveCount(0);
-    } finally {
-      await revokedContext.close();
-    }
 
+      await page.goto(inactiveHref);
+      await page
+        .getByRole("button", { name: COPY.eventAvailabilityActivate })
+        .click();
+      await expect(
+        eventDetail.getByText(COPY.eventAvailabilityRestoredNotice, {
+          exact: true,
+        })
+      ).toBeVisible();
+      await page.goto(inactiveHref);
+      const refreshedEventDetail = page.getByRole("region", {
+        name: COPY.eventDetailTitle,
+      });
+      await expect(refreshedEventDetail).toBeVisible();
+      await expect(
+        refreshedEventDetail.getByRole("button", {
+          name: COPY.eventAvailabilityActivate,
+        })
+      ).toHaveCount(0);
+      await expect(
+        refreshedEventDetail.getByRole("button", {
+          name: COPY.eventAvailabilityDeactivate,
+        })
+      ).toBeVisible();
 
-    await page.goto("/programs?mode=management");
-    await trigger.click();
-    await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
-    await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
+      expect(
+        await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
+      ).toBe(200);
+      memberLeaderAssigned = false;
+      const revokedContext = await browser.newContext();
+      try {
+        const revokedPage = await revokedContext.newPage();
+        await loginAs(
+          revokedPage,
+          required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+          required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+        );
+        await revokedPage.goto(inactiveHref);
+        await expect(
+          revokedPage.getByRole("heading", {
+            name: COPY.noManagementScope,
+          })
+        ).toBeVisible();
+        await expect(revokedPage.getByText(programName)).toHaveCount(0);
+      } finally {
+        await revokedContext.close();
+      }
+
+      await page.goto("/programs?mode=management");
+      await trigger.click();
+      await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
+      await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     } finally {
       if (memberLeaderAssigned) {
         await postProgramLeader(
@@ -2898,7 +2917,7 @@ test.describe("NTF-01 management attention", () => {
           programId,
           DEV_MEMBER.userId,
           "revoke"
-        ).catch(() => undefined);
+        ).catch(() => {});
       }
       if (pendingRequestId && !pendingResolved) {
         await page
@@ -2925,7 +2944,7 @@ test.describe("NTF-01 management attention", () => {
             },
             { programId, requestId: pendingRequestId }
           )
-          .catch(() => undefined);
+          .catch(() => {});
       }
       if (inactiveEventId) {
         await patchAttentionEvent(page, programId, inactiveEventId, {
@@ -2947,17 +2966,18 @@ test.describe("EVT-02 recurring preview and generation", () => {
   // EVT-02 (#252): reachable Program Workspace preview/generate controls.
   const previewEvents = "預覽聚會";
   const previewChanged = "時間表已變更，請重新預覽。";
-  const previewLead = "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
+  const previewLead =
+    "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
 
-  async function openEventsTask(
+  async function openScheduleTask(
     page: Page,
     programId: string
   ): Promise<void> {
     await page.goto(
-      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=schedule`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
+      page.getByRole("heading", { name: COPY.settingsSchedule, exact: true })
     ).toBeVisible();
   }
 
@@ -2983,10 +3003,13 @@ test.describe("EVT-02 recurring preview and generation", () => {
       },
       `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`
     );
-    return (body.data?.rules ?? []) as { rule_id: string; start_time: string }[];
+    return (body.data?.rules ?? []) as {
+      rule_id: string;
+      start_time: string;
+    }[];
   }
 
-  async function patchRule(
+  function patchRule(
     page: Page,
     programId: string,
     ruleId: string,
@@ -3031,7 +3054,9 @@ test.describe("EVT-02 recurring preview and generation", () => {
         });
         return {
           status: response.status,
-          body: (await response.json()) as { data?: { program?: { program_id?: string } } },
+          body: (await response.json()) as {
+            data?: { program?: { program_id?: string } };
+          },
         };
       },
       {
@@ -3084,7 +3109,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     );
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
 
     const before = await eventCount(page, id);
     await expect(
@@ -3116,7 +3141,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     const id = await createRecurringProgram(page, "E2E_EVT02_產生");
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     expect(before).toBe(0);
     await page.getByRole("button", { name: previewEvents }).click();
@@ -3128,9 +3153,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     await expect(
       page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
     ).toBeVisible();
-    await expect
-      .poll(async () => eventCount(page, id))
-      .toBeGreaterThan(before);
+    await expect.poll(() => eventCount(page, id)).toBeGreaterThan(before);
 
     // Deterministic repeat: the same plan generates nothing new.
     await page.getByRole("button", { name: COPY.generateEvents }).click();
@@ -3150,10 +3173,10 @@ test.describe("EVT-02 recurring preview and generation", () => {
     );
     const id = await createRecurringProgram(page, "E2E_EVT02_過期");
     const rules = await scheduleRules(page, id);
-    const rule = rules[0];
+    const [rule] = rules;
     expect(rule).toBeTruthy();
 
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     await page.getByRole("button", { name: previewEvents }).click();
     await expect(
@@ -3197,9 +3220,9 @@ test.describe("EVT-02 recurring preview and generation", () => {
     await expect(
       page.getByRole("heading", { name: COPY.noManagementScope })
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: previewEvents })
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: previewEvents })).toHaveCount(
+      0
+    );
     await expect(
       page.getByRole("button", { name: COPY.generateEvents })
     ).toHaveCount(0);

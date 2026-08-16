@@ -3,7 +3,7 @@
    ----------------------------------------------------------------------------
    Shared module for the attendance surfaces: AttendancePanel (guest check-in),
    SelfCheckInPanel (/scanner), AssistedScannerPanel (/scanner), and
-   AttendanceOperatorPanel (/events). Civic neutrals with a restrained
+   AttendanceOperatorPanel (Course Cockpit roster task). Civic neutrals with a
    cinnabar accent reserved for primary submission and active selection;
    input borders hairline-strong, focus rings teal, destructive actions
    outlined error red. Phone-first: 44px targets, stacked groups, the guest
@@ -60,6 +60,222 @@
   margin-top: 1rem;
 }
 
+.cameraCard {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  text-align: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.viewfinder {
+  position: relative;
+  width: min(100%, 280px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.viewfinderFrame {
+  position: absolute;
+  inset: 15%;
+  z-index: 1;
+  border: 3px solid var(--ink);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.viewfinderPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+}
+
+.cameraIcon {
+  width: 54px;
+  height: 54px;
+}
+
+.cameraActions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cameraCard .button,
+.cameraCard .buttonSecondary {
+  width: 100%;
+}
+
+.methodTiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.methodTile,
+.methodNote {
+  min-height: 6rem;
+  padding: 0.875rem;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+}
+
+.methodTile {
+  cursor: pointer;
+}
+
+.methodTile:hover {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+.methodTile:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.methodTile strong,
+.methodNote strong {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.methodTile span,
+.methodNote span {
+  display: block;
+  margin-top: 0.3125rem;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.cameraFallback {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.cameraFallback summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.35rem 0;
+  color: var(--accent-deep);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cameraFallback summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.cameraFallbackContent {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.cameraUnavailable {
+  padding: 1rem;
+  text-align: left;
+  color: var(--error);
+  background: var(--error-surface);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+}
+
+.cameraUnavailable strong {
+  display: block;
+  font-weight: 800;
+}
+
+.cameraUnavailable p {
+  margin: 0.3125rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Terminal outcomes leave the form entirely so success and duplicate states
+   read as deliberate destinations instead of another inline notice. */
+.resultPage {
+  display: grid;
+  align-items: start;
+  min-height: min(60vh, 34rem);
+  padding-top: clamp(2rem, 10vh, 5rem);
+}
+
+.resultCard {
+  display: grid;
+  gap: 0;
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 1.875rem 1.375rem;
+  text-align: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.resultIcon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+}
+
+.resultIconSuccess {
+  color: var(--success);
+  background: var(--success-surface);
+}
+
+.resultIconInfo {
+  color: var(--ink-muted);
+  background: var(--surface);
+}
+
+.resultTitle {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.resultCopy {
+  margin: 0.625rem 0 0;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.resultActions {
+  display: grid;
+  gap: 0.625rem;
+  margin-top: 1.125rem;
+}
+
+.resultActions .button,
+.resultActions .buttonSecondary {
+  width: 100%;
+}
+
+@media (min-width: 560px) {
+  .cameraCard {
+    padding: 1.375rem;
+  }
+}
 .form,
 .fields {
   display: grid;
@@ -367,6 +583,18 @@
   background: #111;
 }
 
+.viewfinder .video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  border: 0;
+  border-radius: 0;
+}
+
 .back {
   justify-self: start;
   color: var(--accent-deep);
@@ -435,7 +663,6 @@
   font-size: 0.875rem;
   line-height: 1.5;
 }
-
 
 .printSheet {
   display: none;

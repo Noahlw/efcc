@@ -5,6 +5,7 @@ import type { FormEvent, ReactNode } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
+import { Icon } from "@/lib/icons";
 import { hkWallInputToIso, hkWallInputValue } from "@/lib/programs/event-detail";
 
 import {
@@ -20,6 +21,7 @@ import type {
   HomeEditorResponse,
   HomeEvent,
   HomeHistoryEntry,
+  HomeHistorySnapshot,
   HomePublishInput,
   HomePublishMode,
   HomeTemplateType,
@@ -29,7 +31,10 @@ import styles from "./home-content.module.css";
 interface HomeSurfaceProps {
   title?: string;
   fetcher?: typeof getHome;
+  mode?: HomeDisplayMode;
 }
+type HomeDisplayMode = "teaser" | "detail";
+type PreviewViewport = "phone" | "desktop";
 
 type DraftFields = {
   template: HomeTemplateType;
@@ -207,6 +212,35 @@ function formatEventTime(value: string | null | undefined): string {
   } catch {
     return "";
   }
+}
+
+function formatNoticeDate(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  try {
+    return new Intl.DateTimeFormat("zh-Hant", {
+      timeZone: "Asia/Hong_Kong",
+      month: "numeric",
+      day: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "";
+  }
+}
+
+function announcementExcerpt(content: HomeContent): string {
+  const summary = nullableString(content.summary).trim();
+  if (summary) {
+    return summary;
+  }
+  const text = contentBody(content)
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
+    .replace(/[*#>`_-]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return text.length > 140 ? `${text.slice(0, 137)}…` : text;
 }
 
 function eventStart(event: HomeEvent): string {
@@ -444,10 +478,16 @@ function ExternalLinkMark() {
   return <span className={styles.externalMark}>{COPY.home.externalLink}</span>;
 }
 
-function HomeProjection({ content }: { content: HomeContent }) {
+function HomeProjection({
+  content,
+  mode = "detail",
+}: {
+  content: HomeContent;
+  mode?: HomeDisplayMode;
+}) {
   const template = templateFrom(content);
   if (template === "B") {
-    return <TemplateB content={content} />;
+    return <TemplateB content={content} mode={mode} />;
   }
   return <TemplateA content={content} />;
 }
@@ -506,15 +546,51 @@ function TemplateA({ content }: { content: HomeContent }) {
   );
 }
 
-function TemplateB({ content }: { content: HomeContent }) {
+function TemplateB({
+  content,
+  mode = "detail",
+}: {
+  content: HomeContent;
+  mode?: HomeDisplayMode;
+}) {
+  const detail = mode === "detail";
   const image = safeImage(nullableString(content.image_url ?? content.imageUrl));
   const cta = safeLink(nullableString(content.cta_url ?? content.ctaUrl));
   const ctaLabel = nullableString(content.cta_label ?? content.ctaLabel);
   const imageAlt =
     nullableString(content.image_alt ?? content.imageAlt) || COPY.home.imageAlt;
+  const excerpt = announcementExcerpt(content) || COPY.home.bodyEmpty;
+  const title = nullableString(content.title) || COPY.home.emptyTitle;
+  const dateValue = content.published_at ?? content.updated_at;
+  const dateLabel = formatNoticeDate(dateValue);
+  const externalCta = cta ? isExternalLink(cta) : false;
+
+  if (!detail) {
+    return (
+      <section className={styles.announcementTeaserSection}>
+        <p className={styles.eyebrow}>{COPY.home.noticeSectionTitle}</p>
+        <a className={styles.announcementRow} href="/notices">
+          <span className={styles.announcementRowText}>
+            <span className={styles.announcementRowTitle}>{title}</span>
+            <span className={styles.announcementRowMeta}>
+              {dateLabel ? `${excerpt} · ${dateLabel}` : excerpt}
+            </span>
+          </span>
+          <span className="sr-only"> — {COPY.home.viewDetails}</span>
+          <Icon name="chevron-right" size={20} />
+        </a>
+      </section>
+    );
+  }
+
   return (
     <article className={styles.announcement}>
-      <p className={styles.eyebrow}>{COPY.home.templateBLabel}</p>
+      <p className={styles.eyebrow}>{COPY.home.noticeSectionTitle}</p>
+      {dateLabel ? (
+        <time className={styles.announcementDate} dateTime={dateValue ?? undefined}>
+          {dateLabel}
+        </time>
+      ) : null}
       {image ? (
         <img
           className={styles.announcementImage}
@@ -523,19 +599,19 @@ function TemplateB({ content }: { content: HomeContent }) {
           loading="lazy"
         />
       ) : null}
-      <h2>{nullableString(content.title) || COPY.home.emptyTitle}</h2>
+      <h2>{title}</h2>
       {content.summary ? <p className={styles.summary}>{content.summary}</p> : null}
       <div className={styles.body}>{renderSanitizedBody(contentBody(content))}</div>
       {cta && ctaLabel ? (
         <a
           className={styles.primaryAction}
           href={cta}
-          {...(isExternalLink(cta)
+          {...(externalCta
             ? { target: "_blank", rel: "noopener noreferrer" }
             : {})}
         >
           {ctaLabel}
-          {isExternalLink(cta) ? <ExternalLinkMark /> : null}
+          {externalCta ? <ExternalLinkMark /> : null}
         </a>
       ) : null}
     </article>
@@ -545,7 +621,9 @@ function TemplateB({ content }: { content: HomeContent }) {
 export function HomeSurface({
   title = COPY.sections.home,
   fetcher = getHome,
+  mode = "teaser",
 }: HomeSurfaceProps) {
+  const detail = mode === "detail";
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "ready"; content: HomeContent }
@@ -575,22 +653,33 @@ export function HomeSurface({
   return (
     <section className={styles.homeSection} aria-labelledby="home-content-title">
       <header className={styles.homeHeader}>
-        <p className={styles.eyebrow}>{COPY.home.kicker}</p>
+        {detail ? (
+          <a className={styles.noticeBack} href="/">
+            ← {COPY.home.noticeBack}
+          </a>
+        ) : null}
+        <p className={styles.eyebrow}>
+          {detail ? COPY.home.noticeSectionTitle : COPY.home.kicker}
+        </p>
         <h1 id="home-content-title">{title}</h1>
       </header>
       {state.kind === "loading" ? (
         <div className={styles.state} role="status" aria-live="polite">
-          {COPY.home.loading}
+          {detail ? COPY.home.noticeDetailLoading : COPY.home.loading}
         </div>
       ) : state.kind === "error" ? (
         <div className={styles.stateError} role="alert">
           <p>{state.message}</p>
-          <button type="button" className={styles.secondaryAction} onClick={() => setAttempt((value) => value + 1)}>
-            {COPY.home.retry}
+          <button
+            type="button"
+            className={styles.secondaryAction}
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            {detail ? COPY.home.noticeDetailRetry : COPY.home.retry}
           </button>
         </div>
       ) : (
-        <HomeProjection content={state.content} />
+        <HomeProjection content={state.content} mode={mode} />
       )}
     </section>
   );
@@ -646,6 +735,68 @@ function editorRows(response: HomeEditorResponse) {
     B: responseRow(response, "B"),
   };
 }
+function historyBodyExcerpt(value: string | null): string {
+  const text = (value ?? "")
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
+    .replace(/[*#>`_-]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return text.length > 180 ? `${text.slice(0, 177)}…` : text;
+}
+
+function historySnapshotFields(
+  snapshot: HomeHistorySnapshot
+): Array<[string, string]> {
+  const fields: Array<[string, string | null]> =
+    snapshot.template_type === "A"
+      ? [[COPY.home.featuredEventId, snapshot.featured_event_id]]
+      : [
+          [COPY.home.titleLabel, snapshot.title],
+          [COPY.home.summaryLabel, snapshot.summary],
+          [COPY.home.bodyLabel, historyBodyExcerpt(snapshot.body_markdown)],
+          [COPY.home.ctaLabel, snapshot.cta_label],
+        ];
+  return fields.flatMap(
+    ([label, value]): Array<[string, string]> => {
+      const normalized = value?.trim();
+      return normalized ? [[label, normalized]] : [];
+    }
+  );
+}
+
+function HistorySnapshotPanel({
+  label,
+  snapshot,
+}: {
+  label: string;
+  snapshot: HomeHistorySnapshot | null | undefined;
+}) {
+  const fields = snapshot ? historySnapshotFields(snapshot) : [];
+  return (
+    <section className={styles.historyDiffColumn}>
+      <h3>
+        {label}
+        {snapshot ? ` · ${COPY.home.historyVersion} ${snapshot.version}` : ""}
+      </h3>
+      {!snapshot ? (
+        <p className={styles.historyDiffEmpty}>{COPY.home.historyNoPrevious}</p>
+      ) : fields.length === 0 ? (
+        <p className={styles.historyDiffEmpty}>{COPY.home.historyNoContent}</p>
+      ) : (
+        <dl className={styles.historyDiffFields}>
+          {fields.map(([fieldLabel, value]) => (
+            <div key={fieldLabel}>
+              <dt>{fieldLabel}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 
 export function HomeContentEditor() {
   const [state, setState] = useState<EditorState>({ kind: "loading" });
@@ -663,6 +814,8 @@ export function HomeContentEditor() {
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [history, setHistory] = useState<HistoryState>({ kind: "loading" });
+  const [previewViewport, setPreviewViewport] =
+    useState<PreviewViewport>("phone");
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -823,7 +976,11 @@ export function HomeContentEditor() {
           </button>
         </div>
       ) : null}
-      <div className={styles.editorGrid}>
+      <div
+        className={`${styles.editorGrid} ${
+          previewViewport === "desktop" ? styles.editorGridWide : ""
+        }`}
+      >
         <form className={styles.editorForm} onSubmit={publish}>
           <fieldset className={styles.templateChooser}>
             <legend>{COPY.home.templateChoice}</legend>
@@ -943,7 +1100,38 @@ export function HomeContentEditor() {
         <aside className={styles.previewPanel} aria-label={COPY.home.previewTitle}>
           <h2>{COPY.home.previewTitle}</h2>
           <p className={styles.previewHint}>{COPY.home.previewHint}</p>
-          <div className={styles.phoneFrame}>
+          <div
+            className={styles.previewControls}
+            role="group"
+            aria-label={COPY.home.previewViewportLabel}
+          >
+            <span className={styles.previewControlsLabel}>
+              {COPY.home.previewViewportLabel}
+            </span>
+            <div className={styles.previewToggle}>
+              <button
+                type="button"
+                className={styles.previewToggleButton}
+                aria-pressed={previewViewport === "phone"}
+                onClick={() => setPreviewViewport("phone")}
+              >
+                {COPY.home.previewMobile}
+              </button>
+              <button
+                type="button"
+                className={styles.previewToggleButton}
+                aria-pressed={previewViewport === "desktop"}
+                onClick={() => setPreviewViewport("desktop")}
+              >
+                {COPY.home.previewDesktop}
+              </button>
+            </div>
+          </div>
+          <div
+            className={`${styles.phoneFrame} ${
+              previewViewport === "desktop" ? styles.phoneFrameDesktop : ""
+            }`}
+          >
             <div className={styles.phoneViewport}>
               <HomeProjection content={previewContent} />
             </div>
@@ -965,22 +1153,42 @@ export function HomeContentEditor() {
                 key={`${entry.content_id ?? "home"}-${entry.version ?? 0}`}
                 className={styles.historyItem}
               >
-                <span className={styles.historyTemplate}>
-                  {entry.template_type === "B"
-                    ? COPY.home.templateBLabel
-                    : COPY.home.templateALabel}
-                </span>
-                <span>
-                  {COPY.home.historyVersion} {entry.version ?? ""}
-                </span>
-                {entry.published_by_name ? (
-                  <span>
-                    {COPY.home.historyBy} {entry.published_by_name}
-                  </span>
-                ) : null}
-                <time dateTime={entry.published_at ?? undefined}>
-                  {formatEventTime(entry.published_at)}
-                </time>
+                <details className={styles.historyDetails}>
+                  <summary className={styles.historySummary}>
+                    <span className={styles.historyTemplate}>
+                      {entry.template_type === "B"
+                        ? COPY.home.templateBLabel
+                        : COPY.home.templateALabel}
+                    </span>
+                    <span>
+                      {COPY.home.historyVersion} {entry.version ?? ""}
+                    </span>
+                    {entry.published_by_name ? (
+                      <span>
+                        {COPY.home.historyBy} {entry.published_by_name}
+                      </span>
+                    ) : null}
+                    <time dateTime={entry.published_at ?? undefined}>
+                      {formatEventTime(entry.published_at)}
+                    </time>
+                    <span className={styles.historyDisclosure}>
+                      {COPY.home.historyViewDiff}
+                    </span>
+                  </summary>
+                  <div
+                    className={styles.historyDiff}
+                    aria-label={COPY.home.historyViewDiff}
+                  >
+                    <HistorySnapshotPanel
+                      label={COPY.home.historyBefore}
+                      snapshot={entry.before}
+                    />
+                    <HistorySnapshotPanel
+                      label={COPY.home.historyAfter}
+                      snapshot={entry.after}
+                    />
+                  </div>
+                </details>
               </li>
             ))}
           </ul>

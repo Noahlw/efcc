@@ -38,7 +38,8 @@ export interface AttendanceFlow {
  * or assisted controls by accident.
  */
 export function useAttendanceFlow(
-  inputRef: RefObject<HTMLInputElement | null>
+  inputRef: RefObject<HTMLInputElement | null>,
+  requestedEventId: string | null = null
 ): AttendanceFlow {
   const [inputValue, setInputValue] = useState("");
   const [fromQr, setFromQr] = useState(false);
@@ -82,12 +83,18 @@ export function useAttendanceFlow(
         ? await resolveAttendance({ program_token: entry.value })
         : await resolveAttendance({ entry: entry.value });
       setEvents(result.events);
-      setSelected(result.events.length === 1 ? result.events[0] : null);
+      const nextSelected = requestedEventId
+        ? (result.events.find((event) => event.event_id === requestedEventId) ??
+          null)
+        : result.events.length === 1
+          ? result.events[0]
+          : null;
+      setSelected(nextSelected);
       const message =
         result.events.length === 0
           ? COPY.attendance.noEvents
-          : result.events.length === 1
-            ? attendanceEventLabel(result.events[0])
+          : nextSelected
+            ? attendanceEventLabel(nextSelected)
             : COPY.attendance.chooseEvent;
       showStatus(message);
       announce(message);

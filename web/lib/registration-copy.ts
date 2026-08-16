@@ -6,15 +6,27 @@
 
 // Error-code → user message mapping, mirroring `errorCopyFor`'s vocabulary.
 function registrationErrorFor(code: string, detail?: string): string {
-  if (code === "NETWORK_ERROR") return QUEUE_COPY.networkError;
-  if (code === "AUTH_REQUIRED") return QUEUE_COPY.unauthorized;
-  if (code === "FORBIDDEN") return QUEUE_COPY.forbidden;
-  if (code === "VALIDATION") return detail ?? QUEUE_COPY.validation;
-  if (code === "CONFLICT") return QUEUE_COPY.conflict;
+  if (code === "NETWORK_ERROR") {
+    return QUEUE_COPY.networkError;
+  }
+  if (code === "AUTH_REQUIRED") {
+    return QUEUE_COPY.unauthorized;
+  }
+  if (code === "FORBIDDEN") {
+    return QUEUE_COPY.forbidden;
+  }
+  if (code === "VALIDATION") {
+    return detail ?? QUEUE_COPY.validation;
+  }
+  if (code === "CONFLICT") {
+    return QUEUE_COPY.conflict;
+  }
   if (code === "NOT_FOUND" || code.endsWith("_NOT_FOUND")) {
     return QUEUE_COPY.notFound;
   }
-  if (code === "UNAVAILABLE") return QUEUE_COPY.unavailable;
+  if (code === "UNAVAILABLE") {
+    return QUEUE_COPY.unavailable;
+  }
   return QUEUE_COPY.unknownError;
 }
 

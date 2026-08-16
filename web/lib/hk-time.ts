@@ -1,7 +1,8 @@
-// HK wall-clock formatting shared by the attendance panels (/scanner,
-// /events) and the check-in sheet labels. Matches the programs events
-// panel's pinned Asia/Hong_Kong rendering (no seconds, hour12 off) so one
-// event never formats two ways depending on which surface shows it.
+// HK wall-clock formatting shared by the attendance panels (/scanner and the
+// Course Cockpit roster task) and the check-in sheet labels. Matches the
+// programs events panel's pinned Asia/Hong_Kong rendering (no seconds,
+// hour12 off) so one event never formats two ways depending on which surface
+// shows it.
 
 export const HK_TIME_ZONE = "Asia/Hong_Kong";
 

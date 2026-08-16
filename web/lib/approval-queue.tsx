@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { COPY } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import {
   decideRegistration,
   fetchPendingRegistrations,
-  type Decision,
-  type PendingRegistration,
   RegistrationApiError,
 } from "@/lib/registration-client";
+import type { Decision, PendingRegistration } from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
-import { announce } from "@/lib/live-region";
-import { COPY } from "@/lib/copy";
 
 import styles from "./approval-queue.module.css";
 
@@ -51,20 +50,24 @@ export function ApprovalQueue() {
     setState({ kind: "loading" });
     try {
       const registrations = await fetchPendingRegistrations();
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        return;
+      }
       setState({ kind: "ready", registrations });
-    } catch (err) {
-      if (!mounted.current) return;
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
       if (
-        err instanceof RegistrationApiError &&
-        (err.status === 401 || err.status === 403)
+        error instanceof RegistrationApiError &&
+        (error.status === 401 || error.status === 403)
       ) {
         setState({ kind: "forbidden" });
         return;
       }
       const message =
-        err instanceof RegistrationApiError
-          ? registrationErrorCopy(err.code, err.message)
+        error instanceof RegistrationApiError
+          ? registrationErrorCopy(error.code, error.message)
           : QUEUE_COPY.networkError;
       setState({ kind: "error", message });
     }
@@ -79,8 +82,8 @@ export function ApprovalQueue() {
 
   const selectedRegistration =
     state.kind === "ready"
-      ? state.registrations.find((item) => item.requestId === selectedId) ??
-        null
+      ? (state.registrations.find((item) => item.requestId === selectedId) ??
+        null)
       : null;
 
   const openDetails = (item: PendingRegistration) => {
@@ -102,7 +105,9 @@ export function ApprovalQueue() {
     decision: Decision,
     rawNote = rejectionNote
   ) => {
-    if (busyId) return;
+    if (busyId) {
+      return;
+    }
     const note = rawNote.trim();
     if (decision === "reject" && !note) {
       setSelectedId(item.requestId);
@@ -118,30 +123,36 @@ export function ApprovalQueue() {
         decision,
         decision === "reject" ? note : undefined
       );
-      if (!mounted.current) return;
+      if (!mounted.current) {
+        return;
+      }
       announce(QUEUE_COPY.done);
       setNotice(QUEUE_COPY.done);
       setNoticeKind("success");
       setSelectedId(null);
       setRejectionNote("");
       await load();
-    } catch (err) {
-      if (!mounted.current) return;
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
       if (
-        err instanceof RegistrationApiError &&
-        (err.status === 401 || err.status === 403)
+        error instanceof RegistrationApiError &&
+        (error.status === 401 || error.status === 403)
       ) {
         setState({ kind: "forbidden" });
         return;
       }
       const message =
-        err instanceof RegistrationApiError
-          ? registrationErrorCopy(err.code, err.message)
+        error instanceof RegistrationApiError
+          ? registrationErrorCopy(error.code, error.message)
           : QUEUE_COPY.networkError;
       setNotice(message);
       setNoticeKind("error");
     } finally {
-      if (mounted.current) setBusyId(null);
+      if (mounted.current) {
+        setBusyId(null);
+      }
     }
   };
 
@@ -182,9 +193,7 @@ export function ApprovalQueue() {
         <p
           role="status"
           className={`${styles.notice} ${
-            noticeKind === "success"
-              ? styles.noticeSuccess
-              : styles.noticeError
+            noticeKind === "success" ? styles.noticeSuccess : styles.noticeError
           }`}
         >
           {notice}
@@ -310,7 +319,9 @@ export function ApprovalQueue() {
             </div>
             <div>
               <dt>{QUEUE_COPY.accountStatus}</dt>
-              <dd>{selectedRegistration.accountStatus || QUEUE_COPY.pending}</dd>
+              <dd>
+                {selectedRegistration.accountStatus || QUEUE_COPY.pending}
+              </dd>
             </div>
           </dl>
           <form
@@ -332,7 +343,9 @@ export function ApprovalQueue() {
               value={rejectionNote}
               onChange={(event) => {
                 setRejectionNote(event.target.value);
-                if (validationError) setValidationError(null);
+                if (validationError) {
+                  setValidationError(null);
+                }
               }}
               placeholder={QUEUE_COPY.rejectionNotePlaceholder}
               aria-invalid={validationError ? "true" : undefined}

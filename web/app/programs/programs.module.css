@@ -428,6 +428,7 @@
 .workspaceTaskLink:focus-visible,
 .workspaceHeroCta:focus-visible,
 .workspaceOperationTile:focus-visible,
+.workspaceOtherRow:focus-visible,
 .memberOption:focus-visible,
 .taskButton:focus-visible,
 .actionButton:focus-visible,
@@ -664,6 +665,44 @@
   border: 1px solid var(--error-border);
   border-radius: var(--radius-sm);
   background: var(--error-surface);
+}
+
+.enrollmentStatus {
+  min-height: 1.5rem;
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.enrollmentStatus[data-tone] {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+.enrollmentStatus[data-tone="success"] {
+  color: var(--success);
+  background: var(--success-surface);
+  border-color: var(--success-border);
+}
+
+.enrollmentStatus[data-tone="pending"] {
+  color: var(--pending);
+  background: var(--pending-surface);
+  border-color: var(--pending-border);
+}
+
+.enrollmentStatus[data-tone="error"] {
+  color: var(--error);
+  background: var(--error-surface);
+  border-color: var(--error-border);
+}
+
+.enrollmentStatus[data-tone="info"] {
+  color: var(--ink-muted);
+  background: var(--surface);
+  border-color: var(--line);
 }
 
 .ruleField {
@@ -1503,11 +1542,132 @@
   color: var(--ink-muted);
   font-weight: 700;
 }
+.programDetailEventButton {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.programDetailEventButton:hover {
+  color: var(--accent);
+}
+
+.programDetailEventButton:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
 
 .programDetailActions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+.participantEventDetail {
+  display: grid;
+  gap: 1.25rem;
+  padding-bottom: 6rem;
+}
+
+.participantEventStatus {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  padding: 0.25rem 0.5625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--ink-muted);
+  background: var(--surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.participantEventStatusOpen {
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-surface);
+}
+
+.participantEventStatusUpcoming {
+  border-color: var(--pending-border);
+  color: var(--pending);
+  background: var(--pending-surface);
+}
+
+.participantEventStatusClosed,
+.participantEventStatusUnavailable {
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
+  background: var(--surface);
+}
+
+.participantEventCard {
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.participantEventFacts {
+  display: grid;
+  gap: 0.875rem;
+  margin: 0;
+}
+
+.participantEventFacts > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.participantEventFacts dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.participantEventFacts dd {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.participantEventInstructions {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.participantEventInstructions p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.participantEventSticky {
+  position: sticky;
+  bottom: calc(78px + 0.625rem + env(safe-area-inset-bottom));
+  z-index: 2;
+  padding: 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  box-shadow: 0 0.625rem 1.875rem rgb(23 26 29 / 9%);
+}
+
+.participantEventSticky .button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .managementWorkspace {
@@ -1662,6 +1822,83 @@
   color: var(--pending);
   font-size: 0.8125rem;
   font-weight: 800;
+}
+
+.workspaceOtherHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.workspaceOtherKicker {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.workspaceOtherList {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.workspaceOtherRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 58px;
+  padding: 0.8125rem 1rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.workspaceOtherRow + .workspaceOtherRow {
+  border-top: 1px solid var(--line);
+}
+
+.workspaceOtherRow:hover {
+  background: var(--surface-raised);
+}
+
+.workspaceOtherRowCopy {
+  min-width: 0;
+}
+
+.workspaceOtherRowTitle,
+.workspaceOtherRowLead {
+  display: block;
+}
+
+.workspaceOtherRowTitle {
+  font-weight: 700;
+}
+
+.workspaceOtherRowLead {
+  margin-top: 0.1875rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.workspaceOtherRowIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  color: var(--ink-muted);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .workspaceHeading {

@@ -88,18 +88,24 @@ const COPY = {
   phone: "電話",
   registrationPhone: "電話（選填）",
   status: "狀態",
+  homeSection: "首頁",
   profileSection: "個人檔案",
   programsSection: "課程與活動",
   eventsSection: "聚會管理",
   scannerSection: "掃描簽到",
+  managementSection: "管理",
+  noticesSection: "通知",
   careSection: "關懷儀表板",
   permissionsSection: "權限管理",
   approvalTitle: "註冊審批",
-  approvalCount: /\d+ 筆待審核/,
+  approvalCount: /\d+ 筆待審核/u,
   approvalEmpty: "目前沒有待審批的申請。",
   approve: "批准",
   reject: "拒絕",
+  rejectionNoteLabel: "拒絕原因",
+  confirmReject: "確認拒絕",
   forbidden: "您沒有權限執行此操作。",
+  managementForbidden: "目前沒有可用的管理範圍。",
   registerDone: "申請已提交",
   passwordSubmit: "更新密碼",
   accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
@@ -192,10 +198,10 @@ test.describe("UI-04 Next frontend trace", () => {
     const qrBox = await qr.boundingBox();
     expect(qrBox?.width).toBe(220);
     expect(qrBox?.height).toBe(220);
+    await page.getByText(COPY.accountSettingsTitle).click();
     await expect(page.getByText(COPY.phone, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.status, { exact: true })).toBeVisible();
   });
-
   test("staff login renders the shell and Profile identity", async ({
     page,
   }) => {
@@ -208,10 +214,11 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
     await expect(page.getByText("Staff", { exact: true })).toBeVisible();
     for (const section of [
-      COPY.profileSection,
+      COPY.homeSection,
       COPY.programsSection,
-      COPY.eventsSection,
       COPY.scannerSection,
+      COPY.managementSection,
+      COPY.profileSection,
     ]) {
       await expect(page.getByRole("link", { name: section })).toBeVisible();
     }
@@ -239,28 +246,34 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    for (const section of [COPY.eventsSection, COPY.scannerSection]) {
+    for (const section of [
+      COPY.homeSection,
+      COPY.programsSection,
+      COPY.scannerSection,
+      COPY.profileSection,
+    ]) {
       await expect(page.getByRole("link", { name: section })).toBeVisible();
     }
-    for (const section of [COPY.careSection, COPY.permissionsSection]) {
-      await expect(page.getByRole("link", { name: section })).toHaveCount(0);
-    }
+    await expect(
+      page.getByRole("link", { name: COPY.managementSection })
+    ).toHaveCount(0);
   });
-
-  test("member direct links to restricted sections render the shared forbidden state", async ({
+  test("member direct links to restricted sections render the shared forbidden state or redirect", async ({
     page,
   }) => {
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CRED", MEMBER_CRED)
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
-    for (const path of ["/events", "/care", "/permissions", "/registrations"]) {
+    for (const path of ["/care", "/permissions"]) {
       await page.goto(appPath(path));
-      await expect(
-        page.getByRole("alert").filter({ hasText: COPY.forbidden })
-      ).toContainText(COPY.forbidden);
+      await expect(page).toHaveURL(/\/home$/u);
     }
+    await page.goto(appPath("/management"));
+    await expect(
+      page.getByRole("heading", { name: COPY.managementForbidden })
+    ).toBeVisible();
   });
 
   test("registration form renders on the public /register surface", async ({
@@ -318,11 +331,10 @@ test.describe("UI-04 Next frontend trace", () => {
       name: new RegExp(`^${COPY.approve}(?: Member)?$`, "u"),
     });
     const rejectButtons = page.getByRole("button", { name: COPY.reject });
-    if ((await approveButtons.count()) > 0) {
-      await expect(rejectButtons).toHaveCount(await approveButtons.count());
-    } else {
-      await expect(page.getByText(COPY.approvalEmpty)).toBeVisible();
-    }
+    const approveCount = await approveButtons.count();
+    await (approveCount > 0
+      ? expect(rejectButtons).toHaveCount(approveCount)
+      : expect(page.getByText(COPY.approvalEmpty)).toBeVisible());
   });
 
   test("approval queue is forbidden for Member (role-gated)", async ({
@@ -409,6 +421,8 @@ test.describe("UI-04 Next frontend trace", () => {
       .filter({ hasText: username })
       .getByRole("button", { name: COPY.reject })
       .click();
+    await page.getByLabel(COPY.rejectionNoteLabel).fill("不符合資格");
+    await page.getByRole("button", { name: COPY.confirmReject }).click();
     await expect(page.locator("tr").filter({ hasText: username })).toHaveCount(
       0
     );

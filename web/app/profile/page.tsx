@@ -40,16 +40,19 @@ function ProfileContent() {
         </div>
       </div>
 
-      <div className={styles.infoGrid}>
-        <dl className={styles.infoCell}>
-          <dt>{COPY.profile.phone}</dt>
-          <dd>{p.phone}</dd>
-        </dl>
-        <dl className={styles.infoCell}>
-          <dt>{COPY.profile.status}</dt>
-          <dd>{p.status}</dd>
-        </dl>
-      </div>
+      <details className={styles.infoDisclosure}>
+        <summary>{COPY.profile.accountDetails}</summary>
+        <div className={styles.infoGrid}>
+          <dl className={styles.infoCell}>
+            <dt>{COPY.profile.phone}</dt>
+            <dd>{p.phone}</dd>
+          </dl>
+          <dl className={styles.infoCell}>
+            <dt>{COPY.profile.status}</dt>
+            <dd>{p.status}</dd>
+          </dl>
+        </div>
+      </details>
 
       <div className={styles.qrCenter}>
         {hasQr ? (

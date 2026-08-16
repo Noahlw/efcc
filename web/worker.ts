@@ -1,3 +1,10 @@
+import type {
+  ExecutionContext,
+  ExportedHandler,
+  Fetcher,
+  ScheduledController,
+} from "@cloudflare/workers-types";
+
 /**
  * EFCC Cloudflare Worker (ADR-0017 / ADR-0018 / ADR-0020 / ADR-0021).
  *
@@ -44,12 +51,6 @@ import {
   handlePublishHome,
   runHomeContentExpiry,
 } from "./lib/home-content";
-import type {
-  ExecutionContext,
-  ExportedHandler,
-  Fetcher,
-  ScheduledController,
-} from "@cloudflare/workers-types";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -840,9 +841,8 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
-      const { handleSearchManagementMembers } = await import(
-        "./lib/programs/program-handlers"
-      );
+      const { handleSearchManagementMembers } =
+        await import("./lib/programs/program-handlers");
       if (
         url.pathname === "/api/v1/management/members" &&
         request.method === "GET"
@@ -1006,22 +1006,13 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       };
-      if (
-        url.pathname === "/api/v1/home/editor" &&
-        request.method === "GET"
-      ) {
+      if (url.pathname === "/api/v1/home/editor" && request.method === "GET") {
         return handleGetHomeEditor(request, homeEnv);
       }
-      if (
-        url.pathname === "/api/v1/home/history" &&
-        request.method === "GET"
-      ) {
+      if (url.pathname === "/api/v1/home/history" && request.method === "GET") {
         return handleGetHomeHistory(request, homeEnv);
       }
-      if (
-        url.pathname === "/api/v1/home/drafts" &&
-        request.method === "PUT"
-      ) {
+      if (url.pathname === "/api/v1/home/drafts" && request.method === "PUT") {
         return handlePutHomeDraft(request, homeEnv);
       }
       if (

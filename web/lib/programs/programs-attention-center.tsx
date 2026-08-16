@@ -111,7 +111,9 @@ export const ProgramsAttentionCenter = ({
       const panel = panelRef.current;
       if (panel) {
         if (typeof panel.showModal === "function") {
-          if (!panel.open) panel.showModal();
+          if (!panel.open) {
+            panel.showModal();
+          }
         } else {
           panel.setAttribute("open", "");
         }

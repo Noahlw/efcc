@@ -60,16 +60,16 @@ async function parseError(res: Response): Promise<RegistrationApiError> {
       code?: unknown;
       detail?: unknown;
     };
-    if (typeof body.code === "string") code = body.code;
-    if (typeof body.detail === "string") detail = body.detail;
+    if (typeof body.code === "string") {
+      code = body.code;
+    }
+    if (typeof body.detail === "string") {
+      detail = body.detail;
+    }
   } catch {
     // Non-JSON body — fall through to statusText.
   }
-  return new RegistrationApiError(
-    res.status,
-    code,
-    detail ?? res.statusText
-  );
+  return new RegistrationApiError(res.status, code, detail ?? res.statusText);
 }
 
 /**
@@ -87,7 +87,9 @@ export async function submitRegistration(
     },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw await parseError(res);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
 }
 
 /**
@@ -102,7 +104,9 @@ export async function fetchPendingRegistrations(): Promise<
     method: "GET",
     headers: { Accept: "application/json" },
   });
-  if (!res.ok) throw await parseError(res);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
   const body = (await res.json()) as RegistrationQueueResponse;
   return body.data?.registrations ?? [];
 }
@@ -126,5 +130,7 @@ export async function decideRegistration(
     },
     ...(isReject ? { body: JSON.stringify({ note: note ?? "" }) } : {}),
   });
-  if (!res.ok) throw await parseError(res);
+  if (!res.ok) {
+    throw await parseError(res);
+  }
 }

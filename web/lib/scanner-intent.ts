@@ -31,11 +31,10 @@ export function parseScannerIntent(search: string): ScannerIntent {
     (rawMode.value !== null &&
       rawMode.value !== "self" &&
       rawMode.value !== "assisted") ||
-    (rawEvent.value !== null &&
-      (mode !== "assisted" || !SAFE_EVENT_ID.test(rawEvent.value)));
+    (rawEvent.value !== null && !SAFE_EVENT_ID.test(rawEvent.value));
   return {
     mode,
-    eventId: mode === "assisted" && !malformed ? rawEvent.value : null,
+    eventId: malformed || rawEvent.value === null ? null : rawEvent.value,
     malformed,
   };
 }
@@ -46,7 +45,7 @@ export function buildScannerHref(
   eventId: string | null = null
 ): string {
   const params = new URLSearchParams({ mode });
-  if (mode === "assisted" && eventId && SAFE_EVENT_ID.test(eventId)) {
+  if (eventId && SAFE_EVENT_ID.test(eventId)) {
     params.set("event", eventId);
   }
   return `/scanner?${params.toString()}`;

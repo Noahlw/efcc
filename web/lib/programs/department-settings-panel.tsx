@@ -5,11 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
-  assignDepartmentManager,
   getDepartment,
   listDepartmentManagers,
-  revokeDepartmentManager,
-  searchDepartmentMemberOptions,
   setDepartmentModule,
   updateDepartment,
 } from "@/lib/programs/program-api";
@@ -19,10 +16,7 @@ import type {
   DepartmentManager,
 } from "@/lib/programs/program-api";
 
-import { MemberPicker } from "./member-picker";
-
 import styles from "@/app/programs/programs.module.css";
-
 
 const MODULE_LABEL: Record<
   DepartmentDetail["modules"][number]["module_key"],
@@ -38,22 +32,18 @@ const MODULE_LABEL: Record<
 export const DepartmentSettingsPanel = ({
   department,
   onClose,
+  onOpenManagerPicker,
 }: {
   department: Department;
   onClose: () => void;
+  onOpenManagerPicker?: () => void;
 }) => {
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
   const [managers, setManagers] = useState<DepartmentManager[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
   const mounted = useRef(true);
-  const searchManagers = useCallback(
-    (query: string) =>
-      searchDepartmentMemberOptions(department.department_id, query),
-    [department.department_id]
-  );
 
   const load = useCallback(async () => {
     setDetail(null);
@@ -126,28 +116,6 @@ export const DepartmentSettingsPanel = ({
           description: String(data.get("description") ?? "").trim(),
         }),
       COPY.programs.updated
-    );
-  };
-
-  const assignManager = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const userId = String(data.get("user_id") ?? "").trim();
-    if (!userId) {
-      return;
-    }
-    event.currentTarget.reset();
-    void runAction(
-      () => assignDepartmentManager(department.department_id, userId),
-      COPY.programs.departmentManagerAssignedNotice
-    );
-  };
-
-  const revokeManager = (userId: string) => {
-    setConfirmingUserId(null);
-    void runAction(
-      () => revokeDepartmentManager(department.department_id, userId),
-      COPY.programs.departmentManagerRevokedNotice
     );
   };
 
@@ -270,28 +238,21 @@ export const DepartmentSettingsPanel = ({
             <section
               aria-labelledby={`${department.department_id}-managers-heading`}
             >
-              <h4
-                id={`${department.department_id}-managers-heading`}
-                className={styles.panelHeading}
-              >
-                {COPY.programs.departmentManagers}
-              </h4>
-              <form className={styles.ruleForm} onSubmit={assignManager}>
-                <MemberPicker
-                  programId=""
-                  name="user_id"
-                  label={COPY.programs.departmentManagerUserId}
-                  placeholder={COPY.programs.departmentManagerUserIdPlaceholder}
-                  searchOptions={searchManagers}
-                />
+              <div className={styles.programSummary}>
+                <h4
+                  id={`${department.department_id}-managers-heading`}
+                  className={styles.panelHeading}
+                >
+                  {COPY.programs.departmentManagers}
+                </h4>
                 <button
                   className={styles.actionButton}
-                  type="submit"
-                  disabled={busy}
+                  type="button"
+                  onClick={() => onOpenManagerPicker?.()}
                 >
-                  {COPY.programs.assignDepartmentManager}
+                  {COPY.programs.departmentManagers}
                 </button>
-              </form>
+              </div>
               <ul
                 className={styles.eventList}
                 aria-label={COPY.programs.departmentManagers}
@@ -307,38 +268,6 @@ export const DepartmentSettingsPanel = ({
                         {manager.user_name ?? manager.user_id}
                         {manager.username ? ` (${manager.username})` : ""}
                       </span>
-                      {confirmingUserId === manager.user_id ? (
-                        <div className={styles.confirmRow}>
-                          <span>
-                            {COPY.programs.confirmRevokeDepartmentManager}
-                          </span>
-                          <button
-                            className={styles.dangerButton}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => revokeManager(manager.user_id)}
-                          >
-                            {COPY.programs.confirmRevoke}
-                          </button>
-                          <button
-                            className={styles.toggle}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setConfirmingUserId(null)}
-                          >
-                            {COPY.programs.cancelRevoke}
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className={styles.actionButton}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setConfirmingUserId(manager.user_id)}
-                        >
-                          {COPY.programs.revokeDepartmentManager}
-                        </button>
-                      )}
                     </li>
                   ))
                 )}

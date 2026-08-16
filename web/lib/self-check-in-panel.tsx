@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import {
   ScannerCamera,
+  ScannerCameraUnavailable,
   ScannerEventPicker,
+  ScannerResultCard,
   ScannerStatusOutput,
 } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -16,18 +19,26 @@ import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 import styles from "./attendance-panel.module.css";
 
+type SelfResult = "success" | "duplicate";
+
 export const SelfCheckInPanel = ({
-  title = COPY.sections.scanner,
+  title = COPY.attendance.selfTitle,
+  requestedEventId = null,
 }: {
   title?: string;
+  requestedEventId?: string | null;
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
-  const flow = useAttendanceFlow(inputRef);
+  const [result, setResult] = useState<SelfResult | null>(null);
+  const flow = useAttendanceFlow(inputRef, requestedEventId);
   const [retryAvailable, setRetryAvailable] = useState(false);
   const pickerHeadingRef = useRef<HTMLHeadingElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
+  const cameraUnavailable =
+    flow.status === COPY.attendance.cameraUnavailable && flow.tone === "error";
+
   const handleCameraClose = () => {
     flow.stopCamera();
   };
@@ -61,20 +72,20 @@ export const SelfCheckInPanel = ({
       const credential = flow.fromQr
         ? { program_token: flow.input }
         : { entry: flow.input };
-      const result = await selfCheckIn({
+      const response = await selfCheckIn({
         event_id: flow.selected.event_id,
         method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
         ...credential,
       });
+      const nextResult: SelfResult =
+        response.outcome === "duplicate" ? "duplicate" : "success";
       const message =
-        result.outcome === "duplicate"
+        nextResult === "duplicate"
           ? COPY.attendance.duplicate
           : COPY.attendance.success;
-      flow.showStatus(
-        message,
-        result.outcome === "duplicate" ? "info" : "success"
-      );
+      flow.showStatus(message, nextResult === "duplicate" ? "info" : "success");
       announce(message);
+      setResult(nextResult);
       setRetryAvailable(false);
     } catch (error) {
       const ambiguousTransport =
@@ -92,6 +103,49 @@ export const SelfCheckInPanel = ({
     }
   }
 
+  function scanAgain() {
+    flow.stopCamera();
+    flow.showStatus("");
+    setResult(null);
+    setRetryAvailable(false);
+    inputRef.current?.focus();
+  }
+
+  if (result) {
+    const duplicate = result === "duplicate";
+    return (
+      <div className={styles.page}>
+        <section className={styles.resultPage}>
+          <ScannerResultCard
+            headingId="self-result-title"
+            tone={duplicate ? "info" : "success"}
+            heading={
+              duplicate
+                ? COPY.attendance.selfResultDuplicateTitle
+                : COPY.attendance.selfResultSuccessTitle
+            }
+            message={
+              duplicate
+                ? COPY.attendance.selfResultDuplicateCopy
+                : COPY.attendance.selfResultSuccessCopy
+            }
+          >
+            <Link className={styles.button} href="/">
+              {COPY.attendance.resultReturnHome}
+            </Link>
+            <button
+              className={styles.buttonSecondary}
+              type="button"
+              onClick={scanAgain}
+            >
+              {COPY.attendance.resultScanAgain}
+            </button>
+          </ScannerResultCard>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
       <section className={styles.card} aria-labelledby="attendance-title">
@@ -104,9 +158,31 @@ export const SelfCheckInPanel = ({
         <ScannerCamera
           cameraOpen={flow.cameraOpen}
           videoRef={flow.videoRef}
-          onStart={() => void flow.startCamera()}
+          onStart={() => {
+            flow.showStatus("");
+            void flow.startCamera();
+          }}
           onClose={handleCameraClose}
+          startLabel={COPY.attendance.selfScanStart}
         />
+        {cameraUnavailable && <ScannerCameraUnavailable />}
+        <div
+          className={styles.methodTiles}
+          aria-label={COPY.attendance.modeLabel}
+        >
+          <button
+            className={styles.methodTile}
+            type="button"
+            onClick={() => inputRef.current?.focus()}
+          >
+            <strong>{COPY.attendance.manualFallbackTitle}</strong>
+            <span>{COPY.attendance.manualFallbackDescription}</span>
+          </button>
+          <div className={styles.methodNote} role="note">
+            <strong>{COPY.attendance.cameraPermissionTitle}</strong>
+            <span>{COPY.attendance.cameraPermissionNote}</span>
+          </div>
+        </div>
         <form
           className={styles.inputRow}
           onSubmit={(event) => {
@@ -178,7 +254,10 @@ export const SelfCheckInPanel = ({
             {COPY.attendance.retry}
           </button>
         )}
-        <ScannerStatusOutput message={flow.status} tone={flow.tone} />
+        <ScannerStatusOutput
+          message={cameraUnavailable ? "" : flow.status}
+          tone={flow.tone}
+        />
       </section>
     </div>
   );

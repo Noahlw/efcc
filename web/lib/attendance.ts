@@ -1022,12 +1022,11 @@ export async function handleListRoster(
     return operator;
   }
   const { event } = operator;
-  const token = await env.DB
-    .prepare(
-      `SELECT p.check_in_token AS program_check_in_token
+  const token = await env.DB.prepare(
+    `SELECT p.check_in_token AS program_check_in_token
          FROM programs p
         WHERE p.program_id = ?`
-    )
+  )
     .bind(event.program_id)
     .first<{ program_check_in_token: string | null }>();
   const rosterEvent: AttendanceEvent = {
@@ -1039,7 +1038,11 @@ export async function handleListRoster(
   )
     .bind(eventId)
     .all<AttendanceRow>();
-  return json(200, { event: rosterEvent, attendances: result.results ?? [] }, id);
+  return json(
+    200,
+    { event: rosterEvent, attendances: result.results ?? [] },
+    id
+  );
 }
 
 export async function handleAssistedCheckIn(
@@ -1151,9 +1154,9 @@ export async function handleSearchMembers(
   return json(200, { members: result.results ?? [] }, id);
 }
 /**
- * GET /api/v1/attendance/events — the legacy operator chooser.
- * It includes historical Events so the stable `/events` roster/void/correction
- * surface can still open closed or cancelled records.
+ * GET /api/v1/attendance/events — the operator chooser.
+ * It includes historical Events so the Course Cockpit roster task can still
+ * open closed or cancelled records.
  */
 export async function handleListManageableEvents(
   request: Request,

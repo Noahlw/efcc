@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -107,7 +113,9 @@ afterEach(() => {
 
 describe(ProgramSettings, () => {
   test("shows four scope-owned groups and keeps Event generation out of Settings", async () => {
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
     expect(
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
@@ -124,7 +132,9 @@ describe(ProgramSettings, () => {
       screen.getByRole("heading", { name: COPY.programs.settingsAttendance })
     ).toBeInTheDocument();
     await expect(
-      screen.findByText(`${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`)
+      screen.findByText(
+        `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+      )
     ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.generateEvents })
@@ -155,9 +165,13 @@ describe(ProgramSettings, () => {
     mocks.updateProgram.mockResolvedValueOnce({
       program: updatedProgram({ name: "更新後小組", display_order: 4 }),
     });
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
-    const name = screen.getByRole("textbox", { name: COPY.programs.programName });
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
     await user.clear(name);
     await user.type(name, "更新後小組");
     await user.clear(
@@ -190,7 +204,9 @@ describe(ProgramSettings, () => {
 
   test("explains and confirms consequential enrollment changes", async () => {
     const user = userEvent.setup();
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
     await user.selectOptions(
       screen.getByRole("combobox", {
@@ -205,7 +221,9 @@ describe(ProgramSettings, () => {
     );
 
     expect(
-      screen.getByRole("alert", { name: COPY.programs.settingsConfirmEnrollment })
+      screen.getByRole("alert", {
+        name: COPY.programs.settingsConfirmEnrollment,
+      })
     ).toBeInTheDocument();
     expect(mocks.updateProgram).not.toHaveBeenCalled();
 
@@ -230,7 +248,9 @@ describe(ProgramSettings, () => {
         check_in_closes_at_minutes_after_end: 10,
       }),
     });
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
     await user.clear(
       screen.getByRole("spinbutton", {
@@ -272,9 +292,13 @@ describe(ProgramSettings, () => {
     mocks.updateProgram.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
-    const name = screen.getByRole("textbox", { name: COPY.programs.programName });
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
     await user.clear(name);
     await user.type(name, "尚未確認的名稱");
     await user.click(
@@ -336,19 +360,15 @@ describe(ProgramSettings, () => {
     mocks.createScheduleRule.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
-    await user.type(
-      screen.getByLabelText(COPY.programs.startTime),
-      "20:00"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.endTime),
-      "21:30"
-    );
+    await user.type(screen.getByLabelText(COPY.programs.startTime), "20:00");
+    await user.type(screen.getByLabelText(COPY.programs.endTime), "21:30");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.addRule })
     );
@@ -356,12 +376,8 @@ describe(ProgramSettings, () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       COPY.programs.programConflict
     );
-    expect(
-      screen.getByLabelText(COPY.programs.startTime)
-    ).toHaveValue("20:00");
-    expect(
-      screen.getByLabelText(COPY.programs.endTime)
-    ).toHaveValue("21:30");
+    expect(screen.getByLabelText(COPY.programs.startTime)).toHaveValue("20:00");
+    expect(screen.getByLabelText(COPY.programs.endTime)).toHaveValue("21:30");
     expect(
       screen.queryByText(COPY.programs.settingsSaved)
     ).not.toBeInTheDocument();
@@ -369,19 +385,15 @@ describe(ProgramSettings, () => {
 
   test("clears new-rule input only after a confirmed schedule-rule save", async () => {
     const user = userEvent.setup();
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
-    await user.type(
-      screen.getByLabelText(COPY.programs.startTime),
-      "19:00"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.endTime),
-      "20:30"
-    );
+    await user.type(screen.getByLabelText(COPY.programs.startTime), "19:00");
+    await user.type(screen.getByLabelText(COPY.programs.endTime), "20:30");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.addRule })
     );
@@ -389,12 +401,8 @@ describe(ProgramSettings, () => {
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByLabelText(COPY.programs.startTime)
-    ).toHaveValue("");
-    expect(
-      screen.getByLabelText(COPY.programs.endTime)
-    ).toHaveValue("");
+    expect(screen.getByLabelText(COPY.programs.startTime)).toHaveValue("");
+    expect(screen.getByLabelText(COPY.programs.endTime)).toHaveValue("");
   });
 
   test("keeps rule-edit input when the rule-edit mutation fails", async () => {
@@ -402,13 +410,17 @@ describe(ProgramSettings, () => {
     mocks.updateScheduleRule.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
     const row = screen
-      .getByText(`${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`)
+      .getByText(
+        `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+      )
       .closest("li") as HTMLElement;
     await user.click(
       within(row).getByRole("button", { name: COPY.programs.settingsRuleEdit })
@@ -430,7 +442,9 @@ describe(ProgramSettings, () => {
       within(row).getByRole("button", { name: COPY.programs.settingsRuleSave })
     ).toBeInTheDocument();
     expect(
-      within(row).queryByRole("button", { name: COPY.programs.settingsRuleEdit })
+      within(row).queryByRole("button", {
+        name: COPY.programs.settingsRuleEdit,
+      })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(COPY.programs.settingsSaved)
@@ -442,13 +456,17 @@ describe(ProgramSettings, () => {
     mocks.createScheduleException.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.settingsRuleAddException })
+      screen.getByRole("button", {
+        name: COPY.programs.settingsRuleAddException,
+      })
     );
     await user.type(
       screen.getByLabelText(COPY.programs.settingsExceptionDate),
@@ -478,16 +496,21 @@ describe(ProgramSettings, () => {
       new RpcError({
         code: "CONFLICT",
         status: 409,
-        detail: "Schedule exception already exists for rule rule-1 on 2026-08-13",
+        detail:
+          "Schedule exception already exists for rule rule-1 on 2026-08-13",
       })
     );
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.settingsRuleAddException })
+      screen.getByRole("button", {
+        name: COPY.programs.settingsRuleAddException,
+      })
     );
     await user.type(
       screen.getByLabelText(COPY.programs.settingsExceptionDate),
@@ -523,12 +546,12 @@ describe(ProgramSettings, () => {
         },
       ],
     });
-    render(<ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />);
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
 
     await expect(
-      screen.findByText(
-        `2026-08-13 · ${COPY.programs.settingsExceptionCancel}`
-      )
+      screen.findByText(`2026-08-13 · ${COPY.programs.settingsExceptionCancel}`)
     ).resolves.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", {

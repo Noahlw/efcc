@@ -6,7 +6,15 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import type {
   AttendanceEvent,
@@ -73,7 +81,10 @@ function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   );
 }
 
-function renderWithLiveRegion(props?: { eventId?: string; programToken?: string }) {
+function renderWithLiveRegion(props?: {
+  eventId?: string;
+  programToken?: string;
+}) {
   render(
     <>
       <LiveRegion />
@@ -239,9 +250,7 @@ describe(AttendanceOperatorPanel, () => {
   test("loads a selected event directly without the chooser", async () => {
     server.use(rosterHandler(ACTIVE, []));
     renderWithLiveRegion({ eventId: ACTIVE.event_id });
-    await screen.findByText(
-      new RegExp(`${ACTIVE.program_name} ·`, "u")
-    );
+    await screen.findByText(new RegExp(`${ACTIVE.program_name} ·`, "u"));
     expect(
       screen.queryByLabelText(COPY.attendance.chooseEvent)
     ).not.toBeInTheDocument();

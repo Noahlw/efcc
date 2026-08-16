@@ -737,14 +737,17 @@ describe("AUTH-01: Department Manager scope", () => {
       .first<{ request_id: string }>();
     assert.ok(requestRow);
     const approve = await worker.fetch(
-      new Request(`${HOST}/api/v1/auth/registrations/${requestRow?.request_id ?? ""}/approve`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${admin}`,
-          "Idempotency-Key": `idem-approve-${username}`,
-        },
-      }),
+      new Request(
+        `${HOST}/api/v1/auth/registrations/${requestRow?.request_id ?? ""}/approve`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${admin}`,
+            "Idempotency-Key": `idem-approve-${username}`,
+          },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(approve.status, 200);

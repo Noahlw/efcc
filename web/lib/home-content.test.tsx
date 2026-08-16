@@ -31,6 +31,7 @@ const HOME_B = {
       template_type: "B" as const,
       content_id: "content-b",
       version: 5,
+      published_at: "2026-08-15T00:00:00.000Z",
       title: "牧養消息",
       summary: "本週消息摘要。",
       body_markdown: '<p>安全正文 <a href="https://example.com/news" rel="noopener noreferrer">閱讀詳情</a><script>alert(1)</script></p>',
@@ -97,13 +98,20 @@ describe("HomeSurface", () => {
       "/programs"
     );
   });
-
-  test("renders Template B body without executing or exposing script markup", async () => {
+  test("renders a Template B teaser and the full detail view separately", async () => {
     const fetcher = vi.fn().mockResolvedValue({ content: HOME_B.data.content });
     render(<HomeSurface fetcher={fetcher} />);
 
-    expect(await screen.findByRole("heading", { name: "牧養消息" })).toBeInTheDocument();
-    expect(screen.getByText("安全正文")).toBeInTheDocument();
+    const teaserRow = await screen.findByRole("link", {
+      name: new RegExp(`^牧養消息.*${COPY.home.viewDetails}`),
+    });
+    expect(teaserRow).toHaveAttribute("href", "/notices");
+    expect(screen.getByText(/本週消息摘要。/)).toBeInTheDocument();
+    expect(screen.queryByText("安全正文")).not.toBeInTheDocument();
+
+    cleanup();
+    render(<HomeSurface fetcher={fetcher} mode="detail" title={COPY.home.noticeSectionTitle} />);
+    expect(await screen.findByText("安全正文")).toBeInTheDocument();
     expect(screen.queryByText("alert(1)")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /閱讀詳情/ })).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: /閱讀詳情/ })).toHaveAttribute(
@@ -156,6 +164,96 @@ describe("HomeContentEditor", () => {
       expect.objectContaining({ method: "GET" })
     );
   });
+  test("toggles the preview between phone and desktop widths", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const path = String(input);
+      if (path.endsWith("/api/v1/home/editor")) {
+        return Response.json({ requestId: "editor", data: EDITOR_RESPONSE });
+      }
+      return Response.json({ requestId: "history", data: { history: [] } });
+    });
+    const user = userEvent.setup();
+    render(<HomeContentEditor />);
+
+    await screen.findByRole("heading", { name: COPY.home.editorTitle });
+    const mobile = screen.getByRole("button", { name: COPY.home.previewMobile });
+    const desktop = screen.getByRole("button", { name: COPY.home.previewDesktop });
+    expect(mobile).toHaveAttribute("aria-pressed", "true");
+    expect(desktop).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(desktop);
+    expect(desktop).toHaveAttribute("aria-pressed", "true");
+    expect(mobile).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("reveals before and after snapshots for each publish history entry", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const path = String(input);
+      if (path.endsWith("/api/v1/home/editor")) {
+        return Response.json({ requestId: "editor", data: EDITOR_RESPONSE });
+      }
+      if (path.endsWith("/api/v1/home/history")) {
+        return Response.json({
+          requestId: "history",
+          data: {
+            history: [
+              {
+                content_id: "draft-b",
+                version: 8,
+                template_type: "B",
+                status: "Published",
+                published_by_name: "管理員甲",
+                published_at: "2026-08-16T02:00:00.000Z",
+                before: {
+                  version: 7,
+                  template_type: "B",
+                  status: "Published",
+                  title: "舊標題",
+                  summary: "舊摘要",
+                  body_markdown: "舊正文",
+                  cta_label: null,
+                  cta_url: null,
+                  image_url: null,
+                  image_alt: null,
+                  featured_event_id: null,
+                },
+                after: {
+                  version: 8,
+                  template_type: "B",
+                  status: "Published",
+                  title: "新標題",
+                  summary: "新摘要",
+                  body_markdown: "新正文",
+                  cta_label: null,
+                  cta_url: null,
+                  image_url: null,
+                  image_alt: null,
+                  featured_event_id: null,
+                },
+              },
+            ],
+          },
+        });
+      }
+      return Response.json({ requestId: "draft", data: { draft: EDITOR_RESPONSE.drafts.template_b } });
+    });
+    const user = userEvent.setup();
+    render(<HomeContentEditor />);
+
+    await screen.findByText(COPY.home.historyViewDiff);
+    const disclosure = screen.getByText(COPY.home.historyViewDiff);
+    const details = disclosure.closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+
+    await user.click(disclosure);
+    expect(details).toHaveAttribute("open");
+    expect(screen.getByText("舊標題")).toBeVisible();
+    expect(screen.getByText("新標題")).toBeVisible();
+    expect(screen.getByText("舊摘要")).toBeVisible();
+    expect(screen.getByText("新摘要")).toBeVisible();
+  });
+
 
   test("preserves inputs and shows a top conflict banner after stale publish", async () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

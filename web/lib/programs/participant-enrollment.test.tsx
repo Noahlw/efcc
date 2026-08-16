@@ -105,9 +105,10 @@ describe("PUI-04 participant Enrollment", () => {
     await waitFor(() => {
       expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
       expect(onRefresh).toHaveBeenCalledOnce();
-      expect(
-        screen.getByText(COPY.programs.requestSubmitted)
-      ).toBeInTheDocument();
+      const outcome = screen
+        .getByText(COPY.programs.requestSubmitted)
+        .closest("output");
+      expect(outcome).toHaveAttribute("data-tone", "success");
     });
   });
 
@@ -128,11 +129,29 @@ describe("PUI-04 participant Enrollment", () => {
     });
 
     expect(screen.getAllByText(COPY.programs.requestPending)).toHaveLength(2);
+    const pendingStatus = screen
+      .getAllByText(COPY.programs.requestPending)[0]
+      ?.closest("output");
+    expect(pendingStatus).toHaveAttribute("data-tone", "pending");
     expect(
       screen.queryByRole("button", { name: COPY.programs.requestEnroll })
     ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
+    );
+    expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(COPY.programs.confirmWithdrawRequest)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmWithdrawRequestAction,
+      })
+    ).toHaveFocus();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmWithdrawRequestAction,
+      })
     );
     await waitFor(() => {
       expect(mocks.withdrawEnrollmentRequest).toHaveBeenCalledWith(
@@ -140,6 +159,10 @@ describe("PUI-04 participant Enrollment", () => {
         "request-1"
       );
       expect(onRefresh).toHaveBeenCalledOnce();
+      const outcome = screen
+        .getByText(COPY.programs.requestWithdrawnNotice)
+        .closest("output");
+      expect(outcome).toHaveAttribute("data-tone", "success");
     });
   });
 
@@ -168,11 +191,29 @@ describe("PUI-04 participant Enrollment", () => {
     });
 
     expect(screen.getAllByText(COPY.programs.enrollmentActive)).toHaveLength(2);
+    const activeStatus = screen
+      .getAllByText(COPY.programs.enrollmentActive)[0]
+      ?.closest("output");
+    expect(activeStatus).toHaveAttribute("data-tone", "success");
     expect(
       screen.queryByText(COPY.programs.requestApproved)
     ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    expect(mocks.cancelEnrollment).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(COPY.programs.confirmCancelEnrollment)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmCancelEnrollmentAction,
+      })
+    ).toHaveFocus();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmCancelEnrollmentAction,
+      })
     );
     await waitFor(() => {
       expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
@@ -180,6 +221,10 @@ describe("PUI-04 participant Enrollment", () => {
         "enrollment-1"
       );
       expect(onRefresh).toHaveBeenCalledOnce();
+      const outcome = screen
+        .getByText(COPY.programs.enrollmentCancelledNotice)
+        .closest("output");
+      expect(outcome).toHaveAttribute("data-tone", "success");
     });
   });
 
@@ -281,9 +326,9 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.requestEnroll })
     );
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        COPY.programs.enrollmentDuplicate
-      );
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(COPY.programs.enrollmentDuplicate);
+      expect(alert).toHaveAttribute("data-tone", "error");
       expect(onRefresh).toHaveBeenCalledOnce();
     });
   });
@@ -304,9 +349,11 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.requestEnroll })
     );
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(
         COPY.programs.enrollmentUnavailableNote
       );
+      expect(alert).toHaveAttribute("data-tone", "error");
       expect(
         screen.queryByText(/internal-program-id/u)
       ).not.toBeInTheDocument();

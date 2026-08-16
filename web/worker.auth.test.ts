@@ -993,9 +993,7 @@ describe("AUTH-06: registrations approve/reject", () => {
     );
     assert.strictEqual(res.status, 200);
     const account = await testDb()
-      .prepare(
-        "SELECT role, account_status FROM accounts WHERE user_id = ?"
-      )
+      .prepare("SELECT role, account_status FROM accounts WHERE user_id = ?")
       .bind(tamperedUserId)
       .first<{ role: string; account_status: string }>();
     assert.ok(account, "tampered request must still approve into an account");
@@ -1054,7 +1052,10 @@ describe("AUTH-06: registrations approve/reject", () => {
       }>();
     assert.strictEqual(stored?.account_status, "Rejected");
     assert.strictEqual(stored?.review_decision, "Rejected");
-    assert.strictEqual(stored?.rejection_note, "Duplicate of an existing member.");
+    assert.strictEqual(
+      stored?.rejection_note,
+      "Duplicate of an existing member."
+    );
 
     // The rejected user cannot log in (no account was created).
     const login = await worker.fetch(

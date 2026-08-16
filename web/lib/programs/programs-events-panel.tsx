@@ -20,6 +20,7 @@ import type {
   ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import {
   HK_UTC_OFFSET_MINUTES,
   hkWallDateTimeLabel,
@@ -751,7 +752,12 @@ export const EventsPanel = ({
                       href={
                         assistedEligible
                           ? `/scanner?mode=assisted&event=${encodeURIComponent(event.event_id)}`
-                          : `/events?eventId=${encodeURIComponent(event.event_id)}`
+                          : buildProgramsHref({
+                              mode: "management",
+                              programId: program.program_id,
+                              task: "roster",
+                              eventId: event.event_id,
+                            })
                       }
                     >
                       {COPY.attendance.assistedOpen}

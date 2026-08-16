@@ -1,10 +1,9 @@
-import userEvent from "@testing-library/user-event";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import {
   afterAll,
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -56,11 +55,7 @@ const profile = {
   qrCodeString: "qr-admin",
 };
 
-const section = (
-  key: string,
-  capability = "READ",
-  label = key
-): Section => ({
+const section = (key: string, capability = "READ", label = key): Section => ({
   key,
   label,
   capability,
@@ -101,16 +96,18 @@ beforeEach(() => {
 
 afterAll(() => server.close());
 
-describe("projectManagementHubGroups", () => {
+describe(projectManagementHubGroups, () => {
   test("keeps the exact group order and omits no authorized rows", () => {
     const groups = projectManagementHubGroups(profile, allSections, access);
 
-    expect(groups.map((group) => group.label)).toEqual([
+    expect(groups.map((group) => group.label)).toStrictEqual([
       COPY.management.groupMembership,
       COPY.management.groupOperations,
       COPY.management.groupContent,
     ]);
-    expect(groups.map((group) => group.rows.map((row) => row.key))).toEqual([
+    expect(
+      groups.map((group) => group.rows.map((row) => row.key))
+    ).toStrictEqual([
       ["approvals", "members", "permissions"],
       ["programs", "events", "care"],
       ["home"],
@@ -128,27 +125,29 @@ describe("projectManagementHubGroups", () => {
       }
     );
 
-    expect(groups).toEqual([]);
+    expect(groups).toStrictEqual([]);
   });
 });
 
-describe("ManagementHub", () => {
+describe(ManagementHub, () => {
   test("renders only the server-authorized group headings", async () => {
     mocks.getManagementAccess.mockResolvedValue(access);
     render(
-      <AppProvider bootstrap={bootstrap()} onSignOut={() => undefined}>
+      <AppProvider bootstrap={bootstrap()} onSignOut={() => {}}>
         <ManagementHub />
       </AppProvider>
     );
 
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.management.groupMembership,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
-      screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)
-    ).toEqual([
+      screen
+        .getAllByRole("heading", { level: 2 })
+        .map((heading) => heading.textContent)
+    ).toStrictEqual([
       COPY.management.groupMembership,
       COPY.management.groupOperations,
       COPY.management.groupContent,
@@ -168,13 +167,15 @@ describe("ManagementHub", () => {
           sections: [section("home")],
           navigation: [section("home")],
         })}
-        onSignOut={() => undefined}
+        onSignOut={() => {}}
       >
         <ManagementHub />
       </AppProvider>
     );
 
-    expect(await screen.findByText(COPY.management.forbidden)).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.management.forbidden)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: COPY.management.groupMembership })
     ).not.toBeInTheDocument();
@@ -182,6 +183,7 @@ describe("ManagementHub", () => {
       screen.queryByRole("button", { name: COPY.management.memberDirectory })
     ).not.toBeInTheDocument();
   });
+
   test("uses the scoped member API and preserves the query after an error", async () => {
     server.use(
       http.get("/api/v1/management/members", ({ request }) => {
@@ -199,7 +201,7 @@ describe("ManagementHub", () => {
     mocks.getManagementAccess.mockResolvedValue(access);
     const user = userEvent.setup();
     render(
-      <AppProvider bootstrap={bootstrap()} onSignOut={() => undefined}>
+      <AppProvider bootstrap={bootstrap()} onSignOut={() => {}}>
         <ManagementHub />
       </AppProvider>
     );
@@ -216,7 +218,7 @@ describe("ManagementHub", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.management.memberSearchSubmit })
     );
-    expect(await screen.findByText("Angela Chan")).toBeInTheDocument();
+    await expect(screen.findByText("Angela Chan")).resolves.toBeInTheDocument();
 
     server.use(
       http.get("/api/v1/management/members", () =>
@@ -231,7 +233,7 @@ describe("ManagementHub", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.management.memberSearchSubmit })
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       COPY.management.memberSearchError
     );
     expect(input).toHaveValue("Error");

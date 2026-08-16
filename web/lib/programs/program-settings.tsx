@@ -70,8 +70,6 @@ const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
   Archived: COPY.programs.lifecycleArchived,
 };
 
-
-
 function settingsErrorMessage(error: unknown): string {
   if (error instanceof RpcError) {
     if (
@@ -307,7 +305,11 @@ export const ProgramSettings = ({
   const saveBasics = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const displayOrder = Number(basics.displayOrder);
-    if (!basics.name.trim() || !Number.isSafeInteger(displayOrder) || displayOrder < 0) {
+    if (
+      !basics.name.trim() ||
+      !Number.isSafeInteger(displayOrder) ||
+      displayOrder < 0
+    ) {
       setActionError(COPY.programs.settingsBasicsValidation);
       return;
     }
@@ -466,23 +468,20 @@ export const ProgramSettings = ({
     };
 
   const removeException = (exception: ScheduleException) => {
-    void runScheduleMutation(
-      async () => {
-        await deleteScheduleException(
-          currentProgram.program_id,
-          exception.rule_id,
-          exception.exception_id
+    void runScheduleMutation(async () => {
+      await deleteScheduleException(
+        currentProgram.program_id,
+        exception.rule_id,
+        exception.exception_id
+      );
+      setExceptions((previous) => {
+        const next = { ...previous };
+        next[exception.rule_id] = (next[exception.rule_id] ?? []).filter(
+          ({ exception_id }) => exception_id !== exception.exception_id
         );
-        setExceptions((previous) => {
-          const next = { ...previous };
-          next[exception.rule_id] = (next[exception.rule_id] ?? []).filter(
-            ({ exception_id }) => exception_id !== exception.exception_id
-          );
-          return next;
-        });
-      },
-      COPY.programs.settingsSaved
-    );
+        return next;
+      });
+    }, COPY.programs.settingsSaved);
   };
 
   return (
@@ -502,30 +501,25 @@ export const ProgramSettings = ({
         </output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert" aria-live="assertive">
+        <output
+          className={styles.panelError}
+          role="alert"
+          aria-live="assertive"
+        >
           {actionError}
         </output>
       )}
-      {!canManage ? (
-        <section
-          className={styles.settingsUnavailable}
-          aria-labelledby="program-settings-unavailable"
-        >
-          <h5 id="program-settings-unavailable" className={styles.workspaceSubheading}>
-            {COPY.programs.settingsNoManagement}
-          </h5>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.settingsNoManagementHint}
-          </p>
-        </section>
-      ) : (
+      {canManage ? (
         <div className={styles.settingsGroups}>
           <section
             className={styles.settingsGroup}
             aria-labelledby="program-settings-basics"
           >
             <div>
-              <h5 id="program-settings-basics" className={styles.workspaceSubheading}>
+              <h5
+                id="program-settings-basics"
+                className={styles.workspaceSubheading}
+              >
                 {COPY.programs.settingsBasics}
               </h5>
               <p className={styles.settingsGroupLead}>
@@ -534,19 +528,26 @@ export const ProgramSettings = ({
             </div>
             <form className={styles.settingsForm} onSubmit={saveBasics}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.programName}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.programName}
+                </span>
                 <input
                   className={styles.input}
                   value={basics.name}
                   onChange={(event) =>
-                    setBasics((previous) => ({ ...previous, name: event.target.value }))
+                    setBasics((previous) => ({
+                      ...previous,
+                      name: event.target.value,
+                    }))
                   }
                   required
                   disabled={busy}
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.programDescription}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.programDescription}
+                </span>
                 <textarea
                   className={styles.textarea}
                   value={basics.description}
@@ -561,7 +562,9 @@ export const ProgramSettings = ({
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.programCategory}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.programCategory}
+                </span>
                 <input
                   className={styles.input}
                   value={basics.category}
@@ -575,7 +578,9 @@ export const ProgramSettings = ({
                 />
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.programDisplayOrder}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.programDisplayOrder}
+                </span>
                 <input
                   className={styles.input}
                   type="number"
@@ -620,10 +625,14 @@ export const ProgramSettings = ({
                 <dd>{LIFECYCLE_LABEL[currentProgram.lifecycle]}</dd>
               </div>
             </dl>
-            <p className={styles.fieldHint}>{COPY.programs.settingsLifecycleHint}</p>
+            <p className={styles.fieldHint}>
+              {COPY.programs.settingsLifecycleHint}
+            </p>
             <form className={styles.settingsForm} onSubmit={saveEnrollment}>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.discoverabilityListed}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.discoverabilityListed}
+                </span>
                 <select
                   className={styles.select}
                   aria-label={COPY.programs.discoverabilityListed}
@@ -631,17 +640,24 @@ export const ProgramSettings = ({
                   onChange={(event) =>
                     setEnrollment((previous) => ({
                       ...previous,
-                      discoverability: event.target.value as Program["discoverability"],
+                      discoverability: event.target
+                        .value as Program["discoverability"],
                     }))
                   }
                   disabled={busy}
                 >
-                  <option value="Unlisted">{COPY.programs.discoverabilityUnlisted}</option>
-                  <option value="Listed">{COPY.programs.discoverabilityListed}</option>
+                  <option value="Unlisted">
+                    {COPY.programs.discoverabilityUnlisted}
+                  </option>
+                  <option value="Listed">
+                    {COPY.programs.discoverabilityListed}
+                  </option>
                 </select>
               </label>
               <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.programEnrollmentMode}</span>
+                <span className={styles.fieldLabel}>
+                  {COPY.programs.programEnrollmentMode}
+                </span>
                 <select
                   className={styles.select}
                   aria-label={COPY.programs.programEnrollmentMode}
@@ -649,7 +665,8 @@ export const ProgramSettings = ({
                   onChange={(event) =>
                     setEnrollment((previous) => ({
                       ...previous,
-                      enrollmentMode: event.target.value as Program["enrollment_mode"],
+                      enrollmentMode: event.target
+                        .value as Program["enrollment_mode"],
                     }))
                   }
                   disabled={busy}
@@ -664,7 +681,11 @@ export const ProgramSettings = ({
               </label>
               <div className={styles.settingsActions}>
                 {!confirmingEnrollment && (
-                  <button className={styles.button} type="submit" disabled={busy}>
+                  <button
+                    className={styles.button}
+                    type="submit"
+                    disabled={busy}
+                  >
                     {COPY.programs.settingsSaveEnrollment}
                   </button>
                 )}
@@ -702,7 +723,10 @@ export const ProgramSettings = ({
             aria-labelledby="program-settings-schedule"
           >
             <div>
-              <h5 id="program-settings-schedule" className={styles.workspaceSubheading}>
+              <h5
+                id="program-settings-schedule"
+                className={styles.workspaceSubheading}
+              >
                 {COPY.programs.settingsSchedule}
               </h5>
               <p className={styles.settingsGroupLead}>
@@ -710,12 +734,10 @@ export const ProgramSettings = ({
               </p>
             </div>
             {currentProgram.behavior_type === "OneOff" ? (
-              <p className={styles.settingsReadonly}>{COPY.programs.settingsScheduleOneOff}</p>
-            ) : !eventsEnabled ? (
               <p className={styles.settingsReadonly}>
-                {COPY.programs.settingsScheduleUnavailable}
+                {COPY.programs.settingsScheduleOneOff}
               </p>
-            ) : (
+            ) : eventsEnabled ? (
               <>
                 {ruleError !== null && (
                   <output className={styles.panelError} role="alert">
@@ -742,17 +764,23 @@ export const ProgramSettings = ({
                       </li>
                     ) : (
                       rules.map((rule) => {
-                        const draft = ruleDrafts[rule.rule_id] ?? ruleValuesFrom(rule);
+                        const draft =
+                          ruleDrafts[rule.rule_id] ?? ruleValuesFrom(rule);
                         const ruleExceptions = exceptions[rule.rule_id] ?? [];
                         return (
-                          <li key={rule.rule_id} className={styles.settingsRuleRow}>
+                          <li
+                            key={rule.rule_id}
+                            className={styles.settingsRuleRow}
+                          >
                             {editingRuleId === rule.rule_id ? (
                               <form
                                 className={styles.settingsForm}
                                 onSubmit={submitRuleEdit(rule)}
                               >
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.behaviorType}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.behaviorType}
+                                  </span>
                                   <select
                                     className={styles.select}
                                     value={draft.recurrence}
@@ -761,17 +789,24 @@ export const ProgramSettings = ({
                                         ...previous,
                                         [rule.rule_id]: {
                                           ...draft,
-                                          recurrence: event.target.value as RuleValues["recurrence"],
+                                          recurrence: event.target
+                                            .value as RuleValues["recurrence"],
                                         },
                                       }))
                                     }
                                   >
-                                    <option value="WEEKLY">{COPY.programs.ruleWeekly}</option>
-                                    <option value="MONTHLY">{COPY.programs.ruleMonthly}</option>
+                                    <option value="WEEKLY">
+                                      {COPY.programs.ruleWeekly}
+                                    </option>
+                                    <option value="MONTHLY">
+                                      {COPY.programs.ruleMonthly}
+                                    </option>
                                   </select>
                                 </label>
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.dayOfWeekLabel}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.dayOfWeekLabel}
+                                  </span>
                                   <select
                                     className={styles.select}
                                     value={draft.dayOfWeek}
@@ -793,7 +828,9 @@ export const ProgramSettings = ({
                                   </select>
                                 </label>
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.monthDayLabel}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.monthDayLabel}
+                                  </span>
                                   <input
                                     className={styles.input}
                                     type="number"
@@ -812,7 +849,9 @@ export const ProgramSettings = ({
                                   />
                                 </label>
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.startTime}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.startTime}
+                                  </span>
                                   <input
                                     className={styles.input}
                                     type="time"
@@ -830,7 +869,9 @@ export const ProgramSettings = ({
                                   />
                                 </label>
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.endTime}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.endTime}
+                                  </span>
                                   <input
                                     className={styles.input}
                                     type="time"
@@ -848,12 +889,16 @@ export const ProgramSettings = ({
                                   />
                                 </label>
                                 <label className={styles.field}>
-                                  <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                                  <span className={styles.fieldLabel}>
+                                    {COPY.programs.ruleLocation}
+                                  </span>
                                   <input
                                     className={styles.input}
                                     type="text"
                                     value={draft.location}
-                                    placeholder={COPY.programs.ruleLocationPlaceholder}
+                                    placeholder={
+                                      COPY.programs.ruleLocationPlaceholder
+                                    }
                                     onChange={(event) =>
                                       setRuleDrafts((previous) => ({
                                         ...previous,
@@ -866,7 +911,11 @@ export const ProgramSettings = ({
                                   />
                                 </label>
                                 <div className={styles.settingsActions}>
-                                  <button className={styles.button} type="submit" disabled={busy}>
+                                  <button
+                                    className={styles.button}
+                                    type="submit"
+                                    disabled={busy}
+                                  >
                                     {COPY.programs.settingsRuleSave}
                                   </button>
                                   <button
@@ -907,7 +956,9 @@ export const ProgramSettings = ({
                                       setExceptionRuleId(rule.rule_id);
                                       setExceptionDrafts((previous) => ({
                                         ...previous,
-                                        [rule.rule_id]: exceptionDraftFor(rule.rule_id),
+                                        [rule.rule_id]: exceptionDraftFor(
+                                          rule.rule_id
+                                        ),
                                       }));
                                     }}
                                     disabled={busy}
@@ -918,21 +969,33 @@ export const ProgramSettings = ({
                                 {ruleExceptions.length > 0 && (
                                   <ul
                                     className={styles.settingsExceptionList}
-                                    aria-label={COPY.programs.settingsExistingExceptions}
+                                    aria-label={
+                                      COPY.programs.settingsExistingExceptions
+                                    }
                                   >
                                     {ruleExceptions.map((exception) => (
                                       <li key={exception.exception_id}>
                                         <span>
-                                          {exception.override_date} · {exception.action === "CANCEL" ? COPY.programs.settingsExceptionCancel : COPY.programs.settingsExceptionReschedule}
+                                          {exception.override_date} ·{" "}
+                                          {exception.action === "CANCEL"
+                                            ? COPY.programs
+                                                .settingsExceptionCancel
+                                            : COPY.programs
+                                                .settingsExceptionReschedule}
                                         </span>
                                         <button
                                           className={styles.successOutline}
                                           type="button"
-                                          onClick={() => removeException(exception)}
+                                          onClick={() =>
+                                            removeException(exception)
+                                          }
                                           disabled={busy}
                                           aria-label={`${COPY.programs.settingsExceptionRestore} ${exception.override_date}`}
                                         >
-                                          {COPY.programs.settingsExceptionRestore}
+                                          {
+                                            COPY.programs
+                                              .settingsExceptionRestore
+                                          }
                                         </button>
                                       </li>
                                     ))}
@@ -944,17 +1007,24 @@ export const ProgramSettings = ({
                                     onSubmit={submitException(rule)}
                                   >
                                     <label className={styles.field}>
-                                      <span className={styles.fieldLabel}>{COPY.programs.settingsExceptionDate}</span>
+                                      <span className={styles.fieldLabel}>
+                                        {COPY.programs.settingsExceptionDate}
+                                      </span>
                                       <input
                                         className={styles.input}
                                         type="date"
                                         required
-                                        value={exceptionDraftFor(rule.rule_id).overrideDate}
+                                        value={
+                                          exceptionDraftFor(rule.rule_id)
+                                            .overrideDate
+                                        }
                                         onChange={(event) =>
                                           setExceptionDrafts((previous) => ({
                                             ...previous,
                                             [rule.rule_id]: {
-                                              ...exceptionDraftFor(rule.rule_id),
+                                              ...exceptionDraftFor(
+                                                rule.rule_id
+                                              ),
                                               overrideDate: event.target.value,
                                             },
                                           }))
@@ -965,7 +1035,9 @@ export const ProgramSettings = ({
                                           setExceptionDrafts((previous) => ({
                                             ...previous,
                                             [rule.rule_id]: {
-                                              ...exceptionDraftFor(rule.rule_id),
+                                              ...exceptionDraftFor(
+                                                rule.rule_id
+                                              ),
                                               overrideDate,
                                             },
                                           }));
@@ -973,66 +1045,114 @@ export const ProgramSettings = ({
                                       />
                                     </label>
                                     <label className={styles.field}>
-                                      <span className={styles.fieldLabel}>{COPY.programs.settingsExceptionAction}</span>
+                                      <span className={styles.fieldLabel}>
+                                        {COPY.programs.settingsExceptionAction}
+                                      </span>
                                       <select
                                         className={styles.select}
-                                        value={exceptionDraftFor(rule.rule_id).action}
+                                        value={
+                                          exceptionDraftFor(rule.rule_id).action
+                                        }
                                         onChange={(event) =>
                                           setExceptionDrafts((previous) => ({
                                             ...previous,
                                             [rule.rule_id]: {
-                                              ...exceptionDraftFor(rule.rule_id),
-                                              action: event.target.value as ExceptionValues["action"],
+                                              ...exceptionDraftFor(
+                                                rule.rule_id
+                                              ),
+                                              action: event.target
+                                                .value as ExceptionValues["action"],
                                             },
                                           }))
                                         }
                                       >
-                                        <option value="CANCEL">{COPY.programs.settingsExceptionCancel}</option>
-                                        <option value="RESCHEDULE">{COPY.programs.settingsExceptionReschedule}</option>
+                                        <option value="CANCEL">
+                                          {
+                                            COPY.programs
+                                              .settingsExceptionCancel
+                                          }
+                                        </option>
+                                        <option value="RESCHEDULE">
+                                          {
+                                            COPY.programs
+                                              .settingsExceptionReschedule
+                                          }
+                                        </option>
                                       </select>
                                     </label>
-                                    {exceptionDraftFor(rule.rule_id).action === "RESCHEDULE" && (
+                                    {exceptionDraftFor(rule.rule_id).action ===
+                                      "RESCHEDULE" && (
                                       <>
                                         <label className={styles.field}>
-                                          <span className={styles.fieldLabel}>{COPY.programs.settingsExceptionNewStart}</span>
+                                          <span className={styles.fieldLabel}>
+                                            {
+                                              COPY.programs
+                                                .settingsExceptionNewStart
+                                            }
+                                          </span>
                                           <input
                                             className={styles.input}
                                             type="time"
                                             required
-                                            value={exceptionDraftFor(rule.rule_id).newStartTime}
+                                            value={
+                                              exceptionDraftFor(rule.rule_id)
+                                                .newStartTime
+                                            }
                                             onChange={(event) =>
-                                              setExceptionDrafts((previous) => ({
-                                                ...previous,
-                                                [rule.rule_id]: {
-                                                  ...exceptionDraftFor(rule.rule_id),
-                                                  newStartTime: event.target.value,
-                                                },
-                                              }))
+                                              setExceptionDrafts(
+                                                (previous) => ({
+                                                  ...previous,
+                                                  [rule.rule_id]: {
+                                                    ...exceptionDraftFor(
+                                                      rule.rule_id
+                                                    ),
+                                                    newStartTime:
+                                                      event.target.value,
+                                                  },
+                                                })
+                                              )
                                             }
                                           />
                                         </label>
                                         <label className={styles.field}>
-                                          <span className={styles.fieldLabel}>{COPY.programs.settingsExceptionNewEnd}</span>
+                                          <span className={styles.fieldLabel}>
+                                            {
+                                              COPY.programs
+                                                .settingsExceptionNewEnd
+                                            }
+                                          </span>
                                           <input
                                             className={styles.input}
                                             type="time"
                                             required
-                                            value={exceptionDraftFor(rule.rule_id).newEndTime}
+                                            value={
+                                              exceptionDraftFor(rule.rule_id)
+                                                .newEndTime
+                                            }
                                             onChange={(event) =>
-                                              setExceptionDrafts((previous) => ({
-                                                ...previous,
-                                                [rule.rule_id]: {
-                                                  ...exceptionDraftFor(rule.rule_id),
-                                                  newEndTime: event.target.value,
-                                                },
-                                              }))
+                                              setExceptionDrafts(
+                                                (previous) => ({
+                                                  ...previous,
+                                                  [rule.rule_id]: {
+                                                    ...exceptionDraftFor(
+                                                      rule.rule_id
+                                                    ),
+                                                    newEndTime:
+                                                      event.target.value,
+                                                  },
+                                                })
+                                              )
                                             }
                                           />
                                         </label>
                                       </>
                                     )}
                                     <div className={styles.settingsActions}>
-                                      <button className={styles.button} type="submit" disabled={busy}>
+                                      <button
+                                        className={styles.button}
+                                        type="submit"
+                                        disabled={busy}
+                                      >
                                         {COPY.programs.settingsExceptionSave}
                                       </button>
                                       <button
@@ -1061,24 +1181,31 @@ export const ProgramSettings = ({
                 )}
                 <form className={styles.settingsForm} onSubmit={submitNewRule}>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.behaviorType}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.behaviorType}
+                    </span>
                     <select
                       className={styles.select}
                       value={newRule.recurrence}
                       onChange={(event) =>
                         setNewRule((previous) => ({
                           ...previous,
-                          recurrence: event.target.value as RuleValues["recurrence"],
+                          recurrence: event.target
+                            .value as RuleValues["recurrence"],
                         }))
                       }
                       disabled={busy}
                     >
                       <option value="WEEKLY">{COPY.programs.ruleWeekly}</option>
-                      <option value="MONTHLY">{COPY.programs.ruleMonthly}</option>
+                      <option value="MONTHLY">
+                        {COPY.programs.ruleMonthly}
+                      </option>
                     </select>
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.dayOfWeekLabel}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.dayOfWeekLabel}
+                    </span>
                     <select
                       className={styles.select}
                       value={newRule.dayOfWeek}
@@ -1098,7 +1225,9 @@ export const ProgramSettings = ({
                     </select>
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.monthDayLabel}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.monthDayLabel}
+                    </span>
                     <input
                       className={styles.input}
                       type="number"
@@ -1115,7 +1244,9 @@ export const ProgramSettings = ({
                     />
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.startTime}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.startTime}
+                    </span>
                     <input
                       className={styles.input}
                       type="time"
@@ -1131,7 +1262,9 @@ export const ProgramSettings = ({
                     />
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.endTime}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.endTime}
+                    </span>
                     <input
                       className={styles.input}
                       type="time"
@@ -1147,7 +1280,9 @@ export const ProgramSettings = ({
                     />
                   </label>
                   <label className={styles.field}>
-                    <span className={styles.fieldLabel}>{COPY.programs.ruleLocation}</span>
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.ruleLocation}
+                    </span>
                     <input
                       className={styles.input}
                       type="text"
@@ -1163,7 +1298,11 @@ export const ProgramSettings = ({
                     />
                   </label>
                   <div className={styles.settingsActions}>
-                    <button className={styles.button} type="submit" disabled={busy}>
+                    <button
+                      className={styles.button}
+                      type="submit"
+                      disabled={busy}
+                    >
                       {COPY.programs.addRule}
                     </button>
                   </div>
@@ -1179,8 +1318,14 @@ export const ProgramSettings = ({
                     </button>
                   )}
                 </div>
-                <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
+                <p className={styles.timeMarker}>
+                  {COPY.programs.hkTimeMarker}
+                </p>
               </>
+            ) : (
+              <p className={styles.settingsReadonly}>
+                {COPY.programs.settingsScheduleUnavailable}
+              </p>
             )}
           </section>
 
@@ -1199,61 +1344,88 @@ export const ProgramSettings = ({
                 {COPY.programs.settingsAttendanceLead}
               </p>
             </div>
-            {!attendanceEnabled ? (
+            {attendanceEnabled ? (
+              <form className={styles.settingsForm} onSubmit={saveAttendance}>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {COPY.programs.settingsAttendanceOpens}
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    aria-label={COPY.programs.settingsAttendanceOpens}
+                    min={0}
+                    step={1}
+                    required
+                    value={attendance.opensBefore}
+                    onChange={(event) =>
+                      setAttendance((previous) => ({
+                        ...previous,
+                        opensBefore: event.target.value,
+                      }))
+                    }
+                    disabled={busy}
+                  />
+                  <span className={styles.fieldHint}>
+                    {COPY.programs.settingsAttendanceUnits}
+                  </span>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {COPY.programs.settingsAttendanceCloses}
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    aria-label={COPY.programs.settingsAttendanceCloses}
+                    min={0}
+                    step={1}
+                    required
+                    value={attendance.closesAfter}
+                    onChange={(event) =>
+                      setAttendance((previous) => ({
+                        ...previous,
+                        closesAfter: event.target.value,
+                      }))
+                    }
+                    disabled={busy}
+                  />
+                  <span className={styles.fieldHint}>
+                    {COPY.programs.settingsAttendanceUnits}
+                  </span>
+                </label>
+                <div className={styles.settingsActions}>
+                  <button
+                    className={styles.button}
+                    type="submit"
+                    disabled={busy}
+                  >
+                    {COPY.programs.settingsSaveAttendance}
+                  </button>
+                </div>
+              </form>
+            ) : (
               <p className={styles.settingsReadonly}>
                 {COPY.programs.settingsAttendanceUnavailable}
               </p>
-            ) : (
-            <form className={styles.settingsForm} onSubmit={saveAttendance}>
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.settingsAttendanceOpens}</span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  aria-label={COPY.programs.settingsAttendanceOpens}
-                  min={0}
-                  step={1}
-                  required
-                  value={attendance.opensBefore}
-                  onChange={(event) =>
-                    setAttendance((previous) => ({
-                      ...previous,
-                      opensBefore: event.target.value,
-                    }))
-                  }
-                  disabled={busy}
-                />
-                <span className={styles.fieldHint}>{COPY.programs.settingsAttendanceUnits}</span>
-              </label>
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>{COPY.programs.settingsAttendanceCloses}</span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  aria-label={COPY.programs.settingsAttendanceCloses}
-                  min={0}
-                  step={1}
-                  required
-                  value={attendance.closesAfter}
-                  onChange={(event) =>
-                    setAttendance((previous) => ({
-                      ...previous,
-                      closesAfter: event.target.value,
-                    }))
-                  }
-                  disabled={busy}
-                />
-                <span className={styles.fieldHint}>{COPY.programs.settingsAttendanceUnits}</span>
-              </label>
-              <div className={styles.settingsActions}>
-                <button className={styles.button} type="submit" disabled={busy}>
-                  {COPY.programs.settingsSaveAttendance}
-                </button>
-              </div>
-            </form>
             )}
           </section>
         </div>
+      ) : (
+        <section
+          className={styles.settingsUnavailable}
+          aria-labelledby="program-settings-unavailable"
+        >
+          <h5
+            id="program-settings-unavailable"
+            className={styles.workspaceSubheading}
+          >
+            {COPY.programs.settingsNoManagement}
+          </h5>
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.settingsNoManagementHint}
+          </p>
+        </section>
       )}
       <button
         className={styles.programDetailBack}

@@ -46,9 +46,15 @@ export function accountSettingsErrorCopy(
   detail?: string,
   field: "username" | "password" = "password"
 ): string {
-  if (code === "NETWORK_ERROR") return ACCOUNT_SETTINGS_COPY.networkError;
-  if (code === "AUTH_REQUIRED") return ACCOUNT_SETTINGS_COPY.sessionExpired;
-  if (code === "FORBIDDEN") return ACCOUNT_SETTINGS_COPY.forbidden;
+  if (code === "NETWORK_ERROR") {
+    return ACCOUNT_SETTINGS_COPY.networkError;
+  }
+  if (code === "AUTH_REQUIRED") {
+    return ACCOUNT_SETTINGS_COPY.sessionExpired;
+  }
+  if (code === "FORBIDDEN") {
+    return ACCOUNT_SETTINGS_COPY.forbidden;
+  }
   if (code === "CONFLICT") {
     return field === "username"
       ? ACCOUNT_SETTINGS_COPY.usernameTaken
@@ -67,6 +73,8 @@ export function accountSettingsErrorCopy(
     }
     return ACCOUNT_SETTINGS_COPY.validationError;
   }
-  if (code === "UNAVAILABLE") return ACCOUNT_SETTINGS_COPY.unavailable;
+  if (code === "UNAVAILABLE") {
+    return ACCOUNT_SETTINGS_COPY.unavailable;
+  }
   return ACCOUNT_SETTINGS_COPY.genericError;
 }

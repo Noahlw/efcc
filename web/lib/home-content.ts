@@ -42,6 +42,20 @@ interface FeaturedEventRow {
   location?: string | null;
 }
 
+interface HomeHistorySnapshot {
+  version: number;
+  template_type: "A" | "B";
+  status: "Draft" | "Published" | "Archived";
+  title: string | null;
+  summary: string | null;
+  body_markdown: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  image_url: string | null;
+  image_alt: string | null;
+  featured_event_id: string | null;
+}
+
 interface HomeHistoryRow {
   content_id: string;
   version: number;
@@ -50,6 +64,25 @@ interface HomeHistoryRow {
   published_by: string | null;
   published_by_name: string | null;
   published_at: string;
+  title: string | null;
+  summary: string | null;
+  body_markdown: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  image_url: string | null;
+  image_alt: string | null;
+  featured_event_id: string | null;
+  before_version: number | null;
+  before_template_type: "A" | "B" | null;
+  before_status: "Draft" | "Published" | "Archived" | null;
+  before_title: string | null;
+  before_summary: string | null;
+  before_body_markdown: string | null;
+  before_cta_label: string | null;
+  before_cta_url: string | null;
+  before_image_url: string | null;
+  before_image_alt: string | null;
+  before_featured_event_id: string | null;
 }
 
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
@@ -266,6 +299,46 @@ function rowDto(row: HomeContentRow): Record<string, unknown> {
     updated_by: row.updated_by,
   };
 }
+function historySnapshot(
+  row: HomeHistoryRow,
+  before: boolean
+): HomeHistorySnapshot | null {
+  if (!before) {
+    return {
+      version: row.version,
+      template_type: row.template_type,
+      status: row.status,
+      title: row.title,
+      summary: row.summary,
+      body_markdown: row.body_markdown,
+      cta_label: row.cta_label,
+      cta_url: row.cta_url,
+      image_url: row.image_url,
+      image_alt: row.image_alt,
+      featured_event_id: row.featured_event_id,
+    };
+  }
+  if (
+    row.before_version === null ||
+    row.before_template_type === null ||
+    row.before_status === null
+  ) {
+    return null;
+  }
+  return {
+    version: row.before_version,
+    template_type: row.before_template_type,
+    status: row.before_status,
+    title: row.before_title,
+    summary: row.before_summary,
+    body_markdown: row.before_body_markdown,
+    cta_label: row.before_cta_label,
+    cta_url: row.before_cta_url,
+    image_url: row.before_image_url,
+    image_alt: row.before_image_alt,
+    featured_event_id: row.before_featured_event_id,
+  };
+}
 
 async function latestByContentId(
   db: D1Database,
@@ -478,12 +551,13 @@ export async function handleGetHome(
               template_type: row.template_type,
               content_id: row.content_id,
               version: row.version,
+              published_at: row.published_at,
+              updated_at: row.updated_at,
               title: row.title,
               summary: row.summary,
               body_html: renderPublicBody(row.body_markdown),
               cta_label: row.cta_label,
               cta_url: row.cta_url,
-              image_url: row.image_url,
               image_alt: row.image_alt,
               featured_event: event,
               fallback: false,
@@ -492,12 +566,13 @@ export async function handleGetHome(
               template_type: "A",
               content_id: null,
               version: null,
+              published_at: null,
+              updated_at: null,
               title: null,
               summary: null,
               body_html: null,
               cta_label: null,
               cta_url: null,
-              image_url: null,
               image_alt: null,
               featured_event: event,
               fallback: true,
@@ -555,18 +630,54 @@ export async function handleGetHomeHistory(
         requestId
       );
     }
+    // `before` is the nearest lower version that was already published for
+    // this content ID; draft-only versions are intentionally skipped.
     const rows = await env.DB
       .prepare(
         `SELECT h.content_id, h.version, h.template_type, h.status,
-                h.published_by, a.name AS published_by_name, h.published_at
+                h.published_by, a.name AS published_by_name, h.published_at,
+                h.title, h.summary, h.body_markdown, h.cta_label, h.cta_url,
+                h.image_url, h.image_alt, h.featured_event_id,
+                prior_row.version AS before_version,
+                prior_row.template_type AS before_template_type,
+                prior_row.status AS before_status,
+                prior_row.title AS before_title,
+                prior_row.summary AS before_summary,
+                prior_row.body_markdown AS before_body_markdown,
+                prior_row.cta_label AS before_cta_label,
+                prior_row.cta_url AS before_cta_url,
+                prior_row.image_url AS before_image_url,
+                prior_row.image_alt AS before_image_alt,
+                prior_row.featured_event_id AS before_featured_event_id
            FROM home_content h
            LEFT JOIN accounts a ON a.user_id = h.published_by
+           LEFT JOIN home_content prior_row
+             ON prior_row.content_id = h.content_id
+            AND prior_row.published_at IS NOT NULL
+            AND prior_row.version = (
+              SELECT MAX(previous.version)
+                FROM home_content previous
+               WHERE previous.content_id = h.content_id
+                 AND previous.published_at IS NOT NULL
+                 AND previous.version < h.version
+            )
           WHERE h.published_at IS NOT NULL
           ORDER BY h.published_at DESC, h.version DESC
           LIMIT 50`
       )
       .all<HomeHistoryRow>();
-    return jsonResponse(200, { history: rows.results ?? [] }, requestId);
+    const history = (rows.results ?? []).map((row) => ({
+      content_id: row.content_id,
+      version: row.version,
+      template_type: row.template_type,
+      status: row.status,
+      published_by: row.published_by,
+      published_by_name: row.published_by_name,
+      published_at: row.published_at,
+      before: historySnapshot(row, true),
+      after: historySnapshot(row, false),
+    }));
+    return jsonResponse(200, { history }, requestId);
   } catch (error) {
     console.error(`[home] history read failed requestId=${requestId}:`, error);
     return problem(

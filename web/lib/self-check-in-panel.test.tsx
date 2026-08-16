@@ -40,11 +40,20 @@ describe(SelfCheckInPanel, () => {
 
   afterAll(() => server.close());
 
-  test("renders a Self surface without guest or Assisted controls", async () => {
+  test("renders the viewfinder-first Self surface without guest or Assisted controls", async () => {
     server.use(resolveHandler([EVENT]));
     const user = userEvent.setup();
-    render(<SelfCheckInPanel title={COPY.sections.scanner} />);
+    render(<SelfCheckInPanel />);
 
+    expect(screen.getByRole("heading", { name: COPY.attendance.selfTitle })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.selfScanStart })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(`^${COPY.attendance.manualFallbackTitle}`),
+      })
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText(COPY.attendance.guestName)).toBeNull();
     expect(screen.queryByText(COPY.attendance.assistedOpen)).toBeNull();
     await user.type(
@@ -213,8 +222,11 @@ describe(SelfCheckInPanel, () => {
     );
 
     await expect(
-      screen.findByText(COPY.attendance.success)
+      screen.findByRole("heading", {
+        name: COPY.attendance.selfResultSuccessTitle,
+      })
     ).resolves.toBeInTheDocument();
+    expect(screen.getByText(COPY.attendance.selfResultSuccessCopy)).toBeInTheDocument();
     expect(body).toMatchObject({
       event_id: EVENT.event_id,
       method: "self_manual_code",
@@ -297,7 +309,7 @@ describe(SelfCheckInPanel, () => {
     });
   });
 
-  test("focuses the manual fallback when camera is unavailable", async () => {
+  test("shows a framed camera fallback alert when camera is unavailable", async () => {
     const originalDetector = (window as Window & { BarcodeDetector?: unknown })
       .BarcodeDetector;
     const originalMediaDevices = navigator.mediaDevices;
@@ -309,14 +321,16 @@ describe(SelfCheckInPanel, () => {
     const user = userEvent.setup();
     render(<SelfCheckInPanel />);
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.camera })
+      screen.getByRole("button", { name: COPY.attendance.selfScanStart })
     );
 
     const input = screen.getByLabelText(COPY.attendance.inputLabel);
     expect(input).toHaveFocus();
-    expect(
-      screen.getByText(COPY.attendance.cameraUnavailable)
-    ).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.cameraUnavailableTitle);
+    expect(alert).toHaveTextContent(
+      COPY.attendance.cameraUnavailableGuidance
+    );
 
     if (originalDetector === undefined) {
       Reflect.deleteProperty(window, "BarcodeDetector");
@@ -331,8 +345,7 @@ describe(SelfCheckInPanel, () => {
       value: originalMediaDevices,
     });
   });
-
-  test("renders duplicate as an accessible neutral notice and preserves entry context", async () => {
+  test("renders a dedicated neutral duplicate result and preserves entry context", async () => {
     server.use(
       resolveHandler([EVENT]),
       http.post("/api/v1/attendance/self", () =>
@@ -353,8 +366,17 @@ describe(SelfCheckInPanel, () => {
       await screen.findByRole("button", { name: COPY.attendance.memberSubmit })
     );
 
-    const output = await screen.findByText(COPY.attendance.duplicate);
-    expect(output.closest("output")).toHaveAttribute("data-tone", "info");
+    expect(
+      await screen.findByRole("heading", {
+        name: COPY.attendance.selfResultDuplicateTitle,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.attendance.selfResultDuplicateCopy)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.resultScanAgain })
+    ).toBeInTheDocument();
     expect(input).toHaveValue("ATT1234");
   });
 

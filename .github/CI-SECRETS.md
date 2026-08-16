@@ -60,8 +60,8 @@ To run the D1 suites against the shared dev-testing worker instead: `https://efc
 | ------------ | ------ | ---------------- |
 | `E2E_admin`  | Admin  | `E2E_admin!dev`  |
 | `E2E_staff`  | Staff  | `E2E_staff!dev`  |
-| `E2E_member` | Member  | `E2E_member!dev` |
-| `E2E_legacy` | Member | PIN `1234`        |
+| `E2E_member` | Member | `E2E_member!dev` |
+| `E2E_legacy` | Member | PIN `1234`       |
 
 One-time provisioning runbook (all wrangler commands from `web/`):
 

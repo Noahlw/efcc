@@ -318,7 +318,9 @@ export const ScannerBoundary = () => {
             onAuthRequired={handleAuthRequired}
           />
         ) : (
-          <SelfCheckInPanel title={COPY.sections.scanner} />
+          <SelfCheckInPanel
+            requestedEventId={intent.mode === "self" ? intent.eventId : null}
+          />
         )}
       </div>
     </>

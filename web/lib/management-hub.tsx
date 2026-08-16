@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   lazy,
   Suspense,
@@ -9,19 +10,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 
 import type { Section } from "@/lib/api";
 import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { ApprovalQueue } from "@/lib/approval-queue";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import {
   ManagementMembersError,
   searchManagementMembers,
-  type ManagementMember,
 } from "@/lib/management-api";
-import { announce } from "@/lib/live-region";
+import type { ManagementMember } from "@/lib/management-api";
 import { ManagementDirectory } from "@/lib/programs/management-directory";
 import { getManagementAccess } from "@/lib/programs/program-api";
 import type { Department } from "@/lib/programs/program-api";
@@ -122,10 +122,7 @@ export function projectManagementHubGroups(
       description: COPY.management.programManagementHint,
     });
   }
-  if (
-    sectionKeys.has("events") &&
-    (staffOrAdmin || canManagePrograms)
-  ) {
+  if (sectionKeys.has("events") && (staffOrAdmin || canManagePrograms)) {
     rows.operations.push({
       key: "events",
       label: COPY.management.eventOperations,
@@ -175,25 +172,52 @@ type AccessState =
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 
 function readModuleFromLocation(): ManagementModule | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
   const value = new URLSearchParams(window.location.search).get("module");
   return isManagementModule(value) ? value : null;
 }
 
 function readEventIdFromLocation(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
   const value = new URLSearchParams(window.location.search).get("eventId");
   return value?.trim() || null;
+}
+type ManagementDepartmentView = "managers";
+
+function readDepartmentIdFromLocation(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get("department");
+  return value?.trim() || null;
+}
+
+function readDepartmentViewFromLocation(): ManagementDepartmentView | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return new URLSearchParams(window.location.search).get("view") === "managers"
+    ? "managers"
+    : null;
 }
 
 function useManagementModule() {
   const [module, setModule] = useState<ManagementModule | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const [departmentView, setDepartmentView] =
+    useState<ManagementDepartmentView | null>(null);
 
   useEffect(() => {
     const sync = () => {
       setModule(readModuleFromLocation());
       setEventId(readEventIdFromLocation());
+      setDepartmentId(readDepartmentIdFromLocation());
+      setDepartmentView(readDepartmentViewFromLocation());
     };
     sync();
     window.addEventListener("popstate", sync);
@@ -201,21 +225,64 @@ function useManagementModule() {
   }, []);
 
   const navigate = useCallback((next: ManagementModule | null) => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
     const href = next ? `/management?module=${next}` : "/management";
     window.history.pushState({}, "", href);
     setModule(next);
     setEventId(null);
+    setDepartmentId(null);
+    setDepartmentView(null);
     announce(next ? COPY.management.pageTitle : COPY.management.backToHub);
   }, []);
 
-  return { module, eventId, navigate };
+  const navigateDepartment = useCallback(
+    (
+      nextDepartmentId: string,
+      view: ManagementDepartmentView | null = null
+    ) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+      const params = new URLSearchParams({
+        module: "programs",
+        department: nextDepartmentId,
+      });
+      if (view !== null) {
+        params.set("view", view);
+      }
+      window.history.pushState({}, "", `/management?${params.toString()}`);
+      setModule("programs");
+      setEventId(null);
+      setDepartmentId(nextDepartmentId);
+      setDepartmentView(view);
+      announce(COPY.management.pageTitle);
+    },
+    []
+  );
+
+  return {
+    module,
+    eventId,
+    departmentId,
+    departmentView,
+    navigate,
+    navigateDepartment,
+  };
 }
 
 export function ManagementHub() {
   const router = useRouter();
   const { bootstrap } = useApp();
-  const { module, eventId, navigate } = useManagementModule();
+  const {
+    module,
+    eventId,
+    departmentId,
+    departmentView,
+    navigate,
+    navigateDepartment,
+  } = useManagementModule();
   const [access, setAccess] = useState<AccessState>({ kind: "loading" });
   const [retryKey, setRetryKey] = useState(0);
 
@@ -225,10 +292,17 @@ export function ManagementHub() {
     (async () => {
       try {
         const projection = await getManagementAccess(true);
-        if (!cancelled) setAccess({ kind: "ready", projection });
+        if (!cancelled) {
+          setAccess({ kind: "ready", projection });
+        }
       } catch (error) {
-        if (cancelled) return;
-        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        if (cancelled) {
+          return;
+        }
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
@@ -311,9 +385,9 @@ export function ManagementHub() {
     );
   }
 
-  const activeRow = groups.flatMap((group) => group.rows).find(
-    (row) => row.key === module
-  );
+  const activeRow = groups
+    .flatMap((group) => group.rows)
+    .find((row) => row.key === module);
 
   if (module && !activeRow) {
     return (
@@ -340,7 +414,10 @@ export function ManagementHub() {
 
   if (module && activeRow) {
     return (
-      <section className={styles.page} aria-labelledby="management-module-title">
+      <section
+        className={styles.page}
+        aria-labelledby="management-module-title"
+      >
         <div className={styles.moduleFrame}>
           <header className={styles.moduleHeader}>
             <div>
@@ -360,9 +437,18 @@ export function ManagementHub() {
           <ModuleSurface
             module={module}
             eventId={eventId}
+            departmentId={departmentId}
+            departmentView={departmentView}
             profile={bootstrap.profile}
             sections={bootstrap.sections}
             access={access.projection}
+            onOpenDepartment={(nextDepartmentId) =>
+              navigateDepartment(nextDepartmentId)
+            }
+            onOpenDepartmentManagers={(nextDepartmentId) =>
+              navigateDepartment(nextDepartmentId, "managers")
+            }
+            onBackToDirectory={() => navigate("programs")}
             onOpenProgram={(programId) =>
               router.push(
                 buildProgramsHref({
@@ -425,13 +511,20 @@ export function ManagementHub() {
 function ModuleSurface({
   module,
   eventId,
+  departmentId,
+  departmentView,
   profile,
   sections,
   access,
+  onOpenDepartment,
+  onOpenDepartmentManagers,
+  onBackToDirectory,
   onOpenProgram,
 }: {
   module: ManagementModule;
   eventId: string | null;
+  departmentId: string | null;
+  departmentView: ManagementDepartmentView | null;
   profile: {
     name: string;
     username: string;
@@ -440,12 +533,28 @@ function ModuleSurface({
   };
   sections: readonly Section[];
   access: ProgramsManagementAccess;
+  onOpenDepartment: (departmentId: string) => void;
+  onOpenDepartmentManagers: (departmentId: string) => void;
+  onBackToDirectory: () => void;
   onOpenProgram: (programId: string) => void;
 }) {
-  if (module === "approvals") return <ApprovalQueue />;
-  if (module === "members") return <MemberDirectory />;
+  if (module === "approvals") {
+    return <ApprovalQueue />;
+  }
+  if (module === "members") {
+    return <MemberDirectory />;
+  }
   if (module === "programs") {
-    return <ProgramsSurface onOpenProgram={onOpenProgram} />;
+    return (
+      <ProgramsSurface
+        departmentId={departmentId}
+        departmentView={departmentView}
+        onOpenDepartment={onOpenDepartment}
+        onOpenDepartmentManagers={onOpenDepartmentManagers}
+        onBackToDirectory={onBackToDirectory}
+        onOpenProgram={onOpenProgram}
+      />
+    );
   }
   if (module === "events") {
     return (
@@ -461,7 +570,13 @@ function ModuleSurface({
     );
   }
   if (module === "permissions") {
-    return <PermissionsProjection profile={profile} sections={sections} access={access} />;
+    return (
+      <PermissionsProjection
+        profile={profile}
+        sections={sections}
+        access={access}
+      />
+    );
   }
   if (module === "care") {
     return <CareSurface />;
@@ -474,8 +589,18 @@ function ModuleSurface({
 }
 
 function ProgramsSurface({
+  departmentId,
+  departmentView,
+  onOpenDepartment,
+  onOpenDepartmentManagers,
+  onBackToDirectory,
   onOpenProgram,
 }: {
+  departmentId: string | null;
+  departmentView: ManagementDepartmentView | null;
+  onOpenDepartment: (departmentId: string) => void;
+  onOpenDepartmentManagers: (departmentId: string) => void;
+  onBackToDirectory: () => void;
   onOpenProgram: (programId: string) => void;
 }) {
   const [createDepartments, setCreateDepartments] = useState<
@@ -499,6 +624,11 @@ function ProgramsSurface({
     <ManagementDirectory
       onOpenProgram={onOpenProgram}
       onCreateProgram={setCreateDepartments}
+      departmentId={departmentId}
+      departmentView={departmentView}
+      onOpenDepartment={onOpenDepartment}
+      onOpenDepartmentManagers={onOpenDepartmentManagers}
+      onBackToDirectory={onBackToDirectory}
     />
   );
 }
@@ -526,8 +656,9 @@ function MemberDirectory() {
     | { kind: "empty" }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
-  const [selectedMember, setSelectedMember] =
-    useState<ManagementMember | null>(null);
+  const [selectedMember, setSelectedMember] = useState<ManagementMember | null>(
+    null
+  );
   const debounceRef = useRef<number | null>(null);
   const searchSequence = useRef(0);
 
@@ -537,12 +668,14 @@ function MemberDirectory() {
     setState({ kind: "loading" });
     try {
       const members = await searchManagementMembers(trimmed);
-      if (sequence !== searchSequence.current) return;
-      setState(
-        members.length ? { kind: "ready", members } : { kind: "empty" }
-      );
+      if (sequence !== searchSequence.current) {
+        return;
+      }
+      setState(members.length ? { kind: "ready", members } : { kind: "empty" });
     } catch (error) {
-      if (sequence !== searchSequence.current) return;
+      if (sequence !== searchSequence.current) {
+        return;
+      }
       const message =
         error instanceof ManagementMembersError &&
         (error.status === 401 || error.status === 403)
@@ -598,7 +731,10 @@ function MemberDirectory() {
   return (
     <div className={styles.moduleFrame}>
       <form className={styles.searchForm} onSubmit={submit}>
-        <label className={styles.searchLabel} htmlFor="management-member-search">
+        <label
+          className={styles.searchLabel}
+          htmlFor="management-member-search"
+        >
           {COPY.management.memberSearchLabel}
         </label>
         <p className={styles.searchHint}>{COPY.management.memberSearchHint}</p>
@@ -653,7 +789,8 @@ function MemberDirectory() {
                     {member.username}
                   </span>
                   <span className={styles.memberMeta}>
-                    {member.role} · {member.phone || COPY.management.memberPhoneUnavailable}
+                    {member.role} ·{" "}
+                    {member.phone || COPY.management.memberPhoneUnavailable}
                   </span>
                 </button>
               </li>

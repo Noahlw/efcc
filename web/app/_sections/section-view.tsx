@@ -15,8 +15,9 @@ import styles from "./section-view.module.css";
  * are NOT production copy and are intentionally omitted so the accessible heading
  * name matches the centralized COPY constant exactly.
  *
- * Home delegates its real published surface to HomeSurface; the transitional
- * sections remain presentational and add no network calls or domain writes.
+ * Home and Notices delegate their real published surface to HomeSurface; the
+ * remaining transitional sections stay presentational and add no network calls
+ * or domain writes.
  */
 export function SectionView({
   sectionKey,
@@ -28,8 +29,11 @@ export function SectionView({
   const headingId = `section-${sectionKey}-title`;
   return (
     <GuardedSection sectionKey={sectionKey}>
-      {sectionKey === "home" ? (
-        <HomeSurface title={title} />
+      {sectionKey === "home" || sectionKey === "notices" ? (
+        <HomeSurface
+          title={title}
+          mode={sectionKey === "notices" ? "detail" : "teaser"}
+        />
       ) : (
         <section className={styles.section} aria-labelledby={headingId}>
           <header className={styles.sectionHead}>

@@ -275,6 +275,7 @@ describe("PUI-02 participant directory search and filters", () => {
     );
     expect(rowNames()).toHaveLength(3);
   });
+
   test("filter-only no-match state explains and clears active filters", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({

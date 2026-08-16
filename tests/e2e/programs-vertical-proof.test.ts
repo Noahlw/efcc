@@ -61,11 +61,19 @@ const COPY = {
   workspaceTaskEvents: "聚會",
   workspaceTaskParticipants: "參與者",
   workspaceTaskSettings: "課程設定",
+  workspaceOtherSettings: "設定",
+  confirmWithdrawRequest: "確定要撤回這次申請嗎？",
+  confirmWithdrawRequestAction: "確定撤回申請",
+  confirmCancelEnrollment: "確定要取消這次報名嗎？",
+  confirmCancelEnrollmentAction: "確定取消報名",
+  selfResultSuccessTitle: "簽到完成",
+  selfResultDuplicateTitle: "已完成簽到",
+  resultScanAgain: "再次簽到",
   approve: "核准",
   eventCancelled: "已取消",
   eventActive: "開放中",
   eventInactive: "已暫停",
-  scannerTitle: "掃描簽到",
+  scannerTitle: "聚會簽到",
   selfMode: "本人簽到",
   assistedMode: "協助簽到",
   assistedContext: "目前聚會",
@@ -74,7 +82,7 @@ const COPY = {
   chooseEvent: "選擇聚會",
   guestName: "姓名",
   guestPhone: "電話",
-  guestSubmit: "送出訪客簽到",
+  guestSubmit: "確認簽到",
   memberSubmit: "確認簽到",
   success: "簽到成功。",
   memberDuplicate: "你已完成此聚會簽到。",
@@ -451,6 +459,12 @@ test.describe("Tier 1: Participant Discovery & Enrollment Lifecycle (Prompt 1 / 
         .getByRole("button", { name: COPY.withdrawRequest })
         .click();
       await expect(
+        memberPage.getByText(COPY.confirmWithdrawRequest)
+      ).toBeVisible();
+      await memberPage
+        .getByRole("button", { name: COPY.confirmWithdrawRequestAction })
+        .click();
+      await expect(
         memberPage.getByRole("button", { name: COPY.requestEnroll })
       ).toBeVisible();
 
@@ -478,6 +492,18 @@ test.describe("Tier 1: Participant Discovery & Enrollment Lifecycle (Prompt 1 / 
       await memberPage.reload();
       await expect(
         memberPage.getByRole("button", { name: COPY.cancelEnrollment })
+      ).toBeVisible();
+      await memberPage
+        .getByRole("button", { name: COPY.cancelEnrollment })
+        .click();
+      await expect(
+        memberPage.getByText(COPY.confirmCancelEnrollment)
+      ).toBeVisible();
+      await memberPage
+        .getByRole("button", { name: COPY.confirmCancelEnrollmentAction })
+        .click();
+      await expect(
+        memberPage.getByRole("button", { name: COPY.requestEnroll })
       ).toBeVisible();
     } finally {
       await memberCtx.close();
@@ -527,15 +553,10 @@ test.describe("Tier 2: Scoped Management Directory & Program Workspace (Prompt 2
           exact: true,
         })
       ).toBeVisible();
-      await expect(
-        page.getByRole("link", {
-          name: COPY.workspaceTaskSettings,
-          exact: true,
-        })
-      ).toBeVisible();
-
       await page
-        .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
+        .getByRole("link", {
+          name: new RegExp(`^${COPY.workspaceOtherSettings}`, "u"),
+        })
         .click();
       await expect(
         page.getByRole("heading", { name: "基本資料" })
@@ -603,12 +624,11 @@ test.describe("Tier 3: Recurrence, Schedule Exceptions, Generation, Queue & Badg
     const page = await adminCtx.newPage();
     try {
       await page.goto(
-        `/programs?mode=management&program=${fixtures.requestProgramId}`
+        `/programs?mode=management&program=${fixtures.requestProgramId}&task=schedule`
       );
-      await page
-        .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
-        .click();
-      await expect(page.getByRole("heading", { name: "時間表" })).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "時間表", exact: true })
+      ).toBeVisible();
     } finally {
       await adminCtx.close();
     }
@@ -676,11 +696,16 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
       await page.locator("#attendance-code").fill(fixtures.manualCode);
       await page.getByRole("button", { name: COPY.resolve }).click();
       await page.getByRole("button", { name: COPY.memberSubmit }).click();
-      await expect(statusText(page, COPY.success)).toBeVisible();
+      await expect(statusText(page, COPY.selfResultSuccessTitle)).toBeVisible();
 
       // Duplicate check-in is quiet
+      await page.getByRole("button", { name: COPY.resultScanAgain }).click();
+      await page.locator("#attendance-code").fill(fixtures.manualCode);
+      await page.getByRole("button", { name: COPY.resolve }).click();
       await page.getByRole("button", { name: COPY.memberSubmit }).click();
-      await expect(statusText(page, COPY.memberDuplicate)).toBeVisible();
+      await expect(
+        statusText(page, COPY.selfResultDuplicateTitle)
+      ).toBeVisible();
     } finally {
       await memberCtx.close();
     }
@@ -726,23 +751,24 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
     await page.goto("/guest-check-in");
     await expect(page.getByText("中國基督教播道會顯恩堂")).toBeVisible();
 
-    // Resolve event
-    await page.locator("#attendance-code").fill(fixtures.manualCode);
-    await page.getByRole("button", { name: COPY.resolve }).click();
-
-    // Guest submission
+    // Single-step guest check-in (code + name + phone)
+    await page.locator("#guest-code").fill(fixtures.manualCode);
     await page.locator("#guest-name").fill("Automated Guest");
     await page.locator("#guest-phone").fill("9888 7777");
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
-    await expect(statusText(page, COPY.success)).toBeVisible();
+    await expect(statusText(page, /訪客簽到完成|簽到成功/u)).toBeVisible();
 
     // Duplicate check-in notice without leaking identity
+    await page.goto("/guest-check-in");
+    await page.locator("#guest-code").fill(fixtures.manualCode);
     await page.locator("#guest-name").fill("Automated Guest");
     await page.locator("#guest-phone").fill("+852 9888-7777");
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
     await expect(statusText(page, COPY.guestDuplicate)).toBeVisible();
 
     // Login handoff preserves context
+    await page.goto("/guest-check-in");
+    await page.locator("#guest-code").fill(fixtures.manualCode);
     await page.getByRole("link", { name: COPY.loginForMember }).click();
     await expect(page).toHaveURL("/");
     await page.locator('input[autocomplete="username"]').fill(MEMBER_USER);
@@ -763,7 +789,11 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
     });
     const page = await adminCtx.newPage();
     try {
-      await page.goto("/events");
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(
+          fixtures.requestProgramId
+        )}&task=roster`
+      );
       await page.locator("#event-id").fill(fixtures.eventId);
       await page.getByRole("button", { name: COPY.roster }).click();
       await expect(page.getByText("簽到名單")).toBeVisible();

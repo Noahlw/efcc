@@ -13,17 +13,17 @@ import assert from "node:assert/strict";
 import { env } from "cloudflare:workers";
 import { describe, test, vi } from "vitest";
 
+import type * as Handlers from "./lib/auth/handlers";
 import worker from "./worker";
 import type { Env } from "./worker";
-import type * as Handlers from "./lib/auth/handlers";
 
 // T3: stub a single auth handler to throw so the Worker's new outer RFC9457
 // catch is exercised. The rest of the module stays real.
-vi.mock("./lib/auth/handlers", async (importOriginal) => {
+vi.mock(import("./lib/auth/handlers"), async (importOriginal) => {
   const actual = await importOriginal<typeof Handlers>();
   return {
     ...actual,
-    handleMe: vi.fn().mockRejectedValue(new Error("boom")),
+    handleMe: vi.fn<() => Promise<Response>>().mockRejectedValue(new Error("boom")),
   };
 });
 
@@ -90,11 +90,19 @@ describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", (
     assert.equal(res.status, 500);
     assert.match(
       res.headers.get("Content-Type") ?? "",
-      /application\/problem\+json/
+      /application\/problem\+json/u
     );
     assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
-    const body = await json<{ type: string; status: number; code: string; detail: string }>(res);
-    assert.ok(body.type.includes("#INTERNAL_ERROR"), "type must reference #INTERNAL_ERROR");
+    const body = await json<{
+      type: string;
+      status: number;
+      code: string;
+      detail: string;
+    }>(res);
+    assert.ok(
+      body.type.includes("#INTERNAL_ERROR"),
+      "type must reference #INTERNAL_ERROR"
+    );
     assert.equal(body.code, "INTERNAL_ERROR");
     assert.equal(body.detail, "Internal server error.");
     assert.equal(body.status, 500);

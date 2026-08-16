@@ -18,7 +18,11 @@ export default function ProgramsPage() {
       <div className={styles.page}>
         <Suspense
           fallback={
-            <div className={styles.boundaryState} role="status" aria-busy="true">
+            <div
+              className={styles.boundaryState}
+              role="status"
+              aria-busy="true"
+            >
               {COPY.programs.accessLoading}
             </div>
           }

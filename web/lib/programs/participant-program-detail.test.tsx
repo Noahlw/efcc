@@ -145,7 +145,9 @@ describe("PUI-03 participant Program detail", () => {
     });
     expect(heading).toBeInTheDocument();
     expect(heading).toHaveFocus();
-    expect(screen.getByText("為青年建立穩定的同行與學習空間。"));
+    expect(
+      screen.getByText("為青年建立穩定的同行與學習空間。")
+    ).toBeInTheDocument();
     expect(screen.getByText(/Recurring/u)).toBeInTheDocument();
     expect(screen.getByText(/Active/u)).toBeInTheDocument();
     expect(screen.getByText(/MemberRequest/u)).toBeInTheDocument();
@@ -163,6 +165,39 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByRole("button", { name: COPY.programs.detailBack })
     );
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  test("opens an event detail and returns to the program", async () => {
+    const detail = detailFixture({
+      events: [
+        {
+          ...detailFixture().events[0],
+          name: "第三課聚會",
+          location: "二樓禮堂",
+          check_in_window_opens_at: "2099-03-04T10:30:00.000Z",
+          check_in_window_closes_at: "2099-03-04T14:00:00.000Z",
+        },
+      ],
+    });
+    mocks.getParticipantProgramDetail.mockResolvedValue(detail);
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.detailEventOpen })
+    );
+    await expect(
+      screen.findByRole("heading", { name: "第三課聚會" })
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("二樓禮堂")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: COPY.programs.participantEventDetailBack,
+      })
+    );
+    await expect(
+      screen.findByRole("heading", { name: "青年門徒小組" })
+    ).resolves.toBeInTheDocument();
   });
 
   test("keeps multiple OneOff Events visible and labels manager-only availability", async () => {

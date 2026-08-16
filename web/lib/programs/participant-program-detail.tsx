@@ -16,6 +16,7 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 
 import { ParticipantEnrollment } from "./participant-enrollment";
+import { ParticipantEventDetail } from "./participant-event-detail";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -80,6 +81,7 @@ export const ParticipantProgramDetail = ({
   const [state, setState] = useState<DetailState>({ kind: "loading" });
   const mounted = useRef(true);
   const requestId = useRef(0);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const retryFocusPending = useRef(false);
 
   useEffect(() => {
@@ -88,6 +90,10 @@ export const ParticipantProgramDetail = ({
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setSelectedEventId(null);
+  }, [programId]);
 
   const loadDetail = useCallback(
     async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
@@ -178,6 +184,16 @@ export const ParticipantProgramDetail = ({
       ? events
       : events.slice(0, 1);
   }, [state]);
+  const selectedEvent = selectedEventId
+    ? (upcomingEvents.find((event) => event.event_id === selectedEventId) ??
+      null)
+    : null;
+
+  useEffect(() => {
+    if (selectedEventId && !selectedEvent) {
+      setSelectedEventId(null);
+    }
+  }, [selectedEvent, selectedEventId]);
 
   if (state.kind === "loading") {
     return (
@@ -237,6 +253,16 @@ export const ParticipantProgramDetail = ({
           </button>
         </div>
       </section>
+    );
+  }
+
+  if (selectedEvent) {
+    return (
+      <ParticipantEventDetail
+        event={selectedEvent}
+        programName={state.detail.program.name}
+        onBack={() => setSelectedEventId(null)}
+      />
     );
   }
 
@@ -346,7 +372,6 @@ export const ParticipantProgramDetail = ({
       <section
         className={styles.programDetailSection}
         aria-labelledby="program-detail-events"
-        role="region"
       >
         <h3 id="program-detail-events" className={styles.programDetailHeading}>
           {COPY.programs.detailEvents}
@@ -355,10 +380,17 @@ export const ParticipantProgramDetail = ({
           <ul className={styles.programDetailList}>
             {upcomingEvents.map((event) => (
               <li key={event.event_id} className={styles.programDetailEvent}>
-                <span>{COPY.programs.detailEventTime}</span>
-                <time dateTime={event.starts_at}>
-                  {hkWallLabel(event.starts_at)}
-                </time>
+                <button
+                  className={styles.programDetailEventButton}
+                  type="button"
+                  onClick={() => setSelectedEventId(event.event_id)}
+                  aria-label={COPY.programs.detailEventOpen}
+                >
+                  <span>{COPY.programs.detailEventTime}</span>
+                  <time dateTime={event.starts_at}>
+                    {hkWallLabel(event.starts_at)}
+                  </time>
+                </button>
               </li>
             ))}
           </ul>

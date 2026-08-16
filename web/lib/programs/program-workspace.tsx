@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
+import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -32,22 +33,24 @@ import type {
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
-import { rememberDeepLink } from "@/lib/session";
 import { hkWallDateTimeLabel, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
-import { ProgramSettings } from "./program-settings";
+import { rememberDeepLink } from "@/lib/session";
 
-import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import { MemberPicker } from "./member-picker";
+import { ProgramForm } from "./program-form";
+import { ProgramSettings } from "./program-settings";
+import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsTask } from "./programs-intent";
 import { LeadersPanel } from "./programs-leaders-panel";
 import { useAsyncResource } from "./use-async-resource";
+
 import styles from "@/app/programs/programs.module.css";
 
 export interface ProgramWorkspaceProps {
   programId: string;
   task?: ProgramsTask;
-  /** EVT-01 (#251): management Event deep link under the events task. */
+  /** EVT-01 (#251): management Event deep link under events or roster task. */
   eventId?: string | null;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
@@ -208,11 +211,30 @@ function enrollmentLabel(value: Program["enrollment_mode"]): string {
 }
 
 function taskLabel(task: ProgramsTask): string {
-  return task === "events"
-    ? COPY.programs.workspaceTaskEvents
-    : task === "participants"
-      ? COPY.programs.workspaceTaskParticipants
-      : COPY.programs.workspaceTaskSettings;
+  switch (task) {
+    case "events": {
+      return COPY.programs.workspaceTaskEvents;
+    }
+    case "participants": {
+      return COPY.programs.workspaceTaskParticipants;
+    }
+    case "notifications": {
+      return COPY.programs.workspaceTaskNotifications;
+    }
+    case "schedule": {
+      return COPY.programs.settingsSchedule;
+    }
+    case "assisted-enrollment": {
+      return COPY.programs.workspaceTaskAssistedEnrollment;
+    }
+    case "roster": {
+      return COPY.programs.workspaceTaskRoster;
+    }
+    case "settings":
+    default: {
+      return COPY.programs.workspaceTaskSettings;
+    }
+  }
 }
 
 const WorkspaceNavigation = ({
@@ -229,7 +251,6 @@ const WorkspaceNavigation = ({
   const tasks: ProgramsTask[] = [
     ...(hasModule(modules, "events") ? ["events" as const] : []),
     ...(hasModule(modules, "enrollment") ? ["participants" as const] : []),
-    "settings",
   ];
   return (
     <nav
@@ -305,6 +326,8 @@ const WorkspaceOverview = ({
   const eventTaskHref = `/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=events`;
   const participantTaskHref = `/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=participants`;
 
+  const settingsTaskHref = `/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=settings`;
+  const notificationsTaskHref = "/programs?mode=management&task=notifications";
   return (
     <>
       {nextEvent && (
@@ -330,13 +353,15 @@ const WorkspaceOverview = ({
             {summary.eventProgress.status === "ready" &&
             summary.eventProgress.value ? (
               <strong>
-                {COPY.programs.workspaceCheckInProgress.replace(
-                  "{checked}",
-                  String(summary.eventProgress.value.checked_in)
-                ).replace(
-                  "{active}",
-                  String(summary.eventProgress.value.active_enrollments)
-                )}
+                {COPY.programs.workspaceCheckInProgress
+                  .replace(
+                    "{checked}",
+                    String(summary.eventProgress.value.checked_in)
+                  )
+                  .replace(
+                    "{active}",
+                    String(summary.eventProgress.value.active_enrollments)
+                  )}
               </strong>
             ) : summary.eventProgress.status === "loading" ? (
               <output aria-busy="true">
@@ -350,7 +375,12 @@ const WorkspaceOverview = ({
           </div>
           <a
             className={`${styles.button} ${styles.workspaceHeroCta}`}
-            href={`/events?eventId=${encodeURIComponent(nextEvent.event_id)}`}
+            href={buildProgramsHref({
+              mode: "management",
+              programId: program.program_id,
+              task: "roster",
+              eventId: nextEvent.event_id,
+            })}
           >
             {COPY.programs.workspaceRosterCta}
           </a>
@@ -439,6 +469,98 @@ const WorkspaceOverview = ({
         )}
       </section>
 
+      {program.capabilities.manage && (
+        <section
+          className={styles.workspaceSection}
+          aria-labelledby="programs-workspace-other"
+        >
+          <div className={styles.workspaceOtherHeader}>
+            <h4
+              id="programs-workspace-other"
+              className={styles.workspaceHeading}
+            >
+              {COPY.programs.workspaceOther}
+            </h4>
+            <span className={styles.workspaceOtherKicker}>
+              {COPY.programs.workspaceOtherKicker}
+            </span>
+          </div>
+          <div className={styles.workspaceOtherList}>
+            <a
+              className={styles.workspaceOtherRow}
+              href="#programs-workspace-identity"
+            >
+              <span className={styles.workspaceOtherRowCopy}>
+                <strong className={styles.workspaceOtherRowTitle}>
+                  {COPY.programs.workspaceOtherFacts}
+                </strong>
+                <span className={styles.workspaceOtherRowLead}>
+                  {COPY.programs.workspaceOtherFactsLead}
+                </span>
+              </span>
+              <svg
+                className={styles.workspaceOtherRowIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </a>
+            <a
+              className={styles.workspaceOtherRow}
+              href={settingsTaskHref}
+              onClick={(event) => {
+                event.preventDefault();
+                onTaskChange("settings");
+              }}
+            >
+              <span className={styles.workspaceOtherRowCopy}>
+                <strong className={styles.workspaceOtherRowTitle}>
+                  {COPY.programs.workspaceOtherSettings}
+                </strong>
+                <span className={styles.workspaceOtherRowLead}>
+                  {COPY.programs.workspaceOtherSettingsLead}
+                </span>
+              </span>
+              <svg
+                className={styles.workspaceOtherRowIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </a>
+            <a
+              className={styles.workspaceOtherRow}
+              href={notificationsTaskHref}
+              onClick={(event) => {
+                event.preventDefault();
+                onTaskChange("notifications");
+              }}
+            >
+              <span className={styles.workspaceOtherRowCopy}>
+                <strong className={styles.workspaceOtherRowTitle}>
+                  {COPY.programs.workspaceOtherNotifications}
+                </strong>
+                <span className={styles.workspaceOtherRowLead}>
+                  {COPY.programs.workspaceOtherNotificationsLead}
+                </span>
+              </span>
+              <svg
+                className={styles.workspaceOtherRowIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </a>
+          </div>
+        </section>
+      )}
+
       <section
         className={styles.workspaceSection}
         aria-labelledby="programs-workspace-identity"
@@ -503,7 +625,7 @@ type EventsState =
   | { kind: "ready"; events: ProgramEvent[] }
   | { kind: "error"; message: string };
 
-// EVT-02 (#252): server-owned preview plan lifecycle in the events task.
+// EVT-02 (#252): server-owned preview plan lifecycle in the schedule task.
 type PreviewState =
   | { kind: "idle" }
   | { kind: "loading" }
@@ -522,7 +644,7 @@ const RecurringSchedulePanel = ({
   onGenerated,
 }: {
   programId: string;
-  /** Invoked after a successful generation so the event list refreshes. */
+  /** Invoked after a successful generation. */
   onGenerated: () => void;
 }) => {
   const [rules, setRules] = useState<ScheduleRule[] | null>(null);
@@ -575,7 +697,11 @@ const RecurringSchedulePanel = ({
     const form = new FormData(formEvent.currentTarget);
     const raw = form.get("horizon_days");
     const horizonDays = Number(raw);
-    if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) {
+    if (
+      !Number.isInteger(horizonDays) ||
+      horizonDays < 1 ||
+      horizonDays > 365
+    ) {
       setPreview({ kind: "idle" });
       setGenerateError(COPY.programs.previewError);
       announce(COPY.programs.previewError);
@@ -597,7 +723,10 @@ const RecurringSchedulePanel = ({
       }
       setPreview({ kind: "ready", plan });
       announce(
-        COPY.programs.previewed.replace("{count}", String(plan.occurrences.length))
+        COPY.programs.previewed.replace(
+          "{count}",
+          String(plan.occurrences.length)
+        )
       );
     } catch (error) {
       if (!mounted.current) {
@@ -650,8 +779,7 @@ const RecurringSchedulePanel = ({
       // through the alert treatment so the operator sees generation is
       // incomplete and can re-click Generate on the same plan to resume the
       // failed units (the server run is resumable by design). Keep the plan
-      // and preview state untouched; only refresh the event directory with
-      // whatever partial progress exists.
+      // and preview state untouched so the operator can retry immediately.
       setGeneratePartial(generated.failed > 0);
       setGenerateResult(result);
       announce(result);
@@ -667,10 +795,7 @@ const RecurringSchedulePanel = ({
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
-      if (
-        error instanceof RpcError &&
-        error.problem.code === "STALE_PLAN"
-      ) {
+      if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
         // The schedule changed under the plan; require a fresh preview
         // before generation can run again.
         setPreview({ kind: "error", message, stale: true });
@@ -727,7 +852,9 @@ const RecurringSchedulePanel = ({
             className={styles.button}
             disabled={previewBusy || generateBusy}
           >
-            {previewBusy ? COPY.programs.previewing : COPY.programs.previewEvents}
+            {previewBusy
+              ? COPY.programs.previewing
+              : COPY.programs.previewEvents}
           </button>
         </form>
       )}
@@ -803,7 +930,9 @@ const RecurringSchedulePanel = ({
               onClick={() => void submitGenerate()}
               disabled={generateBusy || previewBusy}
             >
-              {generateBusy ? COPY.programs.generating : COPY.programs.generateEvents}
+              {generateBusy
+                ? COPY.programs.generating
+                : COPY.programs.generateEvents}
             </button>
             {generateResult !== null &&
               (generatePartial ? (
@@ -832,6 +961,7 @@ const EventsTask = ({
   canManage,
   attention,
   onAttentionRefresh,
+  onTaskChange,
   recurring,
   onOpenEvent,
 }: {
@@ -839,6 +969,7 @@ const EventsTask = ({
   canManage: boolean;
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
+  onTaskChange: (task: ProgramsTask | null) => void;
   recurring: boolean;
   /** EVT-01 (#251): deep link into the Event operational detail screen. */
   onOpenEvent?: (eventId: string) => void;
@@ -905,6 +1036,7 @@ const EventsTask = ({
       });
       announce(COPY.programs.eventCreatedNotice);
       setCreateOpen(false);
+      onAttentionRefresh();
       onOpenEvent?.(event.event_id);
     } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
@@ -958,12 +1090,22 @@ const EventsTask = ({
         {COPY.programs.workspaceTaskEventsLead}
       </p>
       {canManage && recurring && (
-        <RecurringSchedulePanel
-          programId={programId}
-          onGenerated={() => {
-            void run();
-          }}
-        />
+        <div className={styles.workspaceActions}>
+          <a
+            className={styles.secondaryButton}
+            href={buildProgramsHref({
+              mode: "management",
+              programId,
+              task: "schedule",
+            })}
+            onClick={(event) => {
+              event.preventDefault();
+              onTaskChange("schedule");
+            }}
+          >
+            {COPY.programs.settingsSchedule}
+          </a>
+        </div>
       )}
       {canManage && (
         <>
@@ -1080,11 +1222,7 @@ const EventsTask = ({
       {state.kind === "error" && (
         <div className={styles.boundaryError} role="alert">
           <p>{state.message}</p>
-          <button
-            className={styles.retry}
-            type="button"
-            onClick={retry}
-          >
+          <button className={styles.retry} type="button" onClick={retry}>
             {COPY.programs.workspaceTaskEventsRetry}
           </button>
         </div>
@@ -1127,6 +1265,17 @@ const EventsTask = ({
                   {COPY.programs.eventDetailOpen}
                 </button>
               )}
+              <a
+                className={styles.secondaryButton}
+                href={buildProgramsHref({
+                  mode: "management",
+                  programId,
+                  task: "roster",
+                  eventId: event.event_id,
+                })}
+              >
+                {COPY.programs.workspaceTaskRoster}
+              </a>
             </li>
           ))}
         </ul>
@@ -1199,18 +1348,122 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
   return COPY.programs.requestWithdrawn;
 }
 
+const AssistedEnrollmentTask = ({
+  programId,
+  onAttentionRefresh,
+  onTaskChange,
+}: {
+  programId: string;
+  onAttentionRefresh: () => void;
+  onTaskChange: (task: ProgramsTask | null) => void;
+}) => {
+  const [assistedBusy, setAssistedBusy] = useState(false);
+  const [assistedError, setAssistedError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const participantsHref = buildProgramsHref({
+    mode: "management",
+    programId,
+    task: "participants",
+  });
+
+  const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const memberUserId = String(
+      new FormData(event.currentTarget).get("member_user_id") ?? ""
+    ).trim();
+    if (!memberUserId) {
+      setAssistedError(COPY.programs.memberSearchHint);
+      return;
+    }
+    setAssistedBusy(true);
+    setAssistedError(null);
+    setNotice(null);
+    try {
+      await assistedEnroll(programId, memberUserId);
+      onAttentionRefresh();
+      setNotice(COPY.programs.assistedSubmitted);
+      announce(COPY.programs.assistedSubmitted);
+      onTaskChange("participants");
+    } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const issue = participantIssue(error);
+      setAssistedError(issue.message);
+      announce(issue.message);
+    } finally {
+      setAssistedBusy(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.workspaceTask}
+      aria-labelledby="programs-workspace-assisted-enrollment-title"
+    >
+      <a
+        className={styles.programDetailBack}
+        href={participantsHref}
+        onClick={(event) => {
+          event.preventDefault();
+          onTaskChange("participants");
+        }}
+      >
+        {COPY.programs.workspaceTaskParticipants}
+      </a>
+      <h4
+        id="programs-workspace-assisted-enrollment-title"
+        className={styles.workspaceHeading}
+      >
+        {COPY.programs.workspaceTaskAssistedEnrollment}
+      </h4>
+      <p className={styles.programDetailMuted}>
+        {COPY.programs.memberSearchHint}
+      </p>
+      {notice !== null && (
+        <output className={styles.panelNotice}>{notice}</output>
+      )}
+      <form className={styles.ruleForm} onSubmit={handleAssisted}>
+        <MemberPicker
+          programId={programId}
+          name="member_user_id"
+          label={COPY.programs.memberId}
+          placeholder={COPY.programs.memberIdPlaceholder}
+          excludeEnrolled
+        />
+        <button
+          type="submit"
+          className={styles.actionButton}
+          disabled={assistedBusy}
+        >
+          {assistedBusy
+            ? COPY.programs.submitting
+            : COPY.programs.assistedEnroll}
+        </button>
+        {assistedError !== null && (
+          <output className={styles.panelError} role="alert">
+            {assistedError}
+          </output>
+        )}
+      </form>
+    </section>
+  );
+};
+
 const ParticipantsTask = ({
   programId,
   canManage,
   enrollmentMode,
   attention,
   onAttentionRefresh,
+  onTaskChange,
 }: {
   programId: string;
   canManage: boolean;
   enrollmentMode: Program["enrollment_mode"];
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
+  onTaskChange: (task: ProgramsTask | null) => void;
 }) => {
   const { state, run, retry } = useAsyncResource<
     { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
@@ -1242,14 +1495,13 @@ const ParticipantsTask = ({
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshingAction, setRefreshingAction] = useState<string | null>(null);
-  const [assistedBusy, setAssistedBusy] = useState(false);
-  const [assistedError, setAssistedError] = useState<string | null>(null);
   // Most recent successful snapshot: a failed refresh after a successful
   // mutation keeps the queue rendered from the last-known data instead of
   // ejecting the operator into the full-panel error state.
-  const lastReadyRef = useRef<Extract<ParticipantsState, { kind: "ready" }> | null>(
-    null
-  );
+  const lastReadyRef = useRef<Extract<
+    ParticipantsState,
+    { kind: "ready" }
+  > | null>(null);
 
   useEffect(() => {
     void run();
@@ -1361,36 +1613,6 @@ const ParticipantsTask = ({
     }
   };
 
-  const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const memberUserId = String(
-      new FormData(event.currentTarget).get("member_user_id") ?? ""
-    ).trim();
-    if (!memberUserId) {
-      setAssistedError(COPY.programs.memberSearchHint);
-      return;
-    }
-    setAssistedBusy(true);
-    setAssistedError(null);
-    setNotice(null);
-    try {
-      await assistedEnroll(programId, memberUserId);
-      onAttentionRefresh();
-      setRefreshSuccess(COPY.programs.assistedSubmitted);
-      setRefreshingAction("assisted");
-      void run();
-    } catch (error) {
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      const issue = participantIssue(error);
-      setAssistedError(issue.message);
-      announce(issue.message);
-    } finally {
-      setAssistedBusy(false);
-    }
-  };
-
   const renderPending = () => {
     if (queue === null || queue.pending.length === 0) {
       return (
@@ -1400,7 +1622,10 @@ const ParticipantsTask = ({
       );
     }
     return (
-      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.requests}>
+      <ul
+        className={styles.workspaceTaskList}
+        aria-label={COPY.programs.requests}
+      >
         {queue.pending.map((request) => {
           const member =
             request.member_name ??
@@ -1479,13 +1704,17 @@ const ParticipantsTask = ({
         aria-label={COPY.programs.workspaceActiveParticipants}
       >
         {queue.active.map((enrollment) => {
-          const request = state.kind === "ready"
-            ? state.requests.find(
-                ({ request_id }) => request_id === enrollment.request_id
-              )
-            : undefined;
+          const request =
+            state.kind === "ready"
+              ? state.requests.find(
+                  ({ request_id }) => request_id === enrollment.request_id
+                )
+              : undefined;
           return (
-            <li key={enrollment.enrollment_id} className={styles.workspaceTaskRow}>
+            <li
+              key={enrollment.enrollment_id}
+              className={styles.workspaceTaskRow}
+            >
               <strong>
                 {enrollment.member_name ??
                   enrollment.member_username ??
@@ -1510,9 +1739,15 @@ const ParticipantsTask = ({
       );
     }
     return (
-      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.enrollmentHistory}>
+      <ul
+        className={styles.workspaceTaskList}
+        aria-label={COPY.programs.enrollmentHistory}
+      >
         {queue.historyRequests.map((request) => (
-          <li key={`request-${request.request_id}`} className={styles.workspaceTaskRow}>
+          <li
+            key={`request-${request.request_id}`}
+            className={styles.workspaceTaskRow}
+          >
             <strong>
               {request.member_name ??
                 request.member_username ??
@@ -1520,7 +1755,9 @@ const ParticipantsTask = ({
             </strong>
             <span>{requestStatusLabel(request.status)}</span>
             {request.decision_note && <span>{request.decision_note}</span>}
-            <span>{formatEventTime(request.decided_at ?? request.submitted_at)}</span>
+            <span>
+              {formatEventTime(request.decided_at ?? request.submitted_at)}
+            </span>
           </li>
         ))}
         {queue.historyEnrollments.map((enrollment) => (
@@ -1534,7 +1771,11 @@ const ParticipantsTask = ({
                 enrollment.member_user_id}
             </strong>
             <span>{COPY.programs.enrollmentCancelled}</span>
-            <span>{formatEventTime(enrollment.cancelled_at ?? enrollment.enrolled_at)}</span>
+            <span>
+              {formatEventTime(
+                enrollment.cancelled_at ?? enrollment.enrolled_at
+              )}
+            </span>
           </li>
         ))}
       </ul>
@@ -1565,27 +1806,20 @@ const ParticipantsTask = ({
         </output>
       )}
       {canManage && enrollmentMode === "ManagerOnly" && (
-        <form className={styles.ruleForm} onSubmit={handleAssisted}>
-          <MemberPicker
-            programId={programId}
-            name="member_user_id"
-            label={COPY.programs.memberId}
-            placeholder={COPY.programs.memberIdPlaceholder}
-            excludeEnrolled
-          />
-          <button
-            type="submit"
-            className={styles.actionButton}
-            disabled={assistedBusy || busyRequestId !== null}
-          >
-            {assistedBusy ? COPY.programs.submitting : COPY.programs.assistedEnroll}
-          </button>
-          {assistedError !== null && (
-            <output className={styles.panelError} role="alert">
-              {assistedError}
-            </output>
-          )}
-        </form>
+        <a
+          className={styles.secondaryButton}
+          href={buildProgramsHref({
+            mode: "management",
+            programId,
+            task: "assisted-enrollment",
+          })}
+          onClick={(event) => {
+            event.preventDefault();
+            onTaskChange("assisted-enrollment");
+          }}
+        >
+          {COPY.programs.workspaceTaskAssistedEnrollment}
+        </a>
       )}
       {state.kind === "loading" && (
         <output aria-busy="true">
@@ -1610,7 +1844,10 @@ const ParticipantsTask = ({
       {queue !== null && (
         <>
           <div className={styles.workspaceActions}>
-            <div role="tablist" aria-label={COPY.programs.workspaceTaskParticipants}>
+            <div
+              role="tablist"
+              aria-label={COPY.programs.workspaceTaskParticipants}
+            >
               {(
                 [
                   [
@@ -1618,8 +1855,16 @@ const ParticipantsTask = ({
                     COPY.programs.workspacePendingRequests,
                     pendingAttentionCount ?? queue.counts.pending,
                   ],
-                  ["active", COPY.programs.workspaceActiveParticipants, queue.counts.active],
-                  ["history", COPY.programs.enrollmentHistory, queue.counts.history],
+                  [
+                    "active",
+                    COPY.programs.workspaceActiveParticipants,
+                    queue.counts.active,
+                  ],
+                  [
+                    "history",
+                    COPY.programs.enrollmentHistory,
+                    queue.counts.history,
+                  ],
                 ] as const
               ).map(([value, label, count]) => (
                 <button
@@ -1642,7 +1887,9 @@ const ParticipantsTask = ({
               onClick={() => {
                 setActionErrors({});
                 setNotice(null);
-                setRefreshSuccess(COPY.programs.workspaceParticipantsRefreshSuccess);
+                setRefreshSuccess(
+                  COPY.programs.workspaceParticipantsRefreshSuccess
+                );
                 setRefreshingAction("refresh");
                 void run();
               }}
@@ -1650,7 +1897,8 @@ const ParticipantsTask = ({
               {COPY.programs.workspaceParticipantsRefresh}
             </button>
           </div>
-          {queue.counts.pending + queue.counts.active + queue.counts.history === 0 && (
+          {queue.counts.pending + queue.counts.active + queue.counts.history ===
+            0 && (
             <p className={styles.programDetailMuted}>
               {COPY.programs.workspaceTaskParticipantsEmpty}
             </p>
@@ -1671,6 +1919,53 @@ const ParticipantsTask = ({
     </section>
   );
 };
+
+const ScheduleTask = ({
+  programId,
+  onTaskChange,
+}: {
+  programId: string;
+  onTaskChange: (task: ProgramsTask | null) => void;
+}) => (
+  <section
+    className={styles.workspaceTask}
+    aria-labelledby="programs-workspace-schedule-title"
+  >
+    <h4
+      id="programs-workspace-schedule-title"
+      className={styles.workspaceHeading}
+    >
+      {COPY.programs.settingsSchedule}
+    </h4>
+    <p className={styles.programDetailMuted}>
+      {COPY.programs.settingsScheduleLead}
+    </p>
+    <RecurringSchedulePanel programId={programId} onGenerated={() => {}} />
+    <div className={styles.workspaceActions}>
+      <a
+        className={styles.secondaryButton}
+        href={buildProgramsHref({
+          mode: "management",
+          programId,
+          task: "events",
+        })}
+        onClick={(event) => {
+          event.preventDefault();
+          onTaskChange("events");
+        }}
+      >
+        {COPY.programs.settingsScheduleEventsLink}
+      </a>
+    </div>
+  </section>
+);
+const RosterTask = ({
+  eventId,
+  programToken,
+}: {
+  eventId?: string | null;
+  programToken?: string | null;
+}) => <AttendanceOperatorPanel eventId={eventId} programToken={programToken} />;
 
 const SettingsTask = ({
   program,
@@ -1723,6 +2018,7 @@ const WorkspaceTask = ({
   onAttentionRefresh,
   onTaskChange,
   onOpenEvent,
+  eventId,
 }: {
   program: Program;
   task: ProgramsTask;
@@ -1731,6 +2027,7 @@ const WorkspaceTask = ({
   onAttentionRefresh: () => void;
   onTaskChange: (task: ProgramsTask | null) => void;
   onOpenEvent?: (eventId: string) => void;
+  eventId?: string | null;
 }) => {
   if (task === "events") {
     return hasModule(modules, "events") ? (
@@ -1739,8 +2036,34 @@ const WorkspaceTask = ({
         canManage={program.capabilities.manage}
         attention={attention}
         onAttentionRefresh={onAttentionRefresh}
+        onTaskChange={onTaskChange}
         recurring={program.behavior_type === "Recurring"}
         onOpenEvent={onOpenEvent}
+      />
+    ) : (
+      <TaskUnavailable task={task} />
+    );
+  }
+  if (task === "schedule") {
+    return hasModule(modules, "events") &&
+      program.behavior_type === "Recurring" &&
+      program.capabilities.manage ? (
+      <ScheduleTask
+        programId={program.program_id}
+        onTaskChange={onTaskChange}
+      />
+    ) : (
+      <TaskUnavailable task={task} />
+    );
+  }
+  if (task === "assisted-enrollment") {
+    return hasModule(modules, "enrollment") &&
+      program.capabilities.manage &&
+      program.enrollment_mode === "ManagerOnly" ? (
+      <AssistedEnrollmentTask
+        programId={program.program_id}
+        onAttentionRefresh={onAttentionRefresh}
+        onTaskChange={onTaskChange}
       />
     ) : (
       <TaskUnavailable task={task} />
@@ -1754,7 +2077,15 @@ const WorkspaceTask = ({
         enrollmentMode={program.enrollment_mode}
         attention={attention}
         onAttentionRefresh={onAttentionRefresh}
+        onTaskChange={onTaskChange}
       />
+    ) : (
+      <TaskUnavailable task={task} />
+    );
+  }
+  if (task === "roster") {
+    return hasModule(modules, "attendance") ? (
+      <RosterTask eventId={eventId} programToken={program.check_in_token} />
     ) : (
       <TaskUnavailable task={task} />
     );
@@ -1788,8 +2119,16 @@ export const ProgramWorkspace = ({
       mounted.current = false;
     };
   }, []);
-  const { state, run: loadWorkspace, retry } = useAsyncResource<
-    { program: Program; department: Department | null; modules: DepartmentModule[] },
+  const {
+    state,
+    run: loadWorkspace,
+    retry,
+  } = useAsyncResource<
+    {
+      program: Program;
+      department: Department | null;
+      modules: DepartmentModule[];
+    },
     WorkspaceState
   >(
     async () => getManagementProgram(programId),
@@ -1929,7 +2268,6 @@ export const ProgramWorkspace = ({
     void loadSummary(state.modules, state.program.behavior_type);
   }, [loadSummary, state, task]);
 
-
   if (state.kind === "loading") {
     return (
       <output
@@ -2035,6 +2373,7 @@ export const ProgramWorkspace = ({
           onAttentionRefresh={onAttentionRefresh}
           onTaskChange={onTaskChange}
           onOpenEvent={(id) => onEventChange?.(id)}
+          eventId={eventId}
         />
       ) : (
         <WorkspaceOverview

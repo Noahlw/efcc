@@ -18,9 +18,7 @@
  */
 import { describe, test, expect, beforeAll } from "vitest";
 
-import { applyMigrations, testDb } from "./test-bootstrap";
 import { importLegacyUsers, findAccountByUserId } from "./accounts";
-import { completeCredentialUpgrade } from "./upgrade";
 import {
   LEGACY_FAIL_THRESHOLD,
   LEGACY_LOCK_STAGE1_MS,
@@ -29,8 +27,17 @@ import {
   adminUnlockLegacyUpgrade,
   LegacyUpgradeLockedError,
 } from "./lockout";
+import { applyMigrations, testDb } from "./test-bootstrap";
+import { completeCredentialUpgrade } from "./upgrade";
 
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"];
+const HEADER = [
+  "User_ID",
+  "Name",
+  "Username",
+  "PIN_Code",
+  "System_Role",
+  "Status",
+];
 
 beforeAll(async () => {
   await applyMigrations();
@@ -101,7 +108,7 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
     expect(
       evaluateLockout((await findAccountByUserId(testDb(), "L100"))!, t0 + 101)
         .locked
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   test("after the 5-min lock expires, 5 more failures escalate to a 15-min lock", async () => {
@@ -112,9 +119,11 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
 
     // Lock expired: not locked, and a fresh round escalates to stage 2.
     expect(
-      evaluateLockout((await findAccountByUserId(testDb(), "L101"))!, afterStage1)
-        .locked
-    ).toBe(false);
+      evaluateLockout(
+        (await findAccountByUserId(testDb(), "L101"))!,
+        afterStage1
+      ).locked
+    ).toBeFalsy();
     const afterStage2 = await roundStartAfter("L101", afterStage1);
     acct = await findAccountByUserId(testDb(), "L101");
     expect(acct!.lock_level).toBe(2);
@@ -122,9 +131,11 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
       afterStage1 + LEGACY_FAIL_THRESHOLD - 1 + LEGACY_LOCK_STAGE2_MS
     );
     expect(
-      evaluateLockout((await findAccountByUserId(testDb(), "L101"))!, afterStage2)
-        .locked
-    ).toBe(false);
+      evaluateLockout(
+        (await findAccountByUserId(testDb(), "L101"))!,
+        afterStage2
+      ).locked
+    ).toBeFalsy();
   });
 
   test("after the 15-min lock expires, 5 more failures require admin unlock", async () => {
@@ -177,7 +188,7 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
       newCredential: "fresh-secret",
       now: start + 1_000_100,
     });
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBeTruthy();
   });
 
   test("a successful upgrade clears the lockout state", async () => {
@@ -209,8 +220,8 @@ describe("AUTH-01: legacy-PIN lockout state machine", () => {
     // The numeric PIN never leaks into the persisted row.
     expect(serialized).not.toContain("6666");
     // Fields are the non-secret counter/timestamp shape.
-    expect(typeof acct!.lock_level).toBe("number");
-    expect(typeof acct!.failed_attempts).toBe("number");
-    expect(typeof acct!.locked_until).toBe("number");
+    expect(acct!.lock_level).toBeTypeOf("number");
+    expect(acct!.failed_attempts).toBeTypeOf("number");
+    expect(acct!.locked_until).toBeTypeOf("number");
   });
 });

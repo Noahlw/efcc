@@ -6,7 +6,7 @@ import { COPY } from "@/lib/copy";
 
 const NoticesPage = () => (
   <AppShell>
-    <SectionView sectionKey="notices" title={COPY.sections.notices} />
+    <SectionView sectionKey="notices" title={COPY.home.noticeSectionTitle} />
   </AppShell>
 );
 

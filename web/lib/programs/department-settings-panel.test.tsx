@@ -16,6 +16,7 @@ import {
 } from "vitest";
 
 import { COPY } from "@/lib/copy";
+import { DepartmentManagerPicker } from "@/lib/programs/department-manager-picker";
 import { DepartmentSettingsPanel } from "@/lib/programs/department-settings-panel";
 import { ManagementDirectory } from "@/lib/programs/management-directory";
 import type {
@@ -96,11 +97,27 @@ const MANAGER_BOB: DepartmentManager = {
   username: "U002",
 };
 
-function panelWithCapabilities(capabilities: Department["capabilities"]) {
+function panelWithCapabilities(
+  capabilities: Department["capabilities"],
+  onOpenManagerPicker = vi.fn<() => void>()
+) {
   return render(
     <DepartmentSettingsPanel
       department={{ ...DEPARTMENT, capabilities }}
       onClose={vi.fn<() => void>()}
+      onOpenManagerPicker={onOpenManagerPicker}
+    />
+  );
+}
+
+function pickerWithCapabilities(
+  capabilities: Department["capabilities"],
+  onBack = vi.fn<() => void>()
+) {
+  return render(
+    <DepartmentManagerPicker
+      department={{ ...DEPARTMENT, capabilities }}
+      onBack={onBack}
     />
   );
 }
@@ -143,9 +160,10 @@ describe("department settings authorization UI", () => {
 
   const user = userEvent.setup();
 
-  test("manager-assign actor sees details, modules, and manager controls", async () => {
+  test("manager-assign actor sees details and a read-only manager list", async () => {
+    const onOpenManagerPicker = vi.fn<() => void>();
     server.use(...departmentHandlers([MANAGER_BOB]));
-    panelWithCapabilities(MANAGER_CAPABILITIES);
+    panelWithCapabilities(MANAGER_CAPABILITIES, onOpenManagerPicker);
 
     await screen.findByText(/U002/u);
     expect(
@@ -155,19 +173,26 @@ describe("department settings authorization UI", () => {
       screen.getByRole("heading", { name: COPY.programs.modules })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.disable })
+      screen.getByRole("button", { name: COPY.programs.departmentManagers })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.enable })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", {
+        name: COPY.programs.assignDepartmentManager,
+      })
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.queryByRole("button", {
         name: COPY.programs.revokeDepartmentManager,
       })
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.departmentManagers })
+    );
+    expect(onOpenManagerPicker).toHaveBeenCalledOnce();
   });
 
-  test("manager-only actor is confined to the manager list and picker", async () => {
+  test("manager-only actor is confined to the manager list and picker entry", async () => {
     server.use(...departmentHandlers([]));
     panelWithCapabilities({ ...ONLY_MANAGER_ASSIGN_CAPABILITIES });
 
@@ -179,14 +204,18 @@ describe("department settings authorization UI", () => {
       screen.queryByRole("heading", { name: COPY.programs.modules })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("button", { name: COPY.programs.departmentManagers })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
         name: COPY.programs.assignDepartmentManager,
       })
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
-  test("assigning a manager through the member picker shows the success notice", async () => {
+  test("assigning a manager through the routable picker shows notice and updates list", async () => {
     const managers: DepartmentManager[] = [];
+    const onBack = vi.fn<() => void>();
     server.use(
       ...departmentHandlers(managers),
       http.post(
@@ -202,19 +231,12 @@ describe("department settings authorization UI", () => {
           });
           return HttpResponse.json({
             requestId: "rid-post",
-            data: {
-              manager: {
-                ...MANAGER_BOB,
-                user_id: "U003",
-                user_name: "測試會友",
-                username: "U003",
-              },
-            },
+            data: { manager: managers[0] },
           });
         }
       )
     );
-    panelWithCapabilities(MANAGER_CAPABILITIES);
+    pickerWithCapabilities(MANAGER_CAPABILITIES, onBack);
 
     await screen.findByText(COPY.programs.noDepartmentManagers);
     await user.type(
@@ -232,11 +254,20 @@ describe("department settings authorization UI", () => {
     await expect(
       screen.findByText(COPY.programs.departmentManagerAssignedNotice)
     ).resolves.toBeInTheDocument();
-    await expect(screen.findAllByText(/U003/u)).resolves.toHaveLength(2);
+    await expect(
+      screen.findByRole("button", {
+        name: COPY.programs.revokeDepartmentManager,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: COPY.programs.departmentManagers })
+    ).toHaveTextContent(/測試會友/u);
+    expect(managers).toHaveLength(1);
   });
 
-  test("revoking a manager requires the confirm step and shows the success notice", async () => {
+  test("revoking a manager through the routable picker shows notice and updates list", async () => {
     const managers: DepartmentManager[] = [{ ...MANAGER_BOB }];
+    const onBack = vi.fn<() => void>();
     server.use(
       ...departmentHandlers(managers),
       http.post(
@@ -255,7 +286,7 @@ describe("department settings authorization UI", () => {
         }
       )
     );
-    panelWithCapabilities(MANAGER_CAPABILITIES);
+    pickerWithCapabilities(MANAGER_CAPABILITIES, onBack);
 
     await screen.findByText(/U002/u);
     await user.click(
@@ -272,9 +303,10 @@ describe("department settings authorization UI", () => {
     await expect(
       screen.findByText(COPY.programs.noDepartmentManagers)
     ).resolves.toBeInTheDocument();
+    expect(managers).toHaveLength(0);
   });
 
-  test("assign failure surfaces the mapped error in an alert", async () => {
+  test("picker assign failure surfaces the mapped error in an alert", async () => {
     server.use(
       ...departmentHandlers([]),
       http.post("/api/v1/programs/departments/dept-1/managers", () =>
@@ -291,7 +323,7 @@ describe("department settings authorization UI", () => {
         )
       )
     );
-    panelWithCapabilities(MANAGER_CAPABILITIES);
+    pickerWithCapabilities(MANAGER_CAPABILITIES);
 
     await screen.findByText(COPY.programs.noDepartmentManagers);
     await user.type(
@@ -347,7 +379,7 @@ describe("ManagementDirectory department launcher", () => {
 
   afterAll(() => server.close());
 
-  test("renders department settings cards and expands the panel in place", async () => {
+  test("routes Department Detail and the manager picker as separate views", async () => {
     server.use(
       http.get("/api/v1/programs/management-directory", () =>
         HttpResponse.json({
@@ -358,39 +390,87 @@ describe("ManagementDirectory department launcher", () => {
       ...departmentHandlers([])
     );
     const user = userEvent.setup();
-    render(
+    let departmentId: string | null = null;
+    let departmentView: "managers" | null = null;
+    const onOpenDepartment = vi.fn<(nextDepartmentId: string) => void>(
+      (nextDepartmentId: string) => {
+        departmentId = nextDepartmentId;
+      }
+    );
+    const onOpenDepartmentManagers = vi.fn<(nextDepartmentId: string) => void>(
+      (nextDepartmentId: string) => {
+        departmentId = nextDepartmentId;
+        departmentView = "managers";
+      }
+    );
+    const onBackToDirectory = vi.fn<() => void>(() => {
+      departmentId = null;
+      departmentView = null;
+    });
+    const view = render(
       <ManagementDirectory
         onOpenProgram={vi.fn<(programId: string) => void>()}
+        departmentId={departmentId}
+        departmentView={departmentView}
+        onOpenDepartment={onOpenDepartment}
+        onOpenDepartmentManagers={onOpenDepartmentManagers}
+        onBackToDirectory={onBackToDirectory}
       />
     );
 
     await waitFor(() =>
       expect(screen.getByText(DEPARTMENT.name)).toBeInTheDocument()
     );
-    const card = screen.getByRole("button", {
-      name: new RegExp(`${DEPARTMENT.name}`, "u"),
-    });
-    expect(card).toHaveTextContent(DEPARTMENT.code);
-    await user.click(card);
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(`${DEPARTMENT.name}`, "u"),
+      })
+    );
+    expect(onOpenDepartment).toHaveBeenCalledWith(DEPARTMENT_ID);
+    view.rerender(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+        departmentId={departmentId}
+        departmentView={departmentView}
+        onOpenDepartment={onOpenDepartment}
+        onOpenDepartmentManagers={onOpenDepartmentManagers}
+        onBackToDirectory={onBackToDirectory}
+      />
+    );
 
     await expect(
       screen.findByRole("heading", {
         name: `${COPY.programs.departmentSettings}: ${DEPARTMENT.name}`,
       })
     ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText(COPY.programs.noDepartmentManagers)
-    ).resolves.toBeInTheDocument();
-    const panel = document.querySelector("#dept-1-settings-panel");
-    expect(panel).not.toBeNull();
-    await waitFor(() => expect(panel).toHaveFocus());
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.assignDepartmentManager,
+      })
+    ).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.collapse })
+      screen.getByRole("button", { name: COPY.programs.departmentManagers })
     );
-    const restoredCard = await screen.findByRole("button", {
-      name: new RegExp(`${DEPARTMENT.name}`, "u"),
-    });
-    await waitFor(() => expect(restoredCard).toHaveFocus());
+    expect(onOpenDepartmentManagers).toHaveBeenCalledWith(DEPARTMENT_ID);
+    view.rerender(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+        departmentId={departmentId}
+        departmentView={departmentView}
+        onOpenDepartment={onOpenDepartment}
+        onOpenDepartmentManagers={onOpenDepartmentManagers}
+        onBackToDirectory={onBackToDirectory}
+      />
+    );
+    await expect(
+      screen.findByRole("heading", {
+        name: `${COPY.programs.departmentManagers}: ${DEPARTMENT.name}`,
+      })
+    ).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.departmentSettings })
+    );
+    expect(onOpenDepartment).toHaveBeenLastCalledWith(DEPARTMENT_ID);
   });
 
   test("omits the department settings section without any department scope", async () => {

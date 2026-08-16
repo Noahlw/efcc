@@ -69,14 +69,56 @@
   white-space: nowrap;
 }
 
+.infoDisclosure {
+  background: var(--surface-raised, #ffffff);
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+}
+
+.infoDisclosure summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--ink, #171a1d);
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.infoDisclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.infoDisclosure summary::marker {
+  content: "";
+}
+
+.infoDisclosure summary::after {
+  content: "＋";
+  color: var(--ink-muted, #59636a);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.infoDisclosure[open] summary::after {
+  content: "−";
+}
+
+.infoDisclosure summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .infoGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.75rem;
-  background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line, #d6dcde);
 }
 
 .infoCell dt {
@@ -116,10 +158,9 @@
   overflow: hidden;
 }
 
-/* 帳戶資料 entry — a 44px-tall full-width target linking to /profile/settings. */
 /* Account Settings action — card-style link to the dedicated /profile/settings
-   route (removed the inline 帳戶資料 form from this surface). Keyboard-focused
-   like any link: real navigation, 3px #176a87 ring. */
+   route (removed the inline account details form from this surface). Keyboard-
+   focused like any link: real navigation, 3px #176a87 ring. */
 .settingsAction {
   display: flex;
   flex-direction: column;
@@ -130,7 +171,9 @@
   border-radius: 12px;
   text-decoration: none;
   color: var(--ink, #171a1d);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .settingsAction:hover {

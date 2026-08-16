@@ -11,20 +11,25 @@ describe("scanner intent", () => {
     });
   });
 
-  test("accepts an Assisted event intent only for a safe opaque id", () => {
+  test("accepts an event intent in either scanner mode for a safe opaque id", () => {
     expect(parseScannerIntent("?mode=assisted&event=event-123")).toStrictEqual({
       mode: "assisted",
       eventId: "event-123",
       malformed: false,
     });
+    expect(parseScannerIntent("?mode=self&event=event-123")).toStrictEqual({
+      mode: "self",
+      eventId: "event-123",
+      malformed: false,
+    });
   });
 
-  test("rejects malformed or cross-mode event intent", () => {
+  test("rejects malformed event ids in either scanner mode", () => {
     expect(
       parseScannerIntent("?mode=assisted&event=bad%2Fscope").malformed
     ).toBeTruthy();
     expect(
-      parseScannerIntent("?mode=self&event=event-123").malformed
+      parseScannerIntent("?mode=self&event=bad%2Fscope").malformed
     ).toBeTruthy();
     expect(parseScannerIntent("?mode=unknown").malformed).toBeTruthy();
   });
@@ -32,6 +37,9 @@ describe("scanner intent", () => {
   test("builds an explicit same-origin mode URL", () => {
     expect(buildScannerHref("assisted", "event-123")).toBe(
       "/scanner?mode=assisted&event=event-123"
+    );
+    expect(buildScannerHref("self", "event-123")).toBe(
+      "/scanner?mode=self&event=event-123"
     );
     expect(buildScannerHref("self")).toBe("/scanner?mode=self");
   });
