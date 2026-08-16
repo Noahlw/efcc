@@ -37,6 +37,9 @@ const MEMBER_CRED =
 
 const COPY = {
   login: "登入",
+  sessionExpired: {
+    reLogin: "重新登入",
+  },
   pageTitle: "課程與活動",
   pageLead: "課程與活動集中於此，先了解適合你的下一步。",
   participantMode: "參與者模式",
@@ -480,7 +483,15 @@ test.describe("PUI-01 Programs boundary", () => {
     await page.context().clearCookies();
     await page.reload();
 
+    // The stale localStorage presence hint survives cookie clearing, so the
+    // shell surfaces the dedicated session-expired screen (prototype-exact,
+    // 084-01) and remembers the deep link; re-login returns to the form.
     await expect(page).toHaveURL(/\/$/u);
+    const relogin = page.getByRole("button", {
+      name: COPY.sessionExpired.reLogin,
+    });
+    await expect(relogin).toBeVisible();
+    await relogin.click();
     await page
       .locator('input[autocomplete="username"]')
       .fill(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER));
@@ -947,6 +958,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
                 username,
                 password,
                 name: "E2E Reject Member",
+                phone: "555-0100",
               }),
             });
             return { ok: response.ok, status: response.status };
