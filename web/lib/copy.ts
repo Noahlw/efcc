@@ -64,7 +64,6 @@ export const COPY = {
     transportAmbiguous: "未能確認簽到是否完成，請重試以確認狀態。",
     retry: "重試簽到",
     eventLocation: "地點",
-    memberSubmit: "確認簽到",
     guestTitle: "訪客簽到",
     guestName: "姓名",
     guestPhone: "電話",
@@ -132,6 +131,24 @@ export const COPY = {
       "請先查看課程詳情並提交報名，或聯絡負責同工協助登記，之後即可掃描簽到。",
     viewProgramDetail: "查看課程詳情",
     backToScan: "返回掃描",
+    // Check-in confirmation + result screens (Spec 085 US 35-40, ticket
+    // 085-06 #313): the explicit pre-commit confirmation and the
+    // success/duplicate/failure/offline outcomes, exactly as the canonical
+    // participant prototype renders them.
+    confirmHeader: "確認簽到",
+    recognizedBadge: "已辨識",
+    confirmTitle: "確認聚會",
+    confirmLead: "請核對聚會資料，確認後才會記錄出席。",
+    confirmSubmit: "確認簽到",
+    notThisEvent: "不是這個聚會",
+    resultTitle: "簽到結果",
+    successTitle: "簽到完成",
+    duplicateTitle: "已完成簽到",
+    duplicateBody: "你已在此聚會簽到，無需重複。",
+    backHome: "返回首頁",
+    scanAgain: "再次簽到",
+    submitFailure: "未能完成簽到，請重試一次。",
+    offlineSubmit: "未能提交簽到。請重新連線後再次確認；系統不會自動重試。",
     status: {
       Active: "有效",
       Voided: "已作廢",

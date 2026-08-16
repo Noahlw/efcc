@@ -4,6 +4,7 @@ import type { RefObject } from "react";
 
 import type {
   AttendanceEvent,
+  AttendanceEventSummary,
   AttendanceResolveLatest,
 } from "@/lib/attendance";
 import {
@@ -11,6 +12,7 @@ import {
   attendanceEventName,
 } from "@/lib/attendance-display";
 import { COPY } from "@/lib/copy";
+import { hkWallLabel } from "@/lib/hk-time";
 
 import styles from "./attendance-panel.module.css";
 
@@ -186,6 +188,219 @@ export const ScannerChooser = ({
     </ul>
   </section>
 );
+
+const CheckinConfirmationIcon = ({
+  kind,
+}: {
+  kind: "success" | "duplicate";
+}) => (
+  <svg
+    className={`${styles.checkinResultIcon} ${
+      kind === "success"
+        ? styles.checkinResultIconSuccess
+        : styles.checkinResultIconDuplicate
+    }`}
+    viewBox="0 0 48 48"
+    data-testid={`attendance-result-icon-${kind}`}
+    aria-hidden="true"
+    focusable="false"
+  >
+    <circle cx="24" cy="24" r="17" />
+    {kind === "success" ? (
+      <path d="m16 24 5 5 11-11" />
+    ) : (
+      <>
+        <path d="M24 21v11" />
+        <path d="M24 15h.01" />
+      </>
+    )}
+  </svg>
+);
+
+const EventDetailIcon = ({ kind }: { kind: "time" | "location" }) => (
+  <svg
+    className={styles.confirmDetailIcon}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {kind === "time" ? (
+      <>
+        <rect x="4" y="5" width="16" height="15" rx="2" />
+        <path d="M8 3v4M16 3v4M4 9h16" />
+      </>
+    ) : (
+      <>
+        <path d="M19 10c0 4.7-7 10-7 10s-7-5.3-7-10a7 7 0 0 1 14 0Z" />
+        <circle cx="12" cy="10" r="2.25" />
+      </>
+    )}
+  </svg>
+);
+
+export const ScannerConfirmation = ({
+  event,
+  headingRef,
+  busy,
+  error,
+  retryAvailable,
+  retryRef,
+  onRescan,
+  onSubmit,
+  onRetry,
+  onNotThisEvent,
+}: {
+  event: AttendanceEvent;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  busy: boolean;
+  error: string;
+  retryAvailable: boolean;
+  retryRef: RefObject<HTMLButtonElement | null>;
+  onRescan: () => void;
+  onSubmit: () => void;
+  onRetry: () => void;
+  onNotThisEvent: () => void;
+}) => (
+  <section
+    className={styles.confirmation}
+    aria-labelledby="attendance-confirm-title"
+  >
+    <header className={styles.confirmHeader}>
+      <span>{COPY.attendance.confirmHeader}</span>
+    </header>
+    <button
+      className={styles.back}
+      type="button"
+      disabled={busy}
+      onClick={onRescan}
+    >
+      {COPY.attendance.rescan}
+    </button>
+    <span className={styles.confirmTag}>
+      {COPY.attendance.recognizedBadge}
+    </span>
+    <h1
+      id="attendance-confirm-title"
+      ref={headingRef}
+      className={styles.title}
+      tabIndex={-1}
+    >
+      {COPY.attendance.confirmTitle}
+    </h1>
+    <p className={styles.lead}>{COPY.attendance.confirmLead}</p>
+    <article
+      className={styles.confirmCard}
+      aria-labelledby="attendance-confirm-event-title"
+    >
+      <span className={styles.confirmProgram}>{event.program_name}</span>
+      <h2 id="attendance-confirm-event-title" className={styles.confirmEventTitle}>
+        {attendanceEventName(event)}
+      </h2>
+      <div className={styles.confirmDetails}>
+        <div className={styles.confirmDetail}>
+          <EventDetailIcon kind="time" />
+          <span>
+            {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
+          </span>
+        </div>
+        <div className={styles.confirmDetail}>
+          <EventDetailIcon kind="location" />
+          <span>{event.location?.trim() || COPY.attendance.eventLocation}</span>
+        </div>
+      </div>
+    </article>
+    <div className={styles.confirmActions}>
+      <button
+        className={styles.button}
+        type="button"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={onSubmit}
+      >
+        {COPY.attendance.confirmSubmit}
+      </button>
+      {error && (
+        <p className={styles.confirmError} role="alert">
+          {error}
+        </p>
+      )}
+      {retryAvailable && (
+        <button
+          ref={retryRef}
+          className={styles.buttonSecondary}
+          type="button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={onRetry}
+        >
+          {COPY.attendance.retry}
+        </button>
+      )}
+      <button
+        className={styles.buttonSecondary}
+        type="button"
+        disabled={busy}
+        onClick={onNotThisEvent}
+      >
+        {COPY.attendance.notThisEvent}
+      </button>
+    </div>
+  </section>
+);
+
+export const ScannerCheckinResult = ({
+  event,
+  kind,
+  headingRef,
+  onScanAgain,
+}: {
+  event: AttendanceEvent;
+  kind: "success" | "duplicate";
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  onScanAgain: () => void;
+}) => (
+  <section
+    className={`${styles.card} ${styles.checkinResult}`}
+    aria-labelledby="attendance-result-title"
+  >
+    <header className={styles.resultHeader}>
+      <span>{COPY.attendance.resultTitle}</span>
+    </header>
+    <CheckinConfirmationIcon kind={kind} />
+    <h1
+      id="attendance-result-title"
+      ref={headingRef}
+      className={styles.title}
+      tabIndex={-1}
+    >
+      {kind === "success"
+        ? COPY.attendance.successTitle
+        : COPY.attendance.duplicateTitle}
+    </h1>
+    {kind === "success" ? (
+      <p className={styles.resultCopy}>
+        <span>{event.program_name}</span>
+        <span aria-hidden="true"> · </span>
+        <span>{attendanceEventName(event)}</span>
+      </p>
+    ) : (
+      <p className={styles.resultCopy}>{COPY.attendance.duplicateBody}</p>
+    )}
+    <div className={styles.resultActions}>
+      <a className={styles.button} href="/">
+        {COPY.attendance.backHome}
+      </a>
+      <button
+        className={styles.buttonSecondary}
+        type="button"
+        onClick={onScanAgain}
+      >
+        {COPY.attendance.scanAgain}
+      </button>
+    </div>
+  </section>
+);
+
 
 const OutcomeIcon = ({
   kind,

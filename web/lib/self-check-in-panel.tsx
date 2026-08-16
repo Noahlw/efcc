@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { AttendanceEvent } from "@/lib/attendance";
 import { RpcError } from "@/lib/api";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import {
   ScannerCamera,
+  ScannerCheckinResult,
   ScannerChooser,
+  ScannerConfirmation,
   ScannerOutcome,
   ScannerStatusOutput,
   ScannerUnavailableNotice,
@@ -19,6 +22,27 @@ import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 import styles from "./attendance-panel.module.css";
 
+type CheckinResult = {
+  kind: "success" | "duplicate";
+  event: AttendanceEvent;
+};
+
+const KNOWN_SUBMIT_ERROR_CODES = [
+  "AUTH_REQUIRED",
+  "CHECK_IN_CLOSED",
+  "CONFLICT",
+  "DUPLICATE_ATTENDANCE",
+  "ENROLLMENT_REQUIRED",
+  "EVENT_CANCELLED",
+  "EVENT_UNAVAILABLE",
+  "FORBIDDEN",
+  "INVALID_CHECK_IN_ENTRY",
+  "NOT_FOUND",
+  "RATE_LIMITED",
+  "VALIDATION",
+] as const;
+
+
 export const SelfCheckInPanel = ({
   title = COPY.attendance.scanTitle,
 }: {
@@ -27,29 +51,49 @@ export const SelfCheckInPanel = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [confirmationError, setConfirmationError] = useState("");
+  const [checkinResult, setCheckinResult] = useState<CheckinResult | null>(
+    null
+  );
+  const [showChooser, setShowChooser] = useState(false);
   const flow = useAttendanceFlow(inputRef, {
     reportCameraUnavailable: true,
   });
   const [retryAvailable, setRetryAvailable] = useState(false);
   const scanHeadingRef = useRef<HTMLHeadingElement>(null);
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
+  const confirmationHeadingRef = useRef<HTMLHeadingElement>(null);
   const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (flow.view === "chooser") {
+    if (
+      (flow.view === "chooser" || showChooser) &&
+      flow.events.length > 1
+    ) {
       chooserHeadingRef.current?.focus();
+    } else if (checkinResult) {
+      resultHeadingRef.current?.focus();
     } else if (flow.view === "outcome") {
       outcomeHeadingRef.current?.focus();
     } else if (flow.selected) {
-      submitRef.current?.focus();
+      confirmationHeadingRef.current?.focus();
     } else if (manualOpen && !flow.busy) {
       inputRef.current?.focus();
     } else if (flow.view === "scan" && !flow.busy) {
       scanHeadingRef.current?.focus();
     }
-  }, [flow.busy, flow.outcome, flow.selected, flow.view, manualOpen]);
+  }, [
+    checkinResult,
+    flow.busy,
+    flow.events.length,
+    flow.outcome,
+    flow.selected,
+    flow.view,
+    manualOpen,
+    showChooser,
+  ]);
 
   useEffect(() => {
     if (retryAvailable) {
@@ -66,6 +110,10 @@ export const SelfCheckInPanel = ({
   };
 
   const handleResolve = () => {
+    setCheckinResult(null);
+    setConfirmationError("");
+    setRetryAvailable(false);
+    setShowChooser(false);
     if (!flow.fromQr && !/^\d{6}$/u.test(flow.input)) {
       const message = COPY.attendance.invalidManualCode;
       flow.showStatus(message, "error");
@@ -77,6 +125,10 @@ export const SelfCheckInPanel = ({
   };
 
   const selectEvent = (event: Parameters<typeof flow.setSelected>[0]) => {
+    setCheckinResult(null);
+    setConfirmationError("");
+    setRetryAvailable(false);
+    setShowChooser(false);
     flow.setSelected(event);
     setManualOpen(false);
     if (event) {
@@ -87,45 +139,53 @@ export const SelfCheckInPanel = ({
   };
 
   async function submit() {
-    if (!flow.selected) {
-      const message = COPY.attendance.chooseEvent;
-      flow.showStatus(message);
-      announce(message);
+    const selected = flow.selected;
+    if (!selected || submitting) {
       return;
     }
     setRetryAvailable(false);
+    setConfirmationError("");
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const message = COPY.attendance.offlineSubmit;
+      setConfirmationError(message);
+      announce(message);
+      return;
+    }
     setSubmitting(true);
     flow.stopCamera();
-    flow.showStatus(COPY.attendance.resolving);
     try {
       const credential = flow.fromQr
         ? { program_token: flow.input }
         : { entry: flow.input };
       const result = await selfCheckIn({
-        event_id: flow.selected.event_id,
+        event_id: selected.event_id,
         method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
         ...credential,
       });
-      const message =
-        result.outcome === "duplicate"
-          ? COPY.attendance.duplicate
-          : COPY.attendance.success;
-      flow.showStatus(
-        message,
-        result.outcome === "duplicate" ? "info" : "success"
+      const kind = result.outcome === "duplicate" ? "duplicate" : "success";
+      setCheckinResult({ kind, event: selected });
+      announce(
+        kind === "duplicate"
+          ? `${COPY.attendance.duplicateTitle} ${COPY.attendance.duplicateBody}`
+          : `${COPY.attendance.successTitle} ${selected.program_name} · ${attendanceEventLabel(selected)}`
       );
-      announce(message);
-      setRetryAvailable(false);
     } catch (error) {
-      const ambiguousTransport =
-        !(error instanceof RpcError) ||
-        error.problem.code === "NETWORK_ERROR" ||
-        error.problem.code === "UNAVAILABLE";
-      const message = ambiguousTransport
-        ? COPY.attendance.transportAmbiguous
-        : errorCopyFor(error.problem.code, error.problem.detail);
-      setRetryAvailable(ambiguousTransport);
-      flow.showStatus(message, "error");
+      const code = error instanceof RpcError ? error.problem.code : undefined;
+      const offline =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        code === "NETWORK_ERROR";
+      const hasSpecificCopy =
+        code !== undefined &&
+        KNOWN_SUBMIT_ERROR_CODES.includes(
+          code as (typeof KNOWN_SUBMIT_ERROR_CODES)[number]
+        );
+      const message = offline
+        ? COPY.attendance.offlineSubmit
+        : hasSpecificCopy && error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.attendance.submitFailure;
+      setRetryAvailable(!offline);
+      setConfirmationError(message);
       announce(message);
     } finally {
       setSubmitting(false);
@@ -134,10 +194,33 @@ export const SelfCheckInPanel = ({
 
   const backToScan = () => {
     setManualOpen(false);
+    setShowChooser(false);
+    setCheckinResult(null);
+    setConfirmationError("");
+    setRetryAvailable(false);
     flow.resetToScan();
   };
 
-  if (flow.view === "chooser") {
+  const handleNotThisEvent = () => {
+    if (submitting) {
+      return;
+    }
+    setCheckinResult(null);
+    setConfirmationError("");
+    setRetryAvailable(false);
+    if (flow.events.length > 1) {
+      flow.setSelected(null);
+      setShowChooser(true);
+      announce(COPY.attendance.chooseMeeting);
+      return;
+    }
+    backToScan();
+  };
+
+  if (
+    (flow.view === "chooser" || showChooser) &&
+    flow.events.length > 1
+  ) {
     return (
       <div className={styles.page}>
         <ScannerChooser
@@ -145,6 +228,38 @@ export const SelfCheckInPanel = ({
           headingRef={chooserHeadingRef}
           onBack={backToScan}
           onSelect={selectEvent}
+        />
+      </div>
+    );
+  }
+
+  if (checkinResult) {
+    return (
+      <div className={styles.page}>
+        <ScannerCheckinResult
+          event={checkinResult.event}
+          kind={checkinResult.kind}
+          headingRef={resultHeadingRef}
+          onScanAgain={backToScan}
+        />
+      </div>
+    );
+  }
+
+  if (flow.selected) {
+    return (
+      <div className={styles.page}>
+        <ScannerConfirmation
+          event={flow.selected}
+          headingRef={confirmationHeadingRef}
+          busy={submitting}
+          error={confirmationError}
+          retryAvailable={retryAvailable}
+          retryRef={retryRef}
+          onRescan={backToScan}
+          onSubmit={() => void submit()}
+          onRetry={() => void submit()}
+          onNotThisEvent={handleNotThisEvent}
         />
       </div>
     );
@@ -254,38 +369,6 @@ export const SelfCheckInPanel = ({
               {flow.busy ? COPY.attendance.resolving : COPY.attendance.resolve}
             </button>
           </form>
-        )}
-        {flow.selected && (
-          <p className={styles.hint}>
-            {COPY.attendance.eventTime}: {attendanceEventLabel(flow.selected)}
-            {flow.selected.location?.trim()
-              ? ` · ${COPY.attendance.eventLocation}: ${flow.selected.location.trim()}`
-              : ""}
-          </p>
-        )}
-        {flow.selected && (
-          <button
-            ref={submitRef}
-            className={styles.button}
-            type="button"
-            disabled={flow.busy || submitting}
-            aria-busy={flow.busy || submitting}
-            onClick={() => void submit()}
-          >
-            {COPY.attendance.memberSubmit}
-          </button>
-        )}
-        {retryAvailable && (
-          <button
-            ref={retryRef}
-            className={styles.buttonSecondary}
-            type="button"
-            disabled={submitting}
-            aria-busy={submitting}
-            onClick={() => void submit()}
-          >
-            {COPY.attendance.retry}
-          </button>
         )}
         <ScannerStatusOutput message={flow.status} tone={flow.tone} />
       </section>

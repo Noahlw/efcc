@@ -160,17 +160,19 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.resolve })
     );
 
-    const submitButton = await screen.findByRole("button", {
-      name: COPY.attendance.memberSubmit,
+    const confirmHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
     });
-    expect(submitButton).toHaveFocus();
+    expect(confirmHeading).toHaveFocus();
   });
 
-  test("single open event resolution lands on confirmation seam and submits successfully", async () => {
+  test("single open event resolution shows confirmation identity before commit, then success result", async () => {
     let checkInBody: Record<string, unknown> | undefined;
+    let selfCalls = 0;
     server.use(
       resolveHandler({ events: [EVENT] }),
       http.post("/api/v1/attendance/self", async ({ request }) => {
+        selfCalls += 1;
         checkInBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           requestId: "rid-self",
@@ -195,21 +197,164 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.resolve })
     );
 
-    const submitButton = await screen.findByRole("button", {
-      name: COPY.attendance.memberSubmit,
+    // Confirmation screen: full event identity rendered before any commit.
+    const confirmHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
     });
-    expect(submitButton).toHaveFocus();
-    expect(screen.getByText(/主堂/u)).toBeInTheDocument();
+    expect(confirmHeading).toHaveFocus();
+    expect(
+      screen.getByText(COPY.attendance.confirmHeader, {
+        selector: "header span",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.attendance.recognizedBadge)
+    ).toBeInTheDocument();
+    expect(screen.getByText(COPY.attendance.confirmLead)).toBeInTheDocument();
+    // Event identity card: program name, event title, date/time, location.
+    expect(screen.getByText(EVENT.program_name)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "週六聚會" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("2026/08/13 19:00 – 2026/08/13 21:00")
+    ).toBeInTheDocument();
+    expect(screen.getByText("主堂")).toBeInTheDocument();
+    const confirmButton = screen.getByRole("button", {
+      name: COPY.attendance.confirmSubmit,
+    });
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.notThisEvent })
+    ).toBeInTheDocument();
+    expect(selfCalls).toBe(0);
 
-    await user.click(submitButton);
-    await expect(
-      screen.findByText(COPY.attendance.success)
-    ).resolves.toBeInTheDocument();
+    await user.click(confirmButton);
+
+    // Success result: identity plus 返回首頁 and 再次簽到 actions.
+    const resultHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.successTitle,
+    });
+    expect(resultHeading).toHaveFocus();
+    expect(screen.getByText(COPY.attendance.resultTitle)).toBeInTheDocument();
+    expect(
+      screen.getByTestId("attendance-result-icon-success")
+    ).toBeInTheDocument();
+    expect(screen.getByText("週六團契")).toBeInTheDocument();
+    expect(screen.getByText("週六聚會")).toBeInTheDocument();
+    const backHome = screen.getByRole("link", {
+      name: COPY.attendance.backHome,
+    });
+    expect(backHome).toHaveAttribute("href", "/");
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.scanAgain })
+    ).toBeInTheDocument();
     expect(checkInBody).toMatchObject({
       event_id: EVENT.event_id,
       method: "self_manual_code",
       entry: "123456",
     });
+    expect(selfCalls).toBe(1);
+  });
+
+  test("不是這個聚會 escape returns to re-resolution without writing", async () => {
+    let selfCalls = 0;
+    server.use(
+      resolveHandler({ events: [EVENT] }),
+      http.post("/api/v1/attendance/self", async () => {
+        selfCalls += 1;
+        return HttpResponse.json({
+          requestId: "rid-self",
+          data: { outcome: "success", attendance_id: "att-1" },
+        });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    );
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualEntryTitle)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.resolve })
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.notThisEvent })
+    );
+
+    // Single-event resolve: escape returns to the scanner main screen and
+    // nothing was committed.
+    expect(
+      screen.getByRole("heading", { name: COPY.attendance.scanTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    ).toBeInTheDocument();
+    expect(selfCalls).toBe(0);
+  });
+
+  test("不是這個聚會 escape with multiple candidates returns to the chooser without writing", async () => {
+    let selfCalls = 0;
+    server.use(
+      resolveHandler({ events: [EVENT, EVENT_TWO] }),
+      http.post("/api/v1/attendance/self", async () => {
+        selfCalls += 1;
+        return HttpResponse.json({
+          requestId: "rid-self",
+          data: { outcome: "success", attendance_id: "att-1" },
+        });
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    );
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualEntryTitle)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.resolve })
+    );
+
+    const candidates = await screen.findAllByRole("button", {
+      name: /週六聚會|週日崇拜/u,
+    });
+    await user.click(candidates[0]);
+    await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.notThisEvent })
+    );
+
+    // Multi-event resolve: escape returns to the chooser for re-resolution.
+    const chooserHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.chooseMeeting,
+    });
+    expect(chooserHeading).toHaveFocus();
+    expect(
+      screen.getAllByRole("button", { name: /週六聚會|週日崇拜/u })
+    ).toHaveLength(2);
+    expect(selfCalls).toBe(0);
   });
 
   test("multi-event chooser lists candidates, supports rescan back, and candidate selection lands on confirmation seam", async () => {
@@ -272,10 +417,15 @@ describe(SelfCheckInPanel, () => {
     });
     await user.click(secondChooserButtons[1]);
 
-    const submitButton = await screen.findByRole("button", {
-      name: COPY.attendance.memberSubmit,
+    // Candidate selection lands on the confirmation screen with that
+    // event's identity (EVENT_TWO is in 副堂).
+    const confirmHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
     });
-    expect(submitButton).toHaveFocus();
+    expect(confirmHeading).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.confirmSubmit })
+    ).toBeInTheDocument();
     expect(screen.getByText(/副堂/u)).toBeInTheDocument();
   });
 
@@ -498,7 +648,7 @@ describe(SelfCheckInPanel, () => {
     expect(input).toHaveValue("123456");
   });
 
-  test("duplicate check-in renders accessible neutral notice", async () => {
+  test("duplicate check-in renders quiet neutral result screen", async () => {
     server.use(
       resolveHandler({ events: [EVENT] }),
       http.post("/api/v1/attendance/self", () =>
@@ -525,21 +675,51 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.resolve })
     );
     await user.click(
-      await screen.findByRole("button", { name: COPY.attendance.memberSubmit })
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
     );
 
-    const output = await screen.findByText(COPY.attendance.duplicate);
-    expect(output.closest("output")).toHaveAttribute("data-tone", "info");
+    const duplicateHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.duplicateTitle,
+    });
+    expect(duplicateHeading).toHaveFocus();
+    expect(
+      screen.getByText(COPY.attendance.duplicateBody)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("attendance-result-icon-duplicate")
+    ).toBeInTheDocument();
+    // The duplicate is a quiet neutral result — never an error tone or alert.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(COPY.attendance.submitFailure)).toBeNull();
+    // Same two result actions as the success screen.
+    expect(
+      screen.getByRole("link", { name: COPY.attendance.backHome })
+    ).toHaveAttribute("href", "/");
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.scanAgain })
+    ).toBeInTheDocument();
   });
 
-  test("preserves selection and offers retry after ambiguous transport on submission", async () => {
+  test("server submit failure shows inline error and retry re-attempts the same event", async () => {
     let attempts = 0;
+    const requestBodies: Array<Record<string, unknown>> = [];
     server.use(
       resolveHandler({ events: [EVENT] }),
-      http.post("/api/v1/attendance/self", () => {
+      http.post("/api/v1/attendance/self", async ({ request }) => {
         attempts += 1;
+        requestBodies.push((await request.json()) as Record<string, unknown>);
         return attempts === 1
-          ? HttpResponse.error()
+          ? HttpResponse.json(
+              {
+                status: 500,
+                code: "INTERNAL_ERROR",
+                title: "Upstream error",
+                detail: "系統暫時無法處理請求，請稍後再試。",
+              },
+              { status: 500 }
+            )
           : HttpResponse.json({
               requestId: "rid-retry",
               data: { outcome: "success", attendance_id: "att-1" },
@@ -563,19 +743,98 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.resolve })
     );
     await user.click(
-      await screen.findByRole("button", { name: COPY.attendance.memberSubmit })
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
     );
 
-    const retryButton = await screen.findByRole("button", {
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.submitFailure);
+    const retryButton = screen.getByRole("button", {
       name: COPY.attendance.retry,
     });
     expect(retryButton).toHaveFocus();
-    const ambiguous = screen.getByText(COPY.attendance.transportAmbiguous);
-    expect(ambiguous.closest("output")).toHaveAttribute("data-tone", "error");
 
     await user.click(retryButton);
     await expect(
-      screen.findByText(COPY.attendance.success)
+      screen.findByRole("heading", { name: COPY.attendance.successTitle })
+    ).resolves.toBeInTheDocument();
+    expect(attempts).toBe(2);
+    // The retry re-attempts the exact same confirmation.
+    expect(requestBodies).toHaveLength(2);
+    for (const body of requestBodies) {
+      expect(body).toMatchObject({
+        event_id: EVENT.event_id,
+        method: "self_manual_code",
+        entry: "123456",
+      });
+    }
+  });
+
+  test("offline confirmation shows inline error, keeps state, and re-confirm succeeds", async () => {
+    let attempts = 0;
+    server.use(
+      resolveHandler({ events: [EVENT] }),
+      http.post("/api/v1/attendance/self", () => {
+        attempts += 1;
+        return HttpResponse.error();
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    );
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualEntryTitle)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.resolve })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.offlineSubmit);
+    // No retry affordance offline; the confirmation screen stays intact and
+    // unchanged (same identity, same actions).
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.retry })
+    ).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: COPY.attendance.confirmTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.confirmSubmit })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.notThisEvent })
+    ).toBeInTheDocument();
+    expect(screen.getByText("主堂")).toBeInTheDocument();
+
+    // Back online: the same confirmation commits successfully.
+    server.use(
+      http.post("/api/v1/attendance/self", async () => {
+        attempts += 1;
+        return HttpResponse.json({
+          requestId: "rid-online",
+          data: { outcome: "success", attendance_id: "att-1" },
+        });
+      })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.confirmSubmit })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.attendance.successTitle })
     ).resolves.toBeInTheDocument();
     expect(attempts).toBe(2);
   });

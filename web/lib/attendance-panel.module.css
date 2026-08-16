@@ -358,6 +358,153 @@
   border-style: dashed;
 }
 
+.confirmation {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+.confirmHeader,
+.resultHeader {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  font-weight: 800;
+}
+
+.confirmTag {
+  justify-self: start;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-pill);
+  background: var(--success-surface);
+  color: var(--success);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.confirmCard {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.confirmProgram {
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.confirmEventTitle {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.35;
+}
+
+.confirmDetails {
+  display: grid;
+  gap: 0.6rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.confirmDetail {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.confirmDetailIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  justify-content: center;
+  color: var(--ink);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
+.confirmActions,
+.resultActions {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.confirmError {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+  color: var(--error);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.checkinResult {
+  justify-items: center;
+  gap: 0.9rem;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
+.checkinResultIcon {
+  width: 4.5rem;
+  height: 4.5rem;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.checkinResultIconSuccess {
+  stroke: var(--success);
+}
+
+.checkinResultIconDuplicate {
+  stroke: var(--ink-muted);
+}
+
+.resultCopy {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.resultActions {
+  width: 100%;
+}
+
+.resultActions .button,
+.resultActions .buttonSecondary {
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+
+.confirmation .title,
+.checkinResult .title {
+  margin: 0;
+}
+
+.confirmation .lead {
+  margin: -0.25rem 0 0;
+}
+
 .chooser {
   display: grid;
   gap: 0.9rem;
