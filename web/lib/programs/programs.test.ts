@@ -7273,6 +7273,9 @@ describe("PUI-02: participant catalog", () => {
       name: string;
       lifecycle: string;
       discoverability: string;
+      viewerState: string;
+      nextEventStartsAt: string | null;
+      upcomingEventCount: number;
     }[];
   }
 
@@ -7471,6 +7474,316 @@ describe("PUI-02: participant catalog", () => {
       ),
       "module-disabled Department must be omitted"
     );
+  });
+  test("projects viewerState per program across all viewer states", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-STATES",
+      name: "PUI-02 States Dept",
+    });
+
+    // 1. Eligible (MemberRequest with no relationship)
+    const pEligible = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Eligible",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+
+    // 2. ManagerOnly (ManagerOnly with no relationship)
+    const pManagerOnly = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 ManagerOnly",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+
+    // 3. Archived
+    const pArchived = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Archived",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    await worker.fetch(
+      programsRequest(`/api/v1/programs/${pArchived.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+
+    // 4. Pending request
+    const pPending = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Pending",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    await submitRequest(memberAccess, pPending.program_id);
+
+    // 5. Active enrollment
+    const pActive = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Active",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqActive = await submitRequest(memberAccess, pActive.program_id);
+    const decideActive = await decideRequest(
+      adminAccess,
+      pActive.program_id,
+      reqActive.request_id,
+      "Approved"
+    );
+    assert.strictEqual(decideActive.status, 200);
+
+    // 6. Rejected request
+    const pRejected = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Rejected",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqRejected = await submitRequest(memberAccess, pRejected.program_id);
+    const decideReject = await decideRequest(
+      adminAccess,
+      pRejected.program_id,
+      reqRejected.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(decideReject.status, 200);
+
+    // 7. Withdrawn request
+    const pWithdrawn = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Withdrawn",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqWithdrawn = await submitRequest(memberAccess, pWithdrawn.program_id);
+    const withdrawRes = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${pWithdrawn.program_id}/enrollment-requests/${reqWithdrawn.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(withdrawRes.status, 200);
+
+    // 8. Cancelled enrollment
+    const pCancelled = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Cancelled",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    const enrollRes = await assistedEnrollFor(
+      adminAccess,
+      pCancelled.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrollRes.status, 201);
+    const enrollBody = (await assertCorrelated(enrollRes)) as {
+      data: { enrollment: { enrollment_id: string } };
+    };
+    const cancelRes = await cancelEnrollmentFor(
+      memberAccess,
+      pCancelled.program_id,
+      enrollBody.data.enrollment.enrollment_id
+    );
+    assert.strictEqual(cancelRes.status, 200);
+
+    // 9. Archived program with active enrollment -> archived takes precedence
+    const pArchivedWithEnrollment = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 Archived Active",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "ManagerOnly",
+      }
+    );
+    await assistedEnrollFor(
+      adminAccess,
+      pArchivedWithEnrollment.program_id,
+      "U002"
+    );
+    await worker.fetch(
+      programsRequest(`/api/v1/programs/${pArchivedWithEnrollment.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+
+    const body = await catalogOf(memberAccess);
+    const entry = body.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(entry, "department must appear");
+    const byName = new Map(
+      entry.programs.map((program) => [program.name, program.viewerState])
+    );
+
+    assert.strictEqual(byName.get("PUI-02 Eligible"), "eligible");
+    assert.strictEqual(byName.get("PUI-02 ManagerOnly"), "managerOnly");
+    assert.strictEqual(byName.get("PUI-02 Archived"), "archived");
+    assert.strictEqual(byName.get("PUI-02 Pending"), "pending");
+    assert.strictEqual(byName.get("PUI-02 Active"), "active");
+    assert.strictEqual(byName.get("PUI-02 Rejected"), "rejected");
+    assert.strictEqual(byName.get("PUI-02 Withdrawn"), "withdrawn");
+    assert.strictEqual(byName.get("PUI-02 Cancelled"), "cancelled");
+    assert.strictEqual(byName.get("PUI-02 Archived Active"), "archived");
+  });
+
+  test("projects nextEventStartsAt and upcomingEventCount from future active events", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-EVENTS",
+      name: "PUI-02 Events Dept",
+    });
+
+    const programNoEvents = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 No Events",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+
+    const programWithEvents = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 With Events",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+
+    // Past event (2020)
+    await createEventFor(adminAccess, programWithEvents.program_id, {
+      starts_at: "2020-01-01T10:00:00.000Z",
+      ends_at: "2020-01-01T12:00:00.000Z",
+    });
+
+    // Future active event 1 (earlier)
+    const futureEvent1 = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-06-01T10:00:00.000Z",
+        ends_at: "2028-06-01T12:00:00.000Z",
+      }
+    );
+
+    // Future active event 2 (later)
+    await createEventFor(adminAccess, programWithEvents.program_id, {
+      starts_at: "2028-06-15T10:00:00.000Z",
+      ends_at: "2028-06-15T12:00:00.000Z",
+    });
+
+    // Future cancelled event (should not count)
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-05-01T10:00:00.000Z",
+        ends_at: "2028-05-01T12:00:00.000Z",
+      }
+    );
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programWithEvents.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "Cancelled for testing" },
+        }
+      ),
+      testEnv()
+    );
+
+    // Future inactive availability event (should not count)
+    const inactiveEvent = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-05-15T10:00:00.000Z",
+        ends_at: "2028-05-15T12:00:00.000Z",
+      }
+    );
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programWithEvents.program_id}/events/${inactiveEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+
+    const body = await catalogOf(memberAccess);
+    const entry = body.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(entry, "department must appear");
+
+    const pNoEvents = entry.programs.find(
+      (p) => p.program_id === programNoEvents.program_id
+    );
+    assert.ok(pNoEvents);
+    assert.strictEqual(pNoEvents.nextEventStartsAt, null);
+    assert.strictEqual(pNoEvents.upcomingEventCount, 0);
+
+    const pWithEvents = entry.programs.find(
+      (p) => p.program_id === programWithEvents.program_id
+    );
+    assert.ok(pWithEvents);
+    assert.strictEqual(pWithEvents.nextEventStartsAt, "2028-06-01T10:00:00.000Z");
+    assert.strictEqual(pWithEvents.upcomingEventCount, 2);
   });
 });
 describe("PUI-03: participant Program detail", () => {

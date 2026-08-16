@@ -164,10 +164,10 @@ function formatEventTime(value: string): string {
 
 function lifecycleLabel(value: Program["lifecycle"]): string {
   return value === "Active"
-    ? COPY.programs.filterActive
+    ? COPY.programs.lifecycleActive
     : value === "Draft"
-      ? COPY.programs.filterDraft
-      : COPY.programs.filterArchived;
+      ? COPY.programs.lifecycleDraft
+      : COPY.programs.lifecycleArchived;
 }
 
 function behaviorLabel(value: Program["behavior_type"]): string {

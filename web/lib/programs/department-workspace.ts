@@ -295,9 +295,25 @@ export interface DepartmentSummary {
   display_order: number;
 }
 
+export type ParticipantCatalogViewerState =
+  | "active"
+  | "pending"
+  | "eligible"
+  | "managerOnly"
+  | "withdrawn"
+  | "cancelled"
+  | "rejected"
+  | "archived";
+
+export interface ParticipantCatalogProgram extends ProgramSummary {
+  viewerState: ParticipantCatalogViewerState;
+  nextEventStartsAt: string | null;
+  upcomingEventCount: number;
+}
+
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
-  programs: ProgramSummary[];
+  programs: ParticipantCatalogProgram[];
 }
 export interface ParticipantScheduleRule {
   rule_id: string;
@@ -1227,24 +1243,163 @@ export class DepartmentWorkspace {
               capabilities: await this.programCapabilities(ctx, row),
             }))
           )
-        )
-          .filter(
-            ({ row, capabilities }) =>
-              row.discoverability === "Listed" || capabilities.manage
-          )
-          .map(({ row }) => this.programSummary(row));
+        ).filter(
+          ({ row, capabilities }) =>
+            row.discoverability === "Listed" || capabilities.manage
+        );
         if (visible.length === 0) {
           return null;
         }
+        const [isEnrollmentEnabled, isEventsEnabled] = await Promise.all([
+          this.isModuleEnabled(
+            department.department_id,
+            MODULE_KEY.ENROLLMENT
+          ),
+          this.isModuleEnabled(department.department_id, MODULE_KEY.EVENTS),
+        ]);
+        const programs = await Promise.all(
+          visible.map(async ({ row }) =>
+            this.participantCatalogProgram(
+              ctx,
+              row,
+              isEnrollmentEnabled,
+              isEventsEnabled
+            )
+          )
+        );
         return {
           department: this.departmentSummary(department),
-          programs: visible,
+          programs,
         };
       })
     );
     return entries.filter(
       (entry): entry is ParticipantCatalogEntry => entry !== null
     );
+  }
+
+  private async participantCatalogProgram(
+    ctx: AuthorizationContext,
+    row: ProgramRow,
+    isEnrollmentEnabled: boolean,
+    isEventsEnabled: boolean
+  ): Promise<ParticipantCatalogProgram> {
+    const summary = this.programSummary(row);
+    let viewerState: ParticipantCatalogViewerState;
+
+    if (row.lifecycle === "Archived") {
+      viewerState = "archived";
+    } else if (!isEnrollmentEnabled || !ctx.actorUserId) {
+      viewerState =
+        row.enrollment_mode === "ManagerOnly" ? "managerOnly" : "eligible";
+    } else {
+      const { requests, enrollments } =
+        await this.store.listParticipantEnrollmentSnapshot(
+          row.program_id,
+          ctx.actorUserId
+        );
+      const userRequests = requests
+        .filter((r) => r.member_user_id === ctx.actorUserId)
+        .sort((a, b) =>
+          (a.submitted_at || "").localeCompare(b.submitted_at || "")
+        );
+      const userEnrollments = enrollments
+        .filter((e) => e.member_user_id === ctx.actorUserId)
+        .sort((a, b) =>
+          (a.enrolled_at || "").localeCompare(b.enrolled_at || "")
+        );
+
+      if (userEnrollments.some((e) => e.status === "Active")) {
+        viewerState = "active";
+      } else if (userRequests.some((r) => r.status === "Pending")) {
+        viewerState = "pending";
+      } else {
+        const latestRequest =
+          userRequests.length > 0
+            ? userRequests[userRequests.length - 1]
+            : null;
+        const cancelledEnrollments = userEnrollments.filter(
+          (e) => e.status === "Cancelled"
+        );
+        const latestCancelledEnrollment =
+          cancelledEnrollments.length > 0
+            ? cancelledEnrollments[cancelledEnrollments.length - 1]
+            : null;
+
+        if (latestRequest?.status === "Rejected") {
+          const reqTime = Date.parse(
+            latestRequest.decided_at ?? latestRequest.submitted_at
+          );
+          const cancelTime = latestCancelledEnrollment
+            ? Date.parse(
+                latestCancelledEnrollment.cancelled_at ??
+                  latestCancelledEnrollment.enrolled_at
+              )
+            : -1;
+          if (
+            !latestCancelledEnrollment ||
+            !Number.isFinite(cancelTime) ||
+            reqTime >= cancelTime
+          ) {
+            viewerState = "rejected";
+          } else {
+            viewerState = "cancelled";
+          }
+        } else if (latestRequest?.status === "Withdrawn") {
+          const reqTime = Date.parse(
+            latestRequest.decided_at ?? latestRequest.submitted_at
+          );
+          const cancelTime = latestCancelledEnrollment
+            ? Date.parse(
+                latestCancelledEnrollment.cancelled_at ??
+                  latestCancelledEnrollment.enrolled_at
+              )
+            : -1;
+          if (
+            !latestCancelledEnrollment ||
+            !Number.isFinite(cancelTime) ||
+            reqTime >= cancelTime
+          ) {
+            viewerState = "withdrawn";
+          } else {
+            viewerState = "cancelled";
+          }
+        } else if (latestCancelledEnrollment) {
+          viewerState = "cancelled";
+        } else if (row.enrollment_mode === "ManagerOnly") {
+          viewerState = "managerOnly";
+        } else {
+          viewerState = "eligible";
+        }
+      }
+    }
+
+    let nextEventStartsAt: string | null = null;
+    let upcomingEventCount = 0;
+
+    if (isEventsEnabled) {
+      const events = await this.store.listEvents(row.program_id);
+      const now = Date.now();
+      const futureEvents = events
+        .filter(
+          (e) =>
+            e.status === "Active" &&
+            e.availability === "Active" &&
+            Number.isFinite(Date.parse(e.starts_at)) &&
+            Date.parse(e.starts_at) > now
+        )
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+
+      nextEventStartsAt = futureEvents[0]?.starts_at ?? null;
+      upcomingEventCount = futureEvents.length;
+    }
+
+    return {
+      ...summary,
+      viewerState,
+      nextEventStartsAt,
+      upcomingEventCount,
+    };
   }
   /**
    * Participant Program detail (PUI-03 / Issue #247). Revalidates the same

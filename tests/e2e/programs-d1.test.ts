@@ -53,9 +53,25 @@ const COPY = {
   detailBack: "返回課程目錄",
   catalogSearchLabel: "搜尋課程",
   catalogClearSearch: "清除搜尋",
-  catalogNoMatches: "找不到符合的課程",
+  catalogNoMatches: "找不到相關課程",
+  catalogEmpty: "找不到相關課程",
+  catalogEmptyHint: "請嘗試其他關鍵字或清除篩選。",
+  catalogClearFilters: "清除篩選",
   catalogListLabel: "課程目錄",
+  filterGroupLabel: "課程篩選",
+  filterAll: "全部",
+  filterEligible: "可報名",
+  filterActive: "已參加",
+  filterPending: "待審批",
   filterDraft: "草稿",
+  statusActive: "已參加",
+  statusPending: "待審批",
+  statusEligible: "可報名",
+  statusManagerOnly: "由同工安排",
+  statusWithdrawn: "已退出",
+  statusCancelled: "已取消申請",
+  statusRejected: "已拒絕",
+  statusArchived: "已封存",
   enrollment: "報名",
   requestEnroll: "申請報名",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
@@ -510,7 +526,7 @@ test.describe("PUI-01 Programs boundary", () => {
 });
 
 test.describe("PUI-02 participant Programs directory", () => {
-  test("member sees Listed catalog rows and never the Unlisted fixture", async ({
+  test("member sees Listed catalog rows with status tags and never the Unlisted fixture", async ({
     page,
   }) => {
     await loginAs(
@@ -524,6 +540,12 @@ test.describe("PUI-02 participant Programs directory", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(COPY.statusManagerOnly, "u") })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /E2E_DEMO_社區關懷/u })
@@ -549,6 +571,62 @@ test.describe("PUI-02 participant Programs directory", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /E2E_DEMO_社區關懷/u })
+    ).toBeVisible();
+  });
+
+  test("filter pills allow filtering by viewer relationship", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+
+    const filterGroup = page.getByRole("group", {
+      name: COPY.filterGroupLabel,
+    });
+    await expect(filterGroup).toBeVisible();
+
+    const allPill = filterGroup.getByRole("button", { name: COPY.filterAll });
+    const eligiblePill = filterGroup.getByRole("button", {
+      name: COPY.filterEligible,
+    });
+    const pendingPill = filterGroup.getByRole("button", {
+      name: COPY.filterPending,
+    });
+
+    await expect(allPill).toHaveAttribute("aria-pressed", "true");
+
+    // Filter: 可報名
+    await eligiblePill.click();
+    await expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
+    await expect(allPill).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+    ).toHaveCount(0);
+
+    // Filter: 待審批 (zero matches for fresh member)
+    await pendingPill.click();
+    await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("heading", { name: COPY.catalogEmpty })
+    ).toBeVisible();
+
+    // Filter: 全部 restores all rows
+    await allPill.click();
+    await expect(allPill).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
     ).toBeVisible();
   });
 
@@ -595,16 +673,16 @@ test.describe("PUI-02 participant Programs directory", () => {
       .getByRole("searchbox", { name: COPY.catalogSearchLabel })
       .fill("完全不存在");
     await expect(
-      page.getByRole("heading", { name: /找不到符合的課程/u })
+      page.getByRole("heading", { name: COPY.catalogEmpty })
     ).toBeVisible();
     await expect(
       page.locator("#programs-catalog-state").getByRole("button", {
-        name: COPY.catalogClearSearch,
+        name: COPY.catalogClearFilters,
       })
     ).toBeVisible();
     await page
       .locator("#programs-catalog-state")
-      .getByRole("button", { name: COPY.catalogClearSearch })
+      .getByRole("button", { name: COPY.catalogClearFilters })
       .click();
     await expect(
       page.getByRole("button", { name: /E2E_DEMO_成人查經/u })

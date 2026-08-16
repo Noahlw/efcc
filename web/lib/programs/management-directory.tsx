@@ -388,10 +388,10 @@ export const ManagementDirectory = ({
                         className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
                       >
                         {program.lifecycle === "Active"
-                          ? COPY.programs.filterActive
+                          ? COPY.programs.lifecycleActive
                           : program.lifecycle === "Draft"
-                            ? COPY.programs.filterDraft
-                            : COPY.programs.filterArchived}
+                            ? COPY.programs.lifecycleDraft
+                            : COPY.programs.lifecycleArchived}
                       </span>
                     </span>
                   </button>

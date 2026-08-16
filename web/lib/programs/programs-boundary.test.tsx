@@ -15,6 +15,7 @@ import type {
   Department,
   ManagementNotifications,
   ParticipantCatalogEntry,
+  ParticipantCatalogProgram,
   ParticipantProgramDetail,
   Program,
   ProgramSummary,
@@ -123,9 +124,21 @@ const programSummary = (
   ...overrides,
 });
 
+const catalogProgramSummary = (
+  programId: string,
+  name: string,
+  overrides: Partial<ParticipantCatalogProgram> = {}
+): ParticipantCatalogProgram => ({
+  ...programSummary(programId, name, overrides),
+  viewerState: "eligible",
+  nextEventStartsAt: null,
+  upcomingEventCount: 0,
+  ...overrides,
+});
+
 const catalogFixture = (
-  programs: ProgramSummary[] = [
-    programSummary("program-1", "查經小組", {
+  programs: ParticipantCatalogProgram[] = [
+    catalogProgramSummary("program-1", "查經小組", {
       description: "週三晚上的門徒訓練查經。",
       category: "門徒訓練",
     }),
@@ -465,8 +478,8 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        programSummary("program-1", "查經小組"),
-        programSummary("program-2", "青年團契"),
+        catalogProgramSummary("program-1", "查經小組"),
+        catalogProgramSummary("program-2", "青年團契"),
       ]),
     });
 
@@ -879,8 +892,8 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        programSummary("program-1", "查經小組", { category: "門徒訓練" }),
-        programSummary("program-2", "青年團契", { category: "團契" }),
+        catalogProgramSummary("program-1", "查經小組", { category: "門徒訓練" }),
+        catalogProgramSummary("program-2", "青年團契", { category: "團契" }),
       ]),
     });
 
@@ -895,7 +908,7 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     expect(
       within(list).getByRole("button", { name: /青年團契/u })
     ).toBeInTheDocument();
-    expect(screen.getAllByText("青年事工").length).toBeGreaterThan(0);
+    expect(within(list).getAllByRole("button")).toHaveLength(2);
     expect(
       screen.queryByRole("tab", { name: COPY.programs.managementMode })
     ).not.toBeInTheDocument();

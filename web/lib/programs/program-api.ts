@@ -208,9 +208,25 @@ export interface DepartmentSummary {
   display_order: number;
 }
 
+export type ParticipantCatalogViewerState =
+  | "active"
+  | "pending"
+  | "eligible"
+  | "managerOnly"
+  | "withdrawn"
+  | "cancelled"
+  | "rejected"
+  | "archived";
+
+export interface ParticipantCatalogProgram extends ProgramSummary {
+  viewerState: ParticipantCatalogViewerState;
+  nextEventStartsAt: string | null;
+  upcomingEventCount: number;
+}
+
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
-  programs: ProgramSummary[];
+  programs: ParticipantCatalogProgram[];
 }
 export interface ParticipantScheduleRule {
   rule_id: string;
