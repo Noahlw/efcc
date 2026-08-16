@@ -2701,18 +2701,24 @@ test.describe("EVT-01 event operational detail and availability", () => {
     dateOffsetDays = 0
   ): Promise<string> {
     await openEventsTask(page, programId);
-    await page.getByRole("button", { name: COPY.createMeeting }).click();
+    await page
+      .getByRole("button", { name: COPY.createMeeting })
+      .first()
+      .click();
+    const createForm = page.getByRole("form", { name: COPY.createMeeting });
     // The primary form must reject an empty submission before any D1 write.
-    await page.getByRole("button", { name: COPY.createMeeting }).last().click();
-    await expect(page.getByText(COPY.createMeetingValidation, { exact: true })).toBeVisible();
+    await createForm.getByRole("button", { name: COPY.createMeeting }).click();
+    await expect(
+      createForm.getByText(COPY.createMeetingValidation, { exact: true })
+    ).toBeVisible();
     const startsAt = eventStart(dateOffsetDays, minuteOffsetMinutes);
     const [date, time] = startsAt.split("T");
-    await page.getByLabel(COPY.eventDate).fill(date);
-    await page.getByLabel(COPY.eventTime).fill(time);
-    await page.getByLabel(COPY.eventName).fill(name);
-    await page.getByLabel(COPY.eventType).selectOption(COPY.eventTypeTraining);
-    await page.getByLabel(COPY.recurrenceTag).selectOption(COPY.recurrenceNone);
-    await page.getByRole("button", { name: COPY.createMeeting }).last().click();
+    await createForm.getByLabel(COPY.eventDate).fill(date);
+    await createForm.getByLabel(COPY.eventTime).fill(time);
+    await createForm.getByLabel(COPY.eventName).fill(name);
+    await createForm.getByLabel(COPY.eventType).selectOption(COPY.eventTypeTraining);
+    await createForm.getByLabel(COPY.recurrenceTag).selectOption(COPY.recurrenceNone);
+    await createForm.getByRole("button", { name: COPY.createMeeting }).click();
     await expect(page).toHaveURL(
       new RegExp(
         `/programs\\?mode=management&program=${programId}&task=events&event=[A-Za-z0-9-]+$`,
