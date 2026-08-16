@@ -29,11 +29,16 @@ import type {
   ManagementCockpitView,
   PreviewResult,
   Program,
+  EventType,
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
-import { hkWallDateTimeLabel, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
+import {
+  HK_UTC_OFFSET_MINUTES,
+  hkWallDateTimeLabel,
+  WEEKDAY_LABELS,
+} from "@/lib/programs/recurrence";
 import { ProgramSettings } from "./program-settings";
 
 import { EventDetail, hkWallInputToIso } from "./event-detail";
@@ -162,6 +167,15 @@ function formatEventTime(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Hong_Kong",
   }).format(date);
+}
+function eventWallParts(value: string): { date: string; time: string } {
+  const shifted = new Date(
+    new Date(value).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  );
+  return {
+    date: shifted.toISOString().slice(0, 10),
+    time: shifted.toISOString().slice(11, 16),
+  };
 }
 
 function lifecycleLabel(value: Program["lifecycle"]): string {
@@ -1023,8 +1037,9 @@ const RecurringSchedulePanel = ({
         id="programs-workspace-recurring-title"
         className={styles.workspaceSubheading}
       >
-        {COPY.programs.previewLead}
+        {COPY.programs.secondaryGeneratorLabel}
       </h5>
+      <p className={styles.programDetailMuted}>{COPY.programs.previewLead}</p>
       {rulesError !== null && (
         <output className={styles.panelError} role="alert">
           {rulesError}
@@ -1208,30 +1223,43 @@ const EventsTask = ({
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
-    const startsAt = hkWallInputToIso(String(form.get("starts_at") ?? ""));
-    const endsAt = hkWallInputToIso(String(form.get("ends_at") ?? ""));
-    const opensAt = hkWallInputToIso(String(form.get("opens_at") ?? ""));
-    const closesAt = hkWallInputToIso(String(form.get("closes_at") ?? ""));
-    if (!startsAt || !endsAt || !opensAt || !closesAt) {
-      const message = errorCopyFor("VALIDATION");
+    const date = String(form.get("event_date") ?? "").trim();
+    const time = String(form.get("event_time") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim();
+    if (!date || !time || !name) {
+      const message = COPY.programs.createMeetingValidation;
       setCreateError(message);
       announce(message);
       return;
     }
+    const startsAt = hkWallInputToIso(`${date}T${time}`);
+    if (!startsAt) {
+      const message = COPY.programs.createMeetingValidation;
+      setCreateError(message);
+      announce(message);
+      return;
+    }
+    const eventType = String(
+      form.get("event_type") ?? COPY.programs.eventTypeOptions[0]
+    ) as EventType;
     setCreateBusy(true);
     setCreateError(null);
     try {
       const { event } = await createEvent(programId, {
-        name: String(form.get("name") ?? "").trim() || null,
-        location: String(form.get("location") ?? "").trim() || null,
+        name,
+        event_type: eventType,
         starts_at: startsAt,
-        ends_at: endsAt,
-        check_in_window_opens_at: opensAt,
-        check_in_window_closes_at: closesAt,
+        ends_at: new Date(
+          new Date(startsAt).getTime() + 60 * 60_000
+        ).toISOString(),
       });
       announce(COPY.programs.eventCreatedNotice);
       setCreateOpen(false);
-      onOpenEvent?.(event.event_id);
+      if (onOpenEvent) {
+        onOpenEvent(event.event_id);
+      } else {
+        void run();
+      }
     } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
         return;
@@ -1249,8 +1277,8 @@ const EventsTask = ({
 
   return (
     <section
-      className={styles.workspaceTask}
       aria-labelledby="programs-workspace-events-title"
+      aria-busy={createBusy}
     >
       <h4
         id="programs-workspace-events-title"
@@ -1281,16 +1309,8 @@ const EventsTask = ({
         </span>
       )}
       <p className={styles.programDetailMuted}>
-        {COPY.programs.workspaceTaskEventsLead}
+        {COPY.programs.repeatInformational}
       </p>
-      {canManage && recurring && (
-        <RecurringSchedulePanel
-          programId={programId}
-          onGenerated={() => {
-            void run();
-          }}
-        />
-      )}
       {canManage && (
         <>
           <button
@@ -1301,19 +1321,21 @@ const EventsTask = ({
               setCreateError(null);
             }}
           >
-            {COPY.programs.eventCreate}
+            {COPY.programs.createMeeting}
           </button>
           {createOpen && (
             <form
               className={`${styles.ruleForm} ${styles.eventCreateForm}`}
               aria-labelledby="programs-workspace-event-create-title"
+              aria-busy={createBusy}
+              noValidate
               onSubmit={submitCreate}
             >
               <h5
                 id="programs-workspace-event-create-title"
                 className={styles.workspaceSubheading}
               >
-                {COPY.programs.eventCreateTitle}
+                {COPY.programs.createMeeting}
               </h5>
               {createError !== null && (
                 <output className={styles.panelError} role="alert">
@@ -1321,66 +1343,73 @@ const EventsTask = ({
                 </output>
               )}
               <label className={styles.ruleField}>
+                <span>{COPY.programs.eventDate}</span>
+                <input
+                  type="date"
+                  name="event_date"
+                  aria-label={COPY.programs.eventDate}
+                  aria-required="true"
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventTime}</span>
+                <input
+                  type="time"
+                  name="event_time"
+                  aria-label={COPY.programs.eventTime}
+                  aria-required="true"
+                />
+              </label>
+              <label className={styles.ruleField}>
                 <span>{COPY.programs.eventName}</span>
                 <input
                   type="text"
                   name="name"
                   placeholder={COPY.programs.eventNamePlaceholder}
                   aria-label={COPY.programs.eventName}
+                  aria-required="true"
                 />
               </label>
               <label className={styles.ruleField}>
-                <span>{COPY.programs.eventLocation}</span>
-                <input
-                  type="text"
-                  name="location"
-                  placeholder={COPY.programs.eventLocationPlaceholder}
-                  aria-label={COPY.programs.eventLocation}
-                />
+                <span>{COPY.programs.eventType}</span>
+                <select name="event_type" aria-label={COPY.programs.eventType}>
+                  {COPY.programs.eventTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className={styles.ruleField}>
-                <span>{COPY.programs.eventStart}</span>
-                <input
-                  type="datetime-local"
-                  name="starts_at"
-                  required
-                  aria-label={COPY.programs.eventStart}
-                />
+                <span>{COPY.programs.recurrenceTag}</span>
+                <select
+                  name="recurrence_tag"
+                  defaultValue={COPY.programs.recurrenceNone}
+                  aria-label={COPY.programs.recurrenceTag}
+                >
+                  <option value={COPY.programs.recurrenceNone}>
+                    {COPY.programs.recurrenceNone}
+                  </option>
+                  <option value={COPY.programs.recurrenceWeekly}>
+                    {COPY.programs.recurrenceWeekly}
+                  </option>
+                  <option value={COPY.programs.recurrenceMonthly}>
+                    {COPY.programs.recurrenceMonthly}
+                  </option>
+                </select>
               </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventEnd}</span>
-                <input
-                  type="datetime-local"
-                  name="ends_at"
-                  required
-                  aria-label={COPY.programs.eventEnd}
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
-                <input
-                  type="datetime-local"
-                  name="opens_at"
-                  required
-                  aria-label={COPY.programs.eventCheckInWindowOpensAt}
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
-                <input
-                  type="datetime-local"
-                  name="closes_at"
-                  required
-                  aria-label={COPY.programs.eventCheckInWindowClosesAt}
-                />
-              </label>
+              <p className={styles.programDetailMuted}>
+                {COPY.programs.repeatFormInformational}
+              </p>
               <div className={styles.formActions}>
                 <button
                   type="submit"
                   className={styles.button}
                   disabled={createBusy}
                 >
-                  {COPY.programs.eventCreateSubmit}
+                  {createBusy
+                    ? COPY.programs.submitting
+                    : COPY.programs.createMeeting}
                 </button>
                 <button
                   type="button"
@@ -1397,6 +1426,14 @@ const EventsTask = ({
             </form>
           )}
         </>
+      )}
+      {canManage && recurring && (
+        <RecurringSchedulePanel
+          programId={programId}
+          onGenerated={() => {
+            void run();
+          }}
+        />
       )}
       {state.kind === "loading" && (
         <output aria-busy="true">
@@ -1425,36 +1462,52 @@ const EventsTask = ({
           className={styles.workspaceTaskList}
           aria-label={COPY.programs.workspaceTaskEvents}
         >
-          {state.events.map((event) => (
-            <li key={event.event_id} className={styles.workspaceTaskRow}>
-              <strong>{formatEventTime(event.starts_at)}</strong>
-              <span>
-                {event.status === "Active"
-                  ? COPY.programs.eventActive
-                  : COPY.programs.eventCancelled}
-              </span>
-              <span>
-                {event.source === "SCHEDULE"
-                  ? COPY.programs.eventScheduleSource
-                  : COPY.programs.eventManualSource}
-              </span>
-              {event.availability !== undefined &&
-                event.availability !== "Active" && (
-                  <span className={styles.eventCancelled}>
-                    {COPY.programs.eventUnavailable}
-                  </span>
+          {state.events.map((event) => {
+            const wall = eventWallParts(event.starts_at);
+            return (
+              <li key={event.event_id} className={styles.workspaceTaskRow}>
+                <strong>
+                  {event.name ?? hkWallDateTimeLabel(event.starts_at)}
+                </strong>
+                <span>{wall.date}</span>
+                <span>{wall.time}</span>
+                <span>
+                  {event.event_type ?? COPY.programs.eventTypeOptions[5]}
+                </span>
+                <span>
+                  {COPY.programs.repeatLabel.replace(
+                    "{tag}",
+                    event.recurrence_tag ?? COPY.programs.recurrenceNone
+                  )}
+                </span>
+                <span>
+                  {event.status === "Active"
+                    ? COPY.programs.eventActive
+                    : COPY.programs.eventCancelled}
+                </span>
+                <span>
+                  {event.source === "SCHEDULE"
+                    ? COPY.programs.eventScheduleSource
+                    : COPY.programs.eventManualSource}
+                </span>
+                {event.availability !== undefined &&
+                  event.availability !== "Active" && (
+                    <span className={styles.eventCancelled}>
+                      {COPY.programs.eventUnavailable}
+                    </span>
+                  )}
+                {onOpenEvent && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => onOpenEvent(event.event_id)}
+                  >
+                    {COPY.programs.eventDetailOpen}
+                  </button>
                 )}
-              {onOpenEvent && (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => onOpenEvent(event.event_id)}
-                >
-                  {COPY.programs.eventDetailOpen}
-                </button>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

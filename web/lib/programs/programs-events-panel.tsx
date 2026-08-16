@@ -34,6 +34,40 @@ const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
 };
+const EVENT_TYPE_OPTIONS = COPY.programs.eventTypeOptions;
+const RECURRENCE_TAG_OPTIONS = [
+  COPY.programs.recurrenceNone,
+  COPY.programs.recurrenceWeekly,
+  COPY.programs.recurrenceMonthly,
+] as const;
+
+function eventRecurrenceTag(
+  event: ProgramEvent,
+  rule: ScheduleRule | null
+): string {
+  if (event.recurrence_tag !== undefined && event.recurrence_tag !== null) {
+    return event.recurrence_tag;
+  }
+  if (rule?.recurrence === "WEEKLY") {
+    return COPY.programs.recurrenceWeekly;
+  }
+  if (rule?.recurrence === "MONTHLY") {
+    return COPY.programs.recurrenceMonthly;
+  }
+  return COPY.programs.recurrenceNone;
+}
+
+function wallDateTimeToIso(date: string, time: string): string | null {
+  if (!date || !time) {
+    return null;
+  }
+  const parsed = new Date(`${date}T${time}:00+08:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function oneHourAfter(iso: string): string {
+  return new Date(new Date(iso).getTime() + 60 * 60_000).toISOString();
+}
 
 /** HK wall date ("YYYY-MM-DD") and time ("HH:MM") of an ISO instant. */
 function hkWallParts(iso: string): { date: string; time: string } {
@@ -86,6 +120,7 @@ export const EventsPanel = ({
   const [events, setEvents] = useState<ProgramEvent[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
@@ -228,30 +263,57 @@ export const EventsPanel = ({
   const submitManualEvent = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const startsAt = String(form.get("starts_at") ?? "");
-    const endsAt = String(form.get("ends_at") ?? "");
-    // datetime-local yields wall-clock HK time without a zone; the server
-    // requires ISO-8601 UTC instants ending in Z — interpret as UTC+8 (the
-    // form labels state 香港時間) and normalize.
+    const date = String(form.get("event_date") ?? "").trim();
+    const time = String(form.get("event_time") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim();
+    if (!date || !time || !name) {
+      const message = COPY.programs.createMeetingValidation;
+      setManualError(message);
+      announce(message);
+      return;
+    }
+    const startsAt = wallDateTimeToIso(date, time);
+    if (startsAt === null) {
+      const message = COPY.programs.createMeetingValidation;
+      setManualError(message);
+      announce(message);
+      return;
+    }
+    const eventType = String(
+      form.get("event_type") ?? EVENT_TYPE_OPTIONS[0]
+    ) as (typeof EVENT_TYPE_OPTIONS)[number];
+    setManualError(null);
     void runAction(
       () =>
         createEvent(program.program_id, {
-          starts_at: new Date(`${startsAt}:00+08:00`).toISOString(),
-          ends_at: new Date(`${endsAt}:00+08:00`).toISOString(),
+          starts_at: startsAt,
+          ends_at: oneHourAfter(startsAt),
+          name,
+          event_type: eventType,
         }),
-      COPY.programs.created
+      COPY.programs.eventCreatedNotice
     );
   };
 
   const submitCancel =
     (eventId: string) => (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      const currentEvent = events?.find(
+        (candidate) => candidate.event_id === eventId
+      );
+      if (currentEvent?.has_attendance) {
+        const message = COPY.programs.cancelBlockedWithAttendance;
+        setConfirmingEventId(null);
+        setActionError(message);
+        announce(message);
+        return;
+      }
       if (confirmingEventId !== eventId) {
         setConfirmingEventId(eventId);
         return;
       }
       const form = new FormData(event.currentTarget);
-      const reason = String(form.get("cancel_reason") ?? "").trim();
+      const reason = String(form.get("cancel_reason") ?? "").trim() || null;
       void runAction(
         () => cancelEvent(program.program_id, eventId, reason),
         COPY.programs.eventCancelledNotice
@@ -382,10 +444,19 @@ export const EventsPanel = ({
   };
 
   return (
-    <section className={styles.eventsPanel} aria-label={COPY.programs.events}>
+    <section
+      className={styles.eventsPanel}
+      aria-label={COPY.programs.events}
+      aria-busy={busy}
+    >
       <h3 className={styles.panelHeading}>{COPY.programs.events}</h3>
+      <p className={styles.programDetailMuted}>
+        {COPY.programs.repeatInformational}
+      </p>
       {notice !== null && (
-        <output className={styles.panelNotice}>{notice}</output>
+        <output className={styles.panelNotice} aria-live="polite">
+          {notice}
+        </output>
       )}
       {actionError !== null && (
         <output className={styles.panelError} role="alert">
@@ -402,121 +473,180 @@ export const EventsPanel = ({
         </button>
       )}
 
-      {program.behavior_type === "Recurring" && (
-        <ul className={styles.ruleList} aria-label={COPY.programs.events}>
-          {rules === null ? (
-            <li className={styles.emptyLine} aria-live="polite">
-              {COPY.nav.loading}
-            </li>
-          ) : rules.length === 0 ? (
-            <li className={styles.emptyLine}>{COPY.programs.noRules}</li>
-          ) : (
-            rules.map((rule) => (
-              <li key={rule.rule_id} className={styles.ruleRow}>
-                <span>
-                  {rule.recurrence === "WEEKLY"
-                    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0]}`
-                    : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
-                </span>
-                <span>
-                  {rule.start_time}–{rule.end_time}
-                </span>
-              </li>
-            ))
+      {canManage && (
+        <form
+          className={`${styles.ruleForm} ${styles.eventCreateForm}`}
+          noValidate
+          onSubmit={submitManualEvent}
+          aria-busy={busy}
+        >
+          <h5 className={styles.workspaceSubheading}>
+            {COPY.programs.createMeeting}
+          </h5>
+          {manualError !== null && (
+            <output className={styles.panelError} role="alert">
+              {manualError}
+            </output>
           )}
-        </ul>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventDate}</span>
+            <input
+              type="date"
+              name="event_date"
+              aria-label={COPY.programs.eventDate}
+              aria-required="true"
+            />
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventTime}</span>
+            <input
+              type="time"
+              name="event_time"
+              aria-label={COPY.programs.eventTime}
+              aria-required="true"
+            />
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventName}</span>
+            <input
+              type="text"
+              name="name"
+              placeholder={COPY.programs.eventNamePlaceholder}
+              aria-label={COPY.programs.eventName}
+              aria-required="true"
+            />
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.eventType}</span>
+            <select name="event_type" aria-label={COPY.programs.eventType}>
+              {EVENT_TYPE_OPTIONS.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.recurrenceTag}</span>
+            <select
+              name="recurrence_tag"
+              defaultValue={COPY.programs.recurrenceNone}
+              aria-label={COPY.programs.recurrenceTag}
+            >
+              {RECURRENCE_TAG_OPTIONS.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.repeatFormInformational}
+          </p>
+          <button
+            type="submit"
+            disabled={busy}
+            className={styles.actionButton}
+          >
+            {busy ? COPY.programs.submitting : COPY.programs.createMeeting}
+          </button>
+          <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
+        </form>
       )}
 
-      {canManage && program.behavior_type === "Recurring" && (
+      {program.behavior_type === "Recurring" && (
         <>
-          <form className={styles.ruleForm} onSubmit={submitRule}>
-            <label className={styles.ruleField}>
-              <span>{COPY.programs.behaviorType}</span>
-              <select
-                name="recurrence"
-                defaultValue="weekly"
-                aria-label={COPY.programs.behaviorType}
-              >
-                <option value="weekly">{COPY.programs.ruleWeekly}</option>
-                <option value="monthly">{COPY.programs.ruleMonthly}</option>
-              </select>
-            </label>
-            <label className={styles.ruleField}>
-              <span>{COPY.programs.dayOfWeekLabel}</span>
-              <select
-                name="day_of_week"
-                defaultValue={2}
-                aria-label={COPY.programs.dayOfWeekLabel}
-              >
-                {WEEKDAY_LABELS.map((label, index) => (
-                  <option key={label} value={index}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.ruleField}>
-              <span>{COPY.programs.monthDayLabel}</span>
-              <input
-                type="number"
-                name="month_day"
-                min={1}
-                max={31}
-                aria-label={COPY.programs.monthDayLabel}
-              />
-            </label>
-            <label className={styles.ruleField}>
-              <span>{COPY.programs.startTime}</span>
-              <input
-                type="time"
-                name="start_time"
-                required
-                aria-label={COPY.programs.startTime}
-              />
-            </label>
-            <label className={styles.ruleField}>
-              <span>{COPY.programs.endTime}</span>
-              <input
-                type="time"
-                name="end_time"
-                required
-                aria-label={COPY.programs.endTime}
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busy}
-              className={styles.actionButton}
-            >
-              {busy ? COPY.programs.submitting : COPY.programs.addRule}
-            </button>
-          </form>
-          <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
+          {canManage && (
+            <h4 className={styles.workspaceSubheading}>
+              {COPY.programs.secondaryGeneratorLabel}
+            </h4>
+          )}
+          <ul className={styles.ruleList} aria-label={COPY.programs.events}>
+            {rules === null ? (
+              <li className={styles.emptyLine} aria-live="polite">
+                {COPY.nav.loading}
+              </li>
+            ) : rules.length === 0 ? (
+              <li className={styles.emptyLine}>{COPY.programs.noRules}</li>
+            ) : (
+              rules.map((rule) => (
+                <li key={rule.rule_id} className={styles.ruleRow}>
+                  <span>
+                    {rule.recurrence === "WEEKLY"
+                      ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0]}`
+                      : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
+                  </span>
+                  <span>
+                    {rule.start_time}–{rule.end_time}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
         </>
       )}
 
-      {canManage && program.behavior_type === "OneOff" && (
-        <form className={styles.ruleForm} onSubmit={submitManualEvent}>
+      {canManage && program.behavior_type === "Recurring" && (
+        <form className={styles.ruleForm} onSubmit={submitRule}>
           <label className={styles.ruleField}>
-            <span>{COPY.programs.eventStart}</span>
+            <span>{COPY.programs.behaviorType}</span>
+            <select
+              name="recurrence"
+              defaultValue="weekly"
+              aria-label={COPY.programs.behaviorType}
+            >
+              <option value="weekly">{COPY.programs.ruleWeekly}</option>
+              <option value="monthly">{COPY.programs.ruleMonthly}</option>
+            </select>
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.dayOfWeekLabel}</span>
+            <select
+              name="day_of_week"
+              defaultValue={2}
+              aria-label={COPY.programs.dayOfWeekLabel}
+            >
+              {WEEKDAY_LABELS.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.monthDayLabel}</span>
             <input
-              type="datetime-local"
-              name="starts_at"
-              required
-              aria-label={COPY.programs.eventStart}
+              type="number"
+              name="month_day"
+              min={1}
+              max={31}
+              aria-label={COPY.programs.monthDayLabel}
             />
           </label>
           <label className={styles.ruleField}>
-            <span>{COPY.programs.eventEnd}</span>
+            <span>{COPY.programs.startTime}</span>
             <input
-              type="datetime-local"
-              name="ends_at"
+              type="time"
+              name="start_time"
               required
-              aria-label={COPY.programs.eventEnd}
+              aria-label={COPY.programs.startTime}
             />
           </label>
-          <button type="submit" disabled={busy} className={styles.actionButton}>
-            {busy ? COPY.programs.submitting : COPY.programs.createEvent}
+          <label className={styles.ruleField}>
+            <span>{COPY.programs.endTime}</span>
+            <input
+              type="time"
+              name="end_time"
+              required
+              aria-label={COPY.programs.endTime}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className={styles.actionButton}
+          >
+            {busy ? COPY.programs.submitting : COPY.programs.addRule}
           </button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
@@ -546,8 +676,19 @@ export const EventsPanel = ({
               Date.parse(closesAt) >= now;
             return (
               <li key={event.event_id} className={styles.eventRow}>
-                <span className={styles.eventDate}>
-                  {hkWallDateTimeLabel(event.starts_at)}
+                <strong>
+                  {event.name ?? hkWallDateTimeLabel(event.starts_at)}
+                </strong>
+                <span className={styles.eventDate}>{wall.date}</span>
+                <span className={styles.eventDate}>{wall.time}</span>
+                <span className={styles.eventSource}>
+                  {event.event_type ?? COPY.programs.eventTypeOptions[5]}
+                </span>
+                <span className={styles.eventSource}>
+                  {COPY.programs.repeatLabel.replace(
+                    "{tag}",
+                    eventRecurrenceTag(event, rule)
+                  )}
                 </span>
                 <span className={styles.eventSource}>
                   {event.source === "SCHEDULE"
@@ -696,13 +837,13 @@ export const EventsPanel = ({
                   <>
                     <form
                       className={styles.cancelForm}
+                      noValidate
                       onSubmit={submitCancel(event.event_id)}
                     >
                       <input
                         type="text"
                         name="cancel_reason"
                         placeholder={COPY.programs.cancelReasonPlaceholder}
-                        required
                         aria-label={COPY.programs.cancelReason}
                       />
                       {confirmingEventId !== event.event_id && (
@@ -720,13 +861,18 @@ export const EventsPanel = ({
                           role="alert"
                           ref={confirmEventRef}
                         >
-                          <span>{COPY.programs.cancelEventConfirm}</span>
+                          <strong>
+                            {COPY.programs.cancelMeetingConfirmTitle}
+                          </strong>
+                          <span>
+                            {COPY.programs.cancelMeetingConfirmBody}
+                          </span>
                           <button
                             type="submit"
                             disabled={busy}
                             className={styles.dangerButton}
                           >
-                            {COPY.programs.confirmCancelEvent}
+                            {COPY.programs.confirmCancel}
                           </button>
                           <button
                             type="button"
@@ -734,7 +880,7 @@ export const EventsPanel = ({
                             className={styles.secondaryButton}
                             onClick={() => setConfirmingEventId(null)}
                           >
-                            {COPY.programs.keepEvent}
+                            {COPY.programs.keepMeeting}
                           </button>
                         </div>
                       )}

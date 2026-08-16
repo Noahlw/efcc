@@ -626,10 +626,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           availability, source, name, location, cancel_reason, manual_check_in_code,
+           availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
            COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -648,6 +648,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.availability,
         input.source,
         input.name,
+        input.event_type ?? null,
         input.location,
         input.cancel_reason,
         input.check_in_window_opens_at,
@@ -673,10 +674,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-         status, availability, source, name, location, cancel_reason, manual_check_in_code,
+         status, availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
          check_in_window_opens_at, check_in_window_closes_at,
          created_by, created_at, updated_by, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
          upper(substr(hex(randomblob(4)), 1, 8)),
          COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
            printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -695,6 +696,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.availability,
         input.source,
         input.name,
+        input.event_type ?? null,
         input.location,
         input.cancel_reason,
         input.check_in_window_opens_at,
@@ -935,7 +937,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
 
   async cancelEvent(
     id: string,
-    reason: string,
+    reason: string | null,
     updatedBy: string,
     updatedAt: string
   ): Promise<EventRow | null> {
@@ -943,7 +945,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .prepare(
         `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
            updated_by = ?, updated_at = ?
-         WHERE event_id = ? AND status = 'Active'`
+         WHERE event_id = ? AND status = 'Active'
+           AND NOT EXISTS (
+             SELECT 1 FROM attendances
+             WHERE attendances.event_id = events.event_id
+               AND attendances.status = 'Active'
+           )`
       )
       .bind(reason, updatedBy, updatedAt, id)
       .run();
@@ -959,6 +966,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       ends_at?: string;
       name?: string | null;
       location?: string | null;
+      event_type?: string | null;
       check_in_window_opens_at?: string | null;
       check_in_window_closes_at?: string | null;
       availability?: "Active" | "Inactive";
@@ -973,6 +981,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       ["ends_at", update.ends_at],
       ["name", update.name],
       ["location", update.location],
+      ["event_type", update.event_type],
       // EVT-01 (#251): an absent window field keeps the existing window; an
       // explicit null clears it. Same nullable convention as name/location.
       ["check_in_window_opens_at", update.check_in_window_opens_at],
@@ -1019,6 +1028,33 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       active_enrollments: Number(enrollments?.count ?? 0),
       checked_in: Number(checkedIn?.count ?? 0),
     };
+  }
+  async listActiveAttendanceEventIds(
+    eventIds: readonly string[]
+  ): Promise<Set<string>> {
+    if (eventIds.length === 0) {
+      return new Set();
+    }
+    const ids = await chunkedQuery(eventIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT DISTINCT event_id FROM attendances WHERE event_id IN (${placeholders}) AND status = 'Active'`
+        )
+        .bind(...batch)
+        .all<{ event_id: string }>();
+      return (result.results ?? []).map((r) => r.event_id);
+    });
+    return new Set(ids);
+  }
+  async countActiveAttendance(eventId: string): Promise<number> {
+    const row = await this.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    return Number(row?.count ?? 0);
   }
 
   // --- EVT-02 (#252): preview plans and generation runs ---

@@ -105,6 +105,7 @@ async function problemOf(
   code: string;
   status: number;
   requestId: string;
+  detail?: string;
   open_operations?: number;
 }> {
   assert.strictEqual(
@@ -4507,12 +4508,13 @@ describe("PRG-02: events", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(cancelled.status, 200);
-    const result = (await assertCorrelated(cancelled)) as {
-      data: { event: { status: string; cancel_reason: string } };
-    };
-    assert.strictEqual(result.data.event.status, "Cancelled");
-    assert.strictEqual(result.data.event.cancel_reason, "惡劣天氣");
+    assert.strictEqual(cancelled.status, 409);
+    const conflict = await problemOf(cancelled);
+    assert.strictEqual(conflict.code, "EVENT_CANCEL_BLOCKED");
+    assert.strictEqual(
+      conflict.detail,
+      "此聚會已有出席記錄，不能取消；如需更正請使用出席名單的作廢功能。"
+    );
 
     const attendances = await testDb()
       .prepare(
@@ -4531,7 +4533,47 @@ describe("PRG-02: events", () => {
       .first<{ action: string; entity_type: string; outcome: string }>();
     assert.ok(audit, "EVENT_CANCEL audit row must exist");
     assert.strictEqual(audit.entity_type, "event");
-    assert.strictEqual(audit.outcome, "SUCCESS");
+    assert.strictEqual(audit.outcome, "CONFLICT");
+
+    const noAttendance = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2026-10-06T10:00:00.000Z",
+          ends_at: "2026-10-06T11:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    const noAttendanceBody = (await assertCorrelated(noAttendance)) as {
+      data: { event: { event_id: string } };
+    };
+    const allowed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${noAttendanceBody.data.event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: null },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(allowed.status, 200);
+    const allowedBody = (await assertCorrelated(allowed)) as {
+      data: { event: { status: string; cancel_reason: string | null } };
+    };
+    assert.strictEqual(allowedBody.data.event.status, "Cancelled");
+    assert.strictEqual(allowedBody.data.event.cancel_reason, null);
   });
 
   test("Members see only Active events; managers see all", async () => {
@@ -4898,7 +4940,7 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
-  test("PATCH rejects rescheduling once Attendance exists, but allows non-schedule edits", async () => {
+  test("PATCH edits schedule and identity fields when attendance exists", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-15T20:00:00.000Z",
       ends_at: "2026-09-15T21:00:00.000Z",
@@ -4925,17 +4967,14 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(reschedule.status, 409);
-    const rescheduleProblem = await problemOf(reschedule);
-    assert.strictEqual(rescheduleProblem.code, "EVENT_RESCHEDULE_BLOCKED");
-    const unchanged = await testDb()
-      .prepare("SELECT starts_at FROM events WHERE event_id = ?")
-      .bind(event.event_id)
-      .first<{ starts_at: string }>();
+    assert.strictEqual(reschedule.status, 200);
+    const rescheduleBody = (await assertCorrelated(reschedule)) as {
+      data: { event: { starts_at: string } };
+    };
     assert.strictEqual(
-      unchanged?.starts_at,
-      "2026-09-15T20:00:00.000Z",
-      "blocked reschedule must not move the event"
+      rescheduleBody.data.event.starts_at,
+      "2026-09-15T20:15:00.000Z",
+      "attendance history must be preserved while moving the event"
     );
 
     const endsChange = await worker.fetch(
@@ -4955,8 +4994,8 @@ describe("EVT-01: event operations (#251)", () => {
     );
     assert.strictEqual(
       endsChange.status,
-      409,
-      "ends_at is also a schedule field and must be blocked identically"
+      200,
+      "ends_at remains editable once attendance exists"
     );
 
     const nameChange = await worker.fetch(

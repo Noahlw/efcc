@@ -5,6 +5,7 @@
  * thin adapters: they resolve the actor, delegate to DepartmentWorkspace, and
  * format RFC 9457 Problem Details on failures.
  */
+import { COPY } from "../copy";
 
 import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
@@ -38,6 +39,7 @@ import {
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
+  EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
@@ -61,6 +63,7 @@ import type {
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
+  EventType,
   NotificationReadStateInput,
 } from "./workspace-store";
 
@@ -322,6 +325,15 @@ function mapWorkspaceError(
       "EVENT_RESCHEDULE_BLOCKED",
       "Conflict",
       error.message,
+      requestId
+    );
+  }
+  if (error instanceof EventCancellationBlockedError) {
+    return problem(
+      409,
+      "EVENT_CANCEL_BLOCKED",
+      "Conflict",
+      COPY.programs.cancelBlockedWithAttendance,
       requestId
     );
   }
@@ -2011,6 +2023,7 @@ export async function handleCreateEvent(
     starts_at?: unknown;
     ends_at?: unknown;
     name?: unknown;
+    event_type?: unknown;
     location?: unknown;
     check_in_window_opens_at?: unknown;
     check_in_window_closes_at?: unknown;
@@ -2042,6 +2055,17 @@ export async function handleCreateEvent(
   try {
     name = textField(body.name, "name");
     location = textField(body.location, "location");
+    if (
+      body.event_type !== undefined &&
+      body.event_type !== null &&
+      (typeof body.event_type !== "string" ||
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+    ) {
+      return validation(
+        requestId,
+        "event_type must be one of 崇拜, 訓練, 小組, 排練, 外展, 其他."
+      );
+    }
     opens = textField(
       body.check_in_window_opens_at,
       "check_in_window_opens_at"
@@ -2090,6 +2114,7 @@ export async function handleCreateEvent(
         starts_at: body.starts_at,
         ends_at: body.ends_at,
         name: name ?? null,
+        event_type: (body.event_type as EventType) ?? null,
         location: location ?? null,
         check_in_window_opens_at: opens ?? null,
         check_in_window_closes_at: closes ?? null,
@@ -2179,9 +2204,12 @@ export async function handleEventUpdate(
     }
   }
   if ("reason" in body) {
-    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-    if (!reason) {
-      return validation(requestId, "reason is required.");
+    if (
+      body.reason !== null &&
+      body.reason !== undefined &&
+      (typeof body.reason !== "string" || !body.reason.trim())
+    ) {
+      return validation(requestId, "reason must be text when provided.");
     }
   }
   const { workspace } = await getModule(env);
@@ -2209,7 +2237,8 @@ export async function handleEventUpdate(
     }
   }
   if ("reason" in body) {
-    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    const reason =
+      typeof body.reason === "string" ? body.reason.trim() || null : null;
     try {
       const row = await workspace.cancelEvent(
         ctxFrom(auth.account),
@@ -2231,6 +2260,7 @@ export async function handleEventUpdate(
     ends_at: true,
     name: true,
     location: true,
+    event_type: true,
     check_in_window_opens_at: true,
     check_in_window_closes_at: true,
   };
@@ -2278,6 +2308,17 @@ export async function handleEventUpdate(
         "Check-in window values must be ISO-8601 UTC."
       );
     }
+    if (
+      body.event_type !== undefined &&
+      body.event_type !== null &&
+      (typeof body.event_type !== "string" ||
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+    ) {
+      return validation(
+        requestId,
+        "event_type must be one of 崇拜, 訓練, 小組, 排練, 外展, 其他."
+      );
+    }
     const effectiveOpens = opens ?? existing.check_in_window_opens_at;
     const effectiveCloses = closes ?? existing.check_in_window_closes_at;
     if (
@@ -2298,6 +2339,9 @@ export async function handleEventUpdate(
       ...(body.name === undefined
         ? {}
         : { name: parseOptionalText(body.name, "name") }),
+      ...(body.event_type === undefined
+        ? {}
+        : { event_type: (body.event_type as EventType | null) ?? null }),
       ...(body.location === undefined
         ? {}
         : { location: parseOptionalText(body.location, "location") }),

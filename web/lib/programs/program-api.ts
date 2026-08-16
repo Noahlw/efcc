@@ -340,6 +340,9 @@ export interface ScheduleRule {
   updated_at: string;
 }
 
+export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
+export type RecurrenceTag = "無" | "每週" | "每月";
+
 export interface ScheduleException {
   exception_id: string;
   rule_id: string;
@@ -360,6 +363,7 @@ export interface ProgramEvent {
   availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
   name?: string | null;
+  event_type?: EventType | null;
   location?: string | null;
   manual_check_in_code?: string | null;
   check_in_window_opens_at?: string | null;
@@ -369,6 +373,10 @@ export interface ProgramEvent {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleException | null;
+  /** Derived recurrence tag (e.g. '每週' | '每月' | '無'). */
+  recurrence_tag?: RecurrenceTag | null;
+  /** Whether active check-in/attendance records exist for this event. */
+  has_attendance?: boolean;
 }
 export interface EventDetail {
   event: ProgramEvent;
@@ -1077,6 +1085,7 @@ export function createEvent(
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
+    event_type?: EventType | null;
   }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
@@ -1115,6 +1124,7 @@ export function updateEvent(
     starts_at?: string;
     ends_at?: string;
     name?: string | null;
+    event_type?: EventType | null;
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
@@ -1145,12 +1155,12 @@ export function setEventAvailability(
 export function cancelEvent(
   programId: string,
   eventId: string,
-  reason: string
+  reason?: string | null
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { reason }
+    { reason: reason ?? null }
   );
 }
 

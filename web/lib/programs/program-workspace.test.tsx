@@ -684,7 +684,7 @@ describe(ProgramWorkspace, () => {
       screen.findByText(COPY.programs.eventScheduleSource)
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.eventCreate })
+      screen.getByRole("button", { name: COPY.programs.createMeeting })
     ).toBeInTheDocument();
 
     await userEvent.click(
@@ -1076,42 +1076,34 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
     );
 
     await userEvent.click(
-      await screen.findByRole("button", { name: COPY.programs.eventCreate })
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
     );
+    fireEvent.change(screen.getByLabelText(COPY.programs.eventDate), {
+      target: { value: "2026-09-13" },
+    });
+    fireEvent.change(screen.getByLabelText(COPY.programs.eventTime), {
+      target: { value: "18:00" },
+    });
     await userEvent.type(
       screen.getByLabelText(COPY.programs.eventName),
       "新聚會"
     );
-    await userEvent.type(
-      screen.getByLabelText(COPY.programs.eventLocation),
-      "主堂"
-    );
-    fireEvent.change(screen.getByLabelText(COPY.programs.eventStart), {
-      target: { value: "2026-09-13T18:00" },
+    fireEvent.change(screen.getByLabelText(COPY.programs.eventType), {
+      target: { value: COPY.programs.eventTypeOptions[1] },
     });
-    fireEvent.change(screen.getByLabelText(COPY.programs.eventEnd), {
-      target: { value: "2026-09-13T19:30" },
+    fireEvent.change(screen.getByLabelText(COPY.programs.recurrenceTag), {
+      target: { value: COPY.programs.recurrenceNone },
     });
-    fireEvent.change(
-      screen.getByLabelText(COPY.programs.eventCheckInWindowOpensAt),
-      { target: { value: "2026-09-13T17:30" } }
-    );
-    fireEvent.change(
-      screen.getByLabelText(COPY.programs.eventCheckInWindowClosesAt),
-      { target: { value: "2026-09-13T19:30" } }
-    );
     await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.eventCreateSubmit })
+      screen.getAllByRole("button", { name: COPY.programs.createMeeting }).at(-1)!
     );
 
     await waitFor(() =>
       expect(mocks.createEvent).toHaveBeenCalledWith("program-1", {
         name: "新聚會",
-        location: "主堂",
+        event_type: COPY.programs.eventTypeOptions[1],
         starts_at: "2026-09-13T10:00:00.000Z",
-        ends_at: "2026-09-13T11:30:00.000Z",
-        check_in_window_opens_at: "2026-09-13T09:30:00.000Z",
-        check_in_window_closes_at: "2026-09-13T11:30:00.000Z",
+        ends_at: "2026-09-13T11:00:00.000Z",
       })
     );
     expect(onEventChange).toHaveBeenCalledWith("event-created");
