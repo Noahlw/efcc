@@ -24,9 +24,10 @@ import {
   vi,
 } from "vitest";
 
-import CarePage from "@/app/care/page";
 import EventsPage from "@/app/events/page";
 import HomePage from "@/app/home/page";
+import ManagementPage from "@/app/management/page";
+import NoticesPage from "@/app/notices/page";
 import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
 import LoginPage from "@/app/page";
@@ -44,9 +45,13 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
-import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
+import { RecoveryView } from "@/lib/recovery-view";
+import {
+  defaultSections,
+  sectionsForRole,
+  stableNavigationSections,
+} from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
@@ -77,56 +82,9 @@ vi.mock(import("next/navigation"), () => ({
     ) as unknown as ReadonlyURLSearchParams,
 }));
 
-const MEMBER_SECTIONS = [
-  {
-    key: "home",
-    label: "首頁",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "profile",
-    label: "個人資料",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "programs",
-    label: "課程",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-];
-
-const STAFF_SECTIONS = [
-  ...MEMBER_SECTIONS,
-  {
-    key: "events",
-    label: "聚會",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "scanner",
-    label: "掃描",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-  {
-    key: "care",
-    label: "關懷",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-  {
-    key: "permissions",
-    label: "權限管理",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-];
-
-const NAVIGATION = stableNavigationSections();
+const MEMBER_SECTIONS = sectionsForRole("Member");
+const STAFF_SECTIONS = sectionsForRole("Staff");
+const NAVIGATION = stableNavigationSections("Member");
 
 const PUBLIC_USER: PublicUser = {
   userId: "U001",
@@ -1225,48 +1183,39 @@ describe("Shell", () => {
     }
 
     test("renders the stable navigation projection for Member", () => {
-      renderWithProvider(sectionsForRole("Member"), "/home");
+      renderWithProvider(sectionsForRole("Member"), "/home", stableNavigationSections("Member"));
       expect(
         [
           COPY.sections.home,
           COPY.sections.programs,
-          COPY.sections.events,
           COPY.sections.scanner,
+          COPY.sections.notices,
           COPY.sections.profile,
-        ].every((section) => screen.getAllByText(section).length >= 1)
+        ].every((text) => screen.getAllByText(text).length > 0)
       ).toBeTruthy();
-      expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
-    test("keeps stable navigation order for Member and Admin", () => {
-      const expected = [
-        "/home",
-        "/programs",
-        "/events",
-        "/scanner",
-        "/profile",
-      ];
-      const memberView = renderWithProvider(
-        sectionsForRole("Member"),
-        "/home",
-        stableNavigationSections()
-      );
-      const memberLinks = within(screen.getAllByRole("navigation")[0])
-        .getAllByRole("link")
-        .map((link) => link.getAttribute("href"));
-      expect(memberLinks).toStrictEqual(expected);
-      memberView.unmount();
+    test("renders the stable navigation projection for Staff with Management", () => {
+      renderWithProvider(sectionsForRole("Staff"), "/home", stableNavigationSections("Staff"));
+      expect(
+        [
+          COPY.sections.home,
+          COPY.sections.programs,
+          COPY.sections.scanner,
+          COPY.sections.management,
+          COPY.sections.profile,
+        ].every((text) => screen.getAllByText(text).length > 0)
+      ).toBeTruthy();
+    });
 
-      const adminView = renderWithProvider(
-        sectionsForRole("Admin"),
-        "/home",
-        stableNavigationSections()
+    test("highlights current route with aria-current", () => {
+      renderWithProvider(
+        sectionsForRole("Member"),
+        "/programs",
+        stableNavigationSections("Member")
       );
-      const adminLinks = within(screen.getAllByRole("navigation")[0])
-        .getAllByRole("link")
-        .map((link) => link.getAttribute("href"));
-      expect(adminLinks).toStrictEqual(expected);
-      adminView.unmount();
+      const [active] = screen.getAllByText(COPY.sections.programs);
+      expect(active).toHaveAttribute("aria-current", "page");
     });
 
     test("marks active section with aria-current", () => {
@@ -1304,31 +1253,19 @@ describe("Shell", () => {
 
     test("renders forbidden view for an unpermitted (absent) section with a safe route back", () => {
       render(
-        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
-          <GuardedSection sectionKey="care">
-            <p>care content</p>
-          </GuardedSection>
-        </AppProvider>
-      );
-      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
-      expect(screen.queryByText("care content")).not.toBeInTheDocument();
-      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
-      expect(link).toHaveAttribute("href", "/profile");
-    });
-
-    test("Member deep-linking to scanner renders forbidden view (S15)", () => {
-      render(
         <AppProvider
           bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
           onSignOut={() => {}}
         >
-          <GuardedSection sectionKey="scanner">
-            <p>scanner content</p>
+          <GuardedSection sectionKey="management">
+            <p>management content</p>
           </GuardedSection>
         </AppProvider>
       );
       expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
-      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
+      expect(screen.queryByText("management content")).not.toBeInTheDocument();
+      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
+      expect(link).toHaveAttribute("href", "/profile");
     });
   });
 
@@ -1542,7 +1479,7 @@ describe("Shell", () => {
     });
 
     test("events page renders COPY.sections.events title", async () => {
-      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+      withAuthRestore(STAFF_USER, defaultSections());
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
@@ -1618,19 +1555,30 @@ describe("Shell", () => {
       }
     });
 
-    test("care page renders COPY.sections.care title", async () => {
-      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+    test("notices page renders COPY.sections.notices title", async () => {
+      withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
-      render(<CarePage />);
+      render(<NoticesPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.care })
+          screen.getByRole("heading", { name: COPY.sections.notices })
+        ).toBeInTheDocument();
+      });
+    });
+
+    test("management page renders COPY.sections.management title", async () => {
+      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+      setAuthHint();
+      render(<ManagementPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.sections.management })
         ).toBeInTheDocument();
       });
     });
 
     test("permissions page renders the S10 permissionsHeading title", async () => {
-      withAuthRestore(ADMIN_USER, STAFF_SECTIONS);
+      withAuthRestore(ADMIN_USER, defaultSections());
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {

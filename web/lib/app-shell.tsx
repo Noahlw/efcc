@@ -18,6 +18,7 @@ import {
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
+import { OfflineBanner } from "@/lib/offline-banner";
 
 import styles from "./auth-shell.module.css";
 
@@ -51,6 +52,7 @@ function ShellFrame({
   return (
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
+        <OfflineBanner />
         <a className={styles.skipLink} href="#shell-content">
           {COPY.skipToContent}
         </a>

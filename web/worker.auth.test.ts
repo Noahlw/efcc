@@ -544,11 +544,11 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       adminBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs", "events", "scanner", "care", "permissions"]
+      ["home", "programs", "scanner", "management", "profile"]
     );
     assert.deepStrictEqual(
       adminBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "management", "profile"]
     );
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -571,11 +571,11 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       memberBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs"]
+      ["home", "programs", "scanner", "notices", "profile"]
     );
     assert.deepStrictEqual(
       memberBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "notices", "profile"]
     );
   });
 

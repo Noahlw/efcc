@@ -4,10 +4,10 @@ import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { SectionView } from "@/app/_sections/section-view";
 
-export default function CarePage() {
+export default function NoticesPage() {
   return (
     <AppShell>
-      <SectionView sectionKey="care" title={COPY.sections.care} />
+      <SectionView sectionKey="notices" title={COPY.sections.notices} />
     </AppShell>
   );
 }

@@ -778,7 +778,10 @@ export async function handleMe(
       data: {
         user: secretFreeUser(resolved.account),
         sections: sectionsForRole(resolved.account.role, hasManagementGrant),
-        navigation: stableNavigationSections(),
+        navigation: stableNavigationSections(
+          resolved.account.role,
+          hasManagementGrant
+        ),
       },
     },
     requestId

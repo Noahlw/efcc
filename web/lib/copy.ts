@@ -144,16 +144,16 @@ export const COPY = {
   account: {
     updatedNotice: "帳戶資料已更新，請重新登入。",
   },
+  offlineBanner: "現時沒有網絡。你仍可查看已載入內容；提交前請重新連線。",
   sections: {
     home: "首頁",
-    profile: "個人檔案",
+    profile: "帳戶",
     programs: "課程與活動",
     events: "聚會管理",
-    scanner: "掃描簽到",
-    care: "關懷儀表板",
+    scanner: "簽到",
+    notices: "通知",
+    management: "管理",
     permissions: "權限管理",
-    // S10 heading: distinguishes the permissions SECTION label from the
-    // page title (roles + permissions table, Spec #079 §S10).
     permissionsHeading: "權限與角色管理",
     placeholder: "內容建置中。",
   },
@@ -811,8 +811,8 @@ export const LANDING = {
   featureEventsDesc: "定期聚會與日程安排，一目了然。",
   featureScanner: "掃描簽到",
   featureScannerDesc: "以 QR 碼即時記錄出席，無需手寫名單。",
-  featureCare: "關懷儀表板",
-  featureCareDesc: "把需要跟進的會友，放在事奉者眼前。",
+  featureManagement: "管理工作區",
+  featureManagementDesc: "審批、名冊與權限集中處理，一處掌控。",
   loginPanelLead: "使用你的用戶名稱與密碼。",
   loginAfterNote: "登入後，將進入你獲授權的功能頁面。",
   footerMotto: "一堂之務，一處安放。",

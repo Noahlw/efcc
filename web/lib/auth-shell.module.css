@@ -29,6 +29,24 @@
   }
 }
 
+.offlineBanner {
+  position: fixed;
+  z-index: 95;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  width: min(440px, calc(100% - 24px));
+  transform: translateX(-50%);
+  padding: 11px 16px;
+  border: 1px solid #c1ad95;
+  border-radius: 9px;
+  color: #171a1d;
+  background: #f3eee8;
+  box-shadow: 0 10px 30px rgba(23, 26, 29, 0.09);
+  font-size: 0.86rem;
+  font-weight: 550;
+  text-align: center;
+}
+
 .header {
   flex-shrink: 0;
   display: flex;

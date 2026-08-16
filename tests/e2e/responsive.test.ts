@@ -114,7 +114,7 @@ const isMobile = (projectName: string) => projectName.startsWith("mobile");
 test("bottom nav below 768px, side rail at or above 768px", async ({
   page,
 }, testInfo) => {
-  await page.goto("/care.html");
+  await page.goto("/home.html");
 
   if (isMobile(testInfo.project.name)) {
     await expect(page.locator(".nav-phone")).toBeVisible();
@@ -162,7 +162,7 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
   for (const path of [
     "/profile.html",
     "/profile/settings.html",
-    "/care.html",
+    "/home.html",
   ] as const) {
     await page.goto(path);
     const fits = await page.evaluate(
@@ -191,7 +191,7 @@ test("profile page fits the shell-content scroll box at 375x812", async ({
 test("bottom nav and page outlet reserve safe-area inset", async ({
   page,
 }, testInfo) => {
-  await page.goto("/care.html");
+  await page.goto("/home.html");
 
   // Emulate a notched device so env(safe-area-inset-bottom) resolves to a
   // non-zero value (viewport-fit=cover is set in web/app/layout.tsx).
@@ -314,7 +314,7 @@ test("active section exposes aria-current and the nav has an accessible label", 
 test("exactly one polite live region announces shell status", async ({
   page,
 }) => {
-  await page.goto("/care.html");
+  await page.goto("/home.html");
 
   const regions = page.locator('output[role="status"][aria-live="polite"]');
   await expect(regions).toHaveCount(1);
@@ -410,7 +410,7 @@ test("recovery retry control is at least 44x44", async ({ page }) => {
       }),
     })
   );
-  await page.goto("/care");
+  await page.goto("/home");
 
   const retry = page.getByRole("button", { name: COPY.error.retry });
   await expect(retry).toBeVisible();
