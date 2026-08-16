@@ -326,6 +326,20 @@ describe(ProfilePage, () => {
     expect(settingsLink).toBeInTheDocument();
     expect(settingsLink).toHaveAttribute("href", "/profile/settings");
 
+    // Settings hub entry (084-04 #311): 設定 row links to the system
+    // Settings hub, additive to the existing 帳戶設定 row.
+    const settingsHubEntry = screen.getByRole("link", {
+      name: new RegExp(`^${COPY.profile.settingsEntry}`),
+    });
+    expect(settingsHubEntry).toBeInTheDocument();
+    expect(settingsHubEntry).toHaveAttribute(
+      "href",
+      "/management?module=settings"
+    );
+    expect(
+      screen.getByText(COPY.profile.settingsEntryHint)
+    ).toBeInTheDocument();
+
     // Logout action
     const logoutButtons = screen.getAllByRole("button", { name: new RegExp(COPY.profile.logout) });
     expect(logoutButtons.length).toBeGreaterThanOrEqual(1);

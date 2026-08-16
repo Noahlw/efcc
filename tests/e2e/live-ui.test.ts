@@ -103,6 +103,38 @@ const COPY = {
   registerDone: "申請已提交",
   passwordSubmit: "更新密碼",
   accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
+  // 084-04 Settings hub (mirrors web/lib/copy.ts settings + profile blocks).
+  settingsEntry: "設定",
+  settingsEntryHint: "帳戶及系統設定",
+  settingsTitle: "設定",
+  settingsBack: "返回管理工作",
+  settingsBackToHub: "設定",
+  accountsPermissionsRow: "帳戶與權限",
+  accountsPermissionsRowHint: "管理帳戶及授權",
+  checkinSettingsRow: "簽到設定",
+  checkinSettingsRowHint: "簽到時段及方式",
+  timezoneRow: "時區",
+  timezoneRowHint: "香港時間（GMT+8）",
+  checkinTitle: "簽到設定",
+  checkinMethods: "簽到方式",
+  memberQr: "會員二維碼",
+  memberQrHint: "掃描會員帳戶頁面的二維碼",
+  eventCode: "聚會代碼",
+  eventCodeHint: "輸入場地顯示的六位數代碼",
+  assisted: "代為簽到",
+  assistedHint: "同工於出席名單代簽",
+  enabledBadge: "已啟用",
+  openWindow: "開放時段",
+  beforeStart: "聚會開始前",
+  beforeStartHint: "開放簽到的提前時數",
+  beforeStartValue: "30 分鐘",
+  afterEnd: "聚會結束後",
+  afterEndHint: "結束後仍可簽到多久",
+  afterEndValue: "15 分鐘",
+  timezoneTitle: "時區",
+  timezoneLead: "聚會、報名及發佈時間均以香港時間顯示。",
+  gmt8: "香港時間（GMT+8）",
+  gmt8Value: "GMT+8",
 } as const;
 
 const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
@@ -412,6 +444,90 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(page.locator("tr").filter({ hasText: username })).toHaveCount(
       0
     );
+  });
+
+  test("Settings hub trace: 設定 entry → hub → 簽到設定 → 時區 (read-only)", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto(appPath("/profile"));
+
+    // Account surface: the 設定 entry links to the system Settings hub while
+    // the existing 帳戶設定 row stays intact.
+    const hubEntry = page.getByRole("link", { name: /^設定/u });
+    await expect(hubEntry).toBeVisible();
+    await expect(hubEntry).toHaveAttribute(
+      "href",
+      /management\?module=settings/u
+    );
+    await hubEntry.click();
+    await expect(page).toHaveURL(/management\?module=settings/u);
+
+    // Hub: exactly three rows in order with the locked descriptions.
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.accountsPermissionsRow)).toBeVisible();
+    await expect(page.getByText(COPY.accountsPermissionsRowHint)).toBeVisible();
+    await expect(page.getByText(COPY.checkinSettingsRow)).toBeVisible();
+    await expect(page.getByText(COPY.checkinSettingsRowHint)).toBeVisible();
+    await expect(page.getByText(COPY.timezoneRow)).toBeVisible();
+    await expect(page.getByText(COPY.timezoneRowHint)).toBeVisible();
+    // 帳戶與權限 is present-but-not-yet-linked (087-03 wires its destination).
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.accountsPermissionsRow) })
+    ).toHaveCount(0);
+
+    // 簽到設定: read-only method badges + fixed window durations, no forms.
+    await page
+      .getByRole("link", { name: new RegExp(COPY.checkinSettingsRow) })
+      .click();
+    await expect(page).toHaveURL(/management\?module=checkin-settings/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.checkinTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.checkinMethods)).toBeVisible();
+    await expect(page.getByText(COPY.memberQr)).toBeVisible();
+    await expect(page.getByText(COPY.memberQrHint)).toBeVisible();
+    await expect(page.getByText(COPY.eventCode)).toBeVisible();
+    await expect(page.getByText(COPY.eventCodeHint)).toBeVisible();
+    await expect(page.getByText(COPY.assisted)).toBeVisible();
+    await expect(page.getByText(COPY.assistedHint)).toBeVisible();
+    await expect(page.getByText(COPY.enabledBadge)).toHaveCount(3);
+    await expect(page.getByText(COPY.openWindow)).toBeVisible();
+    await expect(page.getByText(COPY.beforeStart)).toBeVisible();
+    await expect(page.getByText(COPY.beforeStartHint)).toBeVisible();
+    await expect(page.getByText(COPY.beforeStartValue)).toBeVisible();
+    await expect(page.getByText(COPY.afterEnd)).toBeVisible();
+    await expect(page.getByText(COPY.afterEndHint)).toBeVisible();
+    await expect(page.getByText(COPY.afterEndValue)).toBeVisible();
+    await expect(page.locator("form, input, select, textarea")).toHaveCount(0);
+
+    // Back to the hub, then on to 時區: read-only GMT+8 row, no forms.
+    await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
+    await expect(page).toHaveURL(/management\?module=settings/u);
+    await page
+      .getByRole("link", { name: new RegExp(COPY.timezoneRow) })
+      .click();
+    await expect(page).toHaveURL(/management\?module=timezone-settings/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.timezoneTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.timezoneLead)).toBeVisible();
+    await expect(page.getByText(COPY.gmt8)).toBeVisible();
+    await expect(page.getByText(COPY.gmt8Value, { exact: true })).toBeVisible();
+    await expect(page.locator("form, input, select, textarea")).toHaveCount(0);
+
+    // Final back returns to the hub.
+    await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
+    await expect(page).toHaveURL(/management\?module=settings/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsTitle })
+    ).toBeVisible();
   });
 
   test("admin password rotation revokes the session and restores the fixture", async ({
