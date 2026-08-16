@@ -8,7 +8,7 @@
 // observable boundary DOM, URL state, accessibility, and server-shaped
 // capability outcomes.
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
@@ -51,6 +51,12 @@ const COPY = {
   detailEvents: "近期活動",
   detailUnavailable: "無法開啟這個課程",
   detailBack: "返回課程目錄",
+  nextMeeting: "下一次聚會",
+  detailEventLocation: "地點",
+  viewEventDetail: "查看聚會詳情",
+  scheduleTitle: "聚會時間表",
+  conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
+  archivedNote: "此課程已封存，暫不接受報名",
   catalogSearchLabel: "搜尋課程",
   catalogClearSearch: "清除搜尋",
   catalogNoMatches: "找不到相關課程",
@@ -68,20 +74,33 @@ const COPY = {
   statusPending: "待審批",
   statusEligible: "可報名",
   statusManagerOnly: "由同工安排",
-  statusWithdrawn: "已退出",
-  statusCancelled: "已取消申請",
+  statusWithdrawn: "已取消申請",
+  statusCancelled: "已退出",
   statusRejected: "已拒絕",
   statusArchived: "已封存",
   enrollment: "報名",
+  enroll: "報名",
+  reEnroll: "重新報名",
   requestEnroll: "申請報名",
+  requestSubmitted: "報名申請已提交",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
-  withdrawRequest: "撤回申請",
-  requestWithdrawnNotice: "申請已撤回。",
-  cancelEnrollment: "取消報名",
-  enrollmentCancelledNotice: "報名已取消。",
+  withdrawRequest: "取消申請",
+  withdrawConfirmTitle: "取消報名申請？",
+  withdrawConfirmBody: "你仍可在課程接受報名期間重新提交。",
+  withdrawConfirmAccept: "取消申請",
+  requestWithdrawnNotice: "已取消申請",
+  cancelEnrollment: "退出課程",
+  cancelConfirmTitle: "退出課程？",
+  cancelConfirmBody: "退出後如需再參加，需重新報名。",
+  cancelConfirmAccept: "退出課程",
+  enrollmentCancelledNotice: "已退出課程",
+  cancelRevoke: "取消",
+  offlineError: "未能提交。請重新連線後再試。",
+  requestPending: "待處理",
+  enrollmentActiveHint: "你目前已加入此課程。",
   enrollmentScheduleAdvisory:
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
-  managerOnlyNote: "此課程由管理員安排成員加入。",
+  managerOnlyNote: "此課程由同工安排參加",
   managementDirectoryTitle: "管理課程目錄",
   attentionTitle: "管理提示",
   attentionZero: "目前沒有需要處理或檢視的項目。",
@@ -345,6 +364,28 @@ async function postProgramLeader(
     },
     { path, action, userId }
   );
+}
+
+/**
+ * The eligible action is 報名 (enroll); after a withdrawn/cancelled/rejected
+ * history it becomes 重新報名 (reEnroll). Shared member-flow helpers must
+ * accept either so repeated suite runs against the same D1 stay stable.
+ */
+function submitActionButton(panel: Locator) {
+  return panel.getByRole("button", {
+    name: new RegExp(`^(${COPY.enroll}|${COPY.reEnroll})$`, "u"),
+  });
+}
+
+/**
+ * The enrollment section is named 報名; the nested history section is named
+ * 你的報名紀錄, which substring-matches 報名 under Playwright's getByRole
+ * name matching. Anchor the exact label so the locator never straddles both.
+ */
+function enrollmentPanelOf(page: Page): Locator {
+  return page.getByRole("region", {
+    name: new RegExp(`^${COPY.enrollment}$`, "u"),
+  });
 }
 
 test.beforeAll(() => {
@@ -723,12 +764,8 @@ test.describe("PUI-02 participant Programs directory", () => {
       );
       expect(programId).toBeTruthy();
       await memberPage.goto(`/programs?program=${programId}#overview`);
-      const enrollmentPanel = memberPage.getByRole("region", {
-        name: COPY.enrollment,
-      });
-      await enrollmentPanel
-        .getByRole("button", { name: COPY.requestEnroll })
-        .click();
+      const enrollmentPanel = enrollmentPanelOf(memberPage);
+      await submitActionButton(enrollmentPanel).click();
       await expect(
         enrollmentPanel.getByText(COPY.requestPendingHint)
       ).toBeVisible();
@@ -789,14 +826,19 @@ test.describe("PUI-02 participant Programs directory", () => {
       try {
         if (programId) {
           await memberPage.goto(`/programs?program=${programId}#overview`);
-          const cleanupPanel = memberPage.getByRole("region", {
-            name: COPY.enrollment,
-          });
+          const cleanupPanel = enrollmentPanelOf(memberPage);
           const cancel = cleanupPanel.getByRole("button", {
             name: COPY.cancelEnrollment,
           });
           if (await cancel.isVisible()) {
             await cancel.click();
+            // The exit action is gated by an explicit confirm dialog;
+            // anchor the accept label exactly (getByRole name is substring).
+            await cleanupPanel
+              .getByRole("button", {
+                name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
+              })
+              .click();
           }
         }
       } catch {
@@ -905,13 +947,24 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(
       page.getByRole("heading", { name: COPY.detailPurpose })
     ).toBeVisible();
+    // The detail surfaces the real next-meeting projection: mono label,
+    // meeting title, date/time, and the event-detail action.
+    await expect(page.getByText(COPY.nextMeeting)).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: COPY.detailEvents })
+      page.getByRole("button", { name: COPY.viewEventDetail })
+    ).toBeVisible();
+    // Schedule rules render as the 聚會時間表 table (E2E_DEMO_成人查經 is
+    // seeded with a weekly rule and generated meetings).
+    await expect(
+      page.getByRole("table", { name: COPY.scheduleTitle })
     ).toBeVisible();
 
     await page.reload();
     await expect(
       page.getByRole("heading", { name: COPY.detailPurpose })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("table", { name: COPY.scheduleTitle })
     ).toBeVisible();
 
     await page.getByRole("button", { name: COPY.detailBack }).click();
@@ -953,7 +1006,7 @@ test.describe("PUI-03 participant Program detail", () => {
 });
 
 test.describe("PUI-04 participant Enrollment lifecycle", () => {
-  test("member can submit one request, see Pending, and withdraw it", async ({
+  test("member submits a request, sees Pending, and withdraws through the confirm dialog", async ({
     page,
   }) => {
     await loginAs(
@@ -969,10 +1022,8 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
       page.getByRole("heading", { name: COPY.detailPurpose })
     ).toBeVisible();
 
-    const enrollmentPanel = page.getByRole("region", { name: COPY.enrollment });
-    const requestButton = enrollmentPanel.getByRole("button", {
-      name: COPY.requestEnroll,
-    });
+    const enrollmentPanel = enrollmentPanelOf(page);
+    const requestButton = submitActionButton(enrollmentPanel);
     await expect(requestButton).toBeVisible();
     await expect(
       enrollmentPanel.getByText(COPY.enrollmentScheduleAdvisory)
@@ -984,16 +1035,207 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     await expect(
       enrollmentPanel.getByRole("button", { name: COPY.withdrawRequest })
     ).toBeVisible();
+    // The real request is also projected into the member's own history.
+    await expect(
+      enrollmentPanel.getByRole("list", { name: COPY.enrollmentHistory })
+    ).toContainText(COPY.requestPending);
 
+    // Dismissing the confirm dialog leaves the request intact.
     await enrollmentPanel
       .getByRole("button", { name: COPY.withdrawRequest })
+      .click();
+    const withdrawDialog = page.getByRole("dialog", {
+      name: COPY.withdrawConfirmTitle,
+    });
+    await expect(withdrawDialog).toBeVisible();
+    await expect(withdrawDialog.getByText(COPY.withdrawConfirmBody)).toBeVisible();
+    // Playwright getByRole name matches substrings, so anchor exact labels.
+    await withdrawDialog
+      .getByRole("button", { name: new RegExp(`^${COPY.cancelRevoke}$`, "u") })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+    ).toHaveCount(0);
+    await expect(
+      enrollmentPanel.getByText(COPY.requestPendingHint)
+    ).toBeVisible();
+
+    // Confirming withdraws the request; the member can re-submit.
+    await enrollmentPanel
+      .getByRole("button", { name: COPY.withdrawRequest })
+      .click();
+    await page
+      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
+      })
       .click();
     await expect(
       enrollmentPanel.getByText(COPY.requestWithdrawnNotice)
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: COPY.requestEnroll })
+      enrollmentPanel.getByRole("button", { name: COPY.reEnroll })
     ).toBeVisible();
+  });
+
+  test("member exits an approved enrollment through the confirm dialog and re-enrolls", async ({
+    page,
+    browser,
+  }) => {
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    let programId = "";
+    let adminReady = false;
+    try {
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
+      expect(programId).toBeTruthy();
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      const enrollmentPanel = enrollmentPanelOf(memberPage);
+
+      // Reach Pending regardless of the member's residual history from a
+      // previous project run (報名 or 重新報名; an already-pending request
+      // from an interrupted run also satisfies the precondition). Wait for
+      // the panel to settle first so the branch below is not racing the
+      // detail load.
+      const pendingHint = enrollmentPanel.getByText(COPY.requestPendingHint);
+      const submitButton = submitActionButton(enrollmentPanel);
+      await expect(submitButton.or(pendingHint)).toBeVisible();
+      if (await pendingHint.isVisible().catch(() => false)) {
+        // Pending request already exists.
+      } else {
+        await submitButton.click();
+        await expect(pendingHint).toBeVisible();
+      }
+
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      adminReady = true;
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+      );
+      const requestRow = page
+        .getByRole("listitem")
+        .filter({ hasText: "E2E Member" });
+      await expect(
+        requestRow.getByRole("button", { name: COPY.approve })
+      ).toBeVisible();
+      await requestRow.getByRole("button", { name: COPY.approve }).click();
+      await expect(
+        page
+          .getByRole("region", { name: COPY.workspaceTaskParticipants })
+          .getByText(COPY.decisionMade, { exact: true })
+      ).toBeVisible();
+
+      // The approved enrollment shows as Active for the member.
+      await memberPage.reload();
+      await expect(
+        enrollmentPanel.getByText(COPY.enrollmentActiveHint)
+      ).toBeVisible();
+
+      // Dismissing the exit dialog keeps the enrollment active.
+      await enrollmentPanel
+        .getByRole("button", { name: COPY.cancelEnrollment })
+        .click();
+      const exitDialog = memberPage.getByRole("dialog", {
+        name: COPY.cancelConfirmTitle,
+      });
+      await expect(exitDialog).toBeVisible();
+      await expect(exitDialog.getByText(COPY.cancelConfirmBody)).toBeVisible();
+      await exitDialog
+        .getByRole("button", { name: new RegExp(`^${COPY.cancelRevoke}$`, "u") })
+        .click();
+      await expect(
+        memberPage.getByRole("dialog", { name: COPY.cancelConfirmTitle })
+      ).toHaveCount(0);
+      await expect(
+        enrollmentPanel.getByText(COPY.enrollmentActiveHint)
+      ).toBeVisible();
+
+      // Confirming exits the course; 重新報名 becomes available again.
+      await enrollmentPanel
+        .getByRole("button", { name: COPY.cancelEnrollment })
+        .click();
+      await memberPage
+        .getByRole("dialog", { name: COPY.cancelConfirmTitle })
+        .getByRole("button", {
+          name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
+        })
+        .click();
+      await expect(
+        enrollmentPanel.getByText(COPY.enrollmentCancelledNotice)
+      ).toBeVisible();
+      await expect(
+        enrollmentPanel.getByRole("button", { name: COPY.reEnroll })
+      ).toBeVisible();
+    } finally {
+      if (programId && adminReady) {
+        // Failure-safe cleanup: cancel any Active enrollment and withdraw
+        // any Pending request so later queue/roster counts stay stable.
+        await page.evaluate(async (id) => {
+          const enrollmentsResponse = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
+          );
+          const enrollmentsBody = (await enrollmentsResponse.json()) as {
+            data?: {
+              enrollments?: {
+                enrollment_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const enrollment = enrollmentsBody.data?.enrollments?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
+          );
+          if (enrollment) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+          const requestsResponse = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+          );
+          const requestsBody = (await requestsResponse.json()) as {
+            data?: {
+              requests?: {
+                request_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const request = requestsBody.data?.requests?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
+          );
+          if (request) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+      }
+      await memberContext.close();
+    }
   });
 
   test("ManagerOnly detail explains that participants cannot self-enroll", async ({
@@ -1013,7 +1255,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     ).toBeVisible();
     await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
     await expect(
-      page.getByRole("button", { name: COPY.requestEnroll })
+      page.getByRole("button", { name: COPY.enroll })
     ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: COPY.withdrawRequest })
@@ -1118,12 +1360,8 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
       expect(programId).toBeTruthy();
       await memberPage.goto(`/programs?program=${programId}#overview`);
-      const enrollmentPanel = memberPage.getByRole("region", {
-        name: COPY.enrollment,
-      });
-      await enrollmentPanel
-        .getByRole("button", { name: COPY.requestEnroll })
-        .click();
+      const enrollmentPanel = enrollmentPanelOf(memberPage);
+      await submitActionButton(enrollmentPanel).click();
       await expect(
         enrollmentPanel.getByText(COPY.requestPendingHint)
       ).toBeVisible();
@@ -1235,11 +1473,9 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         await loginAs(secondPage, secondUsername, secondPassword);
         secondReady = true;
         await secondPage.goto(`/programs?program=${programId}#overview`);
-        const secondPanel = secondPage.getByRole("region", {
-          name: COPY.enrollment,
-        });
+        const secondPanel = enrollmentPanelOf(secondPage);
         await secondPanel
-          .getByRole("button", { name: COPY.requestEnroll })
+          .getByRole("button", { name: COPY.enroll })
           .click();
         await expect(
           secondPanel.getByText(COPY.requestPendingHint)

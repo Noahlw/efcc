@@ -443,6 +443,10 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  /** Projected from the real event row; null when the meeting has no title. */
+  name: string | null;
+  /** Projected from the real event row; null when the meeting has no venue. */
+  location: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -1756,6 +1760,10 @@ export class DepartmentWorkspace {
           ends_at: event.ends_at,
           status: "Active" as const,
           source: event.source,
+          // Next-meeting card surfaces the real meeting title/venue only;
+          // check-in and operator fields stay private here.
+          name: event.name,
+          location: event.location,
         })),
       enrollment: enrollmentState.snapshot,
       enrollment_access: enrollmentState.access,

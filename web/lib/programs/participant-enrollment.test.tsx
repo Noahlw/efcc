@@ -1,4 +1,11 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects, vitest/require-mock-type-parameters -- top-level hooks mirror the participant panel suite; untyped module mocks match the program-api module signature shape */
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -47,6 +54,38 @@ const snapshot = (
   ...overrides,
 });
 
+const pendingSnapshot = () =>
+  snapshot({
+    requests: [
+      {
+        request_id: "request-1",
+        status: "Pending",
+        submitted_at: "2099-03-01T00:00:00.000Z",
+        decided_at: null,
+      },
+    ],
+  });
+
+const activeSnapshot = () =>
+  snapshot({
+    requests: [
+      {
+        request_id: "request-1",
+        status: "Approved",
+        submitted_at: "2099-03-01T00:00:00.000Z",
+        decided_at: "2099-03-02T00:00:00.000Z",
+      },
+    ],
+    enrollments: [
+      {
+        enrollment_id: "enrollment-1",
+        status: "Active",
+        enrolled_at: "2099-03-02T00:00:00.000Z",
+        cancelled_at: null,
+      },
+    ],
+  });
+
 function renderEnrollment(
   overrides: Partial<ComponentProps<typeof ParticipantEnrollment>> = {}
 ) {
@@ -77,10 +116,18 @@ function renderEnrollment(
   return { onRefresh };
 }
 
+const setOnline = (online: boolean) => {
+  Object.defineProperty(window.navigator, "onLine", {
+    configurable: true,
+    get: () => online,
+  });
+};
+
 beforeEach(() => {
   mocks.cancelEnrollment.mockReset().mockResolvedValue({});
   mocks.submitEnrollmentRequest.mockReset().mockResolvedValue({});
   mocks.withdrawEnrollmentRequest.mockReset().mockResolvedValue({});
+  setOnline(true);
 });
 
 afterEach(() => {
@@ -88,19 +135,19 @@ afterEach(() => {
 });
 
 describe("PUI-04 participant Enrollment", () => {
-  test("offers one MemberRequest action with a non-blocking schedule advisory", async () => {
+  test("eligible member selects 報名 and sees the pending toast", async () => {
     const user = userEvent.setup();
     const { onRefresh } = renderEnrollment();
 
     expect(
-      screen.getAllByRole("button", { name: COPY.programs.requestEnroll })
+      screen.getAllByRole("button", { name: COPY.programs.enroll })
     ).toHaveLength(1);
     expect(
       screen.getByText(COPY.programs.enrollmentScheduleAdvisory)
     ).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+      screen.getByRole("button", { name: COPY.programs.enroll })
     );
     await waitFor(() => {
       expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
@@ -111,80 +158,173 @@ describe("PUI-04 participant Enrollment", () => {
     });
   });
 
-  test("shows Pending state and only permits withdrawal", async () => {
+  test("pending member confirms the withdraw dialog to cancel the request", async () => {
     const user = userEvent.setup();
     const { onRefresh } = renderEnrollment({
-      enrollment: snapshot({
-        requests: [
-          {
-            request_id: "request-1",
-            status: "Pending",
-            submitted_at: "2099-03-01T00:00:00.000Z",
-            decided_at: null,
-          },
-        ],
-      }),
+      enrollment: pendingSnapshot(),
       scheduleRules: [],
     });
 
-    expect(screen.getAllByText(COPY.programs.requestPending)).toHaveLength(2);
-    expect(
-      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.requestPendingHint)).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
+
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.programs.withdrawConfirmTitle,
+    });
+    expect(
+      within(dialog).getByText(COPY.programs.withdrawConfirmBody)
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.withdrawConfirmAccept,
+      })
+    );
+
     await waitFor(() => {
       expect(mocks.withdrawEnrollmentRequest).toHaveBeenCalledWith(
         "program-1",
         "request-1"
       );
       expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestWithdrawnNotice)
+      ).toBeInTheDocument();
     });
   });
 
-  test("uses active Enrollment as terminal evidence and permits cancellation", async () => {
+  test("dismissing the withdraw dialog keeps the request intact", async () => {
     const user = userEvent.setup();
     const { onRefresh } = renderEnrollment({
-      enrollment: snapshot({
-        requests: [
-          {
-            request_id: "request-1",
-            status: "Approved",
-            submitted_at: "2099-03-01T00:00:00.000Z",
-            decided_at: "2099-03-02T00:00:00.000Z",
-          },
-        ],
-        enrollments: [
-          {
-            enrollment_id: "enrollment-1",
-            status: "Active",
-            enrolled_at: "2099-03-02T00:00:00.000Z",
-            cancelled_at: null,
-          },
-        ],
-      }),
+      enrollment: pendingSnapshot(),
       scheduleRules: [],
     });
 
-    expect(screen.getAllByText(COPY.programs.enrollmentActive)).toHaveLength(2);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.withdrawRequest })
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.programs.withdrawConfirmTitle,
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: COPY.programs.cancelRevoke })
+    );
+
     expect(
-      screen.queryByText(COPY.programs.requestApproved)
+      screen.queryByRole("dialog", { name: COPY.programs.withdrawConfirmTitle })
     ).not.toBeInTheDocument();
+    expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(screen.getByText(COPY.programs.requestPendingHint)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.withdrawRequest })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.requestWithdrawnNotice)
+    ).not.toBeInTheDocument();
+  });
+
+  test("active member confirms the exit dialog to cancel the enrollment", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
+      enrollment: activeSnapshot(),
+      scheduleRules: [],
+    });
+
+    expect(
+      screen.getByText(COPY.programs.enrollmentActiveHint)
+    ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
+
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.programs.cancelConfirmTitle,
+    });
+    expect(
+      within(dialog).getByText(COPY.programs.cancelConfirmBody)
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.cancelConfirmAccept,
+      })
+    );
+
     await waitFor(() => {
       expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
         "program-1",
         "enrollment-1"
       );
       expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.enrollmentCancelledNotice)
+      ).toBeInTheDocument();
     });
   });
 
-  test("allows a new request after a cancelled Enrollment", () => {
-    renderEnrollment({
+  test("dismissing the exit dialog keeps the enrollment intact", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
+      enrollment: activeSnapshot(),
+      scheduleRules: [],
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.programs.cancelConfirmTitle,
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: COPY.programs.cancelRevoke })
+    );
+
+    expect(mocks.cancelEnrollment).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(COPY.programs.enrollmentActiveHint)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.enrollmentCancelledNotice)
+    ).not.toBeInTheDocument();
+  });
+
+  test("withdrawn member re-submits via 重新報名 and returns to pending", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
+      enrollment: snapshot({
+        requests: [
+          {
+            request_id: "request-1",
+            status: "Withdrawn",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+      }),
+      scheduleRules: [],
+    });
+
+    expect(screen.getByText(COPY.programs.requestWithdrawnHint)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.reEnroll })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("member with a cancelled enrollment re-submits via 重新報名", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
       enrollment: snapshot({
         requests: [
           {
@@ -206,21 +346,54 @@ describe("PUI-04 participant Enrollment", () => {
       scheduleRules: [],
     });
 
-    expect(screen.getAllByText(COPY.programs.enrollmentCancelled)).toHaveLength(
-      2
-    );
     expect(
-      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+      screen.getByText(COPY.programs.enrollmentCancelledHint)
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(COPY.programs.requestApproved)
-    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.reEnroll })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("rejected member re-submits via 重新報名", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
+      enrollment: snapshot({
+        requests: [
+          {
+            request_id: "request-1",
+            status: "Rejected",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+      }),
+      scheduleRules: [],
+    });
+
+    expect(screen.getByText(COPY.programs.requestRejectedHint)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.reEnroll })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
   });
 
   test.each([
     ["ManagerOnly", "managerOnlyNote"],
     ["Draft", "enrollmentDraftNote"],
-    ["Archived", "enrollmentArchivedNote"],
+    ["Archived", "archivedNote"],
   ] as const)("explains %s without an action", (mode, copyKey) => {
     renderEnrollment({
       program: program(
@@ -234,7 +407,10 @@ describe("PUI-04 participant Enrollment", () => {
 
     expect(screen.getByText(COPY.programs[copyKey])).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
+      screen.queryByRole("button", { name: COPY.programs.enroll })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.reEnroll })
     ).not.toBeInTheDocument();
   });
 
@@ -249,7 +425,7 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByText(COPY.programs.enrollmentIneligibleNote)
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
+      screen.queryByRole("button", { name: COPY.programs.enroll })
     ).not.toBeInTheDocument();
   });
 
@@ -265,8 +441,44 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByText(COPY.programs.enrollmentUnavailableNote)
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.requestEnroll })
+      screen.queryByRole("button", { name: COPY.programs.enroll })
     ).not.toBeInTheDocument();
+  });
+
+  test("offline action shows an inline error, makes no API call, and leaves state unchanged; retry online succeeds", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment();
+
+    setOnline(false);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        COPY.programs.offlineError
+      );
+    });
+    expect(mocks.submitEnrollmentRequest).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(COPY.programs.requestSubmitted)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    ).toBeInTheDocument();
+
+    setOnline(true);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
   });
 
   test("recovers from duplicate conflict with centralized ProblemDetails copy", async () => {
@@ -278,7 +490,7 @@ describe("PUI-04 participant Enrollment", () => {
     renderEnrollment({ onRefresh });
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+      screen.getByRole("button", { name: COPY.programs.enroll })
     );
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
@@ -301,7 +513,7 @@ describe("PUI-04 participant Enrollment", () => {
     renderEnrollment();
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.requestEnroll })
+      screen.getByRole("button", { name: COPY.programs.enroll })
     );
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(

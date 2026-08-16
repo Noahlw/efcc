@@ -8079,6 +8079,8 @@ describe("PUI-03: participant Program detail", () => {
           ends_at: string;
           status: string;
           source: string;
+          name: string | null;
+          location: string | null;
           manual_check_in_code?: unknown;
           check_in_window_opens_at?: unknown;
           check_in_window_closes_at?: unknown;
@@ -8161,6 +8163,8 @@ describe("PUI-03: participant Program detail", () => {
         body: {
           starts_at: "2099-03-04T11:30:00.000Z",
           ends_at: "2099-03-04T13:00:00.000Z",
+          name: "第三課聚會",
+          location: "二樓禮堂",
         },
       }),
       testEnv()
@@ -8179,10 +8183,52 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(detail.schedule_rules[0]?.start_time, "19:30");
     assert.strictEqual(detail.events.length, 1);
     assert.strictEqual(detail.events[0]?.status, "Active");
+    // The next-meeting card consumes the real meeting title/venue.
+    assert.strictEqual(detail.events[0]?.name, "第三課聚會");
+    assert.strictEqual(detail.events[0]?.location, "二樓禮堂");
     const raw = JSON.stringify(detail);
     assert.ok(!raw.includes("check_in_token"));
     assert.ok(!raw.includes("manual_check_in_code"));
     assert.ok(!raw.includes("capabilities"));
+    assert.ok(!raw.includes("check_in_window_opens_at"));
+    assert.ok(!raw.includes("check_in_window_closes_at"));
+  });
+
+  test("projects null meeting title and venue when the event row has none", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-NULLEVENT",
+      name: "PUI-03 Null Event Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Null Event Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const event = await worker.fetch(
+      programsRequest(`/api/v1/programs/${created.program_id}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2099-05-06T11:30:00.000Z",
+          ends_at: "2099-05-06T13:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(event.status, 201);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(body.data.detail.events.length, 1);
+    assert.strictEqual(body.data.detail.events[0]?.name, null);
+    assert.strictEqual(body.data.detail.events[0]?.location, null);
   });
 
   test("keeps multiple active events for a OneOff participant detail", async () => {

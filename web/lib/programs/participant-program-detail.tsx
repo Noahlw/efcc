@@ -10,6 +10,7 @@ import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
+  ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
   ParticipantScheduleRule,
 } from "@/lib/programs/program-api";
@@ -24,6 +25,7 @@ export interface ParticipantProgramDetailProps {
   onBack: () => void;
   canManage: boolean;
   onManagement: () => void;
+  conflictProgramName?: string | null;
 }
 
 type DetailState =
@@ -31,6 +33,23 @@ type DetailState =
   | { kind: "ready"; detail: ParticipantProgramDetailData }
   | { kind: "unavailable" }
   | { kind: "error"; message: string };
+
+type StatusKind = "success" | "pending" | "neutral" | "danger";
+
+type ParticipantEventView = ParticipantEventSummary & {
+  name?: string | null;
+  location?: string | null;
+  title?: string | null;
+  conflict_note?: string | null;
+  conflictNote?: string | null;
+  has_schedule_conflict?: boolean;
+};
+
+type DetailConflictView = ParticipantProgramDetailData & {
+  conflict_note?: string | null;
+  conflictNote?: string | null;
+  has_schedule_conflict?: boolean;
+};
 
 const lifecycleLabel: Record<
   ParticipantProgramDetailData["program"]["lifecycle"],
@@ -70,11 +89,119 @@ function eventIsUpcoming(startsAt: string): boolean {
   return Number.isFinite(timestamp) && timestamp >= Date.now();
 }
 
+function statusForDetail(detail: ParticipantProgramDetailData): {
+  label: string;
+  kind: StatusKind;
+} {
+  const { enrollment, program } = detail;
+  if (program.lifecycle === "Archived") {
+    return { label: COPY.programs.statusArchived, kind: "neutral" };
+  }
+  const active = enrollment?.enrollments.find(
+    (item) => item.status === "Active"
+  );
+  if (active) {
+    return { label: COPY.programs.statusActive, kind: "success" };
+  }
+  const pending = enrollment?.requests.find(
+    (request) => request.status === "Pending"
+  );
+  if (pending) {
+    return { label: COPY.programs.statusPending, kind: "pending" };
+  }
+  const latest = enrollment?.requests
+    .toSorted((a, b) => b.submitted_at.localeCompare(a.submitted_at))
+    .at(0);
+  if (latest?.status === "Rejected") {
+    return { label: COPY.programs.statusRejected, kind: "danger" };
+  }
+  if (latest?.status === "Withdrawn") {
+    return { label: COPY.programs.statusWithdrawn, kind: "neutral" };
+  }
+  if (
+    enrollment?.enrollments.some((item) => item.status === "Cancelled") === true
+  ) {
+    return { label: COPY.programs.statusCancelled, kind: "neutral" };
+  }
+  if (program.enrollment_mode === "ManagerOnly") {
+    return { label: COPY.programs.statusManagerOnly, kind: "neutral" };
+  }
+  return { label: COPY.programs.statusEligible, kind: "pending" };
+}
+
+function eventTitle(
+  event: ParticipantEventSummary,
+  programName: string
+): string {
+  const view = event as ParticipantEventView;
+  return view.name?.trim() || view.title?.trim() || programName;
+}
+
+function eventTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("zh-Hant-HK", {
+    timeZone: "Asia/Hong_Kong",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function eventWhen(event: ParticipantEventSummary): string {
+  const start = hkWallLabel(event.starts_at);
+  const endTime = eventTime(event.ends_at);
+  return endTime ? `${start}–${endTime}` : start;
+}
+
+function eventLocation(event: ParticipantEventSummary): string | null {
+  const location = (event as ParticipantEventView).location?.trim();
+  return location || null;
+}
+
+function conflictNote(
+  detail: ParticipantProgramDetailData,
+  event: ParticipantEventSummary | null,
+  programName: string,
+  conflictProgramName: string | null
+): string | null {
+  const detailView = detail as DetailConflictView;
+  const eventView = event as ParticipantEventView | null;
+  const explicit =
+    eventView?.conflict_note ??
+    eventView?.conflictNote ??
+    detailView.conflict_note ??
+    detailView.conflictNote;
+  if (typeof explicit === "string" && explicit.trim() !== "") {
+    return explicit;
+  }
+  const hasConflict =
+    eventView?.has_schedule_conflict === true ||
+    detailView.has_schedule_conflict === true ||
+    (conflictProgramName?.trim() ?? "") !== "";
+  return hasConflict
+    ? COPY.programs.conflictNote.replace(
+        "{program}",
+        conflictProgramName?.trim() || programName
+      )
+    : null;
+}
+
+const statusClass: Record<StatusKind, string> = {
+  success: styles.directoryStatusSuccess,
+  pending: styles.directoryStatusPending,
+  neutral: styles.directoryStatusNeutral,
+  danger: styles.directoryStatusDanger,
+};
+
 export const ParticipantProgramDetail = ({
   programId,
   onBack,
   canManage,
   onManagement,
+  conflictProgramName = null,
 }: ParticipantProgramDetailProps) => {
   const router = useRouter();
   const [state, setState] = useState<DetailState>({ kind: "loading" });
@@ -247,6 +374,15 @@ export const ParticipantProgramDetail = ({
     enrollment,
     enrollment_access: enrollmentAccess,
   } = state.detail;
+  const status = statusForDetail(state.detail);
+  const nextEvent = upcomingEvents[0] ?? null;
+  const nextConflict = conflictNote(
+    state.detail,
+    nextEvent,
+    program.name,
+    conflictProgramName
+  );
+
   return (
     <article
       className={styles.programDetail}
@@ -265,6 +401,12 @@ export const ParticipantProgramDetail = ({
           {department.name}
           {program.category ? ` · ${program.category}` : ""}
         </p>
+        <span
+          className={`${styles.directoryStatus} ${statusClass[status.kind]} ${styles.programDetailStatus}`}
+          role="status"
+        >
+          {status.label}
+        </span>
         <h2
           id="program-detail-title"
           className={styles.boundaryTitle}
@@ -285,6 +427,54 @@ export const ParticipantProgramDetail = ({
           {program.description ?? COPY.programs.programDescriptionEmpty}
         </p>
       </section>
+
+      {nextEvent && (
+        <article
+          className={styles.programDetailNextEvent}
+          aria-labelledby="program-detail-next-event"
+        >
+          <span className={styles.programDetailMonoLabel}>
+            {COPY.programs.nextMeeting}
+          </span>
+          <h3
+            id="program-detail-next-event"
+            className={styles.programDetailNextEventTitle}
+          >
+            {eventTitle(nextEvent, program.name)}
+          </h3>
+          <dl className={styles.programDetailEventMeta}>
+            <div>
+              <dt>{COPY.programs.detailEventTime}</dt>
+              <dd>
+                <time dateTime={nextEvent.starts_at}>
+                  {hkWallLabel(nextEvent.starts_at)}
+                </time>
+                {eventTime(nextEvent.ends_at) && (
+                  <span>–{eventTime(nextEvent.ends_at)}</span>
+                )}
+              </dd>
+            </div>
+            {eventLocation(nextEvent) && (
+              <div>
+                <dt>{COPY.programs.detailEventLocation}</dt>
+                <dd>{eventLocation(nextEvent)}</dd>
+              </div>
+            )}
+          </dl>
+          {nextConflict && (
+            <p className={styles.programDetailConflict} role="note">
+              {nextConflict}
+            </p>
+          )}
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            aria-label={COPY.programs.viewEventDetail}
+          >
+            {COPY.programs.viewEventDetail}
+          </button>
+        </article>
+      )}
 
       <dl className={styles.programDetailFacts}>
         <div>
@@ -328,14 +518,28 @@ export const ParticipantProgramDetail = ({
           id="program-detail-schedule"
           className={styles.programDetailHeading}
         >
-          {COPY.programs.detailSchedule}
+          {COPY.programs.scheduleTitle}
         </h3>
         {scheduleRules.length > 0 ? (
-          <ul className={styles.programDetailList}>
-            {scheduleRules.map((rule) => (
-              <li key={rule.rule_id}>{scheduleLabel(rule)}</li>
-            ))}
-          </ul>
+          <div className={styles.programDetailTableWrap}>
+            <table
+              className={styles.programDetailTable}
+              aria-label={COPY.programs.scheduleTitle}
+            >
+              <thead>
+                <tr>
+                  <th scope="col">{COPY.programs.scheduleTitle}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scheduleRules.map((rule) => (
+                  <tr key={rule.rule_id}>
+                    <td>{scheduleLabel(rule)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className={styles.programDetailMuted}>
             {COPY.programs.detailScheduleNone}
@@ -346,7 +550,6 @@ export const ParticipantProgramDetail = ({
       <section
         className={styles.programDetailSection}
         aria-labelledby="program-detail-events"
-        role="region"
       >
         <h3 id="program-detail-events" className={styles.programDetailHeading}>
           {COPY.programs.detailEvents}
@@ -356,9 +559,7 @@ export const ParticipantProgramDetail = ({
             {upcomingEvents.map((event) => (
               <li key={event.event_id} className={styles.programDetailEvent}>
                 <span>{COPY.programs.detailEventTime}</span>
-                <time dateTime={event.starts_at}>
-                  {hkWallLabel(event.starts_at)}
-                </time>
+                <time dateTime={event.starts_at}>{eventWhen(event)}</time>
               </li>
             ))}
           </ul>

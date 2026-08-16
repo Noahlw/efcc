@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe -- shared fixture hooks cover all detail describes */
+/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects -- shared fixture hooks cover all detail describes; contract tests assert the full visible surface */
 import {
   cleanup,
   render,
@@ -15,6 +15,7 @@ import { ParticipantProgramDetail } from "@/lib/programs/participant-program-det
 import type {
   DepartmentSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
+  ParticipantEnrollmentSnapshot,
   ProgramSummary,
 } from "@/lib/programs/program-api";
 
@@ -72,6 +73,14 @@ const program = (
   ...overrides,
 });
 
+const snapshot = (
+  overrides: Partial<ParticipantEnrollmentSnapshot> = {}
+): ParticipantEnrollmentSnapshot => ({
+  requests: [],
+  enrollments: [],
+  ...overrides,
+});
+
 const detailFixture = (
   overrides: Partial<ParticipantProgramDetailData> = {}
 ): ParticipantProgramDetailData => ({
@@ -95,6 +104,8 @@ const detailFixture = (
       ends_at: "2099-03-04T13:00:00.000Z",
       status: "Active",
       source: "SCHEDULE",
+      name: "第三課聚會",
+      location: "二樓禮堂",
     },
     {
       event_id: "event-2",
@@ -103,9 +114,11 @@ const detailFixture = (
       ends_at: "2099-03-11T13:00:00.000Z",
       status: "Active",
       source: "SCHEDULE",
+      name: "第四課聚會",
+      location: "二樓禮堂",
     },
   ],
-  enrollment: null,
+  enrollment: snapshot(),
   enrollment_access: "Eligible",
   ...overrides,
 });
@@ -120,6 +133,7 @@ function renderDetail(
       onBack={props.onBack ?? onBack}
       canManage={props.canManage ?? false}
       onManagement={props.onManagement ?? vi.fn<() => void>()}
+      conflictProgramName={props.conflictProgramName}
     />
   );
   return { onBack, view };
@@ -135,7 +149,7 @@ afterEach(() => {
 });
 
 describe("PUI-03 participant Program detail", () => {
-  test("loads purpose, explicit behavior, lifecycle, participation, context, schedule, and nearest Event", async () => {
+  test("renders purpose, status tag, next-meeting card, schedule table, and the back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
     const { onBack } = renderDetail();
 
@@ -147,69 +161,260 @@ describe("PUI-03 participant Program detail", () => {
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
-    expect(screen.getByText("為青年建立穩定的同行與學習空間。"));
-    expect(screen.getByText(/Recurring/u)).toBeInTheDocument();
-    expect(screen.getByText(/Active/u)).toBeInTheDocument();
-    expect(screen.getByText(/MemberRequest/u)).toBeInTheDocument();
-    expect(screen.getByText("青年事工")).toBeInTheDocument();
-    expect(screen.getByText("門徒訓練")).toBeInTheDocument();
-    expect(screen.getByText("每週三 19:30–21:00")).toBeInTheDocument();
-    const events = screen.getByRole("region", { name: "近期活動" });
-    expect(within(events).getByText(/19:30/u)).toBeInTheDocument();
-    expect(within(events).getByText(/2099/u)).toBeInTheDocument();
-    expect(within(events).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText("為青年建立穩定的同行與學習空間。")).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.statusEligible)).toBeInTheDocument();
+
+    const nextCard = screen.getByRole("article", { name: "第三課聚會" });
     expect(
-      screen.queryByText(/check_in_token|manual_check_in_code/iu)
-    ).not.toBeInTheDocument();
+      within(nextCard).getByText(COPY.programs.nextMeeting)
+    ).toBeInTheDocument();
+    expect(
+      within(nextCard).getByText(/2099\/03\/04 19:30/u)
+    ).toBeInTheDocument();
+    expect(within(nextCard).getByText("二樓禮堂")).toBeInTheDocument();
+    expect(
+      within(nextCard).getByRole("button", {
+        name: COPY.programs.viewEventDetail,
+      })
+    ).toBeInTheDocument();
+
+    const schedule = screen.getByRole("table", {
+      name: COPY.programs.scheduleTitle,
+    });
+    expect(within(schedule).getByText(/19:30/u)).toBeInTheDocument();
+
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })
     );
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  test("keeps multiple OneOff Events visible and labels manager-only availability", async () => {
+  test("renders the member's own enrollment history", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({
-        program: program("program-1", "特別聚會", {
-          behavior_type: "OneOff",
-          lifecycle: "Draft",
+        enrollment: snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Pending",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: null,
+            },
+          ],
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Cancelled",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: "2099-03-03T00:00:00.000Z",
+            },
+          ],
+        }),
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
+    expect(within(history).getByText(COPY.programs.requestPending)).toBeInTheDocument();
+    expect(
+      within(history).getByText(COPY.programs.enrollmentCancelled)
+    ).toBeInTheDocument();
+  });
+
+  const enrollmentFor = (state: string): ParticipantEnrollmentSnapshot => {
+    switch (state) {
+      case "active": {
+        return snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Approved",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: "2099-03-02T00:00:00.000Z",
+            },
+          ],
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        });
+      }
+      case "pending": {
+        return snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Pending",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: null,
+            },
+          ],
+        });
+      }
+      case "withdrawn": {
+        return snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Withdrawn",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: "2099-03-02T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      case "rejected": {
+        return snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Rejected",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: "2099-03-02T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      case "cancelled": {
+        return snapshot({
+          requests: [
+            {
+              request_id: "request-1",
+              status: "Approved",
+              submitted_at: "2099-03-01T00:00:00.000Z",
+              decided_at: "2099-03-02T00:00:00.000Z",
+            },
+          ],
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Cancelled",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: "2099-03-03T00:00:00.000Z",
+            },
+          ],
+        });
+      }
+      default: {
+        return snapshot();
+      }
+    }
+  };
+
+  test.each([
+    ["active", COPY.programs.statusActive],
+    ["pending", COPY.programs.statusPending],
+    ["withdrawn", COPY.programs.statusWithdrawn],
+    ["rejected", COPY.programs.statusRejected],
+    ["cancelled", COPY.programs.statusCancelled],
+  ] as const)(
+    "shows the %s status tag from the real enrollment snapshot",
+    async (state, tag) => {
+      mocks.getParticipantProgramDetail.mockResolvedValue(
+        detailFixture({ enrollment: enrollmentFor(state) })
+      );
+      renderDetail();
+
+      await screen.findByRole("heading", { name: "青年門徒小組" });
+      expect(screen.getAllByText(tag).length).toBeGreaterThan(0);
+    }
+  );
+
+  test("ManagerOnly renders the 由同工安排 tag, read-only note, and no self-enroll action", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "敬拜隊訓練", {
           enrollment_mode: "ManagerOnly",
         }),
-        schedule_rules: [],
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "敬拜隊訓練" });
+    expect(screen.getByText(COPY.programs.statusManagerOnly)).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.managerOnlyNote)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.enroll })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.withdrawRequest })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cancelEnrollment })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.reEnroll })
+    ).not.toBeInTheDocument();
+  });
+
+  test("Archived renders the 已封存 tag, archived note, and no interactive action", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "青年門徒小組", {
+          lifecycle: "Archived",
+        }),
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(screen.getByText(COPY.programs.statusArchived)).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.archivedNote)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.enroll })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.reEnroll })
+    ).not.toBeInTheDocument();
+  });
+
+  test("conflict note renders as a non-blocking hint that never hides the enroll action", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    renderDetail({ conflictProgramName: "敬拜隊訓練" });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByText(
+        COPY.programs.conflictNote.replace("{program}", "敬拜隊訓練")
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    ).toBeInTheDocument();
+  });
+
+  test("hides the meeting venue row when the next event has no location", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
         events: [
           {
             event_id: "event-1",
             program_id: "program-1",
-            starts_at: "2099-04-01T10:00:00.000Z",
-            ends_at: "2099-04-01T11:00:00.000Z",
+            starts_at: "2099-03-04T11:30:00.000Z",
+            ends_at: "2099-03-04T13:00:00.000Z",
             status: "Active",
-            source: "MANUAL",
-          },
-          {
-            event_id: "event-2",
-            program_id: "program-1",
-            starts_at: "2099-04-08T10:00:00.000Z",
-            ends_at: "2099-04-08T11:00:00.000Z",
-            status: "Active",
-            source: "MANUAL",
+            source: "SCHEDULE",
+            name: "第三課聚會",
+            location: null,
           },
         ],
       })
     );
     renderDetail();
 
-    await screen.findByRole("heading", { name: "特別聚會" });
-    expect(screen.getByText(/OneOff/u)).toBeInTheDocument();
-    expect(screen.getByText(/Draft/u)).toBeInTheDocument();
-    expect(screen.getByText(/ManagerOnly/u)).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const nextCard = screen.getByRole("article", { name: "第三課聚會" });
+    expect(within(nextCard).getByText("第三課聚會")).toBeInTheDocument();
     expect(
-      within(
-        screen.getByRole("region", { name: COPY.programs.detailEvents })
-      ).getAllByRole("listitem")
-    ).toHaveLength(2);
-    expect(
-      screen.getByText(COPY.programs.detailScheduleNone)
-    ).toBeInTheDocument();
+      screen.queryByText(COPY.programs.detailEventLocation)
+    ).not.toBeInTheDocument();
   });
 
   test("renders a privacy-preserving unavailable state for missing or unauthorized detail", async () => {

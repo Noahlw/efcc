@@ -279,6 +279,10 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  /** Projected from the real event row; null when the meeting has no title. */
+  name: string | null;
+  /** Projected from the real event row; null when the meeting has no venue. */
+  location: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {
