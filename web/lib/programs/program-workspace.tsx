@@ -348,6 +348,9 @@ const CourseEdit = ({
         onSaved(result.program);
       }
     } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
       if (mounted.current) {
         const message = courseMutationError(error);
         setFormError(message);
