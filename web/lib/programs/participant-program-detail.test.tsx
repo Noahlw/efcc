@@ -144,7 +144,9 @@ describe("PUI-03 participant Program detail", () => {
       name: "青年門徒小組",
     });
     expect(heading).toBeInTheDocument();
-    expect(heading).toHaveFocus();
+    await waitFor(() => {
+      expect(heading).toHaveFocus();
+    });
     expect(screen.getByText("為青年建立穩定的同行與學習空間。"));
     expect(screen.getByText(/Recurring/u)).toBeInTheDocument();
     expect(screen.getByText(/Active/u)).toBeInTheDocument();

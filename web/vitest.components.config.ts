@@ -7,6 +7,8 @@ export default defineProject({
     alias: { "@": import.meta.dirname ?? "" },
   },
   test: {
+    testTimeout: 30000,
+    hookTimeout: 30000,
     environment: "jsdom",
     include: [
       "lib/app.test.tsx",

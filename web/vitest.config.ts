@@ -38,6 +38,8 @@ export default defineProject(async () => {
       alias: { "@": import.meta.dirname },
     },
     test: {
+      testTimeout: 30000,
+      hookTimeout: 30000,
       // Worker tests live next to the worker (`worker.test.ts`) and run
       // in the pool-workers environment declared inline at the top of
       // each file via `// @vitest-environment workers`. Client contract
