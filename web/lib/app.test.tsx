@@ -1523,7 +1523,7 @@ describe("Shell", () => {
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.scanTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1534,7 +1534,7 @@ describe("Shell", () => {
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.scanTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1556,7 +1556,7 @@ describe("Shell", () => {
         // eslint-disable-next-line no-await-in-loop
         await waitFor(() => {
           expect(
-            screen.getByRole("heading", { name: COPY.sections.scanner })
+            screen.getByRole("heading", { name: COPY.attendance.scanTitle })
           ).toBeInTheDocument();
         });
         expect(

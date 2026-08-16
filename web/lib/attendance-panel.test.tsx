@@ -270,7 +270,7 @@ describe(AttendancePanel, () => {
       );
 
       await expect(
-        screen.findByText(COPY.attendance.noEvents)
+        screen.findByText(COPY.attendance.invalidEntry)
       ).resolves.toBeVisible();
     });
   });
@@ -300,14 +300,14 @@ describe(AttendancePanel, () => {
       const user = userEvent.setup();
       render(<AttendancePanel />);
       await user.click(
-        screen.getByRole("button", { name: COPY.attendance.camera })
+        screen.getByRole("button", { name: COPY.attendance.startScan })
       );
 
       await expect(
         screen.findByText(COPY.attendance.cameraUnavailable)
       ).resolves.toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: COPY.attendance.camera })
+        screen.getByRole("button", { name: COPY.attendance.startScan })
       ).toBeInTheDocument();
 
       if (originalDetector === undefined) {
@@ -377,7 +377,7 @@ describe(AttendancePanel, () => {
       const user = userEvent.setup();
       render(<AttendancePanel />);
       await user.click(
-        screen.getByRole("button", { name: COPY.attendance.camera })
+        screen.getByRole("button", { name: COPY.attendance.startScan })
       );
 
       await screen.findByLabelText(COPY.attendance.guestName);

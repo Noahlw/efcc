@@ -215,6 +215,243 @@
   min-height: 2.75rem;
 }
 
+.cameraGroup {
+  display: grid;
+  justify-items: center;
+  gap: 0.875rem;
+  width: 100%;
+}
+
+.cameraFrame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 280px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cameraFrame .video {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.cameraIcon {
+  width: 4.5rem;
+  height: 4.5rem;
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
+.cameraCorner {
+  position: absolute;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-color: var(--accent);
+  border-style: solid;
+  border-width: 0;
+}
+
+.cameraCornerTop {
+  top: 1rem;
+  left: 1rem;
+  border-top-width: 3px;
+  border-left-width: 3px;
+}
+
+.cameraCornerRight {
+  top: 1rem;
+  right: 1rem;
+  border-top-width: 3px;
+  border-right-width: 3px;
+}
+
+.cameraCornerBottom {
+  right: 1rem;
+  bottom: 1rem;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
+}
+
+.cameraCornerLeft {
+  bottom: 1rem;
+  left: 1rem;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+}
+
+.cameraUnavailable {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-surface);
+  color: var(--error);
+}
+
+.cameraUnavailable p {
+  margin: 0;
+  color: inherit;
+  line-height: 1.5;
+}
+
+.methodSection {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.methodGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.methodCard,
+.methodCardNote {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-height: 6rem;
+  padding: 0.9rem;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+}
+
+.methodCard {
+  cursor: pointer;
+}
+
+.methodCard span,
+.methodCardNote span {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.methodCard:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.methodCard:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.methodCardNote {
+  border-style: dashed;
+}
+
+.chooser {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+.chooserHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chooserTitle {
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.chooserTag {
+  justify-self: start;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--accent-deep);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.eventCopy {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.outcome {
+  justify-items: center;
+  text-align: center;
+}
+
+.outcomeHeader {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.outcomeIcon {
+  width: 4.5rem;
+  height: 4.5rem;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.outcomeIconWindow {
+  stroke: var(--warning, #9a6700);
+}
+
+.outcomeIconCancelled {
+  stroke: var(--error);
+}
+
+.outcomeIconNotEnrolled {
+  stroke: var(--ink-muted);
+}
+
+.outcomeBody {
+  max-width: 42rem;
+  margin: -0.25rem 0 0;
+  line-height: 1.7;
+}
+
+.outcomeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
 .events {
   display: grid;
   gap: 0.65rem;
@@ -450,6 +687,10 @@
   .inputRow {
     grid-template-columns: 1fr auto;
     align-items: end;
+  }
+
+  .methodGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

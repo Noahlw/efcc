@@ -34,6 +34,21 @@ export interface AttendanceEvent {
   status: "Active" | "Cancelled";
   availability: "Active" | "Inactive";
 }
+
+export interface AttendanceResolveLatest {
+  status: "Active" | "Cancelled";
+  availability: "Active" | "Inactive";
+  starts_at: string | null;
+  check_in_window_opens_at: string | null;
+  program_id: string;
+  program_name: string;
+}
+
+export interface AttendanceResolveResult {
+  events: AttendanceEvent[];
+  latest?: AttendanceResolveLatest | null;
+  enrolled?: boolean;
+}
 /** Explicitly safe fields for chooser/context projections; credentials stay server-side. */
 export interface AttendanceEventSummary {
   event_id: string;
@@ -394,31 +409,23 @@ async function matchingEventState(
   db: D1Database,
   byProgramToken: boolean,
   value: string
-): Promise<Pick<AttendanceEvent, "status" | "availability"> | null> {
+): Promise<AttendanceResolveLatest | null> {
   const row = await db
     .prepare(
-      `SELECT e.status, e.availability FROM events e JOIN programs p ON p.program_id = e.program_id
+      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              p.program_id, p.name AS program_name
+         FROM events e JOIN programs p ON p.program_id = e.program_id
         WHERE ${entryWhere(byProgramToken)}
         ORDER BY e.starts_at DESC LIMIT 1`
     )
     .bind(value)
-    .first<Pick<AttendanceEvent, "status" | "availability">>();
+    .first<AttendanceResolveLatest>();
   return row ?? null;
 }
-async function hasProgramToken(
-  db: D1Database,
-  value: string
-): Promise<boolean> {
-  const row = await db
-    .prepare(`SELECT 1 FROM programs WHERE check_in_token = ? LIMIT 1`)
-    .bind(value)
-    .first();
-  return row !== null;
-}
+
 interface ResolveLookup {
   events: AttendanceEvent[];
-  latest: Pick<AttendanceEvent, "status" | "availability"> | null;
-  programTokenLookup: boolean;
+  latest: AttendanceResolveLatest | null;
 }
 
 async function resolveLookup(
@@ -428,64 +435,44 @@ async function resolveLookup(
   value: string
 ): Promise<ResolveLookup> {
   let events: AttendanceEvent[];
-  let latest: Pick<AttendanceEvent, "status" | "availability"> | null = null;
-  let programTokenLookup = Boolean(token);
+  let latest: AttendanceResolveLatest | null = null;
   if (token || code) {
     const byProgramToken = Boolean(token);
     events = await openEvents(db, byProgramToken, value);
     if (events.length === 0) {
       latest = await matchingEventState(db, byProgramToken, value);
     }
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
 
   events = await openEvents(db, false, value);
   if (events.length > 0) {
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
   // The typed value may be a cancelled/closed Event's manual code, so check
   // that status before falling back to the Program token column.
   latest = await matchingEventState(db, false, value);
   if (latest !== null) {
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
-  programTokenLookup = true;
   events = await openEvents(db, true, value);
   if (events.length === 0) {
     latest = await matchingEventState(db, true, value);
   }
-  return { events, latest, programTokenLookup };
+  return { events, latest };
 }
 
 async function resolveNoEvents(
   db: D1Database,
-  latest: Pick<AttendanceEvent, "status" | "availability"> | null,
-  programTokenLookup: boolean,
-  value: string,
+  latest: AttendanceResolveLatest | null,
+  memberUserId: string | null,
   id: string
 ): Promise<Response> {
-  if (
-    latest === null &&
-    programTokenLookup &&
-    (await hasProgramToken(db, value))
-  ) {
-    return json(200, { events: [] }, id);
+  let enrolled = false;
+  if (latest && memberUserId) {
+    enrolled = await hasActiveEnrollment(db, latest.program_id, memberUserId);
   }
-  if (latest?.status === "Cancelled") {
-    return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
-  }
-  if (latest?.availability === "Inactive") {
-    return problem(
-      409,
-      "EVENT_UNAVAILABLE",
-      "此聚會已暫停開放，不能簽到。",
-      id
-    );
-  }
-  if (latest?.status === "Active") {
-    return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
-  }
-  return problem(404, "CHECK_IN_NOT_FOUND", "找不到可用的簽到聚會。", id);
+  return json(200, { events: [], latest: latest ?? null, enrolled }, id);
 }
 
 async function audit(
@@ -545,14 +532,20 @@ export async function handleResolve(
   if (!value) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
-  const { events, latest, programTokenLookup } = await resolveLookup(
+  const currentActor = await actor(request, env, id, false);
+  const memberUserId =
+    currentActor && !(currentActor instanceof Response)
+      ? currentActor.user_id
+      : null;
+
+  const { events, latest } = await resolveLookup(
     env.DB,
     token,
     code,
     value
   );
   if (events.length === 0) {
-    return resolveNoEvents(env.DB, latest, programTokenLookup, value, id);
+    return resolveNoEvents(env.DB, latest, memberUserId, id);
   }
   return json(200, { events }, id);
 }

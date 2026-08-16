@@ -114,6 +114,37 @@ const COPY = {
   statusVoided: "已作廢",
   printSheet: "列印聚會簽到表",
   loginForMember: "登入後以成員身份簽到",
+  scanTitle: "聚會簽到",
+  scanLead: "掃描場地顯示的二維碼。",
+  startScan: "開始掃描",
+  cameraUnavailableTitle: "未能使用相機",
+  cameraUnavailableHint:
+    "你可以檢查瀏覽器權限，或改用下面的聚會代碼繼續 — 兩種方式同樣可靠。",
+  manualEntryTitle: "輸入聚會代碼",
+  manualEntryHint: "相機不可用時，輸入現場顯示的六位數代碼。",
+  manualOnlyTitle: "只在你按下後使用相機",
+  manualOnlyHint: "相機權限只會在開始掃描時請求。",
+  scanMethodTitle: "簽到方式",
+  invalidManualCode: "請輸入六位數聚會代碼。",
+  chooseMeeting: "選擇要簽到的聚會",
+  chooseMeetingHint: "此二維碼可用於多個聚會，請揀選你參加的那一個。",
+  recognizedMultiple: "已辨識多個聚會",
+  rescan: "重新掃描",
+  outcomeHeader: "簽到狀態",
+  outcomeWindowTitle: "簽到尚未開放",
+  outcomeWindowBodyPrefix: "此聚會的簽到時段將於",
+  outcomeWindowBodySuffix:
+    "開始（聚會開始前 30 分鐘）。開放後可以重新掃描或輸入代碼簽到。",
+  outcomeWindowBodySuffixWithoutOffset:
+    "開始。開放後可以重新掃描或輸入代碼簽到。",
+  outcomeCancelledTitle: "此聚會已取消",
+  outcomeCancelledBody:
+    "請留意教會通知，或聯絡負責同工了解最新安排。此聚會不會記錄出席。",
+  outcomeNotEnrolledTitle: "你尚未報名此課程",
+  outcomeNotEnrolledBody:
+    "請先查看課程詳情並提交報名，或聯絡負責同工協助登記，之後即可掃描簽到。",
+  viewProgramDetail: "查看課程詳情",
+  backToScan: "返回掃描",
 };
 
 // Seeded fixture identities (tests/e2e/seed-dev-accounts.ts). The member QR
@@ -134,6 +165,9 @@ interface Fixtures {
   eventA: AttendanceEventFixture;
   eventB: AttendanceEventFixture;
   cancelledEvent: AttendanceEventFixture;
+  futureEvent: AttendanceEventFixture;
+  unenrolledProgramId: string;
+  unenrolledEvent: AttendanceEventFixture;
   adminState: StorageState;
   memberState: StorageState;
   staffState: StorageState;
@@ -323,12 +357,30 @@ async function resolveAndChoose(
   entry: string,
   index: number
 ): Promise<void> {
+  const manualCard = page.getByRole("button", {
+    name: new RegExp(COPY.manualEntryTitle),
+  });
+  if (
+    (await manualCard.count()) > 0 &&
+    !(await page.locator("#attendance-code").isVisible())
+  ) {
+    await manualCard.click();
+  }
   await page.locator("#attendance-code").fill(entry);
   await page.getByRole("button", { name: COPY.resolve }).click();
-  const chooser = page.locator("button[aria-pressed]");
-  await expect(chooser).toHaveCount(2);
-  await chooser.nth(index).click();
-  await expect(chooser.nth(index)).toHaveAttribute("aria-pressed", "true");
+  const guestChooser = page.locator("button[aria-pressed]");
+  if ((await guestChooser.count()) > 0) {
+    await expect(guestChooser).toHaveCount(2);
+    await guestChooser.nth(index).click();
+    await expect(guestChooser.nth(index)).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  } else {
+    const candidateRows = page.locator("section[class*='chooser'] ul button");
+    await expect(candidateRows).toHaveCount(2);
+    await candidateRows.nth(index).click();
+  }
 }
 
 test.beforeAll(async ({ playwright }) => {
@@ -449,6 +501,40 @@ test.beforeAll(async ({ playwright }) => {
     const eventA = await createEvent(-60, 60);
     const eventB = await createEvent(-120, 60);
 
+    const futureEvent = await createEvent(180, 240);
+
+    const unenrolledProg = await postJson(
+      admin.api,
+      `/api/v1/programs/departments/${departmentId}/programs`,
+      {
+        name: `E2E 未報名課程 ${fresh("P")}`,
+        category: "測試",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      }
+    );
+    expect(unenrolledProg.status).toBe(201);
+    const unenrolledProgramId = (
+      unenrolledProg.body.data as { program: { program_id: string } }
+    ).program.program_id;
+    const unenrolledCreated = await postJson(
+      admin.api,
+      `/api/v1/programs/${unenrolledProgramId}/events`,
+      {
+        starts_at: minutesFromNow(-60),
+        ends_at: minutesFromNow(60),
+        name: "E2E 未報名聚會",
+        location: "副堂",
+      }
+    );
+    expect(unenrolledCreated.status).toBe(201);
+    const unenrolledEvent = (
+      unenrolledCreated.body.data as { event: AttendanceEventFixture }
+    ).event;
+    expect(unenrolledEvent.manual_check_in_code).toMatch(/^[0-9A-F]{8}$/u);
+
     const cancelledEvent = await createEvent(-90, 90);
     // Seed one pre-cancellation check-in so the cancelled event's roster
     // stays readable for operators after the cancellation (J: the roster
@@ -503,6 +589,9 @@ test.beforeAll(async ({ playwright }) => {
       eventA,
       eventB,
       cancelledEvent,
+      futureEvent,
+      unenrolledProgramId,
+      unenrolledEvent,
       adminState: admin.storageState,
       memberState: memberLogin.storageState,
       staffState: staffLogin.storageState,
@@ -723,7 +812,7 @@ test.describe("ATT-04 QR attendance proof", () => {
     try {
       await page.goto("/scanner");
       await expect(
-        page.getByRole("heading", { name: COPY.scannerTitle })
+        page.getByRole("heading", { name: COPY.scanTitle })
       ).toBeVisible();
       await expect(
         page.getByText(COPY.assistedOpen, { exact: true })
@@ -731,10 +820,172 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByText(COPY.assistedMode, { exact: true })
       ).toHaveCount(0);
+      await resolveAndChoose(page, fixtures.checkInToken, 0);
+      await expect(
+        page.getByRole("button", { name: COPY.memberSubmit })
+      ).toBeVisible();
+      await expect(page.getByText(/主堂/u).first()).toBeVisible();
+    } finally {
+      await memberContext.close();
+    }
+  });
+
+  test("D4 member Scanner resolve via manual 6-digit code validation and inline errors", async ({
+    browser,
+  }) => {
+    const memberContext = await browser.newContext({
+      storageState: fixtures.memberState,
+    });
+    const page = await memberContext.newPage();
+    try {
+      await page.goto("/scanner");
+      await expect(
+        page.getByRole("heading", { name: COPY.scanTitle })
+      ).toBeVisible();
+      await expect(page.getByText(COPY.scanLead)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.startScan })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.manualEntryTitle)
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.manualOnlyTitle)
+      ).toBeVisible();
+
+      // Open manual code entry
+      await page
+        .getByRole("button", { name: new RegExp(COPY.manualEntryTitle) })
+        .click();
+      const codeInput = page.locator("#attendance-code");
+      await expect(codeInput).toBeVisible();
+      await expect(codeInput).toBeFocused();
+
+      // Fewer than 6 digits: client validation rejects without sending request
+      await codeInput.fill("12345");
+      await page.getByRole("button", { name: COPY.resolve }).click();
+      await expect(statusText(page, COPY.invalidManualCode)).toBeVisible();
+      await expect(codeInput).toBeFocused();
+
+      // Unknown 6-digit code: server returns latest: null -> inline error with retry
+      await codeInput.fill("999999");
+      await page.getByRole("button", { name: COPY.resolve }).click();
+      await expect(statusText(page, COPY.invalidEntry)).toBeVisible();
+      await expect(page.locator("main output[data-tone='error']")).toContainText(
+        COPY.invalidEntry
+      );
+    } finally {
+      await memberContext.close();
+    }
+  });
+
+  test("D5 member Scanner chooser screen: candidate listing and 重新掃描 return", async ({
+    browser,
+  }) => {
+    const memberContext = await browser.newContext({
+      storageState: fixtures.memberState,
+    });
+    const page = await memberContext.newPage();
+    try {
+      await page.goto("/scanner");
+      await page
+        .getByRole("button", { name: new RegExp(COPY.manualEntryTitle) })
+        .click();
       await page.locator("#attendance-code").fill(fixtures.checkInToken);
       await page.getByRole("button", { name: COPY.resolve }).click();
-      await expect(page.locator("button[aria-pressed]")).toHaveCount(2);
-      await expect(page.getByText(/地點: 主堂/u).first()).toBeVisible();
+
+      // Chooser view elements
+      await expect(
+        page.getByRole("heading", { name: COPY.chooseMeeting })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.recognizedMultiple)
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.chooseMeetingHint)
+      ).toBeVisible();
+
+      // 重新掃描 button returns to main scan view
+      await page.getByRole("button", { name: COPY.rescan }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.scanTitle })
+      ).toBeVisible();
+
+      // Re-resolve and select candidate
+      await page
+        .getByRole("button", { name: new RegExp(COPY.manualEntryTitle) })
+        .click();
+      await page.locator("#attendance-code").fill(fixtures.checkInToken);
+      await page.getByRole("button", { name: COPY.resolve }).click();
+
+      const candidateRows = page.locator("section[class*='chooser'] ul button");
+      await expect(candidateRows).toHaveCount(2);
+      await candidateRows.nth(0).click();
+
+      await expect(
+        page.getByRole("button", { name: COPY.memberSubmit })
+      ).toBeVisible();
+    } finally {
+      await memberContext.close();
+    }
+  });
+
+  test("D6 member Scanner outcome screens: window-not-open, cancelled, and not-enrolled", async ({
+    browser,
+  }) => {
+    const memberContext = await browser.newContext({
+      storageState: fixtures.memberState,
+    });
+    const page = await memberContext.newPage();
+    try {
+      // 1. Cancelled event outcome
+      await page.goto(
+        `/scanner?manual_code=${fixtures.cancelledEvent.manual_check_in_code}`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.outcomeCancelledTitle })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.outcomeCancelledBody)
+      ).toBeVisible();
+      await page.getByRole("button", { name: COPY.backToScan }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.scanTitle })
+      ).toBeVisible();
+
+      // 2. Not enrolled outcome with program detail CTA
+      await page.goto(
+        `/scanner?manual_code=${fixtures.unenrolledEvent.manual_check_in_code}`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.outcomeNotEnrolledTitle })
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.outcomeNotEnrolledBody)
+      ).toBeVisible();
+      const detailLink = page.getByRole("link", {
+        name: COPY.viewProgramDetail,
+      });
+      await expect(detailLink).toHaveAttribute(
+        "href",
+        `/programs?program=${fixtures.unenrolledProgramId}`
+      );
+      await page.getByRole("button", { name: COPY.backToScan }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.scanTitle })
+      ).toBeVisible();
+
+      // 3. Window not open outcome
+      await page.goto(
+        `/scanner?manual_code=${fixtures.futureEvent.manual_check_in_code}`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.outcomeWindowTitle })
+      ).toBeVisible();
+      await page.getByRole("button", { name: COPY.backToScan }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.scanTitle })
+      ).toBeVisible();
     } finally {
       await memberContext.close();
     }

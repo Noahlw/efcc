@@ -101,6 +101,37 @@ export const COPY = {
     cameraRetry: "重試相機",
     cameraUnavailable: "相機不可用，請使用手動代碼。",
     assistedOpen: "開協助簽到",
+    cameraUnavailableTitle: "未能使用相機",
+    cameraUnavailableHint:
+      "你可以檢查瀏覽器權限，或改用下面的聚會代碼繼續 — 兩種方式同樣可靠。",
+    manualEntryTitle: "輸入聚會代碼",
+    manualEntryHint: "相機不可用時，輸入現場顯示的六位數代碼。",
+    manualOnlyTitle: "只在你按下後使用相機",
+    manualOnlyHint: "相機權限只會在開始掃描時請求。",
+    scanMethodTitle: "簽到方式",
+    startScan: "開始掃描",
+    scanTitle: "聚會簽到",
+    scanLead: "掃描場地顯示的二維碼。",
+    invalidManualCode: "請輸入六位數聚會代碼。",
+    chooseMeeting: "選擇要簽到的聚會",
+    chooseMeetingHint: "此二維碼可用於多個聚會，請揀選你參加的那一個。",
+    recognizedMultiple: "已辨識多個聚會",
+    rescan: "重新掃描",
+    outcomeHeader: "簽到狀態",
+    outcomeWindowTitle: "簽到尚未開放",
+    outcomeWindowBodyPrefix: "此聚會的簽到時段將於",
+    outcomeWindowBodySuffix:
+      "開始（聚會開始前 30 分鐘）。開放後可以重新掃描或輸入代碼簽到。",
+    outcomeWindowBodySuffixWithoutOffset:
+      "開始。開放後可以重新掃描或輸入代碼簽到。",
+    outcomeCancelledTitle: "此聚會已取消",
+    outcomeCancelledBody:
+      "請留意教會通知，或聯絡負責同工了解最新安排。此聚會不會記錄出席。",
+    outcomeNotEnrolledTitle: "你尚未報名此課程",
+    outcomeNotEnrolledBody:
+      "請先查看課程詳情並提交報名，或聯絡負責同工協助登記，之後即可掃描簽到。",
+    viewProgramDetail: "查看課程詳情",
+    backToScan: "返回掃描",
     status: {
       Active: "有效",
       Voided: "已作廢",

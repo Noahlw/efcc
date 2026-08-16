@@ -14,9 +14,15 @@ type BarcodeDetectorConstructor = new (options: { formats: string[] }) => {
 export function useQrCamera(input: {
   onDetect: (value: string) => void;
   onUnavailable: () => void;
+  /**
+   * Self check-in can show a useful fallback before a user clicks. This only
+   * checks API availability; permission is still requested by startCamera.
+   */
+  reportUnavailableOnMount?: boolean;
 }): {
   videoRef: RefObject<HTMLVideoElement | null>;
   cameraOpen: boolean;
+  cameraAvailable: boolean;
   startCamera: () => void;
   stopCamera: () => void;
 } {
@@ -24,6 +30,15 @@ export function useQrCamera(input: {
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
   const generationRef = useRef(0);
+  const cameraAvailable = useState(
+    () =>
+      typeof window !== "undefined" &&
+      Boolean(
+        (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor })
+          .BarcodeDetector &&
+          navigator.mediaDevices?.getUserMedia
+      )
+  )[0];
   const [cameraOpen, setCameraOpen] = useState(false);
   // The scan loop lives in one effect while the callbacks are re-created
   // every render; keep the latest versions behind refs so a scan never
@@ -32,6 +47,14 @@ export function useQrCamera(input: {
   onDetectRef.current = input.onDetect;
   const onUnavailableRef = useRef(input.onUnavailable);
   onUnavailableRef.current = input.onUnavailable;
+  const reportUnavailableOnMountRef = useRef(input.reportUnavailableOnMount);
+  reportUnavailableOnMountRef.current = input.reportUnavailableOnMount;
+
+  useEffect(() => {
+    if (reportUnavailableOnMountRef.current && !cameraAvailable) {
+      onUnavailableRef.current();
+    }
+  }, [cameraAvailable]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -144,5 +167,5 @@ export function useQrCamera(input: {
     };
   }, [cameraOpen]);
 
-  return { videoRef, cameraOpen, startCamera, stopCamera };
+  return { videoRef, cameraOpen, cameraAvailable, startCamera, stopCamera };
 }

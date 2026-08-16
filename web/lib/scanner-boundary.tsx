@@ -318,7 +318,7 @@ export const ScannerBoundary = () => {
             onAuthRequired={handleAuthRequired}
           />
         ) : (
-          <SelfCheckInPanel title={COPY.sections.scanner} />
+          <SelfCheckInPanel title={COPY.attendance.scanTitle} />
         )}
       </div>
     </>

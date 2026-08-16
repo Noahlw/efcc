@@ -4,15 +4,22 @@ import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 
 import { RpcError } from "@/lib/api";
-import type { AttendanceEvent } from "@/lib/attendance";
+import type {
+  AttendanceEvent,
+  AttendanceResolveLatest,
+} from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import { entryFromValue } from "@/lib/attendance-entry";
 import { errorCopyFor, COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { resolveAttendance } from "@/lib/programs/program-api";
 import { useQrCamera } from "@/lib/use-qr-camera";
-
 export type StatusTone = "info" | "success" | "error";
+export type AttendanceView = "scan" | "chooser" | "outcome";
+export type AttendanceOutcome = {
+  kind: "window-not-open" | "cancelled" | "not-enrolled";
+  latest: AttendanceResolveLatest;
+};
 
 export interface AttendanceFlow {
   input: string;
@@ -24,8 +31,13 @@ export interface AttendanceFlow {
   busy: boolean;
   status: string;
   tone: StatusTone;
+  view: AttendanceView;
+  outcome: AttendanceOutcome | null;
+  cameraUnavailable: boolean;
+  cameraAvailable: boolean;
   showStatus: (message: string, tone?: StatusTone) => void;
   resolve: (value: string, fromQr?: boolean) => Promise<void>;
+  resetToScan: () => void;
   videoRef: RefObject<HTMLVideoElement | null>;
   cameraOpen: boolean;
   startCamera: () => void;
@@ -38,23 +50,52 @@ export interface AttendanceFlow {
  * or assisted controls by accident.
  */
 export function useAttendanceFlow(
-  inputRef: RefObject<HTMLInputElement | null>
+  inputRef: RefObject<HTMLInputElement | null>,
+  options: { reportCameraUnavailable?: boolean } = {}
 ): AttendanceFlow {
   const [inputValue, setInputValue] = useState("");
   const [fromQr, setFromQr] = useState(false);
-  const setInput = (value: string) => {
-    setInputValue(value);
-    setFromQr(false);
-  };
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
-  const [selected, setSelected] = useState<AttendanceEvent | null>(null);
+  const [selected, setSelectedState] = useState<AttendanceEvent | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
+  const [view, setView] = useState<AttendanceView>("scan");
+  const [outcome, setOutcome] = useState<AttendanceOutcome | null>(null);
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
   const showStatus = (message: string, nextTone: StatusTone = "info") => {
     setStatus(message);
     setTone(nextTone);
+  };
+
+  const setInput = (value: string) => {
+    setInputValue(value);
+    setFromQr(false);
+    setEvents([]);
+    setSelectedState(null);
+    setOutcome(null);
+    setView("scan");
+    setStatus("");
+  };
+
+  const setSelected = (event: AttendanceEvent | null) => {
+    setSelectedState(event);
+    setOutcome(null);
+    setView("scan");
+  };
+
+  const resetToScan = () => {
+    stopCamera();
+    setInputValue("");
+    setFromQr(false);
+    setEvents([]);
+    setSelectedState(null);
+    setOutcome(null);
+    setView("scan");
+    setCameraUnavailable(false);
+    setStatus("");
+    setTone("info");
   };
 
   async function resolve(value: string, isFromQr = false) {
@@ -63,7 +104,9 @@ export function useAttendanceFlow(
       const message = COPY.attendance.inputLabel;
       setFromQr(false);
       setEvents([]);
-      setSelected(null);
+      setSelectedState(null);
+      setOutcome(null);
+      setView("scan");
       showStatus(message);
       announce(message);
       inputRef.current?.focus();
@@ -73,24 +116,67 @@ export function useAttendanceFlow(
     setInputValue(entry.value);
     setFromQr(resolvedFromQr);
     setBusy(true);
+    setCameraUnavailable(false);
+    setOutcome(null);
+    setView("scan");
     showStatus(COPY.attendance.resolving);
     announce(COPY.attendance.resolving);
     setEvents([]);
-    setSelected(null);
+    setSelectedState(null);
     try {
       const result = resolvedFromQr
         ? await resolveAttendance({ program_token: entry.value })
         : await resolveAttendance({ entry: entry.value });
-      setEvents(result.events);
-      setSelected(result.events.length === 1 ? result.events[0] : null);
-      const message =
-        result.events.length === 0
-          ? COPY.attendance.noEvents
-          : result.events.length === 1
-            ? attendanceEventLabel(result.events[0])
-            : COPY.attendance.chooseEvent;
-      showStatus(message);
-      announce(message);
+      const resolvedEvents = result.events ?? [];
+      setEvents(resolvedEvents);
+      if (resolvedEvents.length === 1) {
+        setSelected(resolvedEvents[0]);
+        const message = attendanceEventLabel(resolvedEvents[0]);
+        showStatus(message);
+        announce(message);
+      } else if (resolvedEvents.length > 1) {
+        setSelectedState(null);
+        setView("chooser");
+        const message = COPY.attendance.chooseMeeting;
+        showStatus(message);
+        announce(message);
+      } else if (!result.latest) {
+        setSelectedState(null);
+        setView("scan");
+        const message = COPY.attendance.invalidEntry;
+        showStatus(message, "error");
+        announce(message);
+      } else if (!result.enrolled) {
+        setSelectedState(null);
+        setView("outcome");
+        const nextOutcome: AttendanceOutcome = {
+          kind: "not-enrolled",
+          latest: result.latest,
+        };
+        setOutcome(nextOutcome);
+        showStatus("");
+        announce(COPY.attendance.outcomeNotEnrolledTitle);
+      } else if (result.latest.status === "Cancelled") {
+        setSelectedState(null);
+        setView("outcome");
+        const nextOutcome: AttendanceOutcome = {
+          kind: "cancelled",
+          latest: result.latest,
+        };
+        setOutcome(nextOutcome);
+        showStatus("");
+        announce(COPY.attendance.outcomeCancelledTitle);
+      } else {
+        setSelectedState(null);
+        setView("outcome");
+        const nextOutcome: AttendanceOutcome = {
+          kind: "window-not-open",
+          latest: result.latest,
+        };
+        setOutcome(nextOutcome);
+        showStatus("");
+        announce(COPY.attendance.outcomeWindowTitle);
+      }
     } catch (error) {
       const noEligibleEvents =
         error instanceof RpcError &&
@@ -101,6 +187,10 @@ export function useAttendanceFlow(
         : error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
+      setEvents([]);
+      setSelectedState(null);
+      setOutcome(null);
+      setView("scan");
       showStatus(message, noEligibleEvents ? "info" : "error");
       announce(message);
     } finally {
@@ -108,7 +198,13 @@ export function useAttendanceFlow(
     }
   }
 
-  const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
+  const {
+    videoRef,
+    cameraOpen,
+    cameraAvailable,
+    startCamera,
+    stopCamera,
+  } = useQrCamera({
     onDetect: (value) => {
       const entry = entryFromValue(value);
       setInputValue(entry.value);
@@ -117,11 +213,13 @@ export function useAttendanceFlow(
       void resolve(entry.value, entry.fromQr);
     },
     onUnavailable: () => {
+      setCameraUnavailable(true);
       const message = COPY.attendance.cameraUnavailable;
       showStatus(message, "error");
       announce(message);
       inputRef.current?.focus();
     },
+    reportUnavailableOnMount: options.reportCameraUnavailable,
   });
 
   useEffect(() => {
@@ -137,6 +235,7 @@ export function useAttendanceFlow(
     // The URL is the QR entry seam; only run it when the deep-link changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   return {
     input: inputValue,
     fromQr,
@@ -147,8 +246,13 @@ export function useAttendanceFlow(
     busy,
     status,
     tone,
+    view,
+    outcome,
+    cameraUnavailable,
+    cameraAvailable,
     showStatus,
     resolve,
+    resetToScan,
     videoRef,
     cameraOpen,
     startCamera,

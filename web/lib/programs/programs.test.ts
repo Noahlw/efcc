@@ -5135,9 +5135,15 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(resolve.status, 409);
-    const body = await problemOf(resolve);
-    assert.strictEqual(body.code, "EVENT_UNAVAILABLE");
+    assert.strictEqual(resolve.status, 200);
+    const resolveBody = (await resolve.json()) as {
+      data: {
+        events: unknown[];
+        latest: { availability: string };
+      };
+    };
+    assert.deepStrictEqual(resolveBody.data.events, []);
+    assert.strictEqual(resolveBody.data.latest.availability, "Inactive");
 
     const checkIn = await worker.fetch(
       programsRequest(`/api/v1/attendance/self`, {

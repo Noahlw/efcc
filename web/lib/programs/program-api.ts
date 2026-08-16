@@ -12,6 +12,8 @@ import type {
   AttendanceEvent as AttendanceEventType,
   AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
+  AttendanceResolveLatest as AttendanceResolveLatestType,
+  AttendanceResolveResult as AttendanceResolveResultType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
 
@@ -23,6 +25,8 @@ export type {
   AttendanceEvent,
   AttendanceEventSummary,
   AttendanceMember,
+  AttendanceResolveLatest,
+  AttendanceResolveResult,
   AttendanceRow,
 } from "@/lib/attendance";
 
@@ -1096,7 +1100,7 @@ export function resolveAttendance(input: {
   program_token?: string;
   manual_code?: string;
   entry?: string;
-}): Promise<{ events: AttendanceEventType[] }> {
+}): Promise<AttendanceResolveResultType> {
   const search = new URLSearchParams();
   if (input.program_token) {
     search.set("program_token", input.program_token);
