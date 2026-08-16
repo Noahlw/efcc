@@ -131,8 +131,8 @@ describe("PRG-02 events panel", () => {
     expect(matches.length).toBeGreaterThan(0);
     expect(screen.getByText(COPY.programs.eventActive)).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.eventScheduleSource)
-    ).toBeInTheDocument();
+      screen.getAllByText(COPY.programs.eventScheduleSource).length
+    ).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: COPY.programs.addRule })
     ).not.toBeInTheDocument();
@@ -151,11 +151,12 @@ describe("PRG-02 events panel", () => {
     await expect(
       screen.findByText(COPY.programs.noRules)
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.eventsEmpty)).toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.hkTimeMarker)).toBeInTheDocument();
-    expect(screen.getByLabelText(COPY.programs.startTime)).toBeInTheDocument();
+    expect(screen.getAllByText(COPY.programs.hkTimeMarker).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("button", { name: COPY.programs.addRule })
+      screen.getByRole("button", { name: COPY.programs.createMeeting })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.secondaryGeneratorLabel)
     ).toBeInTheDocument();
   });
 
@@ -172,15 +173,13 @@ describe("PRG-02 events panel", () => {
     await expect(
       screen.findByText(COPY.programs.eventsEmpty)
     ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText(COPY.programs.eventStart)).toBeInTheDocument();
+    expect(screen.getByLabelText(COPY.programs.eventDate)).toBeInTheDocument();
+    expect(screen.getByLabelText(COPY.programs.eventTime)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.createEvent })
+      screen.getByRole("button", { name: COPY.programs.createMeeting })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.addRule })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+      screen.queryByRole("button", { name: COPY.programs.secondaryGeneratorLabel })
     ).not.toBeInTheDocument();
   });
 
@@ -270,8 +269,8 @@ describe("PRG-02 events panel", () => {
     render(<EventsPanel program={RECURRING} canManage />);
     await screen.findByText(COPY.programs.eventActive);
     const cancelReasonInput = screen.getByLabelText(COPY.programs.cancelReason);
-    // the form is invalid until the manager types a reason
-    expect(cancelReasonInput).toBeRequired();
+    // The reason remains an optional audit note; cancellation still requires
+    // an explicit confirmation step before the request is sent.
     await user.type(cancelReasonInput, "惡劣天氣");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEvent })
@@ -572,5 +571,157 @@ describe("PRG-02 events panel", () => {
     expect(
       screen.getAllByText(COPY.programs.eventCancelledBadge)
     ).toHaveLength(1);
+  });
+  test("086-03 rows show meeting identity, type, recurrence tag, and informational note", async () => {
+    const meeting = {
+      ...ACTIVE_EVENT,
+      source: "MANUAL" as const,
+      name: "領袖訓練",
+      event_type: "訓練",
+      recurrence_tag: "每週",
+      has_attendance: false,
+    } as ProgramEvent;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [meeting] } })
+      )
+    );
+    render(<EventsPanel program={RECURRING} canManage />);
+    await expect(screen.findByText("領袖訓練")).resolves.toBeInTheDocument();
+    expect(screen.getAllByText("訓練").length).toBeGreaterThan(1);
+    expect(
+      screen.getByText(COPY.programs.repeatLabel.replace("{tag}", "每週"))
+    ).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.repeatInformational)).toBeInTheDocument();
+  });
+
+  test("086-03 manual creation validates required date, time, and name without submitting", async () => {
+    let submitted = false;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+      ),
+      http.post("/api/v1/programs/prog-1/events", () => {
+        submitted = true;
+        return HttpResponse.json({ requestId: "rid-3", data: { event: ACTIVE_EVENT } });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await user.click(await screen.findByRole("button", { name: COPY.programs.createMeeting }));
+    await user.click(screen.getByRole("button", { name: COPY.programs.createMeeting }));
+    await expect(
+      screen.findByText(COPY.programs.createMeetingValidation)
+    ).resolves.toBeInTheDocument();
+    expect(submitted).toBe(false);
+  });
+
+  test("086-03 valid manual creation submits event type and informational recurrence tag", async () => {
+    let submittedBody: Record<string, unknown> | null = null;
+    const created = {
+      ...ACTIVE_EVENT,
+      source: "MANUAL" as const,
+      event_id: "evt-created",
+      name: "新聚會",
+      event_type: "小組",
+      recurrence_tag: "無",
+      has_attendance: false,
+    } as ProgramEvent;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [created] } })
+      ),
+      http.post("/api/v1/programs/prog-1/events", async ({ request }) => {
+        submittedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ requestId: "rid-3", data: { event: created } });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await user.click(await screen.findByRole("button", { name: COPY.programs.createMeeting }));
+    await user.type(screen.getByLabelText(COPY.programs.eventDate), "2026-09-13");
+    await user.type(screen.getByLabelText(COPY.programs.eventTime), "19:30");
+    await user.type(screen.getByLabelText(COPY.programs.eventName), "新聚會");
+    await user.selectOptions(screen.getByLabelText(COPY.programs.eventType), "小組");
+    await user.selectOptions(screen.getByLabelText(COPY.programs.recurrenceTag), "無");
+    await user.click(screen.getByRole("button", { name: COPY.programs.createMeeting }));
+    await waitFor(() => expect(submittedBody).not.toBeNull());
+    expect(submittedBody).toMatchObject({
+      name: "新聚會",
+      event_type: "小組",
+    });
+    expect(submittedBody).not.toHaveProperty("recurrence_tag");
+  });
+  test("086-03 cancellation with attendance is refused without a cancel request", async () => {
+    const meeting = {
+      ...ACTIVE_EVENT,
+      has_attendance: true,
+      name: "已有出席聚會",
+    } as ProgramEvent;
+    let cancelRequested = false;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({ requestId: "rid-2", data: { events: [meeting] } })
+      ),
+      http.patch("/api/v1/programs/prog-1/events/evt-1", () => {
+        cancelRequested = true;
+        return HttpResponse.json({ requestId: "rid-3", data: { event: meeting } });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await user.click(await screen.findByRole("button", { name: COPY.programs.cancelEvent }));
+    await expect(
+      screen.findByText(COPY.programs.cancelBlockedWithAttendance)
+    ).resolves.toBeInTheDocument();
+    expect(cancelRequested).toBe(false);
+  });
+
+  test("086-03 cancellation without attendance requires confirmation; keep preserves the meeting", async () => {
+    const meeting = { ...ACTIVE_EVENT, has_attendance: false } as ProgramEvent;
+    let cancelled = false;
+    server.use(
+      http.get("/api/v1/programs/prog-1/schedule-rules", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+      ),
+      http.get("/api/v1/programs/prog-1/events", () =>
+        HttpResponse.json({
+          requestId: "rid-2",
+          data: { events: cancelled ? [{ ...meeting, status: "Cancelled" }] : [meeting] },
+        })
+      ),
+      http.patch("/api/v1/programs/prog-1/events/evt-1", async ({ request }) => {
+        const body = (await request.json()) as { status?: string };
+        if (body.status === "Cancelled") cancelled = true;
+        return HttpResponse.json({
+          requestId: "rid-3",
+          data: { event: { ...meeting, status: cancelled ? "Cancelled" : "Active" } },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<EventsPanel program={RECURRING} canManage />);
+    await user.click(await screen.findByRole("button", { name: COPY.programs.cancelEvent }));
+    await expect(
+      screen.findByText(COPY.programs.cancelMeetingConfirmTitle)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cancelMeetingConfirmBody)
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.programs.keepMeeting }));
+    expect(cancelled).toBe(false);
+    expect(screen.queryByText(COPY.programs.cancelMeetingConfirmTitle)).not.toBeInTheDocument();
   });
 });

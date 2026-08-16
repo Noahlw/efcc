@@ -248,6 +248,44 @@ export function exceptionForEvent(
     ) ?? null
   );
 }
+export type RecurrenceTag = "無" | "每週" | "每月";
+
+/**
+ * Derive the informational recurrence tag for an event row.
+ * SCHEDULE events resolve against linked schedule rules ('每週' or '每月').
+ * MANUAL events return '無'.
+ */
+export function recurrenceTagForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[]
+): RecurrenceTag {
+  if (event.source !== "SCHEDULE") {
+    return "無";
+  }
+  const date = hkWallDateOf(event.starts_at);
+  const time = new Date(
+    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  )
+    .toISOString()
+    .slice(11, 16);
+  const byDate = rules.filter((rule) =>
+    rule.recurrence === "WEEKLY"
+      ? rule.day_of_week === wallWeekday(date)
+      : rule.month_day === Number(date.slice(8, 10))
+  );
+  const rule =
+    byDate.length === 1
+      ? byDate[0]
+      : (byDate.find((r) => r.start_time === time) ?? byDate[0] ?? null);
+  if (!rule) {
+    if (rules.length === 1) {
+      return rules[0].recurrence === "WEEKLY" ? "每週" : "每月";
+    }
+    return "無";
+  }
+  return rule.recurrence === "WEEKLY" ? "每週" : "每月";
+}
+
 
 const HK_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-Hant", {
   timeZone: HK_TIME_ZONE,

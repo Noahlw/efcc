@@ -201,6 +201,23 @@ const COPY = {
   lifecycle: "課程狀態",
   lifecycleActive: "啟用",
   // EVT-01 (#251): event operational detail and independent availability.
+  createMeeting: "建立聚會",
+  createMeetingValidation: "請輸入日期、時間及聚會名稱。",
+  eventDate: "日期",
+  eventTime: "時間",
+  eventType: "類型",
+  eventTypeTraining: "訓練",
+  recurrenceTag: "重複標記",
+  recurrenceNone: "無",
+  repeatInformational: "「重複標記」只作顯示參考，不會自動生成其他聚會。",
+  cancelBlockedWithAttendance:
+    "此聚會已有出席記錄，不能取消；如需更正請使用出席名單的作廢功能。",
+  cancelMeetingConfirmTitle: "取消此聚會？",
+  cancelMeetingConfirmBody:
+    "取消後此聚會不再開放簽到，記錄會保留為「已取消」。",
+  confirmCancelMeeting: "取消聚會",
+  keepMeeting: "保留聚會",
+  secondaryGeneratorLabel: "按時間表預覽及產生聚會",
   eventCreate: "新增聚會",
   eventCreateSubmit: "建立聚會",
   eventDetailBack: "返回聚會列表",
@@ -2652,7 +2669,6 @@ test.describe("EVT-01 event operational detail and availability", () => {
     );
     return (body.data?.enrollments ?? []) as EvtEnrollment[];
   }
-
   async function openEventsTask(
     page: Page,
     programId: string
@@ -2667,7 +2683,6 @@ test.describe("EVT-01 event operational detail and availability", () => {
       })
     ).toBeVisible();
   }
-
   async function createManualEvent(
     page: Page,
     programId: string,
@@ -2676,34 +2691,27 @@ test.describe("EVT-01 event operational detail and availability", () => {
     dateOffsetDays = 0
   ): Promise<string> {
     await openEventsTask(page, programId);
-    await page.getByRole("button", { name: COPY.eventCreate }).click();
+    await page.getByRole("button", { name: COPY.createMeeting }).click();
+    // The primary form must reject an empty submission before any D1 write.
+    await page.getByRole("button", { name: COPY.createMeeting }).last().click();
+    await expect(page.getByText(COPY.createMeetingValidation, { exact: true })).toBeVisible();
     const startsAt = eventStart(dateOffsetDays, minuteOffsetMinutes);
+    const [date, time] = startsAt.split("T");
+    await page.getByLabel(COPY.eventDate).fill(date);
+    await page.getByLabel(COPY.eventTime).fill(time);
     await page.getByLabel(COPY.eventName).fill(name);
-    await page.getByLabel(COPY.eventLocation).fill("測試場地");
-    await page.getByLabel(COPY.eventStart).fill(startsAt);
-    await page
-      .getByLabel(COPY.eventEnd)
-      .fill(eventEndMinutesLater(startsAt, 90));
-    await page
-      .getByLabel(COPY.eventCheckInWindowOpensAt)
-      .fill(eventEndMinutesLater(startsAt, -30));
-    await page
-      .getByLabel(COPY.eventCheckInWindowClosesAt)
-      .fill(eventEndMinutesLater(startsAt, 120));
-    await page.getByRole("button", { name: COPY.eventCreateSubmit }).click();
+    await page.getByLabel(COPY.eventType).selectOption(COPY.eventTypeTraining);
+    await page.getByLabel(COPY.recurrenceTag).selectOption(COPY.recurrenceNone);
+    await page.getByRole("button", { name: COPY.createMeeting }).last().click();
     await expect(page).toHaveURL(
       new RegExp(
         `/programs\\?mode=management&program=${programId}&task=events&event=[A-Za-z0-9-]+$`,
         "u"
       )
     );
-    const match = page
-      .url()
-      .match(/[?&]event=([A-Za-z0-9-]+)$/u);
+    const match = page.url().match(/[?&]event=([A-Za-z0-9-]+)$/u);
     expect(match?.[1], "create must navigate to the new event detail").toBeTruthy();
-    await expect(
-      page.getByRole("heading", { name })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name })).toBeVisible();
     return match?.[1] ?? "";
   }
 
@@ -2723,23 +2731,21 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await createManualEvent(page, programId, name, 0);
 
     const startsAt = eventStart(0, 0);
-    const endsAt = eventEndMinutesLater(startsAt, 90);
-    const opensAt = eventEndMinutesLater(startsAt, -30);
-    const closesAt = eventEndMinutesLater(startsAt, 120);
+    const endsAt = eventEndMinutesLater(startsAt, 60);
     await expect(
       page.getByRole("region", { name: COPY.eventDetailTitle })
     ).toBeVisible();
     await expect(
       page.getByText(`${hkWallLabel(startsAt)} — ${hkWallLabel(endsAt)}`)
     ).toBeVisible();
-    await expect(page.getByText(COPY.eventManualSource, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventManualSource, { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.eventTypeTraining, { exact: true }).first()
+    ).toBeVisible();
     await expect(page.getByText(COPY.eventActive, { exact: true })).toBeVisible();
     await expect(page.getByText(COPY.eventAvailable, { exact: true })).toBeVisible();
-    await expect(
-      page.getByText(
-        `${COPY.eventCheckInWindowOpensAt} ${hkWallLabel(opensAt)}；${COPY.eventCheckInWindowClosesAt} ${hkWallLabel(closesAt)}`
-      )
-    ).toBeVisible();
     await expect(page.getByText("已報名 0 人", { exact: true })).toBeVisible();
     await expect(page.getByText("已簽到 0 人", { exact: true })).toBeVisible();
     await expect(

@@ -190,6 +190,9 @@ export interface ScheduleExceptionRow {
   created_by: string | null;
   created_at: string;
 }
+export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
+export type RecurrenceTag = "無" | "每週" | "每月";
+
 export interface EventInput {
   program_id: string;
   starts_at: string;
@@ -198,6 +201,7 @@ export interface EventInput {
   availability: EventAvailability;
   source: EventSource;
   name: string | null;
+  event_type?: EventType | null;
   location: string | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
@@ -217,6 +221,7 @@ export interface EventRow {
   availability: EventAvailability;
   source: EventSource;
   name: string | null;
+  event_type: EventType | null;
   location: string | null;
   cancel_reason: string | null;
   created_by: string | null;
@@ -225,6 +230,10 @@ export interface EventRow {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleExceptionRow | null;
+  /** Derived recurrence tag (e.g. '每週' | '每月' | '無'). */
+  recurrence_tag?: RecurrenceTag | null;
+  /** Whether active check-in/attendance records exist for this event. */
+  has_attendance?: boolean;
   manual_check_in_code: string | null;
   check_in_window_opens_at: string | null;
   check_in_window_closes_at: string | null;
@@ -568,7 +577,7 @@ export interface WorkspaceStore {
   ) => Promise<number>;
   cancelEvent: (
     id: string,
-    reason: string,
+    reason: string | null,
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
@@ -579,6 +588,7 @@ export interface WorkspaceStore {
       ends_at?: string;
       name?: string | null;
       location?: string | null;
+      event_type?: EventType | null;
       check_in_window_opens_at?: string | null;
       check_in_window_closes_at?: string | null;
       availability?: EventAvailability;
@@ -593,6 +603,10 @@ export interface WorkspaceStore {
     active_enrollments: number;
     checked_in: number;
   }>;
+  countActiveAttendance: (eventId: string) => Promise<number>;
+  listActiveAttendanceEventIds: (
+    eventIds: readonly string[]
+  ) => Promise<Set<string>>;
 
   // --- EVT-02 (#252): preview plans and generation runs ---
 

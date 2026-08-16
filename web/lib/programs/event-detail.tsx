@@ -13,6 +13,7 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   EventDetail as EventDetailData,
+  EventType,
   ProgramEvent,
   ProgramLeader,
 } from "@/lib/programs/program-api";
@@ -183,11 +184,15 @@ export const EventDetail = ({
     const form = new FormData(event.currentTarget);
     const startsAt = String(form.get("starts_at") ?? "");
     const endsAt = String(form.get("ends_at") ?? "");
+    const hasAttendance =
+      detail?.event.has_attendance === true ||
+      (detail?.participant_summary.checked_in ?? 0) > 0;
     void runAction(
       () =>
         updateEvent(programId, eventId, {
           name: String(form.get("name") ?? "").trim() || null,
           location: String(form.get("location") ?? "").trim() || null,
+          event_type: (String(form.get("event_type") ?? "") || null) as EventType | null,
           starts_at: hkWallInputToIso(startsAt) ?? undefined,
           ends_at: hkWallInputToIso(endsAt) ?? undefined,
           check_in_window_opens_at: hkWallInputToIso(
@@ -202,7 +207,9 @@ export const EventDetail = ({
         // Any successful edit invalidates the prior deactivation's Undo
         // context; a stale Undo would silently re-open availability.
         setUndoAvailable(false);
-        return COPY.programs.eventSavedNotice;
+        return hasAttendance
+          ? COPY.programs.editWithAttendanceNotice
+          : COPY.programs.eventSavedNotice;
       }
     );
   };
@@ -254,18 +261,37 @@ export const EventDetail = ({
 
   const submitCancel = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const reason = String(form.get("cancel_reason") ?? "").trim();
-    if (!reason) {
-      setActionError(errorMessage(new RpcError({ code: "VALIDATION" })));
+    const hasAttendance =
+      detail?.event.has_attendance === true ||
+      (detail?.participant_summary.checked_in ?? 0) > 0;
+    if (hasAttendance) {
+      const message = COPY.programs.cancelBlockedWithAttendance;
+      setConfirmingCancel(false);
+      setActionError(message);
+      announce(message);
       return;
     }
+    const form = new FormData(event.currentTarget);
+    const reason = String(form.get("cancel_reason") ?? "").trim() || null;
     void runAction(
       () => cancelEvent(programId, eventId, reason),
       () => {
         setConfirmingCancel(false);
         setUndoAvailable(false);
         return COPY.programs.eventCancelledNotice;
+      },
+      (error) => {
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "EVENT_CANCEL_BLOCKED" ||
+            error.problem.code === "EVENT_CANCELLATION_BLOCKED")
+        ) {
+          const message = COPY.programs.cancelBlockedWithAttendance;
+          setActionError(message);
+          announce(message);
+          return true;
+        }
+        return false;
       }
     );
   };
@@ -294,11 +320,14 @@ export const EventDetail = ({
   }
   const { event, leaders, participant_summary } = detail;
   const cancelled = event.status === "Cancelled";
+  const hasAttendance =
+    event.has_attendance === true || participant_summary.checked_in > 0;
 
   return (
     <section
       className={styles.workspaceTask}
       aria-label={COPY.programs.eventDetailTitle}
+      aria-busy={busy}
     >
       <button
         type="button"
@@ -308,7 +337,7 @@ export const EventDetail = ({
         {COPY.programs.eventDetailBack}
       </button>
       {notice !== null && (
-        <output className={styles.panelNotice}>
+        <output className={styles.panelNotice} aria-live="polite">
           <span>{notice}</span>
           {undoAvailable && !cancelled && (
             <button
@@ -341,6 +370,15 @@ export const EventDetail = ({
             {event.source === "SCHEDULE"
               ? COPY.programs.eventScheduleSource
               : COPY.programs.eventManualSource}
+          </span>
+          <span className={styles.eventSource}>
+            {event.event_type ?? COPY.programs.eventTypeOptions[5]}
+          </span>
+          <span className={styles.eventSource}>
+            {COPY.programs.repeatLabel.replace(
+              "{tag}",
+              event.recurrence_tag ?? COPY.programs.recurrenceNone
+            )}
           </span>
           <span
             className={cancelled ? styles.eventCancelled : styles.eventActive}
@@ -520,6 +558,46 @@ export const EventDetail = ({
                   />
                 </label>
                 <label className={styles.ruleField}>
+                  <span>{COPY.programs.eventType}</span>
+                  <select
+                    name="event_type"
+                    defaultValue={
+                      event.event_type ?? COPY.programs.eventTypeOptions[0]
+                    }
+                    aria-label={COPY.programs.eventType}
+                  >
+                    {COPY.programs.eventTypeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.ruleField}>
+                  <span>{COPY.programs.recurrenceTag}</span>
+                  <select
+                    name="recurrence_tag"
+                    defaultValue={
+                      event.recurrence_tag ?? COPY.programs.recurrenceNone
+                    }
+                    aria-label={COPY.programs.recurrenceTag}
+                    disabled
+                  >
+                    <option value={COPY.programs.recurrenceNone}>
+                      {COPY.programs.recurrenceNone}
+                    </option>
+                    <option value={COPY.programs.recurrenceWeekly}>
+                      {COPY.programs.recurrenceWeekly}
+                    </option>
+                    <option value={COPY.programs.recurrenceMonthly}>
+                      {COPY.programs.recurrenceMonthly}
+                    </option>
+                  </select>
+                </label>
+                <p className={styles.programDetailMuted}>
+                  {COPY.programs.repeatFormInformational}
+                </p>
+                <label className={styles.ruleField}>
                   <span>{COPY.programs.eventLocation}</span>
                   <input
                     type="text"
@@ -606,12 +684,21 @@ export const EventDetail = ({
               {COPY.programs.cancelEvent}
             </h4>
             {confirmingCancel ? (
-              <form className={styles.cancelForm} onSubmit={submitCancel}>
-                <div ref={cancelConfirmRef}>
+              <form
+                className={styles.cancelForm}
+                noValidate
+                onSubmit={submitCancel}
+              >
+                <div
+                  ref={cancelConfirmRef}
+                  className={styles.confirmation}
+                  role="alert"
+                >
+                  <strong>{COPY.programs.cancelMeetingConfirmTitle}</strong>
+                  <span>{COPY.programs.cancelMeetingConfirmBody}</span>
                   <input
                     type="text"
                     name="cancel_reason"
-                    required
                     placeholder={COPY.programs.cancelReasonPlaceholder}
                     aria-label={COPY.programs.cancelReason}
                   />
@@ -620,7 +707,7 @@ export const EventDetail = ({
                     disabled={busy}
                     className={styles.dangerButton}
                   >
-                    {COPY.programs.confirmCancelEvent}
+                    {COPY.programs.confirmCancel}
                   </button>
                   <button
                     type="button"
@@ -628,7 +715,7 @@ export const EventDetail = ({
                     disabled={busy}
                     onClick={() => setConfirmingCancel(false)}
                   >
-                    {COPY.programs.keepEvent}
+                    {COPY.programs.keepMeeting}
                   </button>
                 </div>
               </form>
@@ -637,7 +724,15 @@ export const EventDetail = ({
                 type="button"
                 className={styles.dangerOutline}
                 disabled={busy}
-                onClick={() => setConfirmingCancel(true)}
+                onClick={() => {
+                  if (hasAttendance) {
+                    const message = COPY.programs.cancelBlockedWithAttendance;
+                    setActionError(message);
+                    announce(message);
+                    return;
+                  }
+                  setConfirmingCancel(true);
+                }}
               >
                 {COPY.programs.cancelEvent}
               </button>

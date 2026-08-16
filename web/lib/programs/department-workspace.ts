@@ -42,8 +42,8 @@ import {
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
+  EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
-  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
@@ -61,6 +61,7 @@ import {
 } from "./program-errors";
 import {
   exceptionForEvent,
+  recurrenceTagForEvent,
   hkTodayWallDate,
   previewOccurrencesForRule,
 } from "./recurrence";
@@ -80,6 +81,7 @@ import type {
   EnrollmentRow,
   EventAvailability,
   EventRow,
+  EventType,
   GenerateResult,
   GenerationRunItemRow,
   PreviewOccurrenceRow,
@@ -537,6 +539,7 @@ export interface CreateEventCommand {
   starts_at: string;
   ends_at: string;
   name: string | null;
+  event_type?: EventType | null;
   location: string | null;
   check_in_window_opens_at: string | null;
   check_in_window_closes_at: string | null;
@@ -547,6 +550,7 @@ export interface UpdateEventCommand {
   ends_at?: string;
   name?: string | null;
   location?: string | null;
+  event_type?: EventType | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
 }
@@ -557,7 +561,7 @@ export interface SetEventAvailabilityCommand {
 }
 
 export interface CancelEventCommand {
-  reason: string;
+  reason?: string | null;
 }
 
 export interface DecideEnrollmentRequestCommand {
@@ -2331,11 +2335,26 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const [leaders, participant_summary] = await Promise.all([
+    const [leaders, participant_summary, rules] = await Promise.all([
       this.store.listProgramLeaders(program.program_id),
       this.store.getEventParticipantSummary(event.event_id, program.program_id),
+      this.store.listScheduleRules(program.program_id),
     ]);
-    return { event, leaders, participant_summary };
+    const exceptions =
+      rules.length === 0
+        ? []
+        : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
+    const exception =
+      (exceptionForEvent(event, rules, exceptions) as ScheduleExceptionRow | null) ??
+      null;
+    const recurrence_tag = recurrenceTagForEvent(event, rules);
+    const decoratedEvent: EventRow = {
+      ...event,
+      exception,
+      recurrence_tag,
+      has_attendance: participant_summary.checked_in > 0,
+    };
+    return { event: decoratedEvent, leaders, participant_summary };
   }
 
   async createScheduleRule(
@@ -3063,6 +3082,7 @@ export class DepartmentWorkspace {
       availability: "Active",
       source: "MANUAL",
       name: cmd.name,
+      event_type: cmd.event_type ?? null,
       location: cmd.location,
       check_in_window_opens_at: cmd.check_in_window_opens_at,
       check_in_window_closes_at: cmd.check_in_window_closes_at,
@@ -3082,7 +3102,7 @@ export class DepartmentWorkspace {
       row,
       correlationId
     );
-    return row;
+    return { ...row, recurrence_tag: "無", has_attendance: false };
   }
 
   async listEvents(
@@ -3128,10 +3148,14 @@ export class DepartmentWorkspace {
   private async decorateEventsWithExceptions(
     rows: EventRow[]
   ): Promise<EventRow[]> {
-    const rules = await this.store.listScheduleRules(rows[0].program_id);
-    const exceptions = await this.store.listScheduleExceptions(
-      rules.map((r) => r.rule_id)
-    );
+    const [rules, attendanceSet] = await Promise.all([
+      this.store.listScheduleRules(rows[0].program_id),
+      this.store.listActiveAttendanceEventIds(rows.map((r) => r.event_id)),
+    ]);
+    const exceptions =
+      rules.length === 0
+        ? []
+        : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
     return rows.map((row) => ({
       ...row,
       // The attributed exception is a read-only projection: provenance
@@ -3143,6 +3167,8 @@ export class DepartmentWorkspace {
           rules,
           exceptions
         ) as ScheduleExceptionRow | null) ?? null,
+      recurrence_tag: recurrenceTagForEvent(row, rules),
+      has_attendance: attendanceSet.has(row.event_id),
     }));
   }
   async updateEvent(
@@ -3161,30 +3187,8 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const reschedules =
-      (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) ||
-      (cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at);
-    let hasCheckedIn = false;
-    if (reschedules) {
-      const summary = await this.store.getEventParticipantSummary(
-        eventId,
-        event.program_id
-      );
-      hasCheckedIn = summary.checked_in > 0;
-    }
-    if (hasCheckedIn) {
-      await this.audit(
-        ctx,
-        "EVENT_UPDATE",
-        "event",
-        eventId,
-        "CONFLICT",
-        event,
-        { reason: "attendance_exists" },
-        correlationId
-      );
-      throw new EventRescheduleBlockedError(eventId);
-    }
+    // Spec US 12: edits when attendance already exists must succeed and be
+    // recorded (no data loss; audit trail preserved).
     if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
       const duplicate = await this.store.findEventByStart(
         event.program_id,
@@ -3326,13 +3330,46 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    // Cancellation is blocked while any attendance row remains Active.
+    const activeAttendanceCount =
+      await this.store.countActiveAttendance(eventId);
+    if (activeAttendanceCount > 0) {
+      await this.audit(
+        ctx,
+        "EVENT_CANCEL",
+        "event",
+        eventId,
+        "CONFLICT",
+        event,
+        { reason: "active_attendance", active_attendance_count: activeAttendanceCount },
+        correlationId
+      );
+      throw new EventCancellationBlockedError(activeAttendanceCount);
+    }
     const updated = await this.store.cancelEvent(
       eventId,
-      cmd.reason,
+      cmd.reason ?? null,
       ctx.actorUserId,
       new Date().toISOString()
     );
     if (!updated) {
+      const activeAttendanceAfterRace =
+        event.status === "Active"
+          ? await this.store.countActiveAttendance(eventId)
+          : 0;
+      if (activeAttendanceAfterRace > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_CANCEL",
+          "event",
+          eventId,
+          "CONFLICT",
+          event,
+          { reason: "active_attendance", active_attendance_count: activeAttendanceAfterRace },
+          correlationId
+        );
+        throw new EventCancellationBlockedError(activeAttendanceAfterRace);
+      }
       await this.audit(
         ctx,
         "EVENT_CANCEL",
