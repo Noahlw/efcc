@@ -86,6 +86,7 @@ describe(AttendanceOperatorPanel, () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
   afterEach(() => {
     cleanup();
+    window.history.replaceState(null, "", "/");
     server.resetHandlers();
   });
 
@@ -94,7 +95,7 @@ describe(AttendanceOperatorPanel, () => {
   test("assisted check-in announces success and keeps the notice after roster reload", async () => {
     let rosterCalls = 0;
     server.use(
-      http.get("/api/v1/attendance/events", () =>
+      http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json({
           requestId: "rid-list",
           data: { events: [ACTIVE] },
@@ -127,11 +128,7 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    await screen.findByLabelText(COPY.attendance.chooseEvent);
-    await user.selectOptions(
-      screen.getByLabelText(COPY.attendance.chooseEvent),
-      ACTIVE.event_id
-    );
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
     await waitFor(() =>
       expect(screen.getByLabelText(COPY.attendance.memberSearch)).toBeVisible()
     );
@@ -164,7 +161,7 @@ describe(AttendanceOperatorPanel, () => {
 
   test("cancelled event: chooser suffix, notice, and no check-in controls", async () => {
     server.use(
-      http.get("/api/v1/attendance/events", () =>
+      http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json({
           requestId: "rid-list",
           data: { events: [ACTIVE, CANCELLED] },
@@ -176,14 +173,12 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    await screen.findByRole("option", {
-      name: new RegExp(`（${COPY.programs.eventCancelled}）`, "u"),
-    });
-
-    await user.selectOptions(
-      screen.getByLabelText(COPY.attendance.chooseEvent),
-      CANCELLED.event_id
-    );
+    const cancelledButton = (
+      await screen.findAllByRole("button", {
+        name: /週六聚會/u,
+      })
+    )[1];
+    await user.click(cancelledButton);
     await screen.findByText(COPY.attendance.eventCancelled);
     expect(
       screen.queryByLabelText(COPY.attendance.memberSearch)
@@ -191,15 +186,12 @@ describe(AttendanceOperatorPanel, () => {
     expect(
       screen.queryByRole("button", { name: COPY.attendance.camera })
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: COPY.attendance.printSheet })
-    ).not.toBeInTheDocument();
   });
 
   test("operator voids an active attendance row with reason", async () => {
     let voided = false;
     server.use(
-      http.get("/api/v1/attendance/events", () =>
+      http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json({
           requestId: "rid-list",
           data: { events: [ACTIVE] },
@@ -231,23 +223,23 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    await screen.findByLabelText(COPY.attendance.chooseEvent);
-    await user.selectOptions(
-      screen.getByLabelText(COPY.attendance.chooseEvent),
-      ACTIVE.event_id
-    );
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
 
-    await screen.findByText(MEMBER.user_id);
+    await screen.findAllByText(MEMBER.user_id);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    );
     await user.type(
       screen.getByLabelText(COPY.attendance.voidReason),
       "輸入錯誤"
     );
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.void })
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
     );
 
     await waitFor(() => {
-      expect(screen.getByText(COPY.attendance.status.Voided)).toBeVisible();
+      expect(voided).toBe(true);
+      expect(screen.getAllByText(COPY.attendance.voidSuccess)[0]).toBeVisible();
     });
   });
 
@@ -269,7 +261,7 @@ describe(AttendanceOperatorPanel, () => {
     };
     let corrected = false;
     server.use(
-      http.get("/api/v1/attendance/events", () =>
+      http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json({
           requestId: "rid-list",
           data: { events: [ACTIVE] },
@@ -314,13 +306,8 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    await screen.findByLabelText(COPY.attendance.chooseEvent);
-    await user.selectOptions(
-      screen.getByLabelText(COPY.attendance.chooseEvent),
-      ACTIVE.event_id
-    );
-
-    await screen.findByText("舊訪客名");
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText("舊訪客名");
     await user.click(
       screen.getByRole("button", { name: COPY.attendance.correctGuest })
     );
@@ -328,11 +315,9 @@ describe(AttendanceOperatorPanel, () => {
     const nameInput = screen.getByDisplayValue("舊訪客名");
     await user.clear(nameInput);
     await user.type(nameInput, "新訪客名");
-
     const phoneInput = screen.getByDisplayValue("9111 2222");
     await user.clear(phoneInput);
     await user.type(phoneInput, "9222 3333");
-
     await user.type(
       screen.getByLabelText(COPY.attendance.correctionReason),
       "更正電話"
@@ -342,14 +327,13 @@ describe(AttendanceOperatorPanel, () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("新訪客名")).toBeVisible();
-      expect(screen.getByText("9222 3333")).toBeVisible();
+      expect(screen.getAllByText("新訪客名")[0]).toBeVisible();
+      expect(screen.getAllByText("9222 3333")[0]).toBeVisible();
     });
   });
-
   test("operator panel surfaces error tone and recovers when void fails", async () => {
     server.use(
-      http.get("/api/v1/attendance/events", () =>
+      http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json({
           requestId: "rid-list",
           data: { events: [ACTIVE] },
@@ -377,19 +361,17 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    await screen.findByLabelText(COPY.attendance.chooseEvent);
-    await user.selectOptions(
-      screen.getByLabelText(COPY.attendance.chooseEvent),
-      ACTIVE.event_id
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
     );
-
-    await screen.findByText(MEMBER.user_id);
     await user.type(
       screen.getByLabelText(COPY.attendance.voidReason),
       "嘗試作廢"
     );
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.void })
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
     );
 
     const errorOutputs = await screen.findAllByText(COPY.error.forbidden);
@@ -398,10 +380,9 @@ describe(AttendanceOperatorPanel, () => {
       (el) => el.dataset.tone === "error"
     );
     expect(visibleOutput).toBeDefined();
-    // Roster remains visible and intact; no optimistic deletion occurs on failure.
-    expect(screen.getByText(MEMBER.user_id)).toBeVisible();
+    expect(screen.getAllByText(MEMBER.user_id)[0]).toBeVisible();
     expect(
-      screen.getByRole("button", { name: COPY.attendance.void })
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
     ).toBeEnabled();
   });
 });

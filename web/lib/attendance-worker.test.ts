@@ -1069,12 +1069,28 @@ describe("attendance Worker routes", () => {
       events: {
         event_id: string;
         program_name: string;
+        name: string | null;
+        location: string | null;
+        starts_at: string;
+        ends_at: string;
         availability: string;
         status: string;
         check_in_window_opens_at: string;
         check_in_window_closes_at: string;
       }[];
     };
+    const eventWithChooserDetails = events.find(
+      (event) => event.event_id === EVENT
+    );
+    assert.ok(eventWithChooserDetails);
+    assert.strictEqual(
+      eventWithChooserDetails.program_name,
+      "Attendance Test"
+    );
+    assert.strictEqual(eventWithChooserDetails.name, "週六團契");
+    assert.strictEqual(eventWithChooserDetails.location, "主堂");
+    assert.ok(eventWithChooserDetails.starts_at);
+    assert.ok(eventWithChooserDetails.ends_at);
     assert.ok(events.some((event) => event.event_id === EVENT));
     assert.ok(events.some((event) => event.program_name === "Attendance Test"));
     assert.ok(
@@ -1536,6 +1552,53 @@ describe("attendance Worker routes", () => {
     });
   });
 
+  test("guest correction requires a non-blank reason (422 VALIDATION)", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客更正原因測試",
+          phone: "6222 9001",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 201);
+    const checkInBody = await json(checkIn);
+    const { attendance_id } = checkInBody.data as { attendance_id: string };
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          name: "訪客更正原因測試改",
+          phone: "6222 9002",
+          reason: "   ",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+    const responseBody = await json(response);
+    assert.strictEqual(responseBody.code, "VALIDATION");
+
+    const row = await testDb()
+      .prepare(
+        "SELECT guest_name, guest_phone FROM attendances WHERE attendance_id = ?"
+      )
+      .bind(attendance_id)
+      .first<{ guest_name: string; guest_phone: string }>();
+    assert.deepStrictEqual(row, {
+      guest_name: "訪客更正原因測試",
+      guest_phone: "6222 9001",
+    });
+  });
+
   test("void requires a non-blank reason (422 VALIDATION)", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const checkIn = await worker.fetch(
@@ -1654,6 +1717,21 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(checkIn.status, 201);
     const checkInBody = await json(checkIn);
     const { attendance_id } = checkInBody.data as { attendance_id: string };
+    const beforeRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(beforeRoster.status, 200);
+    const beforeRosterBody = await json(beforeRoster);
+    const beforeRosterData = beforeRosterBody.data as {
+      attendances: { attendance_id: string; status: string }[];
+    };
+    const beforeRows = beforeRosterData.attendances;
+    const beforeLiveCount = beforeRows.filter(
+      (row) => row.status === "Active"
+    ).length;
 
     const firstVoid = await worker.fetch(
       request(`/api/v1/attendance/${attendance_id}/void`, {
@@ -1669,6 +1747,28 @@ describe("attendance Worker routes", () => {
       (firstVoidBody.data as { outcome: string }).outcome,
       "voided"
     );
+    const afterRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(afterRoster.status, 200);
+    const afterRosterBody = await json(afterRoster);
+    const afterRosterData = afterRosterBody.data as {
+      attendances: { attendance_id: string; status: string }[];
+    };
+    const afterRows = afterRosterData.attendances;
+    assert.strictEqual(afterRows.length, beforeRows.length);
+    assert.strictEqual(
+      afterRows.filter((row) => row.status === "Active").length,
+      beforeLiveCount - 1
+    );
+    const preservedRow = afterRows.find(
+      (row) => row.attendance_id === attendance_id
+    );
+    assert.ok(preservedRow, "voided attendance remains in the roster");
+    assert.strictEqual(preservedRow.status, "Voided");
 
     const voidRow = await testDb()
       .prepare(

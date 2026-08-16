@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/lib/app-shell";
+import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
 
 import { CheckinSettings } from "./checkin-settings";
@@ -10,22 +11,29 @@ import { ManagementHub } from "./management-hub";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
 
-function ManagementModule() {
+const ManagementModule = () => {
   const module = useSearchParams().get("module");
 
   switch (module) {
-    case "settings":
+    case "attendance": {
+      return <AttendanceOperatorPanel />;
+    }
+    case "settings": {
       return <SettingsHub />;
-    case "checkin-settings":
+    }
+    case "checkin-settings": {
       return <CheckinSettings />;
-    case "timezone-settings":
+    }
+    case "timezone-settings": {
       return <TimezoneSettings />;
-    default:
+    }
+    default: {
       return <ManagementHub />;
+    }
   }
-}
+};
 
-export default function ManagementPage() {
+const ManagementPage = () => {
   return (
     <AppShell>
       <GuardedSection sectionKey="management">
@@ -33,4 +41,6 @@ export default function ManagementPage() {
       </GuardedSection>
     </AppShell>
   );
-}
+};
+
+export default ManagementPage;

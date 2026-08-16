@@ -43,6 +43,7 @@ export default defineProject({
       "lib/programs/participant-enrollment.test.tsx",
       "lib/attendance-panel.test.tsx",
       "lib/attendance-operator-panel.test.tsx",
+      "lib/attendance-roster.test.tsx",
       "lib/self-check-in-panel.test.tsx",
       "lib/use-qr-camera.test.tsx",
       "lib/scanner-intent.test.ts",

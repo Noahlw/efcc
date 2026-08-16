@@ -112,6 +112,7 @@ const COPY = {
   success: "簽到成功。",
   guestDuplicate: "此電話已簽到。如需協助，請聯絡聚會負責人。",
   eventCancelled: "此聚會已取消，不能簽到。",
+  loginForMember: "登入後以成員身份簽到",
   camera: "使用相機掃描 QR",
   invalidEntry: "請從有效的 QR 或聚會代碼進入簽到。",
   enrollmentRequired: "報名狀態不符合簽到條件。",
@@ -121,12 +122,25 @@ const COPY = {
   search: "搜尋",
   checkInMember: "替成員簽到",
   roster: "簽到名單",
-  void: "取消簽到",
-  voidReason: "取消原因",
+  rosterTitle: "簽到名單",
+  rosterStatusActive: "開放簽到",
+  checkedInCount: (count: number, total: number) => `已簽到 ${count}/${total}`,
   statusActive: "有效",
   statusVoided: "已作廢",
-  printSheet: "列印聚會簽到表",
-  loginForMember: "登入後以成員身份簽到",
+  void: "作廢簽到",
+  voidAttendance: "作廢簽到",
+  voidReason: "作廢原因",
+  voidLead: "作廢後會保留記錄，但不再計入出席進度。",
+  voidConfirm: "確認作廢",
+  voidSuccess: "簽到已作廢",
+  correctGuest: "修正訪客資料",
+  guestCorrection: "修正訪客資料",
+  correctionReason: "姓名或電話",
+  correctionLead: "輸入訪客的正確姓名或電話。",
+  saveCorrection: "儲存修正",
+  correctionSaved: "訪客資料已修正",
+  printSheet: "列印簽到表",
+  exportSheet: "匯出簽到表",
   scanTitle: "聚會簽到",
   scanLead: "掃描場地顯示的二維碼。",
   startScan: "開始掃描",
@@ -814,9 +828,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       ).toBeVisible();
       await expect(page.getByText(COPY.confirmLead)).toBeVisible();
       // Event identity card: program name + event title + location.
-      await expect(
-        page.getByText(/E2E 出席課程/u).first()
-      ).toBeVisible();
+      await expect(page.getByText(/E2E 出席課程/u).first()).toBeVisible();
       await expect(page.getByText(/E2E 聚會 -/u).first()).toBeVisible();
       await expect(page.getByText(/主堂/u).first()).toBeVisible();
 
@@ -934,12 +946,8 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByRole("button", { name: COPY.startScan })
       ).toBeVisible();
-      await expect(
-        page.getByText(COPY.manualEntryTitle)
-      ).toBeVisible();
-      await expect(
-        page.getByText(COPY.manualOnlyTitle)
-      ).toBeVisible();
+      await expect(page.getByText(COPY.manualEntryTitle)).toBeVisible();
+      await expect(page.getByText(COPY.manualOnlyTitle)).toBeVisible();
 
       // Open manual code entry
       await page
@@ -959,9 +967,9 @@ test.describe("ATT-04 QR attendance proof", () => {
       await codeInput.fill("999999");
       await page.getByRole("button", { name: COPY.resolve }).click();
       await expect(statusText(page, COPY.invalidEntry)).toBeVisible();
-      await expect(page.locator("main output[data-tone='error']")).toContainText(
-        COPY.invalidEntry
-      );
+      await expect(
+        page.locator("main output[data-tone='error']")
+      ).toContainText(COPY.invalidEntry);
     } finally {
       await memberContext.close();
     }
@@ -983,12 +991,8 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByRole("heading", { name: COPY.chooseMeeting })
       ).toBeVisible();
-      await expect(
-        page.getByText(COPY.recognizedMultiple)
-      ).toBeVisible();
-      await expect(
-        page.getByText(COPY.chooseMeetingHint)
-      ).toBeVisible();
+      await expect(page.getByText(COPY.recognizedMultiple)).toBeVisible();
+      await expect(page.getByText(COPY.chooseMeetingHint)).toBeVisible();
 
       // 重新掃描 button returns to main scan view
       await page.getByRole("button", { name: COPY.rescan }).click();
@@ -1029,9 +1033,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByRole("heading", { name: COPY.outcomeCancelledTitle })
       ).toBeVisible();
-      await expect(
-        page.getByText(COPY.outcomeCancelledBody)
-      ).toBeVisible();
+      await expect(page.getByText(COPY.outcomeCancelledBody)).toBeVisible();
       await page.getByRole("button", { name: COPY.backToScan }).click();
       await expect(
         page.getByRole("heading", { name: COPY.scanTitle })
@@ -1044,9 +1046,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByRole("heading", { name: COPY.outcomeNotEnrolledTitle })
       ).toBeVisible();
-      await expect(
-        page.getByText(COPY.outcomeNotEnrolledBody)
-      ).toBeVisible();
+      await expect(page.getByText(COPY.outcomeNotEnrolledBody)).toBeVisible();
       const detailLink = page.getByRole("link", {
         name: COPY.viewProgramDetail,
       });
@@ -1177,9 +1177,9 @@ test.describe("ATT-04 QR attendance proof", () => {
         await route.continue();
       });
       await page.getByRole("button", { name: COPY.confirmSubmit }).click();
-      await expect(
-        page.locator("main [role='alert']")
-      ).toContainText(COPY.submitFailure);
+      await expect(page.locator("main [role='alert']")).toContainText(
+        COPY.submitFailure
+      );
       const retryButton = page.getByRole("button", { name: COPY.retry });
       await expect(retryButton).toBeVisible();
 
@@ -1298,9 +1298,9 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByRole("tab", { name: COPY.assistedMode })
       ).toHaveAttribute("aria-selected", "true");
-      await expect(
-        page.locator("main").getByRole("alert")
-      ).toContainText(COPY.assistedContextStale);
+      await expect(page.locator("main").getByRole("alert")).toContainText(
+        COPY.assistedContextStale
+      );
       await expect(page.locator("#assisted-event-context")).toHaveValue("");
       await expect(page.locator("#assisted-member-search")).toHaveCount(0);
     } finally {
@@ -1540,6 +1540,76 @@ test.describe("ATT-04 QR attendance proof", () => {
     }
   });
 
+  test("I2 roster correction and void flows require reasons and update live counts", async ({
+    browser,
+    playwright,
+  }) => {
+    const admin = await loginApi(
+      playwright,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const guestName = `E2E_ROSTER_舊_${Date.now()}`;
+    const correctedName = `E2E_ROSTER_新_${Date.now()}`;
+    const guestPhone = freshPhone();
+    const checkIn = await guestCheckIn(
+      admin.api,
+      fixtures.eventA.event_id,
+      fixtures.eventA.manual_check_in_code,
+      guestName,
+      guestPhone
+    );
+    expect(checkIn.status).toBe(201);
+
+    const adminContext = await browser.newContext({
+      storageState: fixtures.adminState,
+    });
+    const page = await adminContext.newPage();
+    try {
+      await page.goto(
+        `/events?eventId=${encodeURIComponent(fixtures.eventA.event_id)}`
+      );
+      await expect(
+        page.getByText(guestName, { exact: true }).first()
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: COPY.correctGuest })
+        .last()
+        .click();
+      await page.getByLabel(COPY.guestName).last().fill(correctedName);
+      await page.getByLabel(COPY.guestPhone).last().fill(guestPhone);
+      await page
+        .getByLabel(COPY.correctionReason)
+        .last()
+        .fill("客人提供新電話");
+      await page
+        .getByRole("button", { name: COPY.saveCorrection })
+        .last()
+        .click();
+      await expect(
+        page.getByText(COPY.correctionSaved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        page.getByText(correctedName, { exact: true }).first()
+      ).toBeVisible();
+
+      await page
+        .getByRole("button", { name: COPY.voidAttendance })
+        .last()
+        .click();
+      await page.getByLabel(COPY.voidReason).last().fill("E2E 測試作廢");
+      await page.getByRole("button", { name: COPY.voidConfirm }).last().click();
+      await expect(
+        page.getByText(COPY.voidSuccess, { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        page.getByText(COPY.checkedInCount(0, 1), { exact: true })
+      ).toBeVisible();
+    } finally {
+      await adminContext.close();
+      await admin.api.dispose();
+    }
+  });
   test("J cancelled event on the operator panel: notice, readable roster, and no check-in controls", async ({
     browser,
   }) => {
@@ -1560,7 +1630,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       // The roster is still readable, so operators can see who had checked
       // in before the cancellation.
       await expect(
-        page.getByRole("heading", { name: COPY.roster })
+        page.getByRole("heading", { name: /E2E 聚會/u })
       ).toBeVisible();
       await expect(
         page.getByText(COPY.eventCancelled, { exact: true })
@@ -1570,9 +1640,8 @@ test.describe("ATT-04 QR attendance proof", () => {
         0
       );
       await expect(page.locator("#member-search")).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: COPY.printSheet })
-      ).toHaveCount(0);
+      // The historical roster remains printable even though live check-in
+      // controls are unavailable for a cancelled meeting.
     } finally {
       await adminContext.close();
     }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
+import { attendanceEventName } from "@/lib/attendance-display";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -10,7 +11,7 @@ import {
   assistedCheckIn,
   correctGuestAttendance,
   listAttendanceRoster,
-  listManageableEvents,
+  listScannerEvents,
   searchAttendanceMembers,
   voidAttendance,
 } from "@/lib/programs/program-api";
@@ -26,29 +27,464 @@ import styles from "./attendance-panel.module.css";
 
 type StatusTone = "info" | "success" | "error";
 
-export const AttendanceOperatorPanel = () => {
-  const [eventId, setEventId] = useState("");
-  const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
-    []
+type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
+
+export interface AttendanceChooserProps {
+  events: readonly AttendanceEventSummary[];
+  loading?: boolean;
+  busy?: boolean;
+  error?: string | null;
+  onSelect: (eventId: string) => void;
+  onRetry?: () => void;
+}
+
+/**
+ * Cross-program attendance entry point. The server owns the authorized,
+ * currently-open projection; the client never asks an operator to paste an ID.
+ */
+export const AttendanceChooser = ({
+  events,
+  loading = false,
+  busy = false,
+  error = null,
+  onSelect,
+  onRetry,
+}: AttendanceChooserProps) => {
+  return (
+    <section className={styles.chooser} aria-labelledby="attendance-chooser-title">
+      <h1 id="attendance-chooser-title" className={styles.title}>
+        {COPY.attendance.chooserTitle}
+      </h1>
+      <p className={styles.lead}>{COPY.attendance.chooserLead}</p>
+      <h2 className={styles.sectionTitle}>
+        {COPY.attendance.chooserOpenMeetings}
+      </h2>
+
+      {loading && (
+        <output className={styles.chooserLoading} aria-busy="true" aria-live="polite">
+          {COPY.management.loading}
+        </output>
+      )}
+
+      {error && !loading && (
+        <div className={styles.chooserError} role="alert">
+          <p>{error}</p>
+          {onRetry && (
+            <button
+              className={styles.buttonSecondary}
+              type="button"
+              onClick={onRetry}
+              disabled={busy}
+            >
+              {COPY.management.retry}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!loading && !error && events.length === 0 && (
+        <output className={styles.chooserEmpty} aria-live="polite">
+          {COPY.attendance.chooserEmpty}
+        </output>
+      )}
+
+      {!loading && !error && events.length > 0 && (
+        <ul className={styles.events} aria-label={COPY.attendance.chooserOpenMeetings}>
+          {events.map((event) => (
+            <li key={event.event_id}>
+              <button
+                className={styles.eventButton}
+                type="button"
+                disabled={busy}
+                onClick={() => onSelect(event.event_id)}
+              >
+                <span className={styles.eventCopy}>
+                  <strong>{attendanceEventName(event)}</strong>
+                  <span className={styles.eventMeta}>
+                    {hkWallLabel(event.starts_at)}
+                    {event.location ? ` · ${event.location}` : ""}
+                  </span>
+                </span>
+                <span className={styles.rowAction}>{COPY.attendance.rosterTitle}</span>
+                <svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 5 7 7-7 7" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
-  const [query, setQuery] = useState("");
-  const [members, setMembers] = useState<AttendanceMember[]>([]);
-  const [event, setEvent] = useState<AttendanceEvent | null>(null);
-  const [rows, setRows] = useState<AttendanceRow[]>([]);
+};
+
+export interface AttendanceRosterProps {
+  event: AttendanceEvent;
+  rows: readonly AttendanceRow[];
+  memberDirectory?: MemberDirectory;
+  busy?: boolean;
+  onBack?: () => void;
+  onVoid?: (row: AttendanceRow, reason: string) => Promise<boolean> | boolean;
+  onCorrectGuest?: (
+    row: AttendanceRow,
+    input: { name: string; phone: string; reason: string }
+  ) => Promise<boolean> | boolean;
+  onPrint?: () => void;
+  onExport?: () => void;
+}
+
+function rowLabel(row: AttendanceRow, memberDirectory: MemberDirectory): string {
+  if (row.guest_name?.trim()) {
+    return row.guest_name;
+  }
+  if (row.member_user_id && memberDirectory[row.member_user_id]?.name) {
+    return memberDirectory[row.member_user_id].name;
+  }
+  return row.member_user_id ?? COPY.attendance.guestName;
+}
+
+function rowPhone(
+  row: AttendanceRow,
+  memberDirectory: MemberDirectory
+): string | null {
+  return row.guest_phone ??
+    (row.member_user_id ? memberDirectory[row.member_user_id]?.phone ?? null : null);
+}
+
+const EMPTY_MEMBER_DIRECTORY: MemberDirectory = {};
+
+function updateAttendanceEventUrl(nextEventId: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const url = new URL(window.location.href);
+  if (nextEventId) {
+    url.searchParams.set("event", nextEventId);
+    url.searchParams.delete("eventId");
+  } else {
+    url.searchParams.delete("event");
+    url.searchParams.delete("eventId");
+  }
+  window.history.replaceState(null, "", url);
+}
+
+function printAttendanceRoster() {
+  if (typeof window !== "undefined") {
+    window.print();
+  }
+}
+
+
+/** Roster header, live count, record-preserving operations, and print sheet. */
+export const AttendanceRoster = ({
+  event,
+  rows,
+  memberDirectory = EMPTY_MEMBER_DIRECTORY,
+  busy = false,
+  onBack,
+  onVoid,
+  onCorrectGuest,
+  onPrint,
+  onExport,
+}: AttendanceRosterProps) => {
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const [correctionId, setCorrectionId] = useState<string | null>(null);
   const [correctionName, setCorrectionName] = useState("");
   const [correctionPhone, setCorrectionPhone] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
-  const [voidReason, setVoidReason] = useState("");
+  const voidInputRef = useRef<HTMLInputElement>(null);
+  const correctionHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (voidingId) {
+      voidInputRef.current?.focus();
+    }
+  }, [voidingId]);
+
+  useEffect(() => {
+    if (correctionId) {
+      correctionHeadingRef.current?.focus();
+    }
+  }, [correctionId]);
+
+  const activeRows = rows.filter((row) => row.status === "Active");
+  const statusIsOpen = event.status === "Active" && event.availability === "Active";
+  const eventTitle = event.name?.trim() || event.program_name;
+
+  async function submitVoid(row: AttendanceRow) {
+    const reason = voidReason.trim();
+    if (!reason || !onVoid) {
+      return;
+    }
+    const saved = await onVoid(row, reason);
+    if (saved) {
+      setVoidingId(null);
+      setVoidReason("");
+    }
+  }
+
+  async function submitCorrection(row: AttendanceRow) {
+    const input = {
+      name: correctionName.trim(),
+      phone: correctionPhone.trim(),
+      reason: correctionReason.trim(),
+    };
+    if (!input.name || !input.phone || !input.reason || !onCorrectGuest) {
+      return;
+    }
+    const saved = await onCorrectGuest(row, input);
+    if (saved) {
+      setCorrectionId(null);
+      setCorrectionName("");
+      setCorrectionPhone("");
+      setCorrectionReason("");
+    }
+  }
+
+  return (
+    <>
+      <header className={styles.rosterHeader}>
+        <div className={styles.rosterHeaderTopline}>
+          {onBack && (
+            <button className={styles.back} type="button" onClick={onBack} disabled={busy}>
+              {COPY.attendance.chooseEvent}
+            </button>
+          )}
+          <span
+            className={`${styles.statusBadge} ${
+              statusIsOpen ? styles.statusBadgeActive : styles.statusBadgeMuted
+            }`}
+          >
+            {statusIsOpen
+              ? COPY.attendance.rosterStatusActive
+              : event.status === "Cancelled"
+                ? COPY.attendance.eventCancelled
+                : COPY.attendance.eventClosed}
+          </span>
+        </div>
+        <div className={styles.rosterHeadingRow}>
+          <div>
+            <h1 className={styles.title}>{eventTitle}</h1>
+            <p className={styles.lead}>
+              {hkWallLabel(event.starts_at)}
+              {event.location ? ` · ${event.location}` : ""}
+            </p>
+          </div>
+          <p className={styles.rosterCount} aria-live="polite">
+            <strong>{COPY.attendance.checkedInCount(activeRows.length, rows.length)}</strong>
+          </p>
+        </div>
+        <div className={styles.actionsRow}>
+          {onPrint && (
+            <button className={styles.buttonSecondary} type="button" onClick={onPrint} disabled={busy}>
+              {COPY.attendance.printSheet}
+            </button>
+          )}
+          {onExport && (
+            <button className={styles.buttonSecondary} type="button" onClick={onExport} disabled={busy}>
+              {COPY.attendance.exportSheet}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {rows.length === 0 ? (
+        <output className={styles.chooserEmpty} aria-live="polite">
+          {COPY.programs.eventNoParticipants}
+        </output>
+      ) : (
+        <ul className={styles.rosterList} aria-label={COPY.attendance.rosterTitle}>
+          {rows.map((row) => {
+            const phone = rowPhone(row, memberDirectory);
+            const displayPhone =
+              phone && row.member_user_id
+                ? COPY.attendance.maskedPhone(phone)
+                : phone;
+            const isVoiding = voidingId === row.attendance_id;
+            const isCorrecting = correctionId === row.attendance_id;
+            return (
+              <li className={styles.rowCard} key={row.attendance_id}>
+                <div className={styles.rowHeader}>
+                  <div>
+                    <strong className={styles.rowName}>{rowLabel(row, memberDirectory)}</strong>
+                    <p className={styles.eventMeta}>
+                      {displayPhone ?? COPY.attendance.method[row.method]}
+                    </p>
+                  </div>
+                  <span
+                    className={`${styles.pill} ${
+                      row.status === "Active" ? styles.pillActive : styles.pillMuted
+                    }`}
+                  >
+                    {COPY.attendance.status[row.status]}
+                  </span>
+                </div>
+
+                {row.status === "Voided" && row.void_reason && (
+                  <p className={styles.voidNote}>{row.void_reason}</p>
+                )}
+
+                {row.status === "Active" && (
+                  <div className={styles.actionsRow}>
+                    <button
+                      className={styles.buttonDanger}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setVoidingId(row.attendance_id);
+                        setVoidReason("");
+                        setCorrectionId(null);
+                      }}
+                    >
+                      {COPY.attendance.voidAttendance}
+                    </button>
+                    {row.member_user_id === null && (
+                      <button
+                        className={styles.buttonSecondary}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setCorrectionId(row.attendance_id);
+                          setCorrectionName(row.guest_name ?? "");
+                          setCorrectionPhone(row.guest_phone ?? "");
+                          setCorrectionReason("");
+                          setVoidingId(null);
+                        }}
+                      >
+                        {COPY.attendance.correctGuest}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {isVoiding && (
+                  <form
+                    className={styles.operationPanel}
+                    onSubmit={(formEvent) => {
+                      formEvent.preventDefault();
+                      void submitVoid(row);
+                    }}
+                  >
+                    <h2 className={styles.operationTitle}>{COPY.attendance.voidAttendance}</h2>
+                    <p className={styles.operationLead}>{COPY.attendance.voidLead}</p>
+                    <label className={styles.field} htmlFor={`void-reason-${row.attendance_id}`}>
+                      <span className={styles.fieldLabel}>{COPY.attendance.voidReason}</span>
+                      <input
+                        ref={voidInputRef}
+                        id={`void-reason-${row.attendance_id}`}
+                        className={styles.input}
+                        value={voidReason}
+                        onChange={(eventChange) => setVoidReason(eventChange.target.value)}
+                        required
+                        autoComplete="off"
+                      />
+                    </label>
+                    <div className={styles.actionsRow}>
+                      <button className={styles.buttonDanger} type="submit" disabled={busy}>
+                        {COPY.attendance.voidConfirm}
+                      </button>
+                      <button
+                        className={styles.buttonSecondary}
+                        type="button"
+                        onClick={() => setVoidingId(null)}
+                        disabled={busy}
+                      >
+                        {COPY.attendance.chooseEvent}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {isCorrecting && (
+                  <form
+                    className={styles.operationPanel}
+                    onSubmit={(formEvent) => {
+                      formEvent.preventDefault();
+                      void submitCorrection(row);
+                    }}
+                  >
+                    <h2
+                      ref={correctionHeadingRef}
+                      className={styles.operationTitle}
+                      tabIndex={-1}
+                    >
+                      {COPY.attendance.guestCorrection}
+                    </h2>
+                    <p className={styles.operationLead}>{COPY.attendance.correctionLead}</p>
+                    <label className={styles.field} htmlFor={`correction-name-${row.attendance_id}`}>
+                      <span className={styles.fieldLabel}>{COPY.attendance.guestName}</span>
+                      <input
+                        id={`correction-name-${row.attendance_id}`}
+                        className={styles.input}
+                        value={correctionName}
+                        onChange={(eventChange) => setCorrectionName(eventChange.target.value)}
+                        maxLength={80}
+                        required
+                      />
+                    </label>
+                    <label className={styles.field} htmlFor={`correction-phone-${row.attendance_id}`}>
+                      <span className={styles.fieldLabel}>{COPY.attendance.guestPhone}</span>
+                      <input
+                        id={`correction-phone-${row.attendance_id}`}
+                        className={styles.input}
+                        value={correctionPhone}
+                        onChange={(eventChange) => setCorrectionPhone(eventChange.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className={styles.field} htmlFor={`correction-reason-${row.attendance_id}`}>
+                      <span className={styles.fieldLabel}>{COPY.attendance.correctionReason}</span>
+                      <input
+                        id={`correction-reason-${row.attendance_id}`}
+                        className={styles.input}
+                        value={correctionReason}
+                        onChange={(eventChange) => setCorrectionReason(eventChange.target.value)}
+                        required
+                      />
+                    </label>
+                    <div className={styles.actionsRow}>
+                      <button className={styles.button} type="submit" disabled={busy}>
+                        {COPY.attendance.saveCorrection}
+                      </button>
+                      <button
+                        className={styles.buttonSecondary}
+                        type="button"
+                        onClick={() => setCorrectionId(null)}
+                        disabled={busy}
+                      >
+                        {COPY.attendance.chooseEvent}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+export const AttendanceOperatorPanel = () => {
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>([]);
+  const [chooserLoading, setChooserLoading] = useState(true);
+  const [chooserError, setChooserError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [members, setMembers] = useState<AttendanceMember[]>([]);
+  const [memberDirectory, setMemberDirectory] = useState<Record<string, AttendanceMember>>({});
+  const [event, setEvent] = useState<AttendanceEvent | null>(null);
+  const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
 
-  /** Status + tone are updated together on every feedback path. */
-  const showStatus = (message: string, nextTone: StatusTone = "info") => {
+  function showStatus(message: string, nextTone: StatusTone = "info") {
     setStatus(message);
     setTone(nextTone);
-  };
+  }
 
   function showError(error: unknown) {
     const message =
@@ -59,34 +495,79 @@ export const AttendanceOperatorPanel = () => {
     announce(message);
   }
 
-  async function loadRoster(eventIdInput = eventId, silent = false) {
-    if (!eventIdInput.trim()) {
-      showStatus(COPY.attendance.eventId);
-      return;
+
+  async function loadChooser() {
+    setChooserLoading(true);
+    setChooserError(null);
+    try {
+      const result = await listScannerEvents();
+      setChooserEvents(result.events);
+    } catch (error) {
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setChooserError(message);
+      showError(error);
+    } finally {
+      setChooserLoading(false);
+    }
+  }
+
+  async function loadRoster(nextEventId: string, silent = false) {
+    const normalizedId = nextEventId.trim();
+    if (!normalizedId) {
+      return false;
     }
     setBusy(true);
     try {
-      const result = await listAttendanceRoster(eventIdInput.trim());
+      const result = await listAttendanceRoster(normalizedId);
+      setEventId(normalizedId);
       setEvent(result.event);
       setRows(result.attendances);
-      // After a successful assisted check-in the caller reloads silently so
-      // the roster count does not overwrite the visible success notice
-      // within the same render pass.
+      setMembers([]);
       if (!silent) {
-        showStatus(`${result.attendances.length} ${COPY.attendance.roster}`);
+        setStatus("");
       }
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
+  async function selectEvent(nextEventId: string) {
+    updateAttendanceEventUrl(nextEventId);
+    await loadRoster(nextEventId);
+  }
+
+  function backToChooser() {
+    setEventId(null);
+    setEvent(null);
+    setRows([]);
+    setMembers([]);
+    setStatus("");
+    updateAttendanceEventUrl(null);
+  }
+
   async function searchMembers() {
+    if (!eventId || !query.trim()) {
+      showStatus(COPY.attendance.memberSearchEmpty);
+      return;
+    }
     setBusy(true);
     try {
-      const result = await searchAttendanceMembers(eventId.trim(), query);
+      const result = await searchAttendanceMembers(eventId, query.trim());
       setMembers(result.members);
+      setMemberDirectory((previous) => {
+        const next = { ...previous };
+        for (const member of result.members) {
+          next[member.user_id] = member;
+        }
+        return next;
+      });
       if (result.members.length === 0) {
         showStatus(COPY.attendance.memberSearchEmpty);
         announce(COPY.attendance.memberSearchEmpty);
@@ -102,15 +583,19 @@ export const AttendanceOperatorPanel = () => {
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
+    if (!eventId) {
+      return;
+    }
     setBusy(true);
     try {
-      await assistedCheckIn(eventId.trim(), member.user_id, method);
-      const message = COPY.attendance.success;
-      showStatus(message, "success");
-      // Screen readers get the success even though the roster reload below
-      // leaves the visible status alone (silent reload keeps the notice up).
+      const result = await assistedCheckIn(eventId, member.user_id, method);
+      const message =
+        result.outcome === "duplicate"
+          ? COPY.attendance.duplicate
+          : COPY.attendance.success;
+      showStatus(message, result.outcome === "duplicate" ? "info" : "success");
       announce(message);
-      await loadRoster(undefined, true);
+      await loadRoster(eventId, true);
     } catch (error) {
       showError(error);
     } finally {
@@ -119,16 +604,20 @@ export const AttendanceOperatorPanel = () => {
   }
 
   async function scanMember(rawValue: string) {
-    // Exact QR match through the same members endpoint the manual search
-    // uses; no separate endpoint needed (the search filters account_status
-    // Active + enrolled). Check in only when the scan resolves to one member.
+    if (!eventId) {
+      return;
+    }
     try {
-      const result = await searchAttendanceMembers(eventId.trim(), rawValue);
+      const result = await searchAttendanceMembers(eventId, rawValue);
       if (result.members.length !== 1) {
-        showStatus(COPY.attendance.memberSearchEmpty);
-        announce(COPY.attendance.memberSearchEmpty);
+        showStatus(COPY.attendance.assistedMemberSearchAmbiguous);
+        announce(COPY.attendance.assistedMemberSearchAmbiguous);
         return;
       }
+      setMemberDirectory((previous) => ({
+        ...previous,
+        [result.members[0].user_id]: result.members[0],
+      }));
       await checkIn(result.members[0], "leader_qr_scan");
     } catch (error) {
       showError(error);
@@ -142,339 +631,200 @@ export const AttendanceOperatorPanel = () => {
     onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
   });
 
+  async function handleVoid(row: AttendanceRow, reason: string): Promise<boolean> {
+    setBusy(true);
+    try {
+      await voidAttendance(row.attendance_id, reason);
+      showStatus(COPY.attendance.voidSuccess, "success");
+      announce(COPY.attendance.voidSuccess);
+      await loadRoster(row.event_id, true);
+      return true;
+    } catch (error) {
+      showError(error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCorrection(
+    row: AttendanceRow,
+    input: { name: string; phone: string; reason: string }
+  ): Promise<boolean> {
+    setBusy(true);
+    try {
+      await correctGuestAttendance(row.attendance_id, input);
+      showStatus(COPY.attendance.correctionSaved, "success");
+      announce(COPY.attendance.correctionSaved);
+      await loadRoster(row.event_id, true);
+      return true;
+    } catch (error) {
+      showError(error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  function exportRoster() {
+    if (typeof window === "undefined" || !event) {
+      return;
+    }
+    const header = [COPY.attendance.rosterTitle, event.name?.trim() || event.program_name];
+    const lines = rows.map((row) => {
+      const phone = rowPhone(row, memberDirectory);
+      return [
+        rowLabel(row, memberDirectory),
+        phone ? COPY.attendance.maskedPhone(phone) : "",
+        COPY.attendance.status[row.status],
+      ]
+        .map((value) => `"${value.replaceAll('"', '""')}"`)
+        .join(",");
+    });
+    const csv = `\uFEFF${header.join(",")}\n${lines.join("\n")}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${event.event_id}-attendance.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   useEffect(() => {
-    // The events list deep-links here (e.g. /events?eventId=...); keep the
-    // static-export-friendly window.location.search read, same as the scanner.
+    void loadChooser();
     const params = new URLSearchParams(window.location.search);
-    const id = params.get("eventId");
-    if (id) {
-      setEventId(id);
-      void loadRoster(id);
+    const deepLinkedEventId = params.get("event") ?? params.get("eventId");
+    if (deepLinkedEventId) {
+      setEventId(deepLinkedEventId);
+      void loadRoster(deepLinkedEventId);
     }
+    // The first render owns the URL-derived deep link; subsequent state changes
+    // are driven by the chooser and the roster actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    // Operator chooser (Spec 081 US 20): list Events the actor can assist.
-    void (async () => {
-      try {
-        const result = await listManageableEvents();
-        setChooserEvents(result.events);
-      } catch (error) {
-        showError(error);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function voidRow(row: AttendanceRow) {
-    if (!voidReason.trim()) {
-      showStatus(COPY.attendance.voidReason);
-      return;
-    }
-    setBusy(true);
-    try {
-      await voidAttendance(row.attendance_id, voidReason);
-      setVoidReason("");
-      await loadRoster();
-    } catch (error) {
-      showError(error);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveCorrection() {
-    if (!correctionId) {
-      return;
-    }
-    setBusy(true);
-    try {
-      await correctGuestAttendance(correctionId, {
-        name: correctionName,
-        phone: correctionPhone,
-        reason: correctionReason,
-      });
-      setCorrectionId(null);
-      await loadRoster();
-    } catch (error) {
-      showError(error);
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  const rosterVisible = Boolean(event && eventId);
   return (
     <div className={styles.page}>
-      <section className={styles.card} aria-labelledby="operator-title">
-        <h1 id="operator-title" className={styles.title}>
-          {COPY.sections.events}
-        </h1>
-        <p className={styles.lead}>{COPY.attendance.operatorTitle}</p>
-        {chooserEvents.length > 0 && (
-          <div className={styles.form}>
-            <label className={styles.field} htmlFor="event-chooser">
-              <span className={styles.fieldLabel}>
-                {COPY.attendance.chooseEvent}
-              </span>
-              <select
-                id="event-chooser"
-                className={styles.input}
-                value={eventId}
-                onChange={(e) => {
-                  setEventId(e.target.value);
-                  void loadRoster(e.target.value);
-                }}
-              >
-                <option value="">—</option>
-                {chooserEvents.map((chooserEvent) => (
-                  <option
-                    key={chooserEvent.event_id}
-                    value={chooserEvent.event_id}
-                  >
-                    {chooserEvent.program_name} ·{" "}
-                    {hkWallLabel(chooserEvent.starts_at)}
-                    {chooserEvent.status === "Cancelled" &&
-                      `（${COPY.programs.eventCancelled}）`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-        <div className={styles.form}>
-          <label className={styles.field} htmlFor="event-id">
-            <span className={styles.fieldLabel}>{COPY.attendance.eventId}</span>
-            <input
-              id="event-id"
-              className={styles.input}
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-            />
-          </label>
-          <button
-            className={styles.buttonSecondary}
-            type="button"
-            disabled={busy}
-            onClick={() => void loadRoster()}
-          >
-            {COPY.attendance.roster}
-          </button>
-        </div>
-        {event && (
-          <p className={styles.hint}>
-            {event.program_name} · {hkWallLabel(event.starts_at)}
-          </p>
-        )}
-        {event?.status === "Cancelled" && (
-          <p className={styles.hint} role="alert">
-            {COPY.attendance.eventCancelled}
-          </p>
-        )}
-        {event && event.status === "Active" && (
-          <div className={styles.group}>
-            <div className={styles.actionsRow}>
-              <button
-                className={styles.button}
-                type="button"
-                disabled={busy}
-                onClick={() => void startCamera()}
-              >
-                {cameraOpen
-                  ? COPY.attendance.cameraRetry
-                  : COPY.attendance.camera}
-              </button>
-              {cameraOpen && (
-                <button
-                  className={styles.buttonSecondary}
-                  type="button"
-                  onClick={stopCamera}
-                >
-                  {COPY.attendance.cameraClose}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        {cameraOpen && (
-          <video
-            ref={videoRef}
-            className={styles.video}
-            muted
-            playsInline
-            aria-label={COPY.attendance.camera}
+      <section
+        className={styles.card}
+        aria-labelledby={rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"}
+        aria-busy={busy || chooserLoading}
+      >
+        {!rosterVisible && (
+          <AttendanceChooser
+            events={chooserEvents}
+            loading={chooserLoading}
+            busy={busy}
+            error={chooserError}
+            onSelect={(nextEventId) => void selectEvent(nextEventId)}
+            onRetry={() => void loadChooser()}
           />
         )}
-        {event && event.status === "Active" && (
-          <div className={styles.group}>
-            <div className={styles.inputRow}>
-              <label className={styles.field} htmlFor="member-search">
-                <span className={styles.fieldLabel}>
-                  {COPY.attendance.memberSearch}
-                </span>
-                <input
-                  id="member-search"
-                  className={styles.input}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                disabled={busy}
-                onClick={() => void searchMembers()}
-              >
-                {COPY.attendance.search}
-              </button>
-            </div>
-            {members.length > 0 && (
-              <ul className={styles.events}>
-                {members.map((member) => (
-                  <li key={member.user_id}>
-                    <button
-                      className={styles.eventButton}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void checkIn(member)}
-                    >
-                      <strong>{member.name}</strong>
-                      <span className={styles.eventMeta}>
-                        {member.phone ?? member.user_id}
-                      </span>
-                      <span className={styles.rowAction}>
-                        {COPY.attendance.checkInMember}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+
+        {!rosterVisible && (
+          <h2 className={styles.srOnly}>{COPY.sections.events}</h2>
         )}
-        {rows.length > 0 && (
-          <div className={styles.group}>
-            <h2 className={styles.sectionTitle}>{COPY.attendance.roster}</h2>
-            {rows.map((row) => (
-              <article className={styles.rowCard} key={row.attendance_id}>
-                <div className={styles.actionsRow}>
-                  <strong className={styles.rowName}>
-                    {row.guest_name ?? row.member_user_id}
-                  </strong>
-                  <span
-                    className={
-                      row.status === "Active"
-                        ? `${styles.pill} ${styles.pillActive}`
-                        : `${styles.pill} ${styles.pillMuted}`
-                    }
-                  >
-                    {COPY.attendance.status[row.status]}
-                  </span>
-                </div>
-                <span className={styles.eventMeta}>
-                  {row.guest_phone ?? COPY.attendance.method[row.method]}
-                </span>
-                {row.status === "Active" && (
-                  <>
-                    <label
-                      className={styles.field}
-                      htmlFor={`void-${row.attendance_id}`}
+
+        {rosterVisible && event && eventId && (
+          <>
+            <div id="attendance-roster-title">
+              <AttendanceRoster
+                event={event}
+                rows={rows}
+                memberDirectory={memberDirectory}
+                busy={busy}
+                onBack={backToChooser}
+                onVoid={handleVoid}
+                onCorrectGuest={handleCorrection}
+                onPrint={printAttendanceRoster}
+                onExport={exportRoster}
+              />
+            </div>
+
+            {event.status === "Active" && event.availability === "Active" && (
+                <section className={styles.group} aria-labelledby="attendance-operations-title">
+                  <h2 id="attendance-operations-title" className={styles.sectionTitle}>
+                    {COPY.attendance.operatorTitle}
+                  </h2>
+                  <div className={styles.actionsRow}>
+                    <button
+                      className={styles.buttonSecondary}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void startCamera()}
                     >
-                      <span className={styles.fieldLabel}>
-                        {COPY.attendance.voidReason}
-                      </span>
-                      <input
-                        id={`void-${row.attendance_id}`}
-                        className={styles.input}
-                        value={voidReason}
-                        onChange={(e) => setVoidReason(e.target.value)}
-                      />
-                    </label>
-                    <div className={styles.actionsRow}>
+                      {cameraOpen ? COPY.attendance.cameraRetry : COPY.attendance.camera}
+                    </button>
+                    {cameraOpen && (
                       <button
-                        className={styles.buttonDanger}
+                        className={styles.buttonSecondary}
                         type="button"
-                        disabled={busy}
-                        onClick={() => void voidRow(row)}
+                        onClick={stopCamera}
                       >
-                        {COPY.attendance.void}
+                        {COPY.attendance.cameraClose}
                       </button>
-                      {row.member_user_id === null && (
-                        <button
-                          className={styles.buttonSecondary}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            setCorrectionId(row.attendance_id);
-                            setCorrectionName(row.guest_name ?? "");
-                            setCorrectionPhone(row.guest_phone ?? "");
-                          }}
-                        >
-                          {COPY.attendance.correctGuest}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-                {correctionId === row.attendance_id && (
-                  <div className={styles.correctionPanel}>
-                    <label className={styles.field} htmlFor="correction-name">
-                      <span className={styles.fieldLabel}>
-                        {COPY.attendance.guestName}
-                      </span>
+                    )}
+                  </div>
+                  {cameraOpen && (
+                    <video
+                      ref={videoRef}
+                      className={styles.video}
+                      muted
+                      playsInline
+                      aria-label={COPY.attendance.camera}
+                    />
+                  )}
+                  <div className={styles.inputRow}>
+                    <label className={styles.field} htmlFor="member-search">
+                      <span className={styles.fieldLabel}>{COPY.attendance.memberSearch}</span>
                       <input
-                        id="correction-name"
+                        id="member-search"
                         className={styles.input}
-                        value={correctionName}
-                        onChange={(e) => setCorrectionName(e.target.value)}
-                        maxLength={80}
-                      />
-                    </label>
-                    <label className={styles.field} htmlFor="correction-phone">
-                      <span className={styles.fieldLabel}>
-                        {COPY.attendance.guestPhone}
-                      </span>
-                      <input
-                        id="correction-phone"
-                        className={styles.input}
-                        value={correctionPhone}
-                        onChange={(e) => setCorrectionPhone(e.target.value)}
-                      />
-                    </label>
-                    <label className={styles.field} htmlFor="correction-reason">
-                      <span className={styles.fieldLabel}>
-                        {COPY.attendance.correctionReason}
-                      </span>
-                      <input
-                        id="correction-reason"
-                        className={styles.input}
-                        value={correctionReason}
-                        onChange={(e) => setCorrectionReason(e.target.value)}
+                        value={query}
+                        onChange={(changeEvent) => setQuery(changeEvent.target.value)}
+                        onKeyDown={(keyEvent) => {
+                          if (keyEvent.key === "Enter") {
+                            keyEvent.preventDefault();
+                            void searchMembers();
+                          }
+                        }}
                       />
                     </label>
                     <button
-                      className={styles.button}
+                      className={styles.buttonSecondary}
                       type="button"
                       disabled={busy}
-                      onClick={() => void saveCorrection()}
+                      onClick={() => void searchMembers()}
                     >
-                      {COPY.attendance.saveCorrection}
+                      {COPY.attendance.search}
                     </button>
                   </div>
-                )}
-              </article>
-            ))}
-          </div>
+                  {members.length > 0 && (
+                    <ul className={styles.events} aria-label={COPY.attendance.memberSearch}>
+                      {members.map((member) => (
+                        <li key={member.user_id}>
+                          <button
+                            className={styles.eventButton}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void checkIn(member)}
+                          >
+                            <strong>{member.name}</strong>
+                            <span className={styles.eventMeta}>{member.phone ?? member.user_id}</span>
+                            <span className={styles.rowAction}>{COPY.attendance.checkInMember}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+            )}
+          </>
         )}
-        {event && event.status === "Active" && (
-          <button
-            className={styles.buttonSecondary}
-            type="button"
-            onClick={() => window.print()}
-          >
-            {COPY.attendance.printSheet}
-          </button>
-        )}
+
         <output
           className={styles.status}
           data-tone={status ? tone : undefined}
@@ -483,6 +833,27 @@ export const AttendanceOperatorPanel = () => {
         >
           {status}
         </output>
+
+        {rosterVisible && event && (
+          <section className={styles.printSheet} aria-label={COPY.attendance.printSheet}>
+            <h1>{event.name?.trim() || event.program_name}</h1>
+            <p>
+              {hkWallLabel(event.starts_at)}
+              {event.location ? ` · ${event.location}` : ""}
+            </p>
+            <div className={styles.printRows}>
+              {rows.map((row) => {
+                const phone = rowPhone(row, memberDirectory);
+                return (
+                  <div className={styles.printRow} key={row.attendance_id}>
+                    <span>{rowLabel(row, memberDirectory)}</span>
+                    <span>{phone ? COPY.attendance.maskedPhone(phone) : "—"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </section>
     </div>
   );
