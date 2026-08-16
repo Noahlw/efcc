@@ -30,7 +30,7 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the tw
 | Programs | Complete (local gate) | Worker + D1 `/api/v1/programs/*` | Worker + D1 | Programs E2E against the dev-testing worker (ADR-0031) |
 | Events | Complete (local gate) | Worker + D1 schedule rules and event lifecycle | Worker + D1 | Event recurrence exception acceptance expansion |
 | Attendance/check-in | Complete (local gate) | Worker + D1 `/api/v1/attendance*` | Worker + D1 | Assisted scanner and guest check-in E2E coverage |
-| Care dashboard | Planned | New web page placeholder; no accepted Worker/D1 capability | Worker + D1 | Define data contract, privacy boundary, and acceptance plan |
+| Webapp redesign (shell/participant/cockpit/hub/CMS) | In progress | Specs `084`–`087`, prototype-verified | Worker + D1 | See `docs/adr/0032-prototype-design-authority.md` |
 | Permissions/program leadership | Planned | Existing role vocabulary and legacy authorization rules | Worker + D1 | Implement capability matrix and scoped Program Leader permissions |
 
 ### Migration phases
