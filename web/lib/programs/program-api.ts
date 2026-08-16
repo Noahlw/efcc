@@ -18,6 +18,16 @@ import type {
 } from "@/lib/attendance";
 
 import type { ProgramsManagementAccess } from "./programs-access";
+import type { ManagementHubView } from "./hub-types";
+
+// Management Hub directory (087-01 #310): the worker projection is the single
+// source for group/row copy; the browser renders it verbatim. Wire types are
+// shared via hub-types.ts (both tsconfig programs can include it).
+export type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
@@ -761,6 +771,16 @@ export function markManagementNotificationsRead(
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   return programsFetch("/api/v1/programs/access", "GET");
+}
+
+/**
+ * GET /api/v1/programs/hub — capability-filtered Management Hub directory.
+ * `no-store`: a revoked scope must be reflected on the next load.
+ */
+export function getManagementHub(): Promise<ManagementHubView> {
+  return programsFetch("/api/v1/programs/hub", "GET", undefined, {
+    cache: "no-store",
+  });
 }
 
 /** GET /api/v1/programs/catalog — narrow participant directory projection. */

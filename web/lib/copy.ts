@@ -224,6 +224,38 @@ export const COPY = {
     permissionsHeading: "權限與角色管理",
     placeholder: "內容建置中。",
   },
+  // Management Hub directory copy (Spec 087 US 1-3, 22). The group/row
+  // labels are the single source for the server-side hub projection
+  // (`/api/v1/programs/hub`) and the client renders exactly what the
+  // server returns — never a client-side capability branch.
+  management: {
+    managementTitle: "管理工作",
+    managementLead: "在你獲授權的範圍內處理會員、課程、聚會及內容工作。",
+    groupMemberPermissions: "會員與權限",
+    groupOperations: "事工營運",
+    groupContentSystem: "內容與系統",
+    approvalsRow: "註冊審批",
+    approvalsRowHint: "核准或拒絕會員申請",
+    permissionsRow: "帳戶與權限",
+    permissionsRowHint: "管理員帳戶及角色",
+    departmentsRow: "部門設定",
+    departmentsRowHint: "部門開關、管理者及建立課程",
+    attendanceRow: "聚會／出席",
+    attendanceRowHint: "出席點名、代簽及修正",
+    membersRow: "參與者",
+    membersRowHint: "搜尋並查看會員資料",
+    homeContentRow: "首頁內容",
+    homeContentRowHint: "版面 A／B 編輯及發佈",
+    anotherEntry: "另一個工作入口",
+    goCourseManagement: "前往課程管理",
+    goCourseManagementHint: "課程 tab 內以管理模式選擇課程，再進入 Course Cockpit。",
+    emptyTitle: "目前沒有可用的管理工作",
+    loading: "載入中…",
+    loadError: "管理工作暫時無法載入，請稍後再試。",
+    forbidden: "您沒有權限執行此操作。",
+    retry: "重試連接",
+    backHome: "返回首頁",
+  },
   nav: {
     backToHome: "返回首頁",
     backToProfile: "帳戶",

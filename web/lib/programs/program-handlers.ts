@@ -550,6 +550,20 @@ export async function handleListManagementAccess(
   const access = await workspace.getManagementAccess(ctxFrom(auth.account));
   return jsonResponse(200, access, requestId);
 }
+/** GET /api/v1/programs/hub — capability-filtered Management Hub directory. */
+export async function handleGetManagementHub(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const hub = await workspace.getManagementHub(ctxFrom(auth.account));
+  return jsonResponse(200, hub, requestId);
+}
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export async function handleListManagementDirectory(
   request: Request,

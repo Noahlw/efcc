@@ -30,6 +30,10 @@ export const CAPABILITY = {
   PROGRAM_PUBLISH: PROGRAM_CAPABILITY.PUBLISH,
   PROGRAM_ENROLL: PROGRAM_CAPABILITY.ENROLL,
   PROGRAM_LEADER_ASSIGN: PROGRAM_CAPABILITY.LEADER_ASSIGN,
+  // Home Content CMS publish power (087-05). Role-policy seeded for Admin in
+  // migration 0010 (`role_capabilities`); not scope-expandable via
+  // department/program grants (Home is church-wide, not department-scoped).
+  HOME_PUBLISH: "home.publish",
 } as const;
 
 export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];

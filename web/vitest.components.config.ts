@@ -20,6 +20,7 @@ export default defineProject({
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
       "lib/home.test.tsx",
+      "lib/management-hub.test.tsx",
       "lib/qr-code.test.tsx",
       "lib/programs/programs-events-panel.test.tsx",
       "lib/programs/programs-enrollment-panel.test.tsx",

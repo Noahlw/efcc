@@ -299,6 +299,7 @@ export default {
         handleCreateDepartment,
         handleListDepartments,
         handleListManagementAccess,
+        handleGetManagementHub,
         handleListManagementDirectory,
         handleGetManagementAttention,
         handleGetManagementNotifications,
@@ -349,6 +350,12 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementAccess(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/hub" &&
+        request.method === "GET"
+      ) {
+        return handleGetManagementHub(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&

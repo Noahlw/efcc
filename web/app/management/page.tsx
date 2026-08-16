@@ -1,13 +1,15 @@
 "use client";
 
 import { AppShell } from "@/lib/app-shell";
-import { COPY } from "@/lib/copy";
-import { SectionView } from "@/app/_sections/section-view";
+import { GuardedSection } from "@/lib/guarded-section";
+import { ManagementHub } from "./management-hub";
 
 export default function ManagementPage() {
   return (
     <AppShell>
-      <SectionView sectionKey="management" title={COPY.sections.management} />
+      <GuardedSection sectionKey="management">
+        <ManagementHub />
+      </GuardedSection>
     </AppShell>
   );
 }

@@ -1463,6 +1463,66 @@ describe("Shell", () => {
             requestId: "r-me",
             data: { user, sections, navigation: NAVIGATION },
           })
+        ),
+        // Management page now renders the 087-01 hub, which fetches the
+        // server-projected directory. Full-staff projection so the title
+        // test exercises the real fetch path without capability surprises.
+        http.get("/api/v1/programs/hub", () =>
+          HttpResponse.json({
+            requestId: "r-hub",
+            data: {
+              groups: [
+                {
+                  key: "members-and-permissions",
+                  label: COPY.management.groupMemberPermissions,
+                  rows: [
+                    {
+                      key: "approvals",
+                      label: COPY.management.approvalsRow,
+                      description: COPY.management.approvalsRowHint,
+                      href: "/management?module=approvals",
+                    },
+                    {
+                      key: "permissions",
+                      label: COPY.management.permissionsRow,
+                      description: COPY.management.permissionsRowHint,
+                      href: "/management?module=permissions",
+                    },
+                  ],
+                },
+                {
+                  key: "ministry-operations",
+                  label: COPY.management.groupOperations,
+                  rows: [
+                    {
+                      key: "departments",
+                      label: COPY.management.departmentsRow,
+                      description: COPY.management.departmentsRowHint,
+                      href: "/management?module=departments",
+                    },
+                    {
+                      key: "attendance",
+                      label: COPY.management.attendanceRow,
+                      description: COPY.management.attendanceRowHint,
+                      href: "/management?module=attendance",
+                    },
+                    {
+                      key: "members",
+                      label: COPY.management.membersRow,
+                      description: COPY.management.membersRowHint,
+                      href: "/management?module=members",
+                    },
+                  ],
+                },
+              ],
+              entryCard: {
+                key: "course-management",
+                label: COPY.management.goCourseManagement,
+                description: COPY.management.goCourseManagementHint,
+                href: "/programs?mode=management",
+              },
+            },
+          })
         )
       );
     }
@@ -1578,15 +1638,16 @@ describe("Shell", () => {
       });
     });
 
-    test("management page renders COPY.sections.management title", async () => {
+    test("management page renders the hub title and lead for a management-capable account", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
       render(<ManagementPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.management })
+          screen.getByRole("heading", { name: COPY.management.managementTitle })
         ).toBeInTheDocument();
       });
+      expect(screen.getByText(COPY.management.managementLead)).toBeInTheDocument();
     });
 
     test("permissions page renders the S10 permissionsHeading title", async () => {

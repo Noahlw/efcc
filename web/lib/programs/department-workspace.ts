@@ -6,12 +6,19 @@
  * this module.
  */
 
+import { ROLE } from "../auth/accounts";
+import { COPY } from "../copy";
 import {
   CAPABILITY,
   hasDepartmentManagementScope,
   MODULE_KEY,
   MODULE_KEYS,
 } from "./capabilities";
+import type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
 import type {
   Capability,
   DepartmentCapabilities,
@@ -260,6 +267,89 @@ export interface ManagementAccessView {
   departmentScopes: number;
   programScopes: number;
 }
+
+// ---------------------------------------------------------------------------
+// Management Hub directory (087-01 #310). Row/group copy comes from the
+// centralized COPY.management block (web/lib/copy.ts) — the worker projects
+// it verbatim and the browser renders the projection as-is; no client-side
+// capability branching, no second copy of the strings. Wire types live in
+// hub-types.ts (shared with the browser client).
+// ---------------------------------------------------------------------------
+
+// Re-export the shared wire types so the Worker surface has one public name.
+export type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
+
+const HUB_COPY = COPY.management;
+
+/** Fixed group order (spec 087 US 1); keys are stable UI anchors. */
+export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
+  {
+    key: "members-and-permissions",
+    label: HUB_COPY.groupMemberPermissions,
+    rows: [
+      {
+        key: "approvals",
+        label: HUB_COPY.approvalsRow,
+        description: HUB_COPY.approvalsRowHint,
+        href: "/management?module=approvals",
+      },
+      {
+        key: "permissions",
+        label: HUB_COPY.permissionsRow,
+        description: HUB_COPY.permissionsRowHint,
+        href: "/management?module=permissions",
+      },
+    ],
+  },
+  {
+    key: "ministry-operations",
+    label: HUB_COPY.groupOperations,
+    rows: [
+      {
+        key: "departments",
+        label: HUB_COPY.departmentsRow,
+        description: HUB_COPY.departmentsRowHint,
+        href: "/management?module=departments",
+      },
+      {
+        key: "attendance",
+        label: HUB_COPY.attendanceRow,
+        description: HUB_COPY.attendanceRowHint,
+        href: "/management?module=attendance",
+      },
+      {
+        key: "members",
+        label: HUB_COPY.membersRow,
+        description: HUB_COPY.membersRowHint,
+        href: "/management?module=members",
+      },
+    ],
+  },
+  {
+    key: "content-and-system",
+    label: HUB_COPY.groupContentSystem,
+    rows: [
+      {
+        key: "home-content",
+        label: HUB_COPY.homeContentRow,
+        description: HUB_COPY.homeContentRowHint,
+        href: "/management?module=home-content",
+      },
+    ],
+  },
+];
+
+/** 另一個工作入口 card, rendered between 事工營運 and 內容與系統. */
+export const MANAGEMENT_HUB_ENTRY_CARD: ManagementHubRow = {
+  key: "course-management",
+  label: HUB_COPY.goCourseManagement,
+  description: HUB_COPY.goCourseManagementHint,
+  href: "/programs?mode=management",
+};
 
 /**
  * Client-safe preview plan projection. Never carries the internal actor id
@@ -1163,6 +1253,101 @@ export class DepartmentWorkspace {
       hasManagementCapability: programScopes > 0,
       departmentScopes,
       programScopes,
+    };
+  }
+
+  /**
+   * GET /api/v1/programs/hub — Management Hub directory (087-01 #310).
+   *
+   * Server-projected rows/groups: ungranted rows and empty groups are omitted
+   * entirely (never shown disabled). Role gates reuse the canonical role
+   * vocabulary; scope gates reuse the capability authorizer's effective
+   * department/program scope resolution — browser visibility is never
+   * authority. No Care row exists anywhere in the projection (spec 084/087).
+   */
+  async getManagementHub(ctx: AuthorizationContext): Promise<ManagementHubView> {
+    const departments = await this.listDepartments(ctx);
+    const departmentScopes = departments.filter(hasDepartmentManagementScope);
+    // Effective department.manage scope (role policy or per-department grant).
+    const hasDepartmentManageScope = departmentScopes.some(
+      (department) => department.capabilities.manage
+    );
+    // Registration approvals and account permissions are Admin/Staff role
+    // surfaces (spec 087 US 4/9); Members never see them, grant or not.
+    const isAdminOrStaff =
+      ctx.actorRole === ROLE.ADMIN || ctx.actorRole === ROLE.STAFF;
+
+    // Attendance row: effective program.manage scope over a program whose
+    // department runs the attendance module (086-04 gate family, same effective
+    // scope the manageable-events chooser resolves for the actor).
+    const programRows = (
+      await Promise.all(
+        departments.map(async ({ department_id }) => {
+          if (!(await this.isModuleEnabled(department_id))) {
+            return [];
+          }
+          return this.store.listProgramAccessRows(department_id);
+        })
+      )
+    ).flat();
+    const hasAttendanceScope = (
+      await Promise.all(
+        programRows.map(async ({ department_id, program_id }) => {
+          const managed = await this.authorizer.can(
+            ctx,
+            CAPABILITY.PROGRAM_MANAGE,
+            { departmentId: department_id, programId: program_id }
+          );
+          return (
+            managed &&
+            (await this.isModuleEnabled(
+              department_id,
+              MODULE_KEY.ATTENDANCE
+            ))
+          );
+        })
+      )
+    ).some(Boolean);
+
+    // Home Content publish: role-policy capability (Admin via migration 0010;
+    // a Staff/Member row in role_capabilities grants it the same way). Home is
+    // church-wide, so no department/program scope expansion applies.
+    const canPublishHome = await this.authorizer.can(
+      ctx,
+      CAPABILITY.HOME_PUBLISH,
+      null
+    );
+
+    const granted = new Set<string>();
+    if (isAdminOrStaff) {
+      granted.add("approvals");
+      granted.add("permissions");
+      granted.add("members");
+    }
+    if (hasDepartmentManageScope) {
+      granted.add("departments");
+      granted.add("members");
+    }
+    if (hasAttendanceScope) {
+      granted.add("attendance");
+    }
+    if (canPublishHome) {
+      granted.add("home-content");
+    }
+
+    const groups = MANAGEMENT_HUB_GROUPS.map((group) => ({
+      key: group.key,
+      label: group.label,
+      rows: group.rows.filter((row) => granted.has(row.key)),
+    })).filter((group) => group.rows.length > 0);
+
+    // 另一個工作入口: any management capability (department scope OR program
+    // manage/publish/leader_assign) — the exact `/access` entry gate.
+    const { hasManagementCapability } = await this.getManagementAccess(ctx);
+
+    return {
+      groups,
+      entryCard: hasManagementCapability ? MANAGEMENT_HUB_ENTRY_CARD : null,
     };
   }
 

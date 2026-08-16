@@ -90,6 +90,26 @@ const COPY = {
   notificationTitle: "管理通知",
   notificationZero: "目前沒有新的管理通知。",
   notificationViewAll: "查看全部通知",
+  hubTitle: "管理工作",
+  hubLead: "在你獲授權的範圍內處理會員、課程、聚會及內容工作。",
+  hubGroupMemberPermissions: "會員與權限",
+  hubGroupOperations: "事工營運",
+  hubGroupContentSystem: "內容與系統",
+  hubApprovals: "註冊審批",
+  hubApprovalsHint: "核准或拒絕會員申請",
+  hubPermissions: "帳戶與權限",
+  hubPermissionsHint: "管理員帳戶及角色",
+  hubDepartments: "部門設定",
+  hubDepartmentsHint: "部門開關、管理者及建立課程",
+  hubAttendance: "聚會／出席",
+  hubAttendanceHint: "出席點名、代簽及修正",
+  hubMembers: "參與者",
+  hubMembersHint: "搜尋並查看會員資料",
+  hubHomeContent: "首頁內容",
+  hubHomeContentHint: "版面 A／B 編輯及發佈",
+  hubAnotherEntry: "另一個工作入口",
+  hubGoCourseManagement: "前往課程管理",
+  hubGoCourseManagementHint: "課程 tab 內以管理模式選擇課程，再進入 Course Cockpit。",
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
@@ -3444,5 +3464,119 @@ test.describe("EVT-02 recurring preview and generation", () => {
     await expect(
       page.getByRole("button", { name: COPY.generateEvents })
     ).toHaveCount(0);
+  });
+});
+
+// 087-01 (#310): Management Hub directory — three fixed groups, capability-
+// filtered rows, canonical module URLs, and the spec-084 no-Care regression.
+// The hub renders exactly what GET /api/v1/programs/hub projects; the Admin
+// fixture is the full projection and Staff is the narrow fixture (role lacks
+// home.publish, so the 內容與系統 group — whose only row is 首頁內容 — must be
+// omitted entirely, never shown disabled).
+test.describe("HUB-01 Management Hub directory", () => {
+  test("admin sees the three groups, all six rows, and the course-management card", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/management");
+
+    await expect(
+      page.getByRole("heading", { name: COPY.hubTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.hubLead, { exact: true })).toBeVisible();
+
+    for (const group of [
+      COPY.hubGroupMemberPermissions,
+      COPY.hubGroupOperations,
+      COPY.hubGroupContentSystem,
+    ]) {
+      await expect(page.getByRole("heading", { name: group })).toBeVisible();
+    }
+
+    // Every row renders both label and description and carries its canonical
+    // hub URL (087-02..05 build the destinations behind these links).
+    const rowCases: [string, string, string][] = [
+      [COPY.hubApprovals, COPY.hubApprovalsHint, "/management?module=approvals"],
+      [COPY.hubPermissions, COPY.hubPermissionsHint, "/management?module=permissions"],
+      [COPY.hubDepartments, COPY.hubDepartmentsHint, "/management?module=departments"],
+      [COPY.hubAttendance, COPY.hubAttendanceHint, "/management?module=attendance"],
+      [COPY.hubMembers, COPY.hubMembersHint, "/management?module=members"],
+      [COPY.hubHomeContent, COPY.hubHomeContentHint, "/management?module=home-content"],
+    ];
+    for (const [label, hint, href] of rowCases) {
+      const row = page.getByRole("link", { name: new RegExp(label, "u") });
+      await expect(row).toBeVisible();
+      await expect(row).toHaveAttribute("href", href);
+      await expect(page.getByText(hint, { exact: true })).toBeVisible();
+    }
+
+    // 另一個工作入口 card with the course-management link.
+    await expect(page.getByText(COPY.hubAnotherEntry, { exact: true })).toBeVisible();
+    const courseLink = page.getByRole("link", {
+      name: new RegExp(COPY.hubGoCourseManagement, "u"),
+    });
+    await expect(courseLink).toBeVisible();
+    await expect(courseLink).toHaveAttribute("href", "/programs?mode=management");
+    await expect(
+      page.getByText(COPY.hubGoCourseManagementHint, { exact: true })
+    ).toBeVisible();
+
+    // Spec 084 regression: no Care row anywhere in the hub.
+    await expect(page.getByText(/Care/iu)).toHaveCount(0);
+    await expect(page.getByText("關懷", { exact: true })).toHaveCount(0);
+  });
+
+  test("staff without home.publish sees granted rows only — 內容與系統 omitted entirely", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
+    );
+    await page.goto("/management");
+
+    await expect(
+      page.getByRole("heading", { name: COPY.hubTitle })
+    ).toBeVisible();
+
+    // Staff grants: approvals/permissions (Admin|Staff), departments
+    // (department.manage), attendance (program.manage + enabled module),
+    // members (Admin|Staff). Each row still carries its description.
+    for (const [label, hint] of [
+      [COPY.hubApprovals, COPY.hubApprovalsHint],
+      [COPY.hubPermissions, COPY.hubPermissionsHint],
+      [COPY.hubDepartments, COPY.hubDepartmentsHint],
+      [COPY.hubAttendance, COPY.hubAttendanceHint],
+      [COPY.hubMembers, COPY.hubMembersHint],
+    ] as const) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(label, "u") })
+      ).toBeVisible();
+      await expect(page.getByText(hint, { exact: true })).toBeVisible();
+    }
+
+    // Ungranted: home.publish is Admin-only (migration 0010), so 首頁內容 and
+    // its whole 內容與系統 group are omitted — never shown disabled.
+    await expect(
+      page.getByRole("heading", { name: COPY.hubGroupContentSystem })
+    ).toHaveCount(0);
+    await expect(page.getByText(COPY.hubHomeContent, { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText(COPY.hubHomeContentHint, { exact: true })
+    ).toHaveCount(0);
+
+    // The entry card stays reachable (Staff holds management capability).
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.hubGoCourseManagement, "u") })
+    ).toBeVisible();
+
+    // Spec 084 regression also holds for the narrow projection.
+    await expect(page.getByText(/Care/iu)).toHaveCount(0);
+    await expect(page.getByText("關懷", { exact: true })).toHaveCount(0);
   });
 });
