@@ -765,8 +765,25 @@ describe(ProgramWorkspace, () => {
 describe("ENR-01 participants workspace", () => {
   test("renders pending, active, and history tabs from server state", async () => {
     mockWorkspace();
+    const approvedEnrollment: Enrollment = {
+      ...enrollment,
+      enrollment_id: "enrollment-approved",
+      member_user_id: request.member_user_id,
+      request_id: request.request_id,
+      member_name: request.member_name,
+    };
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [request],
+        enrollments: [enrollment],
+      })
+      .mockResolvedValueOnce({
+        requests: [{ ...request, status: "Approved" }],
+        enrollments: [enrollment, approvedEnrollment],
+      });
     mocks.decideEnrollmentRequest.mockResolvedValue({
       request: { ...request, status: "Approved" },
+      enrollment: approvedEnrollment,
     });
     render(
       <ProgramWorkspace
@@ -787,17 +804,22 @@ describe("ENR-01 participants workspace", () => {
     );
     expect(
       await screen.findByRole("tab", {
-        name: `${COPY.programs.workspacePendingRequests} (1)`,
+        name: `${COPY.programs.tabsPending} (1)`,
       })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
-        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+        name: `${COPY.programs.tabsActive} (1)`,
       })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
-        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+        name: `${COPY.programs.tabsHistory} (0)`,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.tabsActive} (1)`,
       })
     ).toHaveAttribute("aria-controls", "participants-active-panel");
     expect(
@@ -808,14 +830,102 @@ describe("ENR-01 participants workspace", () => {
     ).toBeInTheDocument();
 
     await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.approve })
+    );
+    expect(
+      await screen.findByText(COPY.programs.decisionMade)
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (2)`,
+      })
+    ).toBeInTheDocument();
+    await userEvent.click(
       screen.getByRole("tab", {
-        name: `${COPY.programs.workspaceActiveParticipants} (1)`,
+        name: `${COPY.programs.tabsActive} (2)`,
       })
     );
+    expect(await screen.findByText("陳同工")).toBeInTheDocument();
     expect(await screen.findByText("李同工")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.approve })
     ).not.toBeInTheDocument();
+  });
+  test("rejects a pending request into terminal history", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({ requests: [request], enrollments: [] })
+      .mockResolvedValueOnce({
+        requests: [
+          {
+            ...request,
+            status: "Rejected",
+            decided_at: "2026-08-04T00:00:00.000Z",
+            decision_note: "名額已滿",
+          },
+        ],
+        enrollments: [],
+      });
+    mocks.decideEnrollmentRequest.mockResolvedValue({
+      request: { ...request, status: "Rejected" },
+      enrollment: undefined,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: COPY.programs.reject })
+    );
+    expect(
+      await screen.findByText(COPY.programs.decisionMade)
+    ).toBeInTheDocument();
+    const historyTab = await screen.findByRole("tab", {
+      name: `${COPY.programs.tabsHistory} (1)`,
+    });
+    await userEvent.click(historyTab);
+    expect(
+      await screen.findByText(COPY.programs.requestRejected)
+    ).toBeInTheDocument();
+    expect(screen.getByText("名額已滿")).toBeInTheDocument();
+  });
+
+
+  test("renders an honest empty state for each participant tab", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [],
+      enrollments: [],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      await screen.findByText(COPY.programs.tabsEmpty.pending)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
+    );
+    expect(
+      screen.getByText(COPY.programs.tabsEmpty.active)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("tab", { name: `${COPY.programs.tabsHistory} (0)` })
+    );
+    expect(
+      screen.getByText(COPY.programs.tabsEmpty.history)
+    ).toBeInTheDocument();
   });
 
   test("sends the request version and keeps stale decisions visible", async () => {
@@ -895,12 +1005,12 @@ describe("ENR-01 participants workspace", () => {
         `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("陳同工")).toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
-        name: `${COPY.programs.workspacePendingRequests} (1)`,
+        name: `${COPY.programs.tabsPending} (1)`,
       })
     ).toBeInTheDocument();
+    expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
 
   test("an approved request whose enrollment is later cancelled counts once in history", async () => {
@@ -936,7 +1046,7 @@ describe("ENR-01 participants workspace", () => {
 
     await userEvent.click(
       await screen.findByRole("tab", {
-        name: `${COPY.programs.enrollmentHistory} (1)`,
+        name: `${COPY.programs.tabsHistory} (1)`,
       })
     );
     const history = screen.getByRole("list", {
@@ -980,7 +1090,7 @@ describe("ENR-01 participants workspace", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
-        name: `${COPY.programs.workspacePendingRequests} (1)`,
+        name: `${COPY.programs.tabsPending} (1)`,
       })
     ).toBeInTheDocument();
     expect(screen.getByText("陳同工")).toBeInTheDocument();
@@ -1020,6 +1130,43 @@ describe("ENR-01 participants workspace", () => {
     );
 
     const picker = await screen.findByRole("combobox", {
+      name: COPY.programs.memberId,
+    });
+    await userEvent.type(picker, "王同");
+    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.assistedEnroll })
+    );
+    await waitFor(() =>
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
+        "program-1",
+        "member-3"
+      )
+    );
+  });
+  test("renders assisted enrollment for a MemberRequest program", async () => {
+    mockWorkspace();
+    mocks.searchMemberOptions.mockResolvedValue({
+      members: [
+        { user_id: "member-3", name: "王同工", username: "wang" },
+      ],
+    });
+    mocks.assistedEnroll.mockResolvedValue({
+      enrollment: { ...enrollment, member_user_id: "member-3" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      await screen.findByText(COPY.programs.assistedEnrollAck)
+    ).toBeInTheDocument();
+    const picker = screen.getByRole("combobox", {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");

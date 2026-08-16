@@ -15,21 +15,21 @@ import {
   MODULE_KEYS,
 } from "./capabilities";
 import type {
-  ManagementHubGroup,
-  ManagementHubRow,
-  ManagementHubView,
-} from "./hub-types";
-import type {
   Capability,
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
 import { AuthorizationDeniedError } from "./capability-authorizer";
-import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
+import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
+import type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
 import {
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
@@ -883,8 +883,9 @@ export class DepartmentWorkspace {
       0
     );
     const totalItemCount =
-      programs.filter(({ pending_enrollment_count }) => pending_enrollment_count > 0)
-        .length +
+      programs.filter(
+        ({ pending_enrollment_count }) => pending_enrollment_count > 0
+      ).length +
       eventCounts.reduce(
         (total, { inactive_event_count, cancelled_event_count }) =>
           total + inactive_event_count + cancelled_event_count,
@@ -1030,7 +1031,8 @@ export class DepartmentWorkspace {
     );
     const readKeys = new Set(
       readStates.map(
-        ({ source_key, source_revision }) => `${source_key}\u0000${source_revision}`
+        ({ source_key, source_revision }) =>
+          `${source_key}\u0000${source_revision}`
       )
     );
     for (const entry of current) {
@@ -1039,9 +1041,7 @@ export class DepartmentWorkspace {
       );
     }
     return {
-      items: current
-        .slice(0, normalizedLimit)
-        .map(({ item }) => item),
+      items: current.slice(0, normalizedLimit).map(({ item }) => item),
       unread_count: current.filter(({ item }) => !item.read).length,
       has_more: current.length > normalizedLimit,
     };
@@ -1273,7 +1273,9 @@ export class DepartmentWorkspace {
    * department/program scope resolution — browser visibility is never
    * authority. No Care row exists anywhere in the projection (spec 084/087).
    */
-  async getManagementHub(ctx: AuthorizationContext): Promise<ManagementHubView> {
+  async getManagementHub(
+    ctx: AuthorizationContext
+  ): Promise<ManagementHubView> {
     const departments = await this.listDepartments(ctx);
     const departmentScopes = departments.filter(hasDepartmentManagementScope);
     // Effective department.manage scope (role policy or per-department grant).
@@ -1308,10 +1310,7 @@ export class DepartmentWorkspace {
           );
           return (
             managed &&
-            (await this.isModuleEnabled(
-              department_id,
-              MODULE_KEY.ATTENDANCE
-            ))
+            (await this.isModuleEnabled(department_id, MODULE_KEY.ATTENDANCE))
           );
         })
       )
@@ -1568,10 +1567,7 @@ export class DepartmentWorkspace {
           return null;
         }
         const [isEnrollmentEnabled, isEventsEnabled] = await Promise.all([
-          this.isModuleEnabled(
-            department.department_id,
-            MODULE_KEY.ENROLLMENT
-          ),
+          this.isModuleEnabled(department.department_id, MODULE_KEY.ENROLLMENT),
           this.isModuleEnabled(department.department_id, MODULE_KEY.EVENTS),
         ]);
         const programs = await Promise.all(
@@ -2345,8 +2341,11 @@ export class DepartmentWorkspace {
         ? []
         : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
     const exception =
-      (exceptionForEvent(event, rules, exceptions) as ScheduleExceptionRow | null) ??
-      null;
+      (exceptionForEvent(
+        event,
+        rules,
+        exceptions
+      ) as ScheduleExceptionRow | null) ?? null;
     const recurrence_tag = recurrenceTagForEvent(event, rules);
     const decoratedEvent: EventRow = {
       ...event,
@@ -2729,7 +2728,8 @@ export class DepartmentWorkspace {
       latest !== null &&
       latest.plan_id !== plan.plan_id &&
       (latest.created_at > plan.created_at ||
-        (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
+        (latest.created_at === plan.created_at &&
+          latest.plan_id > plan.plan_id));
     if (currentHash !== plan.plan_hash || superseded) {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
@@ -3287,9 +3287,7 @@ export class DepartmentWorkspace {
           event,
           correlationId
         );
-        throw new EventAvailabilityConfirmationRequiredError(
-          impactCount
-        );
+        throw new EventAvailabilityConfirmationRequiredError(impactCount);
       }
     }
     const updated = await this.store.updateEvent(
@@ -3341,7 +3339,10 @@ export class DepartmentWorkspace {
         eventId,
         "CONFLICT",
         event,
-        { reason: "active_attendance", active_attendance_count: activeAttendanceCount },
+        {
+          reason: "active_attendance",
+          active_attendance_count: activeAttendanceCount,
+        },
         correlationId
       );
       throw new EventCancellationBlockedError(activeAttendanceCount);
@@ -3365,7 +3366,10 @@ export class DepartmentWorkspace {
           eventId,
           "CONFLICT",
           event,
-          { reason: "active_attendance", active_attendance_count: activeAttendanceAfterRace },
+          {
+            reason: "active_attendance",
+            active_attendance_count: activeAttendanceAfterRace,
+          },
           correlationId
         );
         throw new EventCancellationBlockedError(activeAttendanceAfterRace);
@@ -3607,10 +3611,7 @@ export class DepartmentWorkspace {
       request: row,
       enrollment:
         row.status === "Approved"
-          ? await this.store.findActiveEnrollment(
-              programId,
-              row.member_user_id
-            )
+          ? await this.store.findActiveEnrollment(programId, row.member_user_id)
           : null,
     });
     // ADR-0023 §3 / ADR-0027: DUPLICATE is the SAME actor repeating their own
@@ -3793,9 +3794,7 @@ export class DepartmentWorkspace {
         auditDecide,
         cmd.expectedRequestVersion
       );
-      decided = rejected
-        ? { request: rejected, enrollment: null }
-        : null;
+      decided = rejected ? { request: rejected, enrollment: null } : null;
     }
     if (decided) {
       return decided;
@@ -3890,9 +3889,6 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
-    if (program.enrollment_mode !== "ManagerOnly") {
-      throw new EnrollmentNotAllowedError(programId, "ManagerOnly");
-    }
     if (!(await this.store.isAccountActive(cmd.memberUserId))) {
       await this.audit(
         ctx,
@@ -3929,10 +3925,16 @@ export class DepartmentWorkspace {
       throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
     }
     const now = new Date().toISOString();
-    let row: EnrollmentRow;
-    try {
-      row = await this.store.createEnrollment({
-        enrollment_id: crypto.randomUUID(),
+    const enrollmentId = crypto.randomUUID();
+    const auditCreate = this.buildAuditRow(
+      ctx,
+      "ENROLLMENT_CREATE",
+      "enrollment",
+      enrollmentId,
+      "SUCCESS",
+      null,
+      {
+        enrollment_id: enrollmentId,
         program_id: programId,
         member_user_id: cmd.memberUserId,
         request_id: null,
@@ -3940,7 +3942,24 @@ export class DepartmentWorkspace {
         enrolled_at: now,
         created_by: ctx.actorUserId,
         created_at: now,
-      });
+      },
+      correlationId
+    );
+    let row: EnrollmentRow;
+    try {
+      row = await this.store.createEnrollmentWithAudit(
+        {
+          enrollment_id: enrollmentId,
+          program_id: programId,
+          member_user_id: cmd.memberUserId,
+          request_id: null,
+          status: "Active",
+          enrolled_at: now,
+          created_by: ctx.actorUserId,
+          created_at: now,
+        },
+        auditCreate
+      );
     } catch (error) {
       // ponytail: partial unique index is the race guard; on constraint
       // violation the member already has an Active enrollment.
@@ -3971,16 +3990,6 @@ export class DepartmentWorkspace {
       }
       throw error;
     }
-    await this.audit(
-      ctx,
-      "ENROLLMENT_CREATE",
-      "enrollment",
-      row.enrollment_id,
-      "SUCCESS",
-      null,
-      row,
-      correlationId
-    );
     return row;
   }
 

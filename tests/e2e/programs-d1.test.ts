@@ -174,6 +174,11 @@ const COPY = {
   editRequired: "請完成課程名稱及簡介",
   workspaceParticipantsRefresh: "重新整理參與者資料",
   workspaceParticipantsPendingEmpty: "目前沒有待處理報名。",
+  tabsPending: "待審批",
+  tabsActive: "使用中",
+  tabsHistory: "歷史",
+  assistedEnroll: "代報名",
+  assistedEnrollAck: "只會建立報名紀錄，不會自動簽到。",
   approve: "核准",
   reject: "拒絕",
   decisionNote: "決定備註",
@@ -1532,10 +1537,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         })
       ).toBeVisible();
       const pendingTab = page.getByRole("tab", {
-        name: new RegExp(`${COPY.workspacePendingRequests} \\(\\d+\\)`, "u"),
+        name: new RegExp(`${COPY.tabsPending} \\(\\d+\\)`, "u"),
       });
       const activeTab = page.getByRole("tab", {
-        name: new RegExp(`${COPY.workspaceActiveParticipants} \\(\\d+\\)`, "u"),
+        name: new RegExp(`${COPY.tabsActive} \\(\\d+\\)`, "u"),
       });
       await expect(pendingTab).toBeVisible();
       await expect(activeTab).toBeVisible();
@@ -1639,7 +1644,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         await page
           .getByRole("tab", {
             name: new RegExp(
-              `${COPY.workspacePendingRequests} \\(\\d+\\)`,
+              `${COPY.tabsPending} \\(\\d+\\)`,
               "u"
             ),
           })
@@ -1675,7 +1680,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           "rejected request must not create an Active enrollment"
         ).toBe(false);
         const historyTab = page.getByRole("tab", {
-          name: new RegExp(`${COPY.enrollmentHistory} \\(\\d+\\)`, "u"),
+          name: new RegExp(`${COPY.tabsHistory} \\(\\d+\\)`, "u"),
         });
         await historyTab.click();
         await expect(
@@ -2555,6 +2560,49 @@ test.describe("MUI-02 scoped Program management", () => {
     expect(denied.status).toBe(403);
     expect(denied.body.code).toBe("FORBIDDEN");
   });
+  test("MemberRequest managers can open Participants and use assisted enrollment", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("MemberRequest fixture program id", programId);
+    const programMode = await page.evaluate(async (targetId) => {
+      const response = await fetch(`/api/v1/programs/${targetId}/management`);
+      const body = (await response.json()) as {
+        data?: { program?: { enrollment_mode?: string } };
+      };
+      return body.data?.program?.enrollment_mode;
+    }, id);
+    expect(programMode).toBe("MemberRequest");
+
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(id)}&task=participants`
+    );
+    await expect(
+      page.getByRole("heading", {
+        name: COPY.workspaceTaskParticipants,
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /待審批 \(\d+\)/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /使用中 \(\d+\)/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /歷史 \(\d+\)/u })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.assistedEnroll })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.assistedEnrollAck)).toBeVisible();
+  });
+
 });
 
 test.describe("EVT-01 event operational detail and availability", () => {
@@ -3385,7 +3433,7 @@ test.describe("NTF-01 management attention", () => {
       });
       await expect(
         participants.getByRole("tab", {
-          name: new RegExp(`${COPY.workspacePendingRequests} \\(1\\)`, "u"),
+          name: new RegExp(`${COPY.tabsPending} \\(1\\)`, "u"),
         })
       ).toBeVisible();
       await expect(
@@ -3483,7 +3531,7 @@ test.describe("NTF-01 management attention", () => {
       await page.goto(pendingHref);
       await expect(
         participants.getByRole("tab", {
-          name: new RegExp(`${COPY.workspacePendingRequests} \\(0\\)`, "u"),
+          name: new RegExp(`${COPY.tabsPending} \\(0\\)`, "u"),
         })
       ).toBeVisible();
 
