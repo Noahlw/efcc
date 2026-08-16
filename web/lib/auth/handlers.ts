@@ -356,13 +356,13 @@ export async function handleRegister(
   const username = typeof body.username === "string" ? body.username : "";
   const password = typeof body.password === "string" ? body.password : "";
   const name = typeof body.name === "string" ? body.name : "";
-  const phone = typeof body.phone === "string" ? body.phone : undefined;
-  if (!username || !password || !name) {
+  const phone = typeof body.phone === "string" ? body.phone : "";
+  if (!username || !password || !name || !phone) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "username, password, and name are required.",
+      "username, password, name, and phone are required.",
       requestId
     );
   }

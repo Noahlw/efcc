@@ -367,9 +367,15 @@ test("login form controls are at least 44x44", async ({ page }) => {
       }),
     })
   );
-  await page.goto("/care");
-
+  await page.goto("/");
   const username = page.locator('input[autocomplete="username"]');
+  const relogin = page.getByRole("button", {
+    name: COPY.sessionExpired.reLogin,
+  });
+  await expect(username.or(relogin)).toBeVisible();
+  if (await relogin.isVisible()) {
+    await relogin.click();
+  }
   const password = page.locator('input[autocomplete="current-password"]');
   const submit = page.getByRole("button", { name: COPY.login.submit });
   await expect(username).toBeVisible();

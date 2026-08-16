@@ -19,6 +19,16 @@ export default function NotFound() {
         textAlign: "center",
       }}
     >
+      <h1
+        style={{
+          margin: 0,
+          fontSize: "1.6rem",
+          fontWeight: 800,
+          color: "var(--ink)",
+        }}
+      >
+        {COPY.notAvailable.title}
+      </h1>
       <p
         role="alert"
         style={{
@@ -33,7 +43,7 @@ export default function NotFound() {
           maxWidth: 400,
         }}
       >
-        {COPY.nav.unknownRoute}
+        {COPY.notAvailable.message}
       </p>
       <Link
         href="/"
@@ -51,7 +61,7 @@ export default function NotFound() {
           textDecoration: "none",
         }}
       >
-        {COPY.nav.backToHome}
+        {COPY.notAvailable.backToHome}
       </Link>
     </main>
   );

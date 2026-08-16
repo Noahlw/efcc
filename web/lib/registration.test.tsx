@@ -26,6 +26,10 @@ async function fillForm(user: UserEvent) {
     screen.getByLabelText(REGISTRATION_COPY.nameLabel),
     "Dave Ng"
   );
+  await user.type(
+    screen.getByLabelText(REGISTRATION_COPY.phoneLabel),
+    "9123 4567"
+  );
 }
 
 describe(RegistrationForm, () => {
@@ -87,6 +91,7 @@ describe(RegistrationForm, () => {
           username: "dave",
           password: "dave-password-1",
           name: "Dave Ng",
+          phone: "9123 4567",
         }),
       })
     );
@@ -133,5 +138,81 @@ describe(RegistrationForm, () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       REGISTRATION_COPY.missingFields
     );
+  });
+
+  test("blocks submission when phone is left blank (now required, not optional)", async () => {
+    const user = userEvent.setup();
+    render(<RegistrationForm />);
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.usernameLabel),
+      "dave"
+    );
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.passwordLabel),
+      "dave-password-1"
+    );
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.nameLabel),
+      "Dave Ng"
+    );
+    await user.click(
+      screen.getByRole("button", { name: REGISTRATION_COPY.submit })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      REGISTRATION_COPY.missingFields
+    );
+  });
+
+  test("blocks submission when password is shorter than 8 characters", async () => {
+    const user = userEvent.setup();
+    render(<RegistrationForm />);
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.usernameLabel),
+      "dave"
+    );
+    await user.type(screen.getByLabelText(REGISTRATION_COPY.passwordLabel), "short");
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.nameLabel),
+      "Dave Ng"
+    );
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.phoneLabel),
+      "9123 4567"
+    );
+    await user.click(
+      screen.getByRole("button", { name: REGISTRATION_COPY.submit })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      REGISTRATION_COPY.missingFields
+    );
+  });
+
+  test("done screen explains guest check-in still works and links to both destinations", async () => {
+    server.use(
+      http.post("/api/v1/auth/register", () =>
+        HttpResponse.json(
+          { requestId: "rid-3", data: { status: "pending" } },
+          { status: 200 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(<RegistrationForm />);
+    await fillForm(user);
+    await user.click(
+      screen.getByRole("button", { name: REGISTRATION_COPY.submit })
+    );
+
+    await expect(
+      screen.findByText(REGISTRATION_COPY.doneMessage)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: REGISTRATION_COPY.backToLogin })
+    ).toHaveAttribute("href", "/");
+    expect(
+      screen.getByRole("link", { name: REGISTRATION_COPY.guestCheckIn })
+    ).toHaveAttribute("href", "/guest-check-in");
   });
 });

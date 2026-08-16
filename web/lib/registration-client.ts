@@ -14,7 +14,7 @@ export interface RegistrationInput {
   username: string;
   password: string;
   name: string;
-  phone?: string;
+  phone: string;
 }
 
 export interface PendingRegistration {

@@ -445,6 +445,10 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.newPasswordLabel),
         "new-password"
       );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "new-password"
+      );
       await user.click(
         screen.getByRole("button", { name: COPY.login.upgradeSubmit })
       );
@@ -523,6 +527,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -604,6 +612,10 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.newPasswordLabel),
         "new-password"
       );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "new-password"
+      );
       await user.click(
         screen.getByRole("button", { name: COPY.login.upgradeSubmit })
       );
@@ -671,6 +683,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -751,6 +767,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -871,17 +891,28 @@ describe("Shell", () => {
           )
         )
       );
+      const user = userEvent.setup();
       render(<LoginPage />);
 
       await waitFor(() => {
-        expect(screen.getByText(COPY.restore.expired)).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: COPY.sessionExpired.title })
+        ).toBeInTheDocument();
       });
+      expect(
+        screen.getByText(COPY.sessionExpired.message)
+      ).toBeInTheDocument();
       // Presence hint cleared - the refresh session is dead.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+      expect(replaceMock).not.toHaveBeenCalled();
+
+      // Clicking re-login returns to the login form
+      await user.click(
+        screen.getByRole("button", { name: COPY.sessionExpired.reLogin })
+      );
       expect(
         screen.getByRole("heading", { name: COPY.login.title })
       ).toBeInTheDocument();
-      expect(replaceMock).not.toHaveBeenCalled();
     });
 
     test("login error response renders Traditional Chinese copy from COPY, never raw detail", async () => {
@@ -914,6 +945,79 @@ describe("Shell", () => {
       expect(
         screen.queryByText("sensitive detail from server")
       ).not.toBeInTheDocument();
+    });
+
+    test("blocks login submission when username or password is empty", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      expect(screen.getByText(COPY.login.missingFields)).toBeInTheDocument();
+    });
+
+    test("blocks upgrade submission when password is shorter than 8 characters", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "short");
+      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "short");
+      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
+      expect(screen.getByText(COPY.login.upgradePasswordTooShort)).toBeInTheDocument();
+    });
+
+    test("blocks upgrade submission when password and confirm password do not match", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "password123");
+      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "password456");
+      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
+      expect(screen.getByText(COPY.login.upgradePasswordMismatch)).toBeInTheDocument();
+    });
+
+    test("mounts session expired screen directly when efcc_session_expired sessionStorage flag is set", async () => {
+      sessionStorage.setItem("efcc_session_expired", "1");
+      render(<LoginPage />);
+      expect(screen.getByRole("heading", { name: COPY.sessionExpired.title })).toBeInTheDocument();
+      expect(screen.getByText(COPY.sessionExpired.message)).toBeInTheDocument();
+      expect(sessionStorage.getItem("efcc_session_expired")).toBeNull();
     });
   });
 
@@ -1385,10 +1489,16 @@ describe("Shell", () => {
   });
 
   describe(NotFound, () => {
-    test("renders unknown route message and link to home", () => {
+    test("renders prototype-exact title, message, and link to home", () => {
       render(<NotFound />);
-      expect(screen.getByText(COPY.nav.unknownRoute)).toBeInTheDocument();
-      expect(screen.getByText(COPY.nav.backToHome)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: COPY.notAvailable.title })
+      ).toBeInTheDocument();
+      expect(screen.getByText(COPY.notAvailable.message)).toBeInTheDocument();
+      const homeLink = screen.getByRole("link", {
+        name: COPY.notAvailable.backToHome,
+      });
+      expect(homeLink).toHaveAttribute("href", "/");
     });
   });
 

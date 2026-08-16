@@ -347,6 +347,7 @@ describe("AUTH-06: register", () => {
           username: "dave",
           password: "dave-password-1",
           name: "Dave Ng",
+          phone: "9123 4567",
         },
       }),
       testEnv()
@@ -368,6 +369,7 @@ describe("AUTH-06: register", () => {
           username: "erin",
           password: "erin-password-1",
           name: "Erin Ho",
+          phone: "9123 4568",
         },
       }),
       testEnv()
@@ -394,7 +396,12 @@ describe("AUTH-06: register", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-reg-3" },
-        body: { username: "grace", password: "short", name: "Grace Wu" },
+        body: {
+          username: "grace",
+          password: "short",
+          name: "Grace Wu",
+          phone: "9123 4569",
+        },
       }),
       testEnv()
     );
@@ -411,6 +418,7 @@ describe("AUTH-06: register", () => {
           username: "dave",
           password: "dave-password-2",
           name: "Dave Again",
+          phone: "9123 4570",
         },
       }),
       testEnv()
@@ -429,6 +437,7 @@ describe("AUTH-06: register", () => {
             username: "race-user",
             password: "race-password-1",
             name: "Race User",
+            phone: "9123 4571",
           },
         }),
         testEnv()
@@ -440,6 +449,7 @@ describe("AUTH-06: register", () => {
             username: "race-user",
             password: "race-password-2",
             name: "Race User",
+            phone: "9123 4571",
           },
         }),
         testEnv()
@@ -833,6 +843,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "hugo",
           password: "hugo-password-1",
           name: "Hugo Ma",
+          phone: "9123 4572",
         },
       }),
       testEnv()
@@ -895,6 +906,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "approve-race",
           password: "approve-race-password",
           name: "Approve Race",
+          phone: "9123 4573",
         },
       }),
       testEnv()
@@ -945,6 +957,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "iris",
           password: "iris-password-1",
           name: "Iris Lam",
+          phone: "9123 4574",
         },
       }),
       testEnv()
@@ -1098,6 +1111,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: candidate,
           password: "iris-password-1",
           name: "Iris Wu",
+          phone: "9123 4575",
         },
       }),
       testEnv()

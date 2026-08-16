@@ -312,6 +312,41 @@
   }
 }
 
+/* ---- Session-expired state ---------------------------------------------- */
+
+.sessionExpired {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--paper);
+}
+
+.sessionExpiredCard {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.875rem 1.375rem;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.sessionExpiredTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.sessionExpiredMessage {
+  margin: 0.625rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
 /* ---- Responsive: phone, form first, copy hidden ------------------------- */
 
 @media (max-width: 799px) {
