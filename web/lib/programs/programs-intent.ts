@@ -114,14 +114,21 @@ function parseEvent(
 ): { value: string | undefined; malformed: boolean } {
   const raw = rawEventId.value;
   const value = raw !== null && SAFE_EVENT_ID.test(raw) ? raw : undefined;
+  // PUI-05 (#323): participant Event Detail deep links live on the
+  // participant Programs boundary (program + event, no task); management
+  // event links stay under task === "events" | "participants".
+  const participantEvent =
+    mode === "participant" && task === undefined && programId !== null;
+  const managementEvent =
+    mode === "management" &&
+    (task === "events" || task === "participants") &&
+    programId !== null;
   return {
     value,
     malformed:
       raw !== null &&
       (value === undefined ||
-        mode !== "management" ||
-        (task !== "events" && task !== "participants") ||
-        programId === null),
+        (!participantEvent && !managementEvent)),
   };
 }
 
@@ -179,6 +186,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     mode,
     programId: program.id,
     hash: hash.value,
+    ...(event.value === undefined ? {} : { eventId: event.value }),
     ...creationField,
     malformed,
   };
@@ -219,13 +227,16 @@ export function buildProgramsHref({
     (programId || task === "notifications")
   ) {
     params.set("task", task);
-    if (
+  }
+  if (
+    eventId &&
+    SAFE_EVENT_ID.test(eventId) &&
+    ((mode === "management" &&
       (task === "events" || task === "participants") &&
-      eventId &&
-      SAFE_EVENT_ID.test(eventId)
-    ) {
-      params.set("event", eventId);
-    }
+      programId) ||
+      (mode === "participant" && programId))
+  ) {
+    params.set("event", eventId);
   }
   const query = params.toString();
   const suffix = query ? `/programs?${query}` : "/programs";

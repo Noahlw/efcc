@@ -123,6 +123,7 @@ const modules: DepartmentModule[] = [
 const event: ProgramEvent = {
   event_id: "event-1",
   program_id: "program-1",
+  program_name: "顯恩堂主日學",
   starts_at: "2030-08-20T11:00:00.000Z",
   ends_at: "2026-08-20T13:00:00.000Z",
   status: "Active",

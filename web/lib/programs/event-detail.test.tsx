@@ -27,6 +27,7 @@ const detailFixture = (
   event: {
     event_id: "event-1",
     program_id: "program-1",
+    program_name: "顯恩堂主日學",
     starts_at: "2026-09-12T10:00:00.000Z",
     ends_at: "2026-09-12T11:30:00.000Z",
     status: "Active",
@@ -355,7 +356,10 @@ describe("EVT-01 event detail", () => {
   test("cancel without attendance shows the explicit confirmation and commits", async () => {
     mocks.getEvent.mockResolvedValue(
       detailFixture({
-        event: { ...detailFixture().event, has_attendance: false } as EventDetailData["event"],
+        event: {
+          ...detailFixture().event,
+          has_attendance: false,
+        } as EventDetailData["event"],
         participant_summary: { active_enrollments: 0, checked_in: 0 },
       })
     );
@@ -377,8 +381,12 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.cancelMeetingConfirmTitle)
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.cancelMeetingConfirmBody)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: COPY.programs.confirmCancel }));
+    expect(
+      screen.getByText(COPY.programs.cancelMeetingConfirmBody)
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmCancel })
+    );
     await expect(
       screen.findByText(COPY.programs.eventCancelledNotice)
     ).resolves.toBeInTheDocument();
@@ -641,6 +649,113 @@ describe("EVT-01 event detail", () => {
       screen.queryByRole("button", { name: COPY.programs.cancelEvent })
     ).not.toBeInTheDocument();
   });
+
+  // 085-04 (#323) participant projection — Spec 085 US 23-24.
+  test("participant projection shows badge + title/program/when/where + instructions + CTA", async () => {
+    const now = Date.now();
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+          check_in_window_closes_at: new Date(now + 90 * 60_000).toISOString(),
+        } as EventDetailData["event"],
+      })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+      />
+    );
+
+    // 可簽到 badge when the check-in window is currently open.
+    expect(
+      await screen.findByRole("status", {
+        name: COPY.programs.checkInAvailable,
+      })
+    ).toBeInTheDocument();
+
+    // Title + program name.
+    expect(
+      screen.getByRole("heading", { name: "迎新聚會" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("顯恩堂主日學")).toBeInTheDocument();
+
+    // When / where.
+    const article = screen.getByRole("region", {
+      name: COPY.programs.eventInstructions,
+    });
+    expect(article).toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.detailEventTime)).toBeInTheDocument();
+    expect(screen.getByText("教會禮堂")).toBeInTheDocument();
+
+    // Check-in instructions.
+    expect(
+      screen.getByText(COPY.programs.eventInstructions)
+    ).toBeInTheDocument();
+
+    // 前往掃描 CTA points at the scanner with this exact event pre-selected.
+    const cta = screen.getByRole("link", {
+      name: COPY.programs.goToScan,
+    });
+    expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
+
+    // No management controls.
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cancelEvent })
+    ).not.toBeInTheDocument();
+  });
+
+  test("participant projection omits the 可簽到 badge when the window is closed", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          check_in_window_opens_at: "2027-01-01T09:30:00.000Z",
+          check_in_window_closes_at: "2027-01-01T12:00:00.000Z",
+        } as EventDetailData["event"],
+      })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+      />
+    );
+    await screen.findByRole("heading", { name: "迎新聚會" });
+    expect(
+      screen.queryByRole("status", { name: COPY.programs.checkInAvailable })
+    ).not.toBeInTheDocument();
+  });
+
+  test("participant projection back uses the supplied onBack callback (history.back wrapper)", async () => {
+    const onBack = vi.fn<() => void>();
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={onBack}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.backToOrigin })
+    );
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
   test("086-03 editing a meeting with attendance succeeds and acknowledges the recorded change", async () => {
     const meeting = {
       ...detailFixture().event,
@@ -669,7 +784,9 @@ describe("EVT-01 event detail", () => {
     const nameInput = screen.getByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "更正後聚會");
-    await user.click(screen.getByRole("button", { name: COPY.programs.eventEditSave }));
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
     await expect(
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
@@ -679,7 +796,10 @@ describe("EVT-01 event detail", () => {
   test("086-03 cancelling a meeting with attendance is refused without calling cancel", async () => {
     mocks.getEvent.mockResolvedValue(
       detailFixture({
-        event: { ...detailFixture().event, has_attendance: true } as EventDetailData["event"],
+        event: {
+          ...detailFixture().event,
+          has_attendance: true,
+        } as EventDetailData["event"],
         participant_summary: { active_enrollments: 2, checked_in: 1 },
       })
     );
@@ -692,7 +812,9 @@ describe("EVT-01 event detail", () => {
         onBack={() => {}}
       />
     );
-    await user.click(await screen.findByRole("button", { name: COPY.programs.cancelEvent }));
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
+    );
     await expect(
       screen.findByText(COPY.programs.cancelBlockedWithAttendance)
     ).resolves.toBeInTheDocument();
@@ -726,12 +848,18 @@ describe("EVT-01 event detail", () => {
         onBack={() => {}}
       />
     );
-    await user.click(await screen.findByRole("button", { name: COPY.programs.cancelEvent }));
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
+    );
     await expect(
       screen.findByText(COPY.programs.cancelMeetingConfirmTitle)
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.cancelMeetingConfirmBody)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: COPY.programs.keepMeeting }));
+    expect(
+      screen.getByText(COPY.programs.cancelMeetingConfirmBody)
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.keepMeeting })
+    );
     expect(mocks.cancelEvent).not.toHaveBeenCalled();
     rerender(
       <EventDetail
@@ -741,12 +869,20 @@ describe("EVT-01 event detail", () => {
         onBack={() => {}}
       />
     );
-    await user.click(await screen.findByRole("button", { name: COPY.programs.cancelEvent }));
-    await user.click(screen.getByRole("button", { name: COPY.programs.confirmCancel }));
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmCancel })
+    );
     await expect(
       screen.findByText(COPY.programs.eventCancelledNotice)
     ).resolves.toBeInTheDocument();
-    expect(mocks.cancelEvent).toHaveBeenCalledWith("program-1", "event-1", null);
+    expect(mocks.cancelEvent).toHaveBeenCalledWith(
+      "program-1",
+      "event-1",
+      null
+    );
     expect(cancelled).toBe(true);
   });
 });

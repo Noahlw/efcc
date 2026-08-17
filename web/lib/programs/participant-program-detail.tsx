@@ -25,6 +25,8 @@ export interface ParticipantProgramDetailProps {
   onBack: () => void;
   canManage: boolean;
   onManagement: () => void;
+  /** PUI-05 (#323): open a participant Event Detail deep link on the boundary. */
+  onOpenEvent: (eventId: string) => void;
   conflictProgramName?: string | null;
 }
 
@@ -201,6 +203,7 @@ export const ParticipantProgramDetail = ({
   onBack,
   canManage,
   onManagement,
+  onOpenEvent,
   conflictProgramName = null,
 }: ParticipantProgramDetailProps) => {
   const router = useRouter();
@@ -467,8 +470,9 @@ export const ParticipantProgramDetail = ({
             </p>
           )}
           <button
-            className={styles.secondaryButton}
             type="button"
+            className={styles.secondaryButton}
+            onClick={() => onOpenEvent(nextEvent.event_id)}
             aria-label={COPY.programs.viewEventDetail}
           >
             {COPY.programs.viewEventDetail}

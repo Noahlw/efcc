@@ -19,6 +19,8 @@ import type {
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
+import type { ProgramEvent } from "./program-api";
+
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -246,7 +248,7 @@ export interface ManagementProgramWorkspaceView {
   cockpit: ManagementCockpitView;
 }
 export interface EventDetailView {
-  event: EventRow;
+  event: ProgramEvent;
   leaders: ProgramLeaderRow[];
   participant_summary: {
     active_enrollments: number;
@@ -2445,35 +2447,94 @@ export class DepartmentWorkspace {
     if (!event) {
       return null;
     }
-    const program = await this.requireProgramFor(
+    const program = await this.store.findProgramById(event.program_id);
+    if (!program) {
+      return null;
+    }
+    // Operators keep the existing PROGRAM_MANAGE-gated projection
+    // (leaders / participant_summary / exceptions / recurrence_tag).
+    const operatorScoped = await this.authorizer.can(
       ctx,
-      event.program_id,
-      CAPABILITY.PROGRAM_MANAGE
+      CAPABILITY.PROGRAM_MANAGE,
+      { programId: program.program_id }
     );
-    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const [leaders, participant_summary, rules] = await Promise.all([
-      this.store.listProgramLeaders(program.program_id),
-      this.store.getEventParticipantSummary(event.event_id, program.program_id),
-      this.store.listScheduleRules(program.program_id),
-    ]);
-    const exceptions =
-      rules.length === 0
-        ? []
-        : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
-    const exception =
-      (exceptionForEvent(
-        event,
-        rules,
-        exceptions
-      ) as ScheduleExceptionRow | null) ?? null;
-    const recurrence_tag = recurrenceTagForEvent(event, rules);
-    const decoratedEvent: EventRow = {
-      ...event,
-      exception,
-      recurrence_tag,
-      has_attendance: participant_summary.checked_in > 0,
+    if (operatorScoped) {
+      await this.requireModuleEnabled(
+        program.department_id,
+        MODULE_KEY.EVENTS
+      );
+      const [leaders, participant_summary, rules] = await Promise.all([
+        this.store.listProgramLeaders(program.program_id),
+        this.store.getEventParticipantSummary(
+          event.event_id,
+          program.program_id
+        ),
+        this.store.listScheduleRules(program.program_id),
+      ]);
+      const exceptions =
+        rules.length === 0
+          ? []
+          : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
+      const exception =
+        (exceptionForEvent(
+          event,
+          rules,
+          exceptions
+        ) as ScheduleExceptionRow | null) ?? null;
+      const recurrence_tag = recurrenceTagForEvent(event, rules);
+      const decoratedEvent: EventRow = {
+        ...event,
+        exception,
+        recurrence_tag,
+        has_attendance: participant_summary.checked_in > 0,
+      };
+      return {
+        event: { ...decoratedEvent, program_name: program.name },
+        leaders,
+        participant_summary,
+      };
+    }
+    // Participant projection: enrolled Active member may read any
+    // Active + Available event on their enrolled program (past, present,
+    // or future — the check-in window is irrelevant for detail browsing).
+    // Cancelled and Inactive events stay operator-only.
+    if (
+      event.status !== "Active" ||
+      (event.availability ?? "Active") !== "Active"
+    ) {
+      return null;
+    }
+    const enrolled = await this.store.hasActiveEnrollment(
+      program.program_id,
+      ctx.actorUserId
+    );
+    if (!enrolled) {
+      return null;
+    }
+    const participantEvent: ProgramEvent = {
+      event_id: event.event_id,
+      program_id: event.program_id,
+      program_name: program.name,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      status: event.status,
+      availability: event.availability ?? "Active",
+      source: event.source,
+      name: event.name,
+      event_type: event.event_type,
+      location: event.location,
+      manual_check_in_code: null,
+      check_in_window_opens_at: event.check_in_window_opens_at,
+      check_in_window_closes_at: event.check_in_window_closes_at,
+      cancel_reason: event.cancel_reason,
+      created_at: event.created_at,
+      updated_at: event.updated_at,
     };
-    return { event: decoratedEvent, leaders, participant_summary };
+    return {
+      event: participantEvent,
+      leaders: [],
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    };
   }
 
   async createScheduleRule(

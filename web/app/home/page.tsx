@@ -7,6 +7,7 @@ import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { getHome } from "@/lib/home-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import {
   getParticipantProgramDetail,
   listParticipantCatalog,
@@ -402,6 +403,14 @@ export function HomeView({
   }
 
   const programTitle = event?.programTitle ?? program?.name;
+  const eventHref =
+    event?.eventId && event.programId
+      ? buildProgramsHref({
+          mode: "participant",
+          programId: event.programId,
+          eventId: event.eventId,
+        })
+      : "/programs";
   const title = event?.eventTitle ?? "";
   const date = eventDate(event?.startsAt ?? null);
   const startTime = eventTime(event?.startsAt ?? null);
@@ -432,7 +441,7 @@ export function HomeView({
             {time && <EventRow icon="clock">{time}</EventRow>}
             {event.location && <EventRow icon="pin">{event.location}</EventRow>}
           </div>
-          <Link href="/programs" className={styles.primaryAction}>
+          <Link href={eventHref} className={styles.primaryAction}>
             {COPY.home.viewEvent}
           </Link>
         </article>

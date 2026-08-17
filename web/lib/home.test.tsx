@@ -2,7 +2,15 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import HomePage, {
   AnnouncementDetail,
@@ -11,8 +19,8 @@ import HomePage, {
   type HomeEvent,
   type HomeProgram,
 } from "@/app/home/page";
-import { AppProvider } from "@/lib/app-context";
 import type { Bootstrap, PublicUser } from "@/lib/api";
+import { AppProvider } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
 import { defaultSections, stableNavigationSections } from "@/lib/sections";
 
@@ -177,7 +185,10 @@ describe("HomeView Component", () => {
     );
 
     expect(
-      screen.getByRole("heading", { level: 1, name: `${COPY.home.greeting}，${MEMBER_PROFILE.name}` })
+      screen.getByRole("heading", {
+        level: 1,
+        name: `${COPY.home.greeting}，${MEMBER_PROFILE.name}`,
+      })
     ).toBeInTheDocument();
     expect(screen.getByText(COPY.home.subtitle)).toBeInTheDocument();
   });
@@ -193,10 +204,14 @@ describe("HomeView Component", () => {
 
     const emptySection = screen.getByTestId("home-empty-state");
     expect(emptySection).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: COPY.home.emptyTitle })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: COPY.home.emptyTitle })
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.home.emptySubtitle)).toBeInTheDocument();
 
-    const exploreButton = screen.getByRole("link", { name: COPY.home.explorePrograms });
+    const exploreButton = screen.getByRole("link", {
+      name: COPY.home.explorePrograms,
+    });
     expect(exploreButton).toBeInTheDocument();
     expect(exploreButton).toHaveAttribute("href", "/programs");
   });
@@ -214,12 +229,19 @@ describe("HomeView Component", () => {
     expect(eventCard).toBeInTheDocument();
     expect(screen.getByText(COPY.home.enrolledBadge)).toBeInTheDocument();
     expect(screen.getByText("門徒訓練基礎課")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "第三課聚會" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "第三課聚會" })
+    ).toBeInTheDocument();
     expect(screen.getByText("二樓禮堂")).toBeInTheDocument();
 
-    const viewEventLink = screen.getByRole("link", { name: COPY.home.viewEvent });
+    const viewEventLink = screen.getByRole("link", {
+      name: COPY.home.viewEvent,
+    });
     expect(viewEventLink).toBeInTheDocument();
-    expect(viewEventLink).toHaveAttribute("href", "/programs");
+    expect(viewEventLink).toHaveAttribute(
+      "href",
+      "/programs?program=p-disc&event=e-101"
+    );
   });
 
   test("renders church news section and opens announcement detail upon clicking card", async () => {
@@ -232,7 +254,9 @@ describe("HomeView Component", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 2, name: COPY.home.churchNews })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: COPY.home.churchNews })
+    ).toBeInTheDocument();
     const announcementCard = screen.getByTestId("announcement-card");
     expect(announcementCard).toBeInTheDocument();
     expect(screen.getByText("本週崇拜及聚會安排")).toBeInTheDocument();
@@ -241,19 +265,30 @@ describe("HomeView Component", () => {
 
     const detailView = screen.getByTestId("announcement-detail");
     expect(detailView).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "本週崇拜及聚會安排" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: COPY.home.venueTitle })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "本週崇拜及聚會安排" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: COPY.home.venueTitle })
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.home.venueInstructions)).toBeInTheDocument();
     expect(screen.getByText(COPY.home.worshipLocation)).toBeInTheDocument();
     expect(screen.getByText(COPY.home.familyRoom)).toBeInTheDocument();
     expect(screen.getByText(COPY.home.visitorReception)).toBeInTheDocument();
 
-    const externalLink = screen.getByRole("link", { name: new RegExp(COPY.home.externalLink) });
-    expect(externalLink).toHaveAttribute("href", "https://example.com/venue-details");
+    const externalLink = screen.getByRole("link", {
+      name: new RegExp(COPY.home.externalLink),
+    });
+    expect(externalLink).toHaveAttribute(
+      "href",
+      "https://example.com/venue-details"
+    );
     expect(externalLink).toHaveAttribute("target", "_blank");
     expect(externalLink).toHaveAttribute("rel", "noopener");
 
-    const backButton = screen.getByRole("button", { name: new RegExp(COPY.home.backHome) });
+    const backButton = screen.getByRole("button", {
+      name: new RegExp(COPY.home.backHome),
+    });
     await user.click(backButton);
 
     expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
@@ -269,8 +304,12 @@ describe("HomeView Component", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 2, name: COPY.home.explore })).toBeInTheDocument();
-    const allProgramsLink = screen.getByRole("link", { name: COPY.home.allPrograms });
+    expect(
+      screen.getByRole("heading", { level: 2, name: COPY.home.explore })
+    ).toBeInTheDocument();
+    const allProgramsLink = screen.getByRole("link", {
+      name: COPY.home.allPrograms,
+    });
     expect(allProgramsLink).toHaveAttribute("href", "/programs");
 
     const exploreCard = screen.getByTestId("explore-card");
@@ -295,19 +334,22 @@ describe("AnnouncementDetail Component", () => {
   test("renders all announcement guidance rows and secure external link", () => {
     const onBack = vi.fn();
     render(
-      <AnnouncementDetail
-        announcement={SAMPLE_ANNOUNCEMENT}
-        onBack={onBack}
-      />
+      <AnnouncementDetail announcement={SAMPLE_ANNOUNCEMENT} onBack={onBack} />
     );
 
     expect(screen.getByText(COPY.home.churchNews)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: SAMPLE_ANNOUNCEMENT.title })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: SAMPLE_ANNOUNCEMENT.title })
+    ).toBeInTheDocument();
     expect(screen.getByText(SAMPLE_ANNOUNCEMENT.summary)).toBeInTheDocument();
     expect(screen.getByText(SAMPLE_ANNOUNCEMENT.date)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: COPY.home.venueTitle })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: COPY.home.venueTitle })
+    ).toBeInTheDocument();
 
-    const link = screen.getByRole("link", { name: new RegExp(COPY.home.externalLink) });
+    const link = screen.getByRole("link", {
+      name: new RegExp(COPY.home.externalLink),
+    });
     expect(link).toHaveAttribute("href", "https://example.com/venue-details");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener");

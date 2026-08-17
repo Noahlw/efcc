@@ -2,9 +2,21 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
-import type { AttendanceEvent, AttendanceResolveLatest } from "@/lib/attendance";
+import type {
+  AttendanceEvent,
+  AttendanceResolveLatest,
+} from "@/lib/attendance";
 import { COPY } from "@/lib/copy";
 import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
 
@@ -101,6 +113,31 @@ describe(SelfCheckInPanel, () => {
     expect(
       screen.getByText(COPY.attendance.manualOnlyTitle)
     ).toBeInTheDocument();
+  });
+  test("event deep link resolves and pre-selects the requested event", async () => {
+    const resolveRequest: { url: URL | null } = { url: null };
+    server.use(
+      http.get("/api/v1/attendance/resolve", ({ request }) => {
+        resolveRequest.url = new URL(request.url);
+        return HttpResponse.json({
+          requestId: "rid-resolve-event",
+          data: { events: [EVENT], latest: null, enrolled: true },
+        });
+      })
+    );
+    window.history.pushState({}, "", "/scanner?event=evt-1");
+    try {
+      render(<SelfCheckInPanel />);
+      await screen.findByRole("heading", {
+        name: COPY.attendance.confirmTitle,
+      });
+      expect(resolveRequest.url?.searchParams.get("event")).toBe("evt-1");
+      expect(
+        screen.getByRole("heading", { name: "週六聚會" })
+      ).toBeInTheDocument();
+    } finally {
+      window.history.replaceState({}, "", "/scanner");
+    }
   });
 
   test("camera unavailable shows alert and manual-code card remains visible and usable", async () => {
@@ -684,9 +721,7 @@ describe(SelfCheckInPanel, () => {
       name: COPY.attendance.duplicateTitle,
     });
     expect(duplicateHeading).toHaveFocus();
-    expect(
-      screen.getByText(COPY.attendance.duplicateBody)
-    ).toBeInTheDocument();
+    expect(screen.getByText(COPY.attendance.duplicateBody)).toBeInTheDocument();
     expect(
       screen.getByTestId("attendance-result-icon-duplicate")
     ).toBeInTheDocument();

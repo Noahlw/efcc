@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
@@ -24,7 +25,6 @@ import {
 
 import styles from "@/app/programs/programs.module.css";
 
-
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
@@ -37,6 +37,24 @@ const AVAILABILITY_LABEL: Record<
   Active: COPY.programs.eventAvailable,
   Inactive: COPY.programs.eventUnavailable,
 };
+function checkInWindowIsOpen(event: ProgramEvent, now = Date.now()): boolean {
+  if (
+    event.status !== "Active" ||
+    event.availability !== "Active" ||
+    !event.check_in_window_opens_at ||
+    !event.check_in_window_closes_at
+  ) {
+    return false;
+  }
+  const opensAt = Date.parse(event.check_in_window_opens_at);
+  const closesAt = Date.parse(event.check_in_window_closes_at);
+  return (
+    Number.isFinite(opensAt) &&
+    Number.isFinite(closesAt) &&
+    opensAt <= now &&
+    now <= closesAt
+  );
+}
 
 /** HK wall "YYYY-MM-DDTHH:MM" value for a datetime-local input. */
 export function hkWallInputValue(iso: string | null | undefined): string {
@@ -71,6 +89,7 @@ export const EventDetail = ({
   canManage,
   onBack,
   onAttentionRefresh,
+  onAuthRequired,
 }: {
   programId: string;
   eventId: string;
@@ -78,6 +97,7 @@ export const EventDetail = ({
   onBack: () => void;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
+  onAuthRequired?: () => void;
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,14 +149,23 @@ export const EventDetail = ({
       if (!mounted.current) {
         return;
       }
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        onAuthRequired?.();
+        return;
+      }
       setLoadError(errorMessage(error));
       setDetail(null);
     }
-  }, [programId, eventId]);
+  }, [eventId, onAuthRequired, programId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (!canManage && detail !== null) {
+      document.getElementById("participant-event-title")?.focus();
+    }
+  }, [canManage, detail]);
 
   const runAction = useCallback(
     async (
@@ -192,7 +221,8 @@ export const EventDetail = ({
         updateEvent(programId, eventId, {
           name: String(form.get("name") ?? "").trim() || null,
           location: String(form.get("location") ?? "").trim() || null,
-          event_type: (String(form.get("event_type") ?? "") || null) as EventType | null,
+          event_type: (String(form.get("event_type") ?? "") ||
+            null) as EventType | null,
           starts_at: hkWallInputToIso(startsAt) ?? undefined,
           ends_at: hkWallInputToIso(endsAt) ?? undefined,
           check_in_window_opens_at: hkWallInputToIso(
@@ -239,7 +269,7 @@ export const EventDetail = ({
           setDeactivateImpact(
             typeof problem.open_operations === "number"
               ? problem.open_operations
-              : detail?.participant_summary.checked_in ?? 0
+              : (detail?.participant_summary.checked_in ?? 0)
           );
           setConfirmingDeactivate(true);
           return true;
@@ -322,6 +352,77 @@ export const EventDetail = ({
   const cancelled = event.status === "Cancelled";
   const hasAttendance =
     event.has_attendance === true || participant_summary.checked_in > 0;
+  if (!canManage) {
+    const programName = event.program_name ?? event.program_id;
+    const checkInOpen = checkInWindowIsOpen(event);
+    const scanHref = `/scanner?event=${encodeURIComponent(event.event_id)}`;
+    const eventTitle = event.name ?? hkWallDateTimeLabel(event.starts_at);
+    const eventTime = `${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`;
+
+    return (
+      <section
+        className={styles.programDetail}
+        aria-labelledby="participant-event-title"
+        aria-busy={busy}
+      >
+        <button
+          type="button"
+          className={styles.programDetailBack}
+          aria-label={COPY.programs.backToOrigin}
+          onClick={onBack}
+        >
+          ← {COPY.programs.backToOrigin}
+        </button>
+        <header className={styles.programDetailHeader}>
+          {checkInOpen && (
+            <span
+              className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
+              role="status"
+              aria-label={COPY.programs.checkInAvailable}
+            >
+              {COPY.programs.checkInAvailable}
+            </span>
+          )}
+          <p className={styles.programDetailEyebrow}>{programName}</p>
+          <h1
+            id="participant-event-title"
+            className={styles.boundaryTitle}
+            tabIndex={-1}
+          >
+            {eventTitle}
+          </h1>
+        </header>
+
+        <dl className={styles.programDetailFacts}>
+          <div>
+            <dt>{COPY.programs.detailEventTime}</dt>
+            <dd>
+              <time dateTime={event.starts_at}>{eventTime}</time>
+            </dd>
+          </div>
+          {event.location && (
+            <div>
+              <dt>{COPY.programs.detailEventLocation}</dt>
+              <dd>{event.location}</dd>
+            </div>
+          )}
+        </dl>
+
+        <section
+          className={styles.programDetailSection}
+          aria-label={COPY.programs.eventInstructions}
+        >
+          <p className={styles.programDetailDescription}>
+            {COPY.programs.eventInstructions}
+          </p>
+        </section>
+
+        <Link href={scanHref} className={styles.actionButton}>
+          {COPY.programs.goToScan}
+        </Link>
+      </section>
+    );
+  }
 
   return (
     <section

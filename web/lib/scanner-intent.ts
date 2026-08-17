@@ -31,11 +31,10 @@ export function parseScannerIntent(search: string): ScannerIntent {
     (rawMode.value !== null &&
       rawMode.value !== "self" &&
       rawMode.value !== "assisted") ||
-    (rawEvent.value !== null &&
-      (mode !== "assisted" || !SAFE_EVENT_ID.test(rawEvent.value)));
+    (rawEvent.value !== null && !SAFE_EVENT_ID.test(rawEvent.value));
   return {
     mode,
-    eventId: mode === "assisted" && !malformed ? rawEvent.value : null,
+    eventId: !malformed ? rawEvent.value : null,
     malformed,
   };
 }

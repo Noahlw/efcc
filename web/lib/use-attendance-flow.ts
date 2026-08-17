@@ -13,6 +13,7 @@ import { entryFromValue } from "@/lib/attendance-entry";
 import { errorCopyFor, COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { resolveAttendance } from "@/lib/programs/program-api";
+import { parseScannerIntent } from "@/lib/scanner-intent";
 import { useQrCamera } from "@/lib/use-qr-camera";
 export type StatusTone = "info" | "success" | "error";
 export type AttendanceView = "scan" | "chooser" | "outcome";
@@ -97,10 +98,13 @@ export function useAttendanceFlow(
     setStatus("");
     setTone("info");
   };
-
-  async function resolve(value: string, isFromQr = false) {
+  async function resolve(
+    value: string,
+    isFromQr = false,
+    requestedEventId: string | null = null
+  ) {
     const entry = entryFromValue(value);
-    if (!entry.value) {
+    if (!entry.value && !requestedEventId) {
       const message = COPY.attendance.inputLabel;
       setFromQr(false);
       setEvents([]);
@@ -124,9 +128,11 @@ export function useAttendanceFlow(
     setEvents([]);
     setSelectedState(null);
     try {
-      const result = resolvedFromQr
-        ? await resolveAttendance({ program_token: entry.value })
-        : await resolveAttendance({ entry: entry.value });
+      const result = requestedEventId
+        ? await resolveAttendance({ event: requestedEventId })
+        : resolvedFromQr
+          ? await resolveAttendance({ program_token: entry.value })
+          : await resolveAttendance({ entry: entry.value });
       const resolvedEvents = result.events ?? [];
       setEvents(resolvedEvents);
       if (resolvedEvents.length === 1) {
@@ -198,31 +204,31 @@ export function useAttendanceFlow(
     }
   }
 
-  const {
-    videoRef,
-    cameraOpen,
-    cameraAvailable,
-    startCamera,
-    stopCamera,
-  } = useQrCamera({
-    onDetect: (value) => {
-      const entry = entryFromValue(value);
-      setInputValue(entry.value);
-      setFromQr(entry.fromQr);
-      stopCamera();
-      void resolve(entry.value, entry.fromQr);
-    },
-    onUnavailable: () => {
-      setCameraUnavailable(true);
-      const message = COPY.attendance.cameraUnavailable;
-      showStatus(message, "error");
-      announce(message);
-      inputRef.current?.focus();
-    },
-    reportUnavailableOnMount: options.reportCameraUnavailable,
-  });
+  const { videoRef, cameraOpen, cameraAvailable, startCamera, stopCamera } =
+    useQrCamera({
+      onDetect: (value) => {
+        const entry = entryFromValue(value);
+        setInputValue(entry.value);
+        setFromQr(entry.fromQr);
+        stopCamera();
+        void resolve(entry.value, entry.fromQr);
+      },
+      onUnavailable: () => {
+        setCameraUnavailable(true);
+        const message = COPY.attendance.cameraUnavailable;
+        showStatus(message, "error");
+        announce(message);
+        inputRef.current?.focus();
+      },
+      reportUnavailableOnMount: options.reportCameraUnavailable,
+    });
 
   useEffect(() => {
+    const intent = parseScannerIntent(window.location.search);
+    if (intent.eventId) {
+      void resolve("", false, intent.eventId);
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     const programToken = params.get("program_token");
     const manualCode = params.get("manual_code");
