@@ -1124,10 +1124,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
         required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
       );
-      [programId] = await catalogProgramIds(
-        memberPage,
-        "E2E_DEMO_成人查經"
-      );
+      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
       expect(programId).toBeTruthy();
 
       // Event Detail is gated to enrolled members; establish an Active
@@ -1137,9 +1134,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       await memberPage.goto(`/programs?program=${programId}#overview`);
       const enrollmentPanel = enrollmentPanelOf(memberPage);
       const pendingHint = enrollmentPanel.getByText(COPY.requestPendingHint);
-      const activeHint = enrollmentPanel.getByText(
-        COPY.enrollmentActiveHint
-      );
+      const activeHint = enrollmentPanel.getByText(COPY.enrollmentActiveHint);
       await expect(
         submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
       ).toBeVisible();
@@ -1195,10 +1190,10 @@ test.describe("PUI-05 participant Event Detail", () => {
 
       // Event detail: the event-name heading (PUI-05 renders the real event
       // title, not a fixed label), back action, instructions, and scan CTA.
-      await expect(memberPage.locator("#participant-event-title")).toBeVisible();
       await expect(
-        memberPage.getByText(COPY.eventInstructions)
+        memberPage.locator("#participant-event-title")
       ).toBeVisible();
+      await expect(memberPage.getByText(COPY.eventInstructions)).toBeVisible();
       await expect(
         memberPage.getByRole("button", { name: COPY.backToOrigin })
       ).toBeVisible();
@@ -1216,13 +1211,17 @@ test.describe("PUI-05 participant Event Detail", () => {
       await expect(scanCta).toBeVisible();
       const ctaHref = await scanCta.getAttribute("href");
       expect(ctaHref).toMatch(/\/scanner\?event=[^&]+$/u);
-      const eventIdFromCta = new URL(ctaHref ?? "", "http://x")
-        .searchParams.get("event");
+      const eventIdFromCta = new URL(
+        ctaHref ?? "",
+        "http://x"
+      ).searchParams.get("event");
       expect(eventIdFromCta).toBeTruthy();
       const resolvePromise = memberPage.waitForResponse(
         (response) =>
           response.url().includes("/api/v1/attendance/resolve") &&
-          response.url().includes(`event=${encodeURIComponent(eventIdFromCta ?? "")}`)
+          response
+            .url()
+            .includes(`event=${encodeURIComponent(eventIdFromCta ?? "")}`)
       );
       await scanCta.click();
       await expect(memberPage).toHaveURL(/\/scanner\?event=[^&]+$/u);
@@ -1352,9 +1351,7 @@ test.describe("NTC-01 participant Notices", () => {
       await page.getByRole("button", { name: COPY.noticesMarkAllRead }).click();
       // Toast confirmation via the announce live region.
       await expect(
-        page
-          .getByRole("status")
-          .filter({ hasText: COPY.noticesMarkedAllRead })
+        page.getByRole("status").filter({ hasText: COPY.noticesMarkedAllRead })
       ).toBeVisible();
       await expect(page.getByText(`2 ${COPY.noticesUnread}`)).toHaveCount(0);
       // Server-persisted: reload keeps read state; notices retained.
@@ -1384,9 +1381,25 @@ test.describe("NTC-01 participant Notices", () => {
     );
     await page.goto("/notices");
     await page.getByRole("link", { name: /聚會提醒/u }).click();
-    await expect(page).toHaveURL(
-      /\/programs\?program=[^&]+&event=[^&]+$/u
+    await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+  });
+
+  test("returns to Notices after back from event detail opened via notice", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
+    await page.goto("/notices");
+    await page.getByRole("link", { name: /聚會提醒/u }).click();
+    await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+    await page.getByRole("button", { name: COPY.backToOrigin }).click();
+    await expect(page).toHaveURL(/\/notices$/u);
+    await expect(
+      page.getByRole("list", { name: COPY.noticesListLabel })
+    ).toBeVisible();
   });
 
   test("opens a program notice to the Program detail", async ({ page }) => {
@@ -2002,10 +2015,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           .click();
         await page
           .getByRole("tab", {
-            name: new RegExp(
-              `${COPY.tabsPending} \\(\\d+\\)`,
-              "u"
-            ),
+            name: new RegExp(`${COPY.tabsPending} \\(\\d+\\)`, "u"),
           })
           .click();
         const secondRow = page
@@ -2162,9 +2172,10 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       .first();
     // Capture the row's program name before navigating (the directory
     // unmounts once the Cockpit opens).
-    const firstProgramName = (await firstProgram.innerText())
-      .split("\n")[0]
-      .trim();
+    const firstProgramName = required(
+      "first program name",
+      (await firstProgram.textContent())?.split("\n")[0]?.trim()
+    );
     await firstProgram.focus();
     await firstProgram.press("Enter");
     // The status-first Cockpit leads with the program-name heading (no
@@ -2794,9 +2805,9 @@ test.describe("086-06 Departments directory and detail", () => {
     await expect(
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /部門設定/u })
-    ).toHaveCount(scopedDepartments.count);
+    await expect(page.getByRole("button", { name: /部門設定/u })).toHaveCount(
+      scopedDepartments.count
+    );
   });
 
   test("department detail exposes five independently toggleable modules", async ({
@@ -3125,7 +3136,6 @@ test.describe("MUI-02 scoped Program management", () => {
     ).toBeVisible();
     await expect(page.getByText(COPY.assistedEnrollAck)).toBeVisible();
   });
-
 });
 
 test.describe("EVT-01 event operational detail and availability", () => {
@@ -4118,7 +4128,7 @@ test.describe("NTF-01 management attention", () => {
           programId,
           DEV_MEMBER.userId,
           "revoke"
-        ).catch(() => undefined);
+        ).catch(() => {});
       }
       if (pendingRequestId && !pendingResolved) {
         await page
@@ -4145,7 +4155,7 @@ test.describe("NTF-01 management attention", () => {
             },
             { programId, requestId: pendingRequestId }
           )
-          .catch(() => undefined);
+          .catch(() => {});
       }
       if (inactiveEventId) {
         await patchAttentionEvent(page, programId, inactiveEventId, {
@@ -4705,7 +4715,10 @@ test.describe("HUB-01 Management Hub directory", () => {
     );
     expect(created.okApprove, "approve-candidate must register").toBe(true);
     expect(created.okReject, "reject-candidate must register").toBe(true);
-    const approveId = required("approve-candidate request id", created.approveId);
+    const approveId = required(
+      "approve-candidate request id",
+      created.approveId
+    );
     const rejectId = required("reject-candidate request id", created.rejectId);
 
     // List: both pending rows render with routable detail links.
@@ -4730,7 +4743,9 @@ test.describe("HUB-01 Management Hub directory", () => {
       page.getByRole("heading", { name: COPY.approvals.approvalDetailTitle })
     ).toBeVisible();
     await expect(page.getByText(approveName, { exact: true })).toBeVisible();
-    await expect(page.getByText(approveUsername, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(approveUsername, { exact: true })
+    ).toBeVisible();
     await expect(page.getByText("555-0199", { exact: true })).toBeVisible();
     await expect(
       page.getByText(COPY.approvals.statusPending, { exact: true })
@@ -4805,6 +4820,74 @@ test.describe("HUB-01 Management Hub directory", () => {
     await expect(page).toHaveURL(/\/management\?module=approvals$/u);
     await expect(page.getByText(approveName, { exact: true })).toHaveCount(0);
     await expect(page.getByText(rejectName, { exact: true })).toHaveCount(0);
+  });
+
+  test("approvals list preserves scroll position after detail back-nav", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const stamp = Date.now();
+    const seeded = await page.evaluate(
+      async ({ stamp: runStamp }) => {
+        const register = async (username: string, name: string) => {
+          const response = await fetch("/api/v1/auth/register", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": `e2e-08702-scroll-${username}`,
+            },
+            body: JSON.stringify({
+              username,
+              password: `${username}-pw!1`,
+              name,
+              phone: "555-0199",
+            }),
+          });
+          return response.ok;
+        };
+        const names: string[] = [];
+        for (let index = 0; index < 8; index += 1) {
+          const username = `E2E_HUB_SCROLL_${runStamp}_${index}`;
+          const name = `E2E Hub Scroll ${runStamp} ${index}`;
+          const ok = await register(username, name);
+          if (!ok) {
+            return { ok: false as const, names };
+          }
+          names.push(name);
+        }
+        return { ok: true as const, names };
+      },
+      { stamp }
+    );
+    expect(seeded.ok, "scroll fixture registrations must succeed").toBe(true);
+    const [firstName] = seeded.names;
+    const lastName = required("scroll fixture last name", seeded.names.at(-1));
+
+    await page.goto("/management?module=approvals");
+    await expect(page.getByText(lastName, { exact: true })).toBeVisible();
+    const scrollBefore = await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+      return window.scrollY;
+    });
+    expect(scrollBefore).toBeGreaterThan(0);
+
+    await page
+      .getByRole("link", {
+        name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
+      })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.approvals.approvalDetailTitle })
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/management\?module=approvals$/u);
+    await expect(page.getByText(firstName, { exact: true })).toBeVisible();
+    const scrollAfter = await page.evaluate(() => window.scrollY);
+    expect(scrollAfter).toBeGreaterThanOrEqual(scrollBefore - 50);
   });
 });
 
@@ -4932,12 +5015,8 @@ test.describe("PERM-01 Account Permissions matrix", () => {
       await expect(rolesRegion.getByText(COPY.roleStaffScope)).toBeVisible();
       // Baseline states: the Admin + Staff fixtures hold their roles; the
       // department-manager role has no holder yet -> 可指派.
-      await expect(
-        rolesRegion.getByText(COPY.stateAssigned)
-      ).toHaveCount(2);
-      await expect(
-        rolesRegion.getByText(COPY.stateAssignable)
-      ).toHaveCount(1);
+      await expect(rolesRegion.getByText(COPY.stateAssigned)).toHaveCount(2);
+      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(1);
 
       // Grant the STAFF fixture Department Manager on the demo department:
       // the matrix reflects the change on the next load (即時反映) — the
@@ -4955,22 +5034,14 @@ test.describe("PERM-01 Account Permissions matrix", () => {
         table.getByText(COPY.roleDepartmentManager).first()
       ).toBeVisible();
       // Every role now has a holder: three 已設, no 可指派.
-      await expect(
-        rolesRegion.getByText(COPY.stateAssigned)
-      ).toHaveCount(3);
-      await expect(
-        rolesRegion.getByText(COPY.stateAssignable)
-      ).toHaveCount(0);
+      await expect(rolesRegion.getByText(COPY.stateAssigned)).toHaveCount(3);
+      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(0);
 
       // Revoke: the Staff account returns to 同工 and the DM role to 可指派.
       await revokeManagerGrant(DEV_STAFF.userId);
       await page.reload();
-      await expect(
-        table.getByText(COPY.roleDepartmentManager)
-      ).toHaveCount(0);
-      await expect(
-        rolesRegion.getByText(COPY.stateAssignable)
-      ).toHaveCount(1);
+      await expect(table.getByText(COPY.roleDepartmentManager)).toHaveCount(0);
+      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(1);
 
       // The DM-only fixture is denied server-side: after granting the MEMBER
       // fixture a department manager role, the direct endpoint call returns
