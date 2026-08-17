@@ -45,7 +45,7 @@ if (!isLocal) {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["**/programs-d1.test.ts"],
+  testMatch: ["**/programs-d1.test.ts", "**/pui-05-home-origin.test.ts"],
   timeout: 45_000,
   // Local `wrangler dev` (Miniflare, single process) occasionally drops a
   // request at the socket level under sustained sequential load -- the
