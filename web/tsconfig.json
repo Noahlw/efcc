@@ -53,6 +53,8 @@
     "lib/service-envelope.ts",
     "lib/home-handlers.ts",
     "lib/home-worker.test.ts",
+    "lib/home-cms-handlers.ts",
+    "lib/home-cms-worker.test.ts",
     "lib/service-envelope.test.ts"
   ]
 }
