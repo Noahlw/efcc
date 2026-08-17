@@ -27,14 +27,14 @@ function request(path: string, init: RequestInit = {}): Request {
   });
 }
 
-async function accessCookie(): Promise<string> {
+async function accessCookie(
+  username = "cms-admin",
+  password = "cms-admin-password"
+): Promise<string> {
   const response = await worker.fetch(
     request("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify({
-        username: "cms-admin",
-        password: "cms-admin-password",
-      }),
+      body: JSON.stringify({ username, password }),
     }),
     testEnv()
   );
@@ -82,13 +82,50 @@ describe("Home Content CMS Worker routes", () => {
     await importLegacyUsers(testDb(), [
       ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
       ["CMS-ADMIN", "CMS Admin", "cms-admin", "1234", "Admin", "Active"],
+      ["CMS-STAFF", "CMS Staff", "cms-staff", "1234", "Staff", "Active"],
     ]);
     await completeCredentialUpgrade(testDb(), {
       userId: "CMS-ADMIN",
       legacyPin: "1234",
       newCredential: "cms-admin-password",
     });
+    await completeCredentialUpgrade(testDb(), {
+      userId: "CMS-STAFF",
+      legacyPin: "1234",
+      newCredential: "cms-staff-password",
+    });
     adminCookie = await accessCookie();
+  });
+
+  test("denies CMS endpoints to Staff without home.publish", async () => {
+    const staffCookie = await accessCookie("cms-staff", "cms-staff-password");
+    const readResponses = await Promise.all(
+      (["/api/v1/home/content", "/api/v1/home/audit?limit=1"] as const).map(
+        (path) =>
+          worker.fetch(
+            request(path, {
+              headers: { Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}` },
+            }),
+            testEnv()
+          )
+      )
+    );
+    for (const response of readResponses) {
+      assert.strictEqual(response.status, 403);
+    }
+    const draftResponse = await worker.fetch(
+      request("/api/v1/home/draft", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}` },
+        body: JSON.stringify({
+          content_id: "cms-staff-denied",
+          template_type: "B",
+          title: "Denied",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(draftResponse.status, 403);
   });
 
   test("saves drafts independently and sanitizes the body", async () => {

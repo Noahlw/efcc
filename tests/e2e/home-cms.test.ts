@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -11,13 +12,17 @@ const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const localTarget =
   !configuredTarget ||
   ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
-const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ??
+const ADMIN_USER =
+  process.env.PROGRAMS_ADMIN_USERNAME ??
   (localTarget ? DEV_ADMIN.username : undefined);
-const ADMIN_CREDENTIAL = process.env.PROGRAMS_ADMIN_CREDENTIAL ??
+const ADMIN_CREDENTIAL =
+  process.env.PROGRAMS_ADMIN_CREDENTIAL ??
   (localTarget ? DEV_ADMIN.credential : undefined);
 
 function required(name: string, value: string | undefined): string {
-  if (!value) throw new Error(`${name} is required for Home CMS E2E proof`);
+  if (!value) {
+    throw new Error(`${name} is required for Home CMS E2E proof`);
+  }
   return value;
 }
 async function clearSession(page: Page): Promise<void> {
@@ -27,12 +32,12 @@ async function clearSession(page: Page): Promise<void> {
 
 async function loginAsAdmin(page: Page): Promise<void> {
   await page.goto("/");
-  await page.locator('input[autocomplete="username"]').fill(
-    required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER)
-  );
-  await page.locator('input[autocomplete="current-password"]').fill(
-    required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CREDENTIAL)
-  );
+  await page
+    .locator('input[autocomplete="username"]')
+    .fill(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER));
+  await page
+    .locator('input[autocomplete="current-password"]')
+    .fill(required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CREDENTIAL));
   await page.getByRole("button", { name: LOGIN }).click();
   await page.waitForURL((url) => url.pathname !== "/");
 }
@@ -42,16 +47,21 @@ async function api(
   path: string,
   init: { method?: string; body?: unknown } = {}
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  return page.evaluate(
-    async ({ path: requestPath, method, body }) => {
-      const response = await fetch(requestPath, {
-        method,
-        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  const method = init.method ?? "GET";
+  return await page.evaluate(
+    async ({ requestPath, requestMethod, requestBody }) => {
+      const requestInit: RequestInit = { method: requestMethod };
+      if (requestBody !== undefined) {
+        requestInit.headers = { "Content-Type": "application/json" };
+        requestInit.body = JSON.stringify(requestBody);
+      }
+      const response = await fetch(requestPath, requestInit);
+      return {
+        status: response.status,
+        body: (await response.json()) as Record<string, unknown>,
+      };
     },
-    { path, method: init.method ?? "GET", body: init.body }
+    { requestPath: path, requestMethod: method, requestBody: init.body }
   );
 }
 
@@ -98,6 +108,21 @@ test.describe("087-05 Home Content CMS", () => {
     const beforePublish = await api(page, "/api/v1/home");
     expect(JSON.stringify(beforePublish.body)).not.toContain(title);
 
+    await page.getByRole("button", { name: EDITOR.preview }).click();
+    await expect(page.locator("#home-cms-preview-title")).toBeVisible();
+
+    // The rendered preview is real content in both requested viewport modes.
+    const phonePreview = page.getByRole("button", {
+      name: EDITOR.previewPhone,
+    });
+    const desktopPreview = page.getByRole("button", {
+      name: EDITOR.previewDesktop,
+    });
+    await phonePreview.click();
+    await expect(phonePreview).toHaveAttribute("aria-pressed", "true");
+    await desktopPreview.click();
+    await expect(desktopPreview).toHaveAttribute("aria-pressed", "true");
+
     await page.getByRole("button", { name: EDITOR.savePublished }).click();
     await expect(page.getByText(EDITOR.publishSuccess)).toBeVisible();
 
@@ -105,26 +130,33 @@ test.describe("087-05 Home Content CMS", () => {
     expect(publishedHome.status).toBe(200);
     expect(JSON.stringify(publishedHome.body)).toContain(title);
 
-    // The rendered preview is real content in both requested viewport modes.
-    const phonePreview = page.getByRole("button", { name: EDITOR.previewPhone });
-    const desktopPreview = page.getByRole("button", { name: EDITOR.previewDesktop });
-    await phonePreview.click();
-    await expect(phonePreview).toHaveAttribute("aria-pressed", "true");
-    await desktopPreview.click();
-    await expect(desktopPreview).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByRole("heading", { name: EDITOR.auditTrail })
+    ).toBeVisible();
+    await expect(
+      page.locator('[aria-labelledby="home-cms-audit-title"]')
+    ).toContainText(title);
 
-    // A write carrying an older published version is an explicit 409 conflict.
-    const stale = await api(page, "/api/v1/home/draft", {
+    // A concurrent save from another client surfaces explicit conflict UI.
+    const afterPublish = await api(page, "/api/v1/home/content");
+    const currentVersion = (afterPublish.body.data as { version: number })
+      .version;
+    const bumped = await api(page, "/api/v1/home/draft", {
       method: "POST",
       body: {
         content_id: content.contentId,
-        expected_version: content.version,
+        expected_version: currentVersion,
         template_type: "B",
-        title: `${title} stale`,
-        publish_mode: undefined,
+        title: `${title} newer`,
       },
     });
-    expect(stale.status).toBe(409);
-    expect(stale.body.code).toBe("CONFLICT");
+    expect(bumped.status).toBe(200);
+
+    await page.locator("#home-cms-title").fill(`${title} stale-ui`);
+    await page.getByRole("button", { name: EDITOR.saveDraft }).click();
+    await expect(page.getByText(EDITOR.conflictTitle)).toBeVisible();
+    await page.locator("#home-cms-conflict-reload").click();
+    await expect(page.getByText(EDITOR.conflictReload)).toBeVisible();
+    await expect(page.locator("#home-cms-title")).toHaveValue(`${title} newer`);
   });
 });
