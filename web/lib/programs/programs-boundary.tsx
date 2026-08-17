@@ -20,6 +20,7 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
+import { ParticipantEventDetailPage } from "./participant-event-detail-page";
 import { ParticipantProgramDetail } from "./participant-program-detail";
 
 import { ProgramWorkspace } from "./program-workspace";
@@ -241,6 +242,30 @@ export function ProgramsBoundary() {
       eventId !== null ? COPY.programs.eventDetailTitle : COPY.programs.events
     );
   };
+  // PUI-05 (#323): participant Event Detail deep links carry program + event
+  // on the participant boundary; null returns to the Program detail.
+  const navigateParticipantEvent = (eventId: string | null) => {
+    if (!intent.programId) {
+      return;
+    }
+    const href = buildProgramsHref({
+      mode: "participant",
+      programId: intent.programId,
+      eventId,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(
+      eventId !== null
+        ? COPY.programs.eventDetailTitle
+        : COPY.programs.programSelected
+    );
+  };
   // PUI-02: row selection hands off through the canonical opaque Program
   // intent URL — the directory never renders the nested manager.
   const openProgram = (programId: string) => {
@@ -373,12 +398,18 @@ export function ProgramsBoundary() {
       )}
       {access.kind === "ready" &&
         intent.mode === "participant" &&
-        (intent.programId ? (
+        (intent.programId && intent.eventId ? (
+          <ParticipantEventDetailPage
+            programId={intent.programId}
+            eventId={intent.eventId}
+          />
+        ) : intent.programId ? (
           <ParticipantProgramDetail
             programId={intent.programId}
             canManage={access.projection.hasManagementCapability}
             onManagement={() => navigateMode("management")}
             onBack={() => navigateMode("participant", true, null)}
+            onOpenEvent={navigateParticipantEvent}
           />
         ) : (
           <ParticipantDirectory

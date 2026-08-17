@@ -512,6 +512,52 @@ async function audit(
     .run();
 }
 
+/**
+ * Scanner deep-link resolver. Looks up the event by id and mirrors the
+ * existing resolveLookup contract: returns the open event when eligible,
+ * else falls through to `latest` describing why the caller cannot check in.
+ */
+async function resolveByEventId(
+  db: D1Database,
+  eventId: string
+): Promise<ResolveLookup> {
+  const result = await db
+    .prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.manual_check_in_code, e.check_in_window_opens_at,
+              e.check_in_window_closes_at, e.status, e.availability
+         FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE e.event_id = ?
+        ORDER BY e.starts_at ASC`
+    )
+    .bind(eventId)
+    .all<AttendanceEvent>();
+  const events = (result.results ?? []).filter((event) => isOpen(event));
+  if (events.length > 0) {
+    return { events, latest: null };
+  }
+  const latest = await matchingEventStateById(db, eventId);
+  return { events: [], latest };
+}
+
+async function matchingEventStateById(
+  db: D1Database,
+  eventId: string
+): Promise<AttendanceResolveLatest | null> {
+  const row = await db
+    .prepare(
+      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              p.program_id, p.name AS program_name
+         FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE e.event_id = ?`
+    )
+    .bind(eventId)
+    .first<AttendanceResolveLatest>();
+  return row ?? null;
+}
+
+
 export async function handleResolve(
   request: Request,
   env: AttendanceEnv
@@ -521,7 +567,12 @@ export async function handleResolve(
   const token = url.searchParams.get("program_token");
   const code = url.searchParams.get("manual_code");
   const entry = url.searchParams.get("entry");
-  const explicitCount = [token, code].filter(Boolean).length;
+  const eventId = url.searchParams.get("event");
+  // The scanner deep-link (?event=<id>) is an explicit pre-select and is
+  // mutually exclusive with the credential-shaped params; otherwise the
+  // caller is asking the server to resolve ambiguity it cannot.
+  const explicitCount =
+    [token, code, eventId].filter(Boolean).length;
   if (explicitCount > 1) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
@@ -529,6 +580,18 @@ export async function handleResolve(
   // as a manual code first (globally unique per migration 0003), then as a
   // Program token. No client-side length heuristic decides identity.
   const value = token ?? code ?? entry ?? "";
+  if (eventId) {
+    const currentActor = await actor(request, env, id, false);
+    const memberUserId =
+      currentActor && !(currentActor instanceof Response)
+        ? currentActor.user_id
+        : null;
+    const { events, latest } = await resolveByEventId(env.DB, eventId);
+    if (events.length === 0) {
+      return resolveNoEvents(env.DB, latest, memberUserId, id);
+    }
+    return json(200, { events }, id);
+  }
   if (!value) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }

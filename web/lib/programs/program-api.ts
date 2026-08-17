@@ -379,6 +379,7 @@ export interface ScheduleException {
 export interface ProgramEvent {
   event_id: string;
   program_id: string;
+  program_name: string;
   starts_at: string;
   ends_at: string;
   status: "Active" | "Cancelled";
@@ -1245,6 +1246,8 @@ export function resolveAttendance(input: {
   program_token?: string;
   manual_code?: string;
   entry?: string;
+  /** Scanner deep-link pre-select: look up the event by id and return it. */
+  event?: string;
 }): Promise<AttendanceResolveResultType> {
   const search = new URLSearchParams();
   if (input.program_token) {
@@ -1255,6 +1258,9 @@ export function resolveAttendance(input: {
   }
   if (input.entry) {
     search.set("entry", input.entry);
+  }
+  if (input.event) {
+    search.set("event", input.event);
   }
   return programsFetch(`/api/v1/attendance/resolve?${search}`, "GET");
 }

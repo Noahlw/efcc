@@ -127,16 +127,18 @@ function renderDetail(
   props: Partial<Parameters<typeof ParticipantProgramDetail>[0]> = {}
 ) {
   const onBack = vi.fn<() => void>();
+  const onOpenEvent = vi.fn<(eventId: string) => void>();
   const view = render(
     <ParticipantProgramDetail
       programId={props.programId ?? "program-1"}
       onBack={props.onBack ?? onBack}
       canManage={props.canManage ?? false}
       onManagement={props.onManagement ?? vi.fn<() => void>()}
+      onOpenEvent={props.onOpenEvent ?? onOpenEvent}
       conflictProgramName={props.conflictProgramName}
     />
   );
-  return { onBack, view };
+  return { onBack, onOpenEvent, view };
 }
 
 beforeEach(() => {
@@ -151,7 +153,7 @@ afterEach(() => {
 describe("PUI-03 participant Program detail", () => {
   test("renders purpose, status tag, next-meeting card, schedule table, and the back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
-    const { onBack } = renderDetail();
+    const { onBack, onOpenEvent } = renderDetail();
 
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     const heading = await screen.findByRole("heading", {
@@ -161,7 +163,9 @@ describe("PUI-03 participant Program detail", () => {
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
-    expect(screen.getByText("為青年建立穩定的同行與學習空間。")).toBeInTheDocument();
+    expect(
+      screen.getByText("為青年建立穩定的同行與學習空間。")
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.statusEligible)).toBeInTheDocument();
 
     const nextCard = screen.getByRole("article", { name: "第三課聚會" });
@@ -172,11 +176,13 @@ describe("PUI-03 participant Program detail", () => {
       within(nextCard).getByText(/2099\/03\/04 19:30/u)
     ).toBeInTheDocument();
     expect(within(nextCard).getByText("二樓禮堂")).toBeInTheDocument();
-    expect(
+    await userEvent.click(
       within(nextCard).getByRole("button", {
         name: COPY.programs.viewEventDetail,
       })
-    ).toBeInTheDocument();
+    );
+    expect(onOpenEvent).toHaveBeenCalledOnce();
+    expect(onOpenEvent).toHaveBeenCalledWith("event-1");
 
     const schedule = screen.getByRole("table", {
       name: COPY.programs.scheduleTitle,
@@ -218,7 +224,9 @@ describe("PUI-03 participant Program detail", () => {
     const history = screen.getByRole("list", {
       name: COPY.programs.enrollmentHistory,
     });
-    expect(within(history).getByText(COPY.programs.requestPending)).toBeInTheDocument();
+    expect(
+      within(history).getByText(COPY.programs.requestPending)
+    ).toBeInTheDocument();
     expect(
       within(history).getByText(COPY.programs.enrollmentCancelled)
     ).toBeInTheDocument();
@@ -338,7 +346,9 @@ describe("PUI-03 participant Program detail", () => {
     renderDetail();
 
     await screen.findByRole("heading", { name: "敬拜隊訓練" });
-    expect(screen.getByText(COPY.programs.statusManagerOnly)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.statusManagerOnly)
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.managerOnlyNote)).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.enroll })
@@ -450,6 +460,7 @@ describe("PUI-03 participant Program detail", () => {
         onBack={vi.fn<() => void>()}
         canManage={false}
         onManagement={vi.fn<() => void>()}
+        onOpenEvent={vi.fn<(eventId: string) => void>()}
       />
     );
     stale.resolve(detailFixture({ program: program("program-1", "過期內容") }));
