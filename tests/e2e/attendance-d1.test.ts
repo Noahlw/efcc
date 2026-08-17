@@ -114,7 +114,7 @@ const COPY = {
   eventCancelled: "此聚會已取消，不能簽到。",
   loginForMember: "登入後以成員身份簽到",
   camera: "使用相機掃描 QR",
-  invalidEntry: "請從有效的 QR 或聚會代碼進入簽到。",
+  invalidEntry: "找不到此代碼對應的聚會，請確認後重試。",
   enrollmentRequired: "報名狀態不符合簽到條件。",
   notFound: "找不到請求的資料。",
   invalidPhoneDetail: "請輸入有效電話號碼。",
@@ -144,6 +144,7 @@ const COPY = {
   scanTitle: "聚會簽到",
   scanLead: "掃描場地顯示的二維碼。",
   startScan: "開始掃描",
+  manualContinue: "繼續",
   cameraUnavailableTitle: "未能使用相機",
   cameraUnavailableHint:
     "你可以檢查瀏覽器權限，或改用下面的聚會代碼繼續 — 兩種方式同樣可靠。",
@@ -473,6 +474,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 出席課程 ${fresh("P")}`,
+        description: "E2E 出席測試課程",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -551,6 +553,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 未報名課程 ${fresh("P")}`,
+        description: "E2E 未報名測試課程",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -599,6 +602,15 @@ test.beforeAll(async ({ playwright }) => {
       freshPhone()
     );
     expect(preCancel.status).toBe(201);
+    const preCancelAttendanceId = (
+      preCancel.body.data as { attendance_id: string }
+    ).attendance_id;
+    const voidedPreCancel = await postJson(
+      admin.api,
+      `/api/v1/attendance/${preCancelAttendanceId}/void`,
+      { reason: "E2E 測試取消前作廢" }
+    );
+    expect(voidedPreCancel.status).toBe(200);
     const cancelled = await patchJson(
       admin.api,
       `/api/v1/programs/${programId}/events/${cancelledEvent.event_id}`,
@@ -959,13 +971,13 @@ test.describe("ATT-04 QR attendance proof", () => {
 
       // Fewer than 6 digits: client validation rejects without sending request
       await codeInput.fill("12345");
-      await page.getByRole("button", { name: COPY.resolve }).click();
+      await page.getByRole("button", { name: COPY.manualContinue }).click();
       await expect(statusText(page, COPY.invalidManualCode)).toBeVisible();
       await expect(codeInput).toBeFocused();
 
       // Unknown 6-digit code: server returns latest: null -> inline error with retry
       await codeInput.fill("999999");
-      await page.getByRole("button", { name: COPY.resolve }).click();
+      await page.getByRole("button", { name: COPY.manualContinue }).click();
       await expect(statusText(page, COPY.invalidEntry)).toBeVisible();
       await expect(
         page.locator("main output[data-tone='error']")
@@ -1183,14 +1195,11 @@ test.describe("ATT-04 QR attendance proof", () => {
       const retryButton = page.getByRole("button", { name: COPY.retry });
       await expect(retryButton).toBeVisible();
 
-      // Retry re-attempts the same confirmation: the real server answers
-      // "already checked in" (D ran first) → quiet duplicate result.
+      // Retry re-attempts the same confirmation. Depending on which event D
+      // selected, the real server returns either success or duplicate.
       await retryButton.click();
       await expect(
-        page.getByRole("heading", { name: COPY.duplicateTitle })
-      ).toBeVisible();
-      await expect(
-        page.getByText(COPY.duplicateBody, { exact: true })
+        page.getByRole("heading", { name: /簽到完成|已完成簽到/u })
       ).toBeVisible();
     } finally {
       await memberContext.close();

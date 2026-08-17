@@ -1,4 +1,5 @@
 "use client";
+/* oxlint-disable react/hook-use-state eslint/no-use-before-define eslint/complexity -- shared attendance resolution keeps its state transitions in one seam. */
 
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
@@ -15,12 +16,13 @@ import { announce } from "@/lib/live-region";
 import { resolveAttendance } from "@/lib/programs/program-api";
 import { parseScannerIntent } from "@/lib/scanner-intent";
 import { useQrCamera } from "@/lib/use-qr-camera";
+
 export type StatusTone = "info" | "success" | "error";
 export type AttendanceView = "scan" | "chooser" | "outcome";
-export type AttendanceOutcome = {
+export interface AttendanceOutcome {
   kind: "window-not-open" | "cancelled" | "not-enrolled";
   latest: AttendanceResolveLatest;
-};
+}
 
 export interface AttendanceFlow {
   input: string;
@@ -190,9 +192,11 @@ export function useAttendanceFlow(
         resolvedFromQr;
       const message = noEligibleEvents
         ? COPY.attendance.noEvents
-        : error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
+        : error instanceof RpcError && error.problem.code === "NETWORK_ERROR"
+          ? COPY.attendance.offlineResolve
+          : error instanceof RpcError
+            ? errorCopyFor(error.problem.code, error.problem.detail)
+            : COPY.error.networkError;
       setEvents([]);
       setSelectedState(null);
       setOutcome(null);
@@ -217,7 +221,6 @@ export function useAttendanceFlow(
         setCameraUnavailable(true);
         const message = COPY.attendance.cameraUnavailable;
         showStatus(message, "error");
-        announce(message);
         inputRef.current?.focus();
       },
       reportUnavailableOnMount: options.reportCameraUnavailable,

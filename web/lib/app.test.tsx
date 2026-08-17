@@ -1535,6 +1535,36 @@ describe("Shell", () => {
       ).toBeInTheDocument();
       window.history.pushState({}, "", "/");
     });
+
+    test("avoids duplicate self-scanner headers but keeps assisted chrome", () => {
+      pathnameMock.mockReturnValue("/scanner");
+      window.history.pushState({}, "", "/scanner");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.queryByRole("banner")).toBeNull();
+
+      cleanup();
+      window.history.pushState({}, "", "/scanner?mode=assisted");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.sections.scanner)).toBeInTheDocument();
+
+      cleanup();
+      window.history.pushState({}, "", "/scanner?mode=assisted&mode=self");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.queryByRole("banner")).toBeNull();
+      window.history.pushState({}, "", "/");
+    });
   });
 
   describe(NotFound, () => {

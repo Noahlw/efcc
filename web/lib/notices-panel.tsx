@@ -81,10 +81,14 @@ export function NoticesPanel() {
     setState({ kind: "loading" });
     try {
       const result = await listNotices();
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "ready", result });
     } catch {
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "error" });
     }
   }, []);
@@ -105,7 +109,9 @@ export function NoticesPanel() {
       await markAllNoticesRead();
       const markedAt = Date.now();
       setState((current) => {
-        if (current.kind !== "ready") {return current;}
+        if (current.kind !== "ready") {
+          return current;
+        }
         return {
           kind: "ready",
           result: {
@@ -167,11 +173,7 @@ export function NoticesPanel() {
       aria-label={COPY.notices.noticesListLabel}
     >
       <div className={styles.toolbar}>
-        {unreadCount > 0 && (
-          <span className={styles.unreadCount}>
-            {unreadCount} {COPY.notices.noticesUnread}
-          </span>
-        )}
+        <h2 className={styles.latest}>{COPY.notices.noticesLatest}</h2>
         <button
           className={styles.markAll}
           type="button"

@@ -178,6 +178,61 @@ test("no horizontal overflow at the target viewport", async ({ page }) => {
   }
 });
 
+test("scanner and notices surfaces fit the shell at every target viewport", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/attendance/scanner-events", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        requestId: "r-scanner-events",
+        data: { events: [] },
+      }),
+    });
+  });
+  await page.route("**/api/v1/programs/notices", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        requestId: "r-notices",
+        data: { notices: [], unread_count: 0 },
+      }),
+    });
+  });
+
+  await page.goto("/scanner.html");
+  await expect(
+    page.getByRole("heading", { name: COPY.attendance.scanTitle })
+  ).toBeVisible();
+  await expect(
+    page.locator(`[aria-label="${COPY.attendance.camera}"]`)
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: new RegExp(COPY.attendance.manualEntryTitle),
+    })
+  ).toBeVisible();
+  const scannerFits = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth
+  );
+  expect(scannerFits).toBeTruthy();
+
+  await page.goto("/notices.html");
+  await expect(
+    page.getByRole("heading", { name: COPY.sections.notices, level: 1 })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: COPY.notices.noticesLatest, level: 2 })
+  ).toBeVisible();
+
+  const noticesFits = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth
+  );
+  expect(noticesFits).toBeTruthy();
+});
+
 test("profile page fits the shell-content without horizontal overflow at 375x812", async ({
   page,
 }, testInfo) => {

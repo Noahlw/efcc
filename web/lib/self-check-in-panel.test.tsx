@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+/* oxlint-disable vitest/max-expects eslint/require-unicode-regexp eslint/require-await -- scanner contract tests assert complete state transitions and source copy. */
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -61,7 +68,7 @@ function installCamera() {
     configurable: true,
     value: {
       getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
-        getTracks: () => [{ stop: vi.fn() }],
+        getTracks: () => [{ stop: vi.fn<() => void>() }],
       } as unknown as MediaStream),
     },
   });
@@ -81,6 +88,13 @@ function resolveHandler(options: {
   );
 }
 
+function findManualInput(): HTMLInputElement {
+  const dialog = screen.getByRole("dialog");
+  return within(dialog).getByLabelText(
+    new RegExp(COPY.attendance.manualEntryTitle, "u")
+  );
+}
+
 describe(SelfCheckInPanel, () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
   beforeEach(() => {
@@ -93,6 +107,7 @@ describe(SelfCheckInPanel, () => {
     Reflect.deleteProperty(window, "BarcodeDetector");
     Reflect.deleteProperty(navigator, "mediaDevices");
   });
+
   afterAll(() => server.close());
 
   test("renders main scan surface without guest or assisted controls", async () => {
@@ -114,6 +129,17 @@ describe(SelfCheckInPanel, () => {
       screen.getByText(COPY.attendance.manualOnlyTitle)
     ).toBeInTheDocument();
   });
+
+  test("keeps the source scan hierarchy and excludes preview-only controls", () => {
+    render(<SelfCheckInPanel />);
+
+    expect(screen.getByRole("article")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(
+      COPY.attendance.manualOnlyHint
+    );
+    expect(screen.queryByText(/示範情境|離線|送出失敗/u)).toBeNull();
+  });
+
   test("event deep link resolves and pre-selects the requested event", async () => {
     const resolveRequest: { url: URL | null } = { url: null };
     server.use(
@@ -152,6 +178,9 @@ describe(SelfCheckInPanel, () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(COPY.attendance.cameraUnavailableTitle);
     expect(alert).toHaveTextContent(COPY.attendance.cameraUnavailableHint);
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.startScan })
+    ).toBeNull();
 
     const manualButton = screen.getByRole("button", {
       name: new RegExp(COPY.attendance.manualEntryTitle),
@@ -159,10 +188,31 @@ describe(SelfCheckInPanel, () => {
     expect(manualButton).toBeInTheDocument();
     fireEvent.click(manualButton);
 
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     expect(input).toHaveFocus();
+  });
+
+  test("permission denial hides the start action and keeps manual fallback", async () => {
+    const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia);
+    getUserMedia.mockRejectedValueOnce(
+      new DOMException("Denied", "NotAllowedError")
+    );
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.startScan })
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.cameraUnavailableTitle);
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.startScan })
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    ).toBeInTheDocument();
   });
 
   test("manual code validation rejects non-6-digit input and resolves on valid 6 digits", async () => {
@@ -175,14 +225,12 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     expect(input).toHaveFocus();
 
     await user.type(input, "12345");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const errorOutput = await screen.findByText(
@@ -194,7 +242,7 @@ describe(SelfCheckInPanel, () => {
     await user.clear(input);
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const confirmHeading = await screen.findByRole("heading", {
@@ -226,12 +274,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     // Confirmation screen: full event identity rendered before any commit.
@@ -314,12 +360,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     await screen.findByRole("heading", {
@@ -363,12 +407,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const candidates = await screen.findAllByRole("button", {
@@ -404,12 +446,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const chooserHeading = await screen.findByRole("heading", {
@@ -441,12 +481,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input2 = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input2 = await findManualInput();
     await user.type(input2, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const secondChooserButtons = await screen.findAllByRole("button", {
@@ -490,12 +528,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const outcomeHeading = await screen.findByRole("heading", {
@@ -544,12 +580,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const cancelledHeading = await screen.findByRole("heading", {
@@ -596,12 +630,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const notEnrolledHeading = await screen.findByRole("heading", {
@@ -646,12 +678,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
     const output = await screen.findByText(COPY.attendance.invalidEntry);
@@ -672,15 +702,13 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
 
-    const output = await screen.findByText(COPY.error.networkError);
+    const output = await screen.findByText(COPY.attendance.offlineResolve);
     expect(output.closest("output")).toHaveAttribute("data-tone", "error");
     expect(input).toHaveValue("123456");
   });
@@ -704,12 +732,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
     await user.click(
       await screen.findByRole("button", {
@@ -739,7 +765,7 @@ describe(SelfCheckInPanel, () => {
 
   test("server submit failure shows inline error and retry re-attempts the same event", async () => {
     let attempts = 0;
-    const requestBodies: Array<Record<string, unknown>> = [];
+    const requestBodies: Record<string, unknown>[] = [];
     server.use(
       resolveHandler({ events: [EVENT] }),
       http.post("/api/v1/attendance/self", async ({ request }) => {
@@ -770,12 +796,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
     await user.click(
       await screen.findByRole("button", {
@@ -806,6 +830,51 @@ describe(SelfCheckInPanel, () => {
     }
   });
 
+  test("non-retryable submit errors keep confirmation without retry", async () => {
+    server.use(
+      resolveHandler({ events: [EVENT] }),
+      http.post("/api/v1/attendance/self", () =>
+        HttpResponse.json(
+          {
+            status: 422,
+            code: "EVENT_CANCELLED",
+            title: "Event cancelled",
+            detail: COPY.attendance.eventCancelled,
+          },
+          { status: 422 }
+        )
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualEntryTitle),
+      })
+    );
+    const input = await findManualInput();
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.eventCancelled);
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.retry })
+    ).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: COPY.attendance.confirmTitle })
+    ).toBeInTheDocument();
+  });
+
   test("offline confirmation shows inline error, keeps state, and re-confirm succeeds", async () => {
     let attempts = 0;
     server.use(
@@ -824,12 +893,10 @@ describe(SelfCheckInPanel, () => {
         name: new RegExp(COPY.attendance.manualEntryTitle),
       })
     );
-    const input = await screen.findByLabelText(
-      new RegExp(COPY.attendance.manualEntryTitle)
-    );
+    const input = await findManualInput();
     await user.type(input, "123456");
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.resolve })
+      screen.getByRole("button", { name: COPY.attendance.manualContinue })
     );
     await user.click(
       await screen.findByRole("button", {

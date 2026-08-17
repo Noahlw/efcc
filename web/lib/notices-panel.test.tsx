@@ -1,6 +1,11 @@
+/* oxlint-disable vitest/require-top-level-describe vitest/require-mock-type-parameters eslint/require-unicode-regexp -- shared notice fixtures cover the full loading/list/read-state matrix. */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import { COPY } from "@/lib/copy";
+import type { Notice } from "@/lib/notices-api";
+import { NoticesPanel } from "@/lib/notices-panel";
 
 const mocks = vi.hoisted(() => ({
   listNotices: vi.fn(),
@@ -8,15 +13,11 @@ const mocks = vi.hoisted(() => ({
   announce: vi.fn(),
 }));
 
-vi.mock("@/lib/notices-api", () => ({
+vi.mock(import("@/lib/notices-api"), () => ({
   listNotices: mocks.listNotices,
   markAllNoticesRead: mocks.markAllNoticesRead,
 }));
-vi.mock("@/lib/live-region", () => ({ announce: mocks.announce }));
-
-import { COPY } from "@/lib/copy";
-import { NoticesPanel } from "@/lib/notices-panel";
-import type { Notice } from "@/lib/notices-api";
+vi.mock(import("@/lib/live-region"), () => ({ announce: mocks.announce }));
 
 const unreadEvent: Notice = {
   notice_id: "notice-event",
@@ -48,7 +49,7 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-describe("NoticesPanel", () => {
+describe(NoticesPanel, () => {
   test("renders unread indicators and Hong Kong timestamps", async () => {
     mocks.listNotices.mockResolvedValue({
       notices: [unreadEvent, readAccount],
@@ -57,23 +58,40 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(await screen.findByText(unreadEvent.title)).toBeInTheDocument();
+    await expect(
+      screen.findByText(unreadEvent.title)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.notices.noticesUnread)).toBeInTheDocument();
     // The HK wall label depends on ICU locale data (space vs narrow
     // no-break space differs across Node builds), so anchor the timestamp
     // assertion on the env-independent ISO dateTime attribute instead of
     // the exact localized string.
     const expectedIso = new Date(unreadEvent.created_at).toISOString();
-    const timeLabel = screen.getByText((_, element) => {
-      return (
+    const timeLabel = screen.getByText(
+      (_, element) =>
         element !== null &&
         element.tagName === "TIME" &&
         element.getAttribute("dateTime") === expectedIso
-      );
-    });
+    );
     expect(timeLabel).toBeInTheDocument();
     expect(timeLabel.textContent?.trim() ?? "").not.toBe("");
     expect(screen.getByText(readAccount.title)).toBeInTheDocument();
+  });
+
+  test("renders the latest notices heading", async () => {
+    mocks.listNotices.mockResolvedValue({
+      notices: [],
+      unread_count: 0,
+    });
+
+    render(<NoticesPanel />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.notices.noticesLatest,
+        level: 2,
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("marks all unread notices read and announces confirmation", async () => {
@@ -91,7 +109,7 @@ describe("NoticesPanel", () => {
     );
 
     await waitFor(() => {
-      expect(mocks.markAllNoticesRead).toHaveBeenCalledTimes(1);
+      expect(mocks.markAllNoticesRead).toHaveBeenCalledOnce();
       expect(mocks.announce).toHaveBeenCalledWith(
         COPY.notices.noticesMarkedAllRead
       );
@@ -106,7 +124,9 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(await screen.findByText(COPY.notices.noticesEmpty)).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesEmpty)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.notices.noticesEmptyHint)).toBeInTheDocument();
   });
 
@@ -130,15 +150,15 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(
-      await screen.findByText(COPY.notices.noticesLoadError)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesLoadError)
+    ).resolves.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.notices.noticesRetry })
     );
-    expect(
-      await screen.findByText(COPY.notices.noticesEmpty)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesEmpty)
+    ).resolves.toBeInTheDocument();
     expect(mocks.listNotices).toHaveBeenCalledTimes(2);
   });
 
@@ -150,7 +170,9 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(await screen.findByRole("link", { name: /聚會提醒/ })).toHaveAttribute(
+    await expect(
+      screen.findByRole("link", { name: /聚會提醒/ })
+    ).resolves.toHaveAttribute(
       "href",
       "/programs?program=program-adult&event=event-1"
     );
@@ -168,10 +190,9 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(await screen.findByRole("link", { name: /報名結果/ })).toHaveAttribute(
-      "href",
-      "/programs?program=program-adult"
-    );
+    await expect(
+      screen.findByRole("link", { name: /報名結果/ })
+    ).resolves.toHaveAttribute("href", "/programs?program=program-adult");
   });
 
   test("routes account notices to the profile page", async () => {
@@ -182,9 +203,8 @@ describe("NoticesPanel", () => {
 
     render(<NoticesPanel />);
 
-    expect(await screen.findByRole("link", { name: /帳戶更新/ })).toHaveAttribute(
-      "href",
-      "/profile"
-    );
+    await expect(
+      screen.findByRole("link", { name: /帳戶更新/ })
+    ).resolves.toHaveAttribute("href", "/profile");
   });
 });

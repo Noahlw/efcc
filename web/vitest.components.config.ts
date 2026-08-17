@@ -7,8 +7,8 @@ export default defineProject({
     alias: { "@": import.meta.dirname ?? "" },
   },
   test: {
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     environment: "jsdom",
     include: [
       "lib/app.test.tsx",
@@ -49,6 +49,7 @@ export default defineProject({
       "lib/attendance-operator-panel.test.tsx",
       "lib/attendance-roster.test.tsx",
       "lib/self-check-in-panel.test.tsx",
+      "lib/attendance-scanner-ui.test.tsx",
       "lib/use-qr-camera.test.tsx",
       "lib/scanner-intent.test.ts",
       "lib/assisted-scanner-panel.test.tsx",

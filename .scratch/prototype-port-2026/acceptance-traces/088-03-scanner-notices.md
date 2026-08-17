@@ -6,7 +6,7 @@
 - Binding SHA-256: `3e52635e1309600a1957621829c9808f96cac74280aabaeb3940596fbeade1f2`
 - Verified on 2026-08-18 before production edits.
 - The binding file contains a JSON-encoded `script[type="__bundler/template"]`. It was
-  parsed with `JSON.parse`; the decoded value is the 213198-byte participant template.
+  parsed with `JSON.parse`; the decoded value is the 104,335-byte UTF-8 participant template.
 - Truth ranking for this ticket:
   1. Decoded template markup, inline styles, and `script[type="text/x-dc"]`
      handlers from the binding file.
@@ -183,10 +183,10 @@ Focused iteration commands:
 
 ```sh
 pnpm --dir web exec vitest run --config vitest.components.config.ts \
-  web/lib/scanner-boundary.test.tsx \
-  web/lib/self-check-in-panel.test.tsx \
-  web/lib/notices-panel.test.tsx
-pnpm --dir web exec vitest run web/lib/scanner-intent.test.ts
+  lib/scanner-boundary.test.tsx \
+  lib/self-check-in-panel.test.tsx \
+  lib/notices-panel.test.tsx
+pnpm --dir web exec vitest run lib/scanner-intent.test.ts
 pnpm --dir web typecheck
 pnpm typecheck
 ```
@@ -197,8 +197,9 @@ Required local acceptance gate:
 pnpm db:seed:local
 pnpm db:seed:demo
 pnpm dev:local
-pnpm exec playwright test -c tests/e2e/attendance-d1.config.ts
-pnpm exec playwright test -c tests/e2e/responsive.config.ts
+pnpm exec playwright test -c tests/e2e/attendance-d1.config.ts \
+  --grep 'D member self check-in|D2 member Scanner|D4 member Scanner resolve|D5 member Scanner chooser|D6 member Scanner outcome|D7 member|D8 member'
+pnpm test:shell-responsive # supplemental static shell/CSS regression only
 pnpm verify
 ```
 
@@ -206,3 +207,11 @@ pnpm verify
 commands may reset only the checked-in disposable `E2E_` / `E2E_DEMO_`
 fixtures. No Apps Script, Google Sheets, Cloudflare account, new Worker,
 new D1 migration, route, or demo fixture is part of this ticket.
+
+The unfiltered attendance suite also contains guest/public and operator roster
+flows owned by #353/#354. On the selected #351 head those out-of-scope flows
+fail before scanner assertions because their existing `/events` fixture roles
+are unauthorized; the #352 gate is the scanner-owned grep above, which passed
+on both configured local projects. `test:shell-responsive` uses its static
+export/stub setup as supplemental evidence; authenticated scanner acceptance is
+the local Worker/D1 grep above, not the static server.

@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 import { COPY } from "@/lib/copy";
 import { parseProgramsIntent } from "@/lib/programs/programs-intent";
+import { parseScannerIntent } from "@/lib/scanner-intent";
 
 import styles from "./auth-shell.module.css";
 
@@ -43,6 +44,16 @@ export function ShellHeader() {
   } catch {
     // Some isolated component tests mock only the pathname hook.
     search = typeof window === "undefined" ? "" : window.location.search;
+  }
+  const path = pathname?.replace(/\/+$/u, "") || "/home";
+  const scannerIntent = path === "/scanner" ? parseScannerIntent(search) : null;
+  if (
+    path === "/scanner" &&
+    (scannerIntent === null ||
+      scannerIntent.malformed ||
+      scannerIntent.mode !== "assisted")
+  ) {
+    return null;
   }
   return (
     <header className={styles.header}>

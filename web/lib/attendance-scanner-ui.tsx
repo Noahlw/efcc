@@ -4,7 +4,6 @@ import type { RefObject } from "react";
 
 import type {
   AttendanceEvent,
-  AttendanceEventSummary,
   AttendanceResolveLatest,
 } from "@/lib/attendance";
 import {
@@ -27,14 +26,17 @@ export type StatusTone = "info" | "success" | "error";
 export const ScannerStatusOutput = ({
   message,
   tone,
+  role,
 }: {
   message: string;
   tone?: StatusTone;
+  role?: "alert";
 }) => (
   <output
     className={styles.status}
     data-tone={message ? tone : undefined}
-    aria-live="polite"
+    role={role}
+    aria-live={role === "alert" ? "assertive" : "polite"}
     aria-atomic="true"
   >
     {message}
@@ -64,6 +66,17 @@ const ChevronIcon = () => (
   </svg>
 );
 
+const BackIcon = () => (
+  <svg
+    className={styles.backIcon}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="m15 5-7 7 7 7" />
+  </svg>
+);
+
 /**
  * Camera start/video/close trio shared by the Self and Guest check-in panels.
  * The frame remains a stable affordance even when the browser cannot provide
@@ -73,12 +86,14 @@ const ChevronIcon = () => (
 export const ScannerCamera = ({
   cameraOpen,
   cameraAvailable = true,
+  cameraUnavailable = false,
   videoRef,
   onStart,
   onClose,
 }: {
   cameraOpen: boolean;
   cameraAvailable?: boolean;
+  cameraUnavailable?: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
   onStart: () => void;
   onClose: () => void;
@@ -94,19 +109,10 @@ export const ScannerCamera = ({
           aria-label={COPY.attendance.camera}
         />
       )}
-      <span className={`${styles.cameraCorner} ${styles.cameraCornerTop}`} />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerRight}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerBottom}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerLeft}`}
-      />
+      <span className={styles.cameraViewfinder} aria-hidden="true" />
       {!cameraOpen && <CameraIcon />}
     </div>
-    {!cameraOpen && (
+    {!cameraOpen && cameraAvailable && !cameraUnavailable && (
       <button
         className={styles.button}
         type="button"
@@ -148,10 +154,9 @@ export const ScannerChooser = ({
 }) => (
   <section className={styles.chooser} aria-labelledby="scanner-chooser-title">
     <header className={styles.chooserHeader}>
-      <span className={styles.chooserTitle}>
-        {COPY.attendance.chooseEvent}
-      </span>
+      <span className={styles.chooserTitle}>{COPY.attendance.chooseEvent}</span>
       <button className={styles.back} type="button" onClick={onBack}>
+        <BackIcon />
         {COPY.attendance.rescan}
       </button>
     </header>
@@ -171,7 +176,7 @@ export const ScannerChooser = ({
       {events.map((event) => (
         <li key={event.event_id}>
           <button
-            className={styles.eventButton}
+            className={styles.scannerChooserEventButton}
             type="button"
             onClick={() => onSelect(event)}
           >
@@ -274,11 +279,10 @@ export const ScannerConfirmation = ({
       disabled={busy}
       onClick={onRescan}
     >
+      <BackIcon />
       {COPY.attendance.rescan}
     </button>
-    <span className={styles.confirmTag}>
-      {COPY.attendance.recognizedBadge}
-    </span>
+    <span className={styles.confirmTag}>{COPY.attendance.recognizedBadge}</span>
     <h1
       id="attendance-confirm-title"
       ref={headingRef}
@@ -293,7 +297,10 @@ export const ScannerConfirmation = ({
       aria-labelledby="attendance-confirm-event-title"
     >
       <span className={styles.confirmProgram}>{event.program_name}</span>
-      <h2 id="attendance-confirm-event-title" className={styles.confirmEventTitle}>
+      <h2
+        id="attendance-confirm-event-title"
+        className={styles.confirmEventTitle}
+      >
         {attendanceEventName(event)}
       </h2>
       <div className={styles.confirmDetails}>
@@ -366,41 +373,44 @@ export const ScannerCheckinResult = ({
     <header className={styles.resultHeader}>
       <span>{COPY.attendance.resultTitle}</span>
     </header>
-    <CheckinConfirmationIcon kind={kind} />
-    <h1
-      id="attendance-result-title"
-      ref={headingRef}
-      className={styles.title}
-      tabIndex={-1}
-    >
-      {kind === "success"
-        ? COPY.attendance.successTitle
-        : COPY.attendance.duplicateTitle}
-    </h1>
-    {kind === "success" ? (
-      <p className={styles.resultCopy}>
-        <span>{event.program_name}</span>
-        <span aria-hidden="true"> · </span>
-        <span>{attendanceEventName(event)}</span>
-      </p>
-    ) : (
-      <p className={styles.resultCopy}>{COPY.attendance.duplicateBody}</p>
-    )}
-    <div className={styles.resultActions}>
-      <a className={styles.button} href="/">
-        {COPY.attendance.backHome}
-      </a>
-      <button
-        className={styles.buttonSecondary}
-        type="button"
-        onClick={onScanAgain}
-      >
-        {COPY.attendance.scanAgain}
-      </button>
+    <div className={styles.resultContent}>
+      <article className={styles.resultSurface}>
+        <CheckinConfirmationIcon kind={kind} />
+        <h1
+          id="attendance-result-title"
+          ref={headingRef}
+          className={styles.title}
+          tabIndex={-1}
+        >
+          {kind === "success"
+            ? COPY.attendance.successTitle
+            : COPY.attendance.duplicateTitle}
+        </h1>
+        {kind === "success" ? (
+          <p className={styles.resultCopy}>
+            <span>{event.program_name}</span>
+            <span aria-hidden="true"> · </span>
+            <span>{attendanceEventName(event)}</span>
+          </p>
+        ) : (
+          <p className={styles.resultCopy}>{COPY.attendance.duplicateBody}</p>
+        )}
+        <div className={styles.resultActions}>
+          <a className={styles.button} href="/">
+            {COPY.attendance.backHome}
+          </a>
+          <button
+            className={styles.buttonSecondary}
+            type="button"
+            onClick={onScanAgain}
+          >
+            {COPY.attendance.scanAgain}
+          </button>
+        </div>
+      </article>
     </div>
   </section>
 );
-
 
 const OutcomeIcon = ({
   kind,
@@ -490,54 +500,56 @@ export const ScannerOutcome = ({
       className={`${styles.card} ${styles.outcome}`}
       aria-labelledby="scanner-outcome-title"
     >
-      <p className={styles.outcomeHeader}>
+      <header className={styles.outcomeHeader}>
         {COPY.attendance.outcomeHeader}
-      </p>
-      <OutcomeIcon kind={kind} />
-      <h1
-        id="scanner-outcome-title"
-        ref={headingRef}
-        className={styles.title}
-        tabIndex={headingRef ? -1 : undefined}
-      >
-        {kind === "window-not-open"
-          ? COPY.attendance.outcomeWindowTitle
-          : kind === "cancelled"
-            ? COPY.attendance.outcomeCancelledTitle
-            : COPY.attendance.outcomeNotEnrolledTitle}
-      </h1>
-      {kind === "window-not-open" ? (
-        openingTime ? (
-          <p className={styles.outcomeBody}>
-            {COPY.attendance.outcomeWindowBodyPrefix}{" "}
-            <strong>{openingTime}</strong>{" "}
-            {hasThirtyMinuteWindow
-              ? COPY.attendance.outcomeWindowBodySuffix
-              : COPY.attendance.outcomeWindowBodySuffixWithoutOffset}
-          </p>
-        ) : (
-          <p className={styles.outcomeBody}>{COPY.attendance.noEvents}</p>
-        )
-      ) : (
-        <p className={styles.outcomeBody}>
-          {kind === "cancelled"
-            ? COPY.attendance.outcomeCancelledBody
-            : COPY.attendance.outcomeNotEnrolledBody}
-        </p>
-      )}
-      <div className={styles.outcomeActions}>
-        {kind === "not-enrolled" && (
-          <a className={styles.button} href={programHref}>
-            {COPY.attendance.viewProgramDetail}
-          </a>
-        )}
-        <button
-          className={styles.buttonSecondary}
-          type="button"
-          onClick={onBack}
+      </header>
+      <div className={styles.outcomeSurface}>
+        <OutcomeIcon kind={kind} />
+        <h1
+          id="scanner-outcome-title"
+          ref={headingRef}
+          className={styles.title}
+          tabIndex={headingRef ? -1 : undefined}
         >
-          {COPY.attendance.backToScan}
-        </button>
+          {kind === "window-not-open"
+            ? COPY.attendance.outcomeWindowTitle
+            : kind === "cancelled"
+              ? COPY.attendance.outcomeCancelledTitle
+              : COPY.attendance.outcomeNotEnrolledTitle}
+        </h1>
+        {kind === "window-not-open" ? (
+          openingTime ? (
+            <p className={styles.outcomeBody}>
+              {COPY.attendance.outcomeWindowBodyPrefix}{" "}
+              <strong>{openingTime}</strong>{" "}
+              {hasThirtyMinuteWindow
+                ? COPY.attendance.outcomeWindowBodySuffix
+                : COPY.attendance.outcomeWindowBodySuffixWithoutOffset}
+            </p>
+          ) : (
+            <p className={styles.outcomeBody}>{COPY.attendance.noEvents}</p>
+          )
+        ) : (
+          <p className={styles.outcomeBody}>
+            {kind === "cancelled"
+              ? COPY.attendance.outcomeCancelledBody
+              : COPY.attendance.outcomeNotEnrolledBody}
+          </p>
+        )}
+        <div className={styles.outcomeActions}>
+          {kind === "not-enrolled" && (
+            <a className={styles.button} href={programHref}>
+              {COPY.attendance.viewProgramDetail}
+            </a>
+          )}
+          <button
+            className={styles.buttonSecondary}
+            type="button"
+            onClick={onBack}
+          >
+            {COPY.attendance.backToScan}
+          </button>
+        </div>
       </div>
     </section>
   );
