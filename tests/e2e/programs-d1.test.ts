@@ -3432,6 +3432,7 @@ test.describe("NTF-01 management attention", () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name,
+              description: "NTF-01 測試課程",
               category: "NTF-01",
               behavior_type: "OneOff",
               lifecycle: "Active",
@@ -3901,7 +3902,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
         requestPath: `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
         body: {
           name,
-          description: null,
+          description: "EVT-02 產生測試課程",
           category: "測試類別",
           behavior_type: "Recurring",
           lifecycle: "Draft",
