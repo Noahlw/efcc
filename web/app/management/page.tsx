@@ -9,6 +9,7 @@ import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
 
 import { CheckinSettings } from "./checkin-settings";
+import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
 import { MemberDirectoryPanel } from "./member-directory-panel";
 import { PermissionsPanel } from "./permissions-panel";
@@ -30,6 +31,9 @@ const ManagementModule = () => {
     }
     case "members": {
       return <MemberDirectoryPanel />;
+    }
+    case "home-content": {
+      return <HomeContentEditor />;
     }
     case "permissions": {
       return <PermissionsPanel />;

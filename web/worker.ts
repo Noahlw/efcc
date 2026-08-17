@@ -926,9 +926,27 @@ export default {
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
       const { handleGetHome } = await import("./lib/home-handlers");
+      const {
+        handleGetHomeContent,
+        handleSaveHomeDraft,
+        handlePublishHome,
+        handleListHomeAudit,
+      } = await import("./lib/home-cms-handlers");
 
       if (url.pathname === "/api/v1/home" && request.method === "GET") {
         return handleGetHome(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/content" && request.method === "GET") {
+        return handleGetHomeContent(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/draft" && request.method === "POST") {
+        return handleSaveHomeDraft(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/publish" && request.method === "POST") {
+        return handlePublishHome(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/audit" && request.method === "GET") {
+        return handleListHomeAudit(request, homeEnv);
       }
 
       return authProblemResponse(
