@@ -4,8 +4,8 @@ import { RpcError } from "@/lib/api";
 // Every user-facing string lives here; no hardcoded text in components.
 export const COPY = {
   appName: "顯恩堂系統",
-  // Official full church title used as the primary brand string in headers
-  // (Spec 079 §1: shorter marks are legacy shorthand only).
+  appBrand: "顯恩堂",
+  // Official full church title remains available for non-shell uses.
   appFullName: "中國基督教播道會顯恩堂",
   skipToContent: "跳到主要內容",
   login: {
@@ -109,7 +109,9 @@ export const COPY = {
     exportSheet: "匯出簽到表",
     maskedPhone: (phone: string) => {
       const normalized = phone.trim().replaceAll(/[\s().-]/gu, "");
-      if (normalized.length <= 4) {return "****";}
+      if (normalized.length <= 4) {
+        return "****";
+      }
       return `${normalized.slice(0, 4)}${"*".repeat(normalized.length - 4)}`;
     },
     chooserTitle: "聚會／出席",
@@ -257,9 +259,9 @@ export const COPY = {
   sections: {
     home: "首頁",
     profile: "帳戶",
-    programs: "課程與活動",
+    programs: "課程",
     events: "聚會管理",
-    scanner: "簽到",
+    scanner: "掃描",
     notices: "通知",
     management: "管理",
     permissions: "權限管理",

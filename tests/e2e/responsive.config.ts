@@ -30,6 +30,14 @@ export default defineConfig({
       use: { viewport: { width: 375, height: 667 } },
     },
     {
+      name: "mobile-919x800",
+      use: { viewport: { width: 919, height: 800 } },
+    },
+    {
+      name: "desktop-920x800",
+      use: { viewport: { width: 920, height: 800 } },
+    },
+    {
       name: "desktop-1280x800",
       use: { viewport: { width: 1280, height: 800 } },
     },

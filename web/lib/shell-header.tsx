@@ -1,25 +1,34 @@
 "use client";
 
-import { useApp } from "@/lib/app-context";
+import { usePathname } from "next/navigation";
+
 import { COPY } from "@/lib/copy";
 
 import styles from "./auth-shell.module.css";
 
-/**
- * Authenticated shell header (matrix S15 `MockHeader`): official
- * full church title + 登出 control. Rendered as a flex-shrink:0 sibling of the
- * scrollable `.shell-content` outlet inside Ui01Shell's `.shell` flex column.
- */
+const PATH_TITLES: Record<string, string> = {
+  "/home": COPY.appBrand,
+  "/programs": COPY.sections.programs,
+  "/scanner": COPY.sections.scanner,
+  "/notices": COPY.sections.notices,
+  "/management": COPY.sections.management,
+  "/permissions": COPY.sections.permissions,
+  "/profile": COPY.sections.profile,
+  "/profile/settings": COPY.profile.accountSettings,
+};
+
+function titleForPath(pathname: string | null): string {
+  const path = pathname?.replace(/\/+$/u, "") || "/home";
+  return PATH_TITLES[path] ?? COPY.appBrand;
+}
+
 export function ShellHeader() {
-  const { signOut } = useApp();
+  const pathname = usePathname();
   return (
     <header className={styles.header}>
       <div className={styles.brand}>
-        <span className={styles.title}>{COPY.appFullName}</span>
+        <span className={styles.title}>{titleForPath(pathname)}</span>
       </div>
-      <button type="button" className={styles.signOut} onClick={signOut}>
-        {COPY.logout.submit}
-      </button>
     </header>
   );
 }

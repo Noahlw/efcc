@@ -1,18 +1,10 @@
 /* Account settings follows the prototype's stacked, low-chrome form cards. */
 
 .page {
-  width: min(100%, 680px);
+  width: 100%;
   min-height: 100%;
-  margin: 0 auto;
-  padding: 0 clamp(1rem, 4vw, 1.5rem) 2rem;
+  padding: 0 0 2rem;
   color: var(--ink, #171a1d);
-}
-
-.header {
-  height: 72px;
-  display: flex;
-  align-items: center;
-  font-weight: 600;
 }
 
 .intro {

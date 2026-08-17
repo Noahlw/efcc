@@ -1,18 +1,10 @@
 /* Account surface follows the participant prototype's quiet, document-like cards. */
 
 .page {
-  width: min(100%, 680px);
+  width: 100%;
   min-height: 100%;
-  margin: 0 auto;
-  padding: 0 clamp(1rem, 4vw, 1.5rem) 2rem;
+  padding: 0 0 2rem;
   color: var(--ink, #171a1d);
-}
-
-.header {
-  height: 72px;
-  display: flex;
-  align-items: center;
-  font-weight: 600;
 }
 
 .intro {
@@ -203,7 +195,9 @@
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .actionRow:hover {
