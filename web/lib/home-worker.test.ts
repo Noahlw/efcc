@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/no-unused-vars eslint/no-inline-comments */
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
@@ -101,7 +102,14 @@ describe("GET /api/v1/home Worker route", () => {
       ["HOME-ADMIN", "Home Admin", "home-admin", "1234", "Admin", "Active"],
       ["HOME-MEMBER-1", "陳小明", "home-member-1", "5678", "Member", "Active"],
       ["HOME-MEMBER-2", "李大同", "home-member-2", "5678", "Member", "Active"],
-      ["HOME-INACTIVE", "停用會員", "home-inactive", "9999", "Member", "Suspended"],
+      [
+        "HOME-INACTIVE",
+        "停用會員",
+        "home-inactive",
+        "9999",
+        "Member",
+        "Suspended",
+      ],
     ]);
 
     await completeCredentialUpgrade(testDb(), {
@@ -121,15 +129,30 @@ describe("GET /api/v1/home Worker route", () => {
     });
 
     adminCookie = await accessCookieFor("home-admin", "home-admin-password");
-    memberCookie = await accessCookieFor("home-member-1", "home-member-password");
-    unenrolledMemberCookie = await accessCookieFor("home-member-2", "home-member-password");
+    memberCookie = await accessCookieFor(
+      "home-member-1",
+      "home-member-password"
+    );
+    unenrolledMemberCookie = await accessCookieFor(
+      "home-member-2",
+      "home-member-password"
+    );
   });
 
   test("rejects unauthenticated requests with 401 Problem Details", async () => {
-    const response = await worker.fetch(request("/api/v1/home", { method: "GET" }), testEnv());
+    const response = await worker.fetch(
+      request("/api/v1/home", { method: "GET" }),
+      testEnv()
+    );
     assert.strictEqual(response.status, 401);
-    assert.strictEqual(response.headers.get("Content-Type"), "application/problem+json");
-    const problem = (await response.json()) as { code: string; requestId: string };
+    assert.strictEqual(
+      response.headers.get("Content-Type"),
+      "application/problem+json"
+    );
+    const problem = (await response.json()) as {
+      code: string;
+      requestId: string;
+    };
     assert.strictEqual(problem.code, "AUTH_REQUIRED");
     assert.ok(problem.requestId);
     assert.strictEqual(response.headers.get("X-Request-Id"), problem.requestId);
@@ -177,7 +200,10 @@ describe("GET /api/v1/home Worker route", () => {
       testEnv()
     );
     assert.strictEqual(response.status, 200);
-    assert.strictEqual(response.headers.get("Content-Type"), "application/json");
+    assert.strictEqual(
+      response.headers.get("Content-Type"),
+      "application/json"
+    );
     const payload = (await response.json()) as HomeApiResponse;
     assert.ok(payload.requestId);
     assert.strictEqual(response.headers.get("X-Request-Id"), payload.requestId);
@@ -269,21 +295,33 @@ describe("GET /api/v1/home Worker route", () => {
     assert.strictEqual(body3.data.announcement.contentId, "church-msg-1");
     assert.strictEqual(body3.data.announcement.version, 3);
     assert.strictEqual(body3.data.announcement.title, "本週崇拜及聚會安排");
-    assert.strictEqual(body3.data.announcement.summary, "請留意場地及時間更新 · 8月15日");
+    assert.strictEqual(
+      body3.data.announcement.summary,
+      "請留意場地及時間更新 · 8月15日"
+    );
     assert.strictEqual(
       body3.data.announcement.bodyMarkdown,
       "請按現場指示前往聚會地點，禮堂入口設有接待同工協助登記。"
     );
-    assert.strictEqual(body3.data.announcement.ctaLabel, "聚會場地資料 · 外部連結");
-    assert.strictEqual(body3.data.announcement.ctaUrl, "https://example.com/venue");
-    assert.strictEqual(body3.data.announcement.imageUrl, "https://example.com/cover.jpg");
+    assert.strictEqual(
+      body3.data.announcement.ctaLabel,
+      "聚會場地資料 · 外部連結"
+    );
+    assert.strictEqual(
+      body3.data.announcement.ctaUrl,
+      "https://example.com/venue"
+    );
+    assert.strictEqual(
+      body3.data.announcement.imageUrl,
+      "https://example.com/cover.jpg"
+    );
     assert.strictEqual(body3.data.announcement.imageAlt, "場地照片");
   });
 
   test("projects member's next enrolled event when available", async () => {
     const now = new Date();
-    const futureStart = new Date(now.getTime() + 86400_000).toISOString(); // +1 day
-    const futureEnd = new Date(now.getTime() + 90000_000).toISOString();
+    const futureStart = new Date(now.getTime() + 86_400_000).toISOString(); // +1 day
+    const futureEnd = new Date(now.getTime() + 90_000_000).toISOString();
 
     // 1. Create a program and event
     await testDb()
@@ -353,10 +391,10 @@ describe("GET /api/v1/home Worker route", () => {
 
   test("falls back to church-wide next event when member's enrolled event is stale/past", async () => {
     const now = new Date();
-    const pastStart = new Date(now.getTime() - 86400_000).toISOString(); // -1 day (past)
-    const pastEnd = new Date(now.getTime() - 80000_000).toISOString();
-    const futureStart = new Date(now.getTime() + 172800_000).toISOString(); // +2 days
-    const futureEnd = new Date(now.getTime() + 176400_000).toISOString();
+    const pastStart = new Date(now.getTime() - 86_400_000).toISOString(); // -1 day (past)
+    const pastEnd = new Date(now.getTime() - 80_000_000).toISOString();
+    const futureStart = new Date(now.getTime() + 172_800_000).toISOString(); // +2 days
+    const futureEnd = new Date(now.getTime() + 176_400_000).toISOString();
 
     // Create a second program with future church-wide event
     await testDb()
@@ -384,7 +422,9 @@ describe("GET /api/v1/home Worker route", () => {
 
     // Move member 1's event to the past
     await testDb()
-      .prepare(`UPDATE events SET starts_at = ?, ends_at = ? WHERE event_id = 'EVT-DISCIPLESHIP-3'`)
+      .prepare(
+        `UPDATE events SET starts_at = ?, ends_at = ? WHERE event_id = 'EVT-DISCIPLESHIP-3'`
+      )
       .bind(pastStart, pastEnd)
       .run();
 
@@ -406,8 +446,8 @@ describe("GET /api/v1/home Worker route", () => {
 
   test("selects exploreProgram correctly (listed, active, member-request with future event)", async () => {
     const now = new Date();
-    const futureStart = new Date(now.getTime() + 300000_000).toISOString();
-    const futureEnd = new Date(now.getTime() + 303600_000).toISOString();
+    const futureStart = new Date(now.getTime() + 300_000_000).toISOString();
+    const futureEnd = new Date(now.getTime() + 303_600_000).toISOString();
 
     // Insert explore candidate: '慕道入門課程'
     await testDb()
@@ -435,7 +475,9 @@ describe("GET /api/v1/home Worker route", () => {
 
     // Ensure PRG-WORSHIP has higher display_order so PRG-INTRO is preferred
     await testDb()
-      .prepare(`UPDATE programs SET display_order = 10 WHERE program_id = 'PRG-WORSHIP'`)
+      .prepare(
+        `UPDATE programs SET display_order = 10 WHERE program_id = 'PRG-WORSHIP'`
+      )
       .run();
 
     const res = await worker.fetch(
@@ -449,23 +491,30 @@ describe("GET /api/v1/home Worker route", () => {
     assert.ok(body.data.exploreProgram);
     assert.strictEqual(body.data.exploreProgram.programId, "PRG-INTRO");
     assert.strictEqual(body.data.exploreProgram.title, "慕道入門課程");
-    assert.strictEqual(body.data.exploreProgram.summary, "現正接受報名 · 9月7日開始");
-    assert.strictEqual(body.data.exploreProgram.enrollmentType, "MemberRequest");
+    assert.strictEqual(
+      body.data.exploreProgram.summary,
+      "現正接受報名 · 9月7日開始"
+    );
+    assert.strictEqual(
+      body.data.exploreProgram.enrollmentType,
+      "MemberRequest"
+    );
     assert.strictEqual(body.data.exploreProgram.nextEventStartAt, futureStart);
   });
 
   test("rejects inactive/suspended account with 403 Problem Details", async () => {
-    const inactiveCookie = await accessCookieFor("home-inactive", "home-admin-password").catch(
-      async () => {
-        // Inactive account cannot log in or if token forged:
-        const { signAccessToken } = await import("./auth/sessions");
-        return signAccessToken(SECRET, {
-          sid: "inactive-sid",
-          uid: "HOME-INACTIVE",
-          iat: Date.now(),
-        });
-      }
-    );
+    const inactiveCookie = await accessCookieFor(
+      "home-inactive",
+      "home-admin-password"
+    ).catch(async () => {
+      // Inactive account cannot log in or if token forged:
+      const { signAccessToken } = await import("./auth/sessions");
+      return signAccessToken(SECRET, {
+        sid: "inactive-sid",
+        uid: "HOME-INACTIVE",
+        iat: Date.now(),
+      });
+    });
     const response = await worker.fetch(
       request("/api/v1/home", {
         method: "GET",
@@ -480,13 +529,15 @@ describe("GET /api/v1/home Worker route", () => {
 
   test("hides scheduled announcement with future start_at or expired announcement with past end_at", async () => {
     const now = new Date();
-    const futureStart = new Date(now.getTime() + 3600_000).toISOString();
-    const pastStart = new Date(now.getTime() - 7200_000).toISOString();
-    const pastEnd = new Date(now.getTime() - 3600_000).toISOString();
+    const futureStart = new Date(now.getTime() + 3_600_000).toISOString();
+    const pastStart = new Date(now.getTime() - 7_200_000).toISOString();
+    const pastEnd = new Date(now.getTime() - 3_600_000).toISOString();
 
     // 1. Archive the existing announcement so it doesn't match
     await testDb()
-      .prepare(`UPDATE home_content SET status = 'Archived' WHERE content_id = 'church-msg-1'`)
+      .prepare(
+        `UPDATE home_content SET status = 'Archived' WHERE content_id = 'church-msg-1'`
+      )
       .run();
 
     // 2. Insert scheduled announcement with future start_at
@@ -498,7 +549,12 @@ describe("GET /api/v1/home Worker route", () => {
          VALUES ('scheduled-msg', 4, 'B', 'Published', 'scheduled', ?, NULL,
                  '未來公告', '未來摘要', '內容', 'HOME-ADMIN', ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?)`
       )
-      .bind(futureStart, now.toISOString(), now.toISOString(), now.toISOString())
+      .bind(
+        futureStart,
+        now.toISOString(),
+        now.toISOString(),
+        now.toISOString()
+      )
       .run();
 
     const res1 = await worker.fetch(
@@ -520,7 +576,13 @@ describe("GET /api/v1/home Worker route", () => {
          VALUES ('expired-msg', 5, 'B', 'Published', 'scheduled', ?, ?,
                  '過期公告', '過期摘要', '內容', 'HOME-ADMIN', ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?)`
       )
-      .bind(pastStart, pastEnd, now.toISOString(), now.toISOString(), now.toISOString())
+      .bind(
+        pastStart,
+        pastEnd,
+        now.toISOString(),
+        now.toISOString(),
+        now.toISOString()
+      )
       .run();
 
     const res2 = await worker.fetch(
@@ -534,10 +596,42 @@ describe("GET /api/v1/home Worker route", () => {
     assert.strictEqual(body2.data.announcement, null);
   });
 
+  test("shows scheduled announcement once start_at is in the past", async () => {
+    const now = new Date();
+    const pastStart = new Date(now.getTime() - 3_600_000).toISOString();
+
+    await testDb()
+      .prepare(
+        `UPDATE home_content SET status = 'Archived' WHERE content_id = 'church-msg-1'`
+      )
+      .run();
+
+    await testDb()
+      .prepare(
+        `INSERT INTO home_content
+          (content_id, version, template_type, status, publish_mode, start_at, end_at,
+           title, summary, body_markdown, created_by, created_at, updated_by, updated_at, published_by, published_at)
+         VALUES ('live-scheduled-msg', 7, 'B', 'Published', 'scheduled', ?, NULL,
+                 '已生效預約公告', '摘要', '內容', 'HOME-ADMIN', ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?)`
+      )
+      .bind(pastStart, now.toISOString(), now.toISOString(), now.toISOString())
+      .run();
+
+    const response = await worker.fetch(
+      request("/api/v1/home", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    const body = (await response.json()) as HomeApiResponse;
+    assert.strictEqual(body.data.announcement?.title, "已生效預約公告");
+  });
+
   test("falls back to Template A configured featured event when unenrolled", async () => {
     const now = new Date();
-    const futureStart = new Date(now.getTime() + 500000_000).toISOString();
-    const futureEnd = new Date(now.getTime() + 503600_000).toISOString();
+    const futureStart = new Date(now.getTime() + 500_000_000).toISOString();
+    const futureEnd = new Date(now.getTime() + 503_600_000).toISOString();
 
     // Create a special featured event
     await testDb()
