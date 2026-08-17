@@ -164,7 +164,7 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
-      document.querySelector("#participant-event-title")?.focus();
+      document.querySelector<HTMLElement>("#participant-event-title")?.focus();
     }
   }, [canManage, detail]);
 
