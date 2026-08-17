@@ -456,6 +456,22 @@ export interface DepartmentManagerRevokeInput {
   revoked_at: string;
 }
 
+/**
+ * One row of the Account Permissions projection (087-03 #320): an
+ * admin-capable Admin/Staff account joined with one of its active Department
+ * Manager grants. Accounts without a grant yield one row with null
+ * department columns.
+ */
+export interface ElevatedAccountRow {
+  user_id: string;
+  name: string;
+  role: "Admin" | "Staff" | "Member";
+  account_status: string;
+  department_id: string | null;
+  department_name: string | null;
+  display_order: number | null;
+}
+
 export interface AuditInput {
   audit_id: string;
   inserted_at: string;
@@ -724,6 +740,7 @@ export interface WorkspaceStore {
   revokeDepartmentManager: (
     input: DepartmentManagerRevokeInput
   ) => Promise<DepartmentManagerRow | null>;
+  listElevatedAccounts: () => Promise<ElevatedAccountRow[]>;
 
   findProgramLeader: (
     programId: string,

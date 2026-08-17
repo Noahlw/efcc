@@ -11,10 +11,11 @@ import { COPY } from "@/lib/copy";
  *
  * Acceptance trace `.scratch/prototype-port-2026/acceptance-traces/084-04-settings-hub.md`:
  * exactly three rows in the locked order, 簽到設定 / 時區 navigate to the locked
- * routes, 帳戶與權限 stays present-but-not-yet-linked (087-03 wires it), and both
- * informational screens are pure read-only displays — the no-form regression is
- * asserted per screen. Copy strings are asserted via COPY.settings (centralized
- * copy is the single source; no hardcoded text in components).
+ * routes, 帳戶與權限 links to the 087-03 permissions matrix
+ * (/management?module=permissions), and both informational screens are pure
+ * read-only displays — the no-form regression is asserted per screen. Copy
+ * strings are asserted via COPY.settings (centralized copy is the single
+ * source; no hardcoded text in components).
  */
 
 afterEach(() => {
@@ -80,7 +81,7 @@ describe(SettingsHub, () => {
     );
   });
 
-  test("帳戶與權限 row is present but has no destination link (087-03 wires it)", () => {
+  test("帳戶與權限 row links to the 087-03 permissions matrix", () => {
     render(<SettingsHub />);
 
     expect(
@@ -90,13 +91,14 @@ describe(SettingsHub, () => {
       screen.getByText(SETTINGS.accountsPermissionsRowHint)
     ).toBeInTheDocument();
 
-    // Present-but-not-yet-linked: never a link/button, never a placeholder page.
-    expect(
-      screen.queryByRole("link", { name: new RegExp(SETTINGS.accountsPermissionsRow) })
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: new RegExp(SETTINGS.accountsPermissionsRow) })
-    ).toBeNull();
+    // 087-03 wires the row: it navigates to the real permissions screen.
+    const permissionsRow = screen.getByRole("link", {
+      name: new RegExp(SETTINGS.accountsPermissionsRow),
+    });
+    expect(permissionsRow).toHaveAttribute(
+      "href",
+      "/management?module=permissions"
+    );
   });
 
   test("hub back action returns to the management directory", () => {

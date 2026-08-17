@@ -311,6 +311,7 @@ export default {
         handleListDepartments,
         handleListManagementAccess,
         handleGetManagementHub,
+        handleGetAccountPermissions,
         handleListManagementDirectory,
         handleGetManagementAttention,
         handleGetManagementNotifications,
@@ -367,6 +368,12 @@ export default {
         request.method === "GET"
       ) {
         return handleGetManagementHub(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/account-permissions" &&
+        request.method === "GET"
+      ) {
+        return handleGetAccountPermissions(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&

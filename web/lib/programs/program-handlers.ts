@@ -576,6 +576,31 @@ export async function handleGetManagementHub(
   const hub = await workspace.getManagementHub(ctxFrom(auth.account));
   return jsonResponse(200, hub, requestId);
 }
+/** GET /api/v1/programs/account-permissions — Admin/Staff-only permissions matrix. */
+export async function handleGetAccountPermissions(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const permissions = await workspace.getAccountPermissions(
+      ctxFrom(auth.account)
+    );
+    return jsonResponse(200, permissions, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export async function handleListManagementDirectory(
   request: Request,

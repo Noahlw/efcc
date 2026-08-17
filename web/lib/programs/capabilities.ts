@@ -34,6 +34,10 @@ export const CAPABILITY = {
   // migration 0010 (`role_capabilities`); not scope-expandable via
   // department/program grants (Home is church-wide, not department-scoped).
   HOME_PUBLISH: "home.publish",
+  // Account Permissions matrix read (087-03 #320). Role-policy seeded for
+  // Admin + Staff in migration 0013; Department Manager is an effective
+  // scoped profile with no role row, so DM-only actors are denied server-side.
+  ACCOUNT_PERMISSIONS_READ: "account.permissions.read",
 } as const;
 
 export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];

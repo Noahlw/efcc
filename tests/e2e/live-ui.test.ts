@@ -135,6 +135,23 @@ const COPY = {
   timezoneLead: "聚會、報名及發佈時間均以香港時間顯示。",
   gmt8: "香港時間（GMT+8）",
   gmt8Value: "GMT+8",
+  // 087-03 Account Permissions matrix (mirrors COPY.permissions).
+  permissionsTitle: "帳戶與權限",
+  permissionsLead:
+    "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
+  accountsSection: "管理員帳戶",
+  rolesSection: "角色定義",
+  accountName: "姓名",
+  accountRole: "角色",
+  accountDepartment: "部門",
+  roleAdmin: "管理員",
+  roleAdminScope: "全部範圍",
+  roleDepartmentManager: "部門管理者",
+  roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
+  roleStaff: "同工",
+  roleStaffScope: "部門範圍內協助工作",
+  stateAssigned: "已設",
+  stateAssignable: "可指派",
 } as const;
 
 const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
@@ -477,10 +494,59 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(page.getByText(COPY.checkinSettingsRowHint)).toBeVisible();
     await expect(page.getByText(COPY.timezoneRow)).toBeVisible();
     await expect(page.getByText(COPY.timezoneRowHint)).toBeVisible();
-    // 帳戶與權限 is present-but-not-yet-linked (087-03 wires its destination).
+    // 帳戶與權限 (087-03): the row now navigates to the real permissions
+    // matrix — real elevated accounts, fixed role definitions, lead copy.
+    const permissionsRow = page.getByRole("link", {
+      name: new RegExp(COPY.accountsPermissionsRow),
+    });
+    await expect(permissionsRow).toHaveAttribute(
+      "href",
+      /management\?module=permissions/u
+    );
+    await permissionsRow.click();
+    await expect(page).toHaveURL(/management\?module=permissions/u);
     await expect(
-      page.getByRole("link", { name: new RegExp(COPY.accountsPermissionsRow) })
-    ).toHaveCount(0);
+      page.getByRole("heading", { name: COPY.permissionsTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
+    // The matrix lists the seeded elevated fixtures (Admin + Staff exist in
+    // the dev D1 baseline; department state may vary across runs, so the
+    // account-table assertion is row-header based and role-state assertions
+    // are limited to the role-fixed copy plus the always-held Admin/Staff
+    // badges).
+    await expect(
+      page.getByRole("table", { name: COPY.accountsSection })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("rowheader", { name: "E2E Admin", exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("rowheader", { name: "E2E Staff", exact: true })
+    ).toBeVisible();
+    const rolesRegion = page.getByRole("region", {
+      name: COPY.rolesSection,
+    });
+    await expect(rolesRegion).toBeVisible();
+    await expect(rolesRegion.getByText(COPY.roleAdmin)).toBeVisible();
+    await expect(rolesRegion.getByText(COPY.roleAdminScope)).toBeVisible();
+    await expect(
+      rolesRegion.getByText(COPY.roleDepartmentManager)
+    ).toBeVisible();
+    await expect(
+      rolesRegion.getByText(COPY.roleDepartmentManagerScope)
+    ).toBeVisible();
+    await expect(rolesRegion.getByText(COPY.roleStaff)).toBeVisible();
+    await expect(rolesRegion.getByText(COPY.roleStaffScope)).toBeVisible();
+    // Fixed-state badges hold at every baseline: Admin and Staff fixtures
+    // always exist, so their roles are 已設.
+    await expect(
+      rolesRegion.getByText(COPY.stateAssigned).first()
+    ).toBeVisible();
+    await expect(
+      rolesRegion.getByText(COPY.stateAssigned).nth(1)
+    ).toBeVisible();
+    await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
+    await expect(page).toHaveURL(/management\?module=settings/u);
 
     // 簽到設定: read-only method badges + fixed window durations, no forms.
     await page
