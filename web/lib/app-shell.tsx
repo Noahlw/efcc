@@ -10,6 +10,7 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
+import { OfflineBanner } from "@/lib/offline-banner";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
@@ -18,7 +19,6 @@ import {
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
-import { OfflineBanner } from "@/lib/offline-banner";
 
 import styles from "./auth-shell.module.css";
 
@@ -56,11 +56,13 @@ function ShellFrame({
         <a className={styles.skipLink} href="#shell-content">
           {COPY.skipToContent}
         </a>
-        <ShellHeader />
-        <NavBar />
-        <main id="shell-content" className="shell-content">
-          {children}
-        </main>
+        <div className="shell-frame">
+          <NavBar />
+          <main id="shell-content" className="shell-content">
+            <ShellHeader />
+            {children}
+          </main>
+        </div>
       </div>
     </AppProvider>
   );

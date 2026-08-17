@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 
-import { AppShell } from "@/lib/app-shell";
-import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
-import { useApp } from "@/lib/app-context";
 import {
   ACCOUNT_SETTINGS_COPY,
   accountSettingsErrorCopy,
 } from "@/lib/account-settings-copy";
+import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
+import { useApp } from "@/lib/app-context";
+import { AppShell } from "@/lib/app-shell";
 
 import styles from "./settings.module.css";
 
@@ -21,7 +22,12 @@ function BackIcon() {
       viewBox="0 0 20 20"
       focusable="false"
     >
-      <path d="m12.5 4-5 6 5 6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="m12.5 4-5 6 5 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -51,7 +57,9 @@ function AccountSettingsContent() {
 
   async function submitUsername(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (usernameSubmitting) return;
+    if (usernameSubmitting) {
+      return;
+    }
 
     setUsernameError("");
     setUsernameSuccess(false);
@@ -79,7 +87,9 @@ function AccountSettingsContent() {
 
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (passwordSubmitting) return;
+    if (passwordSubmitting) {
+      return;
+    }
 
     setPasswordError("");
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -111,10 +121,6 @@ function AccountSettingsContent() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <span>{ACCOUNT_SETTINGS_COPY.headerTitle}</span>
-      </header>
-
       <div className={styles.intro}>
         <Link href="/profile" className={styles.back}>
           <BackIcon />
@@ -124,12 +130,19 @@ function AccountSettingsContent() {
         <p>{ACCOUNT_SETTINGS_COPY.sectionLead}</p>
       </div>
 
-      <section className={styles.section} aria-labelledby="change-username-title">
-        <h2 id="change-username-title">{ACCOUNT_SETTINGS_COPY.usernameTitle}</h2>
+      <section
+        className={styles.section}
+        aria-labelledby="change-username-title"
+      >
+        <h2 id="change-username-title">
+          {ACCOUNT_SETTINGS_COPY.usernameTitle}
+        </h2>
         <div className={styles.card}>
           <form onSubmit={submitUsername} noValidate>
             <div className={styles.field}>
-              <label htmlFor="new-username">{ACCOUNT_SETTINGS_COPY.usernameLabel}</label>
+              <label htmlFor="new-username">
+                {ACCOUNT_SETTINGS_COPY.usernameLabel}
+              </label>
               <input
                 id="new-username"
                 name="new-username"
@@ -154,11 +167,15 @@ function AccountSettingsContent() {
               {usernameError}
             </p>
             {usernameSuccess && (
-              <p className={styles.success} role="status">
+              <output className={styles.success}>
                 {ACCOUNT_SETTINGS_COPY.usernameSuccess}
-              </p>
+              </output>
             )}
-            <button type="submit" className={styles.submit} disabled={usernameSubmitting}>
+            <button
+              type="submit"
+              className={styles.submit}
+              disabled={usernameSubmitting}
+            >
               {usernameSubmitting
                 ? ACCOUNT_SETTINGS_COPY.usernameSubmitting
                 : ACCOUNT_SETTINGS_COPY.usernameSubmit}
@@ -167,8 +184,13 @@ function AccountSettingsContent() {
         </div>
       </section>
 
-      <section className={styles.section} aria-labelledby="change-password-title">
-        <h2 id="change-password-title">{ACCOUNT_SETTINGS_COPY.passwordTitle}</h2>
+      <section
+        className={styles.section}
+        aria-labelledby="change-password-title"
+      >
+        <h2 id="change-password-title">
+          {ACCOUNT_SETTINGS_COPY.passwordTitle}
+        </h2>
         <div className={styles.card}>
           <form onSubmit={submitPassword} noValidate>
             <div className={styles.field}>
@@ -239,8 +261,14 @@ function AccountSettingsContent() {
             >
               {passwordError}
             </p>
-            <p className={styles.notice}>{ACCOUNT_SETTINGS_COPY.passwordNotice}</p>
-            <button type="submit" className={styles.submitPrimary} disabled={passwordSubmitting}>
+            <p className={styles.notice}>
+              {ACCOUNT_SETTINGS_COPY.passwordNotice}
+            </p>
+            <button
+              type="submit"
+              className={styles.submitPrimary}
+              disabled={passwordSubmitting}
+            >
               {passwordSubmitting
                 ? ACCOUNT_SETTINGS_COPY.passwordSubmitting
                 : ACCOUNT_SETTINGS_COPY.passwordSubmit}

@@ -51,58 +51,25 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem clamp(1rem, 3vw, 1.5rem);
-  background: var(--surface-raised, #ffffff);
-  border-bottom: 1px solid var(--line, #d6dcde);
-}
-
-@media (min-width: 800px) {
-  /* The desktop side rail (globals.css .nav-desktop) is fixed at left:0 with
-     width 200px; offset the header beside it so the seal + church title stay
-     visible (review P1). */
-  .header {
-    margin-left: 200px;
-  }
+  height: 72px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
   min-width: 0;
 }
 .title {
   font-size: 1rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--ink, #171a1d);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.signOut {
-  flex-shrink: 0;
-  min-height: 44px;
-  padding: 0 1.25rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink, #171a1d);
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.signOut:hover {
-  background: var(--surface, #f4f5f3);
-}
-
-.signOut:focus-visible {
-  outline: 2px solid var(--focus, #176a87);
-  outline-offset: 2px;
 }
 
 /* Full-viewport centered state (loading / recovery / forbidden / empty). */

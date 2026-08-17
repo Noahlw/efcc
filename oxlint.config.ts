@@ -18,6 +18,8 @@ export default defineConfig({
     "no-nested-ternary": "off",
 
     "func-style": ["error", "declaration", { allowArrowFunctions: true }],
+    // Conflicts with func-style: declaration used across the Next app.
+    "react/function-component-definition": "off",
     "react/react-compiler": "off",
     "sort-keys": "off",
     "typescript/no-invalid-void-type": "off",

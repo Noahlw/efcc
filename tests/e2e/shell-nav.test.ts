@@ -3,10 +3,13 @@
  * 5-slot shell navigation, Care removal, offline banner, and accessibility.
  */
 import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import {
+  defaultSections,
+  stableNavigationSections,
+} from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -104,6 +107,11 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(links.nth(2)).toHaveAttribute("href", "/scanner");
     await expect(links.nth(3)).toHaveAttribute("href", "/notices");
     await expect(links.nth(4)).toHaveAttribute("href", "/profile");
+
+    for (let index = 0; index < 5; index += 1) {
+      await expect(links.nth(index).locator("svg")).toHaveCount(1);
+    }
+    await expect(links.nth(2)).toHaveClass(/nav-item--scanner/);
   });
 
   test("Staff role receives 5-slot dock with Management (not Notices)", async ({
@@ -137,7 +145,9 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(links.nth(3)).toHaveAttribute("href", "/management");
   });
 
-  test("Care is removed: no Care slot in nav and /care is not accessible", async ({ page }) => {
+  test("Care is removed: no Care slot in nav and /care is not accessible", async ({
+    page,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -152,7 +162,10 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(careNav).toHaveCount(0);
   });
 
-  test("Offline banner appears when offline and auto-hides when online", async ({ page, context }) => {
+  test("Offline banner appears when offline and auto-hides when online", async ({
+    page,
+    context,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -162,7 +175,9 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(MEMBER_USER));
     await page.goto("/home");
 
-    const banner = page.getByRole("status", { name: COPY.offlineBanner }).or(page.getByText(COPY.offlineBanner));
+    const banner = page
+      .getByRole("status", { name: COPY.offlineBanner })
+      .or(page.getByText(COPY.offlineBanner));
     // Initially online -> banner not visible
     await expect(banner).toHaveCount(0);
 

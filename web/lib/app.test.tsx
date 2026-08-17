@@ -1,13 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -26,10 +20,10 @@ import {
 
 import EventsPage from "@/app/events/page";
 import HomePage from "@/app/home/page";
-import ManagementPage from "@/app/management/page";
-import NoticesPage from "@/app/notices/page";
 import RootLayout from "@/app/layout";
+import ManagementPage from "@/app/management/page";
 import NotFound from "@/app/not-found";
+import NoticesPage from "@/app/notices/page";
 import LoginPage from "@/app/page";
 import PermissionsPage from "@/app/permissions/page";
 import ProfilePage from "@/app/profile/page";
@@ -45,8 +39,8 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import { RecoveryView } from "@/lib/recovery-view";
+import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import {
   defaultSections,
   sectionsForRole,
@@ -867,9 +861,7 @@ describe("Shell", () => {
           screen.getByRole("heading", { name: COPY.sessionExpired.title })
         ).toBeInTheDocument();
       });
-      expect(
-        screen.getByText(COPY.sessionExpired.message)
-      ).toBeInTheDocument();
+      expect(screen.getByText(COPY.sessionExpired.message)).toBeInTheDocument();
       // Presence hint cleared - the refresh session is dead.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
       expect(replaceMock).not.toHaveBeenCalled();
@@ -939,16 +931,31 @@ describe("Shell", () => {
       );
       const user = userEvent.setup();
       render(<LoginPage />);
-      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(
+        screen.getByLabelText(COPY.login.usernameLabel),
+        "legacy"
+      );
       await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
-        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+        expect(
+          screen.getByText(COPY.login.upgradeRequired)
+        ).toBeInTheDocument();
       });
-      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "short");
-      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "short");
-      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
-      expect(screen.getByText(COPY.login.upgradePasswordTooShort)).toBeInTheDocument();
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "short"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "short"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+      expect(
+        screen.getByText(COPY.login.upgradePasswordTooShort)
+      ).toBeInTheDocument();
     });
 
     test("blocks upgrade submission when password and confirm password do not match", async () => {
@@ -968,22 +975,39 @@ describe("Shell", () => {
       );
       const user = userEvent.setup();
       render(<LoginPage />);
-      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(
+        screen.getByLabelText(COPY.login.usernameLabel),
+        "legacy"
+      );
       await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       await waitFor(() => {
-        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+        expect(
+          screen.getByText(COPY.login.upgradeRequired)
+        ).toBeInTheDocument();
       });
-      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "password123");
-      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "password456");
-      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
-      expect(screen.getByText(COPY.login.upgradePasswordMismatch)).toBeInTheDocument();
+      await user.type(
+        screen.getByLabelText(COPY.login.newPasswordLabel),
+        "password123"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "password456"
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.login.upgradeSubmit })
+      );
+      expect(
+        screen.getByText(COPY.login.upgradePasswordMismatch)
+      ).toBeInTheDocument();
     });
 
-    test("mounts session expired screen directly when efcc_session_expired sessionStorage flag is set", async () => {
+    test("mounts session expired screen directly when efcc_session_expired sessionStorage flag is set", () => {
       sessionStorage.setItem("efcc_session_expired", "1");
       render(<LoginPage />);
-      expect(screen.getByRole("heading", { name: COPY.sessionExpired.title })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: COPY.sessionExpired.title })
+      ).toBeInTheDocument();
       expect(screen.getByText(COPY.sessionExpired.message)).toBeInTheDocument();
       expect(sessionStorage.getItem("efcc_session_expired")).toBeNull();
     });
@@ -1193,7 +1217,11 @@ describe("Shell", () => {
     }
 
     test("renders the stable navigation projection for Member", () => {
-      renderWithProvider(sectionsForRole("Member"), "/home", stableNavigationSections("Member"));
+      renderWithProvider(
+        sectionsForRole("Member"),
+        "/home",
+        stableNavigationSections("Member")
+      );
       expect(
         [
           COPY.sections.home,
@@ -1206,7 +1234,11 @@ describe("Shell", () => {
     });
 
     test("renders the stable navigation projection for Staff with Management", () => {
-      renderWithProvider(sectionsForRole("Staff"), "/home", stableNavigationSections("Staff"));
+      renderWithProvider(
+        sectionsForRole("Staff"),
+        "/home",
+        stableNavigationSections("Staff")
+      );
       expect(
         [
           COPY.sections.home,
@@ -1234,6 +1266,23 @@ describe("Shell", () => {
       expect(active).toHaveAttribute("aria-current", "page");
     });
 
+    test("uses the scanner key for the FAB even when navigation order changes", () => {
+      const navigation = [
+        ...stableNavigationSections("Member").slice(0, 2),
+        ...stableNavigationSections("Member").slice(4),
+        stableNavigationSections("Member")[2],
+      ];
+      renderWithProvider(MEMBER_SECTIONS, "/home", navigation);
+      const scannerLinks = screen.getAllByRole("link", {
+        name: COPY.sections.scanner,
+      });
+      expect(scannerLinks).toHaveLength(2);
+      for (const link of scannerLinks) {
+        expect(link).toHaveClass("nav-item--scanner");
+        expect(link.querySelector("svg")).not.toBeNull();
+      }
+    });
+
     test("does not mark inactive sections with aria-current", () => {
       renderWithProvider(MEMBER_SECTIONS, "/programs");
       const [inactive] = screen.getAllByText(COPY.sections.profile);
@@ -1246,6 +1295,15 @@ describe("Shell", () => {
       const [programs] = screen.getAllByText(COPY.sections.programs);
       expect(profile).toHaveAttribute("aria-current", "page");
       expect(programs).not.toHaveAttribute("aria-current");
+    });
+
+    test("does not invent an active section for an unknown route", () => {
+      renderWithProvider(MEMBER_SECTIONS, "/unknown-route");
+      expect(
+        screen
+          .getAllByRole("link")
+          .some((link) => link.getAttribute("aria-current") === "page")
+      ).toBeFalsy();
     });
   });
 
@@ -1408,30 +1466,47 @@ describe("Shell", () => {
   });
 
   describe(ShellHeader, () => {
-    test("renders the full church title and a sign-out control", () => {
+    test("renders the short brand without a shared sign-out control", () => {
+      pathnameMock.mockReturnValue("/home");
       render(
         <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
           <ShellHeader />
         </AppProvider>
       );
-      expect(screen.getByText(COPY.appFullName)).toBeInTheDocument();
+      expect(screen.getByText(COPY.appBrand)).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: COPY.logout.submit })
-      ).toBeInTheDocument();
+        screen.queryByRole("button", { name: COPY.logout.submit })
+      ).toBeNull();
     });
 
-    test("sign-out control invokes the context signOut", async () => {
-      const onSignOut = vi.fn<() => void>();
-      const user = userEvent.setup();
+    test("uses the pathname title for account settings and safely falls back", () => {
+      pathnameMock.mockReturnValue("/profile");
       render(
-        <AppProvider bootstrap={BOOTSTRAP} onSignOut={onSignOut}>
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
           <ShellHeader />
         </AppProvider>
       );
-      await user.click(
-        screen.getByRole("button", { name: COPY.logout.submit })
+      expect(screen.getByText(COPY.sections.profile)).toBeInTheDocument();
+
+      cleanup();
+      pathnameMock.mockReturnValue("/profile/settings");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
       );
-      expect(onSignOut).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.profile.accountSettings)
+      ).toBeInTheDocument();
+
+      cleanup();
+      pathnameMock.mockReturnValue("/not-a-real-route");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.appBrand)).toBeInTheDocument();
     });
   });
 
@@ -1449,7 +1524,7 @@ describe("Shell", () => {
     });
   });
 
-  describe("Section page titles from COPY.sections", () => {
+  describe("Section page titles and shell contextual titles", () => {
     function withAuthRestore(
       user: PublicUser = PUBLIC_USER,
       sections: Bootstrap["sections"] = MEMBER_SECTIONS
@@ -1540,12 +1615,12 @@ describe("Shell", () => {
       });
     });
 
-    test("programs page renders COPY.sections.programs title", async () => {
+    test("programs page keeps its descriptive page title", async () => {
       setAuthHint();
       render(<ProgramsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.programs })
+          screen.getByRole("heading", { name: COPY.programs.pageTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1648,7 +1723,9 @@ describe("Shell", () => {
           screen.getByRole("heading", { name: COPY.management.managementTitle })
         ).toBeInTheDocument();
       });
-      expect(screen.getByText(COPY.management.managementLead)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.management.managementLead)
+      ).toBeInTheDocument();
     });
 
     test("permissions page renders the S10 permissionsHeading title", async () => {
@@ -1778,9 +1855,7 @@ describe("Shell", () => {
       expect(screen.getByText(COPY.restore.loading)).toBeInTheDocument();
       expect(container.querySelector("[aria-hidden='true']")).not.toBeNull();
       // The restore resolves to the authenticated shell.
-      await expect(
-        screen.findByRole("button", { name: COPY.logout.submit })
-      ).resolves.toBeInTheDocument();
+      await expect(screen.findByText("children")).resolves.toBeInTheDocument();
     });
 
     test("the authenticated shell leads with a skip link to the main content landmark", async () => {
@@ -1791,7 +1866,7 @@ describe("Shell", () => {
           <div>children</div>
         </AppShell>
       );
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findByText("children");
       const link = screen.getByRole("link", { name: COPY.skipToContent });
       expect(link).toHaveAttribute("href", "#shell-content");
       // The skip target is the single main landmark of the shell.
@@ -1995,16 +2070,14 @@ describe("Shell", () => {
         </StrictMode>
       );
       // The fresh restore resolves to the authenticated shell.
-      const logoutButton = await screen.findByRole("button", {
-        name: COPY.logout.submit,
-      });
+      const shellTitle = await screen.findByText("children");
       // Release the stale 503 only after the fresh result already landed.
       // eslint-disable-next-line require-await -- act wrapper; no await inside
       await act(async () => {
         releaseStale?.();
       });
       // The stale failure must not overwrite the ready shell.
-      expect(logoutButton).toBeInTheDocument();
+      expect(shellTitle).toBeInTheDocument();
       expect(
         screen.queryByText(COPY.error.unavailable)
       ).not.toBeInTheDocument();
