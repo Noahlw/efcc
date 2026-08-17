@@ -109,7 +109,7 @@ export const COPY = {
     exportSheet: "匯出簽到表",
     maskedPhone: (phone: string) => {
       const normalized = phone.trim().replaceAll(/[\s().-]/gu, "");
-      if (normalized.length <= 4) return "****";
+      if (normalized.length <= 4) {return "****";}
       return `${normalized.slice(0, 4)}${"*".repeat(normalized.length - 4)}`;
     },
     chooserTitle: "聚會／出席",
@@ -274,6 +274,7 @@ export const COPY = {
     noticesEmptyHint: "有新消息時會在這裡顯示。",
     noticesMarkAllRead: "全部標示已讀",
     noticesMarkedAllRead: "已將全部通知標示為已讀",
+    noticesMarkAllReadError: "未能更新已讀狀態。請重新連線後再試。",
     noticesUnread: "未讀",
     noticesListLabel: "通知清單",
     noticesRetry: "重試載入通知",
@@ -1039,6 +1040,7 @@ export const COPY = {
     cancelConfirmBody: "退出後如需再參加，需重新報名。",
     cancelConfirmAccept: "退出課程",
     offlineError: "未能儲存。請重新連線後再試。",
+    enrollmentOfflineError: "未能提交。請重新連線後再試。",
     requests: "報名申請",
     noRequests: "目前沒有報名申請。",
     tabsPending: "待審批",
