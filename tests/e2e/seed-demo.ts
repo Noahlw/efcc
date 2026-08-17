@@ -7,7 +7,7 @@
  * and program rows are found by their stable E2E_DEMO_ identifiers, schedule
  * rules are found before creation, and event generation is database-idempotent.
  */
-import { DEV_ADMIN } from "./dev-fixtures";
+import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 
 const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 const targetUrl = process.env.DEMO_TARGET_URL ?? DEFAULT_TARGET_URL;
@@ -449,12 +449,131 @@ async function seedDemo(): Promise<void> {
     );
   }
 
+  // 085-07 (#324): 3 participant Notices for the E2E member, created via the
+  // admin POST /api/v1/programs/notices endpoint. Idempotent by title: a
+  // notice whose title already exists for the member is skipped. The read
+  // "帳戶更新" notice is created first and marked read (the only read endpoint
+  // is mark-all-read, so it must be the sole unread notice at that moment) —
+  // the two unread notices are created after, converging unread_count to 2.
+  const oneOff = programs.get(PROGRAMS[1].name);
+  if (!oneOff) {
+    throw new Error(
+      "The E2E_DEMO one-off program was not available after seeding"
+    );
+  }
+  const memberLogin = await fetch(`${base.origin}/api/v1/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: base.origin,
+    },
+    body: JSON.stringify({
+      username: DEV_MEMBER.username,
+      password: DEV_MEMBER.credential,
+    }),
+  });
+  const memberLoginBody = await readJson(memberLogin);
+  if (!memberLogin.ok) {
+    throw new HttpError(
+      memberLogin.status,
+      memberLoginBody,
+      "/api/v1/auth/login"
+    );
+  }
+  const memberCookie = responseCookies(memberLogin);
+  const memberRequest = async (
+    method: "GET" | "POST" | "PATCH",
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<JsonRecord> => {
+    const headers: Record<string, string> = {
+      Cookie: memberCookie,
+      Origin: base.origin,
+    };
+    const init: RequestInit = { method, headers };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const response = await fetch(`${base.origin}${path}`, init);
+    const responseBody = await readJson(response);
+    if (!response.ok) {
+      throw new HttpError(response.status, responseBody, path);
+    }
+    return responseBody;
+  };
+  const memberNotices = payload<{ notices: { title: string }[] }>(
+    await memberRequest("GET", "/api/v1/programs/notices")
+  );
+  const existingNoticeTitles = new Set(
+    memberNotices.notices.map((notice) => notice.title)
+  );
+  const noticesToSeed = [
+    {
+      title: "聚會提醒",
+      body: "你已報名的聚會即將開始。",
+      kind: "event",
+      program_id: recurring.program_id,
+      event_id: events.events[0].event_id,
+      read: false,
+    },
+    {
+      title: "報名結果",
+      body: "你的報名申請已獲核准。",
+      kind: "program",
+      program_id: oneOff.program_id,
+      event_id: null,
+      read: false,
+    },
+    {
+      title: "帳戶更新",
+      body: "你的帳戶資料已更新。",
+      kind: "account",
+      program_id: null,
+      event_id: null,
+      read: true,
+    },
+  ] as const;
+  const pendingNotices = noticesToSeed.filter(
+    (notice) => !existingNoticeTitles.has(notice.title)
+  );
+  if (pendingNotices.length > 0) {
+    const readNotice = pendingNotices.find((notice) => notice.read);
+    if (readNotice) {
+      await request("POST", "/api/v1/programs/notices", {
+        member_user_id: DEV_MEMBER.userId,
+        kind: readNotice.kind,
+        title: readNotice.title,
+        body: readNotice.body,
+        ...(readNotice.program_id
+          ? { program_id: readNotice.program_id }
+          : {}),
+        ...(readNotice.event_id ? { event_id: readNotice.event_id } : {}),
+      });
+      await memberRequest("POST", "/api/v1/programs/notices/read-all");
+    }
+    for (const notice of pendingNotices) {
+      if (notice === readNotice) {
+        continue;
+      }
+      await request("POST", "/api/v1/programs/notices", {
+        member_user_id: DEV_MEMBER.userId,
+        kind: notice.kind,
+        title: notice.title,
+        body: notice.body,
+        ...(notice.program_id ? { program_id: notice.program_id } : {}),
+        ...(notice.event_id ? { event_id: notice.event_id } : {}),
+      });
+    }
+  }
+
   process.stdout.write(
     `${[
       `Seeded local ${DEPARTMENT.code}.`,
       `Programs: ${PROGRAMS.map(({ name }) => name).join(", ")}.`,
       `Generated events for ${PROGRAMS[0].name}: ${events.events.length}.`,
       `Seeded local ${MODULE_GATE_DEPARTMENT.code} (events/attendance disabled).`,
+      `Seeded participant notices for ${DEV_MEMBER.userId} (2 unread, 1 read).`,
     ].join("\n")}\n`
   );
 }

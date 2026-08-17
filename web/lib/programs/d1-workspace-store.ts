@@ -30,6 +30,8 @@ import type {
   ManagementNotificationEventRow,
   NotificationReadStateInput,
   NotificationReadStateRow,
+  ParticipantNoticeCreateInput,
+  ParticipantNoticeRow,
   PreviewOccurrenceRow,
   PreviewPlanRow,
   ProgramInput,
@@ -1041,6 +1043,73 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       (count, result) => count + (result.meta?.changes ?? 0),
       0
     );
+  }
+
+  async listParticipantNotices(
+    memberUserId: string,
+    retentionCutoffMs: number
+  ): Promise<ParticipantNoticeRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT notice_id, member_user_id, kind, title, body, program_id,
+                event_id, read_at, created_at
+           FROM participant_notices
+          WHERE member_user_id = ? AND created_at > ?
+          ORDER BY created_at DESC, notice_id ASC`
+      )
+      .bind(memberUserId, retentionCutoffMs)
+      .all<ParticipantNoticeRow>();
+    return result.results ?? [];
+  }
+
+  async markAllParticipantNoticesRead(
+    memberUserId: string,
+    readAtMs: number
+  ): Promise<number> {
+    const result = await this.db
+      .prepare(
+        `UPDATE participant_notices
+            SET read_at = ?
+          WHERE member_user_id = ? AND read_at IS NULL`
+      )
+      .bind(readAtMs, memberUserId)
+      .run();
+    return result.meta?.changes ?? 0;
+  }
+
+  async createParticipantNotice(
+    input: ParticipantNoticeCreateInput
+  ): Promise<ParticipantNoticeRow> {
+    await this.db
+      .prepare(
+        `INSERT INTO participant_notices
+           (notice_id, member_user_id, kind, title, body, program_id, event_id,
+            read_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        input.notice_id,
+        input.member_user_id,
+        input.kind,
+        input.title,
+        input.body,
+        input.program_id,
+        input.event_id,
+        input.read_at,
+        input.created_at
+      )
+      .run();
+    return {
+      notice_id: input.notice_id,
+      member_user_id: input.member_user_id,
+      kind: input.kind,
+      title: input.title,
+      body: input.body,
+      program_id: input.program_id,
+      event_id: input.event_id,
+      read_at: input.read_at,
+      created_at: input.created_at,
+    };
   }
 
   async cancelEvent(
