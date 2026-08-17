@@ -262,7 +262,7 @@ export const ParticipantEnrollment = ({
   }, []);
 
   const showOfflineError = useCallback(() => {
-    const message = COPY.programs.offlineError;
+    const message = COPY.programs.enrollmentOfflineError;
     setActionError(message);
     setNotice(null);
     announce(message);

@@ -139,7 +139,7 @@ async function restoreHomeSnapshot(
   if (!snapshot) {
     return;
   }
-  await api(page, "/api/v1/home/draft", {
+  const draft = await api(page, "/api/v1/home/draft", {
     method: "POST",
     body: {
       content_id: snapshot.contentId,
@@ -157,24 +157,37 @@ async function restoreHomeSnapshot(
       featured_event_id: snapshot.featuredEventId,
     },
   });
+  if (draft.status !== 200) {
+    throw new Error(`Home CMS restore draft failed with HTTP ${draft.status}`);
+  }
   if (snapshot.status !== "Published") {
     return;
   }
   const latest = await api(page, "/api/v1/home/content");
   if (latest.status !== 200) {
-    return;
+    throw new Error(
+      `Home CMS restore read content failed with HTTP ${latest.status}`
+    );
   }
-  const { version } = latest.body.data as { version: number };
-  await api(page, "/api/v1/home/publish", {
+  const latestData = latest.body.data as { version: number } | null;
+  if (!latestData?.version) {
+    throw new Error("Home CMS restore missing draft version after save");
+  }
+  const publish = await api(page, "/api/v1/home/publish", {
     method: "POST",
     body: {
       content_id: snapshot.contentId,
-      version,
+      version: latestData.version,
       publish_mode: snapshot.publishMode,
       start_at: snapshot.startAt,
       end_at: snapshot.endAt,
     },
   });
+  if (publish.status !== 200) {
+    throw new Error(
+      `Home CMS restore publish failed with HTTP ${publish.status}`
+    );
+  }
 }
 
 test.describe("087-05 Home Content CMS", () => {
