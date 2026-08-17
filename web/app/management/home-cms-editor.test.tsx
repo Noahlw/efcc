@@ -1,11 +1,20 @@
+/* oxlint-disable vitest/max-expects eslint/require-unicode-regexp eslint/no-unused-vars eslint/no-inline-comments */
 import userEvent from "@testing-library/user-event";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
+
+import { COPY } from "@/lib/copy";
 
 import { HomeContentEditor } from "./home-cms-editor";
-import { COPY } from "@/lib/copy";
 
 const EDITOR = COPY.homeEditor;
 const mocks = vi.hoisted(() => ({
@@ -100,8 +109,10 @@ function installHandlers(content = CONTENT) {
 }
 
 function element(id: string): HTMLElement {
-  const node = document.getElementById(id);
-  if (!node) throw new Error(`Expected #${id}`);
+  const node = document.querySelector(`#${id}`);
+  if (!node) {
+    throw new Error(`Expected #${id}`);
+  }
   return node;
 }
 async function waitUntilReady(): Promise<void> {
@@ -109,14 +120,15 @@ async function waitUntilReady(): Promise<void> {
   await waitFor(() => expect(element("home-cms-featured-event")).toBeVisible());
 }
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => {
-  cleanup();
-  server.resetHandlers();
-});
-afterAll(() => server.close());
+describe(HomeContentEditor, () => {
+  beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  afterEach(() => {
+    cleanup();
+    server.resetHandlers();
+  });
 
-describe("HomeContentEditor", () => {
+  afterAll(() => server.close());
+
   test("switches between Template A and Template B fields", async () => {
     const user = userEvent.setup();
     installHandlers();
@@ -124,7 +136,9 @@ describe("HomeContentEditor", () => {
 
     await waitUntilReady();
 
-    await user.click(screen.getByRole("button", { name: new RegExp(EDITOR.templateB) }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(EDITOR.templateB) })
+    );
     expect(element("home-cms-title")).toBeVisible();
     expect(element("home-cms-summary")).toBeVisible();
     expect(element("home-cms-body")).toBeVisible();
@@ -132,7 +146,7 @@ describe("HomeContentEditor", () => {
     expect(element("home-cms-cta-url")).toBeVisible();
     expect(element("home-cms-image-url")).toBeVisible();
     expect(element("home-cms-image-alt")).toBeVisible();
-    expect(document.getElementById("home-cms-featured-event")).toBeNull();
+    expect(document.querySelector("#home-cms-featured-event")).toBeNull();
   });
 
   test("saves a draft without publishing it", async () => {
@@ -160,9 +174,14 @@ describe("HomeContentEditor", () => {
     );
     render(<HomeContentEditor />);
     await waitUntilReady();
-    await user.click(screen.getByRole("button", { name: new RegExp(EDITOR.templateB) }));
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(EDITOR.templateB) })
+    );
     await user.clear(element("home-cms-title") as HTMLInputElement);
-    await user.type(element("home-cms-title") as HTMLInputElement, "未發佈草稿");
+    await user.type(
+      element("home-cms-title") as HTMLInputElement,
+      "未發佈草稿"
+    );
     await user.click(screen.getByRole("button", { name: EDITOR.saveDraft }));
 
     await waitFor(() => expect(draftBody?.publish_mode).toBe("immediate"));
@@ -170,6 +189,34 @@ describe("HomeContentEditor", () => {
     expect(draftBody?.title).toBe("未發佈草稿");
     expect(publishCalls).toBe(0);
     expect(screen.getByRole("status")).toHaveTextContent(EDITOR.saveSuccess);
+  });
+
+  test("previews Template A from the draft featured event id", async () => {
+    const user = userEvent.setup();
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/cms/featured-event/event-2", () =>
+        json({
+          eventId: "event-2",
+          programId: "program-2",
+          programTitle: "Preview Program",
+          title: "Preview Event Two",
+          startsAt: "2026-09-01T10:00:00.000Z",
+          endsAt: "2026-09-01T12:00:00.000Z",
+          location: "Hall",
+          status: "Active",
+        })
+      )
+    );
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.clear(element("home-cms-featured-event") as HTMLInputElement);
+    await user.type(
+      element("home-cms-featured-event") as HTMLInputElement,
+      "event-2"
+    );
+    await user.click(screen.getByRole("button", { name: EDITOR.preview }));
+    await expect(screen.findByText("Preview Event Two")).resolves.toBeVisible();
   });
 
   test("toggles the real preview between phone and desktop viewports", async () => {
@@ -191,7 +238,7 @@ describe("HomeContentEditor", () => {
 
   test("publishes immediately and with a scheduled HK start time", async () => {
     const user = userEvent.setup();
-    const publishBodies: Array<Record<string, unknown>> = [];
+    const publishBodies: Record<string, unknown>[] = [];
     installHandlers();
     server.use(
       http.post("/api/v1/home/publish", async ({ request }) => {
@@ -209,14 +256,18 @@ describe("HomeContentEditor", () => {
     render(<HomeContentEditor />);
     await waitUntilReady();
 
-    await user.click(screen.getByRole("button", { name: EDITOR.savePublished }));
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
     await waitFor(() => expect(publishBodies).toHaveLength(1));
     expect(publishBodies[0]?.publish_mode).toBe("immediate");
 
     await user.click(screen.getByLabelText(/預約發佈|scheduled/i));
     const startAt = screen.getByLabelText(/開始時間|start_at/i);
     fireEvent.change(startAt, { target: { value: "2026-08-18T10:00" } });
-    await user.click(screen.getByRole("button", { name: EDITOR.savePublished }));
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
     await waitFor(() => expect(publishBodies).toHaveLength(2));
     expect(publishBodies[1]?.publish_mode).toBe("scheduled");
     expect(publishBodies[1]?.start_at).toBeTruthy();
@@ -248,21 +299,29 @@ describe("HomeContentEditor", () => {
     render(<HomeContentEditor />);
     await waitUntilReady();
     await user.click(screen.getByRole("button", { name: EDITOR.saveDraft }));
-    expect(await screen.findByText(EDITOR.conflictTitle)).toBeVisible();
+    await expect(
+      screen.findByText(EDITOR.conflictTitle)
+    ).resolves.toBeVisible();
     const reload = screen.getByRole("button", { name: EDITOR.conflictReload });
     expect(reload).toBeVisible();
     await user.click(reload);
-    expect((element("home-cms-title") as HTMLInputElement).value).toBe("最新已發佈版本");
+    expect((element("home-cms-title") as HTMLInputElement).value).toBe(
+      "最新已發佈版本"
+    );
   });
 
   test("renders visible publish audit rows", async () => {
     installHandlers();
     render(<HomeContentEditor />);
     await waitUntilReady();
-    const heading = await screen.findByRole("heading", { name: EDITOR.auditTrail });
+    const heading = await screen.findByRole("heading", {
+      name: EDITOR.auditTrail,
+    });
     const audit = heading.closest("section");
     expect(audit).not.toBeNull();
-    if (!audit) return;
+    if (!audit) {
+      return;
+    }
     expect(audit).toBeVisible();
     expect(audit).toHaveTextContent(EDITOR.auditPublishedBy);
     expect(audit).toHaveTextContent("U-EDITOR");
