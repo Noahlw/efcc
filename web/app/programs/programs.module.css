@@ -1392,9 +1392,9 @@
 }
 
 .directoryStatusSuccess {
-  border-color: var(--success-border);
-  color: var(--success);
-  background: var(--success-surface);
+  border-color: #9cb49d;
+  color: #2e6b37;
+  background: #e9f0ea;
 }
 
 .directoryStatusPending {
@@ -1449,7 +1449,7 @@
 
 .directoryCardTitle {
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .directoryCardDescription {
@@ -1542,9 +1542,9 @@
 }
 
 .participantDirectoryCard .directoryStatusSuccess {
-  border-color: var(--success-border);
-  color: var(--success);
-  background: var(--success-surface);
+  border-color: #9cb49d;
+  color: #2e6b37;
+  background: #e9f0ea;
 }
 
 .participantDirectoryCard .directoryStatusPending {

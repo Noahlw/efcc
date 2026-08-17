@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe vitest/max-expects vitest/require-mock-type-parameters vitest/no-conditional-expect -- shared boundary fixtures cover the full state matrix. */
+/* oxlint-disable vitest/require-top-level-describe vitest/max-expects vitest/require-mock-type-parameters vitest/no-conditional-expect vitest/prefer-import-in-mock -- shared boundary fixtures cover the full state matrix. */
 import {
   cleanup,
   render,
@@ -61,7 +61,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
 
-vi.mock(import('next/navigation'), () => ({
+vi.mock("next/navigation", () => ({
   usePathname: () => mocks.pathname(),
   useRouter: () => mocks.router,
   useSearchParams: () => new URLSearchParams(window.location.search),
