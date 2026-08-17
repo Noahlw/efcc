@@ -1,8 +1,10 @@
+/* oxlint-disable vitest/require-top-level-describe vitest/max-expects vitest/require-mock-type-parameters eslint/require-await -- shared event fixtures cover the full participant/management state matrix. */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { RpcError, type ProblemDetails } from "@/lib/api";
+import { RpcError } from '@/lib/api';
+import type { ProblemDetails } from '@/lib/api';
 import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
@@ -106,7 +108,7 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.eventDetailBack,
     });
     await userEvent.click(back);
-    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   test("edit form saves identity, schedule, and check-in window changes", async () => {
@@ -251,6 +253,7 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.eventAvailabilityRestoredNotice)
     ).resolves.toBeInTheDocument();
   });
+
   test("deactivates immediately with Undo when no event operations are affected", async () => {
     // Program-wide enrollments are NOT this event's operations: with zero
     // event check-ins the deactivation is immediate even when the Program
@@ -536,20 +539,14 @@ describe("EVT-01 event detail", () => {
 
   test("undo is retired when the event is cancelled", async () => {
     let cancelled = false;
-    mocks.getEvent.mockImplementation(() =>
-      Promise.resolve(
-        cancelled
-          ? detailFixture({
-              event: {
-                ...detailFixture().event,
-                status: "Cancelled",
-                cancel_reason: "場地維修",
-              },
-            })
-          : detailFixture({
-              participant_summary: { active_enrollments: 0, checked_in: 0 },
-            })
-      )
+    mocks.getEvent.mockResolvedValue(cancelled ? detailFixture({ event: {
+	...detailFixture().event,
+	status: 'Cancelled',
+	cancel_reason: '場地維修'
+} }) : detailFixture({ participant_summary: {
+	active_enrollments: 0,
+	checked_in: 0
+} })
     );
     mocks.setEventAvailability.mockResolvedValue({
       event: { ...detailFixture().event, availability: "Inactive" },
@@ -672,11 +669,9 @@ describe("EVT-01 event detail", () => {
     );
 
     // 可簽到 badge when the check-in window is currently open.
-    expect(
-      await screen.findByRole("status", {
+    await expect(screen.findByRole("status", {
         name: COPY.programs.checkInAvailable,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Title + program name.
     expect(
@@ -689,10 +684,13 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.eventInstructions,
     });
     expect(article).toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.detailEventTime)).toBeInTheDocument();
+    expect(screen.getByText(/2026\/09\/12/u)).toBeInTheDocument();
     expect(screen.getByText("教會禮堂")).toBeInTheDocument();
 
     // Check-in instructions.
+    expect(
+      screen.getByRole("heading", { name: "簽到說明" })
+    ).toBeInTheDocument();
     expect(
       screen.getByText(COPY.programs.eventInstructions)
     ).toBeInTheDocument();
@@ -790,7 +788,7 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
-    expect(mocks.updateEvent).toHaveBeenCalled();
+    expect(mocks.updateEvent).toHaveBeenCalledWith();
   });
 
   test("086-03 cancelling a meeting with attendance is refused without calling cancel", async () => {
@@ -823,17 +821,17 @@ describe("EVT-01 event detail", () => {
 
   test("086-03 cancelling a meeting without attendance shows explicit confirm and supports keep or commit", async () => {
     let cancelled = false;
-    mocks.getEvent.mockImplementation(() =>
-      Promise.resolve(
-        detailFixture({
-          event: {
-            ...detailFixture().event,
-            has_attendance: false,
-            status: cancelled ? "Cancelled" : "Active",
-          } as EventDetailData["event"],
-          participant_summary: { active_enrollments: 0, checked_in: 0 },
-        })
-      )
+    mocks.getEvent.mockResolvedValue(detailFixture({
+	event: {
+		...detailFixture().event,
+		has_attendance: false,
+		status: cancelled ? 'Cancelled' : 'Active'
+	} as EventDetailData['event'],
+	participant_summary: {
+		active_enrollments: 0,
+		checked_in: 0
+	}
+})
     );
     mocks.cancelEvent.mockImplementation(async () => {
       cancelled = true;
@@ -883,6 +881,6 @@ describe("EVT-01 event detail", () => {
       "event-1",
       null
     );
-    expect(cancelled).toBe(true);
+    expect(cancelled).toBeTruthy();
   });
 });

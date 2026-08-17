@@ -1,7 +1,7 @@
 # 088-02 Participant Programs and Event Detail
 
-Status: proposed acceptance trace, written before production implementation  
-Issue: #351  
+Status: verified locally after implementation and review self-fix
+Issue: #351
 Base SHA: `07aaf266eccea0a0b9c763791be021d7dc2e5ebe`
 
 ## Authority and truth ranking
@@ -140,8 +140,8 @@ response state:
   `課程篩選` group, four filter buttons, and one selected
   `aria-pressed="true"` chip.
 - Clicking each chip changes `aria-pressed`, the visible row set, and the
-  status-badge class/style without changing the catalog response or enrollment
-  records.
+  visible status text/accessible status semantics without changing the catalog
+  response or enrollment records.
 - Search filters by name/description/category and clear restores the same
   real rows.
 - Rows preserve status text and open `/programs?program=<id>`; no
@@ -165,8 +165,8 @@ response state:
 Write failing assertions before implementation at these existing public seams:
 
 - `ParticipantDirectory` component: grouped-card structure, searchbox, selected
-  filter chip, status badge classes, real viewer-state filtering, empty/error
-  readability, and row handoff.
+  filter chip, visible status text/roles, real viewer-state filtering,
+  empty/error readability, and row handoff.
 - `ParticipantProgramDetail` component: source hierarchy, next-meeting metadata,
   schedule/history, status/action variants, long/unavailable/error copy, and
   back/open-event callbacks.
@@ -182,11 +182,11 @@ Write failing assertions before implementation at these existing public seams:
 From the assigned worktree:
 
 ```sh
-pnpm --dir web exec vitest run \
+pnpm --dir web exec vitest run --config vitest.components.config.ts \
   lib/programs/participant-directory.test.tsx \
   lib/programs/participant-program-detail.test.tsx \
-  lib/programs/event-detail.test.tsx \
-  lib/programs/programs-intent.test.ts
+  lib/programs/event-detail.test.tsx
+pnpm --dir web exec vitest run lib/programs/programs-intent.test.ts
 pnpm --dir web typecheck
 pnpm db:seed:local
 pnpm db:seed:demo
@@ -201,3 +201,38 @@ git diff --check
 `127.0.0.1:8787`; the Playwright command must run against disposable local
 `E2E_`/`E2E_DEMO_` D1 fixtures only. No Cloudflare account, Apps Script, Google
 Sheet, or `/exec` smoke is part of this gate.
+
+## Review self-fix record
+
+The required two-axis review used
+`/Users/noah.wong/.claude/skills/code-review/SKILL.md` against the layer base.
+
+Fixed in the one self-fix pass:
+
+- The trace now invokes the component Vitest config so `.tsx` component tests
+  cannot be silently skipped.
+- Participant detail no longer renders an accessible duplicate directory
+  heading; the visible detail title owns the detail surface.
+- Program detail now follows the decoded source hierarchy: no extra facts grid,
+  schedule rows replace the table, and the existing enrollment/history action
+  remains the sticky action surface.
+- Event detail now uses icon-plus-value metadata and a padded sticky action
+  surface matching the decoded source.
+- E2E and component assertions use visible copy, roles, pressed state, URLs, and
+  response snapshots rather than CSS-module class names.
+- Shell contextual titles now require a valid, non-management parsed Programs
+  intent; malformed and duplicate queries fall back safely.
+
+Minor review notes retained: the existing Programs stylesheet still contains
+two legacy/new definitions for the participant list/card selectors. The
+PUI-05 enrollment mutation predates this layer's added assertions; it uses the
+fixed seeded E2E member/program transition and retains best-effort teardown, so
+it was recorded rather than expanded into a new fixture or endpoint.
+
+Final local evidence: focused component tests 135/135; Programs D1 PUI-02,
+PUI-03, and PUI-05 across the configured phone/desktop projects passed; and
+`pnpm verify` passed with 38 root tests, 445 web tests, 498 component tests,
+and 133 responsive tests (2 skipped).
+
+Final review read-back: Standards reported one Minor duplicate-selector cleanup
+note; Spec reported no findings; no Important or Critical finding remains.

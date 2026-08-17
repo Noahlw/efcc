@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/require-top-level-describe vitest/max-expects vitest/require-mock-type-parameters vitest/no-conditional-expect -- shared boundary fixtures cover the full state matrix. */
 import {
   cleanup,
   render,
@@ -34,9 +35,8 @@ const mocks = vi.hoisted(() => {
     getManagementAccess: vi.fn(),
     getManagementAttention: vi.fn(),
     getManagementNotifications: vi.fn<() => Promise<ManagementNotifications>>(),
-    markManagementNotificationsRead: vi.fn<
-      () => Promise<{ marked_count: number }>
-    >(),
+    markManagementNotificationsRead:
+      vi.fn<() => Promise<{ marked_count: number }>>(),
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
@@ -61,7 +61,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
 
-vi.mock("next/navigation", () => ({
+vi.mock(import('next/navigation'), () => ({
   usePathname: () => mocks.pathname(),
   useRouter: () => mocks.router,
   useSearchParams: () => new URLSearchParams(window.location.search),
@@ -547,7 +547,7 @@ describe("Programs boundary", () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.detailPurpose)).toBeInTheDocument();
+    expect(screen.getByText("週三晚上的門徒訓練查經。")).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })
@@ -677,9 +677,7 @@ describe("Programs boundary", () => {
       })
     );
 
-    expect(window.location.search).toBe(
-      "?mode=management&task=notifications"
-    );
+    expect(window.location.search).toBe("?mode=management&task=notifications");
     expect(window.location.hash).toBe("");
     expect(mocks.push).not.toHaveBeenCalled();
   });
@@ -929,12 +927,16 @@ describe("Programs boundary", () => {
     expect(mocks.getManagementAccess).not.toHaveBeenCalled();
 
     const malformedPanel = screen
-      .getAllByRole("region", { name: COPY.programs.pageTitle })
+      .getAllByRole("region", { name: COPY.programs.catalogTitle })
       .find((element) => element.id === "programs-mode-panel");
     if (!malformedPanel) {
       throw new Error("malformed Programs panel is not exposed as a region");
     }
-    expect(malformedPanel).toHaveAttribute("aria-labelledby", "programs-title");
+    expect(malformedPanel).not.toHaveAttribute("aria-labelledby");
+    expect(malformedPanel).toHaveAttribute(
+      "aria-label",
+      COPY.programs.catalogTitle
+    );
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
@@ -979,7 +981,9 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        catalogProgramSummary("program-1", "查經小組", { category: "門徒訓練" }),
+        catalogProgramSummary("program-1", "查經小組", {
+          category: "門徒訓練",
+        }),
         catalogProgramSummary("program-2", "青年團契", { category: "團契" }),
       ]),
     });

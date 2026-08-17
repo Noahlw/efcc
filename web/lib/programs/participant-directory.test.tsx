@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe -- shared fixture hooks cover all PUI-02 describes */
+/* oxlint-disable vitest/require-top-level-describe vitest/max-expects -- shared fixture hooks cover all PUI-02 describes and assert the full visible catalog matrix. */
 import {
   cleanup,
   render,
@@ -121,9 +121,7 @@ function renderDirectory(
 
 const rowNames = (): string[] =>
   [
-    ...document.querySelectorAll<HTMLElement>(
-      "button[class*='directoryCard']"
-    ),
+    ...document.querySelectorAll<HTMLElement>("button[class*='directoryCard']"),
   ].map(
     (button) =>
       button.querySelector<HTMLElement>("span[class*='directoryCardTitle']")
@@ -150,15 +148,16 @@ describe("PUI-02 participant directory loading and collection", () => {
 
     const loading = screen.getByRole("status");
     expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(loading).toHaveAttribute(
-      "aria-label",
-      COPY.programs.catalogLoading
-    );
+    expect(loading).toHaveAttribute("aria-label", COPY.programs.catalogLoading);
 
     pending.resolve({ catalog: catalogFixture() });
     const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
+    expect(
+      screen.getByRole("searchbox", { name: COPY.programs.catalogSearchLabel })
+    ).toBeInTheDocument();
+    expect(list).toHaveAttribute("aria-label", COPY.programs.catalogListLabel);
     expect(within(list).getAllByRole("button")).toHaveLength(3);
     expect(rowNames()).toStrictEqual(["查經小組", "青年團契", "社區關懷"]);
   });

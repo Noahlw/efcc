@@ -1,4 +1,5 @@
 "use client";
+/* oxlint-disable eslint/complexity promise/prefer-await-to-callbacks jsx-a11y/prefer-tag-over-role eslint/no-eq-null eqeqeq -- preserve the existing event workspace state machine while adding the participant visual projection. */
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -163,7 +164,7 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
-      document.getElementById("participant-event-title")?.focus();
+      document.querySelector("#participant-event-title")?.focus();
     }
   }, [canManage, detail]);
 
@@ -329,7 +330,11 @@ export const EventDetail = ({
   if (loadError !== null && detail === null) {
     return (
       <section
-        className={styles.workspaceTask}
+        className={
+          canManage
+            ? styles.workspaceTask
+            : `${styles.programDetail} ${styles.participantEventDetail}`
+        }
         aria-label={COPY.programs.eventDetailTitle}
       >
         <p className={styles.panelError} role="alert">
@@ -346,7 +351,20 @@ export const EventDetail = ({
     );
   }
   if (detail === null) {
-    return null;
+    return (
+      <section
+        className={
+          canManage
+            ? styles.workspaceTask
+            : `${styles.programDetail} ${styles.participantEventDetail}`
+        }
+        role="status"
+        aria-busy="true"
+        aria-label={COPY.programs.eventDetailTitle}
+      >
+        <p>{COPY.programs.workspaceTaskEventsLoading}</p>
+      </section>
+    );
   }
   const { event, leaders, participant_summary } = detail;
   const cancelled = event.status === "Cancelled";
@@ -361,7 +379,7 @@ export const EventDetail = ({
 
     return (
       <section
-        className={styles.programDetail}
+        className={`${styles.programDetail} ${styles.participantEventDetail}`}
         aria-labelledby="participant-event-title"
         aria-busy={busy}
       >
@@ -371,7 +389,15 @@ export const EventDetail = ({
           aria-label={COPY.programs.backToOrigin}
           onClick={onBack}
         >
-          ← {COPY.programs.backToOrigin}
+          <svg
+            className={styles.programDetailBackIcon}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="m15 5-7 7 7 7" />
+          </svg>
+          {COPY.programs.backToOrigin}
         </button>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
@@ -383,7 +409,6 @@ export const EventDetail = ({
               {COPY.programs.checkInAvailable}
             </span>
           )}
-          <p className={styles.programDetailEyebrow}>{programName}</p>
           <h1
             id="participant-event-title"
             className={styles.boundaryTitle}
@@ -391,35 +416,57 @@ export const EventDetail = ({
           >
             {eventTitle}
           </h1>
+          <p className={styles.programDetailEyebrow}>{programName}</p>
         </header>
 
-        <dl className={styles.programDetailFacts}>
+        <article className={styles.programDetailFacts}>
           <div>
-            <dt>{COPY.programs.detailEventTime}</dt>
-            <dd>
+            <svg
+              className={styles.programDetailMetaIcon}
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <rect x="4" y="5" width="16" height="15" rx="2" />
+              <path d="M8 3.5v4M16 3.5v4M4 10h16" />
+            </svg>
+            <span>
               <time dateTime={event.starts_at}>{eventTime}</time>
-            </dd>
+            </span>
           </div>
           {event.location && (
             <div>
-              <dt>{COPY.programs.detailEventLocation}</dt>
-              <dd>{event.location}</dd>
+              <svg
+                className={styles.programDetailMetaIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z" />
+                <circle cx="12" cy="10" r="2.25" />
+              </svg>
+              <span>{event.location}</span>
             </div>
           )}
-        </dl>
+        </article>
 
         <section
           className={styles.programDetailSection}
           aria-label={COPY.programs.eventInstructions}
         >
+          <h2 className={styles.programDetailHeading}>
+            {COPY.programs.eventInstructionsTitle}
+          </h2>
           <p className={styles.programDetailDescription}>
             {COPY.programs.eventInstructions}
           </p>
         </section>
 
-        <Link href={scanHref} className={styles.actionButton}>
-          {COPY.programs.goToScan}
-        </Link>
+        <div className={styles.participantEventAction}>
+          <Link href={scanHref} className={styles.actionButton}>
+            {COPY.programs.goToScan}
+          </Link>
+        </div>
       </section>
     );
   }

@@ -245,8 +245,13 @@ export const ParticipantDirectory = ({
 
   return (
     <>
-      <h2 className={styles.boundaryTitle}>{COPY.programs.participantMode}</h2>
-      <p className={styles.boundaryLead}>{COPY.programs.participantLead}</p>
+      <h1 className={styles.participantCatalogTitle}>
+        {COPY.programs.catalogTitle}
+      </h1>
+      <p className={styles.boundaryLead}>{COPY.programs.catalogLead}</p>
+      <h2 className={styles.directorySrOnly}>
+        {COPY.programs.participantMode}
+      </h2>
 
       {state.kind === "ready" &&
         programId !== null &&
@@ -330,9 +335,18 @@ export const ParticipantDirectory = ({
               {COPY.programs.catalogSearchLabel}
             </label>
             <div className={styles.directorySearchRow}>
+              <svg
+                className={styles.directorySearchIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="10.75" cy="10.75" r="6.25" />
+                <path d="m16 16 4 4" />
+              </svg>
               <input
                 id="programs-catalog-search"
-                className={styles.input}
+                className={`${styles.input} ${styles.directorySearchInput}`}
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -375,6 +389,8 @@ export const ParticipantDirectory = ({
             <section
               id="programs-catalog-state"
               className={`${styles.boundaryState} ${styles.directoryEmpty}`}
+              role="status"
+              aria-live="polite"
             >
               <h2 className={styles.boundaryTitle}>
                 {COPY.programs.catalogEmpty}

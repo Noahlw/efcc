@@ -1508,6 +1508,33 @@ describe("Shell", () => {
       );
       expect(screen.getByText(COPY.appBrand)).toBeInTheDocument();
     });
+
+    test("uses query-driven contextual titles for participant program surfaces", () => {
+      pathnameMock.mockReturnValue("/programs");
+      window.history.pushState({}, "", "/programs?program=program-1");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.getByText("課程詳情")).toBeInTheDocument();
+
+      cleanup();
+      window.history.pushState(
+        {},
+        "",
+        "/programs?program=program-1&event=event-1"
+      );
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(
+        screen.getByText(COPY.programs.eventDetailTitle)
+      ).toBeInTheDocument();
+      window.history.pushState({}, "", "/");
+    });
   });
 
   describe(NotFound, () => {
@@ -1537,6 +1564,16 @@ describe("Shell", () => {
           HttpResponse.json({
             requestId: "r-me",
             data: { user, sections, navigation: NAVIGATION },
+          })
+        ),
+        http.get("/api/v1/programs/access", () =>
+          HttpResponse.json({
+            requestId: "r-programs-access",
+            data: {
+              hasManagementCapability: false,
+              departmentScopes: 0,
+              programScopes: 0,
+            },
           })
         ),
         // Management page now renders the 087-01 hub, which fetches the
@@ -1615,12 +1652,13 @@ describe("Shell", () => {
       });
     });
 
-    test("programs page keeps its descriptive page title", async () => {
+    test("programs page uses the source catalog title", async () => {
+      withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
       render(<ProgramsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.programs.pageTitle })
+          screen.getByRole("heading", { name: COPY.programs.catalogTitle })
         ).toBeInTheDocument();
       });
     });

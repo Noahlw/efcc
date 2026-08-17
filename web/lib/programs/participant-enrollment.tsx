@@ -455,36 +455,6 @@ export const ParticipantEnrollment = ({
       aria-labelledby="program-enrollment-title"
       aria-busy={busy}
     >
-      {notice !== null && (
-        <output className={styles.panelNotice}>{notice}</output>
-      )}
-      {actionError !== null && (
-        <output className={styles.panelError} role="alert">
-          {actionError}
-        </output>
-      )}
-      <h3 id="program-enrollment-title" className={styles.panelHeading}>
-        {COPY.programs.enrollment}
-      </h3>
-
-      <EnrollmentAction
-        program={program}
-        enrollmentAccess={enrollmentAccess}
-        activeEnrollment={activeEnrollment}
-        pendingRequest={pendingRequest}
-        latestRequest={latestRequest}
-        cancelledEnrollment={cancelledEnrollment}
-        busy={busy}
-        onRequest={handleRequest}
-        onBeginConfirm={beginConfirm}
-      />
-
-      {showScheduleAdvisory && (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.enrollmentScheduleAdvisory}
-        </p>
-      )}
-
       {history.length > 0 && (
         <section
           className={styles.programDetailHistory}
@@ -511,6 +481,38 @@ export const ParticipantEnrollment = ({
           </ul>
         </section>
       )}
+
+      <div className={styles.participantEnrollmentAction}>
+        {notice !== null && (
+          <output className={styles.panelNotice}>{notice}</output>
+        )}
+        {actionError !== null && (
+          <output className={styles.panelError} role="alert">
+            {actionError}
+          </output>
+        )}
+        <h3 id="program-enrollment-title" className={styles.panelHeading}>
+          {COPY.programs.enrollment}
+        </h3>
+
+        <EnrollmentAction
+          program={program}
+          enrollmentAccess={enrollmentAccess}
+          activeEnrollment={activeEnrollment}
+          pendingRequest={pendingRequest}
+          latestRequest={latestRequest}
+          cancelledEnrollment={cancelledEnrollment}
+          busy={busy}
+          onRequest={handleRequest}
+          onBeginConfirm={beginConfirm}
+        />
+
+        {showScheduleAdvisory && (
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.enrollmentScheduleAdvisory}
+          </p>
+        )}
+      </div>
 
       {confirmKind !== null && (
         <dialog

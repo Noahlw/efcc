@@ -53,31 +53,6 @@ type DetailConflictView = ParticipantProgramDetailData & {
   has_schedule_conflict?: boolean;
 };
 
-const lifecycleLabel: Record<
-  ParticipantProgramDetailData["program"]["lifecycle"],
-  string
-> = {
-  Draft: COPY.programs.detailLifecycleDraft,
-  Active: COPY.programs.detailLifecycleActive,
-  Archived: COPY.programs.detailLifecycleArchived,
-};
-
-const behaviorLabel: Record<
-  ParticipantProgramDetailData["program"]["behavior_type"],
-  string
-> = {
-  Recurring: COPY.programs.detailBehaviorRecurring,
-  OneOff: COPY.programs.detailBehaviorOneOff,
-};
-
-const participationLabel: Record<
-  ParticipantProgramDetailData["program"]["enrollment_mode"],
-  string
-> = {
-  MemberRequest: COPY.programs.detailParticipationMemberRequest,
-  ManagerOnly: COPY.programs.detailParticipationManagerOnly,
-};
-
 function scheduleLabel(rule: ParticipantScheduleRule): string {
   if (rule.recurrence === "WEEKLY") {
     const day = COPY.programs.scheduleDays[rule.day_of_week ?? 0] ?? "";
@@ -150,12 +125,6 @@ function eventTime(iso: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
-}
-
-function eventWhen(event: ParticipantEventSummary): string {
-  const start = hkWallLabel(event.starts_at);
-  const endTime = eventTime(event.ends_at);
-  return endTime ? `${start}–${endTime}` : start;
 }
 
 function eventLocation(event: ParticipantEventSummary): string | null {
@@ -371,7 +340,6 @@ export const ParticipantProgramDetail = ({
   }
 
   const {
-    department,
     program,
     schedule_rules: scheduleRules,
     enrollment,
@@ -388,7 +356,7 @@ export const ParticipantProgramDetail = ({
 
   return (
     <article
-      className={styles.programDetail}
+      className={`${styles.programDetail} ${styles.participantProgramDetail}`}
       aria-labelledby="program-detail-title"
     >
       <button
@@ -397,39 +365,35 @@ export const ParticipantProgramDetail = ({
         aria-label={COPY.programs.detailBack}
         onClick={onBack}
       >
-        ← {COPY.programs.detailBack}
+        <svg
+          className={styles.programDetailBackIcon}
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="m15 5-7 7 7 7" />
+        </svg>
+        {COPY.programs.detailBackLabel}
       </button>
       <header className={styles.programDetailHeader}>
-        <p className={styles.programDetailEyebrow}>
-          {department.name}
-          {program.category ? ` · ${program.category}` : ""}
-        </p>
         <span
           className={`${styles.directoryStatus} ${statusClass[status.kind]} ${styles.programDetailStatus}`}
           role="status"
         >
           {status.label}
         </span>
-        <h2
+        <h1
           id="program-detail-title"
           className={styles.boundaryTitle}
           tabIndex={-1}
         >
           {program.name}
-        </h2>
+        </h1>
       </header>
 
-      <section
-        className={styles.programDetailSection}
-        aria-labelledby="program-detail-purpose"
-      >
-        <h3 id="program-detail-purpose" className={styles.programDetailHeading}>
-          {COPY.programs.detailPurpose}
-        </h3>
-        <p className={styles.programDetailDescription}>
-          {program.description ?? COPY.programs.programDescriptionEmpty}
-        </p>
-      </section>
+      <p className={styles.programDetailPurpose}>
+        {program.description ?? COPY.programs.programDescriptionEmpty}
+      </p>
 
       {nextEvent && (
         <article
@@ -445,25 +409,41 @@ export const ParticipantProgramDetail = ({
           >
             {eventTitle(nextEvent, program.name)}
           </h3>
-          <dl className={styles.programDetailEventMeta}>
+          <div className={styles.programDetailEventMeta}>
             <div>
-              <dt>{COPY.programs.detailEventTime}</dt>
-              <dd>
+              <svg
+                className={styles.programDetailMetaIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <rect x="4" y="5" width="16" height="15" rx="2" />
+                <path d="M8 3.5v4M16 3.5v4M4 10h16" />
+              </svg>
+              <span>
                 <time dateTime={nextEvent.starts_at}>
                   {hkWallLabel(nextEvent.starts_at)}
                 </time>
                 {eventTime(nextEvent.ends_at) && (
                   <span>–{eventTime(nextEvent.ends_at)}</span>
                 )}
-              </dd>
+              </span>
             </div>
             {eventLocation(nextEvent) && (
               <div>
-                <dt>{COPY.programs.detailEventLocation}</dt>
-                <dd>{eventLocation(nextEvent)}</dd>
+                <svg
+                  className={styles.programDetailMetaIcon}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z" />
+                  <circle cx="12" cy="10" r="2.25" />
+                </svg>
+                <span>{eventLocation(nextEvent)}</span>
               </div>
             )}
-          </dl>
+          </div>
           {nextConflict && (
             <p className={styles.programDetailConflict} role="note">
               {nextConflict}
@@ -471,7 +451,7 @@ export const ParticipantProgramDetail = ({
           )}
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={styles.programDetailNextEventAction}
             onClick={() => onOpenEvent(nextEvent.event_id)}
             aria-label={COPY.programs.viewEventDetail}
           >
@@ -479,40 +459,6 @@ export const ParticipantProgramDetail = ({
           </button>
         </article>
       )}
-
-      <dl className={styles.programDetailFacts}>
-        <div>
-          <dt>{COPY.programs.detailBehavior}</dt>
-          <dd>{behaviorLabel[program.behavior_type]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailLifecycle}</dt>
-          <dd>{lifecycleLabel[program.lifecycle]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailParticipation}</dt>
-          <dd>{participationLabel[program.enrollment_mode]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailDepartment}</dt>
-          <dd>{department.name}</dd>
-        </div>
-        {program.category && (
-          <div>
-            <dt>{COPY.programs.detailCategory}</dt>
-            <dd>{program.category}</dd>
-          </div>
-        )}
-      </dl>
-
-      <ParticipantEnrollment
-        program={program}
-        enrollment={enrollment}
-        enrollmentAccess={enrollmentAccess}
-        scheduleRules={scheduleRules}
-        events={state.detail.events}
-        onRefresh={refreshDetail}
-      />
 
       <section
         className={styles.programDetailSection}
@@ -525,54 +471,42 @@ export const ParticipantProgramDetail = ({
           {COPY.programs.scheduleTitle}
         </h3>
         {scheduleRules.length > 0 ? (
-          <div className={styles.programDetailTableWrap}>
-            <table
-              className={styles.programDetailTable}
-              aria-label={COPY.programs.scheduleTitle}
-            >
-              <thead>
-                <tr>
-                  <th scope="col">{COPY.programs.scheduleTitle}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scheduleRules.map((rule) => (
-                  <tr key={rule.rule_id}>
-                    <td>{scheduleLabel(rule)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={styles.programDetailScheduleCard}>
+            {scheduleRules.map((rule) => (
+              <div
+                key={rule.rule_id}
+                className={styles.programDetailScheduleRow}
+              >
+                <span className={styles.programDetailScheduleDate}>
+                  {rule.recurrence === "WEEKLY" ? "每週" : "每月"}
+                </span>
+                <div>
+                  <div className={styles.programDetailScheduleTitle}>
+                    {scheduleLabel(rule)}
+                  </div>
+                  <div className={styles.programDetailScheduleCopy}>
+                    {COPY.programs.scheduleTitle}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
-          <p className={styles.programDetailMuted}>
+          <p className={styles.programDetailMuted} role="status">
             {COPY.programs.detailScheduleNone}
           </p>
         )}
       </section>
 
-      <section
-        className={styles.programDetailSection}
-        aria-labelledby="program-detail-events"
-      >
-        <h3 id="program-detail-events" className={styles.programDetailHeading}>
-          {COPY.programs.detailEvents}
-        </h3>
-        {upcomingEvents.length > 0 ? (
-          <ul className={styles.programDetailList}>
-            {upcomingEvents.map((event) => (
-              <li key={event.event_id} className={styles.programDetailEvent}>
-                <span>{COPY.programs.detailEventTime}</span>
-                <time dateTime={event.starts_at}>{eventWhen(event)}</time>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.detailEventsNone}
-          </p>
-        )}
-      </section>
+      <ParticipantEnrollment
+        program={program}
+        enrollment={enrollment}
+        enrollmentAccess={enrollmentAccess}
+        scheduleRules={scheduleRules}
+        events={state.detail.events}
+        onRefresh={refreshDetail}
+      />
+
       {canManage && (
         <div className={styles.managementEntry}>
           <div>

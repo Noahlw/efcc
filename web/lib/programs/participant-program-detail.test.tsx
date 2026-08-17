@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects -- shared fixture hooks cover all detail describes; contract tests assert the full visible surface */
+/* oxlint-disable vitest/require-top-level-describe vitest/max-expects vitest/prefer-called-exactly-once-with -- shared fixture hooks cover all detail describes; contract tests assert the full visible surface. */
 import {
   cleanup,
   render,
@@ -151,7 +151,7 @@ afterEach(() => {
 });
 
 describe("PUI-03 participant Program detail", () => {
-  test("renders purpose, status tag, next-meeting card, schedule table, and the back action", async () => {
+  test("renders purpose, status tag, next-meeting card, schedule rows, and the back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
     const { onBack, onOpenEvent } = renderDetail();
 
@@ -163,6 +163,9 @@ describe("PUI-03 participant Program detail", () => {
     await waitFor(() => {
       expect(heading).toHaveFocus();
     });
+    expect(
+      screen.getByRole("button", { name: COPY.programs.detailBack })
+    ).toHaveTextContent(/^課程$/u);
     expect(
       screen.getByText("為青年建立穩定的同行與學習空間。")
     ).toBeInTheDocument();
@@ -184,10 +187,7 @@ describe("PUI-03 participant Program detail", () => {
     expect(onOpenEvent).toHaveBeenCalledOnce();
     expect(onOpenEvent).toHaveBeenCalledWith("event-1");
 
-    const schedule = screen.getByRole("table", {
-      name: COPY.programs.scheduleTitle,
-    });
-    expect(within(schedule).getByText(/19:30/u)).toBeInTheDocument();
+    expect(screen.getByText("每週三 19:30–21:00")).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })

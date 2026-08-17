@@ -40,14 +40,14 @@ const COPY = {
   sessionExpired: {
     reLogin: "重新登入",
   },
-  pageTitle: "課程與活動",
-  pageLead: "課程與活動集中於此，先了解適合你的下一步。",
+  pageTitle: "課程",
+  pageLead: "尋找合適的課程，查看聚會及報名狀態。",
   participantMode: "參與者模式",
   managementMode: "管理模式",
   enterManagement: "進入管理模式",
   malformedIntent: "連結資料無效",
   directProgramIntent: "已保留活動連結",
-  detailPurpose: "課程簡介",
+  detailPurpose: "本機示範課程",
   detailEvents: "近期活動",
   detailUnavailable: "無法開啟這個課程",
   detailBack: "返回課程目錄",
@@ -372,7 +372,7 @@ interface CatalogEntry {
   programs: { program_id: string; name: string }[];
 }
 
-async function fetchCatalog(page: Page): Promise<CatalogEntry[]> {
+async function fetchCatalogPayload(page: Page): Promise<unknown> {
   const response = await page.evaluate(async () => {
     const catalogResponse = await fetch("/api/v1/programs/catalog");
     return {
@@ -381,8 +381,26 @@ async function fetchCatalog(page: Page): Promise<CatalogEntry[]> {
     };
   });
   expect(response.status).toBe(200);
-  const body = response.body as { data: { catalog: CatalogEntry[] } };
+  return response.body;
+}
+
+async function fetchCatalog(page: Page): Promise<CatalogEntry[]> {
+  const body = (await fetchCatalogPayload(page)) as {
+    data: { catalog: CatalogEntry[] };
+  };
   return body.data.catalog;
+}
+
+async function fetchCatalogSnapshot(page: Page): Promise<unknown> {
+  const body = await fetchCatalogPayload(page);
+  if (body && typeof body === "object") {
+    const { requestId: _requestId, ...stableBody } = body as Record<
+      string,
+      unknown
+    >;
+    return stableBody;
+  }
+  return body;
 }
 
 async function catalogProgramIds(
@@ -600,9 +618,7 @@ test.describe("PUI-01 Programs boundary", () => {
       "catalog fixture must expose a visible Program"
     ).toBeTruthy();
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
     const panel = page.locator("#programs-mode-panel");
     await expect(panel).toHaveAttribute("role", "region");
 
@@ -646,9 +662,7 @@ test.describe("PUI-01 Programs boundary", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}#overview$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
   });
 
   test("malformed direct intent stays recoverable inside Programs", async ({
@@ -845,9 +859,15 @@ test.describe("PUI-02 participant Programs directory", () => {
       });
 
       await expect(allPill).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        memberPage
+          .getByRole("button", { name: /E2E_DEMO_管理安排/u })
+          .getByText(COPY.statusManagerOnly, { exact: true })
+      ).toBeVisible();
 
       // Filter: 可報名 — the fresh member is eligible for every MemberRequest
       // program and never for the ManagerOnly one.
+      const allCatalog = await fetchCatalogSnapshot(memberPage);
       await eligiblePill.click();
       await expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
       await expect(allPill).toHaveAttribute("aria-pressed", "false");
@@ -860,6 +880,12 @@ test.describe("PUI-02 participant Programs directory", () => {
       await expect(
         memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
       ).toHaveCount(0);
+      await expect(
+        memberPage
+          .getByRole("button", { name: /E2E_DEMO_成人查經/u })
+          .getByText(COPY.statusEligible, { exact: true })
+      ).toBeVisible();
+      expect(await fetchCatalogSnapshot(memberPage)).toEqual(allCatalog);
 
       // Filter: 待審批 — submit a real enrollment request, then the pill
       // shows exactly the requested program. Use 青年團契 (not 成人查經):
@@ -875,6 +901,8 @@ test.describe("PUI-02 participant Programs directory", () => {
         enrollmentPanel.getByText(COPY.requestPendingHint)
       ).toBeVisible();
       await memberPage.goto("/programs");
+      await expect(pendingPill).toBeVisible();
+      const pendingCatalog = await fetchCatalogSnapshot(memberPage);
       await pendingPill.click();
       await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
       await expect(
@@ -883,6 +911,12 @@ test.describe("PUI-02 participant Programs directory", () => {
       await expect(
         memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
+      await expect(
+        memberPage
+          .getByRole("button", { name: /E2E_DEMO_青年團契/u })
+          .getByText(COPY.statusPending, { exact: true })
+      ).toBeVisible();
+      expect(await fetchCatalogSnapshot(memberPage)).toEqual(pendingCatalog);
 
       // Filter: 已參加 — the admin approves the fresh request; the member's
       // relationship becomes Active and the pill shows the enrolled program.
@@ -902,6 +936,8 @@ test.describe("PUI-02 participant Programs directory", () => {
           .getByText(COPY.decisionMade, { exact: true })
       ).toBeVisible();
       await memberPage.goto("/programs");
+      await expect(activePill).toBeVisible();
+      const activeCatalog = await fetchCatalogSnapshot(memberPage);
       await activePill.click();
       await expect(activePill).toHaveAttribute("aria-pressed", "true");
       await expect(
@@ -910,6 +946,12 @@ test.describe("PUI-02 participant Programs directory", () => {
       await expect(
         memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
+      await expect(
+        memberPage
+          .getByRole("button", { name: /E2E_DEMO_青年團契/u })
+          .getByText(COPY.statusActive, { exact: true })
+      ).toBeVisible();
+      expect(await fetchCatalogSnapshot(memberPage)).toEqual(activeCatalog);
 
       // Filter: 全部 restores every listed row, including the ManagerOnly one.
       await allPill.click();
@@ -1027,9 +1069,7 @@ test.describe("PUI-02 participant Programs directory", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.detailBack })
     ).toBeVisible();
@@ -1049,28 +1089,20 @@ test.describe("PUI-03 participant Program detail", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
     // The detail surfaces the real next-meeting projection: mono label,
     // meeting title, date/time, and the event-detail action.
     await expect(page.getByText(COPY.nextMeeting)).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.viewEventDetail })
     ).toBeVisible();
-    // Schedule rules render as the 聚會時間表 table (E2E_DEMO_成人查經 is
+    // Schedule rules render as source-shaped weekly rows (the demo course is
     // seeded with a weekly rule and generated meetings).
-    await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
-    ).toBeVisible();
+    await expect(page.getByText(/每週.*19:30/u).first()).toBeVisible();
 
     await page.reload();
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
+    await expect(page.getByText(/每週.*19:30/u).first()).toBeVisible();
 
     await page.getByRole("button", { name: COPY.detailBack }).click();
     await expect(page).toHaveURL(/\/programs#overview$/u);
@@ -1174,7 +1206,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       // intent deep link: /programs?program=<id>&event=<eventId>).
       await memberPage.goto(`/programs?program=${programId}#overview`);
       await expect(
-        memberPage.getByRole("heading", { name: COPY.detailPurpose })
+        memberPage.getByText(COPY.detailPurpose).first()
       ).toBeVisible();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
@@ -1438,9 +1470,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
 
     const enrollmentPanel = enrollmentPanelOf(page);
     const requestButton = submitActionButton(enrollmentPanel);
@@ -1674,9 +1704,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.getByText(COPY.detailPurpose).first()).toBeVisible();
     await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.enroll })).toHaveCount(
       0

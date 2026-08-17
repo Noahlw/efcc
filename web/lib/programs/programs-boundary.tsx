@@ -1,4 +1,5 @@
 "use client";
+/* oxlint-disable eslint/complexity eslint/require-await eslint/no-use-before-define unicorn/no-negated-condition unicorn/consistent-function-scoping jsx-a11y/prefer-tag-over-role -- preserve the existing boundary state machine while adding the participant visual projection. */
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,18 +19,18 @@ import type {
   ManagementNotifications,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
 import { ParticipantEventDetailPage } from "./participant-event-detail-page";
 import { ParticipantProgramDetail } from "./participant-program-detail";
-
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
 import type { ManagementAttentionState } from "./programs-attention";
-import { ProgramsNotifications } from "./programs-notifications";
-import type { ManagementNotificationState } from "./programs-notifications";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
+import { ProgramsNotifications } from "./programs-notifications";
+import type { ManagementNotificationState } from "./programs-notifications";
 import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
@@ -212,7 +213,7 @@ export function ProgramsBoundary() {
             ? COPY.programs.workspaceTaskSettings
             : task === "notifications"
               ? COPY.programs.workspaceTaskNotifications
-            : null;
+              : null;
     announce(
       taskLabel
         ? `${COPY.programs.workspaceTaskLabel}：${taskLabel}`
@@ -434,55 +435,79 @@ function BoundaryFrame({
   onModeChange: (mode: "participant" | "management") => void;
   showModeTabs: boolean;
 }) {
+  const participantDetail =
+    intent.mode === "participant" &&
+    !intent.malformed &&
+    intent.programId !== null;
+  const detailTitle = intent.eventId
+    ? COPY.programs.eventDetailTitle
+    : COPY.programs.programDetailTitle;
+  const panelLabelledBy = showModeTabs
+    ? intent.mode === "management"
+      ? "programs-management-tab"
+      : "programs-participant-tab"
+    : intent.mode === "management"
+      ? "programs-title"
+      : undefined;
   return (
-    <section className={styles.boundary} aria-labelledby="programs-title">
-      <header className={styles.boundaryHeader}>
-        <h1 id="programs-title" className={styles.cardTitle}>
-          {COPY.programs.pageTitle}
-        </h1>
-        <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
-        {showModeTabs && (
-          <div
-            className={styles.modeSwitch}
-            role="tablist"
-            aria-label={COPY.programs.modeLabel}
-          >
-            <button
-              id="programs-participant-tab"
-              className={styles.modeButton}
-              type="button"
-              role="tab"
-              aria-selected={intent.mode === "participant"}
-              aria-controls="programs-mode-panel"
-              onClick={() => onModeChange("participant")}
+    <section
+      className={`${styles.boundary} ${
+        intent.mode === "participant" ? styles.participantBoundary : ""
+      }`}
+      aria-labelledby={
+        intent.mode === "management" ? "programs-title" : undefined
+      }
+    >
+      {intent.mode === "management" && (
+        <header className={styles.boundaryHeader}>
+          <h1 id="programs-title" className={styles.cardTitle}>
+            {COPY.programs.pageTitle}
+          </h1>
+          <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
+          {showModeTabs && (
+            <div
+              className={styles.modeSwitch}
+              role="tablist"
+              aria-label={COPY.programs.modeLabel}
             >
-              {COPY.programs.participantMode}
-            </button>
-            {intent.mode === "management" && (
               <button
-                id="programs-management-tab"
+                id="programs-participant-tab"
                 className={styles.modeButton}
                 type="button"
                 role="tab"
-                aria-selected
+                aria-selected={false}
                 aria-controls="programs-mode-panel"
+                onClick={() => onModeChange("participant")}
               >
-                {COPY.programs.managementMode}
+                {COPY.programs.participantMode}
               </button>
-            )}
-          </div>
-        )}
-      </header>
+              {intent.mode === "management" && (
+                <button
+                  id="programs-management-tab"
+                  className={styles.modeButton}
+                  type="button"
+                  role="tab"
+                  aria-selected
+                  aria-controls="programs-mode-panel"
+                >
+                  {COPY.programs.managementMode}
+                </button>
+              )}
+            </div>
+          )}
+        </header>
+      )}
       <div
         id="programs-mode-panel"
         className={styles.boundaryPanel}
         role={showModeTabs ? "tabpanel" : "region"}
-        aria-labelledby={
-          showModeTabs
-            ? intent.mode === "management"
-              ? "programs-management-tab"
-              : "programs-participant-tab"
-            : "programs-title"
+        aria-labelledby={panelLabelledBy}
+        aria-label={
+          participantDetail
+            ? detailTitle
+            : intent.mode === "participant"
+              ? COPY.programs.catalogTitle
+              : undefined
         }
       >
         {children}
@@ -505,20 +530,17 @@ function ManagementPanel({
   onParticipant: () => void;
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string) => void;
-  onTaskChange: (
-    task: ProgramsTask | null,
-    eventId?: string | null
-  ) => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
 }) {
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
-  const {
-    state: attentionState,
-    run: loadAttention,
-  } = useAsyncResource<ManagementAttention, ManagementAttentionState>(
+  const { state: attentionState, run: loadAttention } = useAsyncResource<
+    ManagementAttention,
+    ManagementAttentionState
+  >(
     async () => getManagementAttention(),
     {
       toLoading: () => ({ kind: "loading" }),
@@ -615,10 +637,10 @@ function ManagementPanel({
     void loadNotifications();
   }, [loadNotifications]);
   const markNotificationsRead = async (
-    items: readonly (Pick<
+    items: readonly Pick<
       ManagementNotificationItem,
       "source_key" | "source_revision"
-    >)[]
+    >[]
   ) => {
     if (items.length === 0) {
       return;
@@ -666,7 +688,9 @@ function ManagementPanel({
     <>
       <div className={styles.managementHeaderRow}>
         <div>
-          <h2 className={styles.boundaryTitle}>{COPY.programs.managementMode}</h2>
+          <h2 className={styles.boundaryTitle}>
+            {COPY.programs.managementMode}
+          </h2>
           <p className={styles.boundaryLead}>{COPY.programs.managementLead}</p>
         </div>
         {intent.task !== "notifications" && notificationSurface}
@@ -698,9 +722,7 @@ function ManagementPanel({
           onEventChange={onEventChange}
         />
       ) : (
-        <ManagementDirectory
-          onOpenProgram={onOpenProgram}
-        />
+        <ManagementDirectory onOpenProgram={onOpenProgram} />
       )}
     </>
   );
