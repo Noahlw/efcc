@@ -76,8 +76,10 @@ type DirectoryState =
   | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
 const DepartmentSettingsLauncher = ({
   department,
+  onOpenProgram,
 }: {
   department: Department;
+  onOpenProgram: (programId: string, created?: boolean) => void;
 }) => {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -106,7 +108,11 @@ const DepartmentSettingsLauncher = ({
   };
 
   return open ? (
-    <DepartmentSettingsPanel department={department} onClose={close} />
+    <DepartmentSettingsPanel
+      department={department}
+      onClose={close}
+      onOpenProgram={onOpenProgram}
+    />
   ) : (
     <button
       ref={triggerRef}
@@ -122,12 +128,13 @@ const DepartmentSettingsLauncher = ({
   );
 };
 export interface ManagementDirectoryProps {
-  onOpenProgram: (programId: string) => void;
-  onCreateProgram?: (departments: Department[]) => void;
+  onOpenProgram: (programId: string, created?: boolean) => void;
+  /** Render only the scoped Departments administration surface. */
+  departmentOnly?: boolean;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
-  onCreateProgram,
+  departmentOnly = false,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -203,30 +210,25 @@ export const ManagementDirectory = ({
     );
 
   }, [query, state]);
+  const scopedDepartments =
+    state.kind === "ready"
+      ? state.departments.filter(hasDepartmentManagementScope)
+      : [];
   return (
     <section aria-labelledby="programs-management-directory-title">
       <h2
         id="programs-management-directory-title"
         className={styles.boundaryTitle}
       >
-        {COPY.programs.managementDirectoryTitle}
+        {departmentOnly
+          ? COPY.programs.departmentsTitle
+          : COPY.programs.managementDirectoryTitle}
       </h2>
       <p className={styles.boundaryLead}>
-        {COPY.programs.managementDirectoryLead}
+        {departmentOnly
+          ? COPY.programs.departmentsLead
+          : COPY.programs.managementDirectoryLead}
       </p>
-      {state.kind === "ready" &&
-        state.departments.some(({ capabilities }) => capabilities.manage) &&
-        onCreateProgram && (
-          <div className={styles.workspaceActions}>
-            <button
-              className={styles.button}
-              type="button"
-              onClick={() => onCreateProgram(state.departments)}
-            >
-              {COPY.programs.createProgram}
-            </button>
-          </div>
-        )}
       {state.kind === "loading" && (
         <output
           id="programs-management-directory-state"
@@ -260,8 +262,7 @@ export const ManagementDirectory = ({
           </button>
         </section>
       )}
-      {state.kind === "ready" &&
-        state.departments.some(hasDepartmentManagementScope) && (
+      {state.kind === "ready" && scopedDepartments.length > 0 && (
           <section
             className={styles.moduleSection}
             aria-labelledby="programs-management-department-settings"
@@ -270,27 +271,35 @@ export const ManagementDirectory = ({
               id="programs-management-department-settings"
               className={styles.sectionLabel}
             >
-              {COPY.programs.managementScopeDepartment}
+              {departmentOnly
+                ? COPY.programs.departments
+                : COPY.programs.managementScopeDepartment}
             </h3>
             <p className={styles.fieldHint}>
-              {COPY.programs.departmentScopeHint}
+              {departmentOnly
+                ? COPY.programs.departmentsLead
+                : COPY.programs.departmentScopeHint}
             </p>
             <ul className={styles.deptList}>
-              {state.departments
-                .filter(hasDepartmentManagementScope)
-                .map((department) => (
+              {scopedDepartments.map((department) => (
                   <li
                     key={department.department_id}
                     className={styles.deptItem}
                   >
-                    <DepartmentSettingsLauncher department={department} />
+                    <DepartmentSettingsLauncher
+                      department={department}
+                      onOpenProgram={onOpenProgram}
+                    />
                   </li>
                 ))}
             </ul>
           </section>
         )}
 
-      {state.kind === "ready" && state.rows.length === 0 && (
+      {state.kind === "ready" &&
+        (departmentOnly
+          ? scopedDepartments.length === 0
+          : state.rows.length === 0) && (
         <section
           id="programs-management-directory-state"
           tabIndex={-1}
@@ -299,14 +308,18 @@ export const ManagementDirectory = ({
           aria-live="polite"
         >
           <h3 className={styles.boundaryTitle}>
-            {state.departments.length === 0
-              ? COPY.programs.cockpitEmptyScopeTitle
-              : COPY.programs.managementDirectoryEmpty}
+            {departmentOnly
+              ? COPY.programs.noDepartments
+              : state.departments.length === 0
+                ? COPY.programs.cockpitEmptyScopeTitle
+                : COPY.programs.managementDirectoryEmpty}
           </h3>
           <p>
-            {state.departments.length === 0
-              ? COPY.programs.cockpitEmptyScopeHint
-              : COPY.programs.managementDirectoryEmptyHint}
+            {departmentOnly
+              ? COPY.programs.departmentsLead
+              : state.departments.length === 0
+                ? COPY.programs.cockpitEmptyScopeHint
+                : COPY.programs.managementDirectoryEmptyHint}
           </p>
         </section>
       )}

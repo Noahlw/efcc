@@ -109,6 +109,10 @@ describe(ProgramForm, () => {
       "  單次培訓  "
     );
     await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "單次培訓目的"
+    );
+    await user.type(
       screen.getByRole("textbox", { name: COPY.programs.programCategory }),
       "領袖訓練"
     );
@@ -126,7 +130,7 @@ describe(ProgramForm, () => {
 
     expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
       name: "單次培訓",
-      description: undefined,
+      description: "單次培訓目的",
       category: "領袖訓練",
       behavior_type: "OneOff",
       lifecycle: "Active",
@@ -135,10 +139,73 @@ describe(ProgramForm, () => {
     });
     expect(onSaved).toHaveBeenCalledWith("created-1");
   });
-
-  test("blocks whitespace-only category on create with a client error", async () => {
+  test("requires a non-empty name and purpose before creating a program", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn<(programId: string) => void>();
+    render(
+      <ProgramForm
+        departments={[department("dept-1", "青年事工", true)]}
+        onSaved={onSaved}
+      />
+    );
+
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "  "
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "  "
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    expect(mocks.createProgram).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.purposeRequired
+    );
+  });
+
+  test("shows the draft-created confirmation only after a successful create", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn<(programId: string) => void>();
+    mocks.createProgram.mockResolvedValueOnce({
+      program: { ...program, program_id: "created-draft" },
+    });
+    render(
+      <ProgramForm
+        departments={[department("dept-1", "青年事工", true)]}
+        onSaved={onSaved}
+      />
+    );
+
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "新課程"
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "新課程目的"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programCreatedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(onSaved).toHaveBeenCalledWith("created-draft");
+  });
+
+
+  test("allows an empty optional category when name and purpose are present", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn<(programId: string) => void>();
+    mocks.createProgram.mockResolvedValueOnce({
+      program: { ...program, program_id: "created-no-category" },
+    });
     render(
       <ProgramForm
         departments={[department("dept-1", "青年事工", true)]}
@@ -151,18 +218,15 @@ describe(ProgramForm, () => {
       "單次培訓"
     );
     await user.type(
-      screen.getByRole("textbox", { name: COPY.programs.programCategory }),
-      "   "
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "培訓目的"
     );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.createProgram).not.toHaveBeenCalled();
-    expect(onSaved).not.toHaveBeenCalled();
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      COPY.programs.programCategoryRequired
-    );
+    expect(mocks.createProgram).toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalledWith("created-no-category");
   });
 
   test("disables Active lifecycle and shows a draft-only hint without publish", async () => {
@@ -190,6 +254,10 @@ describe(ProgramForm, () => {
       "草稿課程"
     );
     await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "草稿課程目的"
+    );
+    await user.type(
       screen.getByRole("textbox", { name: COPY.programs.programCategory }),
       "門徒訓練"
     );
@@ -199,7 +267,7 @@ describe(ProgramForm, () => {
 
     expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
       name: "草稿課程",
-      description: undefined,
+      description: "草稿課程目的",
       category: "門徒訓練",
       behavior_type: "Recurring",
       lifecycle: "Draft",

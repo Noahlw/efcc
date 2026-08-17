@@ -495,7 +495,7 @@ export interface CreateDepartmentCommand {
 export interface CreateProgramCommand {
   department_id: string;
   name: string;
-  description?: string;
+  description: string;
   category?: string;
   behavior_type: "Recurring" | "OneOff";
   lifecycle?: ProgramLifecycle;

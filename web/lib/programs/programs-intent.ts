@@ -14,6 +14,8 @@ export interface ProgramsIntent {
   task?: ProgramsTask;
   /** Management Event deep link, valid only with task === "events" or "participants". */
   eventId?: string;
+  /** Creation flash carried to the new management Cockpit. */
+  created?: boolean;
   malformed: boolean;
 }
 
@@ -21,11 +23,11 @@ export interface ProgramsHrefIntent {
   mode: ProgramsMode;
   programId?: string | null;
   task?: ProgramsTask | null;
-  /** Event deep link; emitted for management tasks "events" and "participants". */
   eventId?: string | null;
   hash?: string | null;
+  /** Creation flash carried to the new management Cockpit. */
+  created?: boolean;
 }
-
 const SAFE_PROGRAM_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
 const SAFE_HASH = /^#[A-Za-z0-9._~-]{1,128}$/u;
 const SAFE_EVENT_ID = /^[A-Za-z0-9-]{1,64}$/u;
@@ -134,12 +136,19 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawProgramId = singleParam(params, "programId");
   const rawTask = singleParam(params, "task");
   const rawEventId = singleParam(params, "event");
+  const rawCreated = singleParam(params, "created");
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
   const hash = parseHash(rawHash);
   const task = parseTask(rawTask.value, mode, program.id);
   const event = parseEvent(rawEventId, mode, task.value, program.id);
+  const created =
+    rawCreated.value === "1" && mode === "management" && program.id !== null;
+  const createdMalformed =
+    rawCreated.duplicate ||
+    (rawCreated.value !== null &&
+      (!created || rawCreated.value !== "1"));
   const malformed =
     rawMode.duplicate ||
     (rawMode.value !== null &&
@@ -151,7 +160,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     rawTask.duplicate ||
     task.malformed ||
     rawEventId.duplicate ||
-    event.malformed;
+    event.malformed ||
+    createdMalformed;
+  const creationField = created ? { created: true as const } : {};
 
   if (task.value !== undefined && !malformed) {
     return {
@@ -160,10 +171,17 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
       hash: hash.value,
       task: task.value,
       ...(event.value === undefined ? {} : { eventId: event.value }),
+      ...creationField,
       malformed,
     };
   }
-  return { mode, programId: program.id, hash: hash.value, malformed };
+  return {
+    mode,
+    programId: program.id,
+    hash: hash.value,
+    ...creationField,
+    malformed,
+  };
 }
 
 /** Build a canonical same-origin Programs URL with safe, restorable intent. */
@@ -173,10 +191,19 @@ export function buildProgramsHref({
   task,
   eventId,
   hash,
+  created,
 }: ProgramsHrefIntent): string {
   const params = new URLSearchParams();
   if (mode === "management") {
     params.set("mode", "management");
+  }
+  if (
+    mode === "management" &&
+    created === true &&
+    programId &&
+    SAFE_PROGRAM_ID.test(programId)
+  ) {
+    params.set("created", "1");
   }
   if (
     programId &&

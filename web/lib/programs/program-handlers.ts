@@ -1132,16 +1132,20 @@ export async function handleCreateProgram(
   }
   const fields = parseProgramFields(body, [
     "name",
-    "category",
+    "description",
     "behavior_type",
     "lifecycle",
   ]);
-  if (!fields || fields.category === null) {
+  if (
+    !fields ||
+    typeof fields.description !== "string" ||
+    !fields.description.trim()
+  ) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, category, behavior_type, and lifecycle are required and must be valid.",
+      "name, purpose, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -1153,10 +1157,7 @@ export async function handleCreateProgram(
       {
         department_id: departmentId,
         name: fields.name as string,
-        description:
-          typeof fields.description === "string"
-            ? fields.description
-            : undefined,
+        description: (fields.description as string).trim(),
         category:
           typeof fields.category === "string" ? fields.category : undefined,
         behavior_type: fields.behavior_type as "Recurring" | "OneOff",

@@ -95,7 +95,8 @@ const COPY = {
   cancelConfirmAccept: "退出課程",
   enrollmentCancelledNotice: "已退出課程",
   cancelRevoke: "取消",
-  offlineError: "未能提交。請重新連線後再試。",
+  updated: "已更新。",
+  offlineError: "未能儲存。請重新連線後再試。",
   requestPending: "待處理",
   enrollmentActiveHint: "你目前已加入此課程。",
   enrollmentScheduleAdvisory:
@@ -201,11 +202,13 @@ const COPY = {
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
-  createProgram: "新增課程",
+  createProgram: "建立課程",
+  programCreatedNotice: "課程已建立（草稿狀態）",
   editProgram: "編輯課程",
   saveProgram: "儲存課程",
   workspaceDepartment: "所屬部門",
   programName: "課程名稱",
+  programPurpose: "課程目的",
   programCategory: "活動類別",
   behaviorType: "形式",
   behaviorOneOff: "單次",
@@ -273,13 +276,21 @@ const COPY = {
   leaderRevokedNotice: "已移除事工負責人。",
   selfDelegationForbidden: "您沒有權限執行此操作。",
   departmentSettings: "部門設定",
+  departmentsTitle: "部門設定",
+  departmentsLead: "只顯示你獲授權管理的部門。",
+  modules: "模組",
+  moduleProgramCatalog: "課程目錄",
+  moduleEnrollment: "報名",
+  moduleEvents: "聚會",
+  moduleAttendance: "出席",
+  moduleCustomForms: "自訂表格",
   departmentManagers: "部門管理者",
   departmentManagerUserId: "選擇部門管理者",
-  assignDepartmentManager: "新增部門管理者",
-  revokeDepartmentManager: "移除部門管理者",
-  confirmRevokeDepartmentManager: "確定要移除此部門管理者嗎？",
-  departmentManagerAssignedNotice: "已新增部門管理者。",
-  departmentManagerRevokedNotice: "已移除部門管理者。",
+  assignDepartmentManager: "指派部門管理者",
+  revokeDepartmentManager: "撤銷部門管理者",
+  confirmRevokeDepartmentManager: "確定要撤銷此部門管理者嗎？",
+  departmentManagerAssignedNotice: "已指派部門管理者。",
+  departmentManagerRevokedNotice: "已撤銷部門管理者。",
   noDepartmentManagers: "目前沒有部門管理者。",
   settingsScheduleUnavailable:
     "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
@@ -2408,6 +2419,159 @@ test.describe("AUTH-01 Department Manager administration", () => {
         ).toBe(200);
       }
     }
+  });
+});
+
+test.describe("086-06 Departments directory and detail", () => {
+  test("directory displays only the actor's authorized department projection", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+    const scopedDepartments = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs/management-directory");
+      const body = (await response.json()) as {
+        data?: { departments?: { department_id: string }[] };
+      };
+      return {
+        status: response.status,
+        count: body.data?.departments?.length ?? 0,
+      };
+    });
+    expect(scopedDepartments.status).toBe(200);
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /部門設定/u })
+    ).toHaveCount(scopedDepartments.count);
+  });
+
+  test("department detail exposes five independently toggleable modules", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+    await page
+      .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
+      .click();
+    const departmentPanel = page.getByRole("region", {
+      name: /部門設定.*E2E_DEMO_示範事工/u,
+    });
+    const modulesPanel = departmentPanel.getByRole("region", {
+      name: COPY.modules,
+    });
+    const moduleLabels = [
+      ["program_catalog", COPY.moduleProgramCatalog],
+      ["enrollment", COPY.moduleEnrollment],
+      ["events", COPY.moduleEvents],
+      ["attendance", COPY.moduleAttendance],
+      ["custom_forms", COPY.moduleCustomForms],
+    ] as const;
+    for (const [moduleKey, label] of moduleLabels) {
+      const row = modulesPanel.locator("li").filter({ hasText: label });
+      await expect(row).toHaveCount(1);
+      const button = row.getByRole("button", { name: /^(啟用|停用)$/u });
+      await expect(button).toBeVisible();
+      const responsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/modules/${moduleKey}/`) &&
+          response.request().method() === "POST" &&
+          response.status() === 200
+      );
+      await button.click();
+      await responsePromise;
+      await expect(
+        departmentPanel.getByText(COPY.updated, { exact: true })
+      ).toBeVisible();
+      const restoreButton = modulesPanel
+        .locator("li")
+        .filter({ hasText: label })
+        .getByRole("button", { name: /^(啟用|停用)$/u });
+      const restoreResponse = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/modules/${moduleKey}/`) &&
+          response.request().method() === "POST" &&
+          response.status() === 200
+      );
+      await restoreButton.click();
+      await restoreResponse;
+    }
+  });
+
+  test("offline department save stays inline and reports the save error", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+    await page
+      .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
+      .click();
+    const departmentPanel = page.getByRole("region", {
+      name: /部門設定.*E2E_DEMO_示範事工/u,
+    });
+    const originalUrl = page.url();
+    await departmentPanel
+      .getByRole("textbox", { name: "部門名稱" })
+      .fill("離線不應儲存");
+    await page.context().setOffline(true);
+    try {
+      await departmentPanel.getByRole("button", { name: "儲存部門" }).click();
+      await expect(departmentPanel.getByRole("alert")).toHaveText(
+        COPY.offlineError
+      );
+      await expect(page).toHaveURL(originalUrl);
+    } finally {
+      await page.context().setOffline(false);
+    }
+  });
+
+  test("creates a program from department detail and lands in its cockpit", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+    await page
+      .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
+      .click();
+    const departmentPanel = page.getByRole("region", {
+      name: /部門設定.*E2E_DEMO_示範事工/u,
+    });
+    await departmentPanel
+      .getByRole("button", { name: COPY.createProgram })
+      .click();
+    await expect(
+      departmentPanel.getByRole("heading", { name: COPY.createProgram })
+    ).toBeVisible();
+    const name = `E2E_08606_${Date.now()}`;
+    await departmentPanel
+      .getByRole("textbox", { name: COPY.programName })
+      .fill(name);
+    await departmentPanel
+      .getByRole("textbox", { name: COPY.programPurpose })
+      .fill("086-06 acceptance purpose");
+    await departmentPanel
+      .getByRole("button", { name: COPY.saveProgram })
+      .click();
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expect(page.getByText(COPY.programCreatedNotice)).toBeVisible();
+    await expect(page).toHaveURL(/program=[^&]+/u);
   });
 });
 

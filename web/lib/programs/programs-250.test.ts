@@ -104,6 +104,7 @@ async function createProgram(
       method: "POST",
       cookie,
       body: {
+        description: "測試目的",
         name,
         category: "E2E Category",
         behavior_type: behaviorType,
@@ -297,6 +298,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
         method: "POST",
         cookie: admin,
         body: {
+          description: "已存檔課程不可直接建立",
           name: `NeverArchived-${Date.now()}`,
           category: "E2E Category",
           behavior_type: "OneOff",
