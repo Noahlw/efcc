@@ -27,7 +27,13 @@ function required(name: string, value: string | undefined): string {
 }
 async function clearSession(page: Page): Promise<void> {
   await page.context().clearCookies();
-  await page.evaluate(() => localStorage.removeItem("efcc_auth_active"));
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("efcc_auth_active");
+    } catch {
+      // Storage unavailable before first navigation.
+    }
+  });
 }
 
 async function loginAsAdmin(page: Page): Promise<void> {
@@ -98,7 +104,10 @@ async function captureHomeSnapshot(
   if (contentResponse.status !== 200) {
     return null;
   }
-  const data = contentResponse.body.data as Record<string, unknown>;
+  const data = contentResponse.body.data as Record<string, unknown> | null;
+  if (!data) {
+    return null;
+  }
   return {
     contentId: readSnapshotField(data, "contentId", "content_id") ?? "home",
     templateType:
@@ -200,7 +209,11 @@ test.describe("087-05 Home Content CMS", () => {
       await page.locator("#home-cms-title").fill(title);
       await page.locator("#home-cms-summary").fill("E2E draft summary");
       await page.getByRole("button", { name: EDITOR.saveDraft }).click();
-      await expect(page.getByText(EDITOR.saveSuccess)).toBeVisible();
+      await expect(
+        page.locator(
+          '[aria-labelledby="home-cms-editor-title"] output[aria-live="polite"]'
+        )
+      ).toContainText(EDITOR.saveSuccess);
 
       const contentResponse = await api(page, "/api/v1/home/content");
       expect(contentResponse.status).toBe(200);
@@ -229,7 +242,11 @@ test.describe("087-05 Home Content CMS", () => {
       await expect(desktopPreview).toHaveAttribute("aria-pressed", "true");
 
       await page.getByRole("button", { name: EDITOR.savePublished }).click();
-      await expect(page.getByText(EDITOR.publishSuccess)).toBeVisible();
+      await expect(
+        page.locator(
+          '[aria-labelledby="home-cms-editor-title"] output[aria-live="polite"]'
+        )
+      ).toContainText(EDITOR.publishSuccess);
 
       const publishedHome = await api(page, "/api/v1/home");
       expect(publishedHome.status).toBe(200);
