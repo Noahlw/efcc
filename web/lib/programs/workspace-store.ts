@@ -126,6 +126,22 @@ export interface MemberOptionRow {
   username: string;
 }
 
+/**
+ * One flattened row of the Member Directory search (087-04 #321): an Active
+ * account joined with one of its Active-enrollment departments (null
+ * department columns when the account has no enrollment / none in scope).
+ */
+export interface ManagementMemberSearchRow {
+  user_id: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  role: string;
+  account_status: string;
+  department_id: string | null;
+  department_name: string | null;
+}
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -518,6 +534,19 @@ export interface WorkspaceStore {
     limit: number,
     programId?: string
   ) => Promise<MemberOptionRow[]>;
+  /** Department ids the user actively manages (revoked_at IS NULL). */
+  listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /**
+   * Active accounts matching identity/contact fields, optionally constrained
+   * to Active enrollments under the supplied departments. Rows are flattened
+   * by department so the domain layer can assemble a stable read-only Member
+   * Directory projection (087-04 #321).
+   */
+  searchManagementMembers: (
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ) => Promise<ManagementMemberSearchRow[]>;
 
   setDepartmentModule: (
     departmentId: string,

@@ -2,17 +2,18 @@
 
 import { useSearchParams } from "next/navigation";
 
+import { AppShell } from "@/lib/app-shell";
 import { ApprovalDetail } from "@/lib/approval-detail";
 import { ApprovalQueue } from "@/lib/approval-queue";
-import { AppShell } from "@/lib/app-shell";
 import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
 
 import { CheckinSettings } from "./checkin-settings";
 import { ManagementHub } from "./management-hub";
+import { MemberDirectoryPanel } from "./member-directory-panel";
+import { PermissionsPanel } from "./permissions-panel";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
-import { PermissionsPanel } from "./permissions-panel";
 
 const ManagementModule = () => {
   const searchParams = useSearchParams();
@@ -26,6 +27,9 @@ const ManagementModule = () => {
       ) : (
         <ApprovalQueue />
       );
+    }
+    case "members": {
+      return <MemberDirectoryPanel />;
     }
     case "permissions": {
       return <PermissionsPanel />;
