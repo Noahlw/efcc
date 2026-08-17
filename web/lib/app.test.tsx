@@ -1630,6 +1630,7 @@ describe("Shell", () => {
     test("notices page renders COPY.sections.notices title", async () => {
       withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
+      pathnameMock.mockReturnValue("/notices");
       render(<NoticesPage />);
       await waitFor(() => {
         expect(

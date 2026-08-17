@@ -53,6 +53,7 @@ export default defineProject({
       "lib/scanner-intent.test.ts",
       "lib/assisted-scanner-panel.test.tsx",
       "lib/scanner-boundary.test.tsx",
+      "lib/notices-panel.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

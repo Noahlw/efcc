@@ -58,6 +58,14 @@ const COPY = {
   eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
   goToScan: "前往掃描",
   backToOrigin: "返回",
+  noticesListLabel: "通知清單",
+  noticesMarkAllRead: "全部標示已讀",
+  noticesMarkedAllRead: "已將全部通知標示為已讀",
+  noticesUnread: "未讀",
+  noticesEmpty: "暫時沒有通知",
+  noticesLoading: "正在載入通知…",
+  noticesRetry: "重試載入通知",
+  noticesLoadError: "未能載入通知。",
   scheduleTitle: "聚會時間表",
   conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
   archivedNote: "此課程已封存，暫不接受報名",
@@ -1313,6 +1321,97 @@ test.describe("PUI-05 participant Event Detail", () => {
   });
 });
 
+test.describe("NTC-01 participant Notices", () => {
+  test("lists notices with unread indicators and timestamps, and marks all read", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/notices");
+    const list = page.getByRole("list", { name: COPY.noticesListLabel });
+    await expect(list).toBeVisible();
+    // The demo seed creates 3 notices: 聚會提醒 (event), 報名結果
+    // (program), 帳戶更新 (account).
+    await expect(list.getByRole("link", { name: /聚會提醒/u })).toBeVisible();
+    await expect(list.getByRole("link", { name: /報名結果/u })).toBeVisible();
+    await expect(list.getByRole("link", { name: /帳戶更新/u })).toBeVisible();
+    // Per-item timestamp renders as <time>.
+    await expect(list.locator("time").first()).toBeVisible();
+
+    // The three viewport projects share one D1; the first sees the fresh
+    // 2-unread seed, later ones see the already-marked state.
+    const fresh = (await page.getByText(`2 ${COPY.noticesUnread}`).count()) > 0;
+    if (fresh) {
+      // Two unread sr-only labels (the read 帳戶更新 notice has none).
+      await expect(
+        list.getByText(COPY.noticesUnread, { exact: true })
+      ).toHaveCount(2);
+      await page.getByRole("button", { name: COPY.noticesMarkAllRead }).click();
+      // Toast confirmation via the announce live region.
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: COPY.noticesMarkedAllRead })
+      ).toBeVisible();
+      await expect(page.getByText(`2 ${COPY.noticesUnread}`)).toHaveCount(0);
+      // Server-persisted: reload keeps read state; notices retained.
+      await page.reload();
+      await expect(
+        page.getByRole("button", { name: COPY.noticesMarkAllRead })
+      ).toBeDisabled();
+      await expect(
+        list.getByText(COPY.noticesUnread, { exact: true })
+      ).toHaveCount(0);
+    } else {
+      await expect(page.getByText(`2 ${COPY.noticesUnread}`)).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: COPY.noticesMarkAllRead })
+      ).toBeDisabled();
+      await expect(
+        list.getByText(COPY.noticesUnread, { exact: true })
+      ).toHaveCount(0);
+    }
+  });
+
+  test("opens an event notice to the Event Detail", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/notices");
+    await page.getByRole("link", { name: /聚會提醒/u }).click();
+    await expect(page).toHaveURL(
+      /\/programs\?program=[^&]+&event=[^&]+$/u
+    );
+  });
+
+  test("opens a program notice to the Program detail", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/notices");
+    await page.getByRole("link", { name: /報名結果/u }).click();
+    await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+  });
+
+  test("opens an account notice to the account page", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/notices");
+    await page.getByRole("link", { name: /帳戶更新/u }).click();
+    await expect(page).toHaveURL(/\/profile$/u);
+  });
+});
+
 test.describe("PUI-04 participant Enrollment lifecycle", () => {
   test("member submits a request, sees Pending, and withdraws through the confirm dialog", async ({
     page,
@@ -1711,7 +1810,12 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       // 5. Test validation: clear name and attempt to save
       await nameInput.fill("");
       await page.getByRole("button", { name: COPY.saveProgram }).click();
-      await expect(page.getByText(COPY.editRequired)).toBeVisible();
+      // The validation message also lands in the sr-only announce live
+      // region, so scope to the form's role=alert to avoid a strict-mode
+      // collision with the duplicated announced text.
+      await expect(
+        page.getByRole("alert").filter({ hasText: COPY.editRequired })
+      ).toBeVisible();
 
       // 6. Fill updated values and save
       const updatedPurpose = `${originalPurpose} (已更新)`;
@@ -2829,9 +2933,19 @@ test.describe("MUI-02 scoped Program management", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     await page.getByRole("button", { name: COPY.enterManagement }).click();
-    await page.getByRole("button", { name: COPY.createProgram }).click();
+    // Post-086-06 the create entry lives in the department settings panel
+    // (the management directory no longer carries a top-level create).
+    await page
+      .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/u })
+      .click();
+    const departmentPanel = page.getByRole("region", {
+      name: /部門設定.*E2E_DEMO_示範事工/u,
+    });
+    await departmentPanel
+      .getByRole("button", { name: COPY.createProgram })
+      .click();
     await expect(
-      page.getByRole("heading", { name: COPY.createProgram })
+      departmentPanel.getByRole("heading", { name: COPY.createProgram })
     ).toBeVisible();
     // The department combobox defaults to the first department by
     // display_order, which is the baseline 青區 — its program_catalog module
@@ -2845,6 +2959,10 @@ test.describe("MUI-02 scoped Program management", () => {
     await page
       .getByRole("textbox", { name: COPY.programName })
       .fill(originalName);
+    // The create contract (086-06) requires a non-empty purpose.
+    await page
+      .getByRole("textbox", { name: COPY.programPurpose })
+      .fill("MUI-02 建立測試課程目的");
     await page
       .getByRole("textbox", { name: COPY.programCategory })
       .fill("E2E 活動類別");

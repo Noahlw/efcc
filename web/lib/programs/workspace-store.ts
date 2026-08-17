@@ -291,6 +291,35 @@ export interface NotificationReadStateRow extends NotificationReadStateInput {
   read_at: string;
 }
 
+// 085-07 (#324) — participant Notices. Rows are durable messages created via
+// the admin POST /api/v1/programs/notices endpoint and scoped to exactly one
+// member. read_at/created_at are epoch milliseconds (read_at null = unread).
+export type ParticipantNoticeKind = "event" | "program" | "account";
+
+export interface ParticipantNoticeRow {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface ParticipantNoticeCreateInput {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
 export interface GenerateResult {
   run_id: string;
   plan_id: string;
@@ -620,6 +649,18 @@ export interface WorkspaceStore {
     states: readonly NotificationReadStateInput[],
     readAt: string
   ) => Promise<number>;
+  // 085-07 (#324) — participant Notices store seam.
+  listParticipantNotices: (
+    memberUserId: string,
+    retentionCutoffMs: number
+  ) => Promise<ParticipantNoticeRow[]>;
+  markAllParticipantNoticesRead: (
+    memberUserId: string,
+    readAtMs: number
+  ) => Promise<number>;
+  createParticipantNotice: (
+    input: ParticipantNoticeCreateInput
+  ) => Promise<ParticipantNoticeRow>;
   cancelEvent: (
     id: string,
     reason: string | null,

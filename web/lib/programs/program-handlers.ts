@@ -2835,3 +2835,143 @@ export async function handleListProgramLeaders(
   }
   return jsonResponse(200, { leaders }, requestId);
 }
+
+/**
+ * GET /api/v1/programs/notices — member-scoped participant Notices
+ * (085-07 #324). Newest-first within the 90-day retention window; READ
+ * notices are included. Strictly the actor's own rows.
+ */
+export async function handleListParticipantNotices(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const notices = await workspace.listParticipantNotices(
+      ctxFrom(auth.account),
+      auth.account.user_id
+    );
+    return jsonResponse(200, notices, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/notices/read-all — idempotent mark-all-read. */
+export async function handleMarkParticipantNoticesRead(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const markedCount = await workspace.markAllParticipantNoticesRead(
+      ctxFrom(auth.account),
+      auth.account.user_id
+    );
+    return jsonResponse(200, { marked_count: markedCount }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/notices — Admin/Staff-only notice creation. */
+export async function handleCreateParticipantNotice(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    member_user_id?: unknown;
+    kind?: unknown;
+    title?: unknown;
+    body?: unknown;
+    program_id?: unknown;
+    event_id?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const memberUserId =
+    typeof body.member_user_id === "string" ? body.member_user_id.trim() : "";
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const noticeBody = typeof body.body === "string" ? body.body.trim() : "";
+  if (
+    !memberUserId ||
+    !isOneOf(body.kind, ["event", "program", "account"] as const) ||
+    !title ||
+    !noticeBody
+  ) {
+    return validation(
+      requestId,
+      "member_user_id, kind (event|program|account), a non-empty title, and a non-empty body are required."
+    );
+  }
+  if (
+    body.program_id !== undefined &&
+    body.program_id !== null &&
+    typeof body.program_id !== "string"
+  ) {
+    return validation(
+      requestId,
+      "program_id must be a string when provided."
+    );
+  }
+  if (
+    body.event_id !== undefined &&
+    body.event_id !== null &&
+    typeof body.event_id !== "string"
+  ) {
+    return validation(requestId, "event_id must be a string when provided.");
+  }
+  const programId =
+    typeof body.program_id === "string" && body.program_id.trim()
+      ? body.program_id.trim()
+      : undefined;
+  const eventId =
+    typeof body.event_id === "string" && body.event_id.trim()
+      ? body.event_id.trim()
+      : undefined;
+  const { workspace } = await getModule(env);
+  try {
+    const notice = await workspace.createParticipantNotice(
+      ctxFrom(auth.account),
+      {
+        member_user_id: memberUserId,
+        kind: body.kind,
+        title,
+        body: noticeBody,
+        program_id: programId,
+        event_id: eventId,
+      }
+    );
+    return jsonResponse(201, { notice }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
