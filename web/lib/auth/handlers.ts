@@ -46,6 +46,7 @@ import { verifyCredential, hashCredential } from "./credentials";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
 import {
   approveRegistration,
+  findRegistrationById,
   listPendingRegistrations,
   createRegistrationRequest,
   rejectRegistration,
@@ -1114,11 +1115,13 @@ export async function handleApprove(
 }
 
 /**
- * POST /api/v1/auth/registrations/:id/reject (AUTH-04 #162)
+ * POST /api/v1/auth/registrations/:id/reject (AUTH-04 #162, 087-02 #319)
  *
  * Teacher/Admin rejects a Pending registration without creating an account.
  * Idempotency-Key required; rejecting an already-rejected request is a no-op
- * success. Body: empty or optional note (ignored).
+ * success. Body: `{ decisionNote: string }` — the note is REQUIRED (ADR-0006;
+ * migration 0012) and stored atomically with the terminal transition; an
+ * empty/whitespace note is a 422 VALIDATION and nothing is written.
  */
 export async function handleReject(
   request: Request,
@@ -1140,11 +1143,31 @@ export async function handleReject(
     return auth;
   }
 
+  let note = "";
+  try {
+    const body = (await request.json()) as { decisionNote?: unknown };
+    if (typeof body.decisionNote === "string") {
+      note = body.decisionNote.trim();
+    }
+  } catch {
+    // Non-JSON body — falls through to the required-note validation below.
+  }
+  if (!note) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Rejection note is required.",
+      requestId
+    );
+  }
+
   let accountStatus: string;
   try {
     accountStatus = await rejectRegistration(env.DB, {
       requestId: registrationId,
       reviewerId: auth.caller.user_id,
+      note,
     });
   } catch (error) {
     if (error instanceof RegistrationNotFoundError) {
@@ -1193,4 +1216,60 @@ export async function handleListRegistrations(
     role: r.role,
   }));
   return jsonResponse(200, { requestId, data: { registrations } }, requestId);
+}
+
+/**
+ * GET /api/v1/auth/registrations/:id (087-02 #319)
+ *
+ * Teacher/Admin-only single-request read for the routable Approval Detail
+ * screen. Returns Pending AND already-decided requests (the detail stays
+ * viewable read-only after a decision) with safe metadata plus the recorded
+ * outcome: `status` (Pending/Active/Rejected), `decidedAt`, `decision`
+ * (Approved/Rejected or null), and `decisionNote` (rejection note or null).
+ * No credential material, no session material, no immutable identity key.
+ * 401 when unauthenticated, 403 for non-Admin/Staff roles, 404 unknown id.
+ */
+export async function handleRegistrationDetail(
+  request: Request,
+  env: AuthEnv,
+  registrationId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireAdminOrStaff(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const row = await findRegistrationById(env.DB, registrationId);
+  if (!row) {
+    return problem(
+      404,
+      "NOT_FOUND",
+      "Not found",
+      "Unknown registration request.",
+      requestId
+    );
+  }
+
+  return jsonResponse(
+    200,
+    {
+      requestId,
+      data: {
+        registration: {
+          requestId: row.request_id,
+          username: row.username,
+          name: row.name,
+          phone: row.phone,
+          status: row.account_status,
+          role: row.role,
+          submittedAt: row.submitted_at,
+          decidedAt: row.reviewed_at,
+          decisionNote: row.rejection_note,
+          decision: row.review_decision,
+        },
+      },
+    },
+    requestId
+  );
 }

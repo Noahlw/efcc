@@ -299,6 +299,34 @@ export const COPY = {
     retry: "重試連接",
     backHome: "返回首頁",
   },
+  // Registration Approvals — queue + routable detail (Spec 087 US 4-8,
+  // ticket 087-02 #319). The detail is a deep-linkable sub-route of the hub's
+  // canonical `/management?module=approvals&request=<id>`; decided requests
+  // stay viewable read-only at the same URL. approve/reject/decisionNote/
+  // decisionMade intentionally mirror `programs.*` (same UI vocabulary);
+  // kept here so the approvals surface has one self-contained source.
+  approvals: {
+    approvalsTitle: "註冊審批",
+    approvalsLead: "核准後會建立帳戶，申請人即可登入。",
+    openDetail: "查看申請詳情",
+    approvalDetailTitle: "註冊審批 · 詳情",
+    backToApprovals: "返回註冊審批",
+    applicantName: "姓名",
+    applicantContact: "聯絡",
+    status: "狀態",
+    statusPending: "待審批",
+    statusApproved: "已核准",
+    statusRejected: "已拒絕",
+    approve: "核准",
+    approving: "核准中…",
+    reject: "拒絕",
+    rejecting: "拒絕中…",
+    decisionNote: "決定備註",
+    decisionNotePlaceholder: "請輸入拒絕原因（必須填寫）",
+    rejectionNoteRequired: "拒絕時必須填寫決定備註。",
+    decisionMade: "已處理申請。",
+    loading: "載入中…",
+  },
   // System Settings hub (Spec 084 US 24-26 / ticket 084-04). Exactly three
   // rows in the locked order; the 簽到設定 and 時區 destinations are pure
   // read-only informational screens — no editable fields anywhere (regression

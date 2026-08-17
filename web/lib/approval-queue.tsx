@@ -41,10 +41,16 @@ export function ApprovalQueue() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeKind, setNoticeKind] = useState<"success" | "error">("success");
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+  const [rejectNoteError, setRejectNoteError] = useState(false);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
+    setRejectingId(null);
+    setRejectNote("");
+    setRejectNoteError(false);
     try {
       const registrations = await fetchPendingRegistrations();
       if (!mounted.current) return;
@@ -75,10 +81,31 @@ export function ApprovalQueue() {
 
   const handleDecision = async (item: PendingRegistration, decision: Decision) => {
     if (busyId) return;
+    if (decision === "reject") {
+      if (rejectingId !== item.requestId) {
+        setRejectingId(item.requestId);
+        setRejectNote("");
+        setRejectNoteError(false);
+        setNotice(null);
+        return;
+      }
+      if (!rejectNote.trim()) {
+        setRejectNoteError(true);
+        announce(COPY.approvals.rejectionNoteRequired);
+        return;
+      }
+    } else if (rejectingId) {
+      return;
+    }
+
     setBusyId(item.requestId);
     setNotice(null);
     try {
-      await decideRegistration(item.requestId, decision);
+      await decideRegistration(
+        item.requestId,
+        decision,
+        decision === "reject" ? rejectNote.trim() : undefined
+      );
       if (!mounted.current) return;
       announce(QUEUE_COPY.done);
       setNotice(QUEUE_COPY.done);
@@ -100,7 +127,14 @@ export function ApprovalQueue() {
       setNotice(message);
       setNoticeKind("error");
     } finally {
-      if (mounted.current) setBusyId(null);
+      if (mounted.current) {
+        setBusyId(null);
+        if (decision === "reject") {
+          setRejectingId(null);
+          setRejectNote("");
+          setRejectNoteError(false);
+        }
+      }
     }
   };
 
@@ -195,9 +229,20 @@ export function ApprovalQueue() {
               <tbody>
                 {state.registrations.map((item) => {
                   const busy = busyId === item.requestId;
+                  const rejecting = rejectingId === item.requestId;
+                  const actionsDisabled =
+                    busyId !== null || (rejectingId !== null && !rejecting);
                   return (
                     <tr key={item.requestId}>
-                      <td className={styles.td}>{item.name}</td>
+                      <td className={styles.td}>
+                        <Link
+                          href={`/management?module=approvals&request=${encodeURIComponent(item.requestId)}`}
+                          className={styles.detailLink}
+                          aria-label={`${COPY.approvals.openDetail} ${item.name}`}
+                        >
+                          {item.name}
+                        </Link>
+                      </td>
                       <td className={styles.td}>{item.username}</td>
                       <td className={styles.td}>{item.phone ?? "—"}</td>
                       <td className={styles.td}>
@@ -206,9 +251,44 @@ export function ApprovalQueue() {
                       <td className={styles.td}>{item.role}</td>
                       <td className={styles.td}>
                         <div className={styles.actions}>
+                          {rejecting && (
+                            <div className={styles.rejectNote}>
+                              <label
+                                htmlFor={`approval-queue-reject-note-${item.requestId}`}
+                              >
+                                {COPY.approvals.decisionNote}
+                              </label>
+                              <textarea
+                                id={`approval-queue-reject-note-${item.requestId}`}
+                                value={rejectNote}
+                                onChange={(event) => {
+                                  setRejectNote(event.target.value);
+                                  if (event.target.value.trim()) {
+                                    setRejectNoteError(false);
+                                  }
+                                }}
+                                placeholder={COPY.approvals.decisionNotePlaceholder}
+                                aria-invalid={rejectNoteError}
+                                aria-describedby={
+                                  rejectNoteError
+                                    ? `approval-queue-reject-note-error-${item.requestId}`
+                                    : undefined
+                                }
+                              />
+                              {rejectNoteError && (
+                                <p
+                                  id={`approval-queue-reject-note-error-${item.requestId}`}
+                                  className={styles.rejectNoteError}
+                                  role="alert"
+                                >
+                                  {COPY.approvals.rejectionNoteRequired}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <button
                             type="button"
-                            disabled={busy || busyId !== null}
+                            disabled={busy || actionsDisabled || rejectingId !== null}
                             onClick={() => void handleDecision(item, "approve")}
                             className={styles.approve}
                             aria-label={`${QUEUE_COPY.approve} ${item.role}`}
@@ -217,7 +297,7 @@ export function ApprovalQueue() {
                           </button>
                           <button
                             type="button"
-                            disabled={busy || busyId !== null}
+                            disabled={busy || actionsDisabled}
                             onClick={() => void handleDecision(item, "reject")}
                             className={styles.reject}
                           >
