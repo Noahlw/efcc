@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 // AUTH-01 (#255) — component tests for the Department-scoped settings panel
 // and its Management Directory launcher. MSW intercepts the Worker endpoints;
 // fixtures carry no credential material.
@@ -79,7 +79,25 @@ const MODULES: DepartmentModule[] = [
   },
   {
     department_id: DEPARTMENT_ID,
+    module_key: "enrollment",
+    enabled: 0,
+    enabled_at: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    department_id: DEPARTMENT_ID,
     module_key: "events",
+    enabled: 1,
+    enabled_at: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    department_id: DEPARTMENT_ID,
+    module_key: "attendance",
+    enabled: 0,
+    enabled_at: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    department_id: DEPARTMENT_ID,
+    module_key: "custom_forms",
     enabled: 0,
     enabled_at: "2026-01-01T00:00:00.000Z",
   },
@@ -155,11 +173,11 @@ describe("department settings authorization UI", () => {
       screen.getByRole("heading", { name: COPY.programs.modules })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.disable })
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: COPY.programs.disable })
+    ).toHaveLength(2);
     expect(
-      screen.getByRole("button", { name: COPY.programs.enable })
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: COPY.programs.enable })
+    ).toHaveLength(3);
     expect(
       screen.getByRole("button", {
         name: COPY.programs.revokeDepartmentManager,
@@ -184,8 +202,62 @@ describe("department settings authorization UI", () => {
       })
     ).toBeInTheDocument();
   });
+  test("renders and independently toggles exactly the five department modules", async () => {
+    const moduleRequests: string[] = [];
+    server.use(
+      ...departmentHandlers([]),
+      http.post(
+        "/api/v1/programs/departments/dept-1/modules/:moduleKey/:action",
+        ({ params }) => {
+          moduleRequests.push(`${String(params.moduleKey)}:${String(params.action)}`);
+          return HttpResponse.json({
+            requestId: "rid-module",
+            data: {
+              module: {
+                department_id: DEPARTMENT_ID,
+                module_key: String(params.moduleKey),
+                enabled: params.action === "enable" ? 1 : 0,
+                enabled_at: "2026-01-01T00:00:00.000Z",
+              },
+            },
+          });
+        }
+      )
+    );
+    panelWithCapabilities(MANAGER_CAPABILITIES);
 
-  test("assigning a manager through the member picker shows the success notice", async () => {
+    const labels = [
+      COPY.programs.moduleProgramCatalog,
+      COPY.programs.moduleEnrollment,
+      COPY.programs.moduleEvents,
+      COPY.programs.moduleAttendance,
+      COPY.programs.moduleCustomForms,
+    ];
+    for (const label of labels) {
+      expect(await screen.findByText(label, { exact: true })).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("button", { name: COPY.programs.enable })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: COPY.programs.disable })).toHaveLength(2);
+
+    const expectedRequests = [
+      "program_catalog:disable",
+      "enrollment:enable",
+      "events:disable",
+      "attendance:enable",
+      "custom_forms:enable",
+    ];
+    for (const [index, label] of labels.entries()) {
+      const row = screen.getByText(label, { exact: true }).closest("li");
+      expect(row).not.toBeNull();
+      await user.click(within(row as HTMLElement).getByRole("button"));
+      await screen.findByText(COPY.programs.updated);
+      expect(moduleRequests[index]).toBe(expectedRequests[index]);
+    }
+  });
+
+
+  test("assigning a manager through the member picker shows the success notice and stays in place", async () => {
+    mocks.router.push.mockClear();
     const managers: DepartmentManager[] = [];
     server.use(
       ...departmentHandlers(managers),
@@ -233,9 +305,11 @@ describe("department settings authorization UI", () => {
       screen.findByText(COPY.programs.departmentManagerAssignedNotice)
     ).resolves.toBeInTheDocument();
     await expect(screen.findAllByText(/U003/u)).resolves.toHaveLength(2);
+    expect(mocks.router.push).not.toHaveBeenCalled();
   });
 
-  test("revoking a manager requires the confirm step and shows the success notice", async () => {
+  test("revoking a manager requires the confirm step, shows the success notice, and stays in place", async () => {
+    mocks.router.push.mockClear();
     const managers: DepartmentManager[] = [{ ...MANAGER_BOB }];
     server.use(
       ...departmentHandlers(managers),
@@ -272,6 +346,7 @@ describe("department settings authorization UI", () => {
     await expect(
       screen.findByText(COPY.programs.noDepartmentManagers)
     ).resolves.toBeInTheDocument();
+    expect(mocks.router.push).not.toHaveBeenCalled();
   });
 
   test("assign failure surfaces the mapped error in an alert", async () => {
@@ -336,6 +411,33 @@ describe("department settings authorization UI", () => {
       COPY.error.notFound
     );
   });
+  test("department save shows the offline error without a success notice", async () => {
+    server.use(
+      ...departmentHandlers([]),
+      http.patch(
+        "/api/v1/programs/departments/dept-1",
+        () => HttpResponse.error()
+      )
+    );
+    panelWithCapabilities(MANAGER_CAPABILITIES);
+
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, "離線更新");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.offlineError
+    );
+    expect(
+      screen.queryByText(COPY.programs.updated, { exact: true })
+    ).not.toBeInTheDocument();
+  });
+
 });
 
 describe("ManagementDirectory department launcher", () => {
@@ -392,6 +494,40 @@ describe("ManagementDirectory department launcher", () => {
     });
     await waitFor(() => expect(restoredCard).toHaveFocus());
   });
+  test("directory renders only departments within the actor's management scope", async () => {
+    const unscopedDepartment = {
+      ...DEPARTMENT,
+      department_id: "dept-2",
+      code: "DEP-2",
+      name: "無權限部門",
+      capabilities: {
+        manage: false,
+        publish: false,
+        module_configure: false,
+        manager_assign: false,
+      },
+    } as Department;
+    server.use(
+      http.get("/api/v1/programs/management-directory", () =>
+        HttpResponse.json({
+          requestId: "rid-scope",
+          data: {
+            departments: [DEPARTMENT, unscopedDepartment],
+            programs: [],
+          },
+        })
+      )
+    );
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+      />
+    );
+
+    await expect(screen.findByText(DEPARTMENT.name)).resolves.toBeInTheDocument();
+    expect(screen.queryByText(unscopedDepartment.name)).not.toBeInTheDocument();
+  });
+
 
   test("omits the department settings section without any department scope", async () => {
     server.use(

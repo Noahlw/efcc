@@ -169,6 +169,7 @@ async function createProgram(
   departmentId: string,
   body: {
     name: string;
+    description?: string;
     category?: string;
     behavior_type: "Recurring" | "OneOff";
     lifecycle?: "Draft" | "Active" | "Archived";
@@ -190,6 +191,7 @@ async function createProgram(
       },
       body: {
         ...body,
+        description: body.description ?? "測試目的",
         category: body.category ?? "測試類別",
         lifecycle: body.lifecycle ?? "Draft",
         discoverability: body.discoverability ?? "Unlisted",
@@ -1576,6 +1578,54 @@ describe("PRG-01: programs", () => {
     assert.ok(program.program_id);
     assert.strictEqual(program.name, "Test Program");
   });
+  test("requires a non-empty purpose and accepts a valid purpose without a category", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PURPOSE-PROG-DEPT",
+      name: "Purpose Program Dept",
+    });
+    const request = (description: string) =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${dept.department_id}/programs`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: {
+              name: "Purpose Program",
+              description,
+              behavior_type: "Recurring",
+              lifecycle: "Draft",
+            },
+          }
+        ),
+        testEnv()
+      );
+
+    const missingPurpose = await request("   ");
+    assert.strictEqual(missingPurpose.status, 422);
+    const missingBody = await problemOf(missingPurpose);
+    assert.strictEqual(
+      missingBody.detail,
+      "name, purpose, behavior_type, and lifecycle are required and must be valid."
+    );
+
+    const created = await request("Weekly discipleship purpose");
+    assert.strictEqual(created.status, 201);
+    const createdBody = (await assertCorrelated(created)) as {
+      data: { program: { description: string; category: string | null } };
+    };
+    assert.strictEqual(
+      createdBody.data.program.description,
+      "Weekly discipleship purpose"
+    );
+    assert.strictEqual(createdBody.data.program.category, null);
+  });
+
 
   test("program creation rejects invalid required settings", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
@@ -1621,6 +1671,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Archived Program",
+            description: "已存檔課程不可直接建立",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Archived",
@@ -1715,6 +1766,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Defaulted Program",
+            description: "測試預設值",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
@@ -1987,6 +2039,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Member Program",
+            description: "會員不可建立課程",
             category: "測試類別",
             behavior_type: "OneOff",
             lifecycle: "Draft",
@@ -2040,6 +2093,7 @@ describe("PRG-01: modules", () => {
           },
           body: {
             name: "Blocked Program",
+            description: "模組未啟用時不可建立課程",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
@@ -2165,6 +2219,7 @@ describe("PRG-01: audit", () => {
           },
           body: {
             name: "Idempotency Program",
+            description: "測試冪等性",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",

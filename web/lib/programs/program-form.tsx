@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { announce } from "@/lib/live-region";
 import { createProgram, updateProgram } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -140,8 +141,8 @@ export const ProgramForm = ({
       setFormError(COPY.programs.programCreateForbidden);
       return;
     }
-    if (!initial && !values.category.trim()) {
-      setFormError(COPY.programs.programCategoryRequired);
+    if (!initial && (!values.name.trim() || !values.description.trim())) {
+      setFormError(COPY.programs.purposeRequired);
       return;
     }
     setBusy(true);
@@ -151,7 +152,11 @@ export const ProgramForm = ({
       const result = initial
         ? await updateProgram(initial.program_id, patchFrom(values))
         : await createProgram(values.departmentId, inputFrom(values));
-      setNotice(COPY.programs.programSaved);
+      const successMessage = initial
+        ? COPY.programs.programSaved
+        : COPY.programs.programCreatedNotice;
+      setNotice(successMessage);
+      announce(successMessage);
       onSaved(result.program.program_id);
     } catch (error) {
       setFormError(mutationError(error));
@@ -186,6 +191,7 @@ export const ProgramForm = ({
     <section
       className={styles.workspaceTask}
       aria-labelledby="program-form-title"
+      aria-busy={busy}
     >
       <h3 id="program-form-title" className={styles.workspaceHeading}>
         {initial ? COPY.programs.programEdit : COPY.programs.programCreateTitle}
@@ -242,13 +248,16 @@ export const ProgramForm = ({
         </div>
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
-            {COPY.programs.programDescription}
+            {initial
+              ? COPY.programs.programDescription
+              : COPY.programs.programPurpose}
             <textarea
               className={styles.textarea}
               value={values.description}
               onChange={(event) => update("description", event.target.value)}
               rows={3}
               disabled={busy}
+              required={!initial}
             />
           </label>
         </div>
@@ -260,7 +269,6 @@ export const ProgramForm = ({
               value={values.category}
               onChange={(event) => update("category", event.target.value)}
               autoComplete="off"
-              required={!initial}
               disabled={busy}
             />
           </label>

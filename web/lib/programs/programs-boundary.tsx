@@ -13,7 +13,6 @@ import {
   markManagementNotificationsRead,
 } from "@/lib/programs/program-api";
 import type {
-  Department,
   ManagementAttention,
   ManagementNotificationItem,
   ManagementNotifications,
@@ -22,7 +21,6 @@ import { rememberDeepLink } from "@/lib/session";
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
 import { ParticipantProgramDetail } from "./participant-program-detail";
-import { ProgramForm } from "./program-form";
 
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
@@ -483,9 +481,6 @@ function ManagementPanel({
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
 }) {
-  const [createDepartments, setCreateDepartments] = useState<
-    Department[] | null
-  >(null);
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
@@ -617,7 +612,6 @@ function ManagementPanel({
       onOpen={refreshNotifications}
       onMarkRead={markNotificationsRead}
       onViewAll={() => {
-        setCreateDepartments(null);
         onTaskChange("notifications");
       }}
       full={intent.task === "notifications"}
@@ -672,19 +666,9 @@ function ManagementPanel({
           onTaskChange={onTaskChange}
           onEventChange={onEventChange}
         />
-      ) : createDepartments ? (
-        <ProgramForm
-          departments={createDepartments}
-          onSaved={(programId) => {
-            setCreateDepartments(null);
-            onOpenProgram(programId);
-          }}
-          onCancel={() => setCreateDepartments(null)}
-        />
       ) : (
         <ManagementDirectory
           onOpenProgram={onOpenProgram}
-          onCreateProgram={setCreateDepartments}
         />
       )}
     </>

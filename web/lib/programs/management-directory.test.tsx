@@ -227,22 +227,20 @@ describe(ManagementDirectory, () => {
     await userEvent.click(screen.getByRole("button", { name: /社區關懷/u }));
     expect(onOpenProgram).toHaveBeenCalledWith("program-leader");
   });
-  test("offers creation only from a Department management scope", async () => {
+  test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
-    const onCreateProgram = vi.fn();
     render(
       <ManagementDirectory
         onOpenProgram={vi.fn()}
-        onCreateProgram={onCreateProgram}
       />
     );
 
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.createProgram,
-      })
-    );
-    expect(onCreateProgram).toHaveBeenCalledWith(departments);
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.createProgram })
+    ).not.toBeInTheDocument();
   });
 
   test("keeps source-specific attention out of the management directory", async () => {
