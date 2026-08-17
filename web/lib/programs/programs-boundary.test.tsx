@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
+    getEvent: vi.fn(),
     listParticipantCatalog: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
@@ -56,6 +57,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementDirectory: mocks.getManagementDirectory,
   getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
+  getEvent: mocks.getEvent,
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
 
@@ -312,13 +314,33 @@ describe("Programs intent", () => {
       eventId: "event-42",
       malformed: false,
     });
+    // PUI-05: participant Event Detail deep links carry program + event on
+    // the participant boundary (no task); parse/build round-trip.
     expect(
       buildProgramsHref({
         mode: "participant",
         programId: "program-1",
         eventId: "event-42",
       })
-    ).toBe("/programs?program=program-1");
+    ).toBe("/programs?program=program-1&event=event-42");
+    expect(
+      parseProgramsIntent("?program=program-1&event=event-42")
+    ).toStrictEqual({
+      mode: "participant",
+      programId: "program-1",
+      hash: null,
+      eventId: "event-42",
+      malformed: false,
+    });
+    expect(
+      parseProgramsIntent("?program=program-1&event=event-42#overview")
+    ).toStrictEqual({
+      mode: "participant",
+      programId: "program-1",
+      hash: "#overview",
+      eventId: "event-42",
+      malformed: false,
+    });
     // An Event without the events task, a bad id, or a duplicate param is
     // malformed; an unknown event id never survives parsing.
     expect(
@@ -335,6 +357,15 @@ describe("Programs intent", () => {
       parseProgramsIntent(
         "?mode=management&program=program-1&task=settings&event=event-42"
       ).malformed
+    ).toBeTruthy();
+    // Participant event links require a Program and a well-formed event id.
+    expect(parseProgramsIntent("?event=event-42").malformed).toBeTruthy();
+    expect(
+      parseProgramsIntent("?program=program-1&event=bad%2Fid").malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent("?program=program-1&event=event-42&event=event-7")
+        .malformed
     ).toBeTruthy();
   });
 });
@@ -526,6 +557,48 @@ describe("Programs boundary", () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.participantMode })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("PUI-05: renders the participant Event Detail from a program+event intent", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?program=program-1&event=event-42"
+    );
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.getEvent.mockResolvedValue({
+      event: {
+        event_id: "event-42",
+        program_id: "program-1",
+        program_name: "查經小組",
+        starts_at: "2026-09-12T10:00:00.000Z",
+        ends_at: "2026-09-12T11:30:00.000Z",
+        status: "Active",
+        availability: "Active",
+        source: "MANUAL",
+        name: "迎新聚會",
+        location: "教會禮堂",
+        manual_check_in_code: "ABCD1234",
+        check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
+        check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+        cancel_reason: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        exception: null,
+      },
+      leaders: [],
+      participant_summary: { active_enrollments: 3, checked_in: 2 },
+    });
+
+    render(<ProgramsBoundary />);
+
+    await expect(
+      screen.findByRole("heading", { name: "迎新聚會" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-42");
+    expect(
+      screen.getByRole("link", { name: COPY.programs.goToScan })
+    ).toHaveAttribute("href", "/scanner?event=event-42");
   });
 
   test("shows a compact accessible management entry from server scope and preserves Program intent", async () => {

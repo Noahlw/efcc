@@ -4949,7 +4949,7 @@ describe("EVT-01: event operations (#251)", () => {
     assert.ok(event.manual_check_in_code, "event carries a check-in code");
   });
 
-  test("GET detail projects leaders and participant summary; member 403; unknown 404", async () => {
+  test("GET detail projects operator fields for managers; enrolled member gets the participant projection; non-enrolled 403; unknown 404", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-11T10:00:00.000Z",
       ends_at: "2026-09-11T11:00:00.000Z",
@@ -4987,7 +4987,12 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(res.status, 200);
     const result = (await assertCorrelated(res)) as {
       data: {
-        event: { event_id: string; program_id: string; availability: string };
+        event: {
+          event_id: string;
+          program_id: string;
+          program_name: string;
+          availability: string;
+        };
         leaders: unknown[];
         participant_summary: { active_enrollments: number; checked_in: number };
       };
@@ -4995,10 +5000,58 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(result.data.event.event_id, event.event_id);
     assert.strictEqual(result.data.event.program_id, programId);
     assert.strictEqual(result.data.event.availability, "Active");
+    assert.strictEqual(
+      typeof result.data.event.program_name,
+      "string",
+      "operator projection surfaces program_name from the JOIN"
+    );
+    assert.ok(result.data.event.program_name.length > 0);
     assert.ok(Array.isArray(result.data.leaders));
     assert.strictEqual(result.data.participant_summary.active_enrollments, 1);
     assert.strictEqual(result.data.participant_summary.checked_in, 1);
 
+    // Enrolled member gets a slim participant projection: no leaders, no
+    // attendance numbers, but the event row + program_name are present so
+    // the participant detail page can render the header and CTA.
+    const memberRes = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberRes.status, 200);
+    const memberResult = (await assertCorrelated(memberRes)) as {
+      data: {
+        event: {
+          event_id: string;
+          program_id: string;
+          program_name: string;
+          manual_check_in_code: string | null;
+        };
+        leaders: unknown[];
+        participant_summary: { active_enrollments: number; checked_in: number };
+      };
+    };
+    assert.strictEqual(memberResult.data.event.event_id, event.event_id);
+    assert.strictEqual(memberResult.data.event.program_name.length > 0, true);
+    assert.strictEqual(memberResult.data.leaders.length, 0);
+    assert.strictEqual(memberResult.data.participant_summary.active_enrollments, 0);
+    assert.strictEqual(memberResult.data.participant_summary.checked_in, 0);
+    assert.strictEqual(memberResult.data.event.manual_check_in_code, null);
+
+    // Non-enrolled member is denied — never a projection leak.
+    await testDb()
+      .prepare(
+        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+      )
+      .bind(programId)
+      .run();
     const denied = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${programId}/events/${event.event_id}`,
@@ -5011,7 +5064,7 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(denied.status, 403);
+    assert.strictEqual(denied.status, 404);
 
     const unknown = await worker.fetch(
       programsRequest(
@@ -5029,12 +5082,6 @@ describe("EVT-01: event operations (#251)", () => {
 
     // Teardown: leave the shared Program without participant state so later
     // tests control their own fixtures.
-    await testDb()
-      .prepare(
-        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
-      )
-      .bind(programId)
-      .run();
     await testDb()
       .prepare("DELETE FROM attendances WHERE event_id = ?")
       .bind(event.event_id)

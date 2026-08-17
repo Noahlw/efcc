@@ -61,6 +61,7 @@ const WEEKLY_RULE: ScheduleRule = {
 const ACTIVE_EVENT: ProgramEvent = {
   event_id: "evt-1",
   program_id: "prog-1",
+  program_name: "顯恩堂主日學",
   starts_at: "2026-08-13T11:30:00.000Z",
   ends_at: "2026-08-13T13:00:00.000Z",
   status: "Active",

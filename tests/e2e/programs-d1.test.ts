@@ -54,6 +54,10 @@ const COPY = {
   nextMeeting: "下一次聚會",
   detailEventLocation: "地點",
   viewEventDetail: "查看聚會詳情",
+  checkInAvailable: "可簽到",
+  eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
+  goToScan: "前往掃描",
+  backToOrigin: "返回",
   scheduleTitle: "聚會時間表",
   conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
   archivedNote: "此課程已封存，暫不接受報名",
@@ -1095,6 +1099,217 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(page.getByText(hiddenProgramId)).toHaveCount(0);
     await page.getByRole("button", { name: COPY.detailBack }).click();
     await expect(page).toHaveURL(/\/programs#overview$/u);
+  });
+});
+
+test.describe("PUI-05 participant Event Detail", () => {
+  test("opens from Program detail, shows availability, and 前往掃描 pre-selects the event", async ({
+    page,
+    browser,
+  }) => {
+    const memberContext = await browser.newContext();
+    const memberPage = await memberContext.newPage();
+    let programId = "";
+    try {
+      await loginAs(
+        memberPage,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      [programId] = await catalogProgramIds(
+        memberPage,
+        "E2E_DEMO_成人查經"
+      );
+      expect(programId).toBeTruthy();
+
+      // Event Detail is gated to enrolled members; establish an Active
+      // enrollment (request → admin approval) like PUI-04 does. Tolerate a
+      // leftover Pending request or Active enrollment from an interrupted
+      // prior run.
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      const enrollmentPanel = enrollmentPanelOf(memberPage);
+      const pendingHint = enrollmentPanel.getByText(COPY.requestPendingHint);
+      const activeHint = enrollmentPanel.getByText(
+        COPY.enrollmentActiveHint
+      );
+      await expect(
+        submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
+      ).toBeVisible();
+      const needsApproval = !(await activeHint.isVisible().catch(() => false));
+      if (
+        needsApproval &&
+        !(await pendingHint.isVisible().catch(() => false))
+      ) {
+        await submitActionButton(enrollmentPanel).click();
+        await expect(pendingHint).toBeVisible();
+      }
+      if (needsApproval) {
+        await loginAs(
+          page,
+          required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+          required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+        );
+        await page.goto(
+          `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+        );
+        const requestRow = page
+          .getByRole("listitem")
+          .filter({ hasText: "E2E Member" });
+        await expect(
+          requestRow.getByRole("button", { name: COPY.approve })
+        ).toBeVisible();
+        await requestRow.getByRole("button", { name: COPY.approve }).click();
+        await expect(
+          page
+            .getByRole("region", { name: COPY.workspaceTaskParticipants })
+            .getByText(COPY.decisionMade, { exact: true })
+        ).toBeVisible();
+        await memberPage.reload();
+      }
+
+      // From Program detail, open the next-meeting event detail (boundary
+      // intent deep link: /programs?program=<id>&event=<eventId>).
+      await memberPage.goto(`/programs?program=${programId}#overview`);
+      await expect(
+        memberPage.getByRole("heading", { name: COPY.detailPurpose })
+      ).toBeVisible();
+      const eventDetailButton = memberPage.getByRole("button", {
+        name: COPY.viewEventDetail,
+      });
+      await expect(eventDetailButton).toBeVisible();
+      await eventDetailButton.click();
+      await expect(memberPage).toHaveURL(
+        new RegExp(
+          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          "u"
+        )
+      );
+
+      // Event detail: the event-name heading (PUI-05 renders the real event
+      // title, not a fixed label), back action, instructions, and scan CTA.
+      await expect(memberPage.locator("#participant-event-title")).toBeVisible();
+      await expect(
+        memberPage.getByText(COPY.eventInstructions)
+      ).toBeVisible();
+      await expect(
+        memberPage.getByRole("button", { name: COPY.backToOrigin })
+      ).toBeVisible();
+      // 可簽到 badge is conditional on the real check-in window; assert it
+      // only when present (the acceptance requires it only when the window is
+      // currently open).
+      const badge = memberPage.getByText(COPY.checkInAvailable);
+      if ((await badge.count()) > 0) {
+        await expect(badge.first()).toBeVisible();
+      }
+
+      // 前往掃描 deep-links into the scanner with this exact event; the flow
+      // resolves it (server returns the matching event pre-selected).
+      const scanCta = memberPage.getByRole("link", { name: COPY.goToScan });
+      await expect(scanCta).toBeVisible();
+      const ctaHref = await scanCta.getAttribute("href");
+      expect(ctaHref).toMatch(/\/scanner\?event=[^&]+$/u);
+      const eventIdFromCta = new URL(ctaHref ?? "", "http://x")
+        .searchParams.get("event");
+      expect(eventIdFromCta).toBeTruthy();
+      const resolvePromise = memberPage.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/attendance/resolve") &&
+          response.url().includes(`event=${encodeURIComponent(eventIdFromCta ?? "")}`)
+      );
+      await scanCta.click();
+      await expect(memberPage).toHaveURL(/\/scanner\?event=[^&]+$/u);
+      const resolveResponse = await resolvePromise;
+      const resolveBody = (await resolveResponse.json()) as {
+        data?: { events?: { event_id?: string }[] };
+      };
+      const resolvedIds = (resolveBody.data?.events ?? []).map(
+        (event) => event.event_id
+      );
+      // The CTA deep-link must pre-select THIS exact event: when the check-in
+      // window is open the resolve response contains exactly the target event;
+      // when closed it returns an empty events list and the scanner shows the
+      // outcome screen (never a different event).
+      expect(Array.isArray(resolveBody.data?.events)).toBe(true);
+      if (resolvedIds.length > 0) {
+        expect(resolvedIds).toEqual([eventIdFromCta]);
+      }
+
+      // Back navigation returns to the originating Program detail (no
+      // hardcoded target): browser back restores the event detail, then the
+      // program detail.
+      await memberPage.goBack();
+      await expect(memberPage).toHaveURL(
+        new RegExp(
+          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          "u"
+        )
+      );
+      await memberPage.goBack();
+      await expect(memberPage).toHaveURL(
+        new RegExp(`/programs\\?program=${programId}#overview$`, "u")
+      );
+    } finally {
+      if (programId) {
+        // Failure-safe cleanup: cancel any Active enrollment and withdraw
+        // any Pending request so later queue/roster counts stay stable
+        // (same contract as PUI-04's cleanup, member self-service API).
+        await memberPage.evaluate(async (id) => {
+          const enrollmentsResponse = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
+          );
+          const enrollmentsBody = (await enrollmentsResponse.json()) as {
+            data?: {
+              enrollments?: {
+                enrollment_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const enrollment = enrollmentsBody.data?.enrollments?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
+          );
+          if (enrollment) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+          const requestsResponse = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
+          );
+          const requestsBody = (await requestsResponse.json()) as {
+            data?: {
+              requests?: {
+                request_id: string;
+                member_user_id: string;
+                status: string;
+              }[];
+            };
+          };
+          const request = requestsBody.data?.requests?.find(
+            (row) =>
+              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
+          );
+          if (request) {
+            await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              }
+            );
+          }
+        }, programId);
+      }
+      await memberContext.close();
+    }
   });
 });
 

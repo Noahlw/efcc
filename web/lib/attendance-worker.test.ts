@@ -2166,4 +2166,92 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(entryData.latest, null);
     assert.strictEqual(entryData.enrolled, false);
   });
+
+  test("resolve with ?event=<id> deep-link returns the matching event pre-selected", async () => {
+    const openResp = await worker.fetch(
+      request(`/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}`),
+      testEnv()
+    );
+    assert.strictEqual(openResp.status, 200);
+    const openBody = await json(openResp);
+    const openData = openBody.data as {
+      events: {
+        event_id: string;
+        name: string | null;
+        location: string | null;
+        status: "Active" | "Cancelled";
+        availability: "Active" | "Inactive";
+      }[];
+    };
+    assert.strictEqual(openData.events.length, 1);
+    assert.strictEqual(openData.events[0]?.event_id, EVENT);
+    assert.strictEqual(openData.events[0]?.name, "週六團契");
+    assert.strictEqual(openData.events[0]?.location, "主堂");
+
+    // Closed event falls through to `latest` so the UI renders the existing
+    // window-not-open / cancelled outcome views; it is never auto-selected.
+    const closedResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(CLOSED_EVENT)}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(closedResp.status, 200);
+    const closedBody = await json(closedResp);
+    const closedData = closedBody.data as {
+      events: unknown[];
+      latest: {
+        status: "Active" | "Cancelled";
+        availability: "Active" | "Inactive";
+      } | null;
+    };
+    assert.deepStrictEqual(closedData.events, []);
+    assert.strictEqual(closedData.latest?.status, "Active");
+    assert.strictEqual(closedData.latest?.availability, "Active");
+
+    // Cancelled event mirrors the same shape; status is surfaced for the
+    // outcome view.
+    const cancelledResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(CANCELLED_EVENT)}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancelledResp.status, 200);
+    const cancelledBody = await json(cancelledResp);
+    const cancelledData = cancelledBody.data as {
+      events: unknown[];
+      latest: { status: "Active" | "Cancelled" } | null;
+    };
+    assert.deepStrictEqual(cancelledData.events, []);
+    assert.strictEqual(cancelledData.latest?.status, "Cancelled");
+
+    // Unknown event id returns the same empty shape as the other not-found
+    // resolve paths.
+    const unknownResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent("does-not-exist")}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unknownResp.status, 200);
+    const unknownBody = await json(unknownResp);
+    const unknownData = unknownBody.data as {
+      events: unknown[];
+      latest: unknown;
+    };
+    assert.deepStrictEqual(unknownData.events, []);
+    assert.strictEqual(unknownData.latest, null);
+
+    // ?event with another explicit credential is rejected as ambiguous.
+    const conflictResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}&manual_code=ATT1234`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(conflictResp.status, 422);
+    const conflictBody = await json(conflictResp);
+    assert.strictEqual(conflictBody.code, "VALIDATION");
+});
 });

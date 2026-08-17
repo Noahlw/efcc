@@ -11,6 +11,14 @@ describe("scanner intent", () => {
     });
   });
 
+  test("accepts an event intent for the default Self scanner", () => {
+    expect(parseScannerIntent("?event=event-123")).toStrictEqual({
+      mode: "self",
+      eventId: "event-123",
+      malformed: false,
+    });
+  });
+
   test("accepts an Assisted event intent only for a safe opaque id", () => {
     expect(parseScannerIntent("?mode=assisted&event=event-123")).toStrictEqual({
       mode: "assisted",
@@ -19,12 +27,9 @@ describe("scanner intent", () => {
     });
   });
 
-  test("rejects malformed or cross-mode event intent", () => {
+  test("rejects malformed event intent", () => {
     expect(
       parseScannerIntent("?mode=assisted&event=bad%2Fscope").malformed
-    ).toBeTruthy();
-    expect(
-      parseScannerIntent("?mode=self&event=event-123").malformed
     ).toBeTruthy();
     expect(parseScannerIntent("?mode=unknown").malformed).toBeTruthy();
   });
