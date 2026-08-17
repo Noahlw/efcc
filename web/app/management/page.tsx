@@ -2,6 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 
+import { ApprovalDetail } from "@/lib/approval-detail";
+import { ApprovalQueue } from "@/lib/approval-queue";
 import { AppShell } from "@/lib/app-shell";
 import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
@@ -12,9 +14,18 @@ import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
 
 const ManagementModule = () => {
-  const module = useSearchParams().get("module");
+  const searchParams = useSearchParams();
+  const module = searchParams.get("module");
 
   switch (module) {
+    case "approvals": {
+      const requestId = searchParams.get("request");
+      return requestId ? (
+        <ApprovalDetail requestId={requestId} />
+      ) : (
+        <ApprovalQueue />
+      );
+    }
     case "attendance": {
       return <AttendanceOperatorPanel />;
     }

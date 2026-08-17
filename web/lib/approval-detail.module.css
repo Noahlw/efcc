@@ -1,0 +1,223 @@
+.page {
+  max-width: 720px;
+  padding-top: clamp(1.5rem, 4vh, 2.5rem);
+}
+
+.header {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  color: var(--accent-deep, #76231f);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.back:focus-visible,
+.approve:focus-visible,
+.reject:focus-visible,
+.textarea:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+.title {
+  margin: 0;
+  color: var(--ink, #171a1d);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.card {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised, #ffffff);
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.125rem;
+  border-bottom: 1px solid var(--line, #d6dcde);
+}
+
+.detailRow:last-child {
+  border-bottom: 0;
+}
+
+.label {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.value {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  color: var(--ink, #171a1d);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  justify-self: start;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.statusPending {
+  border-color: var(--line-strong, #aeb8bc);
+  background: var(--surface, #f4f5f3);
+  color: var(--ink, #171a1d);
+}
+
+.statusApproved {
+  border-color: var(--success-border, #b9cfbe);
+  background: var(--success-surface, #eef4ef);
+  color: var(--ink, #171a1d);
+}
+
+.statusRejected {
+  border-color: var(--error-border, #e5b4b0);
+  background: var(--error-surface, #fbeeed);
+  color: var(--error, #b3261e);
+}
+
+.actions {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.125rem;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised, #ffffff);
+}
+
+.noteField {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+  padding: 0.75rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.textarea[aria-invalid="true"] {
+  border-color: var(--error, #b3261e);
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--error, #b3261e);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.actionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.approve,
+.reject {
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border-radius: var(--radius-sm, 8px);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.approve {
+  border: 1px solid var(--accent, #9c302c);
+  background: var(--accent, #9c302c);
+  color: #fff;
+}
+
+.approve:hover:not(:disabled) {
+  background: var(--accent-deep, #76231f);
+  border-color: var(--accent-deep, #76231f);
+}
+
+.reject {
+  border: 1px solid var(--line-strong, #aeb8bc);
+  background: transparent;
+  color: var(--ink, #171a1d);
+}
+
+.reject:hover:not(:disabled) {
+  border-color: var(--ink, #171a1d);
+  background: var(--surface, #f4f5f3);
+}
+
+.approve:disabled,
+.reject:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.notice,
+.readOnly {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--success-border, #b9cfbe);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--success-surface, #eef4ef);
+  color: var(--ink, #171a1d);
+  font-size: 0.9375rem;
+}
+
+.readOnly {
+  margin-top: 1rem;
+}
+
+.loading {
+  color: var(--ink-muted, #59636a);
+}
+
+.error {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--error-border, #e5b4b0);
+  border-radius: var(--radius-md, 12px);
+  background: var(--error-surface, #fbeeed);
+  color: var(--error, #b3261e);
+  line-height: 1.6;
+}
+
+@media (max-width: 560px) {
+  .detailRow {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .actionButtons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

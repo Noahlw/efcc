@@ -17,6 +17,7 @@ export default defineProject({
       "lib/navigation-controller.test.ts",
       "lib/registration.test.tsx",
       "lib/approval-queue.test.tsx",
+      "lib/approval-detail.test.tsx",
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
       "lib/home.test.tsx",

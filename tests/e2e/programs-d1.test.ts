@@ -136,6 +136,24 @@ const COPY = {
   hubGoCourseManagement: "前往課程管理",
   hubGoCourseManagementHint:
     "課程 tab 內以管理模式選擇課程，再進入 Course Cockpit。",
+  // 087-02 (#319): registration approvals list + routable detail.
+  approvals: {
+    approvalsTitle: "註冊審批",
+    openDetail: "查看申請詳情",
+    approvalDetailTitle: "註冊審批 · 詳情",
+    backToApprovals: "返回註冊審批",
+    applicantName: "姓名",
+    applicantContact: "聯絡",
+    status: "狀態",
+    statusPending: "待審批",
+    statusApproved: "已核准",
+    statusRejected: "已拒絕",
+    approve: "核准",
+    reject: "拒絕",
+    decisionNote: "決定備註",
+    rejectionNoteRequired: "拒絕時必須填寫決定備註。",
+    decisionMade: "已處理申請。",
+  },
   managementDirectorySearchLabel: "搜尋可管理課程",
   managementScopeDepartment: "部門範圍",
   workspaceIdentity: "課程資料",
@@ -4297,5 +4315,162 @@ test.describe("HUB-01 Management Hub directory", () => {
         { programId: id, eventId }
       );
     }
+  });
+
+  test("approvals list opens a routable detail; approve/reject stay atomic and read-only", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const stamp = Date.now();
+    const approveUsername = `E2E_HUB_APR_${stamp}`;
+    const rejectUsername = `E2E_HUB_REJ_${stamp}`;
+    const approveName = `E2E Hub Approve ${stamp}`;
+    const rejectName = `E2E Hub Reject ${stamp}`;
+
+    // Two fresh pending registrations through the real register endpoint.
+    const created = await page.evaluate(
+      async ({ approveUsername, rejectUsername, approveName, rejectName }) => {
+        const register = async (username: string, name: string) => {
+          const response = await fetch("/api/v1/auth/register", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": `e2e-08702-${username}`,
+            },
+            body: JSON.stringify({
+              username,
+              password: `${username}-pw!1`,
+              name,
+              phone: "555-0199",
+            }),
+          });
+          return response.ok;
+        };
+        const okApprove = await register(approveUsername, approveName);
+        const okReject = await register(rejectUsername, rejectName);
+        const listResponse = await fetch("/api/v1/auth/registrations");
+        const body = (await listResponse.json()) as {
+          data?: { registrations?: { requestId: string; username: string }[] };
+        };
+        const rows = body.data?.registrations ?? [];
+        return {
+          okApprove,
+          okReject,
+          approveId:
+            rows.find((row) => row.username === approveUsername)?.requestId ??
+            "",
+          rejectId:
+            rows.find((row) => row.username === rejectUsername)?.requestId ??
+            "",
+        };
+      },
+      { approveUsername, rejectUsername, approveName, rejectName }
+    );
+    expect(created.okApprove, "approve-candidate must register").toBe(true);
+    expect(created.okReject, "reject-candidate must register").toBe(true);
+    const approveId = required("approve-candidate request id", created.approveId);
+    const rejectId = required("reject-candidate request id", created.rejectId);
+
+    // List: both pending rows render with routable detail links.
+    await page.goto("/management?module=approvals");
+    await expect(
+      page.getByRole("heading", { name: COPY.approvals.approvalsTitle })
+    ).toBeVisible();
+    await expect(page.getByText(approveName, { exact: true })).toBeVisible();
+    await expect(page.getByText(rejectName, { exact: true })).toBeVisible();
+    const approveLink = page.getByRole("link", {
+      name: new RegExp(`${COPY.approvals.openDetail} ${approveName}`, "u"),
+    });
+    await expect(approveLink).toHaveAttribute(
+      "href",
+      `/management?module=approvals&request=${approveId}`
+    );
+
+    // Deep-link straight into the detail (URL-addressable) and reload: the
+    // URL alone restores the same request within the session.
+    await page.goto(`/management?module=approvals&request=${approveId}`);
+    await expect(
+      page.getByRole("heading", { name: COPY.approvals.approvalDetailTitle })
+    ).toBeVisible();
+    await expect(page.getByText(approveName, { exact: true })).toBeVisible();
+    await expect(page.getByText(approveUsername, { exact: true })).toBeVisible();
+    await expect(page.getByText("555-0199", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(COPY.approvals.statusPending, { exact: true })
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText(COPY.approvals.statusPending, { exact: true })
+    ).toBeVisible();
+
+    // 核准 commits atomically: the detail flips to the read-only outcome.
+    await page.getByRole("button", { name: COPY.approvals.approve }).click();
+    await expect(
+      page.getByText(COPY.approvals.statusApproved, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.approvals.decisionMade, { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.approvals.approve })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.approvals.reject })
+    ).toHaveCount(0);
+
+    // Back-nav returns to the list, which no longer shows the decided row.
+    await page
+      .getByRole("link", { name: COPY.approvals.backToApprovals })
+      .click();
+    await expect(page).toHaveURL(/\/management\?module=approvals$/u);
+    await expect(page.getByText(approveName, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(rejectName, { exact: true })).toBeVisible();
+
+    // Reject path: the note is required — an empty attempt posts nothing.
+    await page.goto(`/management?module=approvals&request=${rejectId}`);
+    await expect(
+      page.getByRole("heading", { name: COPY.approvals.approvalDetailTitle })
+    ).toBeVisible();
+    await page.getByRole("button", { name: COPY.approvals.reject }).click();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: COPY.approvals.rejectionNoteRequired })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.approvals.statusPending, { exact: true })
+    ).toBeVisible();
+
+    // With the note, rejection commits atomically and stays viewable.
+    const note = "資料不完整，請補充聯絡方式。";
+    await page.getByLabel(COPY.approvals.decisionNote).fill(note);
+    await page.getByRole("button", { name: COPY.approvals.reject }).click();
+    await expect(
+      page.getByText(COPY.approvals.statusRejected, { exact: true })
+    ).toBeVisible();
+    await expect(page.getByText(note, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.approvals.approve })
+    ).toHaveCount(0);
+
+    // The decided request remains viewable read-only at the same URL after
+    // a reload (spec 087 US 7: past decisions stay auditable).
+    await page.reload();
+    await expect(
+      page.getByText(COPY.approvals.statusRejected, { exact: true })
+    ).toBeVisible();
+    await expect(page.getByText(note, { exact: true })).toBeVisible();
+
+    // Back-nav: list is intact and neither decided row reappears.
+    await page
+      .getByRole("link", { name: COPY.approvals.backToApprovals })
+      .click();
+    await expect(page).toHaveURL(/\/management\?module=approvals$/u);
+    await expect(page.getByText(approveName, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(rejectName, { exact: true })).toHaveCount(0);
   });
 });

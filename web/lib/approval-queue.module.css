@@ -68,10 +68,21 @@
 .refresh:focus-visible,
 .approve:focus-visible,
 .reject:focus-visible,
-.back:focus-visible {
+.back:focus-visible,
+.rejectNote textarea:focus-visible {
   outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
 }
+.detailLink {
+  color: var(--accent-deep, #76231f);
+  font-weight: 700;
+}
+
+.detailLink:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
 
 /* Restrained cinnabar notices (network error / decision result). */
 .notice {
@@ -161,6 +172,42 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+.rejectNote {
+  display: grid;
+  flex-basis: 100%;
+  gap: 0.4rem;
+  max-width: 28rem;
+}
+
+.rejectNote label {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.rejectNote textarea {
+  min-height: 5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.rejectNote textarea[aria-invalid="true"] {
+  border-color: var(--error, #b3261e);
+}
+
+.rejectNoteError {
+  margin: 0;
+  color: var(--error, #b3261e);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
 
 @media (max-width: 799.98px) {
   .actions {

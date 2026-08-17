@@ -179,6 +179,7 @@ export default {
             handleApprove,
             handleReject,
             handleListRegistrations,
+            handleRegistrationDetail,
             handleChangeUsername,
             handleChangePassword,
           } = await import("./lib/auth/handlers");
@@ -232,6 +233,16 @@ export default {
             request.method === "GET"
           ) {
             return handleListRegistrations(request, authEnv);
+          }
+          const registrationDetail = url.pathname.match(
+            /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)$/u
+          );
+          if (registrationDetail && request.method === "GET") {
+            return handleRegistrationDetail(
+              request,
+              authEnv,
+              registrationDetail.groups?.id ?? ""
+            );
           }
           if (
             url.pathname === "/api/v1/auth/admin-unlock" &&
