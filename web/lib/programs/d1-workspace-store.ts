@@ -39,6 +39,7 @@ import type {
   ProgramRow,
   ProgramUpdate,
   MemberOptionRow,
+  ManagementMemberSearchRow,
   ScheduleExceptionInput,
   ScheduleExceptionRow,
   ScheduleRuleInput,
@@ -317,6 +318,112 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(pattern, pattern, programId ?? null, programId ?? null, limit)
       .all<MemberOptionRow>();
     return result.results ?? [];
+  }
+
+  listManagedDepartmentIds(userId: string): Promise<string[]> {
+    if (!userId) {
+      return Promise.resolve([]);
+    }
+    return this.db
+      .prepare(
+        `SELECT department_id FROM department_managers
+          WHERE user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(userId)
+      .all<{ department_id: string }>()
+      .then((result) => (result.results ?? []).map((row) => row.department_id));
+  }
+
+  /**
+   * Member Directory search (087-04 #321). Church-wide when `departmentIds`
+   * is undefined; otherwise restricted to Active accounts with an Active
+   * enrollment in a program of one of the given departments. Each result
+   * row is flattened by department membership so the domain layer can
+   * assemble a stable read-only projection; department columns are null for
+   * accounts with no enrollment (or none in scope).
+   */
+  searchManagementMembers(
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ): Promise<ManagementMemberSearchRow[]> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const scoped = departmentIds !== undefined;
+    if (scoped && departmentIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    const placeholders = scoped
+      ? departmentIds.map(() => "?").join(", ")
+      : "";
+    const scopePredicate = scoped
+      ? `AND EXISTS (
+           SELECT 1
+             FROM enrollments scoped_enrollments
+             JOIN programs scoped_programs
+               ON scoped_programs.program_id = scoped_enrollments.program_id
+            WHERE scoped_enrollments.member_user_id = accounts.user_id
+              AND scoped_enrollments.status = 'Active'
+              AND scoped_programs.department_id IN (${placeholders})
+         )`
+      : "";
+    const departmentPredicate = scoped
+      ? `AND departments.department_id IN (${placeholders})`
+      : "";
+    return this.db
+      .prepare(
+        `WITH matched_accounts AS (
+           SELECT accounts.user_id
+             FROM accounts
+            WHERE accounts.account_status = 'Active'
+              AND (
+                accounts.name LIKE ? ESCAPE '\\'
+                OR accounts.username LIKE ? ESCAPE '\\'
+                OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+              )
+              ${scopePredicate}
+            ORDER BY accounts.name ASC, accounts.username ASC
+            LIMIT ?
+         )
+         SELECT DISTINCT
+                accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM matched_accounts
+           JOIN accounts ON accounts.user_id = matched_accounts.user_id
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          ${departmentPredicate}
+          ORDER BY accounts.name ASC,
+                   accounts.username ASC,
+                   departments.display_order ASC,
+                   departments.name ASC`
+      )
+      .bind(
+        ...(scoped
+          ? [
+              pattern,
+              pattern,
+              pattern,
+              ...departmentIds,
+              normalizedLimit,
+              ...departmentIds,
+            ]
+          : [pattern, pattern, pattern, normalizedLimit])
+      )
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
   }
 
   private static programUpdateParts(update: ProgramUpdate): {

@@ -17,8 +17,8 @@ import type {
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
 
-import type { ProgramsManagementAccess } from "./programs-access";
 import type { ManagementHubView } from "./hub-types";
+import type { ProgramsManagementAccess } from "./programs-access";
 
 // Management Hub directory (087-01 #310): the worker projection is the single
 // source for group/row copy; the browser renders it verbatim. Wire types are
@@ -109,10 +109,7 @@ export interface ManagementDirectory {
   departments: Department[];
   programs: ManagementProgram[];
 }
-export type AccountPermissionRoleKey =
-  | "admin"
-  | "department-manager"
-  | "staff";
+export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
 
 export interface AccountPermissionAccount {
   userId: string;
@@ -135,7 +132,6 @@ export interface AccountPermissionsView {
   accounts: AccountPermissionAccount[];
   roles: AccountPermissionRole[];
 }
-
 
 export interface ManagementCockpitNextEvent {
   event_id: string;
@@ -474,6 +470,22 @@ export interface MemberOption {
   user_id: string;
   name: string;
   username: string;
+}
+/** Server-scoped Member Directory result (Management Hub, Spec 087 US 13-15). */
+export type MemberDirectoryRole = "Admin" | "Staff" | "Member";
+
+export interface MemberDirectoryDepartment {
+  id: string;
+  name: string;
+}
+
+export interface MemberDirectoryMember {
+  userId: string;
+  name: string;
+  phone: string | null;
+  role: MemberDirectoryRole;
+  status: "Active";
+  departments: MemberDirectoryDepartment[];
 }
 
 export interface GenerateResult {
@@ -828,9 +840,14 @@ export function getManagementHub(): Promise<ManagementHubView> {
  * reflected on the next load.
  */
 export function getAccountPermissions(): Promise<AccountPermissionsView> {
-  return programsFetch("/api/v1/programs/account-permissions", "GET", undefined, {
-    cache: "no-store",
-  });
+  return programsFetch(
+    "/api/v1/programs/account-permissions",
+    "GET",
+    undefined,
+    {
+      cache: "no-store",
+    }
+  );
 }
 
 /** GET /api/v1/programs/catalog — narrow participant directory projection. */
@@ -996,6 +1013,17 @@ export function searchMemberOptions(
     `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
     "GET"
   );
+}
+/** GET /api/v1/programs/members?q=...&limit=... — server-scoped directory. */
+export function searchManagementMembers(
+  query: string,
+  options?: { limit?: number }
+): Promise<{ members: MemberDirectoryMember[] }> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */

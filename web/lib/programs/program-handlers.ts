@@ -618,6 +618,53 @@ export async function handleListManagementDirectory(
   return jsonResponse(200, directory, requestId);
 }
 
+/**
+ * GET /api/v1/programs/members?q=... — Member Directory search (Spec 087
+ * US 13-15 / ticket 087-04 #321).
+ *
+ * Admin/Staff resolve church-wide over all Active accounts; a Department
+ * Manager resolves only over members with an Active enrollment in a program
+ * of one of their assigned departments (server-side scope enforcement);
+ * anyone else is denied (403). The search requires at least two characters
+ * and returns at most `limit` (default 20, max 50) read-only member
+ * projections whose department memberships render detail inline.
+ */
+export async function handleSearchManagementMembers(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const rawLimit = url.searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 20;
+  const { workspace } = await getModule(env);
+  try {
+    const members = await workspace.searchManagementMembers(
+      ctxFrom(auth.account),
+      query,
+      limit
+    );
+    return jsonResponse(200, { members }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
 export async function handleGetManagementAttention(
   request: Request,

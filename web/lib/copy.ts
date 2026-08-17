@@ -358,6 +358,33 @@ export const COPY = {
     retry: "重試連接",
     forbidden: "您沒有權限執行此操作。",
   },
+  // Member Directory (Spec 087 US 13-15 / ticket 087-04 #321). Church-wide
+  // search for Admin/Staff, department-scoped for Department Managers, with
+  // the member detail (contact, role, department memberships) rendered inline
+  // from a selected result — no separate commit step. Copy is verbatim from
+  // the canonical prototype's member-directory and participant-detail screens.
+  managementMembers: {
+    membersTitle: "參與者",
+    membersLead: "搜尋並查看會員資料。",
+    searchLabel: "搜尋會員",
+    searchPlaceholder: "搜尋會員姓名、登入名稱或電話",
+    noResults: "找不到符合的會員",
+    emptyHint: "請嘗試其他姓名、登入名稱或電話。",
+    memberDetail: "參與者資料",
+    memberContact: "聯絡",
+    memberRole: "角色",
+    memberDepartments: "部門",
+    detailUsername: "登入名稱",
+    detailPhone: "電話",
+    detailStatus: "狀態",
+    detailUnavailable: "未提供",
+    noDepartments: "未加入任何部門",
+    backToManagement: "返回管理工作",
+    loading: "載入中…",
+    loadError: "暫時無法搜尋會員，請稍後再試。",
+    forbidden: "您沒有權限執行此操作。",
+    retry: "重試連接",
+  },
   // System Settings hub (Spec 084 US 24-26 / ticket 084-04). Exactly three
   // rows in the locked order; the 簽到設定 and 時區 destinations are pure
   // read-only informational screens — no editable fields anywhere (regression

@@ -302,6 +302,20 @@ export interface AccountPermissionsView {
   roles: AccountPermissionRole[];
 }
 
+/**
+ * One Member Directory result (087-04 #321 / Spec 087 US 13-15): identity,
+ * contact, role, and the departments of the member's Active enrollments
+ * (restricted to the actor's managed departments for a Department Manager).
+ */
+export interface ManagementMemberView {
+  userId: string;
+  name: string;
+  phone: string | null;
+  role: string;
+  status: string;
+  departments: Array<{ id: string; name: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // Management Hub directory (087-01 #310). Row/group copy comes from the
 // centralized COPY.management block (web/lib/copy.ts) — the worker projects
@@ -3518,6 +3532,64 @@ export class DepartmentWorkspace {
     programId?: string
   ): Promise<MemberOptionRow[]> {
     return this.store.searchActiveMembers(query, limit, programId);
+  }
+
+  /**
+   * GET /api/v1/programs/members — Member Directory search (Spec 087 US
+   * 13-15 / ticket 087-04 #321).
+   *
+   * Admin/Staff roles resolve church-wide over all Active accounts; a
+   * Department Manager (any role holding active department_managers grants)
+   * resolves only over members with an Active enrollment in a program of one
+   * of their assigned departments. Anyone else is denied (403) — an
+   * unrelated department's enrolled members are never visible. The browser
+   * never sees a scope branch; this projection is the only surface.
+   */
+  async searchManagementMembers(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number
+  ): Promise<ManagementMemberView[]> {
+    let departmentIds: readonly string[] | undefined;
+    if (!(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, null))) {
+      departmentIds = await this.store.listManagedDepartmentIds(
+        ctx.actorUserId
+      );
+      if (departmentIds.length === 0) {
+        throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+      }
+    }
+    const rows = await this.store.searchManagementMembers(
+      query,
+      limit,
+      departmentIds
+    );
+    const members = new Map<string, ManagementMemberView>();
+    for (const row of rows) {
+      let member = members.get(row.user_id);
+      if (!member) {
+        member = {
+          userId: row.user_id,
+          name: row.name,
+          phone: row.phone,
+          role: row.role,
+          status: row.account_status,
+          departments: [],
+        };
+        members.set(row.user_id, member);
+      }
+      if (
+        row.department_id !== null &&
+        row.department_name !== null &&
+        !member.departments.some(({ id }) => id === row.department_id)
+      ) {
+        member.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    return [...members.values()];
   }
 
   getEnrollment(
