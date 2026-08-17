@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/complexity eslint/no-use-before-define eslint/require-unicode-regexp eslint/prefer-named-capture-group react/function-component-definition react-hooks/exhaustive-deps jsx-a11y/prefer-tag-over-role -- single-page CMS editor keeps prototype field wiring together. */
 "use client";
 
 import Link from "next/link";
@@ -9,12 +10,14 @@ import { COPY } from "@/lib/copy";
 import { getHome } from "@/lib/home-api";
 import type { HomeData } from "@/lib/home-api";
 import {
+  getFeaturedEventPreview,
   getHomeContent,
   listHomeAudit,
   publishHomeContent,
   saveHomeDraft,
 } from "@/lib/home-cms-api";
 import type {
+  FeaturedEventPreview,
   HomeAuditItem,
   HomeContent,
   HomeContentStatus,
@@ -29,7 +32,7 @@ import styles from "./home-cms-editor.module.css";
 
 const copy = COPY.homeEditor;
 
-type EditorForm = {
+interface EditorForm {
   contentId?: string;
   version?: number;
   templateType: HomeTemplateType;
@@ -49,15 +52,15 @@ type EditorForm = {
   updatedAt: string | null;
   publishedBy: string | null;
   publishedAt: string | null;
-};
+}
 
 type LoadState = "loading" | "ready" | "error";
 type Operation = "idle" | "saving" | "publishing";
 type PreviewViewport = "phone" | "desktop";
 
-type ConflictProblem = {
+interface ConflictProblem {
   latest?: HomeContent;
-};
+}
 
 const emptyForm: EditorForm = {
   templateType: "A",
@@ -259,7 +262,7 @@ function latestFromConflict(error: unknown): HomeContent | null {
   if (!(error instanceof RpcError)) {
     return null;
   }
-  const latest = (error.problem as ConflictProblem).latest;
+  const { latest } = error.problem as ConflictProblem;
   return latest && typeof latest === "object" ? latest : null;
 }
 
@@ -268,6 +271,16 @@ function previewEventLabel(home: HomeData | null): string {
     return copy.fallbackDescription;
   }
   return `${home.featuredEvent.title} · ${formatHkDateTime(home.featuredEvent.startsAt)}`;
+}
+
+function previewFeaturedEventLabel(
+  event: FeaturedEventPreview | null,
+  home: HomeData | null
+): string {
+  if (event) {
+    return `${event.title} · ${formatHkDateTime(event.startsAt)}`;
+  }
+  return previewEventLabel(home);
 }
 
 export function HomeContentEditor() {
@@ -289,6 +302,8 @@ export function HomeContentEditor() {
   const [previewViewport, setPreviewViewport] =
     useState<PreviewViewport>("phone");
   const [previewHome, setPreviewHome] = useState<HomeData | null>(null);
+  const [previewFeaturedEvent, setPreviewFeaturedEvent] =
+    useState<FeaturedEventPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const loadEditor = useCallback(async () => {
@@ -337,13 +352,28 @@ export function HomeContentEditor() {
     }
     let active = true;
     setPreviewLoading(true);
-    void getHome()
-      .then((data) => {
-        if (active) {
-          setPreviewHome(data);
+    const featuredEventId = form.featuredEventId.trim();
+    const loadPreview = async () => {
+      try {
+        const homePromise = getHome();
+        if (form.templateType === "A" && featuredEventId) {
+          const [home, featured] = await Promise.all([
+            homePromise,
+            getFeaturedEventPreview(featuredEventId).catch(() => null),
+          ]);
+          if (!active) {
+            return;
+          }
+          setPreviewHome(home);
+          setPreviewFeaturedEvent(featured);
+          return;
         }
-      })
-      .catch((error: unknown) => {
+        const home = await homePromise;
+        if (active) {
+          setPreviewHome(home);
+          setPreviewFeaturedEvent(null);
+        }
+      } catch (error: unknown) {
         if (active && isAuthRequired(error)) {
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
@@ -353,17 +383,19 @@ export function HomeContentEditor() {
         }
         if (active) {
           setPreviewHome(null);
+          setPreviewFeaturedEvent(null);
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setPreviewLoading(false);
         }
-      });
+      }
+    };
+    void loadPreview();
     return () => {
       active = false;
     };
-  }, [previewOpen, router]);
+  }, [previewOpen, router, form.templateType, form.featuredEventId]);
 
   const updateField = <K extends keyof EditorForm>(
     field: K,
@@ -845,7 +877,7 @@ export function HomeContentEditor() {
           </form>
 
           {notice && !conflictLatest && (
-            <output className={styles.notice} role="status" aria-live="polite">
+            <output className={styles.notice} aria-live="polite">
               {notice}
             </output>
           )}
@@ -903,10 +935,13 @@ export function HomeContentEditor() {
                   </span>
                   {form.templateType === "A" ? (
                     <>
-                      <h3>
-                        {previewHome?.featuredEvent?.title || copy.templateA}
-                      </h3>
-                      <p>{previewEventLabel(previewHome)}</p>
+                      <h3>{previewFeaturedEvent?.title || copy.templateA}</h3>
+                      <p>
+                        {previewFeaturedEventLabel(
+                          previewFeaturedEvent,
+                          previewHome
+                        )}
+                      </p>
                       <span className={styles.previewMeta}>
                         {form.featuredEventId || copy.fallbackDescription}
                       </span>

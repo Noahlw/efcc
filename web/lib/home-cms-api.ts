@@ -71,6 +71,17 @@ export interface HomeAuditItem {
   templateType: HomeTemplateType;
 }
 
+export interface FeaturedEventPreview {
+  eventId: string;
+  programId: string;
+  programTitle: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  status: string;
+}
+
 interface SuccessEnvelope<T> {
   requestId: string;
   data: T;
@@ -182,6 +193,16 @@ export function publishHomeContent(
 export function listHomeAudit(limit = 25): Promise<{ items: HomeAuditItem[] }> {
   return homeCmsFetch<{ items: HomeAuditItem[] }>(
     `/api/v1/home/audit?limit=${encodeURIComponent(String(limit))}`,
+    "GET"
+  );
+}
+
+/** GET /api/v1/home/cms/featured-event/:eventId — resolve a draft featured event for preview. */
+export function getFeaturedEventPreview(
+  eventId: string
+): Promise<FeaturedEventPreview> {
+  return homeCmsFetch<FeaturedEventPreview>(
+    `/api/v1/home/cms/featured-event/${encodeURIComponent(eventId)}`,
     "GET"
   );
 }
