@@ -98,6 +98,9 @@ import type {
   ProgramLeaderRow,
   ManagementAttentionEventRow,
   NotificationReadStateInput,
+  ParticipantNoticeCreateInput,
+  ParticipantNoticeKind,
+  ParticipantNoticeRow,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -217,6 +220,39 @@ export interface ManagementNotificationsView {
   unread_count: number;
   has_more: boolean;
 }
+
+// 085-07 (#324) — participant Notices. The wire shape omits the member's own
+// user id (the API is strictly self-scoped); read_at/created_at are epoch
+// milliseconds. Notices older than NOTICE_RETENTION_MS are never served.
+export type { ParticipantNoticeKind } from "./workspace-store";
+
+export interface ParticipantNoticeView {
+  notice_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface ParticipantNoticesView {
+  notices: ParticipantNoticeView[];
+  unread_count: number;
+}
+
+export interface CreateParticipantNoticeInput {
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id?: string | null;
+  event_id?: string | null;
+  read_at?: number | null;
+}
+
+export const NOTICE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export const MANAGEMENT_ATTENTION_LIMIT = 5;
 export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
@@ -1119,6 +1155,70 @@ export class DepartmentWorkspace {
     );
   }
 
+  /**
+   * 085-07 (#324) — list the actor's participant Notices, newest-first,
+   * within the 90-day retention window. Strictly self-scoped: only rows with
+   * member_user_id === ctx.actorUserId are ever returned, and a caller
+   * targeting another member is denied.
+   */
+  async listParticipantNotices(
+    ctx: AuthorizationContext,
+    memberUserId: string
+  ): Promise<ParticipantNoticesView> {
+    if (memberUserId !== ctx.actorUserId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const rows = await this.store.listParticipantNotices(
+      ctx.actorUserId,
+      Date.now() - NOTICE_RETENTION_MS
+    );
+    const notices = rows.map((row) => this.participantNoticeView(row));
+    return {
+      notices,
+      unread_count: notices.filter((notice) => notice.read_at === null).length,
+    };
+  }
+
+  /** 085-07 (#324) — idempotently mark every unread notice of the actor as read. */
+  async markAllParticipantNoticesRead(
+    ctx: AuthorizationContext,
+    memberUserId: string
+  ): Promise<number> {
+    if (memberUserId !== ctx.actorUserId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    return this.store.markAllParticipantNoticesRead(
+      ctx.actorUserId,
+      Date.now()
+    );
+  }
+
+  /**
+   * 085-07 (#324) — create one participant notice for a member. Admin/Staff
+   * role gate (like the other church-wide admin operations); the notice is
+   * created unread unless the caller pins read_at.
+   */
+  async createParticipantNotice(
+    ctx: AuthorizationContext,
+    input: CreateParticipantNoticeInput
+  ): Promise<ParticipantNoticeView> {
+    if (ctx.actorRole !== ROLE.ADMIN && ctx.actorRole !== ROLE.STAFF) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const row = await this.store.createParticipantNotice({
+      notice_id: crypto.randomUUID(),
+      member_user_id: input.member_user_id,
+      kind: input.kind,
+      title: input.title,
+      body: input.body,
+      program_id: input.program_id ?? null,
+      event_id: input.event_id ?? null,
+      read_at: input.read_at ?? null,
+      created_at: Date.now(),
+    });
+    return this.participantNoticeView(row);
+  }
+
   async getManagementProgram(
     ctx: AuthorizationContext,
     id: string
@@ -2012,6 +2112,19 @@ export class DepartmentWorkspace {
       description: row.description,
       lifecycle: row.lifecycle,
       display_order: row.display_order,
+    };
+  }
+
+  private participantNoticeView(row: ParticipantNoticeRow): ParticipantNoticeView {
+    return {
+      notice_id: row.notice_id,
+      kind: row.kind,
+      title: row.title,
+      body: row.body,
+      program_id: row.program_id,
+      event_id: row.event_id,
+      read_at: row.read_at,
+      created_at: row.created_at,
     };
   }
 

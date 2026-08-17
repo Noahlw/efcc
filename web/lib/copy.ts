@@ -266,6 +266,19 @@ export const COPY = {
     permissionsHeading: "權限與角色管理",
     placeholder: "內容建置中。",
   },
+  notices: {
+    noticesTitle: "通知",
+    noticesLead: "最新消息與報名狀態。",
+    noticesLoading: "正在載入通知…",
+    noticesEmpty: "暫時沒有通知",
+    noticesEmptyHint: "有新消息時會在這裡顯示。",
+    noticesMarkAllRead: "全部標示已讀",
+    noticesMarkedAllRead: "已將全部通知標示為已讀",
+    noticesUnread: "未讀",
+    noticesListLabel: "通知清單",
+    noticesRetry: "重試載入通知",
+    noticesLoadError: "未能載入通知。",
+  },
   // Management Hub directory copy (Spec 087 US 1-3, 22). The group/row
   // labels are the single source for the server-side hub projection
   // (`/api/v1/programs/hub`) and the client renders exactly what the

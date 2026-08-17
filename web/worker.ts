@@ -356,6 +356,9 @@ export default {
         handleAssignProgramLeader,
         handleRevokeProgramLeader,
         handleListProgramLeaders,
+        handleListParticipantNotices,
+        handleMarkParticipantNoticesRead,
+        handleCreateParticipantNotice,
       } = await import("./lib/programs/program-handlers");
 
       if (
@@ -402,6 +405,24 @@ export default {
         request.method === "POST"
       ) {
         return handleMarkManagementNotificationsRead(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notices" &&
+        request.method === "GET"
+      ) {
+        return handleListParticipantNotices(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notices/read-all" &&
+        request.method === "POST"
+      ) {
+        return handleMarkParticipantNoticesRead(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notices" &&
+        request.method === "POST"
+      ) {
+        return handleCreateParticipantNotice(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/catalog" &&
