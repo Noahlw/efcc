@@ -323,6 +323,24 @@ const COPY = {
   settingsSaved: "課程設定已儲存。",
   eventAvailabilityConfirmBody:
     "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
+  // 087-03 Account Permissions matrix (mirrors COPY.permissions).
+  permissionsTitle: "帳戶與權限",
+  permissionsLead:
+    "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
+  accountsSection: "管理員帳戶",
+  rolesSection: "角色定義",
+  accountName: "姓名",
+  accountRole: "角色",
+  accountDepartment: "部門",
+  roleAdmin: "管理員",
+  roleAdminScope: "全部範圍",
+  roleDepartmentManager: "部門管理者",
+  roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
+  roleStaff: "同工",
+  roleStaffScope: "部門範圍內協助工作",
+  stateAssigned: "已設",
+  stateAssignable: "可指派",
+  backToSettings: "設定",
 };
 
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
@@ -4454,5 +4472,201 @@ test.describe("HUB-01 Management Hub directory", () => {
     await expect(page).toHaveURL(/\/management\?module=approvals$/u);
     await expect(page.getByText(approveName, { exact: true })).toHaveCount(0);
     await expect(page.getByText(rejectName, { exact: true })).toHaveCount(0);
+  });
+});
+
+// 087-03 (#320): Account Permissions real matrix — real elevated accounts
+// (Admin / Staff / Staff-with-DM-grant) with role + department context, the
+// fixed three role definitions with live assignment states (角色變更會即時反映),
+// and the server-side DM denial asserted by direct API call — the DM-only
+// fixture (Member with a grant) exercises the endpoint itself, never
+// client-side hiding alone. A Member DM grant stays scoped access and never
+// enters this church-wide matrix (worker contract, migration 0013).
+test.describe("PERM-01 Account Permissions matrix", () => {
+  test("Admin sees the real matrix; a Staff DM grant reflects immediately; the DM-only fixture is denied server-side", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const departmentId = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/programs/departments");
+      const body = (await res.json()) as {
+        data?: { departments?: { department_id: string; code: string }[] };
+      };
+      return (
+        body.data?.departments?.find((d) => d.code === "E2E_DEMO_MINISTRY")
+          ?.department_id ?? null
+      );
+    });
+    const deptId = required(
+      "E2E_DEMO_MINISTRY department id",
+      departmentId ?? undefined
+    );
+
+    const revokeManagerGrant = (userId: string) =>
+      page.evaluate(
+        async ({ deptId, userId }) => {
+          const listRes = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers`
+          );
+          const listBody = (await listRes.json()) as {
+            data?: { managers?: { user_id: string }[] };
+          };
+          const hasUser = (listBody.data?.managers ?? []).some(
+            (manager) => manager.user_id === userId
+          );
+          if (hasUser) {
+            await fetch(
+              `/api/v1/programs/departments/${deptId}/managers/${userId}/revoke`,
+              { method: "POST" }
+            );
+          }
+        },
+        { deptId, userId }
+      );
+
+    const grantManager = (userId: string) =>
+      page.evaluate(
+        async ({ deptId, userId }) => {
+          const res = await fetch(
+            `/api/v1/programs/departments/${deptId}/managers`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: userId }),
+            }
+          );
+          return res.status;
+        },
+        { deptId, userId }
+      );
+
+    try {
+      // Order-independent baseline: no active grants for either fixture.
+      await revokeManagerGrant(DEV_STAFF.userId);
+      await revokeManagerGrant(DEV_MEMBER.userId);
+
+      // Admin opens the matrix: every elevated fixture is listed with role +
+      // department context; no grants at baseline, so the department cell
+      // falls back to the role scope.
+      await page.goto("/management?module=permissions");
+      await expect(
+        page.getByRole("heading", { name: COPY.permissionsTitle })
+      ).toBeVisible();
+      await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
+
+      const table = page.getByRole("table", { name: COPY.accountsSection });
+      await expect(table).toBeVisible();
+      await expect(
+        table.getByRole("columnheader", { name: COPY.accountName })
+      ).toBeVisible();
+      await expect(
+        table.getByRole("columnheader", { name: COPY.accountRole })
+      ).toBeVisible();
+      await expect(
+        table.getByRole("columnheader", { name: COPY.accountDepartment })
+      ).toBeVisible();
+      await expect(
+        table.getByRole("rowheader", { name: "E2E Admin", exact: true })
+      ).toBeVisible();
+      await expect(
+        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
+      ).toBeVisible();
+      // A Member (DM grant or not) is never an elevated matrix account.
+      await expect(
+        table.getByRole("rowheader", { name: "E2E Member", exact: true })
+      ).toHaveCount(0);
+
+      // Fixed role definitions: exactly three, each with scope + state.
+      const rolesRegion = page.getByRole("region", {
+        name: COPY.rolesSection,
+      });
+      await expect(rolesRegion).toBeVisible();
+      await expect(rolesRegion.locator("li")).toHaveCount(3);
+      await expect(rolesRegion.getByText(COPY.roleAdmin)).toBeVisible();
+      await expect(rolesRegion.getByText(COPY.roleAdminScope)).toBeVisible();
+      await expect(
+        rolesRegion.getByText(COPY.roleDepartmentManager)
+      ).toBeVisible();
+      await expect(
+        rolesRegion.getByText(COPY.roleDepartmentManagerScope)
+      ).toBeVisible();
+      await expect(rolesRegion.getByText(COPY.roleStaff)).toBeVisible();
+      await expect(rolesRegion.getByText(COPY.roleStaffScope)).toBeVisible();
+      // Baseline states: the Admin + Staff fixtures hold their roles; the
+      // department-manager role has no holder yet -> 可指派.
+      await expect(
+        rolesRegion.getByText(COPY.stateAssigned)
+      ).toHaveCount(2);
+      await expect(
+        rolesRegion.getByText(COPY.stateAssignable)
+      ).toHaveCount(1);
+
+      // Grant the STAFF fixture Department Manager on the demo department:
+      // the matrix reflects the change on the next load (即時反映) — the
+      // account projects as 部門管理者 with its real department context.
+      expect(await grantManager(DEV_STAFF.userId)).toBe(200);
+
+      await page.reload();
+      await expect(
+        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
+      ).toBeVisible();
+      await expect(
+        table.getByText("E2E_DEMO_示範事工", { exact: true })
+      ).toBeVisible();
+      await expect(
+        table.getByText(COPY.roleDepartmentManager).first()
+      ).toBeVisible();
+      // Every role now has a holder: three 已設, no 可指派.
+      await expect(
+        rolesRegion.getByText(COPY.stateAssigned)
+      ).toHaveCount(3);
+      await expect(
+        rolesRegion.getByText(COPY.stateAssignable)
+      ).toHaveCount(0);
+
+      // Revoke: the Staff account returns to 同工 and the DM role to 可指派.
+      await revokeManagerGrant(DEV_STAFF.userId);
+      await page.reload();
+      await expect(
+        table.getByText(COPY.roleDepartmentManager)
+      ).toHaveCount(0);
+      await expect(
+        rolesRegion.getByText(COPY.stateAssignable)
+      ).toHaveCount(1);
+
+      // The DM-only fixture is denied server-side: after granting the MEMBER
+      // fixture a department manager role, the direct endpoint call returns
+      // 403 FORBIDDEN — never client-side hiding alone.
+      expect(await grantManager(DEV_MEMBER.userId)).toBe(200);
+      await clearSession(page);
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      const denied = await page.evaluate(async () => {
+        const res = await fetch("/api/v1/programs/account-permissions");
+        return { status: res.status, body: await res.json() };
+      });
+      expect(denied.status).toBe(403);
+      expect(denied.body).toMatchObject({ code: "FORBIDDEN" });
+    } finally {
+      // Failure-safe restoration: re-authenticate as Admin and revoke both
+      // grants so the fixtures end exactly as they started.
+      await clearSession(page);
+      await loginAs(
+        page,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      await revokeManagerGrant(DEV_STAFF.userId);
+      await revokeManagerGrant(DEV_MEMBER.userId);
+      await clearSession(page);
+    }
   });
 });

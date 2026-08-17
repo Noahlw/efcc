@@ -21,9 +21,9 @@ export function SettingsHub() {
         <ul className={`${styles.card} ${styles.list}`}>
           <li className={styles.listItem}>
             <SettingsRow
+              href="/management?module=permissions"
               label={COPY.settings.accountsPermissionsRow}
               description={COPY.settings.accountsPermissionsRowHint}
-              showChevron
             />
           </li>
           <li className={styles.listItem}>

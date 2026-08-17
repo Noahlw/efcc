@@ -271,6 +271,38 @@ export interface ManagementAccessView {
 }
 
 // ---------------------------------------------------------------------------
+// Account Permissions matrix (087-03 #320 / Spec 087 US 9-12). The Worker
+// projects every elevated account (Admin / Staff-with-DM-grant / Staff) with
+// name, effective role, and department context; role labels/scopes come from
+// the centralized COPY.permissions block and the browser renders the
+// projection verbatim — never a client-side role branch.
+// ---------------------------------------------------------------------------
+
+/** Effective elevated role key; mirrors roles[].key. */
+export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
+
+export interface AccountPermissionAccount {
+  userId: string;
+  name: string;
+  role: AccountPermissionRoleKey;
+  /** Active Department Manager grant context; empty when none. */
+  departments: Array<{ id: string; name: string }>;
+}
+
+export interface AccountPermissionRole {
+  key: AccountPermissionRoleKey;
+  label: string;
+  scope: string;
+  /** 已設 when ≥1 projected account holds the role, 可指派 otherwise. */
+  assignmentState: "assigned" | "assignable";
+}
+
+export interface AccountPermissionsView {
+  accounts: AccountPermissionAccount[];
+  roles: AccountPermissionRole[];
+}
+
+// ---------------------------------------------------------------------------
 // Management Hub directory (087-01 #310). Row/group copy comes from the
 // centralized COPY.management block (web/lib/copy.ts) — the worker projects
 // it verbatim and the browser renders the projection as-is; no client-side
@@ -1262,6 +1294,80 @@ export class DepartmentWorkspace {
       departmentScopes,
       programScopes,
     };
+  }
+
+  /**
+   * GET /api/v1/programs/account-permissions — Account Permissions matrix
+   * (Spec 087 US 9-12 / ticket 087-03 #320).
+   *
+   * Admin/Staff-only read: the capability authorizer denies Department
+   * Managers and Members server-side (migration 0013 seeds
+   * `account.permissions.read` for Admin + Staff only; a DM grant is an
+   * effective scoped profile, never a role row). The projection lists every
+   * admin-capable account — Admin, plain Staff, and Staff with an active
+   * Department Manager grant — with its effective role key
+   * (admin / department-manager / staff) and department context, plus the
+   * fixed three role definitions with a real assignment-state indicator
+   * (已設 when ≥1 projected account holds the role, 可指派 otherwise). Role
+   * labels/scopes come from the centralized COPY.permissions block; the
+   * browser renders the projection verbatim.
+   */
+  async getAccountPermissions(
+    ctx: AuthorizationContext
+  ): Promise<AccountPermissionsView> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_PERMISSIONS_READ);
+    const rows = await this.store.listElevatedAccounts();
+
+    const accountsByUser = new Map<string, AccountPermissionAccount>();
+    for (const row of rows) {
+      let account = accountsByUser.get(row.user_id);
+      if (!account) {
+        account = {
+          userId: row.user_id,
+          name: row.name,
+          role:
+            row.role === ROLE.ADMIN
+              ? "admin"
+              : row.department_id !== null
+                ? "department-manager"
+                : "staff",
+          departments: [],
+        };
+        accountsByUser.set(row.user_id, account);
+      }
+      if (row.department_id !== null && row.department_name !== null) {
+        account.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    const accounts = [...accountsByUser.values()];
+    const heldRoles = new Set(accounts.map((account) => account.role));
+    const permissionsCopy = COPY.permissions;
+    const roles: AccountPermissionRole[] = [
+      {
+        key: "admin",
+        label: permissionsCopy.roleAdmin,
+        scope: permissionsCopy.roleAdminScope,
+        assignmentState: heldRoles.has("admin") ? "assigned" : "assignable",
+      },
+      {
+        key: "department-manager",
+        label: permissionsCopy.roleDepartmentManager,
+        scope: permissionsCopy.roleDepartmentManagerScope,
+        assignmentState: heldRoles.has("department-manager")
+          ? "assigned"
+          : "assignable",
+      },
+      {
+        key: "staff",
+        label: permissionsCopy.roleStaff,
+        scope: permissionsCopy.roleStaffScope,
+        assignmentState: heldRoles.has("staff") ? "assigned" : "assignable",
+      },
+    ];
+    return { accounts, roles };
   }
 
   /**

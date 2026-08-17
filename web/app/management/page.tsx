@@ -12,6 +12,7 @@ import { CheckinSettings } from "./checkin-settings";
 import { ManagementHub } from "./management-hub";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
+import { PermissionsPanel } from "./permissions-panel";
 
 const ManagementModule = () => {
   const searchParams = useSearchParams();
@@ -25,6 +26,9 @@ const ManagementModule = () => {
       ) : (
         <ApprovalQueue />
       );
+    }
+    case "permissions": {
+      return <PermissionsPanel />;
     }
     case "attendance": {
       return <AttendanceOperatorPanel />;

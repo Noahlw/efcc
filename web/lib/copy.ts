@@ -327,11 +327,42 @@ export const COPY = {
     decisionMade: "已處理申請。",
     loading: "載入中…",
   },
+  // Account Permissions real matrix (Spec 087 US 9-12 / ticket 087-03 #320).
+  // Admin/Staff-only read surface at /management?module=permissions: the
+  // server projects every elevated account (Admin / Staff-with-DM-grant /
+  // Staff) with name, role, and department context — never a client-side role
+  // branch — and Department Managers are denied server-side (403/FORBIDDEN).
+  // Role/scope/state tokens are the fixed reference vocabulary from the
+  // canonical prototype (onAccountPermissions); backToSettings deliberately
+  // mirrors settings.settingsBackToHub.
+  permissions: {
+    permissionsTitle: "帳戶與權限",
+    permissionsLead:
+      "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
+    accountsSection: "管理員帳戶",
+    rolesSection: "角色定義",
+    accountName: "姓名",
+    accountRole: "角色",
+    accountDepartment: "部門",
+    roleAdmin: "管理員",
+    roleAdminScope: "全部範圍",
+    roleDepartmentManager: "部門管理者",
+    roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
+    roleStaff: "同工",
+    roleStaffScope: "部門範圍內協助工作",
+    stateAssigned: "已設",
+    stateAssignable: "可指派",
+    backToSettings: "設定",
+    loading: "載入中…",
+    loadError: "帳戶與權限暫時無法載入，請稍後再試。",
+    retry: "重試連接",
+    forbidden: "您沒有權限執行此操作。",
+  },
   // System Settings hub (Spec 084 US 24-26 / ticket 084-04). Exactly three
   // rows in the locked order; the 簽到設定 and 時區 destinations are pure
   // read-only informational screens — no editable fields anywhere (regression
-  // asserted per screen). The 帳戶與權限 row stays present-but-not-yet-linked
-  // until 087-03 wires its destination.
+  // asserted per screen). The 帳戶與權限 row links to the 087-03 permissions
+  // matrix at /management?module=permissions.
   settings: {
     settingsTitle: "設定",
     settingsBack: "返回管理工作",

@@ -109,6 +109,33 @@ export interface ManagementDirectory {
   departments: Department[];
   programs: ManagementProgram[];
 }
+export type AccountPermissionRoleKey =
+  | "admin"
+  | "department-manager"
+  | "staff";
+
+export interface AccountPermissionAccount {
+  userId: string;
+  name: string;
+  role: AccountPermissionRoleKey;
+  departments: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+export interface AccountPermissionRole {
+  key: AccountPermissionRoleKey;
+  label: string;
+  scope: string;
+  assignmentState: "assigned" | "assignable";
+}
+
+export interface AccountPermissionsView {
+  accounts: AccountPermissionAccount[];
+  roles: AccountPermissionRole[];
+}
+
 
 export interface ManagementCockpitNextEvent {
   event_id: string;
@@ -791,6 +818,17 @@ export function getManagementAccess(): Promise<ProgramsManagementAccess> {
  */
 export function getManagementHub(): Promise<ManagementHubView> {
   return programsFetch("/api/v1/programs/hub", "GET", undefined, {
+    cache: "no-store",
+  });
+}
+
+/**
+ * GET /api/v1/programs/account-permissions — Admin/Staff-only Account
+ * Permissions matrix (087-03 #320). `no-store`: role changes must be
+ * reflected on the next load.
+ */
+export function getAccountPermissions(): Promise<AccountPermissionsView> {
+  return programsFetch("/api/v1/programs/account-permissions", "GET", undefined, {
     cache: "no-store",
   });
 }

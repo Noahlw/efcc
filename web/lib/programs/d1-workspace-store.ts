@@ -7,6 +7,7 @@ import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
   AuditInput,
+  ElevatedAccountRow,
   GenerationRunItemInput,
   GenerationRunItemRow,
   GenerationRunRow,
@@ -1831,6 +1832,29 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .run();
     return this.findDepartmentManager(input.department_id, input.user_id);
+  }
+
+  /**
+   * Every Admin/Staff account (087-03 #320), with active Department Manager
+   * grants joined for department context. A Staff account with a grant
+   * projects as department-manager; a plain Staff account projects as staff.
+   * Department Manager grants on Member accounts remain scoped access and do
+   * not make those accounts admin-capable for this church-wide matrix.
+   */
+  listElevatedAccounts(): Promise<ElevatedAccountRow[]> {
+    return this.db
+      .prepare(
+        `SELECT a.user_id, a.name, a.role, a.account_status,
+                dm.department_id, d.name AS department_name, d.display_order
+           FROM accounts a
+           LEFT JOIN department_managers dm
+             ON dm.user_id = a.user_id AND dm.revoked_at IS NULL
+           LEFT JOIN departments d ON d.department_id = dm.department_id
+          WHERE a.role IN ('Admin', 'Staff')
+          ORDER BY a.name COLLATE NOCASE, a.user_id, d.display_order, d.name`
+      )
+      .all<ElevatedAccountRow>()
+      .then((result) => result.results);
   }
 
   findProgramLeader(

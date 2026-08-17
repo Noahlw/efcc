@@ -23,6 +23,7 @@ export default defineProject({
       "lib/home.test.tsx",
       "lib/management-hub.test.tsx",
       "lib/settings-hub.test.tsx",
+      "lib/permissions-panel.test.tsx",
       "lib/qr-code.test.tsx",
       "lib/programs/programs-events-panel.test.tsx",
       "lib/programs/programs-enrollment-panel.test.tsx",
