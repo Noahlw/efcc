@@ -422,6 +422,87 @@ export async function handleGetHomeContent(
   }
 }
 
+interface FeaturedEventPreviewRow {
+  event_id: string;
+  program_id: string;
+  program_title: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  location: string;
+  status: string;
+}
+
+export async function handleGetFeaturedEventPreview(
+  request: Request,
+  env: HomeCmsEnv,
+  eventId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    return problem(
+      404,
+      "NOT_FOUND",
+      "Not found",
+      "Featured event not found.",
+      requestId
+    );
+  }
+  try {
+    const row = await env.DB.prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_title,
+              COALESCE(e.name, p.name) AS title,
+              e.starts_at, e.ends_at, COALESCE(e.location, '') AS location,
+              e.status
+         FROM events e
+         JOIN programs p ON p.program_id = e.program_id
+        WHERE e.event_id = ?`
+    )
+      .bind(trimmed)
+      .first<FeaturedEventPreviewRow>();
+    if (!row) {
+      return problem(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Featured event not found.",
+        requestId
+      );
+    }
+    return jsonResponse(
+      200,
+      {
+        eventId: row.event_id,
+        programId: row.program_id,
+        programTitle: row.program_title,
+        title: row.title,
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+        location: row.location,
+        status: row.status,
+      },
+      requestId
+    );
+  } catch (error) {
+    console.error(
+      `[home-cms] GET featured-event preview failed requestId=${requestId}:`,
+      error
+    );
+    return problem(
+      503,
+      "HOME_UNAVAILABLE",
+      "Service unavailable",
+      "Home content is temporarily unavailable.",
+      requestId
+    );
+  }
+}
+
 export async function handleSaveHomeDraft(
   request: Request,
   env: HomeCmsEnv

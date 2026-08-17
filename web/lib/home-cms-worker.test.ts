@@ -100,14 +100,19 @@ describe("Home Content CMS Worker routes", () => {
   test("denies CMS endpoints to Staff without home.publish", async () => {
     const staffCookie = await accessCookie("cms-staff", "cms-staff-password");
     const readResponses = await Promise.all(
-      (["/api/v1/home/content", "/api/v1/home/audit?limit=1"] as const).map(
-        (path) =>
-          worker.fetch(
-            request(path, {
-              headers: { Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}` },
-            }),
-            testEnv()
-          )
+      (
+        [
+          "/api/v1/home/content",
+          "/api/v1/home/audit?limit=1",
+          "/api/v1/home/cms/featured-event/EVT-UNKNOWN",
+        ] as const
+      ).map((path) =>
+        worker.fetch(
+          request(path, {
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}` },
+          }),
+          testEnv()
+        )
       )
     );
     for (const response of readResponses) {
@@ -235,6 +240,59 @@ describe("Home Content CMS Worker routes", () => {
       publicPayload.data.announcement?.title,
       "CMS cms-publish-scheduled"
     );
+  });
+
+  test("resolves a featured event id for Template A preview", async () => {
+    const now = new Date();
+    const futureStart = new Date(now.getTime() + 500_000_000).toISOString();
+    const futureEnd = new Date(now.getTime() + 503_600_000).toISOString();
+
+    await testDb()
+      .prepare(
+        `INSERT INTO programs
+          (program_id, department_id, name, description, category, behavior_type,
+           lifecycle, discoverability, enrollment_mode, created_by, created_at, updated_by, updated_at)
+         VALUES ('PRG-CMS-PREVIEW', '018f3b8a-0000-7000-8000-000000000001',
+                 'CMS 預覽課程', 'Preview fixture', '查經', 'Recurring',
+                 'Active', 'Listed', 'MemberRequest', 'CMS-ADMIN', ?, 'CMS-ADMIN', ?)`
+      )
+      .bind(now.toISOString(), now.toISOString())
+      .run();
+
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability, source,
+           name, location, created_by, created_at, updated_by, updated_at)
+         VALUES ('EVT-CMS-PREVIEW', 'PRG-CMS-PREVIEW', ?, ?, 'Active', 'Active', 'MANUAL',
+                 'CMS 精選聚會', '二樓', 'CMS-ADMIN', ?, 'CMS-ADMIN', ?)`
+      )
+      .bind(futureStart, futureEnd, now.toISOString(), now.toISOString())
+      .run();
+
+    const response = await worker.fetch(
+      request("/api/v1/home/cms/featured-event/EVT-CMS-PREVIEW", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const payload = await json(response);
+    assert.strictEqual(payload.data.eventId, "EVT-CMS-PREVIEW");
+    assert.strictEqual(payload.data.title, "CMS 精選聚會");
+    assert.strictEqual(payload.data.programTitle, "CMS 預覽課程");
+  });
+
+  test("returns 404 for an unknown featured event id", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/home/cms/featured-event/EVT-DOES-NOT-EXIST", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 404);
+    const problem = await json(response);
+    assert.strictEqual(problem.code, "NOT_FOUND");
   });
 
   test("lists publication audit rows with actor, version, and template", async () => {

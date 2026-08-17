@@ -364,10 +364,7 @@ export default {
       ) {
         return handleListManagementAccess(request, programEnv);
       }
-      if (
-        url.pathname === "/api/v1/programs/hub" &&
-        request.method === "GET"
-      ) {
+      if (url.pathname === "/api/v1/programs/hub" && request.method === "GET") {
         return handleGetManagementHub(request, programEnv);
       }
       if (
@@ -928,6 +925,7 @@ export default {
       const { handleGetHome } = await import("./lib/home-handlers");
       const {
         handleGetHomeContent,
+        handleGetFeaturedEventPreview,
         handleSaveHomeDraft,
         handlePublishHome,
         handleListHomeAudit,
@@ -942,11 +940,24 @@ export default {
       if (url.pathname === "/api/v1/home/draft" && request.method === "POST") {
         return handleSaveHomeDraft(request, homeEnv);
       }
-      if (url.pathname === "/api/v1/home/publish" && request.method === "POST") {
+      if (
+        url.pathname === "/api/v1/home/publish" &&
+        request.method === "POST"
+      ) {
         return handlePublishHome(request, homeEnv);
       }
       if (url.pathname === "/api/v1/home/audit" && request.method === "GET") {
         return handleListHomeAudit(request, homeEnv);
+      }
+      const featuredPreviewPrefix = "/api/v1/home/cms/featured-event/";
+      if (
+        url.pathname.startsWith(featuredPreviewPrefix) &&
+        request.method === "GET"
+      ) {
+        const eventId = decodeURIComponent(
+          url.pathname.slice(featuredPreviewPrefix.length)
+        );
+        return handleGetFeaturedEventPreview(request, homeEnv, eventId);
       }
 
       return authProblemResponse(
@@ -964,11 +975,6 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    return authProblemResponse(
-      404,
-      "NOT_FOUND",
-      "Not found",
-      "Unknown route."
-    );
+    return authProblemResponse(404, "NOT_FOUND", "Not found", "Unknown route.");
   },
 } satisfies ExportedHandler<Env>;
