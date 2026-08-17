@@ -1337,3 +1337,8 @@
   margin-top: 0.5rem;
   font-size: 0.96rem;
 }
+
+.checkinResult,
+.outcome {
+  padding: 0;
+}
