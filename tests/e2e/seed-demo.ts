@@ -1,3 +1,5 @@
+/* oxlint-disable eslint/complexity -- demo seed orchestrates many idempotent API steps */
+/* oxlint-disable eslint/complexity -- demo seed orchestrates many idempotent API steps */
 /**
  * Local-only E2E_DEMO_ domain seed for the Worker + D1 walkthrough.
  *
@@ -192,6 +194,35 @@ function payload<T>(body: JsonRecord): T {
     );
   }
   return body.data as T;
+}
+
+async function seedDemoHomeContent(
+  request: (
+    method: "GET" | "POST" | "PATCH",
+    path: string,
+    body?: Record<string, unknown>
+  ) => Promise<JsonRecord>
+): Promise<string> {
+  const homeContentBody = await request("GET", "/api/v1/home/content");
+  const homeContent = homeContentBody.data as { version?: number } | null;
+  if (homeContent?.version) {
+    return "Demo home content already present.";
+  }
+  const draftBody = await request("POST", "/api/v1/home/draft", {
+    content_id: "home",
+    template_type: "B",
+    publish_mode: "immediate",
+    title: "E2E_DEMO_教會消息",
+    summary: "本機示範教會消息；Home CMS E2E 會還原此內容。",
+    body_markdown: "示範內容，請勿用於生產環境。",
+  });
+  const draftVersion = (draftBody.data as { version: number }).version;
+  await request("POST", "/api/v1/home/publish", {
+    content_id: "home",
+    version: draftVersion,
+    publish_mode: "immediate",
+  });
+  return "Seeded demo home content (Template B).";
 }
 
 async function seedDemo(): Promise<void> {
@@ -545,9 +576,7 @@ async function seedDemo(): Promise<void> {
         kind: readNotice.kind,
         title: readNotice.title,
         body: readNotice.body,
-        ...(readNotice.program_id
-          ? { program_id: readNotice.program_id }
-          : {}),
+        ...(readNotice.program_id ? { program_id: readNotice.program_id } : {}),
         ...(readNotice.event_id ? { event_id: readNotice.event_id } : {}),
       });
       await memberRequest("POST", "/api/v1/programs/notices/read-all");
@@ -567,6 +596,8 @@ async function seedDemo(): Promise<void> {
     }
   }
 
+  const homeContentMessage = await seedDemoHomeContent(request);
+
   process.stdout.write(
     `${[
       `Seeded local ${DEPARTMENT.code}.`,
@@ -574,6 +605,7 @@ async function seedDemo(): Promise<void> {
       `Generated events for ${PROGRAMS[0].name}: ${events.events.length}.`,
       `Seeded local ${MODULE_GATE_DEPARTMENT.code} (events/attendance disabled).`,
       `Seeded participant notices for ${DEV_MEMBER.userId} (2 unread, 1 read).`,
+      homeContentMessage,
     ].join("\n")}\n`
   );
 }

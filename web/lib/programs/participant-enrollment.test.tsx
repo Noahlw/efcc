@@ -165,7 +165,9 @@ describe("PUI-04 participant Enrollment", () => {
       scheduleRules: [],
     });
 
-    expect(screen.getByText(COPY.programs.requestPendingHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.requestPendingHint)
+    ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
@@ -216,7 +218,9 @@ describe("PUI-04 participant Enrollment", () => {
     ).not.toBeInTheDocument();
     expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
     expect(onRefresh).not.toHaveBeenCalled();
-    expect(screen.getByText(COPY.programs.requestPendingHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.requestPendingHint)
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     ).toBeInTheDocument();
@@ -309,7 +313,9 @@ describe("PUI-04 participant Enrollment", () => {
       scheduleRules: [],
     });
 
-    expect(screen.getByText(COPY.programs.requestWithdrawnHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.requestWithdrawnHint)
+    ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.reEnroll })
     );
@@ -377,7 +383,9 @@ describe("PUI-04 participant Enrollment", () => {
       scheduleRules: [],
     });
 
-    expect(screen.getByText(COPY.programs.requestRejectedHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.requestRejectedHint)
+    ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.programs.reEnroll })
     );
@@ -456,7 +464,7 @@ describe("PUI-04 participant Enrollment", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
-        COPY.programs.offlineError
+        COPY.programs.enrollmentOfflineError
       );
     });
     expect(mocks.submitEnrollmentRequest).not.toHaveBeenCalled();

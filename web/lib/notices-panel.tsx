@@ -1,16 +1,13 @@
 "use client";
+/* oxlint-disable eslint/no-plusplus react/function-component-definition */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COPY } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
-import {
-  listNotices,
-  markAllNoticesRead,
-  type Notice,
-  type NoticesResult,
-} from "@/lib/notices-api";
+import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
+import type { Notice, NoticesResult } from "@/lib/notices-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 
 import styles from "./notices-panel.module.css";
@@ -21,11 +18,7 @@ type NoticesState =
   | { kind: "error" };
 
 function noticeHref(notice: Notice): string {
-  if (
-    notice.kind === "event" &&
-    notice.program_id &&
-    notice.event_id
-  ) {
+  if (notice.kind === "event" && notice.program_id && notice.event_id) {
     return buildProgramsHref({
       mode: "participant",
       programId: notice.program_id,
@@ -63,7 +56,9 @@ function NoticeRow({ notice }: { notice: Notice }) {
           className={unread ? styles.unreadDot : styles.readDot}
           aria-hidden="true"
         />
-        {unread && <span className="sr-only">{COPY.notices.noticesUnread}</span>}
+        {unread && (
+          <span className="sr-only">{COPY.notices.noticesUnread}</span>
+        )}
         <span className={styles.itemCopy}>
           <strong className={styles.itemTitle}>{notice.title}</strong>
           <span className={styles.itemBody}>{notice.body}</span>
@@ -86,10 +81,10 @@ export function NoticesPanel() {
     setState({ kind: "loading" });
     try {
       const result = await listNotices();
-      if (requestVersion.current !== version) return;
+      if (requestVersion.current !== version) {return;}
       setState({ kind: "ready", result });
     } catch {
-      if (requestVersion.current !== version) return;
+      if (requestVersion.current !== version) {return;}
       setState({ kind: "error" });
     }
   }, []);
@@ -102,11 +97,7 @@ export function NoticesPanel() {
   }, [load]);
 
   const markAllRead = async () => {
-    if (
-      state.kind !== "ready" ||
-      state.result.unread_count === 0 ||
-      marking
-    ) {
+    if (state.kind !== "ready" || state.result.unread_count === 0 || marking) {
       return;
     }
     setMarking(true);
@@ -114,7 +105,7 @@ export function NoticesPanel() {
       await markAllNoticesRead();
       const markedAt = Date.now();
       setState((current) => {
-        if (current.kind !== "ready") return current;
+        if (current.kind !== "ready") {return current;}
         return {
           kind: "ready",
           result: {
@@ -130,7 +121,7 @@ export function NoticesPanel() {
       });
       announce(COPY.notices.noticesMarkedAllRead);
     } catch {
-      announce(COPY.notices.noticesLoadError);
+      announce(COPY.notices.noticesMarkAllReadError);
     } finally {
       setMarking(false);
     }
@@ -138,7 +129,10 @@ export function NoticesPanel() {
 
   if (state.kind === "loading") {
     return (
-      <section className={styles.panel} aria-label={COPY.notices.noticesListLabel}>
+      <section
+        className={styles.panel}
+        aria-label={COPY.notices.noticesListLabel}
+      >
         <output className={styles.state} aria-busy="true">
           {COPY.notices.noticesLoading}
         </output>
@@ -148,11 +142,18 @@ export function NoticesPanel() {
 
   if (state.kind === "error") {
     return (
-      <section className={styles.panel} aria-label={COPY.notices.noticesListLabel}>
+      <section
+        className={styles.panel}
+        aria-label={COPY.notices.noticesListLabel}
+      >
         <p className={styles.error} role="alert">
           {COPY.notices.noticesLoadError}
         </p>
-        <button className={styles.retry} type="button" onClick={() => void load()}>
+        <button
+          className={styles.retry}
+          type="button"
+          onClick={() => void load()}
+        >
           {COPY.notices.noticesRetry}
         </button>
       </section>
@@ -161,7 +162,10 @@ export function NoticesPanel() {
 
   const { notices, unread_count: unreadCount } = state.result;
   return (
-    <section className={styles.panel} aria-label={COPY.notices.noticesListLabel}>
+    <section
+      className={styles.panel}
+      aria-label={COPY.notices.noticesListLabel}
+    >
       <div className={styles.toolbar}>
         {unreadCount > 0 && (
           <span className={styles.unreadCount}>

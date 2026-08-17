@@ -62,4 +62,4 @@ Login as **E2E_member** → dock **通知**
 | C — Notices | pass / fail |
 | Blockers (issue #) | |
 
-**Known ceiling (QA note):** Template A CMS preview shows live `/api/v1/home` featured-event projection, not unsaved draft featured-event selection.
+**Known ceiling (QA note):** Template A CMS preview resolves the draft featured event id via `GET /api/v1/home/cms/featured-event/:eventId` (not live `/home` projection).
