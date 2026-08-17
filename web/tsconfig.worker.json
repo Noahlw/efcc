@@ -27,6 +27,8 @@
     "lib/attendance-worker.test.ts",
     "lib/home-handlers.ts",
     "lib/home-worker.test.ts",
+    "lib/home-cms-handlers.ts",
+    "lib/home-cms-worker.test.ts",
     "lib/auth/**/*.ts",
     "lib/programs/**/*.ts"
   ],
