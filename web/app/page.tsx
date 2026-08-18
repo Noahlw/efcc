@@ -380,167 +380,152 @@ const LoginPage = () => {
       <a className={styles.skipLink} href="#login">
         {LANDING.skipToLogin}
       </a>
-
-      {/* Minimal civic shell — official church title. */}
-      <header className={styles.header}>
-        <div className={styles.brand} aria-label={LANDING.homeLabel}>
-          <span>{LANDING.brandFull}</span>
-        </div>
-      </header>
-
-      <main className={styles.main}>
-        <div className={styles.bodyCenter}>
-          <div className={styles.splitLogin}>
-            <section
-              id="login"
-              className={styles.formCard}
-              aria-labelledby="login-title"
-            >
-              <div className={styles.cardHead}>
-                <h2 id="login-title" className={styles.cardTitle}>
-                  {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
-                </h2>
-              </div>
-              <p className={styles.cardLead}>{LANDING.loginPanelLead}</p>
-              {notice && (
-                <p
-                  role="alert"
-                  className={`${styles.notice} ${
-                    noticeKind === "error"
-                      ? styles.noticeError
-                      : noticeKind === "success"
-                        ? styles.noticeSuccess
-                        : ""
-                  }`}
-                >
-                  {notice}
-                </p>
-              )}
-              <form
-                className={styles.form}
-                noValidate
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!busy) {
-                    if (upgradeMode) {
-                      handleUpgrade();
-                    } else {
-                      handleLogin();
-                    }
-                  }
-                }}
+      <main className={styles.authWrap}>
+        <div className={styles.authCard}>
+          <div className={styles.seal} aria-hidden="true">
+            顯
+          </div>
+          <h1 className={styles.authTitle} id="login-title">
+            {upgradeMode ? COPY.login.upgradeTitle : "登入顯恩堂"}
+          </h1>
+          <p className={styles.authLead}>{LANDING.loginPanelLead}</p>
+          <div className={styles.authFormGrid}>
+            {notice && (
+              <p
+                role="alert"
+                className={`${styles.notice} ${
+                  noticeKind === "error"
+                    ? styles.noticeError
+                    : noticeKind === "success"
+                      ? styles.noticeSuccess
+                      : ""
+                }`}
               >
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
-                    {COPY.login.usernameLabel}
-                  </span>
-                  <input
-                    className={styles.input}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={busy || upgradeMode}
-                    autoComplete="username"
-                    required
-                  />
-                </label>
-                {upgradeMode ? (
-                  <>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        {COPY.login.legacyPasswordLabel}
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="password"
-                        value={legacyPin}
-                        onChange={(e) => setLegacyPin(e.target.value)}
-                        disabled={busy}
-                        autoComplete="current-password"
-                        inputMode="numeric"
-                        maxLength={4}
-                        minLength={4}
-                        pattern="[0-9]{4}"
-                        required
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        {COPY.login.newPasswordLabel}
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="password"
-                        value={newCredential}
-                        onChange={(e) => setNewCredential(e.target.value)}
-                        disabled={busy}
-                        autoComplete="new-password"
-                        minLength={8}
-                        required
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
-                        {COPY.login.confirmPasswordLabel}
-                      </span>
-                      <input
-                        className={styles.input}
-                        type="password"
-                        value={confirmCredential}
-                        onChange={(e) => setConfirmCredential(e.target.value)}
-                        disabled={busy}
-                        autoComplete="new-password"
-                        minLength={8}
-                        required
-                      />
-                    </label>
-                  </>
-                ) : (
+                {notice}
+              </p>
+            )}
+            <form
+              className={styles.form}
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!busy) {
+                  if (upgradeMode) {
+                    handleUpgrade();
+                  } else {
+                    handleLogin();
+                  }
+                }
+              }}
+            >
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  {COPY.login.usernameLabel}
+                </span>
+                <input
+                  className={styles.input}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={busy || upgradeMode}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              {upgradeMode ? (
+                <>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
-                      {COPY.login.passwordLabel}
+                      {COPY.login.legacyPasswordLabel}
                     </span>
                     <input
                       className={styles.input}
                       type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      value={legacyPin}
+                      onChange={(e) => setLegacyPin(e.target.value)}
                       disabled={busy}
                       autoComplete="current-password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      minLength={4}
+                      pattern="[0-9]{4}"
                       required
                     />
                   </label>
-                )}
-                <button className={styles.submit} type="submit" disabled={busy}>
-                  {busy
-                    ? upgradeMode
-                      ? COPY.login.upgrading
-                      : COPY.login.submitting
-                    : upgradeMode
-                      ? COPY.login.upgradeSubmit
-                      : COPY.login.submit}
-                </button>
-                <p className={styles.loginNote}>
-                  {LANDING.loginAfterNote}{" "}
-                  <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
-                </p>
-                <p className={styles.loginNote}>
-                  <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
-                </p>
-              </form>
-              {view.kind === "ERROR" && (
-                <p
-                  role="alert"
-                  className={`${styles.notice} ${styles.noticeError}`}
-                >
-                  {view.error}
-                </p>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      {COPY.login.newPasswordLabel}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={newCredential}
+                      onChange={(e) => setNewCredential(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                      minLength={8}
+                      required
+                    />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      {COPY.login.confirmPasswordLabel}
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={confirmCredential}
+                      onChange={(e) => setConfirmCredential(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                      minLength={8}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {COPY.login.passwordLabel}
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={busy}
+                    autoComplete="current-password"
+                    required
+                  />
+                </label>
               )}
-            </section>
-
-            <div className={styles.loginCopy}>
-              <h1>{LANDING.brandFull}</h1>
-              <p>{LANDING.systemDescription}</p>
-            </div>
+              <button className={styles.submit} type="submit" disabled={busy}>
+                {busy
+                  ? upgradeMode
+                    ? COPY.login.upgrading
+                    : COPY.login.submitting
+                  : upgradeMode
+                    ? COPY.login.upgradeSubmit
+                    : COPY.login.submit}
+              </button>
+              {!upgradeMode && (
+                <>
+                  <a className={styles.secondary} href="/register">
+                    {REGISTRATION_COPY.pageTitle}
+                  </a>
+                  <a className={styles.ghostLink} href="/guest-check-in">
+                    {COPY.login.guestCheckIn}
+                  </a>
+                </>
+              )}
+            </form>
+            {view.kind === "ERROR" && (
+              <p
+                role="alert"
+                className={`${styles.notice} ${styles.noticeError}`}
+              >
+                {view.error}
+              </p>
+            )}
           </div>
         </div>
       </main>
