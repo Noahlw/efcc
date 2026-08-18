@@ -120,7 +120,7 @@ function element(id: string): HTMLElement {
   if (!node) {
     throw new Error(`Expected #${id}`);
   }
-  return node;
+  return node as HTMLElement;
 }
 async function waitUntilReady(): Promise<void> {
   await screen.findByRole("heading", { name: EDITOR.editorTitle });
