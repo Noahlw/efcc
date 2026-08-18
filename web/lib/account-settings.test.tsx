@@ -448,7 +448,11 @@ describe(ProfilePage, () => {
       name: new RegExp(COPY.profile.logout),
     });
     expect(logoutButtons.length).toBeGreaterThanOrEqual(1);
-    await user.click(logoutButtons.at(-1));
+    const logoutButton = logoutButtons.at(-1);
+    if (!logoutButton) {
+      throw new Error("Expected a logout button");
+    }
+    await user.click(logoutButton);
     await waitFor(() => {
       expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledWith();
     });
