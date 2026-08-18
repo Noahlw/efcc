@@ -1417,12 +1417,19 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       // 5. Test validation: clear name and attempt to save
       await nameInput.fill("");
       await page.getByRole("button", { name: COPY.saveProgram }).click();
-      await expect(page.getByText(COPY.editRequired)).toBeVisible();
+      await expect(
+        page.getByRole("alert").filter({ hasText: COPY.editRequired })
+      ).toBeVisible();
 
-      // 6. Fill updated values and save
+      // 6. Fill updated values and save (re-query inputs after the
+      // validation re-render; the original locators may be stale)
       const updatedPurpose = `${originalPurpose} (已更新)`;
-      await nameInput.fill("E2E_DEMO_成人查經");
-      await purposeInput.fill(updatedPurpose);
+      await page
+        .getByRole("textbox", { name: COPY.editNameLabel })
+        .fill("E2E_DEMO_成人查經");
+      await page
+        .getByRole("textbox", { name: COPY.editPurposeLabel })
+        .fill(updatedPurpose);
       await page.getByRole("button", { name: COPY.saveProgram }).click();
 
       // 7. Toast / announcement + return to Course Facts with updated purpose
@@ -2476,6 +2483,9 @@ test.describe("MUI-02 scoped Program management", () => {
     await page
       .getByRole("textbox", { name: COPY.programName })
       .fill(updatedName);
+    await page
+      .getByRole("textbox", { name: COPY.editPurposeLabel })
+      .fill("MUI-02 測試簡介 (已更新)");
     await page.getByRole("button", { name: COPY.saveProgram }).click();
     await expect(
       page.getByRole("heading", { name: updatedName })
