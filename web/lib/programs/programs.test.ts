@@ -3246,10 +3246,14 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "skip row keeps the original rule times"
     );
     const rescheduled = plan.occurrences.find(
-      (o) => o.occurs_on === rescheduleDate
+      (o) => o.occurs_on === rescheduleDate && o.rule_id === weekly.rule_id
     );
     assert.strictEqual(rescheduled?.skip_reason, null);
-    assert.ok(rescheduled?.exception_id, "reschedule row carries the exception");
+
+    assert.ok(
+      rescheduled?.exception_id,
+      "reschedule row carries the exception"
+    );
     assert.strictEqual(
       rescheduled?.starts_at,
       `${rescheduleDate}T12:30:00.000Z`,
