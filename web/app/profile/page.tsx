@@ -46,7 +46,7 @@ function ProfileContent() {
 
   const displayName = profile.name || profile.username;
   const hasQrCode = Boolean(profile.qrCodeString);
-  const isActive = /^(?<status>active|enabled|有效|已啟用)$/iu.test(
+  const isActive = /^(?:active|enabled|有效|已啟用)$/iu.test(
     profile.status.trim()
   );
   const statusText = isActive ? COPY.profile.statusValid : profile.status;
