@@ -1321,6 +1321,34 @@ test.describe("PUI-05 participant Event Detail", () => {
 });
 
 test.describe("NTC-01 participant Notices", () => {
+  // PUI-05's cleanup cancels the demo member's Active enrollment in the
+  // recurring program (the same program the 聚會提醒 notice deep-links
+  // into), and getEventDetail requires an Active enrollment for the
+  // participant projection. Re-establish it before every notice test so
+  // this describe is order-independent.
+  test.beforeEach(async ({ browser }) => {
+    const adminContext = await browser.newContext();
+    const adminPage = await adminContext.newPage();
+    try {
+      await loginAs(
+        adminPage,
+        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+      );
+      const [programId] = await catalogProgramIds(adminPage, "E2E_DEMO_成人查經");
+      expect(programId).toBeTruthy();
+      await adminPage.evaluate(async (id) => {
+        await fetch(`/api/v1/programs/${encodeURIComponent(id)}/enrollments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ member_user_id: "U-E2E-MEMBER" }),
+        });
+      }, programId);
+    } finally {
+      await adminContext.close();
+    }
+  });
+
   test("lists notices with unread indicators and timestamps, and marks all read", async ({
     page,
   }) => {
