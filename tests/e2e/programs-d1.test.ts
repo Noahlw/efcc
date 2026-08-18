@@ -1337,13 +1337,21 @@ test.describe("NTC-01 participant Notices", () => {
       );
       const [programId] = await catalogProgramIds(adminPage, "E2E_DEMO_成人查經");
       expect(programId).toBeTruthy();
-      await adminPage.evaluate(async (id) => {
-        await fetch(`/api/v1/programs/${encodeURIComponent(id)}/enrollments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ member_user_id: "U-E2E-MEMBER" }),
-        });
-      }, programId);
+      const enrollStatus = await adminPage.evaluate(
+        async ({ id, memberUserId }) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ member_user_id: memberUserId }),
+            }
+          );
+          return response.status;
+        },
+        { id: programId, memberUserId: DEV_MEMBER.userId }
+      );
+      expect(enrollStatus).toBe(201);
     } finally {
       await adminContext.close();
     }
