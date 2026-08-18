@@ -2585,30 +2585,38 @@ test.describe("MUI-02 scoped Program management", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     await page.getByRole("button", { name: COPY.enterManagement }).click();
+    // 086-06 (#318): the create entry point moved into each scoped
+    // department's settings panel (DepartmentSettingsLauncher → panel →
+    // 建立課程). Open the demo department (program_catalog module enabled
+    // by seed; the baseline 青區 has it disabled, #250 module gating).
+    await page
+      .getByRole("button", {
+        name: new RegExp(
+          `E2E_DEMO_示範事工.*${COPY.departmentSettings}`,
+          "u"
+        ),
+      })
+      .click();
     await page.getByRole("button", { name: COPY.createProgram }).click();
     await expect(
       page.getByRole("heading", { name: COPY.createProgram })
     ).toBeVisible();
-    // The department combobox defaults to the first department by
-    // display_order, which is the baseline 青區 — its program_catalog module
-    // is disabled (#250 module gating), so creating a program there is a 403.
-    // Explicitly pick the E2E_DEMO_ demo department (module enabled by seed).
-    await page
-      .getByRole("combobox", { name: COPY.workspaceDepartment })
-      .selectOption({ label: "E2E_DEMO_示範事工 · E2E_DEMO_MINISTRY" });
 
     const originalName = `E2E_MUI250_${Date.now()}`;
     await page
       .getByRole("textbox", { name: COPY.programName })
       .fill(originalName);
     await page
+      .getByRole("textbox", { name: COPY.programPurpose })
+      .fill("E2E 測試課程簡介");
+    await page
       .getByRole("textbox", { name: COPY.programCategory })
       .fill("E2E 活動類別");
     await page
-      .getByRole("combobox", { name: COPY.behaviorType })
+      .getByLabel(COPY.behaviorType)
       .selectOption("OneOff");
     await page
-      .getByRole("combobox", { name: COPY.lifecycle })
+      .getByLabel(COPY.lifecycle)
       .selectOption("Active");
     await page.getByRole("button", { name: COPY.saveProgram }).click();
 
