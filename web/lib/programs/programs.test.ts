@@ -3263,6 +3263,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       (o) => o.occurs_on === rescheduleDate && o.rule_id === weekly.rule_id
     );
     assert.strictEqual(rescheduled?.skip_reason, null);
+
     assert.ok(
       rescheduled?.exception_id,
       "reschedule row carries the exception"
