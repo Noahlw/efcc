@@ -492,14 +492,6 @@ async function seedDemo(): Promise<void> {
       "The E2E_DEMO one-off program was not available after seeding"
     );
   }
-  // 085-07 (#324): the participant event-detail projection (getEventDetail)
-  // requires an Active enrollment on the event's program, so the 聚會提醒
-  // notice's deep link only opens for an enrolled member. Assisted-enroll
-  // the demo member into the recurring program; the store quiets same-actor
-  // duplicates, so re-running the seed is safe.
-  await request("POST", `/api/v1/programs/${recurring.program_id}/enrollments`, {
-    member_user_id: DEV_MEMBER.userId,
-  });
   const memberLogin = await fetch(`${base.origin}/api/v1/auth/login`, {
     method: "POST",
     headers: {

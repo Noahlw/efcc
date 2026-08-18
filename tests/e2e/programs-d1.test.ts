@@ -8,11 +8,14 @@
 // observable boundary DOM, URL state, accessibility, and server-shaped
 // capability outcomes.
 import { expect, test } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
+const TARGET_ORIGIN = new URL(
+  configuredTarget ?? "http://127.0.0.1:8787"
+).origin;
 const localTarget =
   !configuredTarget ||
   ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
@@ -1324,38 +1327,94 @@ test.describe("NTC-01 participant Notices", () => {
   // PUI-05's cleanup cancels the demo member's Active enrollment in the
   // recurring program (the same program the 聚會提醒 notice deep-links
   // into), and getEventDetail requires an Active enrollment for the
-  // participant projection. Re-establish it before every notice test so
-  // this describe is order-independent.
-  test.beforeEach(async ({ browser }) => {
-    const adminContext = await browser.newContext();
-    const adminPage = await adminContext.newPage();
+  // participant projection. The deep-link tests below re-establish it and
+  // cancel it afterwards, because PUI-04 (which runs later) expects the
+  // member to start un-enrolled.
+  async function enrollAndCancelAround(
+    page: Page,
+    run: () => Promise<void>,
+    browser: Browser
+  ): Promise<void> {
+    // API-only: browser logins here would hammer the local worker and
+    // slow PUI-04's subsequent page load (its assertion races the
+    // loading state). Use the page context's APIRequestContext with an
+    // explicit auth cookie (the login redirect is manual; the context
+    // does not auto-carry the Set-Cookie on a followed redirect).
+    const apiContext = await browser.newContext();
+    const api = apiContext.request;
     try {
-      await loginAs(
-        adminPage,
-        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-      );
-      const [programId] = await catalogProgramIds(adminPage, "E2E_DEMO_成人查經");
-      expect(programId).toBeTruthy();
-      const enrollStatus = await adminPage.evaluate(
-        async ({ id, memberUserId }) => {
-          const response = await fetch(
-            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ member_user_id: memberUserId }),
-            }
-          );
-          return response.status;
+      const loginResponse = await api.post(`${TARGET_ORIGIN}/api/v1/auth/login`, {
+        data: {
+          username: required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+          password: required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED),
         },
-        { id: programId, memberUserId: DEV_MEMBER.userId }
+      });
+      expect(loginResponse.ok()).toBe(true);
+      const setCookie = loginResponse.headers()["set-cookie"];
+      const authCookie = setCookie?.split(";")[0];
+      expect(authCookie).toBeTruthy();
+      const adminHeaders = authCookie
+        ? { Cookie: authCookie, Origin: TARGET_ORIGIN }
+        : { Origin: TARGET_ORIGIN };
+      const directoryResponse = await api.get(
+        `${TARGET_ORIGIN}/api/v1/programs/management-directory`,
+        { headers: adminHeaders }
       );
-      expect(enrollStatus).toBe(201);
+      const directory = (await directoryResponse.json()) as {
+        data?: { programs?: { program_id: string; name: string }[] };
+      };
+      const program = directory.data?.programs?.find(
+        (p) => p.name === "E2E_DEMO_成人查經"
+      );
+      expect(program?.program_id).toBeTruthy();
+      const programId = program!.program_id;
+      const enrollResponse = await api.post(
+        `${TARGET_ORIGIN}/api/v1/programs/${encodeURIComponent(programId)}/enrollments`,
+        {
+          headers: adminHeaders,
+          data: { member_user_id: DEV_MEMBER.userId },
+        }
+      );
+      expect(enrollResponse.status()).toBe(201);
+      // Let the local worker settle after the API burst; the member's
+      // browser login right after can otherwise race the still-busy
+      // workerd and stall on the permission-check redirect.
+      await page.waitForTimeout(250);
+      try {
+        await run();
+      } finally {
+        // Cancel any Active enrollment so PUI-04 (runs later) sees the
+        // member un-enrolled with no Active row.
+        const enrollmentsResponse = await api.get(
+          `${TARGET_ORIGIN}/api/v1/programs/${encodeURIComponent(programId)}/enrollments`,
+          { headers: adminHeaders }
+        );
+        const body = (await enrollmentsResponse.json()) as {
+          data?: {
+            enrollments?: {
+              enrollment_id: string;
+              member_user_id: string;
+              status: string;
+            }[];
+          };
+        };
+        const enrollment = body.data?.enrollments?.find(
+          (row) =>
+            row.member_user_id === DEV_MEMBER.userId &&
+            row.status === "Active"
+        );
+        if (enrollment) {
+          const cancelResponse = await api.post(
+            `${TARGET_ORIGIN}/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
+            { headers: adminHeaders, data: {} }
+          );
+          expect(cancelResponse.ok()).toBe(true);
+        }
+      }
     } finally {
-      await adminContext.close();
+      await apiContext.close();
     }
-  });
+  }
 
   test("lists notices with unread indicators and timestamps, and marks all read", async ({
     page,
@@ -1409,44 +1468,51 @@ test.describe("NTC-01 participant Notices", () => {
     }
   });
 
-  test("opens an event notice to the Event Detail", async ({ page }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-    );
-    await page.goto("/notices");
-    await page.getByRole("link", { name: /聚會提醒/u }).click();
-    await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+  test("opens an event notice to the Event Detail", async ({ page, browser }) => {
+    await enrollAndCancelAround(page, async () => {
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/notices");
+      await page.getByRole("link", { name: /聚會提醒/u }).click();
+      await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+    }, browser);
   });
 
   test("returns to Notices after back from event detail opened via notice", async ({
     page,
+    browser,
   }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-    );
-    await page.goto("/notices");
-    await page.getByRole("link", { name: /聚會提醒/u }).click();
-    await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
-    await page.getByRole("button", { name: COPY.backToOrigin }).click();
-    await expect(page).toHaveURL(/\/notices$/u);
-    await expect(
-      page.getByRole("list", { name: COPY.noticesListLabel })
-    ).toBeVisible();
+    await enrollAndCancelAround(page, async () => {
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/notices");
+      await page.getByRole("link", { name: /聚會提醒/u }).click();
+      await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+      await page.getByRole("button", { name: COPY.backToOrigin }).click();
+      await expect(page).toHaveURL(/\/notices$/u);
+      await expect(
+        page.getByRole("list", { name: COPY.noticesListLabel })
+      ).toBeVisible();
+    }, browser);
   });
 
-  test("opens a program notice to the Program detail", async ({ page }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-    );
-    await page.goto("/notices");
-    await page.getByRole("link", { name: /報名結果/u }).click();
-    await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+  test("opens a program notice to the Program detail", async ({ page, browser }) => {
+    await enrollAndCancelAround(page, async () => {
+      await loginAs(
+        page,
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+      );
+      await page.goto("/notices");
+      await page.getByRole("link", { name: /報名結果/u }).click();
+      await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+    }, browser);
   });
 
   test("opens an account notice to the account page", async ({ page }) => {
