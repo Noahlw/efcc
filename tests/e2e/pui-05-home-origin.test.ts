@@ -4,6 +4,10 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 
+const TARGET_ORIGIN = new URL(
+  process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787"
+).origin;
+
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
   process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN.credential;
@@ -18,8 +22,8 @@ const COPY = {
   approve: "核准",
   decisionMade: "已處理",
   workspaceTaskParticipants: "參與者",
-  requestPendingHint: "已提交報名申請，等待審批。",
-  enrollmentActiveHint: "你已是此課程的參與者。",
+  requestPendingHint: "申請已送出，等待課程負責人處理。",
+  enrollmentActiveHint: "你目前已加入此課程。",
   enroll: "報名",
   reEnroll: "重新報名",
   enrollment: "報名",
@@ -83,10 +87,16 @@ async function ensureActiveEnrollment(
 ): Promise<void> {
   await memberPage.goto(`/programs?program=${programId}#overview`);
   const enrollmentPanel = enrollmentPanelOf(memberPage);
-  const pendingHint = enrollmentPanel.getByText(COPY.requestPendingHint);
+  // The enrollment projection loads async; wait for the panel itself
+  // before inspecting state, or the .or() below races the fetch.
+  await expect(enrollmentPanel).toBeVisible();
+  const pendingHint = enrollmentPanel.getByText(COPY.requestPendingHint, {
+    exact: true,
+  });
   const activeHint = enrollmentPanel.getByText(COPY.enrollmentActiveHint);
   await expect(
-    submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
+    submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint),
+    { timeout: 15_000 }
   ).toBeVisible();
   const needsApproval = !(await activeHint.isVisible().catch(() => false));
   if (needsApproval && !(await pendingHint.isVisible().catch(() => false))) {
@@ -110,15 +120,32 @@ async function ensureActiveEnrollment(
       .getByText(COPY.decisionMade, { exact: true })
   ).toBeVisible();
   await memberPage.reload();
+  // The approve response must leave an Active enrollment; assert it so a
+  // silent Pending (e.g. approval racing the member's reload) fails here
+  // instead of downstream at the home card.
+  const enrollmentPanelAfter = enrollmentPanelOf(memberPage);
+  await expect(
+    enrollmentPanelAfter.getByText(COPY.enrollmentActiveHint)
+  ).toBeVisible();
 }
 
 async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
 ): Promise<boolean> {
+  // The admin page may be at about:blank when ensureActiveEnrollment
+  // returned early (member already Active); always establish an
+  // authenticated, navigated page before the fetch.
+  await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
+  if (!adminPage.url().startsWith(TARGET_ORIGIN)) {
+    throw new Error(
+      `admin page not on expected origin after login: ${adminPage.url()}`
+    );
+  }
   return await adminPage.evaluate(async (targetProgramId) => {
+    const origin = window.location.origin;
     const listResponse = await fetch(
-      `/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
+      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
     );
     const listBody = (await listResponse.json()) as {
       data?: { events?: { event_id: string; starts_at: string }[] };
@@ -131,7 +158,7 @@ async function openNextEventCheckInWindow(
     }
     const now = Date.now();
     const patchResponse = await fetch(
-      `/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(nextEvent.event_id)}`,
+      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(nextEvent.event_id)}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -164,7 +191,7 @@ test.describe("PUI-05 Home origin supplement", () => {
 
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
-      await expect(homeEventCard).toBeVisible();
+      await expect(homeEventCard, { timeout: 15_000 }).toBeVisible();
       await homeEventCard
         .getByRole("link", { name: COPY.homeViewEvent })
         .click();
