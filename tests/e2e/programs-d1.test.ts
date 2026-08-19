@@ -124,6 +124,9 @@ const COPY = {
   notificationTitle: "管理通知",
   notificationZero: "目前沒有新的管理通知。",
   notificationViewAll: "查看全部通知",
+  viewAllMessages: "查看全部",
+  churchNews: "教會消息",
+  demoChurchNews: "E2E_DEMO_教會消息",
   hubTitle: "管理工作",
   hubLead: "在你獲授權的範圍內處理會員、課程、聚會及內容工作。",
   hubGroupMemberPermissions: "會員與權限",
@@ -1324,6 +1327,46 @@ test.describe("PUI-05 participant Event Detail", () => {
       }
       await memberContext.close();
     }
+  });
+});
+
+test.describe("MSG-01 participant Messages", () => {
+  test("Home 查看全部 opens the Messages list", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/home");
+    await page.getByRole("link", { name: COPY.viewAllMessages }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.churchNews })
+    ).toBeVisible();
+  });
+
+  test("list opens detail and back returns to the same row", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/messages");
+    const row = page.getByRole("link", {
+      name: new RegExp(COPY.demoChurchNews, "u"),
+    });
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByTestId("announcement-detail")).toBeVisible();
+    await expect(page).toHaveURL(/\/messages\?content=/u);
+    await page.getByRole("button", { name: COPY.churchNews }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(page.getByTestId("announcement-detail")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.demoChurchNews, "u") })
+    ).toBeVisible();
   });
 });
 

@@ -188,7 +188,7 @@ jobs:
         run: >-
           pnpm exec playwright test
           --config=tests/e2e/programs-d1.config.ts
-          --grep='PUI-01|PUI-02|PUI-03|PUI-04|PUI-05|MUI-01|MUI-02|EVT-01|NTF-01|NTC-01|EVT-02|AUTH-01'
+          --grep='PUI-01|PUI-02|PUI-03|PUI-04|PUI-05|MUI-01|MUI-02|EVT-01|NTF-01|NTC-01|EVT-02|AUTH-01|MSG-01'
 
       - name: Upload Programs browser evidence
         if: always()
