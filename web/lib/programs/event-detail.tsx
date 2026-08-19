@@ -35,19 +35,24 @@ const ICON_STROKE = {
   strokeWidth: 1.8,
 };
 
-export const EventFactIcon = ({ name }: { name: "calendar" | "pin" }) => (
+export const EventFactIcon = ({
+  name,
+}: {
+  name: "calendar" | "pin" | "back";
+}) => (
   <svg
     aria-hidden="true"
     className={styles.programDetailFactIcon}
     focusable="false"
     viewBox="0 0 24 24"
   >
-    {name === "calendar" ? (
+    {name === "calendar" && (
       <>
         <rect {...ICON_STROKE} x="3" y="5" width="18" height="16" rx="2" />
         <path {...ICON_STROKE} d="M16 3v4M8 3v4M3 10h18" />
       </>
-    ) : (
+    )}
+    {name === "pin" && (
       <>
         <path
           {...ICON_STROKE}
@@ -56,6 +61,7 @@ export const EventFactIcon = ({ name }: { name: "calendar" | "pin" }) => (
         <circle {...ICON_STROKE} cx="12" cy="10" r="2.5" />
       </>
     )}
+    {name === "back" && <path {...ICON_STROKE} d="m15 18-6-6 6-6" />}
   </svg>
 );
 

@@ -354,7 +354,7 @@ export const ParticipantProgramDetail = ({
         aria-label={COPY.programs.detailBack}
         onClick={onBack}
       >
-        ← {COPY.programs.detailBack}
+        <EventFactIcon name="back" /> {COPY.programs.detailBack}
       </button>
       <header className={styles.programDetailHeader}>
         <span

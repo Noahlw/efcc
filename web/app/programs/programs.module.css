@@ -1584,6 +1584,9 @@
 }
 
 .programDetailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   justify-self: start;
   min-height: 44px;
   padding: 0.5rem 0.75rem;
