@@ -39,31 +39,6 @@ export default defineConfig({
   overrides: [
     {
       files: [
-        "web/app/home/page.tsx",
-        "web/lib/home.test.tsx",
-        "web/lib/programs/event-detail.tsx",
-        "web/lib/programs/event-detail.test.tsx",
-      ],
-      rules: {
-        "eslint/complexity": "off",
-        "eslint/eqeqeq": "off",
-        "eslint/no-eq-null": "off",
-        "eslint/no-use-before-define": "off",
-        "eslint/require-await": "off",
-        "eslint/require-unicode-regexp": "off",
-        "import/consistent-type-specifier-style": "off",
-        "jsx-a11y/prefer-tag-over-role": "off",
-        "promise/prefer-await-to-callbacks": "off",
-        "promise/prefer-await-to-then": "off",
-        "react/function-component-definition": "off",
-        "unicorn/no-negated-condition": "off",
-        "vitest/max-expects": "off",
-        "vitest/require-mock-type-parameters": "off",
-        "vitest/require-top-level-describe": "off",
-      },
-    },
-    {
-      files: [
         "src/frontend/src/views/AttendanceScannerView.tsx",
         "src/frontend/src/components/CreateEventForm.tsx",
       ],
