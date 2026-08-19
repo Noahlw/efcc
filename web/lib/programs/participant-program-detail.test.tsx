@@ -151,7 +151,7 @@ afterEach(() => {
 });
 
 describe("PUI-03 participant Program detail", () => {
-  test("renders purpose, status tag, next-meeting card, schedule table, and the back action", async () => {
+  test("renders the reworked detail layout with icon card, event schedule, and back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
     const { onBack, onOpenEvent } = renderDetail();
 
@@ -173,21 +173,27 @@ describe("PUI-03 participant Program detail", () => {
       within(nextCard).getByText(COPY.programs.nextMeeting)
     ).toBeInTheDocument();
     expect(
-      within(nextCard).getByText(/2099\/03\/04 19:30/u)
+      within(nextCard).getByText("3月4日（三）晚上 7:30–9:00")
     ).toBeInTheDocument();
     expect(within(nextCard).getByText("二樓禮堂")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
+    ).not.toBeInTheDocument();
     await userEvent.click(
       within(nextCard).getByRole("button", {
         name: COPY.programs.viewEventDetail,
       })
     );
-    expect(onOpenEvent).toHaveBeenCalledOnce();
-    expect(onOpenEvent).toHaveBeenCalledWith("event-1");
+    expect(onOpenEvent).toHaveBeenCalledExactlyOnceWith("event-1");
 
-    const schedule = screen.getByRole("table", {
+    const schedule = screen.getByRole("list", {
       name: COPY.programs.scheduleTitle,
     });
-    expect(within(schedule).getByText(/19:30/u)).toBeInTheDocument();
+    expect(within(schedule).getByText("第三課聚會")).toBeInTheDocument();
+    expect(within(schedule).getByText("第四課聚會")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.detailBack })
+    ).toHaveTextContent("課程");
 
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })
@@ -230,6 +236,8 @@ describe("PUI-03 participant Program detail", () => {
     expect(
       within(history).getByText(COPY.programs.enrollmentCancelled)
     ).toBeInTheDocument();
+    expect(within(history).getByText("3月1日")).toBeInTheDocument();
+    expect(within(history).getByText("3月3日")).toBeInTheDocument();
   });
 
   const enrollmentFor = (state: string): ParticipantEnrollmentSnapshot => {

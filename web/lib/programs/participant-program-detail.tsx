@@ -6,17 +6,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
+import {
+  hkMonthDayLabel,
+  hkShortDateLabel,
+  hkShortTimeRange,
+} from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
   ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
-  ParticipantScheduleRule,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
-import { ParticipantEnrollment } from "./participant-enrollment";
+import { EventFactIcon } from "./event-detail";
+import {
+  buildEnrollmentHistory,
+  ParticipantEnrollment,
+} from "./participant-enrollment";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -52,39 +59,6 @@ type DetailConflictView = ParticipantProgramDetailData & {
   conflictNote?: string | null;
   has_schedule_conflict?: boolean;
 };
-
-const lifecycleLabel: Record<
-  ParticipantProgramDetailData["program"]["lifecycle"],
-  string
-> = {
-  Draft: COPY.programs.detailLifecycleDraft,
-  Active: COPY.programs.detailLifecycleActive,
-  Archived: COPY.programs.detailLifecycleArchived,
-};
-
-const behaviorLabel: Record<
-  ParticipantProgramDetailData["program"]["behavior_type"],
-  string
-> = {
-  Recurring: COPY.programs.detailBehaviorRecurring,
-  OneOff: COPY.programs.detailBehaviorOneOff,
-};
-
-const participationLabel: Record<
-  ParticipantProgramDetailData["program"]["enrollment_mode"],
-  string
-> = {
-  MemberRequest: COPY.programs.detailParticipationMemberRequest,
-  ManagerOnly: COPY.programs.detailParticipationManagerOnly,
-};
-
-function scheduleLabel(rule: ParticipantScheduleRule): string {
-  if (rule.recurrence === "WEEKLY") {
-    const day = COPY.programs.scheduleDays[rule.day_of_week ?? 0] ?? "";
-    return `每週${day} ${rule.start_time}–${rule.end_time}`;
-  }
-  return `每月${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
-}
 
 function eventIsUpcoming(startsAt: string): boolean {
   const timestamp = Date.parse(startsAt);
@@ -139,23 +113,8 @@ function eventTitle(
   return view.name?.trim() || view.title?.trim() || programName;
 }
 
-function eventTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return new Intl.DateTimeFormat("zh-Hant-HK", {
-    timeZone: "Asia/Hong_Kong",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
 function eventWhen(event: ParticipantEventSummary): string {
-  const start = hkWallLabel(event.starts_at);
-  const endTime = eventTime(event.ends_at);
-  return endTime ? `${start}–${endTime}` : start;
+  return hkShortTimeRange(event.starts_at, event.ends_at);
 }
 
 function eventLocation(event: ParticipantEventSummary): string | null {
@@ -296,17 +255,14 @@ export const ParticipantProgramDetail = ({
     void loadDetail();
   };
 
-  const upcomingEvents = useMemo(() => {
+  const scheduledEvents = useMemo(() => {
     if (state.kind !== "ready") {
       return [];
     }
-    const events = state.detail.events
+    return state.detail.events
       .filter((event) => event.status === "Active")
       .filter((event) => eventIsUpcoming(event.starts_at))
       .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
-    return state.detail.program.behavior_type === "OneOff"
-      ? events
-      : events.slice(0, 1);
   }, [state]);
 
   if (state.kind === "loading") {
@@ -371,14 +327,14 @@ export const ParticipantProgramDetail = ({
   }
 
   const {
-    department,
     program,
     schedule_rules: scheduleRules,
     enrollment,
     enrollment_access: enrollmentAccess,
   } = state.detail;
   const status = statusForDetail(state.detail);
-  const nextEvent = upcomingEvents[0] ?? null;
+  const nextEvent = scheduledEvents[0] ?? null;
+  const history = buildEnrollmentHistory(enrollment);
   const nextConflict = conflictNote(
     state.detail,
     nextEvent,
@@ -400,10 +356,6 @@ export const ParticipantProgramDetail = ({
         ← {COPY.programs.detailBack}
       </button>
       <header className={styles.programDetailHeader}>
-        <p className={styles.programDetailEyebrow}>
-          {department.name}
-          {program.category ? ` · ${program.category}` : ""}
-        </p>
         <span
           className={`${styles.directoryStatus} ${statusClass[status.kind]} ${styles.programDetailStatus}`}
           role="status"
@@ -417,19 +369,10 @@ export const ParticipantProgramDetail = ({
         >
           {program.name}
         </h2>
-      </header>
-
-      <section
-        className={styles.programDetailSection}
-        aria-labelledby="program-detail-purpose"
-      >
-        <h3 id="program-detail-purpose" className={styles.programDetailHeading}>
-          {COPY.programs.detailPurpose}
-        </h3>
         <p className={styles.programDetailDescription}>
           {program.description ?? COPY.programs.programDescriptionEmpty}
         </p>
-      </section>
+      </header>
 
       {nextEvent && (
         <article
@@ -445,25 +388,21 @@ export const ParticipantProgramDetail = ({
           >
             {eventTitle(nextEvent, program.name)}
           </h3>
-          <dl className={styles.programDetailEventMeta}>
-            <div>
-              <dt>{COPY.programs.detailEventTime}</dt>
-              <dd>
-                <time dateTime={nextEvent.starts_at}>
-                  {hkWallLabel(nextEvent.starts_at)}
-                </time>
-                {eventTime(nextEvent.ends_at) && (
-                  <span>–{eventTime(nextEvent.ends_at)}</span>
-                )}
-              </dd>
-            </div>
+          <div className={styles.programDetailInfoCard}>
+            <p className={styles.programDetailFactRow}>
+              <EventFactIcon name="calendar" />
+              <span>
+                {hkShortDateLabel(nextEvent.starts_at)}
+                {hkShortTimeRange(nextEvent.starts_at, nextEvent.ends_at)}
+              </span>
+            </p>
             {eventLocation(nextEvent) && (
-              <div>
-                <dt>{COPY.programs.detailEventLocation}</dt>
-                <dd>{eventLocation(nextEvent)}</dd>
-              </div>
+              <p className={styles.programDetailFactRow}>
+                <EventFactIcon name="pin" />
+                <span>{eventLocation(nextEvent)}</span>
+              </p>
             )}
-          </dl>
+          </div>
           {nextConflict && (
             <p className={styles.programDetailConflict} role="note">
               {nextConflict}
@@ -480,40 +419,6 @@ export const ParticipantProgramDetail = ({
         </article>
       )}
 
-      <dl className={styles.programDetailFacts}>
-        <div>
-          <dt>{COPY.programs.detailBehavior}</dt>
-          <dd>{behaviorLabel[program.behavior_type]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailLifecycle}</dt>
-          <dd>{lifecycleLabel[program.lifecycle]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailParticipation}</dt>
-          <dd>{participationLabel[program.enrollment_mode]}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.detailDepartment}</dt>
-          <dd>{department.name}</dd>
-        </div>
-        {program.category && (
-          <div>
-            <dt>{COPY.programs.detailCategory}</dt>
-            <dd>{program.category}</dd>
-          </div>
-        )}
-      </dl>
-
-      <ParticipantEnrollment
-        program={program}
-        enrollment={enrollment}
-        enrollmentAccess={enrollmentAccess}
-        scheduleRules={scheduleRules}
-        events={state.detail.events}
-        onRefresh={refreshDetail}
-      />
-
       <section
         className={styles.programDetailSection}
         aria-labelledby="program-detail-schedule"
@@ -524,46 +429,23 @@ export const ParticipantProgramDetail = ({
         >
           {COPY.programs.scheduleTitle}
         </h3>
-        {scheduleRules.length > 0 ? (
-          <div className={styles.programDetailTableWrap}>
-            <table
-              className={styles.programDetailTable}
-              aria-label={COPY.programs.scheduleTitle}
-            >
-              <thead>
-                <tr>
-                  <th scope="col">{COPY.programs.scheduleTitle}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scheduleRules.map((rule) => (
-                  <tr key={rule.rule_id}>
-                    <td>{scheduleLabel(rule)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.detailScheduleNone}
-          </p>
-        )}
-      </section>
-
-      <section
-        className={styles.programDetailSection}
-        aria-labelledby="program-detail-events"
-      >
-        <h3 id="program-detail-events" className={styles.programDetailHeading}>
-          {COPY.programs.detailEvents}
-        </h3>
-        {upcomingEvents.length > 0 ? (
-          <ul className={styles.programDetailList}>
-            {upcomingEvents.map((event) => (
+        {scheduledEvents.length > 0 ? (
+          <ul
+            className={styles.programDetailList}
+            aria-label={COPY.programs.scheduleTitle}
+          >
+            {scheduledEvents.map((event) => (
               <li key={event.event_id} className={styles.programDetailEvent}>
-                <span>{COPY.programs.detailEventTime}</span>
-                <time dateTime={event.starts_at}>{eventWhen(event)}</time>
+                <time className={styles.eventDate} dateTime={event.starts_at}>
+                  {hkMonthDayLabel(event.starts_at)}
+                </time>
+                <div className={styles.programDetailScheduleCopy}>
+                  <strong>{eventTitle(event, program.name)}</strong>
+                  <span className={styles.eventSource}>
+                    {eventWhen(event)}
+                    {eventLocation(event) ? ` · ${eventLocation(event)}` : ""}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
@@ -573,6 +455,42 @@ export const ParticipantProgramDetail = ({
           </p>
         )}
       </section>
+
+      {history.length > 0 && (
+        <section
+          className={styles.programDetailHistory}
+          aria-labelledby="program-enrollment-history-title"
+        >
+          <h3
+            id="program-enrollment-history-title"
+            className={styles.programDetailHeading}
+          >
+            {COPY.programs.enrollmentHistory}
+          </h3>
+          <ul
+            className={styles.eventList}
+            aria-label={COPY.programs.enrollmentHistory}
+          >
+            {history.map((item) => (
+              <li key={item.id} className={styles.eventRow}>
+                <span className={styles.eventDate}>{item.label}</span>
+                <time className={styles.eventSource} dateTime={item.at}>
+                  {hkMonthDayLabel(item.at)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <ParticipantEnrollment
+        program={program}
+        enrollment={enrollment}
+        enrollmentAccess={enrollmentAccess}
+        scheduleRules={scheduleRules}
+        events={state.detail.events}
+        onRefresh={refreshDetail}
+      />
       {canManage && (
         <div className={styles.managementEntry}>
           <div>

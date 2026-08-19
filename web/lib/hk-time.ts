@@ -65,6 +65,12 @@ export function hkShortDateLabel(iso: string): string {
   return `${month}月${day}日（${weekday}）`;
 }
 
+/** Short HK month/day date: 8月20日. */
+export function hkMonthDayLabel(iso: string): string {
+  const { month, day } = hkWallParts(iso);
+  return `${month}月${day}日`;
+}
+
 /** Short HK time with 早上/下午/晚上: 晚上 7:30. */
 export function hkShortTimeLabel(iso: string): string {
   const { hour24, hour12, minute } = hkWallParts(iso);

@@ -18,6 +18,8 @@ import type {
   ProgramSummary,
 } from "@/lib/programs/program-api";
 
+import styles from "@/app/programs/programs.module.css";
+
 const mocks = vi.hoisted(() => ({
   cancelEnrollment: vi.fn(),
   submitEnrollmentRequest: vi.fn(),
@@ -168,6 +170,10 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByText(COPY.programs.requestPendingHint)
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.withdrawRequest })
+        .parentElement
+    ).toHaveClass(styles.stickyActionBar);
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
@@ -239,6 +245,10 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByText(COPY.programs.enrollmentActiveHint)
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+        .parentElement
+    ).toHaveClass(styles.stickyActionBar);
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );

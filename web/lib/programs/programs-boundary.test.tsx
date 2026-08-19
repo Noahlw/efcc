@@ -554,7 +554,12 @@ describe("Programs boundary", () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.detailPurpose)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.scheduleTitle })
+    ).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })

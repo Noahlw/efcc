@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   cancelEnrollment,
@@ -31,7 +30,7 @@ export interface ParticipantEnrollmentProps {
   onRefresh: () => Promise<void>;
 }
 
-interface HistoryItem {
+export interface HistoryItem {
   id: string;
   label: string;
   at: string;
@@ -72,6 +71,36 @@ function requestStatusLabel(
       return null;
     }
   }
+}
+
+export function buildEnrollmentHistory(
+  enrollment: ParticipantEnrollmentSnapshot | null
+): HistoryItem[] {
+  if (!enrollment) {
+    return [];
+  }
+  return [
+    ...enrollment.requests.flatMap((request) => {
+      const label = requestStatusLabel(request.status);
+      return label === null
+        ? []
+        : [
+            {
+              id: `request-${request.request_id}`,
+              label,
+              at: request.decided_at ?? request.submitted_at,
+            },
+          ];
+    }),
+    ...enrollment.enrollments.map((item) => ({
+      id: `enrollment-${item.enrollment_id}`,
+      label:
+        item.status === "Active"
+          ? COPY.programs.enrollmentActive
+          : COPY.programs.enrollmentCancelled,
+      at: item.cancelled_at ?? item.enrolled_at,
+    })),
+  ].toSorted((a, b) => b.at.localeCompare(a.at));
 }
 
 interface EnrollmentActionProps {
@@ -124,14 +153,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentActiveHint}
         </p>
-        <button
-          type="button"
-          className={styles.dangerButton}
-          disabled={busy}
-          onClick={() => onBeginConfirm("cancel")}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.cancelEnrollment}
-        </button>
+        <div className={styles.stickyActionBar}>
+          <button
+            type="button"
+            className={styles.dangerButton}
+            disabled={busy}
+            onClick={() => onBeginConfirm("cancel")}
+          >
+            {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
+          </button>
+        </div>
       </>
     );
   }
@@ -142,14 +173,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.requestPendingHint}
         </p>
-        <button
-          type="button"
-          className={styles.actionButton}
-          disabled={busy}
-          onClick={() => onBeginConfirm("withdraw")}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.withdrawRequest}
-        </button>
+        <div className={styles.stickyActionBar}>
+          <button
+            type="button"
+            className={styles.actionButton}
+            disabled={busy}
+            onClick={() => onBeginConfirm("withdraw")}
+          >
+            {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
+          </button>
+        </div>
       </>
     );
   }
@@ -365,34 +398,6 @@ export const ParticipantEnrollment = ({
   const showScheduleAdvisory =
     canRequest && (scheduleRules.length > 0 || events.length > 0);
 
-  const history = useMemo<HistoryItem[]>(() => {
-    if (!enrollment) {
-      return [];
-    }
-    return [
-      ...enrollment.requests.flatMap((request) => {
-        const label = requestStatusLabel(request.status);
-        return label === null
-          ? []
-          : [
-              {
-                id: `request-${request.request_id}`,
-                label,
-                at: request.decided_at ?? request.submitted_at,
-              },
-            ];
-      }),
-      ...enrollment.enrollments.map((item) => ({
-        id: `enrollment-${item.enrollment_id}`,
-        label:
-          item.status === "Active"
-            ? COPY.programs.enrollmentActive
-            : COPY.programs.enrollmentCancelled,
-        at: item.cancelled_at ?? item.enrolled_at,
-      })),
-    ].toSorted((a, b) => b.at.localeCompare(a.at));
-  }, [enrollment]);
-
   const beginConfirm = (kind: ConfirmKind) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       showOfflineError();
@@ -483,33 +488,6 @@ export const ParticipantEnrollment = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentScheduleAdvisory}
         </p>
-      )}
-
-      {history.length > 0 && (
-        <section
-          className={styles.programDetailHistory}
-          aria-labelledby="program-enrollment-history-title"
-        >
-          <h4
-            id="program-enrollment-history-title"
-            className={styles.programDetailSubheading}
-          >
-            {COPY.programs.enrollmentHistory}
-          </h4>
-          <ul
-            className={styles.eventList}
-            aria-label={COPY.programs.enrollmentHistory}
-          >
-            {history.map((item) => (
-              <li key={item.id} className={styles.eventRow}>
-                <span className={styles.eventDate}>{item.label}</span>
-                <time className={styles.eventSource} dateTime={item.at}>
-                  {hkWallLabel(item.at)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
 
       {confirmKind !== null && (

@@ -1679,6 +1679,15 @@
   font-weight: 700;
 }
 
+.programDetailScheduleCopy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.programDetailScheduleCopy strong {
+  color: var(--ink);
+}
+
 .programDetailActions {
   display: flex;
   flex-wrap: wrap;
@@ -2266,6 +2275,12 @@
 }
 
 .stickyActionBar .actionButton {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.stickyActionBar .dangerButton {
   display: block;
   width: 100%;
   text-align: center;
