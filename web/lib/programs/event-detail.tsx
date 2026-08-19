@@ -1,5 +1,5 @@
 "use client";
-/* oxlint-disable eslint/complexity, react/function-component-definition, promise/prefer-await-to-callbacks, jsx-a11y/prefer-tag-over-role, eslint/no-eq-null, eslint/eqeqeq */
+/* oxlint-disable eslint/complexity, react/function-component-definition, promise/prefer-await-to-callbacks, jsx-a11y/prefer-tag-over-role, eslint/no-eq-null, eslint/eqeqeq, unicorn/prefer-query-selector */
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -197,7 +197,7 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
-      document.querySelector("#participant-event-title")?.focus();
+      document.getElementById("participant-event-title")?.focus();
     }
   }, [canManage, detail]);
 

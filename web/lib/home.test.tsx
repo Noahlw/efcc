@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, import/consistent-type-specifier-style, eslint/require-unicode-regexp */
+/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-import-in-mock, import/consistent-type-specifier-style, eslint/require-unicode-regexp */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -48,7 +48,7 @@ const mocks = vi.hoisted(() => {
 
 const { pushMock, replaceMock, pathnameMock, mockRouter } = mocks;
 
-vi.mock(import('next/navigation'), () => ({
+vi.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () => mocks.searchParamsMock(),
@@ -61,7 +61,7 @@ const sessionMocks = vi.hoisted(() => ({
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
-vi.mock(import('@/lib/session'), () => ({
+vi.mock("@/lib/session", () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -110,7 +110,7 @@ const SAMPLE_PROGRAM: HomeProgram = {
 };
 
 const server = setupServer(
-  http.get("/api/v1/home", () => 
+  http.get("/api/v1/home", () =>
     HttpResponse.json({
       requestId: "r-home-test",
       data: {
@@ -148,7 +148,7 @@ const server = setupServer(
       },
     })
   ),
-  http.get("/api/v1/programs/catalog", () => 
+  http.get("/api/v1/programs/catalog", () =>
     HttpResponse.json({
       requestId: "r-catalog",
       data: { catalog: [] },
