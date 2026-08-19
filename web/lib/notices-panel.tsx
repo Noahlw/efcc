@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COPY } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
+import { hkNoticeListLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
 import type { Notice, NoticesResult } from "@/lib/notices-api";
@@ -42,7 +42,7 @@ function noticeTime(createdAt: number): {
   label: string;
 } {
   const dateTime = new Date(createdAt).toISOString();
-  return { dateTime, label: hkWallLabel(dateTime) };
+  return { dateTime, label: hkNoticeListLabel(dateTime) };
 }
 
 function NoticeRow({ notice }: { notice: Notice }) {
@@ -81,10 +81,14 @@ export function NoticesPanel() {
     setState({ kind: "loading" });
     try {
       const result = await listNotices();
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "ready", result });
     } catch {
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "error" });
     }
   }, []);
@@ -105,7 +109,9 @@ export function NoticesPanel() {
       await markAllNoticesRead();
       const markedAt = Date.now();
       setState((current) => {
-        if (current.kind !== "ready") {return current;}
+        if (current.kind !== "ready") {
+          return current;
+        }
         return {
           kind: "ready",
           result: {

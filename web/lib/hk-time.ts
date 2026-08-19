@@ -84,3 +84,38 @@ export function hkShortTimeRange(startIso: string, endIso: string): string {
   }
   return `${start}–${endPeriod} ${endClock}`;
 }
+
+function hkYmd(ms: number): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("zh-Hant-HK", {
+    timeZone: HK_TIME_ZONE,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date(ms));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((entry) => entry.type === type)?.value ?? Number.NaN);
+  return { year: part("year"), month: part("month"), day: part("day") };
+}
+
+function hkDaySerial(ms: number): number {
+  const { year, month, day } = hkYmd(ms);
+  return Date.UTC(year, month - 1, day) / 86_400_000;
+}
+
+/** Notices list label: 今天 / 昨天 / M月D日 / YYYY年M月D日 (Church Time). */
+export function hkNoticeListLabel(iso: string, nowMs = Date.now()): string {
+  const createdMs = new Date(iso).getTime();
+  const delta = hkDaySerial(nowMs) - hkDaySerial(createdMs);
+  if (delta === 0) {
+    return "今天";
+  }
+  if (delta === 1) {
+    return "昨天";
+  }
+  const created = hkYmd(createdMs);
+  const now = hkYmd(nowMs);
+  if (created.year === now.year) {
+    return `${created.month}月${created.day}日`;
+  }
+  return `${created.year}年${created.month}月${created.day}日`;
+}

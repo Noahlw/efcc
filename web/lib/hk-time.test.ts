@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  hkNoticeListLabel,
   hkShortDateLabel,
   hkShortTimeLabel,
   hkShortTimeRange,
@@ -29,5 +30,21 @@ describe("hk short date/time labels", () => {
     expect(
       hkShortTimeRange("2026-08-20T09:59:00.000Z", "2026-08-20T11:30:00.000Z")
     ).toBe("下午 5:59–晚上 7:30");
+  });
+});
+
+describe("hk notice list labels", () => {
+  const now = Date.parse("2026-08-19T10:00:00.000Z");
+
+  test("uses 今天 and 昨天 for the current and previous HK calendar days", () => {
+    expect(hkNoticeListLabel("2026-08-19T01:00:00.000Z", now)).toBe("今天");
+    expect(hkNoticeListLabel("2026-08-18T10:00:00.000Z", now)).toBe("昨天");
+  });
+
+  test("uses M月D日 in the same year and prefixes the year otherwise", () => {
+    expect(hkNoticeListLabel("2026-08-16T11:00:00.000Z", now)).toBe("8月16日");
+    expect(hkNoticeListLabel("2025-12-03T04:00:00.000Z", now)).toBe(
+      "2025年12月3日"
+    );
   });
 });
