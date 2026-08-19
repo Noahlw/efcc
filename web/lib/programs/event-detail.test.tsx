@@ -1,10 +1,10 @@
-/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-resolved-promise, eslint/require-await */
+/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-promise-shorthand, eslint/require-await */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { RpcError } from '@/lib/api';
-import type { ProblemDetails } from '@/lib/api';
+import { RpcError } from "@/lib/api";
+import type { ProblemDetails } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
@@ -541,14 +541,20 @@ describe("EVT-01 event detail", () => {
 
   test("undo is retired when the event is cancelled", async () => {
     let cancelled = false;
-    mocks.getEvent.mockResolvedValue(cancelled ? detailFixture({ event: {
-	...detailFixture().event,
-	status: 'Cancelled',
-	cancel_reason: '場地維修'
-} }) : detailFixture({ participant_summary: {
-	active_enrollments: 0,
-	checked_in: 0
-} })
+    mocks.getEvent.mockImplementation(() =>
+      Promise.resolve(
+        cancelled
+          ? detailFixture({
+              event: {
+                ...detailFixture().event,
+                status: "Cancelled",
+                cancel_reason: "場地維修",
+              },
+            })
+          : detailFixture({
+              participant_summary: { active_enrollments: 0, checked_in: 0 },
+            })
+      )
     );
     mocks.setEventAvailability.mockResolvedValue({
       event: { ...detailFixture().event, availability: "Inactive" },
