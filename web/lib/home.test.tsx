@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, import/consistent-type-specifier-style, eslint/require-unicode-regexp */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -47,7 +48,7 @@ const mocks = vi.hoisted(() => {
 
 const { pushMock, replaceMock, pathnameMock, mockRouter } = mocks;
 
-vi.mock("next/navigation", () => ({
+vi.mock(import('next/navigation'), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () => mocks.searchParamsMock(),
@@ -60,7 +61,7 @@ const sessionMocks = vi.hoisted(() => ({
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
-vi.mock("@/lib/session", () => ({
+vi.mock(import('@/lib/session'), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -109,8 +110,8 @@ const SAMPLE_PROGRAM: HomeProgram = {
 };
 
 const server = setupServer(
-  http.get("/api/v1/home", () => {
-    return HttpResponse.json({
+  http.get("/api/v1/home", () => 
+    HttpResponse.json({
       requestId: "r-home-test",
       data: {
         featuredEvent: {
@@ -145,14 +146,14 @@ const server = setupServer(
           nextEventStartAt: "2026-09-07T02:00:00.000Z",
         },
       },
-    });
-  }),
-  http.get("/api/v1/programs/catalog", () => {
-    return HttpResponse.json({
+    })
+  ),
+  http.get("/api/v1/programs/catalog", () => 
+    HttpResponse.json({
       requestId: "r-catalog",
       data: { catalog: [] },
-    });
-  })
+    })
+  )
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
@@ -164,6 +165,7 @@ afterEach(() => {
   sessionMocks.hasAuthHintMock.mockReset();
   sessionMocks.restoreBootstrapMock.mockReset();
 });
+
 afterAll(() => server.close());
 
 function renderWithApp(ui: React.ReactNode, bootstrap = BOOTSTRAP) {
@@ -233,6 +235,8 @@ describe("HomeView Component", () => {
       screen.getByRole("heading", { level: 2, name: "第三課聚會" })
     ).toBeInTheDocument();
     expect(screen.getByText("二樓禮堂")).toBeInTheDocument();
+    expect(screen.getByText("8月20日（四）")).toBeInTheDocument();
+    expect(screen.getByText("晚上 7:30–9:00")).toBeInTheDocument();
 
     const viewEventLink = screen.getByRole("link", {
       name: COPY.home.viewEvent,

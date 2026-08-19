@@ -1144,6 +1144,7 @@ export const COPY = {
     eventDetailBack: "返回聚會列表",
     eventDetailTitle: "聚會詳情",
     checkInAvailable: "可簽到",
+    checkInInstructionsHeading: "簽到說明",
     eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
     goToScan: "前往掃描",
     backToOrigin: "返回",

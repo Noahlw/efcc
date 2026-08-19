@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, eslint/require-await */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -6,6 +7,8 @@ import { RpcError, type ProblemDetails } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
+
+import styles from "@/app/programs/programs.module.css";
 
 const mocks = vi.hoisted(() => ({
   getEvent: vi.fn(),
@@ -106,7 +109,7 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.eventDetailBack,
     });
     await userEvent.click(back);
-    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   test("edit form saves identity, schedule, and check-in window changes", async () => {
@@ -251,6 +254,7 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.eventAvailabilityRestoredNotice)
     ).resolves.toBeInTheDocument();
   });
+
   test("deactivates immediately with Undo when no event operations are affected", async () => {
     // Program-wide enrollments are NOT this event's operations: with zero
     // event check-ins the deactivation is immediate even when the Program
@@ -536,20 +540,14 @@ describe("EVT-01 event detail", () => {
 
   test("undo is retired when the event is cancelled", async () => {
     let cancelled = false;
-    mocks.getEvent.mockImplementation(() =>
-      Promise.resolve(
-        cancelled
-          ? detailFixture({
-              event: {
-                ...detailFixture().event,
-                status: "Cancelled",
-                cancel_reason: "場地維修",
-              },
-            })
-          : detailFixture({
-              participant_summary: { active_enrollments: 0, checked_in: 0 },
-            })
-      )
+    mocks.getEvent.mockResolvedValue(cancelled ? detailFixture({ event: {
+	...detailFixture().event,
+	status: 'Cancelled',
+	cancel_reason: '場地維修'
+} }) : detailFixture({ participant_summary: {
+	active_enrollments: 0,
+	checked_in: 0
+} })
     );
     mocks.setEventAvailability.mockResolvedValue({
       event: { ...detailFixture().event, availability: "Inactive" },
@@ -672,11 +670,9 @@ describe("EVT-01 event detail", () => {
     );
 
     // 可簽到 badge when the check-in window is currently open.
-    expect(
-      await screen.findByRole("status", {
+    await expect(screen.findByRole("status", {
         name: COPY.programs.checkInAvailable,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Title + program name.
     expect(
@@ -684,24 +680,39 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("顯恩堂主日學")).toBeInTheDocument();
 
-    // When / where.
-    const article = screen.getByRole("region", {
-      name: COPY.programs.eventInstructions,
-    });
-    expect(article).toBeInTheDocument();
-    expect(screen.getByText(COPY.programs.detailEventTime)).toBeInTheDocument();
+    // When / where — icon-led card using the shared short HK formatter.
+    expect(screen.getByText("9月12日（六）晚上 6:00–7:30")).toBeInTheDocument();
     expect(screen.getByText("教會禮堂")).toBeInTheDocument();
+    const infoCard = screen.getByText("教會禮堂").closest("article");
+    expect(infoCard).not.toBeNull();
+    const icons = infoCard?.querySelectorAll("svg") ?? [];
+    expect(icons).toHaveLength(2);
+    for (const icon of icons) {
+      expect(icon).toHaveAttribute("viewBox", "0 0 24 24");
+      expect(icon.querySelector("[stroke-width='1.8']")).not.toBeNull();
+    }
+    expect(
+      screen.queryByText(COPY.programs.detailEventTime)
+    ).not.toBeInTheDocument();
 
-    // Check-in instructions.
+    // Check-in instructions heading + body.
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: COPY.programs.checkInInstructionsHeading,
+      })
+    ).toBeInTheDocument();
     expect(
       screen.getByText(COPY.programs.eventInstructions)
     ).toBeInTheDocument();
 
-    // 前往掃描 CTA points at the scanner with this exact event pre-selected.
+    // 前往掃描 CTA is sticky, full-width, and points at this event.
     const cta = screen.getByRole("link", {
       name: COPY.programs.goToScan,
     });
     expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
+    expect(cta).toHaveClass(styles.actionButton);
+    expect(cta.parentElement).toHaveClass(styles.stickyActionBar);
 
     // No management controls.
     expect(
@@ -790,7 +801,7 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
-    expect(mocks.updateEvent).toHaveBeenCalled();
+    expect(mocks.updateEvent).toHaveBeenCalledWith();
   });
 
   test("086-03 cancelling a meeting with attendance is refused without calling cancel", async () => {
@@ -823,17 +834,17 @@ describe("EVT-01 event detail", () => {
 
   test("086-03 cancelling a meeting without attendance shows explicit confirm and supports keep or commit", async () => {
     let cancelled = false;
-    mocks.getEvent.mockImplementation(() =>
-      Promise.resolve(
-        detailFixture({
-          event: {
-            ...detailFixture().event,
-            has_attendance: false,
-            status: cancelled ? "Cancelled" : "Active",
-          } as EventDetailData["event"],
-          participant_summary: { active_enrollments: 0, checked_in: 0 },
-        })
-      )
+    mocks.getEvent.mockResolvedValue(detailFixture({
+	event: {
+		...detailFixture().event,
+		has_attendance: false,
+		status: cancelled ? 'Cancelled' : 'Active'
+	} as EventDetailData['event'],
+	participant_summary: {
+		active_enrollments: 0,
+		checked_in: 0
+	}
+})
     );
     mocks.cancelEvent.mockImplementation(async () => {
       cancelled = true;
@@ -883,6 +894,6 @@ describe("EVT-01 event detail", () => {
       "event-1",
       null
     );
-    expect(cancelled).toBe(true);
+    expect(cancelled).toBeTruthy();
   });
 });

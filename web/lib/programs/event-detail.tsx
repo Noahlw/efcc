@@ -1,10 +1,12 @@
 "use client";
+/* oxlint-disable eslint/complexity, react/function-component-definition, promise/prefer-await-to-callbacks, jsx-a11y/prefer-tag-over-role, eslint/no-eq-null, eslint/eqeqeq */
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
+import { hkShortDateLabel, hkShortTimeRange } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
@@ -24,6 +26,38 @@ import {
 } from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
+
+const ICON_STROKE = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  strokeWidth: 1.8,
+};
+
+export const EventFactIcon = ({ name }: { name: "calendar" | "pin" }) => (
+  <svg
+    aria-hidden="true"
+    className={styles.programDetailFactIcon}
+    focusable="false"
+    viewBox="0 0 24 24"
+  >
+    {name === "calendar" ? (
+      <>
+        <rect {...ICON_STROKE} x="3" y="5" width="18" height="16" rx="2" />
+        <path {...ICON_STROKE} d="M16 3v4M8 3v4M3 10h18" />
+      </>
+    ) : (
+      <>
+        <path
+          {...ICON_STROKE}
+          d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"
+        />
+        <circle {...ICON_STROKE} cx="12" cy="10" r="2.5" />
+      </>
+    )}
+  </svg>
+);
 
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
@@ -163,7 +197,7 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
-      document.getElementById("participant-event-title")?.focus();
+      document.querySelector("#participant-event-title")?.focus();
     }
   }, [canManage, detail]);
 
@@ -357,7 +391,8 @@ export const EventDetail = ({
     const checkInOpen = checkInWindowIsOpen(event);
     const scanHref = `/scanner?event=${encodeURIComponent(event.event_id)}`;
     const eventTitle = event.name ?? hkWallDateTimeLabel(event.starts_at);
-    const eventTime = `${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`;
+    const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
+    const instructionsHeadingId = "participant-event-instructions";
 
     return (
       <section
@@ -393,33 +428,39 @@ export const EventDetail = ({
           </h1>
         </header>
 
-        <dl className={styles.programDetailFacts}>
-          <div>
-            <dt>{COPY.programs.detailEventTime}</dt>
-            <dd>
-              <time dateTime={event.starts_at}>{eventTime}</time>
-            </dd>
-          </div>
+        <article className={styles.programDetailInfoCard}>
+          <p className={styles.programDetailFactRow}>
+            <EventFactIcon name="calendar" />
+            <time dateTime={event.starts_at}>{whenLabel}</time>
+          </p>
           {event.location && (
-            <div>
-              <dt>{COPY.programs.detailEventLocation}</dt>
-              <dd>{event.location}</dd>
-            </div>
+            <p className={styles.programDetailFactRow}>
+              <EventFactIcon name="pin" />
+              <span>{event.location}</span>
+            </p>
           )}
-        </dl>
+        </article>
 
         <section
           className={styles.programDetailSection}
-          aria-label={COPY.programs.eventInstructions}
+          aria-labelledby={instructionsHeadingId}
         >
+          <h2
+            id={instructionsHeadingId}
+            className={styles.programDetailHeading}
+          >
+            {COPY.programs.checkInInstructionsHeading}
+          </h2>
           <p className={styles.programDetailDescription}>
             {COPY.programs.eventInstructions}
           </p>
         </section>
 
-        <Link href={scanHref} className={styles.actionButton}>
-          {COPY.programs.goToScan}
-        </Link>
+        <div className={styles.stickyActionBar}>
+          <Link href={scanHref} className={styles.actionButton}>
+            {COPY.programs.goToScan}
+          </Link>
+        </div>
       </section>
     );
   }

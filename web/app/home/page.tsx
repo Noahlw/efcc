@@ -1,4 +1,5 @@
 "use client";
+/* oxlint-disable eslint/complexity, eslint/no-use-before-define, react/function-component-definition, promise/prefer-await-to-then, unicorn/no-negated-condition */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -6,12 +7,17 @@ import { useEffect, useState } from "react";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
+import {
+  hkShortDateLabel,
+  hkShortTimeLabel,
+  hkShortTimeRange,
+} from "@/lib/hk-time";
 import { getHome } from "@/lib/home-api";
-import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import {
   getParticipantProgramDetail,
   listParticipantCatalog,
 } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 
 import styles from "./home.module.css";
 
@@ -209,23 +215,22 @@ function greetingDate(): string {
 }
 
 function eventDate(value: string | null): string | null {
-  const parts = value ? localDateParts(value) : null;
-  return parts ? `${parts.month}月${parts.day}日（${parts.weekday}）` : null;
+  return value && Number.isFinite(Date.parse(value))
+    ? hkShortDateLabel(value)
+    : null;
 }
 
-function eventTime(value: string | null): string | null {
-  if (!value) {
+function eventTimeRange(
+  startsAt: string | null,
+  endsAt: string | null
+): string | null {
+  if (!startsAt || !Number.isFinite(Date.parse(startsAt))) {
     return null;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
+  if (!endsAt || !Number.isFinite(Date.parse(endsAt))) {
+    return hkShortTimeLabel(startsAt);
   }
-  return new Intl.DateTimeFormat("zh-Hant-HK", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Hong_Kong",
-  }).format(date);
+  return hkShortTimeRange(startsAt, endsAt);
 }
 
 function Icon({
@@ -413,9 +418,7 @@ export function HomeView({
       : "/programs";
   const title = event?.eventTitle ?? "";
   const date = eventDate(event?.startsAt ?? null);
-  const startTime = eventTime(event?.startsAt ?? null);
-  const endTime = eventTime(event?.endsAt ?? null);
-  const time = startTime && endTime ? `${startTime}–${endTime}` : startTime;
+  const time = eventTimeRange(event?.startsAt ?? null, event?.endsAt ?? null);
 
   return (
     <div className={styles.page} data-testid="home-page">
