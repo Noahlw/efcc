@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector, vitest/max-expects, vitest/require-top-level-describe, vitest/no-conditional-expect, vitest/require-mock-type-parameters */
 import {
   cleanup,
   render,
@@ -34,9 +35,8 @@ const mocks = vi.hoisted(() => {
     getManagementAccess: vi.fn(),
     getManagementAttention: vi.fn(),
     getManagementNotifications: vi.fn<() => Promise<ManagementNotifications>>(),
-    markManagementNotificationsRead: vi.fn<
-      () => Promise<{ marked_count: number }>
-    >(),
+    markManagementNotificationsRead:
+      vi.fn<() => Promise<{ marked_count: number }>>(),
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
@@ -371,9 +371,11 @@ describe("Programs intent", () => {
 });
 
 describe("Programs boundary copy", () => {
-  test("entry lead describes the boundary without promising deferred manager tasks", () => {
-    expect(COPY.programs.entryLead).toContain("集中於此");
-    expect(COPY.programs.entryLead).not.toContain("先選部門");
+  test("entry lead describes catalog discovery without promising deferred manager tasks", () => {
+    expect(COPY.programs.entryLead).toBe(
+      "尋找合適的課程，查看聚會及報名狀態。"
+    );
+    expect(COPY.programs.pageTitle).toBe("課程");
     expect(COPY.programs.malformedIntentHint).toContain("課程入口");
   });
 });
@@ -485,8 +487,13 @@ test.each([
     render(<ProgramsBoundary />);
 
     await expect(
-      screen.findByRole("heading", { name: "參與者模式" })
+      screen.findByRole("heading", { name: COPY.programs.pageTitle })
     ).resolves.toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.participantMode })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(COPY.programs.entryLead)).toBeInTheDocument();
     expect(document.querySelector("#programs-mode-panel")).toHaveAttribute(
       "role",
       "region"
@@ -510,7 +517,7 @@ describe("Programs boundary", () => {
     render(<ProgramsBoundary />);
 
     await expect(
-      screen.findByRole("heading", { name: "參與者模式" })
+      screen.findByRole("heading", { name: COPY.programs.pageTitle })
     ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "進入管理模式" })
@@ -555,7 +562,7 @@ describe("Programs boundary", () => {
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("#overview");
     await expect(
-      screen.findByRole("heading", { name: COPY.programs.participantMode })
+      screen.findByRole("heading", { name: COPY.programs.pageTitle })
     ).resolves.toBeInTheDocument();
   });
 
@@ -677,9 +684,7 @@ describe("Programs boundary", () => {
       })
     );
 
-    expect(window.location.search).toBe(
-      "?mode=management&task=notifications"
-    );
+    expect(window.location.search).toBe("?mode=management&task=notifications");
     expect(window.location.hash).toBe("");
     expect(mocks.push).not.toHaveBeenCalled();
   });
@@ -706,7 +711,7 @@ describe("Programs boundary", () => {
     await user.keyboard("{Enter}");
     await expect(
       screen.findByRole("heading", {
-        name: COPY.programs.participantMode,
+        name: COPY.programs.pageTitle,
       })
     ).resolves.toBeInTheDocument();
   });
@@ -715,7 +720,7 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const { rerender } = render(<ProgramsBoundary />);
 
-    await screen.findByRole("heading", { name: "參與者模式" });
+    await screen.findByRole("heading", { name: COPY.programs.pageTitle });
     window.history.pushState({}, "", "/programs?mode=management");
     mocks.pathname.mockReturnValue("/programs");
     rerender(<ProgramsBoundary />);
@@ -730,7 +735,7 @@ describe("Programs boundary", () => {
     window.history.pushState({}, "", "/programs");
     rerender(<ProgramsBoundary />);
     await expect(
-      screen.findByRole("heading", { name: "參與者模式" })
+      screen.findByRole("heading", { name: COPY.programs.pageTitle })
     ).resolves.toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
@@ -838,7 +843,7 @@ describe("Programs boundary", () => {
       screen.findByRole("heading", { name: COPY.error.forbidden })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "參與者模式" })
+      screen.queryByRole("heading", { name: COPY.programs.participantMode })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: COPY.programs.retryAccess })
@@ -948,7 +953,7 @@ describe("Programs boundary", () => {
     expect(mocks.push).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: COPY.programs.participantMode })
+        screen.getByRole("heading", { name: COPY.programs.pageTitle })
       ).toBeInTheDocument();
     });
   });
@@ -979,7 +984,9 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        catalogProgramSummary("program-1", "查經小組", { category: "門徒訓練" }),
+        catalogProgramSummary("program-1", "查經小組", {
+          category: "門徒訓練",
+        }),
         catalogProgramSummary("program-2", "青年團契", { category: "團契" }),
       ]),
     });

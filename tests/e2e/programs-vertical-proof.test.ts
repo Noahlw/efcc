@@ -47,7 +47,7 @@ const MEMBER_CRED =
 
 const COPY = {
   login: "登入",
-  pageTitle: "課程與活動",
+  pageTitle: "課程",
   participantMode: "參與者模式",
   managementMode: "管理模式",
   detailPurpose: "課程簡介",

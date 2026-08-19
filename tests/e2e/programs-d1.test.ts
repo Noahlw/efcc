@@ -42,8 +42,8 @@ const COPY = {
   sessionExpired: {
     reLogin: "重新登入",
   },
-  pageTitle: "課程與活動",
-  pageLead: "課程與活動集中於此，先了解適合你的下一步。",
+  pageTitle: "課程",
+  pageLead: "尋找合適的課程，查看聚會及報名狀態。",
   participantMode: "參與者模式",
   managementMode: "管理模式",
   enterManagement: "進入管理模式",

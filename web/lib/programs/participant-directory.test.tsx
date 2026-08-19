@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe -- shared fixture hooks cover all PUI-02 describes */
+/* oxlint-disable vitest/require-top-level-describe, vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with -- shared fixture hooks cover all PUI-02 describes */
 import {
   cleanup,
   render,
@@ -121,9 +121,7 @@ function renderDirectory(
 
 const rowNames = (): string[] =>
   [
-    ...document.querySelectorAll<HTMLElement>(
-      "button[class*='directoryCard']"
-    ),
+    ...document.querySelectorAll<HTMLElement>("button[class*='directoryCard']"),
   ].map(
     (button) =>
       button.querySelector<HTMLElement>("span[class*='directoryCardTitle']")
@@ -150,10 +148,7 @@ describe("PUI-02 participant directory loading and collection", () => {
 
     const loading = screen.getByRole("status");
     expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(loading).toHaveAttribute(
-      "aria-label",
-      COPY.programs.catalogLoading
-    );
+    expect(loading).toHaveAttribute("aria-label", COPY.programs.catalogLoading);
 
     pending.resolve({ catalog: catalogFixture() });
     const list = await screen.findByRole("list", {
@@ -260,6 +255,26 @@ describe("PUI-02 participant directory loading and collection", () => {
 });
 
 describe("PUI-02 participant directory search and filters", () => {
+  test("catalog search is icon-only with an accessible name", async () => {
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture(),
+    });
+    renderDirectory();
+
+    await screen.findByRole("button", { name: /查經小組/u });
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.participantMode })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.catalogSearchLabel)
+    ).not.toBeInTheDocument();
+    const search = screen.getByRole("searchbox", {
+      name: COPY.programs.catalogSearchLabel,
+    });
+    expect(search).not.toHaveAttribute("placeholder");
+    expect(search.closest("div")?.querySelector("svg")).not.toBeNull();
+  });
+
   test("search matches name, description, and category; clearing restores all rows", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({

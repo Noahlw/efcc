@@ -1252,12 +1252,25 @@
 
 .directorySearchRow {
   display: flex;
+  position: relative;
   gap: 0.5rem;
+}
+
+.directorySearchIcon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--ink-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .directorySearchRow .input {
   flex: 1;
   min-width: 0;
+  padding-left: 2.5rem;
 }
 
 .clearButton {
