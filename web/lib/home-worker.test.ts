@@ -671,4 +671,35 @@ describe("GET /api/v1/home Worker route", () => {
     assert.strictEqual(body.data.featuredEvent.title, "特別崇拜推薦");
     assert.strictEqual(body.data.featuredEvent.isEnrolled, false);
   });
+
+  test("lists published Template B announcements newest-first", async () => {
+    const publishedAt = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO home_content
+          (content_id, version, template_type, status, publish_mode, start_at, end_at,
+           title, summary, created_by, created_at, updated_by, updated_at, published_by, published_at)
+         VALUES ('list-announcement', 99, 'B', 'Published', 'immediate', NULL, NULL,
+                 '列表公告', '列表摘要', 'HOME-ADMIN', ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?)`
+      )
+      .bind(publishedAt, publishedAt, publishedAt)
+      .run();
+
+    const res = await worker.fetch(
+      request("/api/v1/home/announcements", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await res.json()) as {
+      data: { announcements: { contentId: string; title: string }[] };
+    };
+    assert.ok(
+      body.data.announcements.some(
+        (row) => row.contentId === "list-announcement"
+      )
+    );
+  });
 });

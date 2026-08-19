@@ -233,7 +233,7 @@ function eventTimeRange(
   return hkShortTimeRange(startsAt, endsAt);
 }
 
-function Icon({
+export function Icon({
   name,
   className,
 }: {
@@ -305,9 +305,11 @@ function EventRow({
 export function AnnouncementDetail({
   announcement,
   onBack,
+  backLabel = COPY.home.backHome,
 }: {
   announcement: AnnouncementData;
   onBack: () => void;
+  backLabel?: string;
 }) {
   return (
     <div
@@ -320,7 +322,7 @@ export function AnnouncementDetail({
       <div className={styles.detailIntro}>
         <button type="button" className={styles.backButton} onClick={onBack}>
           <Icon name="back" className={styles.backIcon} />
-          {COPY.home.backHome}
+          {backLabel}
         </button>
         <time className={styles.dateTag}>{announcement.date}</time>
         <h1>{announcement.title}</h1>
@@ -463,7 +465,12 @@ export function HomeView({
           className={styles.section}
           aria-labelledby="church-news-heading"
         >
-          <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
+          <div className={styles.sectionHeading}>
+            <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
+            <Link href="/messages" className={styles.sectionLink}>
+              {COPY.home.viewAllMessages}
+            </Link>
+          </div>
           <button
             type="button"
             className={styles.listCard}

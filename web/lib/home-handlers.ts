@@ -328,13 +328,7 @@ async function resolveFeaturedEvent(
   return null;
 }
 
-async function resolveAnnouncement(
-  db: D1Database,
-  nowIso: string
-): Promise<HomeAnnouncementDto | null> {
-  const row = await db
-    .prepare(
-      `SELECT content_id, version, title, summary, body_markdown,
+const ANNOUNCEMENT_SELECT = `SELECT content_id, version, title, summary, body_markdown,
               cta_label, cta_url, image_url, image_alt, published_at, updated_at
          FROM home_content
         WHERE template_type = 'B'
@@ -344,16 +338,11 @@ async function resolveAnnouncement(
             (start_at IS NOT NULL AND start_at <= ?)
           )
           AND (end_at IS NULL OR end_at > ?)
-        ORDER BY version DESC, published_at DESC
-        LIMIT 1`
-    )
-    .bind(nowIso, nowIso)
-    .first<AnnouncementRow>();
+        ORDER BY version DESC, published_at DESC`;
 
-  if (!row) {
-    return null;
-  }
+const MESSAGES_PAGE_SIZE = 20;
 
+function announcementFromRow(row: AnnouncementRow): HomeAnnouncementDto {
   return {
     contentId: row.content_id,
     version: row.version,
@@ -366,6 +355,26 @@ async function resolveAnnouncement(
     imageAlt: row.image_alt ?? null,
     publishedAt: row.published_at ?? row.updated_at,
   };
+}
+
+async function listPublishedAnnouncements(
+  db: D1Database,
+  nowIso: string,
+  limit: number
+): Promise<HomeAnnouncementDto[]> {
+  const result = await db
+    .prepare(`${ANNOUNCEMENT_SELECT} LIMIT ?`)
+    .bind(nowIso, nowIso, limit)
+    .all<AnnouncementRow>();
+  return (result.results ?? []).map(announcementFromRow);
+}
+
+async function resolveAnnouncement(
+  db: D1Database,
+  nowIso: string
+): Promise<HomeAnnouncementDto | null> {
+  const [row] = await listPublishedAnnouncements(db, nowIso, 1);
+  return row ?? null;
 }
 
 async function resolveExploreProgram(
@@ -455,7 +464,45 @@ export async function handleGetHome(
 
     return jsonResponse(200, data, requestId);
   } catch (error) {
-    console.error(`[home] GET /api/v1/home failed requestId=${requestId}:`, error);
+    console.error(
+      `[home] GET /api/v1/home failed requestId=${requestId}:`,
+      error
+    );
+    return problem(
+      503,
+      "HOME_UNAVAILABLE",
+      "Service unavailable",
+      "Home content is temporarily unavailable.",
+      requestId
+    );
+  }
+}
+
+/**
+ * GET /api/v1/home/announcements
+ * Published Template B church messages, newest first, bounded for the Messages list.
+ */
+export async function handleGetAnnouncements(
+  request: Request,
+  env: HomeEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  try {
+    const auth = await requireActor(request, env, requestId);
+    if (auth instanceof Response) {
+      return auth;
+    }
+    const announcements = await listPublishedAnnouncements(
+      env.DB,
+      new Date().toISOString(),
+      MESSAGES_PAGE_SIZE
+    );
+    return jsonResponse(200, { announcements }, requestId);
+  } catch (error) {
+    console.error(
+      `[home] GET /api/v1/home/announcements failed requestId=${requestId}:`,
+      error
+    );
     return problem(
       503,
       "HOME_UNAVAILABLE",

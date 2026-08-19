@@ -22,6 +22,8 @@ export default defineProject({
       "lib/account-settings.test.tsx",
       "lib/home.test.tsx",
       "lib/hk-time.test.ts",
+      "lib/messages-intent.test.ts",
+      "lib/messages-panel.test.tsx",
       "lib/management-hub.test.tsx",
       "lib/settings-hub.test.tsx",
       "lib/permissions-panel.test.tsx",

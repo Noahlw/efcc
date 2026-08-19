@@ -264,6 +264,9 @@ describe("HomeView Component", () => {
     const announcementCard = screen.getByTestId("announcement-card");
     expect(announcementCard).toBeInTheDocument();
     expect(screen.getByText("本週崇拜及聚會安排")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.home.viewAllMessages })
+    ).toHaveAttribute("href", "/messages");
 
     await user.click(announcementCard);
 
@@ -373,6 +376,25 @@ describe("AnnouncementDetail Component", () => {
     );
 
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  test("uses a contextual back label when provided", () => {
+    const onBack = vi.fn();
+    render(
+      <AnnouncementDetail
+        announcement={{
+          title: "消息標題",
+          date: "8月15日",
+          summary: "消息內容",
+          externalUrl: null,
+        }}
+        onBack={onBack}
+        backLabel={COPY.home.churchNews}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.home.churchNews })
+    ).toBeInTheDocument();
   });
 });
 
