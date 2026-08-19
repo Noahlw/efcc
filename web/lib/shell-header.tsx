@@ -45,6 +45,10 @@ export const ShellHeader = ({
   const isManagement = bootstrap.navigation.some(
     (section) => section.key === "management"
   );
+  const currentSection = pathname.replace(/^\//u, "").split("/")[0] || "home";
+  const sectionTitle =
+    bootstrap.navigation.find((section) => section.key === currentSection)
+      ?.label ?? COPY.shell.shortMark;
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
   const roleLabel =
     COPY.shell.roleLabels[
@@ -68,7 +72,9 @@ export const ShellHeader = ({
               </div>
             </>
           ) : (
-            <span className={styles.shortMark}>{COPY.shell.shortMark}</span>
+            <span className={styles.title}>
+              {pathname === "/home" ? COPY.shell.shortMark : sectionTitle}
+            </span>
           )}
         </div>
 

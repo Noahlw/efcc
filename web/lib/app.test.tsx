@@ -1477,8 +1477,9 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
-    test("renders brand mark without identity block or bell for Member accounts", () => {
-      render(
+    test("renders brand mark on /home, contextual section title elsewhere, no identity block or bell for Member accounts", () => {
+      pathnameMock.mockReturnValue("/home");
+      const { unmount } = render(
         <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
           <ShellHeader />
         </AppProvider>
@@ -1487,6 +1488,16 @@ describe("Shell", () => {
       expect(
         screen.queryByRole("button", { name: /開啟注意事項/u })
       ).not.toBeInTheDocument();
+      unmount();
+
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.getByText(COPY.sections.programs)).toBeInTheDocument();
+      expect(screen.queryByText(COPY.shell.shortMark)).not.toBeInTheDocument();
     });
   });
 
