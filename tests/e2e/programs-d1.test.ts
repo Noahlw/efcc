@@ -13,9 +13,8 @@ import type { Browser, Locator, Page } from "@playwright/test";
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
-const TARGET_ORIGIN = new URL(
-  configuredTarget ?? "http://127.0.0.1:8787"
-).origin;
+const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
+  .origin;
 const localTarget =
   !configuredTarget ||
   ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
@@ -434,7 +433,12 @@ async function loginAs(
   username: string,
   password: string
 ): Promise<void> {
+  await page.context().clearCookies();
   await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
   await page.locator('input[autocomplete="username"]').fill(username);
   await page.locator('input[autocomplete="current-password"]').fill(password);
   await page.getByRole("button", { name: COPY.login }).click();
@@ -1343,12 +1347,15 @@ test.describe("NTC-01 participant Notices", () => {
     const apiContext = await browser.newContext();
     const api = apiContext.request;
     try {
-      const loginResponse = await api.post(`${TARGET_ORIGIN}/api/v1/auth/login`, {
-        data: {
-          username: required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-          password: required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED),
-        },
-      });
+      const loginResponse = await api.post(
+        `${TARGET_ORIGIN}/api/v1/auth/login`,
+        {
+          data: {
+            username: required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+            password: required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED),
+          },
+        }
+      );
       expect(loginResponse.ok()).toBe(true);
       const setCookie = loginResponse.headers()["set-cookie"];
       const authCookie = setCookie?.split(";")[0];
@@ -1368,7 +1375,7 @@ test.describe("NTC-01 participant Notices", () => {
         (p) => p.name === "E2E_DEMO_成人查經"
       );
       expect(program?.program_id).toBeTruthy();
-      const programId = program!.program_id;
+      const programId = program?.program_id ?? "";
       const enrollResponse = await api.post(
         `${TARGET_ORIGIN}/api/v1/programs/${encodeURIComponent(programId)}/enrollments`,
         {
@@ -1397,8 +1404,7 @@ test.describe("NTC-01 participant Notices", () => {
         };
         const enrollment = body.data?.enrollments?.find(
           (row) =>
-            row.member_user_id === DEV_MEMBER.userId &&
-            row.status === "Active"
+            row.member_user_id === DEV_MEMBER.userId && row.status === "Active"
         );
         if (enrollment) {
           const cancelResponse = await api.post(
@@ -1465,53 +1471,71 @@ test.describe("NTC-01 participant Notices", () => {
     }
   });
 
-  test("opens an event notice to the Event Detail", async ({ page, browser }) => {
-    await enrollAndCancelAround(page, async () => {
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await page.goto("/notices");
-      await page.getByRole("link", { name: /聚會提醒/u }).click();
-      await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
-    }, browser);
+  test("opens an event notice to the Event Detail", async ({
+    page,
+    browser,
+  }) => {
+    await enrollAndCancelAround(
+      page,
+      async () => {
+        await loginAs(
+          page,
+          required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+          required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+        );
+        await page.goto("/notices");
+        await page.getByRole("link", { name: /聚會提醒/u }).click();
+        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+      },
+      browser
+    );
   });
 
   test("returns to Notices after back from event detail opened via notice", async ({
     page,
     browser,
   }) => {
-    await enrollAndCancelAround(page, async () => {
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await page.goto("/notices");
-      await page.getByRole("link", { name: /聚會提醒/u }).click();
-      await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
-      const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
-      await expect(backBtn).toBeVisible();
-      await backBtn.click();
-      await expect(page).toHaveURL(/\/notices$/u);
-      await expect(
-        page.getByRole("list", { name: COPY.noticesListLabel })
-      ).toBeVisible();
-    }, browser);
+    await enrollAndCancelAround(
+      page,
+      async () => {
+        await loginAs(
+          page,
+          required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+          required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+        );
+        await page.goto("/notices");
+        await page.getByRole("link", { name: /聚會提醒/u }).click();
+        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+        const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
+        await expect(backBtn).toBeVisible();
+        await backBtn.click();
+        await expect(page).toHaveURL(/\/notices$/u);
+        await expect(
+          page.getByRole("list", { name: COPY.noticesListLabel })
+        ).toBeVisible();
+      },
+      browser
+    );
   });
 
-  test("opens a program notice to the Program detail", async ({ page, browser }) => {
-    await enrollAndCancelAround(page, async () => {
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await page.goto("/notices");
-      await page.getByRole("link", { name: /報名結果/u }).click();
-      await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
-    }, browser);
+  test("opens a program notice to the Program detail", async ({
+    page,
+    browser,
+  }) => {
+    await enrollAndCancelAround(
+      page,
+      async () => {
+        await loginAs(
+          page,
+          required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+          required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+        );
+        await page.goto("/notices");
+        await page.getByRole("link", { name: /報名結果/u }).click();
+        await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+      },
+      browser
+    );
   });
 
   test("opens an account notice to the account page", async ({ page }) => {
@@ -2283,9 +2307,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     // department with no newline separators in the accessible tree.
     const firstProgramName = required(
       "first program name",
-      (
-        await firstProgram.locator("span").first().textContent()
-      )?.trim()
+      (await firstProgram.locator("span").first().textContent())?.trim()
     );
     await firstProgram.focus();
     await firstProgram.press("Enter");
@@ -3084,12 +3106,8 @@ test.describe("MUI-02 scoped Program management", () => {
     await page
       .getByRole("textbox", { name: COPY.programCategory })
       .fill("E2E 活動類別");
-    await page
-      .getByLabel(COPY.behaviorType)
-      .selectOption("OneOff");
-    await page
-      .getByLabel(COPY.lifecycle)
-      .selectOption("Active");
+    await page.getByLabel(COPY.behaviorType).selectOption("OneOff");
+    await page.getByLabel(COPY.lifecycle).selectOption("Active");
     await page.getByRole("button", { name: COPY.saveProgram }).click();
 
     await expect(

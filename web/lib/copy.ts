@@ -7,6 +7,14 @@ export const COPY = {
   // Official full church title used as the primary brand string in headers
   // (Spec 079 §1: shorter marks are legacy shorthand only).
   appFullName: "中國基督教播道會顯恩堂",
+  shell: {
+    shortMark: "顯恩堂",
+    roleLabels: {
+      Member: "會員",
+      Staff: "同工",
+      Admin: "管理員",
+    },
+  },
   skipToContent: "跳到主要內容",
   login: {
     title: "登入",
@@ -109,7 +117,9 @@ export const COPY = {
     exportSheet: "匯出簽到表",
     maskedPhone: (phone: string) => {
       const normalized = phone.trim().replaceAll(/[\s().-]/gu, "");
-      if (normalized.length <= 4) {return "****";}
+      if (normalized.length <= 4) {
+        return "****";
+      }
       return `${normalized.slice(0, 4)}${"*".repeat(normalized.length - 4)}`;
     },
     chooserTitle: "聚會／出席",
@@ -493,6 +503,19 @@ export const COPY = {
     unauthorized: "您沒有權限存取此頁面。",
     unknownRoute: "找不到此頁面。",
     label: "主要導航",
+  },
+  attention: {
+    title: "注意事項",
+    tabsLabel: "注意事項分類",
+    pendingTab: "待處理",
+    noticesTab: "通知",
+    close: "關閉",
+    bellLabel: (count: number) => `開啟注意事項，${count} 項`,
+    badgeCount: (count: number) => `目前有 ${count} 項注意事項`,
+    pendingEmptyTitle: "目前沒有待處理事項",
+    pendingEmptyHint: "需要你處理的事項會在這裡顯示。",
+    noticesEmptyTitle: "目前沒有新通知",
+    noticesEmptyHint: "有新通知時會在這裡顯示。",
   },
   notAvailable: {
     title: "找不到此內容",

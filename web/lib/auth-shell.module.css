@@ -58,21 +58,13 @@
   border-bottom: 1px solid var(--line, #d6dcde);
 }
 
-@media (min-width: 800px) {
-  /* The desktop side rail (globals.css .nav-desktop) is fixed at left:0 with
-     width 200px; offset the header beside it so the seal + church title stay
-     visible (review P1). */
-  .header {
-    margin-left: 200px;
-  }
-}
-
 .brand {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
 }
+
 .title {
   font-size: 1rem;
   font-weight: 800;
@@ -83,26 +75,95 @@
   text-overflow: ellipsis;
 }
 
-.signOut {
+.shortMark {
   flex-shrink: 0;
-  min-height: 44px;
-  padding: 0 1.25rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 8px;
-  background: transparent;
+  color: var(--accent, #9c302c);
+  font-size: 1rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+.headerActions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.identityBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm, 8px);
+  text-align: left;
+}
+
+.identityName {
+  overflow: hidden;
+  max-width: min(28vw, 220px);
   color: var(--ink, #171a1d);
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identityRole {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: 50%;
+  color: var(--ink, #171a1d);
+  background: transparent;
   cursor: pointer;
 }
 
-.signOut:hover {
+.bell:hover {
+  color: var(--accent, #9c302c);
   background: var(--surface, #f4f5f3);
 }
 
-.signOut:focus-visible {
-  outline: 2px solid var(--focus, #176a87);
-  outline-offset: 2px;
+.bellBadge {
+  position: absolute;
+  top: -0.2rem;
+  right: -0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.2rem;
+  border-radius: var(--radius-pill, 999px);
+  color: var(--surface-raised, #ffffff);
+  background: var(--accent, #9c302c);
+  font-size: 0.67rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+@media (max-width: 560px) {
+  .header {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .identityName {
+    max-width: 34vw;
+  }
 }
 
 /* Full-viewport centered state (loading / recovery / forbidden / empty). */

@@ -3,10 +3,13 @@
  * 5-slot shell navigation, Care removal, offline banner, and accessibility.
  */
 import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import {
+  defaultSections,
+  stableNavigationSections,
+} from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -137,7 +140,9 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(links.nth(3)).toHaveAttribute("href", "/management");
   });
 
-  test("Care is removed: no Care slot in nav and /care is not accessible", async ({ page }) => {
+  test("Care is removed: no Care slot in nav and /care is not accessible", async ({
+    page,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -152,7 +157,10 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(careNav).toHaveCount(0);
   });
 
-  test("Offline banner appears when offline and auto-hides when online", async ({ page, context }) => {
+  test("Offline banner appears when offline and auto-hides when online", async ({
+    page,
+    context,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -162,7 +170,9 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(MEMBER_USER));
     await page.goto("/home");
 
-    const banner = page.getByRole("status", { name: COPY.offlineBanner }).or(page.getByText(COPY.offlineBanner));
+    const banner = page
+      .getByRole("status", { name: COPY.offlineBanner })
+      .or(page.getByText(COPY.offlineBanner));
     // Initially online -> banner not visible
     await expect(banner).toHaveCount(0);
 
@@ -193,5 +203,92 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
 
     const liveRegion = page.locator('[role="status"][aria-live="polite"]');
     await expect(liveRegion).toBeAttached();
+  });
+});
+
+test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel contract", () => {
+  test("Management top bar displays identity and bell; clicking bell opens Attention panel", async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ key, value }: { key: string; value: string }) => {
+        localStorage.setItem(key, value);
+      },
+      { key: AUTH_HINT_KEY, value: "1" }
+    );
+    await page.route("**/api/v1/auth/**", stubAuthFor(STAFF_USER));
+    await page.goto("/home");
+
+    const header = page.locator("header");
+    await expect(header).toBeVisible();
+    await expect(header.getByText(COPY.shell.shortMark)).toBeVisible();
+    await expect(header.getByText(STAFF_USER.name)).toBeVisible();
+    await expect(header.getByText(COPY.shell.roleLabels.Staff)).toBeVisible();
+
+    const bell = header.getByRole("button", {
+      name: new RegExp(COPY.attention.title),
+    });
+    await expect(bell).toBeVisible();
+
+    // Open attention panel
+    await bell.click();
+    const dialog = page.getByRole("dialog", { name: COPY.attention.title });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("tab", { name: COPY.attention.pendingTab })
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("tab", { name: COPY.attention.noticesTab })
+    ).toBeVisible();
+    await expect(
+      dialog.getByText(COPY.attention.pendingEmptyTitle)
+    ).toBeVisible();
+
+    // Dismiss on Escape
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+
+  test("Member top bar renders simple section mark without identity or bell", async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      ({ key, value }: { key: string; value: string }) => {
+        localStorage.setItem(key, value);
+      },
+      { key: AUTH_HINT_KEY, value: "1" }
+    );
+    await page.route("**/api/v1/auth/**", stubAuthFor(MEMBER_USER));
+    await page.goto("/home");
+
+    const header = page.locator("header");
+    await expect(header).toBeVisible();
+    await expect(header.getByText(MEMBER_USER.name)).toHaveCount(0);
+    await expect(
+      header.getByRole("button", { name: new RegExp(COPY.attention.title) })
+    ).toHaveCount(0);
+  });
+
+  test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({
+    page,
+  }, testInfo) => {
+    await page.addInitScript(
+      ({ key, value }: { key: string; value: string }) => {
+        localStorage.setItem(key, value);
+      },
+      { key: AUTH_HINT_KEY, value: "1" }
+    );
+    await page.route("**/api/v1/auth/**", stubAuthFor(STAFF_USER));
+    await page.goto("/scanner");
+
+    // Top bar is hidden
+    await expect(page.locator("header")).toHaveCount(0);
+
+    // Navigation remains visible
+    const nav = testInfo.project.name.startsWith("mobile")
+      ? page.locator("nav.nav-phone")
+      : page.locator("nav.nav-desktop");
+    await expect(nav).toBeVisible();
+    await expect(nav.locator(".nav-item--scan")).toBeVisible();
   });
 });
