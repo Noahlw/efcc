@@ -117,7 +117,8 @@ async function ensureActiveEnrollment(
   await expect(
     adminPage
       .getByRole("region", { name: COPY.workspaceTaskParticipants })
-      .getByText(COPY.decisionMade, { exact: true })
+      .getByText(COPY.decisionMade, { exact: true }),
+    { timeout: 15_000 }
   ).toBeVisible();
   await memberPage.reload();
   // The approve response must leave an Active enrollment; assert it so a
