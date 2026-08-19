@@ -24,4 +24,10 @@ describe("hk short date/time labels", () => {
       hkShortTimeRange("2026-08-20T11:30:00.000Z", "2026-08-20T13:00:00.000Z")
     ).toBe("晚上 7:30–9:00");
   });
+
+  test("keeps both prefixes when the range crosses 下午 into 晚上", () => {
+    expect(
+      hkShortTimeRange("2026-08-20T09:59:00.000Z", "2026-08-20T11:30:00.000Z")
+    ).toBe("下午 5:59–晚上 7:30");
+  });
 });

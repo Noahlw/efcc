@@ -73,11 +73,14 @@ export function hkShortTimeLabel(iso: string): string {
 
 /** Same-period range collapses the second prefix: 晚上 7:30–9:00. */
 export function hkShortTimeRange(startIso: string, endIso: string): string {
-  const start = hkShortTimeLabel(startIso);
-  const end = hkShortTimeLabel(endIso);
-  const startPeriod = start.slice(0, 2);
-  if (end.startsWith(`${startPeriod} `)) {
-    return `${start}–${end.slice(startPeriod.length + 1)}`;
+  const startParts = hkWallParts(startIso);
+  const endParts = hkWallParts(endIso);
+  const startPeriod = hkDayPeriod(startParts.hour24);
+  const endPeriod = hkDayPeriod(endParts.hour24);
+  const start = `${startPeriod} ${startParts.hour12}:${startParts.minute}`;
+  const endClock = `${endParts.hour12}:${endParts.minute}`;
+  if (startPeriod === endPeriod) {
+    return `${start}–${endClock}`;
   }
-  return `${start}–${end}`;
+  return `${start}–${endPeriod} ${endClock}`;
 }
