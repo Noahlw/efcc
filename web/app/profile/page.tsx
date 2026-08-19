@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { isPermitted } from "@/lib/sections";
 import { AppShell } from "@/lib/app-shell";
 import { useApp } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
@@ -119,18 +120,20 @@ function ProfileContent() {
             </span>
             <ChevronIcon />
           </Link>
-          <Link
-            href="/management?module=settings"
-            className={styles.actionRow}
-          >
-            <span>
-              <span className={styles.actionTitle}>{COPY.profile.settingsEntry}</span>
-              <span className={styles.actionDescription}>
-                {COPY.profile.settingsEntryHint}
+          {isPermitted(bootstrap.sections, "management") ? (
+            <Link
+              href="/management?module=settings"
+              className={styles.actionRow}
+            >
+              <span>
+                <span className={styles.actionTitle}>{COPY.profile.settingsEntry}</span>
+                <span className={styles.actionDescription}>
+                  {COPY.profile.settingsEntryHint}
+                </span>
               </span>
-            </span>
-            <ChevronIcon />
-          </Link>
+              <ChevronIcon />
+            </Link>
+          ) : null}
           <button type="button" className={styles.actionRow} onClick={signOut}>
             <span className={styles.logoutTitle}>{COPY.profile.logout}</span>
             <ChevronIcon />
