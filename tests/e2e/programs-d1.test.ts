@@ -536,7 +536,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     await expect(page.locator("#programs-mode-panel")).toBeVisible();
     await expect(page.getByText(COPY.pageLead)).toBeVisible();
@@ -564,7 +564,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     await expect(page.locator("#programs-mode-panel")).toBeVisible();
   });
@@ -579,7 +579,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     const hasManagement = await hasProjectedManagementCapability(page);
     const managementButton = page.getByRole("button", {
