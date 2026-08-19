@@ -10,9 +10,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
-import { COPY } from "../../web/lib/copy";
-import { LANDING } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import { COPY, LANDING } from "../../web/lib/copy";
+import {
+  defaultSections,
+  stableNavigationSections,
+} from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -125,7 +127,7 @@ test("bottom nav below 768px, side rail at or above 768px", async ({
   }
 });
 
-test("shell header brand sits beside the desktop side rail, not under it", async ({
+test("shell header spans top and desktop side rail sits below it, not overlapping", async ({
   page,
 }, testInfo) => {
   await page.goto("/profile.html");
@@ -134,28 +136,17 @@ test("shell header brand sits beside the desktop side rail, not under it", async
   await expect(header).toBeVisible();
   const headerBox = requireBox(await header.boundingBox());
 
-  if (isMobile(testInfo.project.name)) {
-    // Phone: no fixed rail, the header spans the full width above the bottom nav.
-    expect(headerBox.x).toBe(0);
-    return;
+  expect(headerBox.x).toBe(0);
+
+  if (!isMobile(testInfo.project.name)) {
+    const rail = page.locator(".nav-desktop");
+    await expect(rail).toBeVisible();
+    const railBox = requireBox(await rail.boundingBox());
+    expect(railBox.x).toBe(0);
+    expect(railBox.y).toBeGreaterThanOrEqual(
+      headerBox.y + headerBox.height - 1
+    );
   }
-
-  // Desktop: the side rail is fixed at left:0 with width 200px. The header
-  // must be offset beside it so the seal + church title are not covered.
-  await expect(page.locator(".nav-desktop")).toBeVisible();
-  expect(headerBox.x).toBeGreaterThanOrEqual(200);
-
-  // The brand (first content in the header) must be fully inside the visible
-  // area right of the rail — elementFromPoint at the rail's right edge inside
-  // the header row must resolve to the header content, not the rail.
-  const topmostAtRailEdge = await page.evaluate(({ x, y }) => {
-    const el = document.elementFromPoint(x, y);
-    return el ? (el.closest(".nav-desktop") !== null ? "rail" : "header") : null;
-  }, {
-    x: 208,
-    y: headerBox.y + headerBox.height / 2,
-  });
-  expect(topmostAtRailEdge).toBe("header");
 });
 
 test("no horizontal overflow at the target viewport", async ({ page }) => {
@@ -185,7 +176,10 @@ test("profile page fits the shell-content without horizontal overflow at 375x812
     }
     return el.scrollWidth <= el.clientWidth;
   });
-  expect(fits, "profile horizontally overflows the shell-content scroll box").toBeTruthy();
+  expect(
+    fits,
+    "profile horizontally overflows the shell-content scroll box"
+  ).toBeTruthy();
 });
 
 test("bottom nav and page outlet reserve safe-area inset", async ({
@@ -214,7 +208,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
   // At/above 768px the side rail replaces the fixed bottom nav, so the
   // outlet intentionally reserves nothing (padding-bottom: 0).
-  const expectedShell = isMobile(testInfo.project.name) ? "94px" : "0px";
+  const expectedShell = isMobile(testInfo.project.name) ? "118px" : "0px";
 
   expect(paddings.navBottom, "bottom nav must pad the safe-area inset").toBe(
     "34px"
@@ -448,7 +442,8 @@ test("register page fits 375x667 without vertical scroll", async ({ page }) => {
   await page.goto("/register.html");
   const fits = await page.evaluate(
     () =>
-      document.documentElement.scrollHeight <= document.documentElement.clientHeight
+      document.documentElement.scrollHeight <=
+      document.documentElement.clientHeight
   );
   expect(fits, "register exceeds the 375x667 viewport").toBeTruthy();
 });

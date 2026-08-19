@@ -10,7 +10,7 @@ import ProfileSettingsPage from "@/app/profile/settings/page";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
 import { COPY } from "@/lib/copy";
-import { defaultSections, stableNavigationSections } from "@/lib/sections";
+import { defaultSections, sectionsForRole, stableNavigationSections } from "@/lib/sections";
 
 const mocks = vi.hoisted(() => {
   const replaceMock = vi.fn<(path: string) => void>();
@@ -60,7 +60,7 @@ const PROFILE: PublicUser = {
 };
 
 const BOOTSTRAP: Bootstrap = {
-  sections: defaultSections(),
+  sections: sectionsForRole("Member"),
   navigation: stableNavigationSections("Member"),
   profile: PROFILE,
 };
@@ -322,14 +322,47 @@ describe(ProfilePage, () => {
     expect(screen.getByText(PROFILE.role)).toBeInTheDocument();
 
     // Settings actions
-    const settingsLink = screen.getByRole("link", { name: new RegExp(COPY.profile.accountSettings) });
+    const settingsLink = screen.getByRole("link", { name: new RegExp(COPY.profile.accountSettings, "u") });
     expect(settingsLink).toBeInTheDocument();
     expect(settingsLink).toHaveAttribute("href", "/profile/settings");
 
-    // Settings hub entry (084-04 #311): 設定 row links to the system
-    // Settings hub, additive to the existing 帳戶設定 row.
+    // Settings hub entry is server-projected: default bootstrap omits
+    // `management`, so Member accounts see no link to
+    // `/management?module=settings`.
+    expect(
+      screen.queryByRole("link", {
+        name: new RegExp(`^${COPY.profile.settingsEntry}`, "u"),
+      })
+    ).not.toBeInTheDocument();
+
+    // Logout action
+    const logoutButtons = screen.getAllByRole("button", { name: new RegExp(COPY.profile.logout, "u") });
+    expect(logoutButtons.length).toBeGreaterThanOrEqual(1);
+    await user.click(logoutButtons[logoutButtons.length - 1]);
+    await waitFor(() => {
+      expect(sessionMocks.clearAuthHintMock).toHaveBeenCalled();
+    });
+  });
+
+  test("renders management settings link for management-capable accounts", async () => {
+    server.use(
+      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 }))
+    );
+    const managementSections = defaultSections();
+    sessionMocks.restoreBootstrapMock.mockResolvedValue({
+      sections: managementSections,
+      navigation: stableNavigationSections("Admin"),
+      profile: { ...PROFILE, role: "Admin" },
+    });
+    pathnameMock.mockReturnValue("/profile");
+    sessionMocks.hasAuthHintMock.mockReturnValue(true);
+    render(<ProfilePage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: COPY.profile.title })).toBeInTheDocument();
+    });
     const settingsHubEntry = screen.getByRole("link", {
-      name: new RegExp(`^${COPY.profile.settingsEntry}`),
+      name: new RegExp(`^${COPY.profile.settingsEntry}`, "u"),
     });
     expect(settingsHubEntry).toBeInTheDocument();
     expect(settingsHubEntry).toHaveAttribute(
@@ -339,13 +372,5 @@ describe(ProfilePage, () => {
     expect(
       screen.getByText(COPY.profile.settingsEntryHint)
     ).toBeInTheDocument();
-
-    // Logout action
-    const logoutButtons = screen.getAllByRole("button", { name: new RegExp(COPY.profile.logout) });
-    expect(logoutButtons.length).toBeGreaterThanOrEqual(1);
-    await user.click(logoutButtons[logoutButtons.length - 1]);
-    await waitFor(() => {
-      expect(sessionMocks.clearAuthHintMock).toHaveBeenCalled();
-    });
   });
 });

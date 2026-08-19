@@ -89,26 +89,122 @@ a {
   border-width: 0;
 }
 
-/* ---- Shared shell (acceptance S15) --------------------------------------
-   Phone (<800px): fixed bottom nav bar (.nav-phone).
-   Desktop (>=800px): fixed side rail (.nav-desktop). Breakpoint 800px per
-   the acceptance matrix; these classes are consumed read-only by the
-   authenticated NavBar component (Ui02 owns that component file). */
+/* ---- Shared shell --------------------------------------------------------
+   Phone (<800px): fixed five-slot bottom dock (.nav-phone).
+   Desktop (>=800px): sticky icon + label side rail (.nav-desktop). Breakpoint
+   800px is shared by the prototype and the authenticated shell. */
+.shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 
 .nav-phone {
   display: flex;
   position: fixed;
+  right: 0;
   bottom: 0;
   left: 0;
-  right: 0;
+  align-items: stretch;
+  gap: 0.25rem;
+  height: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding: 0.5rem 0.5rem env(safe-area-inset-bottom, 0);
   background: var(--surface-raised);
   border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 10%, transparent);
   z-index: 100;
 }
 
 .nav-desktop {
   display: none;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-item:hover {
+  background: var(--surface);
+}
+
+.nav-item[aria-current="page"] {
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 12%, transparent);
+  font-weight: 800;
+}
+
+.nav-icon {
+  display: inline-flex;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 799.98px) {
+  .nav-phone .nav-item {
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    min-height: 56px;
+    padding: 0.25rem 0.2rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .nav-phone .nav-item--scan {
+    position: relative;
+    flex: 0 0 64px;
+    align-self: flex-start;
+    width: 64px;
+    height: 64px;
+    margin-top: -22px;
+    padding: 0.5rem;
+    border: 4px solid var(--surface);
+    border-radius: 50%;
+    color: var(--surface-raised);
+    background: var(--accent);
+    box-shadow: 0 7px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+  }
+
+  .nav-phone .nav-item--scan:hover,
+  .nav-phone .nav-item--scan[aria-current="page"] {
+    color: var(--surface-raised);
+    background: var(--accent-deep);
+    box-shadow: 0 7px 18px color-mix(in srgb, var(--ink) 24%, transparent);
+  }
+
+  .nav-phone .nav-item--scan .nav-label {
+    position: absolute;
+    top: calc(100% + 0.15rem);
+    color: var(--ink-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
 }
 
 @media (min-width: 800px) {
@@ -118,44 +214,40 @@ a {
 
   .nav-desktop {
     display: flex;
+    flex: 0 0 200px;
+    position: sticky;
+    top: 64px;
+    align-self: flex-start;
     flex-direction: column;
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
     width: 200px;
+    height: calc(100dvh - 64px);
+    padding: 1rem 0.75rem;
+    overflow-y: auto;
     background: var(--surface-raised);
     border-right: 1px solid var(--line);
-    padding: 1rem;
-    z-index: 100;
+    z-index: 90;
   }
 
-  .shell-content {
-    margin-left: 200px;
+  .shell-body--scanner .nav-desktop {
+    top: 0;
+    height: 100dvh;
   }
-}
 
-.nav-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0.5rem;
-  font-size: 0.875rem;
-  text-decoration: none;
-  color: var(--ink);
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: center;
-}
+  .nav-desktop__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
 
-.nav-item[aria-current="page"] {
-  font-weight: 800;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  .nav-desktop .nav-item {
+    justify-content: flex-start;
+    gap: 0.7rem;
+    width: 100%;
+  }
+
+  .nav-desktop .nav-item[aria-current="page"] {
+    box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 12%, transparent);
+  }
 }
 
 /* Focus-visible ring for keyboard users (CF0-06 / matrix) */
@@ -183,12 +275,6 @@ input:focus-visible {
     flex-direction: column;
     align-items: flex-start;
   }
-
-  .nav-item {
-    padding-inline: 0.25rem;
-    font-size: 0.8125rem;
-    white-space: nowrap;
-  }
 }
 
 .shell {
@@ -198,18 +284,165 @@ input:focus-visible {
   overflow: hidden;
 }
 
-/* Scrollable content outlet. Phone: reserve room above the fixed bottom
-   nav; a page that should fit without scrolling (e.g. Profile) sets its own
-   root to height:100% and centers internally. */
+/* Scrollable content outlet. Phone: reserve room above the fixed bottom dock. */
 .shell-content {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0));
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 800px) {
   .shell-content {
     padding-bottom: 0;
   }
+}
+
+.attention-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--ink) 24%, transparent);
+}
+
+.attention-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.attention-panel {
+  position: relative;
+  z-index: 1;
+  width: min(420px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: 0;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  background: var(--surface-raised);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--ink) 20%, transparent);
+}
+
+.attention-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.1rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.attention-panel__header h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.attention-panel__close {
+  min-height: 40px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.attention-panel__close:hover {
+  background: var(--surface);
+}
+
+.attention-panel__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.7rem 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.attention-panel__tab {
+  min-height: 42px;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--ink-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.attention-panel__tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent-deep);
+}
+
+.attention-panel__body {
+  min-height: 240px;
+  padding: 1.1rem;
+}
+
+.attention-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 190px;
+  gap: 0.55rem;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.attention-panel__empty-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--success);
+  font-size: 1.25rem;
+  font-weight: 850;
+}
+
+.attention-panel__empty h3 {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.attention-panel__empty p {
+  max-width: 28ch;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.attention-panel__list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+}
+
+.attention-panel__list li {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.attention-panel__list span {
+  color: var(--ink-muted);
+  font-size: 0.88rem;
 }

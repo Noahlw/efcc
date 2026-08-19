@@ -45,23 +45,30 @@ decision record.
    redesign.html`) conflicts with the decoded content of these two files,
    the prototype files win and the conflicting document must be corrected
    or retired.
-2. **Screen inventory**: 30 real, rendered screens in the management
-   prototype (of 34 declared — 4 are dead JS-only route names with no view
+2. **Screen inventory**: 31 real, rendered screens in the management
+   prototype (of 34 declared — 3 are dead JS-only route names with no view
    markup) and 21 real, rendered screens in the participant prototype (of 22
-   declared — `guest-scan` is dead). `docs/specs/design-tree-efcc-
-   redesign.html`'s 47-screen inventory is retired; it is no longer
-   maintained and must not be used as a screen-count reference. It stays in
-   the repo only as historical record of the prior (incorrect) attempt.
+   declared — `guest-scan` is dead). The three dead management routes are
+   `program-notifications`, `participant-approval-detail`, and
+   `assisted-enrollment` as a standalone route (see `dead-routes-and-dead-code.md`);
+   `program-settings` is the 31st real screen — a currently-unimplemented
+   Program Leader assignment surface requiring a future implementation slice.
+   `docs/specs/design-tree-efcc-redesign.html`'s 47-screen inventory is
+   retired; it is no longer maintained and must not be used as a screen-count
+   reference. It stays in the repo only as historical record of the prior
+   (incorrect) attempt.
 3. **Port strategy**: production rebuilds every real prototype screen's DOM,
    copy, states, and interaction contract inside the existing Next.js/
    Worker/D1 architecture, against real data — not a copy of the bundle, not
    a visual-only restyle. Demo-only scaffolding (scenario switchers, offline
    simulation toggles, cross-prototype persona hard-links, `示範資料`
-   labels) is never ported.
-4. **URL architecture**: production keeps its own existing route/intent
-   scheme; prototype screens map onto it. The prototype's own `?screen=`
-   demo router is not adopted.
-5. **Scope corrections carried forward** from the contradictions above:
+   labels) is never ported. Resolved contradictions recorded during
+   reconciliation: the prototype's own `?screen=` demo router is not adopted
+   (production's URL intent contract wins); the apparent `#176a87` vs
+   `#6495aa` focus-ring discrepancy is not a divergence to port — the repo's
+   existing `--focus: #176a87` in `web/app/globals.css` already matches
+   `DESIGN.md` and is the established accessible focus ring.
+4. **Scope corrections carried forward** from the contradictions above:
    Registration Approval detail becomes its own routable Task; assisted
    enrollment is capability-gated, not mode-gated; Account Permissions
    becomes a real multi-account projection; Care is removed outright, no
@@ -69,7 +76,7 @@ decision record.
    additive, secondary capability behind the prototype's manual-creation
    primary path (not removed, since the prototype under-specifies rather
    than forbids it).
-6. **Implementation specs**: `docs/specs/084-shell-auth-account-settings.md`
+5. **Implementation specs**: `docs/specs/084-shell-auth-account-settings.md`
    through `docs/specs/087-management-hub-approvals-home-cms.md` are the
    subsystem-scoped implementation specs derived from these two prototypes,
    published in place of the retired `docs/specs/083-management-workspace-

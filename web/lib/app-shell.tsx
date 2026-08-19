@@ -1,15 +1,17 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
+import { EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
+import { OfflineBanner } from "@/lib/offline-banner";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
@@ -18,20 +20,21 @@ import {
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
-import { OfflineBanner } from "@/lib/offline-banner";
 
 import styles from "./auth-shell.module.css";
 
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 
-function ShellFrame({
+const ShellFrame = ({
   bootstrap,
   children,
 }: {
   bootstrap: Bootstrap;
   children: React.ReactNode;
-}) {
+}) => {
   const router = useRouter();
+  const pathname = usePathname();
+  const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
 
   const handleSignOut = useCallback(async () => {
     let rpcFailed = false;
@@ -56,17 +59,23 @@ function ShellFrame({
         <a className={styles.skipLink} href="#shell-content">
           {COPY.skipToContent}
         </a>
-        <ShellHeader />
-        <NavBar />
-        <main id="shell-content" className="shell-content">
-          {children}
-        </main>
+        <ShellHeader attentionData={EMPTY_ATTENTION_DATA} />
+        <div
+          className={
+            isScanner ? "shell-body shell-body--scanner" : "shell-body"
+          }
+        >
+          <NavBar />
+          <main id="shell-content" className="shell-content">
+            {children}
+          </main>
+        </div>
       </div>
     </AppProvider>
   );
-}
+};
 
-function LoadingShell() {
+const LoadingShell = () => {
   useEffect(() => {
     announce(COPY.restore.loading);
   }, []);
@@ -77,9 +86,9 @@ function LoadingShell() {
       <p>{COPY.restore.loading}</p>
     </main>
   );
-}
+};
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<
@@ -178,4 +187,4 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return <ShellFrame bootstrap={state.bootstrap}>{children}</ShellFrame>;
-}
+};
