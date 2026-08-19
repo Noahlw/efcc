@@ -65,18 +65,18 @@ describe(SectionView, () => {
     ).not.toBeInTheDocument();
   });
 
-  test("renders every Ui03 section heading from centralized zh-Hant COPY", () => {
+  test("renders every shell section heading from centralized zh-Hant COPY", () => {
     const cases: Array<[string, string]> = [
-      ["events", COPY.sections.events],
+      ["programs", COPY.sections.programs],
       ["scanner", COPY.sections.scanner],
-      ["care", COPY.sections.care],
-      ["permissions", COPY.sections.permissions],
+      ["notices", COPY.sections.notices],
+      ["management", COPY.sections.management],
     ];
     const ALL_SECTIONS: Section[] = [
-      { key: "events", label: "聚會", capability: "READ", requiresServerAuth: false },
-      { key: "scanner", label: "掃描", capability: "AUTH", requiresServerAuth: false },
-      { key: "care", label: "關懷", capability: "AUTH", requiresServerAuth: false },
-      { key: "permissions", label: "權限管理", capability: "AUTH", requiresServerAuth: false },
+      { key: "programs", label: "聚會", capability: "READ", requiresServerAuth: false },
+      { key: "scanner", label: "簽到", capability: "AUTH", requiresServerAuth: false },
+      { key: "notices", label: "通知", capability: "READ", requiresServerAuth: false },
+      { key: "management", label: "管理", capability: "AUTH", requiresServerAuth: false },
     ];
     for (const [key, title] of cases) {
       cleanup();

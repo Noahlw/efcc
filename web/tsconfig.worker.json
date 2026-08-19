@@ -23,9 +23,18 @@
     "worker-globals.d.ts",
     "worker.ts",
     "worker.test.ts",
+    "lib/attendance.ts",
     "lib/attendance-worker.test.ts",
+    "lib/home-handlers.ts",
+    "lib/home-worker.test.ts",
+    "lib/home-cms-handlers.ts",
+    "lib/home-cms-worker.test.ts",
     "lib/auth/**/*.ts",
     "lib/programs/**/*.ts"
   ],
-  "exclude": ["lib/programs/program-api.ts"]
+  "exclude": [
+    "lib/programs/program-api.ts",
+    "lib/home-api.ts",
+    "lib/home-api.test.ts"
+  ]
 }

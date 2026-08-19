@@ -25,14 +25,14 @@ export const REGISTRATION_COPY = {
   usernameLabel: "用戶名稱",
   passwordLabel: "密碼",
   nameLabel: "姓名",
-  phoneLabel: "電話（選填）",
+  phoneLabel: "電話",
   submit: "提交註冊申請",
   submitting: "提交中…",
-  missingFields: "請填寫用戶名稱、密碼及姓名。",
+  missingFields: "請完成所有資料，密碼最少 8 個字元。",
   doneTitle: "申請已提交",
-  doneMessage:
-    "你的註冊申請已提交，帳戶尚待 Staff 或 Admin 審批。審批完成後即可登入。",
+  doneMessage: "教會同工核對後會通知你。帳戶啟用前仍可使用訪客簽到。",
   submittedLive: "註冊申請已提交。",
+  guestCheckIn: "訪客簽到",
 } as const;
 
 export const QUEUE_COPY = {

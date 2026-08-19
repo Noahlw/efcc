@@ -24,9 +24,10 @@ import {
   vi,
 } from "vitest";
 
-import CarePage from "@/app/care/page";
 import EventsPage from "@/app/events/page";
 import HomePage from "@/app/home/page";
+import ManagementPage from "@/app/management/page";
+import NoticesPage from "@/app/notices/page";
 import RootLayout from "@/app/layout";
 import NotFound from "@/app/not-found";
 import LoginPage from "@/app/page";
@@ -44,9 +45,13 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
-import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
+import { RecoveryView } from "@/lib/recovery-view";
+import {
+  defaultSections,
+  sectionsForRole,
+  stableNavigationSections,
+} from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
@@ -77,56 +82,9 @@ vi.mock(import("next/navigation"), () => ({
     ) as unknown as ReadonlyURLSearchParams,
 }));
 
-const MEMBER_SECTIONS = [
-  {
-    key: "home",
-    label: "首頁",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "profile",
-    label: "個人資料",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "programs",
-    label: "課程",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-];
-
-const STAFF_SECTIONS = [
-  ...MEMBER_SECTIONS,
-  {
-    key: "events",
-    label: "聚會",
-    capability: "READ",
-    requiresServerAuth: false,
-  },
-  {
-    key: "scanner",
-    label: "掃描",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-  {
-    key: "care",
-    label: "關懷",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-  {
-    key: "permissions",
-    label: "權限管理",
-    capability: "AUTH",
-    requiresServerAuth: false,
-  },
-];
-
-const NAVIGATION = stableNavigationSections();
+const MEMBER_SECTIONS = sectionsForRole("Member");
+const STAFF_SECTIONS = sectionsForRole("Staff");
+const NAVIGATION = stableNavigationSections("Member");
 
 const PUBLIC_USER: PublicUser = {
   userId: "U001",
@@ -212,6 +170,16 @@ const DEFAULT_HANDLER = [
     authCalls.push("/api/v1/auth/logout");
     return new HttpResponse(null, { status: 204 });
   }),
+  http.get("/api/v1/home", () =>
+    HttpResponse.json({
+      requestId: "r-home",
+      data: {
+        featuredEvent: null,
+        announcement: null,
+        exploreProgram: null,
+      },
+    })
+  ),
 ];
 
 const server = setupServer(...DEFAULT_HANDLER);
@@ -445,6 +413,10 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.newPasswordLabel),
         "new-password"
       );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "new-password"
+      );
       await user.click(
         screen.getByRole("button", { name: COPY.login.upgradeSubmit })
       );
@@ -523,6 +495,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -604,6 +580,10 @@ describe("Shell", () => {
         screen.getByLabelText(COPY.login.newPasswordLabel),
         "new-password"
       );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
+        "new-password"
+      );
       await user.click(
         screen.getByRole("button", { name: COPY.login.upgradeSubmit })
       );
@@ -671,6 +651,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -751,6 +735,10 @@ describe("Shell", () => {
       });
       await user.type(
         screen.getByLabelText(COPY.login.newPasswordLabel),
+        "new-password"
+      );
+      await user.type(
+        screen.getByLabelText(COPY.login.confirmPasswordLabel),
         "new-password"
       );
       await user.click(
@@ -871,17 +859,28 @@ describe("Shell", () => {
           )
         )
       );
+      const user = userEvent.setup();
       render(<LoginPage />);
 
       await waitFor(() => {
-        expect(screen.getByText(COPY.restore.expired)).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: COPY.sessionExpired.title })
+        ).toBeInTheDocument();
       });
+      expect(
+        screen.getByText(COPY.sessionExpired.message)
+      ).toBeInTheDocument();
       // Presence hint cleared - the refresh session is dead.
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+      expect(replaceMock).not.toHaveBeenCalled();
+
+      // Clicking re-login returns to the login form
+      await user.click(
+        screen.getByRole("button", { name: COPY.sessionExpired.reLogin })
+      );
       expect(
         screen.getByRole("heading", { name: COPY.login.title })
       ).toBeInTheDocument();
-      expect(replaceMock).not.toHaveBeenCalled();
     });
 
     test("login error response renders Traditional Chinese copy from COPY, never raw detail", async () => {
@@ -915,6 +914,79 @@ describe("Shell", () => {
         screen.queryByText("sensitive detail from server")
       ).not.toBeInTheDocument();
     });
+
+    test("blocks login submission when username or password is empty", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      expect(screen.getByText(COPY.login.missingFields)).toBeInTheDocument();
+    });
+
+    test("blocks upgrade submission when password is shorter than 8 characters", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "short");
+      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "short");
+      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
+      expect(screen.getByText(COPY.login.upgradePasswordTooShort)).toBeInTheDocument();
+    });
+
+    test("blocks upgrade submission when password and confirm password do not match", async () => {
+      server.use(
+        http.post("/api/v1/auth/login", () =>
+          HttpResponse.json({
+            requestId: "r-upgrade",
+            data: {
+              userId: "U-legacy",
+              name: "舊帳戶",
+              role: "MEMBER",
+              status: "Active",
+              mustSetNewCredential: true,
+            },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "legacy");
+      await user.type(screen.getByLabelText(COPY.login.passwordLabel), "1234");
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      await waitFor(() => {
+        expect(screen.getByText(COPY.login.upgradeRequired)).toBeInTheDocument();
+      });
+      await user.type(screen.getByLabelText(COPY.login.newPasswordLabel), "password123");
+      await user.type(screen.getByLabelText(COPY.login.confirmPasswordLabel), "password456");
+      await user.click(screen.getByRole("button", { name: COPY.login.upgradeSubmit }));
+      expect(screen.getByText(COPY.login.upgradePasswordMismatch)).toBeInTheDocument();
+    });
+
+    test("mounts session expired screen directly when efcc_session_expired sessionStorage flag is set", async () => {
+      sessionStorage.setItem("efcc_session_expired", "1");
+      render(<LoginPage />);
+      expect(screen.getByRole("heading", { name: COPY.sessionExpired.title })).toBeInTheDocument();
+      expect(screen.getByText(COPY.sessionExpired.message)).toBeInTheDocument();
+      expect(sessionStorage.getItem("efcc_session_expired")).toBeNull();
+    });
   });
 
   describe(ProfilePage, () => {
@@ -930,7 +1002,7 @@ describe("Shell", () => {
       setAuthHint();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       expect(signOutButton).toBeInTheDocument();
@@ -943,7 +1015,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -994,7 +1066,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -1029,7 +1101,7 @@ describe("Shell", () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
 
-      const signOutButton = await screen.findByRole("button", {
+      const [signOutButton] = await screen.findAllByRole("button", {
         name: COPY.logout.submit,
       });
       await user.click(signOutButton);
@@ -1053,7 +1125,7 @@ describe("Shell", () => {
     test("renders the QR identity as an img with a descriptive label and the immutable code", async () => {
       renderRestoredProfile();
       // Await the shell so the profile surface is mounted.
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
       // The QR slot is a fixed 220px square — no proportional min() clamp
@@ -1071,7 +1143,7 @@ describe("Shell", () => {
 
     test("renders the phone and status info grid with their values", async () => {
       renderRestoredProfile();
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
       expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
       expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
@@ -1095,7 +1167,7 @@ describe("Shell", () => {
         )
       );
       renderRestoredProfile();
-      await screen.findByRole("button", { name: COPY.logout.submit });
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
       expect(screen.getByText(COPY.profile.qrEmpty)).toBeInTheDocument();
       expect(
         screen.queryByRole("img", { name: COPY.profile.qrCode })
@@ -1121,48 +1193,39 @@ describe("Shell", () => {
     }
 
     test("renders the stable navigation projection for Member", () => {
-      renderWithProvider(sectionsForRole("Member"), "/home");
+      renderWithProvider(sectionsForRole("Member"), "/home", stableNavigationSections("Member"));
       expect(
         [
           COPY.sections.home,
           COPY.sections.programs,
-          COPY.sections.events,
           COPY.sections.scanner,
+          COPY.sections.notices,
           COPY.sections.profile,
-        ].every((section) => screen.getAllByText(section).length >= 1)
+        ].every((text) => screen.getAllByText(text).length > 0)
       ).toBeTruthy();
-      expect(screen.queryAllByText(COPY.sections.permissions)).toHaveLength(0);
     });
 
-    test("keeps stable navigation order for Member and Admin", () => {
-      const expected = [
-        "/home",
-        "/programs",
-        "/events",
-        "/scanner",
-        "/profile",
-      ];
-      const memberView = renderWithProvider(
-        sectionsForRole("Member"),
-        "/home",
-        stableNavigationSections()
-      );
-      const memberLinks = within(screen.getAllByRole("navigation")[0])
-        .getAllByRole("link")
-        .map((link) => link.getAttribute("href"));
-      expect(memberLinks).toStrictEqual(expected);
-      memberView.unmount();
+    test("renders the stable navigation projection for Staff with Management", () => {
+      renderWithProvider(sectionsForRole("Staff"), "/home", stableNavigationSections("Staff"));
+      expect(
+        [
+          COPY.sections.home,
+          COPY.sections.programs,
+          COPY.sections.scanner,
+          COPY.sections.management,
+          COPY.sections.profile,
+        ].every((text) => screen.getAllByText(text).length > 0)
+      ).toBeTruthy();
+    });
 
-      const adminView = renderWithProvider(
-        sectionsForRole("Admin"),
-        "/home",
-        stableNavigationSections()
+    test("highlights current route with aria-current", () => {
+      renderWithProvider(
+        sectionsForRole("Member"),
+        "/programs",
+        stableNavigationSections("Member")
       );
-      const adminLinks = within(screen.getAllByRole("navigation")[0])
-        .getAllByRole("link")
-        .map((link) => link.getAttribute("href"));
-      expect(adminLinks).toStrictEqual(expected);
-      adminView.unmount();
+      const [active] = screen.getAllByText(COPY.sections.programs);
+      expect(active).toHaveAttribute("aria-current", "page");
     });
 
     test("marks active section with aria-current", () => {
@@ -1200,31 +1263,19 @@ describe("Shell", () => {
 
     test("renders forbidden view for an unpermitted (absent) section with a safe route back", () => {
       render(
-        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
-          <GuardedSection sectionKey="care">
-            <p>care content</p>
-          </GuardedSection>
-        </AppProvider>
-      );
-      expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
-      expect(screen.queryByText("care content")).not.toBeInTheDocument();
-      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
-      expect(link).toHaveAttribute("href", "/profile");
-    });
-
-    test("Member deep-linking to scanner renders forbidden view (S15)", () => {
-      render(
         <AppProvider
           bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
           onSignOut={() => {}}
         >
-          <GuardedSection sectionKey="scanner">
-            <p>scanner content</p>
+          <GuardedSection sectionKey="management">
+            <p>management content</p>
           </GuardedSection>
         </AppProvider>
       );
       expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
-      expect(screen.queryByText("scanner content")).not.toBeInTheDocument();
+      expect(screen.queryByText("management content")).not.toBeInTheDocument();
+      const link = screen.getByText(COPY.nav.backToProfile).closest("a");
+      expect(link).toHaveAttribute("href", "/profile");
     });
   });
 
@@ -1385,10 +1436,16 @@ describe("Shell", () => {
   });
 
   describe(NotFound, () => {
-    test("renders unknown route message and link to home", () => {
+    test("renders prototype-exact title, message, and link to home", () => {
       render(<NotFound />);
-      expect(screen.getByText(COPY.nav.unknownRoute)).toBeInTheDocument();
-      expect(screen.getByText(COPY.nav.backToHome)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: COPY.notAvailable.title })
+      ).toBeInTheDocument();
+      expect(screen.getByText(COPY.notAvailable.message)).toBeInTheDocument();
+      const homeLink = screen.getByRole("link", {
+        name: COPY.notAvailable.backToHome,
+      });
+      expect(homeLink).toHaveAttribute("href", "/");
     });
   });
 
@@ -1406,17 +1463,79 @@ describe("Shell", () => {
             requestId: "r-me",
             data: { user, sections, navigation: NAVIGATION },
           })
+        ),
+        // Management page now renders the 087-01 hub, which fetches the
+        // server-projected directory. Full-staff projection so the title
+        // test exercises the real fetch path without capability surprises.
+        http.get("/api/v1/programs/hub", () =>
+          HttpResponse.json({
+            requestId: "r-hub",
+            data: {
+              groups: [
+                {
+                  key: "members-and-permissions",
+                  label: COPY.management.groupMemberPermissions,
+                  rows: [
+                    {
+                      key: "approvals",
+                      label: COPY.management.approvalsRow,
+                      description: COPY.management.approvalsRowHint,
+                      href: "/management?module=approvals",
+                    },
+                    {
+                      key: "permissions",
+                      label: COPY.management.permissionsRow,
+                      description: COPY.management.permissionsRowHint,
+                      href: "/management?module=permissions",
+                    },
+                  ],
+                },
+                {
+                  key: "ministry-operations",
+                  label: COPY.management.groupOperations,
+                  rows: [
+                    {
+                      key: "departments",
+                      label: COPY.management.departmentsRow,
+                      description: COPY.management.departmentsRowHint,
+                      href: "/management?module=departments",
+                    },
+                    {
+                      key: "attendance",
+                      label: COPY.management.attendanceRow,
+                      description: COPY.management.attendanceRowHint,
+                      href: "/management?module=attendance",
+                    },
+                    {
+                      key: "members",
+                      label: COPY.management.membersRow,
+                      description: COPY.management.membersRowHint,
+                      href: "/management?module=members",
+                    },
+                  ],
+                },
+              ],
+              entryCard: {
+                key: "course-management",
+                label: COPY.management.goCourseManagement,
+                description: COPY.management.goCourseManagementHint,
+                href: "/programs?mode=management",
+              },
+            },
+          })
         )
       );
     }
 
-    test("home page renders COPY.sections.home title for a Member", async () => {
+    test("home page renders the prototype greeting heading for a Member", async () => {
       withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
       render(<HomePage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.home })
+          screen.getByRole("heading", {
+            name: `${COPY.home.greeting}，${PUBLIC_USER.name}`,
+          })
         ).toBeInTheDocument();
       });
     });
@@ -1432,7 +1551,7 @@ describe("Shell", () => {
     });
 
     test("events page renders COPY.sections.events title", async () => {
-      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+      withAuthRestore(STAFF_USER, defaultSections());
       setAuthHint();
       render(<EventsPage />);
       await waitFor(() => {
@@ -1464,7 +1583,7 @@ describe("Shell", () => {
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.scanTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1475,7 +1594,7 @@ describe("Shell", () => {
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.scanner })
+          screen.getByRole("heading", { name: COPY.attendance.scanTitle })
         ).toBeInTheDocument();
       });
     });
@@ -1497,7 +1616,7 @@ describe("Shell", () => {
         // eslint-disable-next-line no-await-in-loop
         await waitFor(() => {
           expect(
-            screen.getByRole("heading", { name: COPY.sections.scanner })
+            screen.getByRole("heading", { name: COPY.attendance.scanTitle })
           ).toBeInTheDocument();
         });
         expect(
@@ -1508,19 +1627,32 @@ describe("Shell", () => {
       }
     });
 
-    test("care page renders COPY.sections.care title", async () => {
-      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+    test("notices page renders COPY.sections.notices title", async () => {
+      withAuthRestore(PUBLIC_USER, MEMBER_SECTIONS);
       setAuthHint();
-      render(<CarePage />);
+      pathnameMock.mockReturnValue("/notices");
+      render(<NoticesPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.care })
+          screen.getByRole("heading", { name: COPY.sections.notices })
         ).toBeInTheDocument();
       });
     });
 
+    test("management page renders the hub title and lead for a management-capable account", async () => {
+      withAuthRestore(STAFF_USER, STAFF_SECTIONS);
+      setAuthHint();
+      render(<ManagementPage />);
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: COPY.management.managementTitle })
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText(COPY.management.managementLead)).toBeInTheDocument();
+    });
+
     test("permissions page renders the S10 permissionsHeading title", async () => {
-      withAuthRestore(ADMIN_USER, STAFF_SECTIONS);
+      withAuthRestore(ADMIN_USER, defaultSections());
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {

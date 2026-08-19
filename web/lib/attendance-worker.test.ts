@@ -578,14 +578,21 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(body.code, "RATE_LIMITED");
   });
 
-  test("resolve reports a cancelled Event as 410 EVENT_CANCELLED", async () => {
+  test("resolve reports a cancelled Event as latest.status Cancelled", async () => {
     const response = await worker.fetch(
       request("/api/v1/attendance/resolve?manual_code=ATTCANCEL"),
       testEnv()
     );
-    assert.strictEqual(response.status, 410);
+    assert.strictEqual(response.status, 200);
     const body = await json(response);
-    assert.strictEqual(body.code, "EVENT_CANCELLED");
+    const data = body.data as {
+      events: unknown[];
+      latest: { status: string; program_id: string; program_name: string };
+      enrolled: boolean;
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.strictEqual(data.latest.status, "Cancelled");
+    assert.strictEqual(data.latest.program_id, PROGRAM);
   });
 
   test("check-in into a cancelled Event is rejected with 410 EVENT_CANCELLED", async () => {
@@ -612,9 +619,14 @@ describe("attendance Worker routes", () => {
       request("/api/v1/attendance/resolve?manual_code=ATTINACTIVE"),
       testEnv()
     );
-    assert.strictEqual(resolved.status, 409);
+    assert.strictEqual(resolved.status, 200);
     const resolvedBody = await json(resolved);
-    assert.strictEqual(resolvedBody.code, "EVENT_UNAVAILABLE");
+    const data = resolvedBody.data as {
+      events: unknown[];
+      latest: { availability: string };
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.strictEqual(data.latest.availability, "Inactive");
 
     const member = await accessCookieFor("att-member", "att-member-password");
     const checkIn = await worker.fetch(
@@ -998,9 +1010,15 @@ describe("attendance Worker routes", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(response.status, 410);
+    assert.strictEqual(response.status, 200);
     const body = await json(response);
-    assert.strictEqual(body.code, "EVENT_CANCELLED");
+    const data = body.data as {
+      events: unknown[];
+      latest: { status: string; program_id: string };
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.strictEqual(data.latest.status, "Cancelled");
+    assert.strictEqual(data.latest.program_id, PROGRAM2);
   });
 
   test("resolve disambiguates an ambiguous entry server-side, no length heuristic", async () => {
@@ -1051,12 +1069,28 @@ describe("attendance Worker routes", () => {
       events: {
         event_id: string;
         program_name: string;
+        name: string | null;
+        location: string | null;
+        starts_at: string;
+        ends_at: string;
         availability: string;
         status: string;
         check_in_window_opens_at: string;
         check_in_window_closes_at: string;
       }[];
     };
+    const eventWithChooserDetails = events.find(
+      (event) => event.event_id === EVENT
+    );
+    assert.ok(eventWithChooserDetails);
+    assert.strictEqual(
+      eventWithChooserDetails.program_name,
+      "Attendance Test"
+    );
+    assert.strictEqual(eventWithChooserDetails.name, "週六團契");
+    assert.strictEqual(eventWithChooserDetails.location, "主堂");
+    assert.ok(eventWithChooserDetails.starts_at);
+    assert.ok(eventWithChooserDetails.ends_at);
     assert.ok(events.some((event) => event.event_id === EVENT));
     assert.ok(events.some((event) => event.program_name === "Attendance Test"));
     assert.ok(
@@ -1358,25 +1392,35 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(wrongBody.code, "INVALID_CHECK_IN_ENTRY");
   });
 
-  test("entry status lookup: cancelled manual code 410s, closed manual code 409s", async () => {
-    // A typed entry that matches a cancelled/closed Event's manual code must
-    // surface that Event's status (regression: the token-column fallback
-    // used to 404 a cancelled manual code instead of 410).
+  test("entry status lookup: cancelled manual code returns Cancelled, closed manual code returns Active with window", async () => {
+    // A typed entry that matches a cancelled/closed Event's manual code surfaces
+    // that Event's latest state.
     const cancelled = await worker.fetch(
       request("/api/v1/attendance/resolve?entry=ATTCANCEL"),
       testEnv()
     );
-    assert.strictEqual(cancelled.status, 410);
+    assert.strictEqual(cancelled.status, 200);
     const cancelledBody = await json(cancelled);
-    assert.strictEqual(cancelledBody.code, "EVENT_CANCELLED");
+    const cancelledData = cancelledBody.data as {
+      events: unknown[];
+      latest: { status: string };
+    };
+    assert.deepStrictEqual(cancelledData.events, []);
+    assert.strictEqual(cancelledData.latest.status, "Cancelled");
 
     const closed = await worker.fetch(
       request("/api/v1/attendance/resolve?entry=ATTCLOSED"),
       testEnv()
     );
-    assert.strictEqual(closed.status, 409);
+    assert.strictEqual(closed.status, 200);
     const closedBody = await json(closed);
-    assert.strictEqual(closedBody.code, "CHECK_IN_CLOSED");
+    const closedData = closedBody.data as {
+      events: unknown[];
+      latest: { status: string; check_in_window_opens_at: string | null };
+    };
+    assert.deepStrictEqual(closedData.events, []);
+    assert.strictEqual(closedData.latest.status, "Active");
+    assert.ok(closedData.latest.check_in_window_opens_at);
   });
 
   test("guest correction updates the row; a phone already active on the Event conflicts", async () => {
@@ -1508,6 +1552,53 @@ describe("attendance Worker routes", () => {
     });
   });
 
+  test("guest correction requires a non-blank reason (422 VALIDATION)", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const checkIn = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: EVENT,
+          method: "guest_manual_code",
+          manual_code: "ATT1234",
+          name: "訪客更正原因測試",
+          phone: "6222 9001",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(checkIn.status, 201);
+    const checkInBody = await json(checkIn);
+    const { attendance_id } = checkInBody.data as { attendance_id: string };
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/${attendance_id}/guest-correction`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          name: "訪客更正原因測試改",
+          phone: "6222 9002",
+          reason: "   ",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+    const responseBody = await json(response);
+    assert.strictEqual(responseBody.code, "VALIDATION");
+
+    const row = await testDb()
+      .prepare(
+        "SELECT guest_name, guest_phone FROM attendances WHERE attendance_id = ?"
+      )
+      .bind(attendance_id)
+      .first<{ guest_name: string; guest_phone: string }>();
+    assert.deepStrictEqual(row, {
+      guest_name: "訪客更正原因測試",
+      guest_phone: "6222 9001",
+    });
+  });
+
   test("void requires a non-blank reason (422 VALIDATION)", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const checkIn = await worker.fetch(
@@ -1626,6 +1717,21 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(checkIn.status, 201);
     const checkInBody = await json(checkIn);
     const { attendance_id } = checkInBody.data as { attendance_id: string };
+    const beforeRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(beforeRoster.status, 200);
+    const beforeRosterBody = await json(beforeRoster);
+    const beforeRosterData = beforeRosterBody.data as {
+      attendances: { attendance_id: string; status: string }[];
+    };
+    const beforeRows = beforeRosterData.attendances;
+    const beforeLiveCount = beforeRows.filter(
+      (row) => row.status === "Active"
+    ).length;
 
     const firstVoid = await worker.fetch(
       request(`/api/v1/attendance/${attendance_id}/void`, {
@@ -1641,6 +1747,28 @@ describe("attendance Worker routes", () => {
       (firstVoidBody.data as { outcome: string }).outcome,
       "voided"
     );
+    const afterRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(afterRoster.status, 200);
+    const afterRosterBody = await json(afterRoster);
+    const afterRosterData = afterRosterBody.data as {
+      attendances: { attendance_id: string; status: string }[];
+    };
+    const afterRows = afterRosterData.attendances;
+    assert.strictEqual(afterRows.length, beforeRows.length);
+    assert.strictEqual(
+      afterRows.filter((row) => row.status === "Active").length,
+      beforeLiveCount - 1
+    );
+    const preservedRow = afterRows.find(
+      (row) => row.attendance_id === attendance_id
+    );
+    assert.ok(preservedRow, "voided attendance remains in the roster");
+    assert.strictEqual(preservedRow.status, "Voided");
 
     const voidRow = await testDb()
       .prepare(
@@ -1895,4 +2023,235 @@ describe("attendance Worker routes", () => {
     const correctionBody = await json(correction);
     assert.strictEqual(correctionBody.code, "NOT_FOUND");
   });
+
+  test("resolve contract: future check-in window returns latest.status Active and check_in_window_opens_at", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=ATTCLOSED"),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    const data = body.data as {
+      events: unknown[];
+      latest: {
+        status: string;
+        availability: string;
+        starts_at: string | null;
+        check_in_window_opens_at: string | null;
+        program_id: string;
+        program_name: string;
+      } | null;
+      enrolled: boolean;
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.ok(data.latest);
+    assert.strictEqual(data.latest.status, "Active");
+    assert.strictEqual(data.latest.availability, "Active");
+    assert.ok(data.latest.starts_at);
+    assert.ok(data.latest.check_in_window_opens_at);
+    assert.strictEqual(data.latest.program_id, PROGRAM);
+    assert.strictEqual(data.latest.program_name, "Attendance Test");
+    assert.strictEqual(data.enrolled, false); // unauthenticated
+  });
+
+  test("resolve contract: cancelled event returns latest.status Cancelled", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=ATTCANCEL"),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    const data = body.data as {
+      events: unknown[];
+      latest: {
+        status: string;
+        availability: string;
+        check_in_window_opens_at: string | null;
+        program_id: string;
+        program_name: string;
+      } | null;
+      enrolled: boolean;
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.ok(data.latest);
+    assert.strictEqual(data.latest.status, "Cancelled");
+    assert.strictEqual(data.latest.program_id, PROGRAM);
+    assert.strictEqual(data.latest.program_name, "Attendance Test");
+  });
+
+  test("resolve contract: member enrollment determination (enrolled=true vs enrolled=false)", async () => {
+    const memberCookie = await accessCookieFor("att-member", "att-member-password");
+    const adminCookie = await accessCookieFor("att-admin", "att-admin-password");
+
+    // ATT-MEMBER has active enrollment in PROGRAM
+    const enrolledResp = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=ATTCLOSED", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(enrolledResp.status, 200);
+    const enrolledBody = await json(enrolledResp);
+    const enrolledData = enrolledBody.data as {
+      events: unknown[];
+      latest: { program_id: string };
+      enrolled: boolean;
+    };
+    assert.strictEqual(enrolledData.latest.program_id, PROGRAM);
+    assert.strictEqual(enrolledData.enrolled, true);
+
+    // ATT-ADMIN does not have enrollment in PROGRAM
+    const notEnrolledResp = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=ATTCLOSED", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(notEnrolledResp.status, 200);
+    const notEnrolledBody = await json(notEnrolledResp);
+    const notEnrolledData = notEnrolledBody.data as {
+      events: unknown[];
+      latest: { program_id: string };
+      enrolled: boolean;
+    };
+    assert.strictEqual(notEnrolledData.latest.program_id, PROGRAM);
+    assert.strictEqual(notEnrolledData.enrolled, false);
+
+    // ATT-MEMBER is NOT enrolled in PROGRAM2 (which has ATTENDANCE-PROGRAM-TOKEN-2)
+    const p2Resp = await worker.fetch(
+      request("/api/v1/attendance/resolve?program_token=ATTENDANCE-PROGRAM-TOKEN-2", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(p2Resp.status, 200);
+    const p2Body = await json(p2Resp);
+    const p2Data = p2Body.data as {
+      events: unknown[];
+      latest: { program_id: string };
+      enrolled: boolean;
+    };
+    assert.strictEqual(p2Data.latest.program_id, PROGRAM2);
+    assert.strictEqual(p2Data.enrolled, false);
+  });
+
+  test("resolve contract: unknown code returns latest: null and enrolled: false", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/attendance/resolve?manual_code=999999"),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    const data = body.data as {
+      events: unknown[];
+      latest: unknown;
+      enrolled: boolean;
+    };
+    assert.deepStrictEqual(data.events, []);
+    assert.strictEqual(data.latest, null);
+    assert.strictEqual(data.enrolled, false);
+
+    const entryResp = await worker.fetch(
+      request("/api/v1/attendance/resolve?entry=UNKNOWNTOKEN"),
+      testEnv()
+    );
+    assert.strictEqual(entryResp.status, 200);
+    const entryBody = await json(entryResp);
+    const entryData = entryBody.data as {
+      events: unknown[];
+      latest: unknown;
+      enrolled: boolean;
+    };
+    assert.deepStrictEqual(entryData.events, []);
+    assert.strictEqual(entryData.latest, null);
+    assert.strictEqual(entryData.enrolled, false);
+  });
+
+  test("resolve with ?event=<id> deep-link returns the matching event pre-selected", async () => {
+    const openResp = await worker.fetch(
+      request(`/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}`),
+      testEnv()
+    );
+    assert.strictEqual(openResp.status, 200);
+    const openBody = await json(openResp);
+    const openData = openBody.data as {
+      events: {
+        event_id: string;
+        name: string | null;
+        location: string | null;
+        status: "Active" | "Cancelled";
+        availability: "Active" | "Inactive";
+      }[];
+    };
+    assert.strictEqual(openData.events.length, 1);
+    assert.strictEqual(openData.events[0]?.event_id, EVENT);
+    assert.strictEqual(openData.events[0]?.name, "週六團契");
+    assert.strictEqual(openData.events[0]?.location, "主堂");
+
+    // Closed event falls through to `latest` so the UI renders the existing
+    // window-not-open / cancelled outcome views; it is never auto-selected.
+    const closedResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(CLOSED_EVENT)}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(closedResp.status, 200);
+    const closedBody = await json(closedResp);
+    const closedData = closedBody.data as {
+      events: unknown[];
+      latest: {
+        status: "Active" | "Cancelled";
+        availability: "Active" | "Inactive";
+      } | null;
+    };
+    assert.deepStrictEqual(closedData.events, []);
+    assert.strictEqual(closedData.latest?.status, "Active");
+    assert.strictEqual(closedData.latest?.availability, "Active");
+
+    // Cancelled event mirrors the same shape; status is surfaced for the
+    // outcome view.
+    const cancelledResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(CANCELLED_EVENT)}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancelledResp.status, 200);
+    const cancelledBody = await json(cancelledResp);
+    const cancelledData = cancelledBody.data as {
+      events: unknown[];
+      latest: { status: "Active" | "Cancelled" } | null;
+    };
+    assert.deepStrictEqual(cancelledData.events, []);
+    assert.strictEqual(cancelledData.latest?.status, "Cancelled");
+
+    // Unknown event id returns the same empty shape as the other not-found
+    // resolve paths.
+    const unknownResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent("does-not-exist")}`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(unknownResp.status, 200);
+    const unknownBody = await json(unknownResp);
+    const unknownData = unknownBody.data as {
+      events: unknown[];
+      latest: unknown;
+    };
+    assert.deepStrictEqual(unknownData.events, []);
+    assert.strictEqual(unknownData.latest, null);
+
+    // ?event with another explicit credential is rejected as ambiguous.
+    const conflictResp = await worker.fetch(
+      request(
+        `/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}&manual_code=ATT1234`
+      ),
+      testEnv()
+    );
+    assert.strictEqual(conflictResp.status, 422);
+    const conflictBody = await json(conflictResp);
+    assert.strictEqual(conflictBody.code, "VALIDATION");
+});
 });

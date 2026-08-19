@@ -171,6 +171,7 @@ async function main(): Promise<void> {
         "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
         "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*';",
         "DELETE FROM program_notification_reads WHERE user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
+        "DELETE FROM participant_notices WHERE member_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
         "DELETE FROM registration_requests WHERE username GLOB 'E2E_*';",
         "",
       ].join("\n")

@@ -110,6 +110,7 @@ async function createProgram(
     request(`/api/v1/programs/departments/${departmentId}/programs`, access, {
       method: "POST",
       body: {
+        description: "測試目的",
         name,
         category: "測試",
         behavior_type: "OneOff",
@@ -321,6 +322,7 @@ describe("AUTH-01: Department Manager scope", () => {
       request(`/api/v1/programs/departments/${departmentB}/programs`, manager, {
         method: "POST",
         body: {
+          description: "測試目的",
           name: "Denied",
           category: "測試",
           behavior_type: "OneOff",

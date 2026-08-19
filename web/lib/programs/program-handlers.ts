@@ -5,6 +5,7 @@
  * thin adapters: they resolve the actor, delegate to DepartmentWorkspace, and
  * format RFC 9457 Problem Details on failures.
  */
+import { COPY } from "../copy";
 
 import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
@@ -38,6 +39,7 @@ import {
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
+  EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
@@ -61,6 +63,7 @@ import type {
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
+  EventType,
   NotificationReadStateInput,
 } from "./workspace-store";
 
@@ -325,6 +328,15 @@ function mapWorkspaceError(
       requestId
     );
   }
+  if (error instanceof EventCancellationBlockedError) {
+    return problem(
+      409,
+      "EVENT_CANCEL_BLOCKED",
+      "Conflict",
+      COPY.programs.cancelBlockedWithAttendance,
+      requestId
+    );
+  }
   return null;
 }
 function jsonResponse(
@@ -550,6 +562,45 @@ export async function handleListManagementAccess(
   const access = await workspace.getManagementAccess(ctxFrom(auth.account));
   return jsonResponse(200, access, requestId);
 }
+/** GET /api/v1/programs/hub — capability-filtered Management Hub directory. */
+export async function handleGetManagementHub(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const hub = await workspace.getManagementHub(ctxFrom(auth.account));
+  return jsonResponse(200, hub, requestId);
+}
+/** GET /api/v1/programs/account-permissions — Admin/Staff-only permissions matrix. */
+export async function handleGetAccountPermissions(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const permissions = await workspace.getAccountPermissions(
+      ctxFrom(auth.account)
+    );
+    return jsonResponse(200, permissions, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export async function handleListManagementDirectory(
   request: Request,
@@ -565,6 +616,53 @@ export async function handleListManagementDirectory(
     ctxFrom(auth.account)
   );
   return jsonResponse(200, directory, requestId);
+}
+
+/**
+ * GET /api/v1/programs/members?q=... — Member Directory search (Spec 087
+ * US 13-15 / ticket 087-04 #321).
+ *
+ * Admin/Staff resolve church-wide over all Active accounts; a Department
+ * Manager resolves only over members with an Active enrollment in a program
+ * of one of their assigned departments (server-side scope enforcement);
+ * anyone else is denied (403). The search requires at least two characters
+ * and returns at most `limit` (default 20, max 50) read-only member
+ * projections whose department memberships render detail inline.
+ */
+export async function handleSearchManagementMembers(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const rawLimit = url.searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 20;
+  const { workspace } = await getModule(env);
+  try {
+    const members = await workspace.searchManagementMembers(
+      ctxFrom(auth.account),
+      query,
+      limit
+    );
+    return jsonResponse(200, { members }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
@@ -703,6 +801,28 @@ export async function handleGetManagementProgram(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, result, requestId);
+}
+
+/** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
+export async function handleGetManagementCockpit(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const result = await workspace.getManagementCockpit(
+    ctxFrom(auth.account),
+    programId
+  );
+  if (!result) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { cockpit: result }, requestId);
 }
 
 /**
@@ -1084,16 +1204,20 @@ export async function handleCreateProgram(
   }
   const fields = parseProgramFields(body, [
     "name",
-    "category",
+    "description",
     "behavior_type",
     "lifecycle",
   ]);
-  if (!fields || fields.category === null) {
+  if (
+    !fields ||
+    typeof fields.description !== "string" ||
+    !fields.description.trim()
+  ) {
     return problem(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, category, behavior_type, and lifecycle are required and must be valid.",
+      "name, purpose, behavior_type, and lifecycle are required and must be valid.",
       requestId
     );
   }
@@ -1105,10 +1229,7 @@ export async function handleCreateProgram(
       {
         department_id: departmentId,
         name: fields.name as string,
-        description:
-          typeof fields.description === "string"
-            ? fields.description
-            : undefined,
+        description: (fields.description as string).trim(),
         category:
           typeof fields.category === "string" ? fields.category : undefined,
         behavior_type: fields.behavior_type as "Recurring" | "OneOff",
@@ -1975,6 +2096,7 @@ export async function handleCreateEvent(
     starts_at?: unknown;
     ends_at?: unknown;
     name?: unknown;
+    event_type?: unknown;
     location?: unknown;
     check_in_window_opens_at?: unknown;
     check_in_window_closes_at?: unknown;
@@ -2006,6 +2128,17 @@ export async function handleCreateEvent(
   try {
     name = textField(body.name, "name");
     location = textField(body.location, "location");
+    if (
+      body.event_type !== undefined &&
+      body.event_type !== null &&
+      (typeof body.event_type !== "string" ||
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+    ) {
+      return validation(
+        requestId,
+        "event_type must be one of 崇拜, 訓練, 小組, 排練, 外展, 其他."
+      );
+    }
     opens = textField(
       body.check_in_window_opens_at,
       "check_in_window_opens_at"
@@ -2054,6 +2187,7 @@ export async function handleCreateEvent(
         starts_at: body.starts_at,
         ends_at: body.ends_at,
         name: name ?? null,
+        event_type: (body.event_type as EventType) ?? null,
         location: location ?? null,
         check_in_window_opens_at: opens ?? null,
         check_in_window_closes_at: closes ?? null,
@@ -2143,9 +2277,12 @@ export async function handleEventUpdate(
     }
   }
   if ("reason" in body) {
-    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-    if (!reason) {
-      return validation(requestId, "reason is required.");
+    if (
+      body.reason !== null &&
+      body.reason !== undefined &&
+      (typeof body.reason !== "string" || !body.reason.trim())
+    ) {
+      return validation(requestId, "reason must be text when provided.");
     }
   }
   const { workspace } = await getModule(env);
@@ -2173,7 +2310,8 @@ export async function handleEventUpdate(
     }
   }
   if ("reason" in body) {
-    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    const reason =
+      typeof body.reason === "string" ? body.reason.trim() || null : null;
     try {
       const row = await workspace.cancelEvent(
         ctxFrom(auth.account),
@@ -2195,6 +2333,7 @@ export async function handleEventUpdate(
     ends_at: true,
     name: true,
     location: true,
+    event_type: true,
     check_in_window_opens_at: true,
     check_in_window_closes_at: true,
   };
@@ -2242,6 +2381,17 @@ export async function handleEventUpdate(
         "Check-in window values must be ISO-8601 UTC."
       );
     }
+    if (
+      body.event_type !== undefined &&
+      body.event_type !== null &&
+      (typeof body.event_type !== "string" ||
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+    ) {
+      return validation(
+        requestId,
+        "event_type must be one of 崇拜, 訓練, 小組, 排練, 外展, 其他."
+      );
+    }
     const effectiveOpens = opens ?? existing.check_in_window_opens_at;
     const effectiveCloses = closes ?? existing.check_in_window_closes_at;
     if (
@@ -2262,6 +2412,9 @@ export async function handleEventUpdate(
       ...(body.name === undefined
         ? {}
         : { name: parseOptionalText(body.name, "name") }),
+      ...(body.event_type === undefined
+        ? {}
+        : { event_type: (body.event_type as EventType | null) ?? null }),
       ...(body.location === undefined
         ? {}
         : { location: parseOptionalText(body.location, "location") }),
@@ -2681,4 +2834,144 @@ export async function handleListProgramLeaders(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, { leaders }, requestId);
+}
+
+/**
+ * GET /api/v1/programs/notices — member-scoped participant Notices
+ * (085-07 #324). Newest-first within the 90-day retention window; READ
+ * notices are included. Strictly the actor's own rows.
+ */
+export async function handleListParticipantNotices(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const notices = await workspace.listParticipantNotices(
+      ctxFrom(auth.account),
+      auth.account.user_id
+    );
+    return jsonResponse(200, notices, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/notices/read-all — idempotent mark-all-read. */
+export async function handleMarkParticipantNoticesRead(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const markedCount = await workspace.markAllParticipantNoticesRead(
+      ctxFrom(auth.account),
+      auth.account.user_id
+    );
+    return jsonResponse(200, { marked_count: markedCount }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/notices — Admin/Staff-only notice creation. */
+export async function handleCreateParticipantNotice(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{
+    member_user_id?: unknown;
+    kind?: unknown;
+    title?: unknown;
+    body?: unknown;
+    program_id?: unknown;
+    event_id?: unknown;
+  }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const memberUserId =
+    typeof body.member_user_id === "string" ? body.member_user_id.trim() : "";
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const noticeBody = typeof body.body === "string" ? body.body.trim() : "";
+  if (
+    !memberUserId ||
+    !isOneOf(body.kind, ["event", "program", "account"] as const) ||
+    !title ||
+    !noticeBody
+  ) {
+    return validation(
+      requestId,
+      "member_user_id, kind (event|program|account), a non-empty title, and a non-empty body are required."
+    );
+  }
+  if (
+    body.program_id !== undefined &&
+    body.program_id !== null &&
+    typeof body.program_id !== "string"
+  ) {
+    return validation(
+      requestId,
+      "program_id must be a string when provided."
+    );
+  }
+  if (
+    body.event_id !== undefined &&
+    body.event_id !== null &&
+    typeof body.event_id !== "string"
+  ) {
+    return validation(requestId, "event_id must be a string when provided.");
+  }
+  const programId =
+    typeof body.program_id === "string" && body.program_id.trim()
+      ? body.program_id.trim()
+      : undefined;
+  const eventId =
+    typeof body.event_id === "string" && body.event_id.trim()
+      ? body.event_id.trim()
+      : undefined;
+  const { workspace } = await getModule(env);
+  try {
+    const notice = await workspace.createParticipantNotice(
+      ctxFrom(auth.account),
+      {
+        member_user_id: memberUserId,
+        kind: body.kind,
+        title,
+        body: noticeBody,
+        program_id: programId,
+        event_id: eventId,
+      }
+    );
+    return jsonResponse(201, { notice }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }

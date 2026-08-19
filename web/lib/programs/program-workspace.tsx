@@ -18,6 +18,7 @@ import {
   listEvents,
   listScheduleRules,
   previewEvents,
+  updateProgram,
 } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -25,16 +26,21 @@ import type {
   Enrollment,
   EnrollmentRequest,
   ManagementAttention,
+  ManagementCockpitView,
   PreviewResult,
   Program,
+  EventType,
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
-import { hkWallDateTimeLabel, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
+import {
+  HK_UTC_OFFSET_MINUTES,
+  hkWallDateTimeLabel,
+  WEEKDAY_LABELS,
+} from "@/lib/programs/recurrence";
 import { ProgramSettings } from "./program-settings";
 
-import { ProgramForm } from "./program-form";
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import { MemberPicker } from "./member-picker";
 import type { ProgramsTask } from "./programs-intent";
@@ -45,13 +51,13 @@ import styles from "@/app/programs/programs.module.css";
 export interface ProgramWorkspaceProps {
   programId: string;
   task?: ProgramsTask;
-  /** EVT-01 (#251): management Event deep link under the events task. */
+  /** EVT-01 (#251): management Event deep link under the events or participants task. */
   eventId?: string | null;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
   onAttentionRefresh?: () => void;
   onBack: () => void;
-  onTaskChange: (task: ProgramsTask | null) => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
   onEventChange?: (eventId: string | null) => void;
 }
@@ -63,6 +69,7 @@ type WorkspaceState =
       program: Program;
       department: Department | null;
       modules: DepartmentModule[];
+      cockpit?: ManagementCockpitView | null;
     }
   | {
       kind: "error";
@@ -161,13 +168,22 @@ function formatEventTime(value: string): string {
     timeZone: "Asia/Hong_Kong",
   }).format(date);
 }
+function eventWallParts(value: string): { date: string; time: string } {
+  const shifted = new Date(
+    new Date(value).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  );
+  return {
+    date: shifted.toISOString().slice(0, 10),
+    time: shifted.toISOString().slice(11, 16),
+  };
+}
 
 function lifecycleLabel(value: Program["lifecycle"]): string {
   return value === "Active"
-    ? COPY.programs.filterActive
+    ? COPY.programs.lifecycleActive
     : value === "Draft"
-      ? COPY.programs.filterDraft
-      : COPY.programs.filterArchived;
+      ? COPY.programs.lifecycleDraft
+      : COPY.programs.lifecycleArchived;
 }
 
 function behaviorLabel(value: Program["behavior_type"]): string {
@@ -195,6 +211,253 @@ function taskLabel(task: ProgramsTask): string {
       ? COPY.programs.workspaceTaskParticipants
       : COPY.programs.workspaceTaskSettings;
 }
+
+function courseMutationError(caught: unknown): string {
+  if (!(caught instanceof RpcError)) {
+    return COPY.programs.programTransportAmbiguous;
+  }
+  if (
+    caught.problem.code === "NETWORK_ERROR" ||
+    caught.problem.code === "MALFORMED_RESPONSE" ||
+    caught.problem.code === "MALFORMED_REQUEST" ||
+    caught.problem.code === "UNAVAILABLE"
+  ) {
+    return COPY.programs.programTransportAmbiguous;
+  }
+  if (caught.problem.code === "CONFLICT") {
+    return COPY.programs.programConflict;
+  }
+  return errorCopyFor(caught.problem.code, caught.problem.detail);
+}
+
+const CourseFacts = ({
+  program,
+  department,
+  notice,
+  onBack,
+  onEdit,
+}: {
+  program: Program;
+  department: Department | null;
+  notice: string | null;
+  onBack: () => void;
+  onEdit: () => void;
+}) => {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
+  return (
+    <section
+      className={styles.workspaceSection}
+      aria-labelledby="programs-workspace-facts-title"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button
+          type="button"
+          className={styles.programDetailBack}
+          onClick={onBack}
+        >
+          {COPY.programs.backToOverview}
+        </button>
+        <h4
+          id="programs-workspace-facts-title"
+          className={styles.workspaceHeading}
+          ref={headingRef}
+          tabIndex={-1}
+        >
+          {COPY.programs.courseFacts}
+        </h4>
+      </div>
+      {notice !== null && (
+        <output className={styles.panelNotice} aria-live="polite">
+          {notice}
+        </output>
+      )}
+      <dl className={styles.workspaceFacts}>
+        <div>
+          <dt>{COPY.programs.factsName}</dt>
+          <dd>{program.name}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsDepartment}</dt>
+          <dd>{department?.name ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsPurpose}</dt>
+          <dd>{program.description ?? COPY.programs.programDescriptionEmpty}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsLifecycle}</dt>
+          <dd>{lifecycleLabel(program.lifecycle)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsDiscoverability}</dt>
+          <dd>{discoverabilityLabel(program.discoverability)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.factsEnrollmentMode}</dt>
+          <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
+        </div>
+        <div>
+          <dt>{COPY.programs.workspaceBehavior}</dt>
+          <dd>{behaviorLabel(program.behavior_type)}</dd>
+        </div>
+      </dl>
+      {program.capabilities.manage && (
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={onEdit}
+        >
+          {COPY.programs.editTitle}
+        </button>
+      )}
+    </section>
+  );
+};
+
+const CourseEdit = ({
+  program,
+  onBack,
+  onSaved,
+}: {
+  program: Program;
+  onBack: () => void;
+  onSaved: (program: Program) => void;
+}) => {
+  const [name, setName] = useState(program.name);
+  const [purpose, setPurpose] = useState(program.description ?? "");
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    const trimmedPurpose = purpose.trim();
+    if (!trimmedName || !trimmedPurpose) {
+      setFormError(COPY.programs.editRequired);
+      announce(COPY.programs.editRequired);
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      const result = await updateProgram(program.program_id, {
+        name: trimmedName,
+        description: trimmedPurpose,
+      });
+      if (mounted.current) {
+        onSaved(result.program);
+      }
+    } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      if (mounted.current) {
+        const message = courseMutationError(error);
+        setFormError(message);
+        announce(message);
+      }
+    } finally {
+      if (mounted.current) {
+        setBusy(false);
+      }
+    }
+  };
+
+  const invalidName = formError !== null && !name.trim();
+  const invalidPurpose = formError !== null && !purpose.trim();
+
+  return (
+    <section
+      className={styles.workspaceTask}
+      aria-labelledby="programs-workspace-course-edit-title"
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button
+          type="button"
+          className={styles.programDetailBack}
+          onClick={onBack}
+          aria-label={COPY.programs.backToOverview}
+        >
+          {COPY.programs.backToOverview}
+        </button>
+        <h4
+          id="programs-workspace-course-edit-title"
+          className={styles.workspaceHeading}
+          ref={headingRef}
+          tabIndex={-1}
+        >
+          {COPY.programs.editTitle}
+        </h4>
+      </div>
+      {formError !== null && (
+        <p className={styles.panelError} id="programs-workspace-course-edit-error" role="alert">
+          {formError}
+        </p>
+      )}
+      <form className={styles.form} onSubmit={submit} noValidate>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="programs-course-name">
+            {COPY.programs.editNameLabel}
+          </label>
+          <input
+            id="programs-course-name"
+            className={styles.input}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            disabled={busy}
+            aria-invalid={invalidName || undefined}
+            aria-describedby={
+              formError !== null
+                ? "programs-workspace-course-edit-error"
+                : undefined
+            }
+          />
+        </div>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="programs-course-purpose">
+            {COPY.programs.editPurposeLabel}
+          </label>
+          <textarea
+            id="programs-course-purpose"
+            className={styles.textarea}
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            rows={4}
+            required
+            disabled={busy}
+            aria-invalid={invalidPurpose || undefined}
+            aria-describedby={
+              formError !== null
+                ? "programs-workspace-course-edit-error"
+                : undefined
+            }
+          />
+        </div>
+        <div className={styles.workspaceActions}>
+          <button className={styles.button} type="submit" disabled={busy}>
+            {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+};
+
 
 const WorkspaceNavigation = ({
   programId,
@@ -248,17 +511,22 @@ const WorkspaceNavigation = ({
 const WorkspaceOverview = ({
   program,
   department,
+  cockpit,
   summary,
-  onEdit,
+  onOpenFacts,
+  onTaskChange,
 }: {
   program: Program;
   department: Department | null;
+  cockpit?: ManagementCockpitView | null;
   summary: SummaryState;
-  onEdit: () => void;
+  onOpenFacts: () => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
+
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
-  const nearestEvent = useMemo(
+  const fallbackNearestEvent = useMemo(
     () =>
       eventRead?.find(
         ({ status, starts_at }) =>
@@ -266,142 +534,305 @@ const WorkspaceOverview = ({
       ) ?? eventRead?.find(({ status }) => status === "Active"),
     [eventRead]
   );
-  const attentionReads = [summary.pendingRequests, summary.activeParticipants];
-  const attentionReady = attentionReads.every(
-    (read): read is { status: "ready"; value: number } =>
-      read.status === "ready"
-  );
+
+  const nextEvent =
+    cockpit !== undefined
+      ? cockpit?.next_event
+      : fallbackNearestEvent
+        ? {
+            event_id: fallbackNearestEvent.event_id,
+            program_id: program.program_id,
+            title: null,
+            name: null,
+            starts_at: fallbackNearestEvent.starts_at,
+            ends_at: fallbackNearestEvent.ends_at,
+            location: null,
+            source: fallbackNearestEvent.source,
+            is_recurring: program.behavior_type === "Recurring",
+            checked_in_count: 0,
+            roster_count: 0,
+          }
+        : null;
+
+  const eventsCount =
+    cockpit !== undefined
+      ? (cockpit?.active_event_count ?? 0)
+      : summary.events.status === "ready"
+        ? summary.events.value.filter((e) => e.status === "Active").length
+        : 0;
+
+  const pendingCount =
+    cockpit !== undefined
+      ? (cockpit?.pending_enrollment_count ?? 0)
+      : summary.pendingRequests.status === "ready"
+        ? summary.pendingRequests.value
+        : 0;
+
 
   return (
     <>
-      <section
-        className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-identity"
-      >
-        <h4
-          id="programs-workspace-identity"
-          className={styles.workspaceHeading}
+      {/* 下一聚會 block (omitted entirely when no upcoming meeting — cwShowNextBlock) */}
+      {nextEvent && (
+        <section
+          className={styles.workspaceSection}
+          aria-labelledby="programs-cockpit-next-meeting"
         >
-          {COPY.programs.workspaceIdentity}
-        </h4>
-        <div className={styles.workspaceActions}>
-          {program.capabilities.manage && (
-            <button className={styles.button} type="button" onClick={onEdit}>
-              {COPY.programs.editProgram}
+          <div
+            id="programs-cockpit-next-meeting"
+            className={styles.workspaceSubheading}
+          >
+            {COPY.programs.cockpitNextMeeting}
+          </div>
+          <div
+            className={styles.workspaceTaskRow}
+            style={{ display: "grid", gap: "12px" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "12px",
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: "1.05rem" }}>
+                  {nextEvent.title || nextEvent.name || program.name}
+                </strong>
+                <p
+                  className={styles.programDetailMuted}
+                  style={{ margin: "4px 0" }}
+                >
+                  {formatEventTime(nextEvent.starts_at)}
+                  {nextEvent.location ? ` · ${nextEvent.location}` : ""}
+                </p>
+                {(nextEvent.is_recurring ||
+                  nextEvent.source === "SCHEDULE") && (
+                  <span className={`${styles.badge} ${styles.badgeActive}`}>
+                    {COPY.programs.cockpitAutoScheduled}
+                  </span>
+                )}
+              </div>
+              {(nextEvent.checked_in_count > 0 ||
+                nextEvent.roster_count > 0) && (
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>
+                    {nextEvent.checked_in_count}/{nextEvent.roster_count}
+                  </span>
+                  <br />
+                  <span
+                    className={styles.programDetailMuted}
+                    style={{ fontSize: "0.8125rem" }}
+                  >
+                    {COPY.programs.cockpitCheckedIn}
+                  </span>
+                </div>
+              )}
+            </div>
+            <button
+              className={styles.button}
+              type="button"
+              style={{ width: "100%" }}
+              onClick={() => {
+                onTaskChange("participants", nextEvent.event_id);
+              }}
+            >
+              {COPY.programs.cockpitManageRoster}
             </button>
-          )}
-        </div>
-        {program.description ? (
-          <p className={styles.programDetailDescription}>
-            {program.description}
-          </p>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.programDescriptionEmpty}
-          </p>
-        )}
-        <dl className={styles.workspaceFacts}>
-          <div>
-            <dt>{COPY.programs.workspaceDepartment}</dt>
-            <dd>{department?.name ?? COPY.programs.workspaceDepartment}</dd>
           </div>
-          <div>
-            <dt>{COPY.programs.workspaceBehavior}</dt>
-            <dd>{behaviorLabel(program.behavior_type)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceLifecycle}</dt>
-            <dd>{lifecycleLabel(program.lifecycle)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceDiscoverability}</dt>
-            <dd>{discoverabilityLabel(program.discoverability)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceEnrollmentMode}</dt>
-            <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-          </div>
-          {program.category && (
-            <div>
-              <dt>{COPY.programs.workspaceCategory}</dt>
-              <dd>{program.category}</dd>
-            </div>
-          )}
-        </dl>
-      </section>
+        </section>
+      )}
 
+      {/* 營運 / 每週工作 (2-up grid tiles) */}
       <section
         className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-event"
+        aria-labelledby="programs-cockpit-operations"
       >
-        <h4 id="programs-workspace-event" className={styles.workspaceHeading}>
-          {COPY.programs.workspaceNearestEvent}
-        </h4>
-        {summary.events.status === "loading" ? (
-          <output aria-busy="true">
-            {COPY.programs.workspaceSummaryLoading}
-          </output>
-        ) : summary.events.status === "unavailable" ? (
-          <output className={styles.programDetailMuted} aria-live="polite">
-            {summary.events.message}
-          </output>
-        ) : nearestEvent ? (
-          <p className={styles.workspaceEventSummary}>
-            <strong>{formatEventTime(nearestEvent.starts_at)}</strong>
-            <span>
-              {nearestEvent.source === "SCHEDULE"
-                ? COPY.programs.eventScheduleSource
-                : COPY.programs.eventManualSource}
-            </span>
-          </p>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.workspaceNearestEventNone}
-          </p>
-        )}
-      </section>
-
-      <section
-        className={styles.workspaceSection}
-        aria-labelledby="programs-workspace-attention"
-      >
-        <h4
-          id="programs-workspace-attention"
-          className={styles.workspaceHeading}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
         >
-          {COPY.programs.workspaceAttention}
-        </h4>
-        <dl className={styles.workspaceAttention}>
-          {summary.pendingRequests.status === "ready" && (
+          <h4
+            id="programs-cockpit-operations"
+            className={styles.workspaceHeading}
+          >
+            {COPY.programs.cockpitOperations}
+          </h4>
+          <span
+            className={styles.programDetailMuted}
+            style={{ fontSize: "0.8125rem" }}
+          >
+            {COPY.programs.cockpitWeeklyWork}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "10px",
+          }}
+        >
+          <button
+            type="button"
+            className={styles.directoryCard}
+            style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
+            onClick={() => onTaskChange("events")}
+          >
+            <strong className={styles.directoryCardTitle}>
+              {COPY.programs.cockpitEventsTile}
+            </strong>
+            <span
+              className={styles.directoryCardMeta}
+              style={{ marginTop: "8px" }}
+            >
+              {COPY.programs.cockpitEventsCount.replace(
+                "{count}",
+                String(eventsCount)
+              )}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={styles.directoryCard}
+            style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
+            onClick={() => onTaskChange("participants")}
+          >
+            <strong className={styles.directoryCardTitle}>
+              {COPY.programs.cockpitParticipantsTile}
+            </strong>
+            <span
+              className={styles.directoryCardMeta}
+              style={{ marginTop: "8px" }}
+            >
+              {pendingCount > 0 ? (
+                <span
+                  style={{ color: "var(--accent, #8a5b16)", fontWeight: 700 }}
+                >
+                  {COPY.programs.cockpitPendingLabel.replace(
+                    "{count}",
+                    String(pendingCount)
+                  )}
+                </span>
+              ) : (
+                <span>{COPY.programs.cockpitNoPending}</span>
+              )}
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* 其他 / 低頻設定 (quiet rows) */}
+      <section
+        className={styles.workspaceSection}
+        aria-labelledby="programs-cockpit-others"
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
+        >
+          <h4 id="programs-cockpit-others" className={styles.workspaceHeading}>
+            {COPY.programs.cockpitOthers}
+          </h4>
+          <span
+            className={styles.programDetailMuted}
+            style={{ fontSize: "0.8125rem" }}
+          >
+            {COPY.programs.cockpitLowFrequency}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-sm)",
+            overflow: "hidden",
+            background: "var(--surface)",
+          }}
+        >
+          <button
+            type="button"
+            className={styles.workspaceTaskRow}
+            style={{
+              border: "none",
+              borderRadius: 0,
+              width: "100%",
+              textAlign: "left",
+              cursor: "pointer",
+              background: "transparent",
+            }}
+            onClick={onOpenFacts}
+          >
             <div>
-              <dt>{COPY.programs.workspacePendingRequests}</dt>
-              <dd>{summary.pendingRequests.value}</dd>
+              <span style={{ fontWeight: 600, display: "block" }}>
+                {COPY.programs.cockpitCourseFacts}
+              </span>
+              <span
+                className={styles.programDetailMuted}
+                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+              >
+                {COPY.programs.cockpitCourseFactsHint}
+              </span>
             </div>
-          )}
-          {summary.activeParticipants.status === "ready" && (
+          </button>
+          <button
+            type="button"
+            className={styles.workspaceTaskRow}
+            style={{
+              border: "none",
+              borderTop: "1px solid var(--line)",
+              borderRadius: 0,
+              width: "100%",
+              textAlign: "left",
+              cursor: "pointer",
+              background: "transparent",
+            }}
+            onClick={() => onTaskChange("settings")}
+          >
             <div>
-              <dt>{COPY.programs.workspaceActiveParticipants}</dt>
-              <dd>{summary.activeParticipants.value}</dd>
+              <span style={{ fontWeight: 600, display: "block" }}>
+                {COPY.programs.cockpitSettings}
+              </span>
+              <span
+                className={styles.programDetailMuted}
+                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+              >
+                {COPY.programs.workspaceTaskSettingsLead}
+              </span>
             </div>
-          )}
-        </dl>
-        {attentionReads.some((read) => read.status === "loading") && (
-          <output aria-busy="true">
-            {COPY.programs.workspaceSummaryLoading}
-          </output>
-        )}
-        {attentionReads.some((read) => read.status === "unavailable") && (
-          <output className={styles.programDetailMuted} aria-live="polite">
-            {COPY.programs.workspaceSummaryUnavailable}
-          </output>
-        )}
-        {attentionReady &&
-          attentionReads[0].value === 0 &&
-          attentionReads[1].value === 0 && (
-            <p className={styles.programDetailMuted}>
-              {COPY.programs.workspaceNoAttention}
-            </p>
-          )}
+          </button>
+          <button
+            type="button"
+            className={styles.workspaceTaskRow}
+            style={{
+              border: "none",
+              borderTop: "1px solid var(--line)",
+              borderRadius: 0,
+              width: "100%",
+              textAlign: "left",
+              cursor: "pointer",
+              background: "transparent",
+            }}
+            onClick={() => onTaskChange("notifications")}
+          >
+            <div>
+              <span style={{ fontWeight: 600, display: "block" }}>
+                {COPY.programs.notificationsTitle}
+              </span>
+              <span
+                className={styles.programDetailMuted}
+                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+              >
+                {COPY.programs.notificationsLead}
+              </span>
+            </div>
+          </button>
+        </div>
       </section>
     </>
   );
@@ -606,8 +1037,9 @@ const RecurringSchedulePanel = ({
         id="programs-workspace-recurring-title"
         className={styles.workspaceSubheading}
       >
-        {COPY.programs.previewLead}
+        {COPY.programs.secondaryGeneratorLabel}
       </h5>
+      <p className={styles.programDetailMuted}>{COPY.programs.previewLead}</p>
       {rulesError !== null && (
         <output className={styles.panelError} role="alert">
           {rulesError}
@@ -791,30 +1223,43 @@ const EventsTask = ({
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
-    const startsAt = hkWallInputToIso(String(form.get("starts_at") ?? ""));
-    const endsAt = hkWallInputToIso(String(form.get("ends_at") ?? ""));
-    const opensAt = hkWallInputToIso(String(form.get("opens_at") ?? ""));
-    const closesAt = hkWallInputToIso(String(form.get("closes_at") ?? ""));
-    if (!startsAt || !endsAt || !opensAt || !closesAt) {
-      const message = errorCopyFor("VALIDATION");
+    const date = String(form.get("event_date") ?? "").trim();
+    const time = String(form.get("event_time") ?? "").trim();
+    const name = String(form.get("name") ?? "").trim();
+    if (!date || !time || !name) {
+      const message = COPY.programs.createMeetingValidation;
       setCreateError(message);
       announce(message);
       return;
     }
+    const startsAt = hkWallInputToIso(`${date}T${time}`);
+    if (!startsAt) {
+      const message = COPY.programs.createMeetingValidation;
+      setCreateError(message);
+      announce(message);
+      return;
+    }
+    const eventType = String(
+      form.get("event_type") ?? COPY.programs.eventTypeOptions[0]
+    ) as EventType;
     setCreateBusy(true);
     setCreateError(null);
     try {
       const { event } = await createEvent(programId, {
-        name: String(form.get("name") ?? "").trim() || null,
-        location: String(form.get("location") ?? "").trim() || null,
+        name,
+        event_type: eventType,
         starts_at: startsAt,
-        ends_at: endsAt,
-        check_in_window_opens_at: opensAt,
-        check_in_window_closes_at: closesAt,
+        ends_at: new Date(
+          new Date(startsAt).getTime() + 60 * 60_000
+        ).toISOString(),
       });
       announce(COPY.programs.eventCreatedNotice);
       setCreateOpen(false);
-      onOpenEvent?.(event.event_id);
+      if (onOpenEvent) {
+        onOpenEvent(event.event_id);
+      } else {
+        void run();
+      }
     } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
         return;
@@ -832,8 +1277,8 @@ const EventsTask = ({
 
   return (
     <section
-      className={styles.workspaceTask}
       aria-labelledby="programs-workspace-events-title"
+      aria-busy={createBusy}
     >
       <h4
         id="programs-workspace-events-title"
@@ -864,16 +1309,8 @@ const EventsTask = ({
         </span>
       )}
       <p className={styles.programDetailMuted}>
-        {COPY.programs.workspaceTaskEventsLead}
+        {COPY.programs.repeatInformational}
       </p>
-      {canManage && recurring && (
-        <RecurringSchedulePanel
-          programId={programId}
-          onGenerated={() => {
-            void run();
-          }}
-        />
-      )}
       {canManage && (
         <>
           <button
@@ -884,19 +1321,21 @@ const EventsTask = ({
               setCreateError(null);
             }}
           >
-            {COPY.programs.eventCreate}
+            {COPY.programs.createMeeting}
           </button>
           {createOpen && (
             <form
               className={`${styles.ruleForm} ${styles.eventCreateForm}`}
               aria-labelledby="programs-workspace-event-create-title"
+              aria-busy={createBusy}
+              noValidate
               onSubmit={submitCreate}
             >
               <h5
                 id="programs-workspace-event-create-title"
                 className={styles.workspaceSubheading}
               >
-                {COPY.programs.eventCreateTitle}
+                {COPY.programs.createMeeting}
               </h5>
               {createError !== null && (
                 <output className={styles.panelError} role="alert">
@@ -904,66 +1343,73 @@ const EventsTask = ({
                 </output>
               )}
               <label className={styles.ruleField}>
+                <span>{COPY.programs.eventDate}</span>
+                <input
+                  type="date"
+                  name="event_date"
+                  aria-label={COPY.programs.eventDate}
+                  aria-required="true"
+                />
+              </label>
+              <label className={styles.ruleField}>
+                <span>{COPY.programs.eventTime}</span>
+                <input
+                  type="time"
+                  name="event_time"
+                  aria-label={COPY.programs.eventTime}
+                  aria-required="true"
+                />
+              </label>
+              <label className={styles.ruleField}>
                 <span>{COPY.programs.eventName}</span>
                 <input
                   type="text"
                   name="name"
                   placeholder={COPY.programs.eventNamePlaceholder}
                   aria-label={COPY.programs.eventName}
+                  aria-required="true"
                 />
               </label>
               <label className={styles.ruleField}>
-                <span>{COPY.programs.eventLocation}</span>
-                <input
-                  type="text"
-                  name="location"
-                  placeholder={COPY.programs.eventLocationPlaceholder}
-                  aria-label={COPY.programs.eventLocation}
-                />
+                <span>{COPY.programs.eventType}</span>
+                <select name="event_type" aria-label={COPY.programs.eventType}>
+                  {COPY.programs.eventTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className={styles.ruleField}>
-                <span>{COPY.programs.eventStart}</span>
-                <input
-                  type="datetime-local"
-                  name="starts_at"
-                  required
-                  aria-label={COPY.programs.eventStart}
-                />
+                <span>{COPY.programs.recurrenceTag}</span>
+                <select
+                  name="recurrence_tag"
+                  defaultValue={COPY.programs.recurrenceNone}
+                  aria-label={COPY.programs.recurrenceTag}
+                >
+                  <option value={COPY.programs.recurrenceNone}>
+                    {COPY.programs.recurrenceNone}
+                  </option>
+                  <option value={COPY.programs.recurrenceWeekly}>
+                    {COPY.programs.recurrenceWeekly}
+                  </option>
+                  <option value={COPY.programs.recurrenceMonthly}>
+                    {COPY.programs.recurrenceMonthly}
+                  </option>
+                </select>
               </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventEnd}</span>
-                <input
-                  type="datetime-local"
-                  name="ends_at"
-                  required
-                  aria-label={COPY.programs.eventEnd}
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
-                <input
-                  type="datetime-local"
-                  name="opens_at"
-                  required
-                  aria-label={COPY.programs.eventCheckInWindowOpensAt}
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
-                <input
-                  type="datetime-local"
-                  name="closes_at"
-                  required
-                  aria-label={COPY.programs.eventCheckInWindowClosesAt}
-                />
-              </label>
+              <p className={styles.programDetailMuted}>
+                {COPY.programs.repeatFormInformational}
+              </p>
               <div className={styles.formActions}>
                 <button
                   type="submit"
                   className={styles.button}
                   disabled={createBusy}
                 >
-                  {COPY.programs.eventCreateSubmit}
+                  {createBusy
+                    ? COPY.programs.submitting
+                    : COPY.programs.createMeeting}
                 </button>
                 <button
                   type="button"
@@ -980,6 +1426,14 @@ const EventsTask = ({
             </form>
           )}
         </>
+      )}
+      {canManage && recurring && (
+        <RecurringSchedulePanel
+          programId={programId}
+          onGenerated={() => {
+            void run();
+          }}
+        />
       )}
       {state.kind === "loading" && (
         <output aria-busy="true">
@@ -1008,36 +1462,52 @@ const EventsTask = ({
           className={styles.workspaceTaskList}
           aria-label={COPY.programs.workspaceTaskEvents}
         >
-          {state.events.map((event) => (
-            <li key={event.event_id} className={styles.workspaceTaskRow}>
-              <strong>{formatEventTime(event.starts_at)}</strong>
-              <span>
-                {event.status === "Active"
-                  ? COPY.programs.eventActive
-                  : COPY.programs.eventCancelled}
-              </span>
-              <span>
-                {event.source === "SCHEDULE"
-                  ? COPY.programs.eventScheduleSource
-                  : COPY.programs.eventManualSource}
-              </span>
-              {event.availability !== undefined &&
-                event.availability !== "Active" && (
-                  <span className={styles.eventCancelled}>
-                    {COPY.programs.eventUnavailable}
-                  </span>
+          {state.events.map((event) => {
+            const wall = eventWallParts(event.starts_at);
+            return (
+              <li key={event.event_id} className={styles.workspaceTaskRow}>
+                <strong>
+                  {event.name ?? hkWallDateTimeLabel(event.starts_at)}
+                </strong>
+                <span>{wall.date}</span>
+                <span>{wall.time}</span>
+                <span>
+                  {event.event_type ?? COPY.programs.eventTypeOptions[5]}
+                </span>
+                <span>
+                  {COPY.programs.repeatLabel.replace(
+                    "{tag}",
+                    event.recurrence_tag ?? COPY.programs.recurrenceNone
+                  )}
+                </span>
+                <span>
+                  {event.status === "Active"
+                    ? COPY.programs.eventActive
+                    : COPY.programs.eventCancelled}
+                </span>
+                <span>
+                  {event.source === "SCHEDULE"
+                    ? COPY.programs.eventScheduleSource
+                    : COPY.programs.eventManualSource}
+                </span>
+                {event.availability !== undefined &&
+                  event.availability !== "Active" && (
+                    <span className={styles.eventCancelled}>
+                      {COPY.programs.eventUnavailable}
+                    </span>
+                  )}
+                {onOpenEvent && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => onOpenEvent(event.event_id)}
+                  >
+                    {COPY.programs.eventDetailOpen}
+                  </button>
                 )}
-              {onOpenEvent && (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => onOpenEvent(event.event_id)}
-                >
-                  {COPY.programs.eventDetailOpen}
-                </button>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -1111,13 +1581,11 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 const ParticipantsTask = ({
   programId,
   canManage,
-  enrollmentMode,
   attention,
   onAttentionRefresh,
 }: {
   programId: string;
   canManage: boolean;
-  enrollmentMode: Program["enrollment_mode"];
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
 }) => {
@@ -1304,7 +1772,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.pending.length === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsPendingEmpty}
+          {COPY.programs.tabsEmpty.pending}
         </p>
       );
     }
@@ -1378,7 +1846,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.active.length === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsActiveEmpty}
+          {COPY.programs.tabsEmpty.active}
         </p>
       );
     }
@@ -1414,7 +1882,7 @@ const ParticipantsTask = ({
     if (queue === null || queue.counts.history === 0) {
       return (
         <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceParticipantsHistoryEmpty}
+          {COPY.programs.tabsEmpty.history}
         </p>
       );
     }
@@ -1473,8 +1941,11 @@ const ParticipantsTask = ({
           {COPY.programs.workspaceParticipantsRefreshFailed}
         </output>
       )}
-      {canManage && enrollmentMode === "ManagerOnly" && (
+      {canManage && (
         <form className={styles.ruleForm} onSubmit={handleAssisted}>
+          <p className={styles.programDetailMuted}>
+            {COPY.programs.assistedEnrollAck}
+          </p>
           <MemberPicker
             programId={programId}
             name="member_user_id"
@@ -1524,11 +1995,11 @@ const ParticipantsTask = ({
                 [
                   [
                     "pending",
-                    COPY.programs.workspacePendingRequests,
+                    COPY.programs.tabsPending,
                     pendingAttentionCount ?? queue.counts.pending,
                   ],
-                  ["active", COPY.programs.workspaceActiveParticipants, queue.counts.active],
-                  ["history", COPY.programs.enrollmentHistory, queue.counts.history],
+                  ["active", COPY.programs.tabsActive, queue.counts.active],
+                  ["history", COPY.programs.tabsHistory, queue.counts.history],
                 ] as const
               ).map(([value, label, count]) => (
                 <button
@@ -1660,7 +2131,6 @@ const WorkspaceTask = ({
       <ParticipantsTask
         programId={program.program_id}
         canManage={program.capabilities.manage}
-        enrollmentMode={program.enrollment_mode}
         attention={attention}
         onAttentionRefresh={onAttentionRefresh}
       />
@@ -1689,7 +2159,12 @@ export const ProgramWorkspace = ({
   onEventChange,
 }: ProgramWorkspaceProps) => {
   const [summary, setSummary] = useState<SummaryState>(() => initialSummary());
-  const [editing, setEditing] = useState(false);
+  const [courseView, setCourseView] = useState<"overview" | "facts" | "edit">(
+    "overview"
+  );
+  const [courseProgramOverride, setCourseProgramOverride] =
+    useState<Program | null>(null);
+  const [courseNotice, setCourseNotice] = useState<string | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -1697,18 +2172,29 @@ export const ProgramWorkspace = ({
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    setCourseView("overview");
+    setCourseProgramOverride(null);
+    setCourseNotice(null);
+  }, [programId]);
   const { state, run: loadWorkspace, retry } = useAsyncResource<
-    { program: Program; department: Department | null; modules: DepartmentModule[] },
+    {
+      program: Program;
+      department: Department | null;
+      modules: DepartmentModule[];
+      cockpit?: ManagementCockpitView | null;
+    },
     WorkspaceState
   >(
     async () => getManagementProgram(programId),
     {
       toLoading: () => ({ kind: "loading" }),
-      toReady: ({ program, department, modules }) => ({
+      toReady: ({ program, department, modules, cockpit }) => ({
         kind: "ready",
         program,
         department,
         modules,
+        cockpit,
       }),
       onError: (error) => {
         if (
@@ -1810,6 +2296,32 @@ export const ProgramWorkspace = ({
     }
     void loadSummary(state.modules);
   }, [loadSummary, state, task]);
+  const openCourseFacts = () => {
+    setCourseNotice(null);
+    setCourseView("facts");
+    announce(COPY.programs.courseFacts);
+  };
+  const openCourseEdit = () => {
+    setCourseNotice(null);
+    setCourseView("edit");
+    announce(COPY.programs.editTitle);
+  };
+  const returnToCockpit = () => {
+    setCourseNotice(null);
+    setCourseView("overview");
+    announce(COPY.programs.workspaceTitle);
+  };
+  const returnToFacts = () => {
+    setCourseNotice(null);
+    setCourseView("facts");
+    announce(COPY.programs.courseFacts);
+  };
+  const handleCourseSaved = (updatedProgram: Program) => {
+    setCourseProgramOverride(updatedProgram);
+    setCourseNotice(COPY.programs.courseSaved);
+    setCourseView("facts");
+    announce(COPY.programs.courseSaved);
+  };
 
   if (state.kind === "loading") {
     return (
@@ -1855,6 +2367,7 @@ export const ProgramWorkspace = ({
       </section>
     );
   }
+  const workspaceProgram = courseProgramOverride ?? state.program;
 
   return (
     <section
@@ -1869,47 +2382,88 @@ export const ProgramWorkspace = ({
         {COPY.programs.workspaceBack}
       </button>
       <header className={styles.workspaceHeader}>
-        <p className={styles.programDetailEyebrow}>
-          {state.department
-            ? `${state.department.name} · ${state.department.code}`
-            : COPY.programs.workspaceDepartment}
-        </p>
-        <h3 id="programs-workspace-title" className={styles.boundaryTitle}>
-          {state.program.name}
-        </h3>
-        <p className={styles.boundaryLead}>{COPY.programs.workspaceLead}</p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "12px",
+          }}
+        >
+          <h3 id="programs-workspace-title" className={styles.boundaryTitle}>
+            {workspaceProgram.name}
+          </h3>
+          {task === undefined &&
+            courseView === "overview" &&
+            workspaceProgram.capabilities.manage && (
+              <button
+                className={styles.button}
+                type="button"
+                onClick={openCourseEdit}
+              >
+                {COPY.programs.cockpitEditProgram}
+              </button>
+            )}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "4px",
+          }}
+        >
+          <span className={styles.directoryStatus}>
+            {state.department
+              ? `${state.department.name} · ${state.department.code}`
+              : COPY.programs.workspaceDepartment}
+          </span>
+          <span
+            className={`${styles.directoryStatus} ${styles[`directoryStatus${workspaceProgram.lifecycle}`]}`}
+          >
+            {lifecycleLabel(workspaceProgram.lifecycle)}
+          </span>
+        </div>
       </header>
 
-      <WorkspaceNavigation
-        programId={programId}
-        task={task}
-        modules={state.modules}
-        onTaskChange={(nextTask) => {
-          setEditing(false);
-          onTaskChange(nextTask);
-        }}
-      />
-
-      {editing ? (
-        <ProgramForm
-          initial={state.program}
-          onSaved={() => {
-            setEditing(false);
-            void loadWorkspace();
+      {task && (
+        <WorkspaceNavigation
+          programId={programId}
+          task={task}
+          modules={state.modules}
+          onTaskChange={(nextTask) => {
+            setCourseView("overview");
+            setCourseNotice(null);
+            onTaskChange(nextTask);
           }}
-          onCancel={() => setEditing(false)}
+        />
+      )}
+
+      {courseView === "facts" ? (
+        <CourseFacts
+          program={workspaceProgram}
+          department={state.department}
+          notice={courseNotice}
+          onBack={returnToCockpit}
+          onEdit={openCourseEdit}
+        />
+      ) : courseView === "edit" ? (
+        <CourseEdit
+          program={workspaceProgram}
+          onBack={returnToFacts}
+          onSaved={handleCourseSaved}
         />
       ) : task && task === "events" && eventId ? (
         <EventDetail
           programId={programId}
           eventId={eventId}
-          canManage={state.program.capabilities.manage}
+          canManage={workspaceProgram.capabilities.manage}
           onAttentionRefresh={onAttentionRefresh}
           onBack={() => onEventChange?.(null)}
         />
       ) : task ? (
         <WorkspaceTask
-          program={state.program}
+          program={workspaceProgram}
           task={task}
           modules={state.modules}
           attention={attention}
@@ -1919,10 +2473,12 @@ export const ProgramWorkspace = ({
         />
       ) : (
         <WorkspaceOverview
-          program={state.program}
+          program={workspaceProgram}
           department={state.department}
+          cockpit={state.cockpit}
           summary={summary}
-          onEdit={() => setEditing(true)}
+          onOpenFacts={openCourseFacts}
+          onTaskChange={onTaskChange}
         />
       )}
     </section>

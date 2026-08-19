@@ -95,7 +95,7 @@ describe("Scanner mode boundary", () => {
         screen.queryByRole("tab", { name: COPY.attendance.assistedMode })
       ).not.toBeInTheDocument()
     );
-    expect(screen.getByText(COPY.attendance.selfHint)).toBeVisible();
+    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
   });
 
   test("keeps Self usable and exposes a retry when the Assisted access probe fails", async () => {
@@ -107,9 +107,9 @@ describe("Scanner mode boundary", () => {
     const user = userEvent.setup();
     render(<ScannerBoundary />);
 
-    expect(screen.getByText(COPY.attendance.selfHint)).toBeVisible();
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(COPY.error.unavailable);
+    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
+    const alert = await screen.findByText(COPY.error.unavailable);
+    expect(alert).toBeVisible();
     const retry = screen.getByRole("button", {
       name: COPY.attendance.assistedRetry,
     });

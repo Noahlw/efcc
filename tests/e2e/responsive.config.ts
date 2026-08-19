@@ -10,7 +10,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /responsive\.test\.ts$/u,
+  testMatch: /(?:responsive|shell-nav|account-settings|home)\.test\.ts$/u,
   timeout: 30_000,
   retries: 1,
   fullyParallel: false,

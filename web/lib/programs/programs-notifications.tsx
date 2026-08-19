@@ -137,6 +137,7 @@ export const ProgramsNotifications = ({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDialogElement | null>(null);
+  const focusReadyRef = useRef(false);
   const readKeyRef = useRef<string | null>(null);
   const [readOverrides, setReadOverrides] = useState<Set<string>>(
     () => new Set()
@@ -217,6 +218,10 @@ export const ProgramsNotifications = ({
   }, [expanded, effectiveState, markRead, state]);
 
   useEffect(() => {
+    if (!focusReadyRef.current) {
+      focusReadyRef.current = true;
+      return;
+    }
     if (expanded) {
       panelRef.current?.focus();
       return;

@@ -71,6 +71,7 @@ type View =
   | { kind: "AUTHENTICATING" }
   | { kind: "UPGRADE" }
   | { kind: "UPGRADING" }
+  | { kind: "SESSION_EXPIRED" }
   | { kind: "ERROR"; error: string }
   | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
 
@@ -81,10 +82,12 @@ const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [legacyPin, setLegacyPin] = useState("");
   const [newCredential, setNewCredential] = useState("");
+  const [confirmCredential, setConfirmCredential] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  // Flash notices carry different tones: errors (expiry, failed logout,
-  // login failure) vs success (account updated) vs neutral instructions
-  // (legacy-PIN upgrade gate). All keep role="alert" for announcement.
+  // Flash notices carry different tones: errors (failed logout) vs success
+  // (account updated) vs neutral instructions (legacy-PIN upgrade gate).
+  // Session expiry is its own dedicated screen (SESSION_EXPIRED), not a
+  // flash notice on this form. All keep role="alert" for announcement.
   const [noticeKind, setNoticeKind] = useState<
     "error" | "info" | "success"
   >("info");
@@ -97,12 +100,10 @@ const LoginPage = () => {
     []
   );
 
-  const handleExpiry = useCallback((message: string) => {
+  const handleExpiry = useCallback(() => {
     clearAuthHint();
-    announce(message);
-    setNotice(message);
-    setNoticeKind("error");
-    setView({ kind: "SIGNED_OUT" });
+    announce(COPY.sessionExpired.title);
+    setView({ kind: "SESSION_EXPIRED" });
   }, []);
 
   const navigateAfterLogin = useCallback(
@@ -143,7 +144,7 @@ const LoginPage = () => {
         return;
       }
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        handleExpiry(COPY.restore.expired);
+        handleExpiry();
       } else {
         const msg =
           error instanceof RpcError
@@ -155,20 +156,23 @@ const LoginPage = () => {
     }
   }, [navigateAfterLogin, handleExpiry]);
 
-  // On mount, restore any stored cookie session (silent, no re-entry).
-  useEffect(() => {
-    doRestore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- doRestore/navigateAfterLogin are stable
-  }, []);
-
-  // On mount, surface any flash notice from a prior logout / expiry.
+  // On mount: a prior mid-use AUTH_REQUIRED (app-shell.tsx / a boundary
+  // component) already cleared the auth hint, remembered the deep link, and
+  // set this flag before redirecting here — show the dedicated expiry
+  // screen directly and skip the restore attempt entirely (the session is
+  // definitively dead; re-probing it would only delay the same outcome).
   useEffect(() => {
     if (sessionStorage.getItem("efcc_session_expired") === "1") {
-      announce(COPY.restore.expired);
-      setNotice(COPY.restore.expired);
-      setNoticeKind("error");
       sessionStorage.removeItem("efcc_session_expired");
+      handleExpiry();
+      return;
     }
+    doRestore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doRestore/handleExpiry are stable
+  }, []);
+
+  // On mount, surface any flash notice unrelated to session expiry.
+  useEffect(() => {
     if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
       announce(COPY.logout.failedNotice);
       setNotice(COPY.logout.failedNotice);
@@ -184,6 +188,11 @@ const LoginPage = () => {
   }, []);
 
   const handleLogin = useCallback(async () => {
+    if (!username.trim() || !password) {
+      setView({ kind: "ERROR", error: COPY.login.missingFields });
+      announce(COPY.login.missingFields);
+      return;
+    }
     setView({ kind: "AUTHENTICATING" });
     announce(COPY.login.submitting);
     setNotice(null);
@@ -236,13 +245,25 @@ const LoginPage = () => {
       const msg =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.login.networkError;
+          : COPY.error.networkError;
       setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: finishUpgrade });
       announce(msg);
     }
   }, [navigateAfterLogin]);
 
   const handleUpgrade = useCallback(async () => {
+    if (newCredential.length < 8) {
+      setNotice(COPY.login.upgradePasswordTooShort);
+      setNoticeKind("error");
+      announce(COPY.login.upgradePasswordTooShort);
+      return;
+    }
+    if (newCredential !== confirmCredential) {
+      setNotice(COPY.login.upgradePasswordMismatch);
+      setNoticeKind("error");
+      announce(COPY.login.upgradePasswordMismatch);
+      return;
+    }
     setView({ kind: "UPGRADING" });
     announce(COPY.login.upgrading);
     setNotice(null);
@@ -252,7 +273,7 @@ const LoginPage = () => {
       const msg =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.login.networkError;
+          : COPY.login.upgradeNetworkError;
       const ambiguous =
         error instanceof RpcError &&
         (error.problem.code === "NETWORK_ERROR" || error.problem.status === 0);
@@ -304,7 +325,14 @@ const LoginPage = () => {
     // would 409 against the consumed hash).
     setAuthHint();
     await finishUpgrade();
-  }, [legacyPin, newCredential, username, finishUpgrade, navigateAfterLogin]);
+  }, [
+    legacyPin,
+    newCredential,
+    confirmCredential,
+    username,
+    finishUpgrade,
+    navigateAfterLogin,
+  ]);
 
   if (view.kind === "RESTORING") {
     return (
@@ -319,6 +347,28 @@ const LoginPage = () => {
     const handleRetry = view.retry;
     return (
       <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
+    );
+  }
+
+  if (view.kind === "SESSION_EXPIRED") {
+    return (
+      <main className={styles.sessionExpired}>
+        <article className={styles.sessionExpiredCard}>
+          <h1 className={styles.sessionExpiredTitle}>
+            {COPY.sessionExpired.title}
+          </h1>
+          <p className={styles.sessionExpiredMessage}>
+            {COPY.sessionExpired.message}
+          </p>
+          <button
+            className={styles.submit}
+            type="button"
+            onClick={() => setView({ kind: "SIGNED_OUT" })}
+          >
+            {COPY.sessionExpired.reLogin}
+          </button>
+        </article>
+      </main>
     );
   }
 
@@ -368,6 +418,7 @@ const LoginPage = () => {
               )}
               <form
                 className={styles.form}
+                noValidate
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!busy) {
@@ -423,6 +474,22 @@ const LoginPage = () => {
                         onChange={(e) => setNewCredential(e.target.value)}
                         disabled={busy}
                         autoComplete="new-password"
+                        minLength={8}
+                        required
+                      />
+                    </label>
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        {COPY.login.confirmPasswordLabel}
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="password"
+                        value={confirmCredential}
+                        onChange={(e) => setConfirmCredential(e.target.value)}
+                        disabled={busy}
+                        autoComplete="new-password"
+                        minLength={8}
                         required
                       />
                     </label>

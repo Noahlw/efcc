@@ -44,6 +44,7 @@ export interface RegistrationRequestRow {
   reviewed_by: string | null;
   reviewed_at: number | null;
   review_decision: string | null;
+  rejection_note: string | null;
 }
 
 /** Raise when the `:id` names no registration request (→ 404). */
@@ -65,7 +66,7 @@ export class RegistrationConflictError extends Error {
 
 const REQUEST_COLUMNS = `request_id, user_id, username, username_normalized,
   name, phone, credential_hash, credential_kind, account_status, role,
-  submitted_at, reviewed_by, reviewed_at, review_decision`;
+  submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 /** Look up a registration request by its opaque request_id, or null. */
 export async function findRegistrationById(
@@ -203,6 +204,7 @@ export async function createRegistrationRequest(
     reviewed_by: null,
     reviewed_at: null,
     review_decision: null,
+    rejection_note: null,
   };
 }
 
@@ -311,11 +313,20 @@ export async function approveRegistration(
 /**
  * Reject a Pending registration without creating an account. Idempotent: an
  * already-rejected request returns `rejected`. Conflicts: rejecting an
- * approved request (the account already exists).
+ * approved request (the account already exists). The rejection note (ADR-0006
+ * "Rejecting requires a reason"; migration 0012) is written atomically with
+ * the terminal Rejected transition — never stored for Pending/Approved rows.
+ * The caller (handler) enforces the non-empty note; this layer stores it
+ * trimmed.
  */
 export async function rejectRegistration(
   db: D1Database,
-  options: { requestId: string; reviewerId: string; now?: number }
+  options: {
+    requestId: string;
+    reviewerId: string;
+    note: string;
+    now?: number;
+  }
 ): Promise<"rejected"> {
   const now = options.now ?? Date.now();
   const request = await requireRequest(db, options.requestId);
@@ -333,10 +344,10 @@ export async function rejectRegistration(
     .prepare(
       `UPDATE registration_requests
           SET account_status = 'Rejected', reviewed_by = ?, reviewed_at = ?,
-              review_decision = 'Rejected'
+              review_decision = 'Rejected', rejection_note = ?
         WHERE request_id = ? AND account_status = 'Pending'`
     )
-    .bind(options.reviewerId, now, request.request_id)
+    .bind(options.reviewerId, now, options.note.trim(), request.request_id)
     .run();
 
   if ((result.meta?.changes ?? 0) !== 1) {

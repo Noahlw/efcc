@@ -6,6 +6,8 @@
  * this module.
  */
 
+import { ROLE } from "../auth/accounts";
+import { COPY } from "../copy";
 import {
   CAPABILITY,
   hasDepartmentManagementScope,
@@ -17,12 +19,19 @@ import type {
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
+import type { ProgramEvent } from "./program-api";
+
 import { AuthorizationDeniedError } from "./capability-authorizer";
-import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
 import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
+import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
+import type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
 import {
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
@@ -35,8 +44,8 @@ import {
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
+  EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
-  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   LeaderAccountInactiveError,
@@ -54,6 +63,7 @@ import {
 } from "./program-errors";
 import {
   exceptionForEvent,
+  recurrenceTagForEvent,
   hkTodayWallDate,
   previewOccurrencesForRule,
 } from "./recurrence";
@@ -73,6 +83,7 @@ import type {
   EnrollmentRow,
   EventAvailability,
   EventRow,
+  EventType,
   GenerateResult,
   GenerationRunItemRow,
   PreviewOccurrenceRow,
@@ -87,6 +98,9 @@ import type {
   ProgramLeaderRow,
   ManagementAttentionEventRow,
   NotificationReadStateInput,
+  ParticipantNoticeCreateInput,
+  ParticipantNoticeKind,
+  ParticipantNoticeRow,
   ProgramUpdate,
   ScheduleExceptionRow,
   ScheduleRuleRow,
@@ -207,15 +221,70 @@ export interface ManagementNotificationsView {
   has_more: boolean;
 }
 
+// 085-07 (#324) — participant Notices. The wire shape omits the member's own
+// user id (the API is strictly self-scoped); read_at/created_at are epoch
+// milliseconds. Notices older than NOTICE_RETENTION_MS are never served.
+export type { ParticipantNoticeKind } from "./workspace-store";
+
+export interface ParticipantNoticeView {
+  notice_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface ParticipantNoticesView {
+  notices: ParticipantNoticeView[];
+  unread_count: number;
+}
+
+export interface CreateParticipantNoticeInput {
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id?: string | null;
+  event_id?: string | null;
+  read_at?: number | null;
+}
+
+export const NOTICE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
 export const MANAGEMENT_ATTENTION_LIMIT = 5;
 export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
+export interface ManagementCockpitNextEvent {
+  event_id: string;
+  program_id: string;
+  title: string | null;
+  name: string | null;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  source: "SCHEDULE" | "MANUAL";
+  is_recurring: boolean;
+  checked_in_count: number;
+  roster_count: number;
+}
+
+export interface ManagementCockpitView {
+  program_id: string;
+  next_event: ManagementCockpitNextEvent | null;
+  active_event_count: number;
+  pending_enrollment_count: number;
+}
+
 export interface ManagementProgramWorkspaceView {
   program: ManagementProgramSettingsView;
   department: ManagementDepartmentView;
   modules: ManagementDepartmentModuleView[];
+  cockpit: ManagementCockpitView;
 }
 export interface EventDetailView {
-  event: EventRow;
+  event: ProgramEvent;
   leaders: ProgramLeaderRow[];
   participant_summary: {
     active_enrollments: number;
@@ -238,6 +307,135 @@ export interface ManagementAccessView {
   departmentScopes: number;
   programScopes: number;
 }
+
+// ---------------------------------------------------------------------------
+// Account Permissions matrix (087-03 #320 / Spec 087 US 9-12). The Worker
+// projects every elevated account (Admin / Staff-with-DM-grant / Staff) with
+// name, effective role, and department context; role labels/scopes come from
+// the centralized COPY.permissions block and the browser renders the
+// projection verbatim — never a client-side role branch.
+// ---------------------------------------------------------------------------
+
+/** Effective elevated role key; mirrors roles[].key. */
+export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
+
+export interface AccountPermissionAccount {
+  userId: string;
+  name: string;
+  role: AccountPermissionRoleKey;
+  /** Active Department Manager grant context; empty when none. */
+  departments: Array<{ id: string; name: string }>;
+}
+
+export interface AccountPermissionRole {
+  key: AccountPermissionRoleKey;
+  label: string;
+  scope: string;
+  /** 已設 when ≥1 projected account holds the role, 可指派 otherwise. */
+  assignmentState: "assigned" | "assignable";
+}
+
+export interface AccountPermissionsView {
+  accounts: AccountPermissionAccount[];
+  roles: AccountPermissionRole[];
+}
+
+/**
+ * One Member Directory result (087-04 #321 / Spec 087 US 13-15): identity,
+ * contact, role, and the departments of the member's Active enrollments
+ * (restricted to the actor's managed departments for a Department Manager).
+ */
+export interface ManagementMemberView {
+  userId: string;
+  name: string;
+  phone: string | null;
+  role: string;
+  status: string;
+  departments: Array<{ id: string; name: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Management Hub directory (087-01 #310). Row/group copy comes from the
+// centralized COPY.management block (web/lib/copy.ts) — the worker projects
+// it verbatim and the browser renders the projection as-is; no client-side
+// capability branching, no second copy of the strings. Wire types live in
+// hub-types.ts (shared with the browser client).
+// ---------------------------------------------------------------------------
+
+// Re-export the shared wire types so the Worker surface has one public name.
+export type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
+
+const HUB_COPY = COPY.management;
+
+/** Fixed group order (spec 087 US 1); keys are stable UI anchors. */
+export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
+  {
+    key: "members-and-permissions",
+    label: HUB_COPY.groupMemberPermissions,
+    rows: [
+      {
+        key: "approvals",
+        label: HUB_COPY.approvalsRow,
+        description: HUB_COPY.approvalsRowHint,
+        href: "/management?module=approvals",
+      },
+      {
+        key: "permissions",
+        label: HUB_COPY.permissionsRow,
+        description: HUB_COPY.permissionsRowHint,
+        href: "/management?module=permissions",
+      },
+    ],
+  },
+  {
+    key: "ministry-operations",
+    label: HUB_COPY.groupOperations,
+    rows: [
+      {
+        key: "departments",
+        label: HUB_COPY.departmentsRow,
+        description: HUB_COPY.departmentsRowHint,
+        href: "/management?module=departments",
+      },
+      {
+        key: "attendance",
+        label: HUB_COPY.attendanceRow,
+        description: HUB_COPY.attendanceRowHint,
+        href: "/management?module=attendance",
+      },
+      {
+        key: "members",
+        label: HUB_COPY.membersRow,
+        description: HUB_COPY.membersRowHint,
+        href: "/management?module=members",
+      },
+    ],
+  },
+  {
+    key: "content-and-system",
+    label: HUB_COPY.groupContentSystem,
+    rows: [
+      {
+        key: "home-content",
+        label: HUB_COPY.homeContentRow,
+        description: HUB_COPY.homeContentRowHint,
+        href: "/management?module=home-content",
+      },
+    ],
+  },
+];
+
+/** 另一個工作入口 card, rendered between 事工營運 and 內容與系統. */
+export const MANAGEMENT_HUB_ENTRY_CARD: ManagementHubRow = {
+  key: "course-management",
+  label: HUB_COPY.goCourseManagement,
+  description: HUB_COPY.goCourseManagementHint,
+  href: "/programs?mode=management",
+};
 
 /**
  * Client-safe preview plan projection. Never carries the internal actor id
@@ -295,9 +493,25 @@ export interface DepartmentSummary {
   display_order: number;
 }
 
+export type ParticipantCatalogViewerState =
+  | "active"
+  | "pending"
+  | "eligible"
+  | "managerOnly"
+  | "withdrawn"
+  | "cancelled"
+  | "rejected"
+  | "archived";
+
+export interface ParticipantCatalogProgram extends ProgramSummary {
+  viewerState: ParticipantCatalogViewerState;
+  nextEventStartsAt: string | null;
+  upcomingEventCount: number;
+}
+
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
-  programs: ProgramSummary[];
+  programs: ParticipantCatalogProgram[];
 }
 export interface ParticipantScheduleRule {
   rule_id: string;
@@ -315,6 +529,10 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  /** Projected from the real event row; null when the meeting has no title. */
+  name: string | null;
+  /** Projected from the real event row; null when the meeting has no venue. */
+  location: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -361,7 +579,7 @@ export interface CreateDepartmentCommand {
 export interface CreateProgramCommand {
   department_id: string;
   name: string;
-  description?: string;
+  description: string;
   category?: string;
   behavior_type: "Recurring" | "OneOff";
   lifecycle?: ProgramLifecycle;
@@ -405,6 +623,7 @@ export interface CreateEventCommand {
   starts_at: string;
   ends_at: string;
   name: string | null;
+  event_type?: EventType | null;
   location: string | null;
   check_in_window_opens_at: string | null;
   check_in_window_closes_at: string | null;
@@ -415,6 +634,7 @@ export interface UpdateEventCommand {
   ends_at?: string;
   name?: string | null;
   location?: string | null;
+  event_type?: EventType | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
 }
@@ -425,7 +645,7 @@ export interface SetEventAvailabilityCommand {
 }
 
 export interface CancelEventCommand {
-  reason: string;
+  reason?: string | null;
 }
 
 export interface DecideEnrollmentRequestCommand {
@@ -747,8 +967,9 @@ export class DepartmentWorkspace {
       0
     );
     const totalItemCount =
-      programs.filter(({ pending_enrollment_count }) => pending_enrollment_count > 0)
-        .length +
+      programs.filter(
+        ({ pending_enrollment_count }) => pending_enrollment_count > 0
+      ).length +
       eventCounts.reduce(
         (total, { inactive_event_count, cancelled_event_count }) =>
           total + inactive_event_count + cancelled_event_count,
@@ -894,7 +1115,8 @@ export class DepartmentWorkspace {
     );
     const readKeys = new Set(
       readStates.map(
-        ({ source_key, source_revision }) => `${source_key}\u0000${source_revision}`
+        ({ source_key, source_revision }) =>
+          `${source_key}\u0000${source_revision}`
       )
     );
     for (const entry of current) {
@@ -903,9 +1125,7 @@ export class DepartmentWorkspace {
       );
     }
     return {
-      items: current
-        .slice(0, normalizedLimit)
-        .map(({ item }) => item),
+      items: current.slice(0, normalizedLimit).map(({ item }) => item),
       unread_count: current.filter(({ item }) => !item.read).length,
       has_more: current.length > normalizedLimit,
     };
@@ -933,6 +1153,70 @@ export class DepartmentWorkspace {
       authorized,
       new Date().toISOString()
     );
+  }
+
+  /**
+   * 085-07 (#324) — list the actor's participant Notices, newest-first,
+   * within the 90-day retention window. Strictly self-scoped: only rows with
+   * member_user_id === ctx.actorUserId are ever returned, and a caller
+   * targeting another member is denied.
+   */
+  async listParticipantNotices(
+    ctx: AuthorizationContext,
+    memberUserId: string
+  ): Promise<ParticipantNoticesView> {
+    if (memberUserId !== ctx.actorUserId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const rows = await this.store.listParticipantNotices(
+      ctx.actorUserId,
+      Date.now() - NOTICE_RETENTION_MS
+    );
+    const notices = rows.map((row) => this.participantNoticeView(row));
+    return {
+      notices,
+      unread_count: notices.filter((notice) => notice.read_at === null).length,
+    };
+  }
+
+  /** 085-07 (#324) — idempotently mark every unread notice of the actor as read. */
+  async markAllParticipantNoticesRead(
+    ctx: AuthorizationContext,
+    memberUserId: string
+  ): Promise<number> {
+    if (memberUserId !== ctx.actorUserId) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    return this.store.markAllParticipantNoticesRead(
+      ctx.actorUserId,
+      Date.now()
+    );
+  }
+
+  /**
+   * 085-07 (#324) — create one participant notice for a member. Admin/Staff
+   * role gate (like the other church-wide admin operations); the notice is
+   * created unread unless the caller pins read_at.
+   */
+  async createParticipantNotice(
+    ctx: AuthorizationContext,
+    input: CreateParticipantNoticeInput
+  ): Promise<ParticipantNoticeView> {
+    if (ctx.actorRole !== ROLE.ADMIN && ctx.actorRole !== ROLE.STAFF) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const row = await this.store.createParticipantNotice({
+      notice_id: crypto.randomUUID(),
+      member_user_id: input.member_user_id,
+      kind: input.kind,
+      title: input.title,
+      body: input.body,
+      program_id: input.program_id ?? null,
+      event_id: input.event_id ?? null,
+      read_at: input.read_at ?? null,
+      created_at: Date.now(),
+    });
+    return this.participantNoticeView(row);
   }
 
   async getManagementProgram(
@@ -968,10 +1252,112 @@ export class DepartmentWorkspace {
     ) {
       return null;
     }
+    const cockpit = await this.computeManagementCockpit(ctx, row);
     return {
       program,
       department: this.managementDepartment(department),
       modules,
+      cockpit,
+    };
+  }
+
+  async getManagementCockpit(
+    ctx: AuthorizationContext,
+    id: string
+  ): Promise<ManagementCockpitView | null> {
+    const row = await this.store.findProgramById(id);
+    if (!row || !(await this.isModuleEnabled(row.department_id))) {
+      return null;
+    }
+    const departmentRow = await this.store.findDepartmentById(
+      row.department_id
+    );
+    if (!departmentRow) {
+      return null;
+    }
+    const department = await this.departmentView(ctx, departmentRow);
+    const program = this.managementProgramSettings(
+      row,
+      await this.programCapabilities(ctx, row)
+    );
+    if (
+      !hasDepartmentManagementScope(department) &&
+      !hasProgramManagementScope(program)
+    ) {
+      return null;
+    }
+    return this.computeManagementCockpit(ctx, row);
+  }
+
+  private async computeManagementCockpit(
+    _ctx: AuthorizationContext,
+    row: ProgramRow
+  ): Promise<ManagementCockpitView> {
+    const isEventsEnabled = await this.isModuleEnabled(
+      row.department_id,
+      MODULE_KEY.EVENTS
+    );
+    const isEnrollmentEnabled = await this.isModuleEnabled(
+      row.department_id,
+      MODULE_KEY.ENROLLMENT
+    );
+
+    let next_event: ManagementCockpitNextEvent | null = null;
+    let active_event_count = 0;
+
+    if (isEventsEnabled) {
+      const events = await this.store.listEvents(row.program_id);
+      const activeEvents = events.filter(
+        (e) => e.status === "Active" && e.availability === "Active"
+      );
+      active_event_count = activeEvents.length;
+      const now = Date.now();
+      const futureEvents = activeEvents
+        .filter(
+          (e) =>
+            Number.isFinite(Date.parse(e.starts_at)) &&
+            Date.parse(e.starts_at) >= now
+        )
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+
+      const firstFuture = futureEvents[0] ?? null;
+      if (firstFuture) {
+        const isRecurring =
+          row.behavior_type === "Recurring" ||
+          firstFuture.source === "SCHEDULE";
+        const summary = await this.store.getEventParticipantSummary(
+          firstFuture.event_id,
+          row.program_id
+        );
+        next_event = {
+          event_id: firstFuture.event_id,
+          program_id: firstFuture.program_id,
+          title: firstFuture.name ?? null,
+          name: firstFuture.name ?? null,
+          starts_at: firstFuture.starts_at,
+          ends_at: firstFuture.ends_at,
+          location: firstFuture.location ?? null,
+          source: firstFuture.source,
+          is_recurring: isRecurring,
+          checked_in_count: summary.checked_in,
+          roster_count: summary.active_enrollments,
+        };
+      }
+    }
+
+    let pending_enrollment_count = 0;
+    if (isEnrollmentEnabled) {
+      const pendingRows = await this.store.countPendingEnrollmentRequests([
+        row.program_id,
+      ]);
+      pending_enrollment_count = pendingRows[0]?.count ?? 0;
+    }
+
+    return {
+      program_id: row.program_id,
+      next_event,
+      active_event_count,
+      pending_enrollment_count,
     };
   }
 
@@ -1023,6 +1409,174 @@ export class DepartmentWorkspace {
       hasManagementCapability: programScopes > 0,
       departmentScopes,
       programScopes,
+    };
+  }
+
+  /**
+   * GET /api/v1/programs/account-permissions — Account Permissions matrix
+   * (Spec 087 US 9-12 / ticket 087-03 #320).
+   *
+   * Admin/Staff-only read: the capability authorizer denies Department
+   * Managers and Members server-side (migration 0013 seeds
+   * `account.permissions.read` for Admin + Staff only; a DM grant is an
+   * effective scoped profile, never a role row). The projection lists every
+   * admin-capable account — Admin, plain Staff, and Staff with an active
+   * Department Manager grant — with its effective role key
+   * (admin / department-manager / staff) and department context, plus the
+   * fixed three role definitions with a real assignment-state indicator
+   * (已設 when ≥1 projected account holds the role, 可指派 otherwise). Role
+   * labels/scopes come from the centralized COPY.permissions block; the
+   * browser renders the projection verbatim.
+   */
+  async getAccountPermissions(
+    ctx: AuthorizationContext
+  ): Promise<AccountPermissionsView> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_PERMISSIONS_READ);
+    const rows = await this.store.listElevatedAccounts();
+
+    const accountsByUser = new Map<string, AccountPermissionAccount>();
+    for (const row of rows) {
+      let account = accountsByUser.get(row.user_id);
+      if (!account) {
+        account = {
+          userId: row.user_id,
+          name: row.name,
+          role:
+            row.role === ROLE.ADMIN
+              ? "admin"
+              : row.department_id !== null
+                ? "department-manager"
+                : "staff",
+          departments: [],
+        };
+        accountsByUser.set(row.user_id, account);
+      }
+      if (row.department_id !== null && row.department_name !== null) {
+        account.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    const accounts = [...accountsByUser.values()];
+    const heldRoles = new Set(accounts.map((account) => account.role));
+    const permissionsCopy = COPY.permissions;
+    const roles: AccountPermissionRole[] = [
+      {
+        key: "admin",
+        label: permissionsCopy.roleAdmin,
+        scope: permissionsCopy.roleAdminScope,
+        assignmentState: heldRoles.has("admin") ? "assigned" : "assignable",
+      },
+      {
+        key: "department-manager",
+        label: permissionsCopy.roleDepartmentManager,
+        scope: permissionsCopy.roleDepartmentManagerScope,
+        assignmentState: heldRoles.has("department-manager")
+          ? "assigned"
+          : "assignable",
+      },
+      {
+        key: "staff",
+        label: permissionsCopy.roleStaff,
+        scope: permissionsCopy.roleStaffScope,
+        assignmentState: heldRoles.has("staff") ? "assigned" : "assignable",
+      },
+    ];
+    return { accounts, roles };
+  }
+
+  /**
+   * GET /api/v1/programs/hub — Management Hub directory (087-01 #310).
+   *
+   * Server-projected rows/groups: ungranted rows and empty groups are omitted
+   * entirely (never shown disabled). Role gates reuse the canonical role
+   * vocabulary; scope gates reuse the capability authorizer's effective
+   * department/program scope resolution — browser visibility is never
+   * authority. No Care row exists anywhere in the projection (spec 084/087).
+   */
+  async getManagementHub(
+    ctx: AuthorizationContext
+  ): Promise<ManagementHubView> {
+    const departments = await this.listDepartments(ctx);
+    const departmentScopes = departments.filter(hasDepartmentManagementScope);
+    // Effective department.manage scope (role policy or per-department grant).
+    const hasDepartmentManageScope = departmentScopes.some(
+      (department) => department.capabilities.manage
+    );
+    // Registration approvals and account permissions are Admin/Staff role
+    // surfaces (spec 087 US 4/9); Members never see them, grant or not.
+    const isAdminOrStaff =
+      ctx.actorRole === ROLE.ADMIN || ctx.actorRole === ROLE.STAFF;
+
+    // Attendance row: effective program.manage scope over a program whose
+    // department runs the attendance module (086-04 gate family, same effective
+    // scope the manageable-events chooser resolves for the actor).
+    const programRows = (
+      await Promise.all(
+        departments.map(async ({ department_id }) => {
+          if (!(await this.isModuleEnabled(department_id))) {
+            return [];
+          }
+          return this.store.listProgramAccessRows(department_id);
+        })
+      )
+    ).flat();
+    const hasAttendanceScope = (
+      await Promise.all(
+        programRows.map(async ({ department_id, program_id }) => {
+          const managed = await this.authorizer.can(
+            ctx,
+            CAPABILITY.PROGRAM_MANAGE,
+            { departmentId: department_id, programId: program_id }
+          );
+          return (
+            managed &&
+            (await this.isModuleEnabled(department_id, MODULE_KEY.ATTENDANCE))
+          );
+        })
+      )
+    ).some(Boolean);
+
+    // Home Content publish: role-policy capability (Admin via migration 0010;
+    // a Staff/Member row in role_capabilities grants it the same way). Home is
+    // church-wide, so no department/program scope expansion applies.
+    const canPublishHome = await this.authorizer.can(
+      ctx,
+      CAPABILITY.HOME_PUBLISH,
+      null
+    );
+
+    const granted = new Set<string>();
+    if (isAdminOrStaff) {
+      granted.add("approvals");
+      granted.add("permissions");
+      granted.add("members");
+    }
+    if (hasDepartmentManageScope) {
+      granted.add("departments");
+      granted.add("members");
+    }
+    if (hasAttendanceScope) {
+      granted.add("attendance");
+    }
+    if (canPublishHome) {
+      granted.add("home-content");
+    }
+
+    const groups = MANAGEMENT_HUB_GROUPS.map((group) => ({
+      key: group.key,
+      label: group.label,
+      rows: group.rows.filter((row) => granted.has(row.key)),
+    })).filter((group) => group.rows.length > 0);
+
+    // 另一個工作入口: any management capability (department scope OR program
+    // manage/publish/leader_assign) — the exact `/access` entry gate.
+    const { hasManagementCapability } = await this.getManagementAccess(ctx);
+
+    return {
+      groups,
+      entryCard: hasManagementCapability ? MANAGEMENT_HUB_ENTRY_CARD : null,
     };
   }
 
@@ -1227,24 +1781,160 @@ export class DepartmentWorkspace {
               capabilities: await this.programCapabilities(ctx, row),
             }))
           )
-        )
-          .filter(
-            ({ row, capabilities }) =>
-              row.discoverability === "Listed" || capabilities.manage
-          )
-          .map(({ row }) => this.programSummary(row));
+        ).filter(
+          ({ row, capabilities }) =>
+            row.discoverability === "Listed" || capabilities.manage
+        );
         if (visible.length === 0) {
           return null;
         }
+        const [isEnrollmentEnabled, isEventsEnabled] = await Promise.all([
+          this.isModuleEnabled(department.department_id, MODULE_KEY.ENROLLMENT),
+          this.isModuleEnabled(department.department_id, MODULE_KEY.EVENTS),
+        ]);
+        const programs = await Promise.all(
+          visible.map(async ({ row }) =>
+            this.participantCatalogProgram(
+              ctx,
+              row,
+              isEnrollmentEnabled,
+              isEventsEnabled
+            )
+          )
+        );
         return {
           department: this.departmentSummary(department),
-          programs: visible,
+          programs,
         };
       })
     );
     return entries.filter(
       (entry): entry is ParticipantCatalogEntry => entry !== null
     );
+  }
+
+  private async participantCatalogProgram(
+    ctx: AuthorizationContext,
+    row: ProgramRow,
+    isEnrollmentEnabled: boolean,
+    isEventsEnabled: boolean
+  ): Promise<ParticipantCatalogProgram> {
+    const summary = this.programSummary(row);
+    let viewerState: ParticipantCatalogViewerState;
+
+    if (row.lifecycle === "Archived") {
+      viewerState = "archived";
+    } else if (!isEnrollmentEnabled || !ctx.actorUserId) {
+      viewerState =
+        row.enrollment_mode === "ManagerOnly" ? "managerOnly" : "eligible";
+    } else {
+      const { requests, enrollments } =
+        await this.store.listParticipantEnrollmentSnapshot(
+          row.program_id,
+          ctx.actorUserId
+        );
+      const userRequests = requests
+        .filter((r) => r.member_user_id === ctx.actorUserId)
+        .sort((a, b) =>
+          (a.submitted_at || "").localeCompare(b.submitted_at || "")
+        );
+      const userEnrollments = enrollments
+        .filter((e) => e.member_user_id === ctx.actorUserId)
+        .sort((a, b) =>
+          (a.enrolled_at || "").localeCompare(b.enrolled_at || "")
+        );
+
+      if (userEnrollments.some((e) => e.status === "Active")) {
+        viewerState = "active";
+      } else if (userRequests.some((r) => r.status === "Pending")) {
+        viewerState = "pending";
+      } else {
+        const latestRequest =
+          userRequests.length > 0
+            ? userRequests[userRequests.length - 1]
+            : null;
+        const cancelledEnrollments = userEnrollments.filter(
+          (e) => e.status === "Cancelled"
+        );
+        const latestCancelledEnrollment =
+          cancelledEnrollments.length > 0
+            ? cancelledEnrollments[cancelledEnrollments.length - 1]
+            : null;
+
+        if (latestRequest?.status === "Rejected") {
+          const reqTime = Date.parse(
+            latestRequest.decided_at ?? latestRequest.submitted_at
+          );
+          const cancelTime = latestCancelledEnrollment
+            ? Date.parse(
+                latestCancelledEnrollment.cancelled_at ??
+                  latestCancelledEnrollment.enrolled_at
+              )
+            : -1;
+          if (
+            !latestCancelledEnrollment ||
+            !Number.isFinite(cancelTime) ||
+            reqTime >= cancelTime
+          ) {
+            viewerState = "rejected";
+          } else {
+            viewerState = "cancelled";
+          }
+        } else if (latestRequest?.status === "Withdrawn") {
+          const reqTime = Date.parse(
+            latestRequest.decided_at ?? latestRequest.submitted_at
+          );
+          const cancelTime = latestCancelledEnrollment
+            ? Date.parse(
+                latestCancelledEnrollment.cancelled_at ??
+                  latestCancelledEnrollment.enrolled_at
+              )
+            : -1;
+          if (
+            !latestCancelledEnrollment ||
+            !Number.isFinite(cancelTime) ||
+            reqTime >= cancelTime
+          ) {
+            viewerState = "withdrawn";
+          } else {
+            viewerState = "cancelled";
+          }
+        } else if (latestCancelledEnrollment) {
+          viewerState = "cancelled";
+        } else if (row.enrollment_mode === "ManagerOnly") {
+          viewerState = "managerOnly";
+        } else {
+          viewerState = "eligible";
+        }
+      }
+    }
+
+    let nextEventStartsAt: string | null = null;
+    let upcomingEventCount = 0;
+
+    if (isEventsEnabled) {
+      const events = await this.store.listEvents(row.program_id);
+      const now = Date.now();
+      const futureEvents = events
+        .filter(
+          (e) =>
+            e.status === "Active" &&
+            e.availability === "Active" &&
+            Number.isFinite(Date.parse(e.starts_at)) &&
+            Date.parse(e.starts_at) > now
+        )
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+
+      nextEventStartsAt = futureEvents[0]?.starts_at ?? null;
+      upcomingEventCount = futureEvents.length;
+    }
+
+    return {
+      ...summary,
+      viewerState,
+      nextEventStartsAt,
+      upcomingEventCount,
+    };
   }
   /**
    * Participant Program detail (PUI-03 / Issue #247). Revalidates the same
@@ -1292,6 +1982,10 @@ export class DepartmentWorkspace {
           ends_at: event.ends_at,
           status: "Active" as const,
           source: event.source,
+          // Next-meeting card surfaces the real meeting title/venue only;
+          // check-in and operator fields stay private here.
+          name: event.name,
+          location: event.location,
         })),
       enrollment: enrollmentState.snapshot,
       enrollment_access: enrollmentState.access,
@@ -1418,6 +2112,19 @@ export class DepartmentWorkspace {
       description: row.description,
       lifecycle: row.lifecycle,
       display_order: row.display_order,
+    };
+  }
+
+  private participantNoticeView(row: ParticipantNoticeRow): ParticipantNoticeView {
+    return {
+      notice_id: row.notice_id,
+      kind: row.kind,
+      title: row.title,
+      body: row.body,
+      program_id: row.program_id,
+      event_id: row.event_id,
+      read_at: row.read_at,
+      created_at: row.created_at,
     };
   }
 
@@ -1853,17 +2560,94 @@ export class DepartmentWorkspace {
     if (!event) {
       return null;
     }
-    const program = await this.requireProgramFor(
+    const program = await this.store.findProgramById(event.program_id);
+    if (!program) {
+      return null;
+    }
+    // Operators keep the existing PROGRAM_MANAGE-gated projection
+    // (leaders / participant_summary / exceptions / recurrence_tag).
+    const operatorScoped = await this.authorizer.can(
       ctx,
-      event.program_id,
-      CAPABILITY.PROGRAM_MANAGE
+      CAPABILITY.PROGRAM_MANAGE,
+      { programId: program.program_id }
     );
-    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const [leaders, participant_summary] = await Promise.all([
-      this.store.listProgramLeaders(program.program_id),
-      this.store.getEventParticipantSummary(event.event_id, program.program_id),
-    ]);
-    return { event, leaders, participant_summary };
+    if (operatorScoped) {
+      await this.requireModuleEnabled(
+        program.department_id,
+        MODULE_KEY.EVENTS
+      );
+      const [leaders, participant_summary, rules] = await Promise.all([
+        this.store.listProgramLeaders(program.program_id),
+        this.store.getEventParticipantSummary(
+          event.event_id,
+          program.program_id
+        ),
+        this.store.listScheduleRules(program.program_id),
+      ]);
+      const exceptions =
+        rules.length === 0
+          ? []
+          : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
+      const exception =
+        (exceptionForEvent(
+          event,
+          rules,
+          exceptions
+        ) as ScheduleExceptionRow | null) ?? null;
+      const recurrence_tag = recurrenceTagForEvent(event, rules);
+      const decoratedEvent: EventRow = {
+        ...event,
+        exception,
+        recurrence_tag,
+        has_attendance: participant_summary.checked_in > 0,
+      };
+      return {
+        event: { ...decoratedEvent, program_name: program.name },
+        leaders,
+        participant_summary,
+      };
+    }
+    // Participant projection: enrolled Active member may read any
+    // Active + Available event on their enrolled program (past, present,
+    // or future — the check-in window is irrelevant for detail browsing).
+    // Cancelled and Inactive events stay operator-only.
+    if (
+      event.status !== "Active" ||
+      (event.availability ?? "Active") !== "Active"
+    ) {
+      return null;
+    }
+    const enrolled = await this.store.hasActiveEnrollment(
+      program.program_id,
+      ctx.actorUserId
+    );
+    if (!enrolled) {
+      return null;
+    }
+    const participantEvent: ProgramEvent = {
+      event_id: event.event_id,
+      program_id: event.program_id,
+      program_name: program.name,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      status: event.status,
+      availability: event.availability ?? "Active",
+      source: event.source,
+      name: event.name,
+      event_type: event.event_type,
+      location: event.location,
+      manual_check_in_code: null,
+      check_in_window_opens_at: event.check_in_window_opens_at,
+      check_in_window_closes_at: event.check_in_window_closes_at,
+      cancel_reason: event.cancel_reason,
+      created_at: event.created_at,
+      updated_at: event.updated_at,
+    };
+    return {
+      event: participantEvent,
+      leaders: [],
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    };
   }
 
   async createScheduleRule(
@@ -2238,7 +3022,8 @@ export class DepartmentWorkspace {
       latest !== null &&
       latest.plan_id !== plan.plan_id &&
       (latest.created_at > plan.created_at ||
-        (latest.created_at === plan.created_at && latest.plan_id > plan.plan_id));
+        (latest.created_at === plan.created_at &&
+          latest.plan_id > plan.plan_id));
     if (currentHash !== plan.plan_hash || superseded) {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
@@ -2591,6 +3376,7 @@ export class DepartmentWorkspace {
       availability: "Active",
       source: "MANUAL",
       name: cmd.name,
+      event_type: cmd.event_type ?? null,
       location: cmd.location,
       check_in_window_opens_at: cmd.check_in_window_opens_at,
       check_in_window_closes_at: cmd.check_in_window_closes_at,
@@ -2610,7 +3396,7 @@ export class DepartmentWorkspace {
       row,
       correlationId
     );
-    return row;
+    return { ...row, recurrence_tag: "無", has_attendance: false };
   }
 
   async listEvents(
@@ -2656,10 +3442,14 @@ export class DepartmentWorkspace {
   private async decorateEventsWithExceptions(
     rows: EventRow[]
   ): Promise<EventRow[]> {
-    const rules = await this.store.listScheduleRules(rows[0].program_id);
-    const exceptions = await this.store.listScheduleExceptions(
-      rules.map((r) => r.rule_id)
-    );
+    const [rules, attendanceSet] = await Promise.all([
+      this.store.listScheduleRules(rows[0].program_id),
+      this.store.listActiveAttendanceEventIds(rows.map((r) => r.event_id)),
+    ]);
+    const exceptions =
+      rules.length === 0
+        ? []
+        : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
     return rows.map((row) => ({
       ...row,
       // The attributed exception is a read-only projection: provenance
@@ -2671,6 +3461,8 @@ export class DepartmentWorkspace {
           rules,
           exceptions
         ) as ScheduleExceptionRow | null) ?? null,
+      recurrence_tag: recurrenceTagForEvent(row, rules),
+      has_attendance: attendanceSet.has(row.event_id),
     }));
   }
   async updateEvent(
@@ -2689,30 +3481,8 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    const reschedules =
-      (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) ||
-      (cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at);
-    let hasCheckedIn = false;
-    if (reschedules) {
-      const summary = await this.store.getEventParticipantSummary(
-        eventId,
-        event.program_id
-      );
-      hasCheckedIn = summary.checked_in > 0;
-    }
-    if (hasCheckedIn) {
-      await this.audit(
-        ctx,
-        "EVENT_UPDATE",
-        "event",
-        eventId,
-        "CONFLICT",
-        event,
-        { reason: "attendance_exists" },
-        correlationId
-      );
-      throw new EventRescheduleBlockedError(eventId);
-    }
+    // Spec US 12: edits when attendance already exists must succeed and be
+    // recorded (no data loss; audit trail preserved).
     if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
       const duplicate = await this.store.findEventByStart(
         event.program_id,
@@ -2811,9 +3581,7 @@ export class DepartmentWorkspace {
           event,
           correlationId
         );
-        throw new EventAvailabilityConfirmationRequiredError(
-          impactCount
-        );
+        throw new EventAvailabilityConfirmationRequiredError(impactCount);
       }
     }
     const updated = await this.store.updateEvent(
@@ -2854,13 +3622,52 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    // Cancellation is blocked while any attendance row remains Active.
+    const activeAttendanceCount =
+      await this.store.countActiveAttendance(eventId);
+    if (activeAttendanceCount > 0) {
+      await this.audit(
+        ctx,
+        "EVENT_CANCEL",
+        "event",
+        eventId,
+        "CONFLICT",
+        event,
+        {
+          reason: "active_attendance",
+          active_attendance_count: activeAttendanceCount,
+        },
+        correlationId
+      );
+      throw new EventCancellationBlockedError(activeAttendanceCount);
+    }
     const updated = await this.store.cancelEvent(
       eventId,
-      cmd.reason,
+      cmd.reason ?? null,
       ctx.actorUserId,
       new Date().toISOString()
     );
     if (!updated) {
+      const activeAttendanceAfterRace =
+        event.status === "Active"
+          ? await this.store.countActiveAttendance(eventId)
+          : 0;
+      if (activeAttendanceAfterRace > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_CANCEL",
+          "event",
+          eventId,
+          "CONFLICT",
+          event,
+          {
+            reason: "active_attendance",
+            active_attendance_count: activeAttendanceAfterRace,
+          },
+          correlationId
+        );
+        throw new EventCancellationBlockedError(activeAttendanceAfterRace);
+      }
       await this.audit(
         ctx,
         "EVENT_CANCEL",
@@ -2899,6 +3706,64 @@ export class DepartmentWorkspace {
     programId?: string
   ): Promise<MemberOptionRow[]> {
     return this.store.searchActiveMembers(query, limit, programId);
+  }
+
+  /**
+   * GET /api/v1/programs/members — Member Directory search (Spec 087 US
+   * 13-15 / ticket 087-04 #321).
+   *
+   * Admin/Staff roles resolve church-wide over all Active accounts; a
+   * Department Manager (any role holding active department_managers grants)
+   * resolves only over members with an Active enrollment in a program of one
+   * of their assigned departments. Anyone else is denied (403) — an
+   * unrelated department's enrolled members are never visible. The browser
+   * never sees a scope branch; this projection is the only surface.
+   */
+  async searchManagementMembers(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number
+  ): Promise<ManagementMemberView[]> {
+    let departmentIds: readonly string[] | undefined;
+    if (!(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, null))) {
+      departmentIds = await this.store.listManagedDepartmentIds(
+        ctx.actorUserId
+      );
+      if (departmentIds.length === 0) {
+        throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+      }
+    }
+    const rows = await this.store.searchManagementMembers(
+      query,
+      limit,
+      departmentIds
+    );
+    const members = new Map<string, ManagementMemberView>();
+    for (const row of rows) {
+      let member = members.get(row.user_id);
+      if (!member) {
+        member = {
+          userId: row.user_id,
+          name: row.name,
+          phone: row.phone,
+          role: row.role,
+          status: row.account_status,
+          departments: [],
+        };
+        members.set(row.user_id, member);
+      }
+      if (
+        row.department_id !== null &&
+        row.department_name !== null &&
+        !member.departments.some(({ id }) => id === row.department_id)
+      ) {
+        member.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    return [...members.values()];
   }
 
   getEnrollment(
@@ -3098,10 +3963,7 @@ export class DepartmentWorkspace {
       request: row,
       enrollment:
         row.status === "Approved"
-          ? await this.store.findActiveEnrollment(
-              programId,
-              row.member_user_id
-            )
+          ? await this.store.findActiveEnrollment(programId, row.member_user_id)
           : null,
     });
     // ADR-0023 §3 / ADR-0027: DUPLICATE is the SAME actor repeating their own
@@ -3284,9 +4146,7 @@ export class DepartmentWorkspace {
         auditDecide,
         cmd.expectedRequestVersion
       );
-      decided = rejected
-        ? { request: rejected, enrollment: null }
-        : null;
+      decided = rejected ? { request: rejected, enrollment: null } : null;
     }
     if (decided) {
       return decided;
@@ -3381,9 +4241,6 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
-    if (program.enrollment_mode !== "ManagerOnly") {
-      throw new EnrollmentNotAllowedError(programId, "ManagerOnly");
-    }
     if (!(await this.store.isAccountActive(cmd.memberUserId))) {
       await this.audit(
         ctx,
@@ -3420,10 +4277,16 @@ export class DepartmentWorkspace {
       throw new DuplicateEnrollmentError(programId, cmd.memberUserId);
     }
     const now = new Date().toISOString();
-    let row: EnrollmentRow;
-    try {
-      row = await this.store.createEnrollment({
-        enrollment_id: crypto.randomUUID(),
+    const enrollmentId = crypto.randomUUID();
+    const auditCreate = this.buildAuditRow(
+      ctx,
+      "ENROLLMENT_CREATE",
+      "enrollment",
+      enrollmentId,
+      "SUCCESS",
+      null,
+      {
+        enrollment_id: enrollmentId,
         program_id: programId,
         member_user_id: cmd.memberUserId,
         request_id: null,
@@ -3431,7 +4294,24 @@ export class DepartmentWorkspace {
         enrolled_at: now,
         created_by: ctx.actorUserId,
         created_at: now,
-      });
+      },
+      correlationId
+    );
+    let row: EnrollmentRow;
+    try {
+      row = await this.store.createEnrollmentWithAudit(
+        {
+          enrollment_id: enrollmentId,
+          program_id: programId,
+          member_user_id: cmd.memberUserId,
+          request_id: null,
+          status: "Active",
+          enrolled_at: now,
+          created_by: ctx.actorUserId,
+          created_at: now,
+        },
+        auditCreate
+      );
     } catch (error) {
       // ponytail: partial unique index is the race guard; on constraint
       // violation the member already has an Active enrollment.
@@ -3462,16 +4342,6 @@ export class DepartmentWorkspace {
       }
       throw error;
     }
-    await this.audit(
-      ctx,
-      "ENROLLMENT_CREATE",
-      "enrollment",
-      row.enrollment_id,
-      "SUCCESS",
-      null,
-      row,
-      correlationId
-    );
     return row;
   }
 

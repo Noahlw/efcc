@@ -11,12 +11,6 @@ import {
   stableNavigationSections,
 } from "./sections";
 
-const profile: Section = {
-  key: "profile",
-  label: "個人資料",
-  capability: "READ",
-  requiresServerAuth: false,
-};
 const home: Section = {
   key: "home",
   label: "首頁",
@@ -25,43 +19,37 @@ const home: Section = {
 };
 const programs: Section = {
   key: "programs",
-  label: "課程",
-  capability: "READ",
-  requiresServerAuth: false,
-};
-const events: Section = {
-  key: "events",
   label: "聚會",
   capability: "READ",
   requiresServerAuth: false,
 };
 const scanner: Section = {
   key: "scanner",
-  label: "掃描",
+  label: "簽到",
   capability: "AUTH",
-  requiresServerAuth: true,
+  requiresServerAuth: false,
 };
-const care: Section = {
-  key: "care",
-  label: "關懷",
-  capability: "AUTH",
-  requiresServerAuth: true,
+const notices: Section = {
+  key: "notices",
+  label: "通知",
+  capability: "READ",
+  requiresServerAuth: false,
 };
-const permissions: Section = {
-  key: "permissions",
-  label: "權限管理",
+const management: Section = {
+  key: "management",
+  label: "管理",
   capability: "AUTH",
-  requiresServerAuth: true,
+  requiresServerAuth: false,
+};
+const profile: Section = {
+  key: "profile",
+  label: "帳戶",
+  capability: "READ",
+  requiresServerAuth: false,
 };
 
-const MEMBER_SECTIONS = [home, profile, programs];
-const STAFF_SECTIONS = [
-  ...MEMBER_SECTIONS,
-  events,
-  scanner,
-  care,
-  permissions,
-];
+const MEMBER_SECTIONS = [home, programs, scanner, notices, profile];
+const STAFF_SECTIONS = [home, programs, scanner, management, profile];
 
 describe(firstSection, () => {
   test("returns first section key for MEMBER", () => {
@@ -75,10 +63,6 @@ describe(firstSection, () => {
   test("falls back to 'profile' for empty list", () => {
     expect(firstSection([])).toBe("profile");
   });
-
-  test("keeps Profile as the restore target when Home is first", () => {
-    expect(firstSection(sectionsForRole("Member"))).toBe("profile");
-  });
 });
 
 describe(isPermitted, () => {
@@ -86,16 +70,16 @@ describe(isPermitted, () => {
     expect(isPermitted(MEMBER_SECTIONS, "profile")).toBeTruthy();
   });
 
-  test("denies scanner for MEMBER", () => {
-    expect(isPermitted(MEMBER_SECTIONS, "scanner")).toBeFalsy();
+  test("allows notices for MEMBER", () => {
+    expect(isPermitted(MEMBER_SECTIONS, "notices")).toBeTruthy();
   });
 
-  test("allows scanner for STAFF", () => {
-    expect(isPermitted(STAFF_SECTIONS, "scanner")).toBeTruthy();
+  test("denies management for MEMBER", () => {
+    expect(isPermitted(MEMBER_SECTIONS, "management")).toBeFalsy();
   });
 
-  test("denies permissions for MEMBER", () => {
-    expect(isPermitted(MEMBER_SECTIONS, "permissions")).toBeFalsy();
+  test("allows management for STAFF", () => {
+    expect(isPermitted(STAFF_SECTIONS, "management")).toBeTruthy();
   });
 });
 
@@ -116,53 +100,57 @@ describe(recoverySection, () => {
 });
 
 describe(defaultSections, () => {
-  test("returns the canonical section catalog with profile first", () => {
+  test("returns the canonical section catalog", () => {
     const sections = defaultSections();
     expect(sections.map((s) => s.key)).toStrictEqual([
-      "profile",
       "home",
       "programs",
       "events",
       "scanner",
-      "care",
+      "notices",
+      "management",
       "permissions",
+      "profile",
     ]);
-    expect(firstSection(sections)).toBe("profile");
     expect(sections.every((s) => s.requiresServerAuth === false)).toBeTruthy();
   });
 });
 
 describe(stableNavigationSections, () => {
-  test("projects the stable five in the approved order", () => {
-    expect(stableNavigationSections().map((s) => s.key)).toStrictEqual([
+  test("projects 5-slot navigation for Member with notices", () => {
+    expect(stableNavigationSections("Member").map((s) => s.key)).toStrictEqual([
       "home",
       "programs",
-      "events",
       "scanner",
+      "notices",
+      "profile",
+    ]);
+  });
+
+  test("projects 5-slot navigation for Staff with management", () => {
+    expect(stableNavigationSections("Staff").map((s) => s.key)).toStrictEqual([
+      "home",
+      "programs",
+      "scanner",
+      "management",
       "profile",
     ]);
   });
 });
 
 describe(sectionsForRole, () => {
-  const memberKeys = ["home", "profile", "programs"];
-  const staffKeys = [
-    ...memberKeys,
-    "events",
-    "scanner",
-    "care",
-    "permissions",
-  ];
+  const memberKeys = ["home", "programs", "scanner", "notices", "profile"];
+  const staffKeys = ["home", "programs", "scanner", "management", "profile"];
 
-  test("Admin receives authorized sections, with permissions server-projected", () => {
+  test("Admin receives authorized sections with management", () => {
     expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual(staffKeys);
   });
 
-  test("Staff receives authorized sections, with permissions server-projected", () => {
+  test("Staff receives authorized sections with management", () => {
     expect(sectionsForRole("Staff").map((s) => s.key)).toStrictEqual(staffKeys);
   });
 
-  test("Member receives Home, Profile, and Programs only", () => {
+  test("Member receives 5 slots with notices", () => {
     expect(sectionsForRole("Member").map((s) => s.key)).toStrictEqual(
       memberKeys
     );
@@ -189,19 +177,19 @@ describe(sectionsForRole, () => {
     );
   });
 
-  test("Member with an active management grant additionally receives Events (#215)", () => {
+  test("Member with an active management grant receives management instead of notices", () => {
     expect(
       sectionsForRole("Member", true).map((s) => s.key)
-    ).toStrictEqual([...memberKeys, "events"]);
+    ).toStrictEqual(staffKeys);
   });
 
-  test("Member without a management grant still receives no Events (default false)", () => {
+  test("Member without a management grant receives notices (default false)", () => {
     expect(sectionsForRole("Member", false).map((s) => s.key)).toStrictEqual(
       memberKeys
     );
   });
 
-  test("hasManagementGrant is a no-op for roles that already include Events", () => {
+  test("hasManagementGrant is a no-op for roles that already include management", () => {
     expect(
       sectionsForRole("Staff", true).map((s) => s.key)
     ).toStrictEqual(staffKeys);

@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
+import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { listParticipantCatalog } from "@/lib/programs/program-api";
 import type {
   ParticipantCatalogEntry,
-  ProgramSummary,
+  ParticipantCatalogProgram,
+  ParticipantCatalogViewerState,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
@@ -18,16 +19,14 @@ import styles from "@/app/programs/programs.module.css";
 
 /**
  * PUI-02 / Issue #246 — the participant Programs directory. Renders the
- * server-projected catalog (production Worker/D1) as one flat, coherent
- * collection with search, concise lifecycle/participation filters, Department
- * and category recognition context, accessible lifecycle status text, and
- * distinct loading/empty/empty-search/stale/forbidden-item/recoverable states.
- * Selecting a row hands off through the existing URL-addressable Program
- * intent — it never renders the nested Programs manager.
+ * server-projected catalog (production Worker/D1) as one flat collection with
+ * viewer-relative filters, search, accessible status text, and distinct
+ * loading/empty/error states. Selecting a row hands off through the existing
+ * URL-addressable Program intent — it never renders the nested Programs
+ * manager.
  */
 
-export type LifecycleFilter = "All" | ProgramSummary["lifecycle"];
-export type ParticipationFilter = "All" | ProgramSummary["enrollment_mode"];
+export type ParticipantFilter = "all" | "eligible" | "active" | "pending";
 
 export interface ParticipantDirectoryProps {
   /** Opaque Program id carried by the URL intent, if any. */
@@ -41,35 +40,94 @@ export interface ParticipantDirectoryProps {
 type CatalogState =
   | { kind: "loading" }
   | { kind: "ready"; catalog: ParticipantCatalogEntry[] }
-  | { kind: "error"; failure: "forbidden" | "recoverable"; message: string };
+  | { kind: "error"; failure: "forbidden" | "recoverable" };
 
-const LIFECYCLE_LABEL: Record<ProgramSummary["lifecycle"], string> = {
-  Draft: COPY.programs.filterDraft,
-  Active: COPY.programs.filterActive,
-  Archived: COPY.programs.filterArchived,
-};
+type StatusKind = "success" | "pending" | "neutral" | "danger";
 
-const PARTICIPATION_LABEL: Record<ProgramSummary["enrollment_mode"], string> = {
-  MemberRequest: COPY.programs.filterMemberRequest,
-  ManagerOnly: COPY.programs.filterManagerOnly,
-};
-
-const LIFECYCLE_FILTERS: readonly LifecycleFilter[] = [
-  "All",
-  "Active",
-  "Draft",
-  "Archived",
-];
-const PARTICIPATION_FILTERS: readonly ParticipationFilter[] = [
-  "All",
-  "MemberRequest",
-  "ManagerOnly",
+const FILTERS: readonly {
+  value: ParticipantFilter;
+  label: string;
+}[] = [
+  { value: "all", label: COPY.programs.filterAll },
+  { value: "eligible", label: COPY.programs.filterEligible },
+  { value: "active", label: COPY.programs.filterActive },
+  { value: "pending", label: COPY.programs.filterPending },
 ];
 
-interface ReadyCatalog {
-  catalog: ParticipantCatalogEntry[];
-  programs: ProgramSummary[];
-  departmentName: (departmentId: string) => string;
+const STATUS_TAG: Record<
+  ParticipantCatalogViewerState,
+  { label: string; kind: StatusKind }
+> = {
+  active: { label: COPY.programs.statusActive, kind: "success" },
+  pending: { label: COPY.programs.statusPending, kind: "pending" },
+  eligible: { label: COPY.programs.statusEligible, kind: "pending" },
+  managerOnly: { label: COPY.programs.statusManagerOnly, kind: "neutral" },
+  withdrawn: { label: COPY.programs.statusWithdrawn, kind: "neutral" },
+  cancelled: { label: COPY.programs.statusCancelled, kind: "neutral" },
+  rejected: { label: COPY.programs.statusRejected, kind: "danger" },
+  archived: { label: COPY.programs.statusArchived, kind: "neutral" },
+};
+
+const SKELETON_ROWS = [0, 1, 2] as const;
+
+function nextEventDateLabel(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const parts = new Intl.DateTimeFormat("zh-Hant-HK", {
+    day: "numeric",
+    month: "numeric",
+    timeZone: "Asia/Hong_Kong",
+    weekday: "long",
+  }).formatToParts(date);
+  const part = (type: "weekday" | "month" | "day") =>
+    parts.find((entry) => entry.type === type)?.value ?? "";
+  const weekday = part("weekday");
+  const month = part("month");
+  const day = part("day");
+  return weekday && month && day ? `${month}月${day}日（${weekday}）` : "";
+}
+
+function catalogSecondaryCopy(program: ParticipantCatalogProgram): string {
+  switch (program.viewerState) {
+    case "active":
+    case "eligible": {
+      const nextDate = nextEventDateLabel(program.nextEventStartsAt);
+      if (!nextDate) {
+        return program.description ?? "";
+      }
+      const eventCount = COPY.programs.catalogEventCountSuffix.replace(
+        "{count}",
+        String(program.upcomingEventCount)
+      );
+      return `${COPY.programs.catalogActivePrefix}${nextDate} · ${eventCount}`;
+    }
+    case "pending": {
+      return COPY.programs.catalogPendingCopy;
+    }
+    case "managerOnly": {
+      return COPY.programs.catalogManagerOnlyCopy;
+    }
+    case "rejected": {
+      return COPY.programs.catalogRejectedCopy;
+    }
+    case "archived": {
+      return COPY.programs.catalogArchivedCopy;
+    }
+    case "withdrawn": {
+      return program.description ?? "";
+    }
+    case "cancelled": {
+      return program.description ?? "";
+    }
+    default: {
+      return program.description ?? "";
+    }
+  }
 }
 
 export const ParticipantDirectory = ({
@@ -81,9 +139,7 @@ export const ParticipantDirectory = ({
   const router = useRouter();
   const [state, setState] = useState<CatalogState>({ kind: "loading" });
   const [query, setQuery] = useState("");
-  const [lifecycle, setLifecycle] = useState<LifecycleFilter>("All");
-  const [participation, setParticipation] =
-    useState<ParticipationFilter>("All");
+  const [filter, setFilter] = useState<ParticipantFilter>("all");
   const mounted = useRef(true);
   const catalogRequestId = useRef(0);
   const retryFocusPending = useRef(false);
@@ -118,16 +174,13 @@ export const ParticipantDirectory = ({
         return;
       }
       const code = error instanceof RpcError ? error.problem.code : undefined;
-      const message =
-        error instanceof RpcError
-          ? errorCopyFor(code, error.problem.detail)
-          : COPY.error.networkError;
-      setState({
-        kind: "error",
-        failure: code === "FORBIDDEN" ? "forbidden" : "recoverable",
-        message,
-      });
-      announce(message);
+      const failure = code === "FORBIDDEN" ? "forbidden" : "recoverable";
+      setState({ kind: "error", failure });
+      announce(
+        failure === "forbidden"
+          ? COPY.programs.catalogForbiddenHint
+          : COPY.programs.catalogLoadErrorHint
+      );
     }
   }, [router]);
 
@@ -154,37 +207,20 @@ export const ParticipantDirectory = ({
     void loadCatalog();
   };
 
-  const ready = useMemo<ReadyCatalog | null>(() => {
+  const programs = useMemo<ParticipantCatalogProgram[] | null>(() => {
     if (state.kind !== "ready") {
       return null;
     }
-    const departments = new Map(
-      state.catalog.map((entry) => [
-        entry.department.department_id,
-        entry.department,
-      ])
-    );
-    return {
-      catalog: state.catalog,
-      programs: state.catalog.flatMap((entry) => entry.programs),
-      departmentName: (departmentId: string) =>
-        departments.get(departmentId)?.name ?? "",
-    };
+    return state.catalog.flatMap((entry) => entry.programs);
   }, [state]);
 
   const filtered = useMemo(() => {
-    if (!ready) {
+    if (!programs) {
       return [];
     }
     const q = query.trim().toLowerCase();
-    return ready.programs.filter((program) => {
-      if (lifecycle !== "All" && program.lifecycle !== lifecycle) {
-        return false;
-      }
-      if (
-        participation !== "All" &&
-        program.enrollment_mode !== participation
-      ) {
+    return programs.filter((program) => {
+      if (filter !== "all" && program.viewerState !== filter) {
         return false;
       }
       if (q === "") {
@@ -196,17 +232,16 @@ export const ParticipantDirectory = ({
         (program.category ?? "").toLowerCase().includes(q)
       );
     });
-  }, [lifecycle, participation, query, ready]);
+  }, [filter, programs, query]);
 
   const selectedProgram = useMemo(() => {
-    if (!ready || programId === null) {
+    if (!programs || programId === null) {
       return null;
     }
-    return ready.programs.find((program) => program.program_id === programId);
-  }, [programId, ready]);
+    return programs.find((program) => program.program_id === programId);
+  }, [programId, programs]);
 
   const searching = query.trim() !== "";
-  const filtering = lifecycle !== "All" || participation !== "All";
 
   return (
     <>
@@ -237,8 +272,28 @@ export const ParticipantDirectory = ({
           className={styles.boundaryState}
           role="status"
           aria-busy="true"
+          aria-label={COPY.programs.catalogLoading}
         >
-          <p>{COPY.programs.catalogLoading}</p>
+          <span className={styles.directorySrOnly}>
+            {COPY.programs.catalogLoading}
+          </span>
+          <div className={styles.directorySkeletonList} aria-hidden="true">
+            {SKELETON_ROWS.map((row) => (
+              <div
+                key={row}
+                className={`${styles.directorySkeletonCard} ${
+                  row === SKELETON_ROWS.length - 1
+                    ? styles.directorySkeletonCardLast
+                    : ""
+                }`}
+              >
+                <span className={styles.directorySkeletonBar} />
+                <span
+                  className={`${styles.directorySkeletonBar} ${styles.directorySkeletonBarShort}`}
+                />
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -249,15 +304,15 @@ export const ParticipantDirectory = ({
           className={styles.boundaryError}
           role="alert"
         >
-          <h3 className={styles.boundaryTitle}>
+          <h2 className={styles.boundaryTitle}>
             {state.failure === "forbidden"
               ? COPY.programs.catalogForbidden
               : COPY.programs.catalogLoadError}
-          </h3>
+          </h2>
           <p>
             {state.failure === "forbidden"
               ? COPY.programs.catalogForbiddenHint
-              : state.message}
+              : COPY.programs.catalogLoadErrorHint}
           </p>
           <button className={styles.retry} type="button" onClick={retryCatalog}>
             {COPY.programs.catalogRetry}
@@ -265,14 +320,7 @@ export const ParticipantDirectory = ({
         </section>
       )}
 
-      {ready && ready.programs.length === 0 && (
-        <section id="programs-catalog-state" className={styles.boundaryState}>
-          <h3 className={styles.boundaryTitle}>{COPY.programs.catalogEmpty}</h3>
-          <p>{COPY.programs.catalogEmptyHint}</p>
-        </section>
-      )}
-
-      {ready && ready.programs.length > 0 && (
+      {programs && (
         <>
           <div className={styles.directorySearch}>
             <label
@@ -303,118 +351,91 @@ export const ParticipantDirectory = ({
             </div>
           </div>
 
-          <fieldset className={styles.directoryFilters}>
-            <legend>{COPY.programs.catalogFilterLifecycle}</legend>
+          <div
+            className={styles.directoryFilters}
+            role="group"
+            aria-label={COPY.programs.filterGroupLabel}
+          >
             <div className={styles.directoryFilterGroup}>
-              {LIFECYCLE_FILTERS.map((value) => (
+              {FILTERS.map(({ value, label }) => (
                 <button
                   key={value}
                   className={styles.filterChip}
                   type="button"
-                  aria-pressed={lifecycle === value}
-                  onClick={() => setLifecycle(value)}
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
                 >
-                  {value === "All"
-                    ? COPY.programs.filterAll
-                    : LIFECYCLE_LABEL[value]}
+                  {label}
                 </button>
               ))}
             </div>
-          </fieldset>
-
-          <fieldset className={styles.directoryFilters}>
-            <legend>{COPY.programs.catalogFilterParticipation}</legend>
-            <div className={styles.directoryFilterGroup}>
-              {PARTICIPATION_FILTERS.map((value) => (
-                <button
-                  key={value}
-                  className={styles.filterChip}
-                  type="button"
-                  aria-pressed={participation === value}
-                  onClick={() => setParticipation(value)}
-                >
-                  {value === "All"
-                    ? COPY.programs.filterAll
-                    : PARTICIPATION_LABEL[value]}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          </div>
 
           {filtered.length === 0 && (
             <section
               id="programs-catalog-state"
-              className={styles.boundaryState}
+              className={`${styles.boundaryState} ${styles.directoryEmpty}`}
             >
-              <h3 className={styles.boundaryTitle}>
-                {searching
-                  ? `${COPY.programs.catalogNoMatches}「${query.trim()}」`
-                  : COPY.programs.catalogNoMatches}
-              </h3>
-              <p>
-                {searching
-                  ? COPY.programs.catalogNoMatchesHint
-                  : COPY.programs.catalogNoFilterMatchesHint}
-              </p>
+              <h2 className={styles.boundaryTitle}>
+                {COPY.programs.catalogEmpty}
+              </h2>
+              <p>{COPY.programs.catalogEmptyHint}</p>
               <button
                 className={styles.retry}
                 type="button"
                 onClick={() => {
                   setQuery("");
-                  if (filtering) {
-                    setLifecycle("All");
-                    setParticipation("All");
-                  }
+                  setFilter("all");
                 }}
               >
-                {searching
-                  ? COPY.programs.catalogClearSearch
-                  : COPY.programs.catalogClearFilters}
+                {COPY.programs.catalogClearFilters}
               </button>
             </section>
           )}
 
           {filtered.length > 0 && (
             <ul
-              className={styles.directoryList}
+              className={`${styles.directoryList} ${styles.participantDirectoryList}`}
               aria-label={COPY.programs.catalogListLabel}
             >
               {filtered.map((program) => {
-                const departmentName = ready.departmentName(
-                  program.department_id
-                );
+                const tag = STATUS_TAG[program.viewerState];
+                const secondaryCopy = catalogSecondaryCopy(program);
                 return (
                   <li key={program.program_id} className={styles.directoryItem}>
                     <button
-                      className={styles.directoryCard}
+                      className={`${styles.directoryCard} ${styles.participantDirectoryCard}`}
+                      aria-label={`${tag.label} · ${program.name}${
+                        secondaryCopy ? ` · ${secondaryCopy}` : ""
+                      }`}
                       type="button"
                       onClick={() => onOpenProgram(program.program_id)}
                     >
-                      <span className={styles.directoryCardTitle}>
-                        {program.name}
-                      </span>
-                      {program.description && (
-                        <span className={styles.directoryCardDescription}>
-                          {program.description}
-                        </span>
-                      )}
-                      <span className={styles.directoryCardMeta}>
-                        {departmentName && (
-                          <span className={styles.directoryMetaItem}>
-                            {departmentName}
-                          </span>
-                        )}
-                        {program.category && (
-                          <span className={styles.directoryMetaItem}>
-                            {program.category}
-                          </span>
-                        )}
+                      <span className={styles.directoryCardBody}>
                         <span
-                          className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
+                          className={`${styles.directoryStatus} ${
+                            styles[
+                              `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
+                            ]
+                          }`}
                         >
-                          {LIFECYCLE_LABEL[program.lifecycle]}
+                          {tag.label}
+                        </span>
+                        <span className={styles.directoryCardTitle}>
+                          {program.name}
+                        </span>
+                        <span className={styles.directoryCardSecondary}>
+                          {secondaryCopy}
                         </span>
                       </span>
+                      <svg
+                        className={styles.directoryChevron}
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
                     </button>
                   </li>
                 );

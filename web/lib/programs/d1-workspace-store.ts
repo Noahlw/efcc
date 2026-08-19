@@ -7,6 +7,7 @@ import type { Capability, ModuleKey } from "./capabilities";
 import type { RolePolicyStore } from "./capability-authorizer";
 import type {
   AuditInput,
+  ElevatedAccountRow,
   GenerationRunItemInput,
   GenerationRunItemRow,
   GenerationRunRow,
@@ -29,6 +30,8 @@ import type {
   ManagementNotificationEventRow,
   NotificationReadStateInput,
   NotificationReadStateRow,
+  ParticipantNoticeCreateInput,
+  ParticipantNoticeRow,
   PreviewOccurrenceRow,
   PreviewPlanRow,
   ProgramInput,
@@ -38,6 +41,7 @@ import type {
   ProgramRow,
   ProgramUpdate,
   MemberOptionRow,
+  ManagementMemberSearchRow,
   ScheduleExceptionInput,
   ScheduleExceptionRow,
   ScheduleRuleInput,
@@ -316,6 +320,112 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .bind(pattern, pattern, programId ?? null, programId ?? null, limit)
       .all<MemberOptionRow>();
     return result.results ?? [];
+  }
+
+  listManagedDepartmentIds(userId: string): Promise<string[]> {
+    if (!userId) {
+      return Promise.resolve([]);
+    }
+    return this.db
+      .prepare(
+        `SELECT department_id FROM department_managers
+          WHERE user_id = ? AND revoked_at IS NULL`
+      )
+      .bind(userId)
+      .all<{ department_id: string }>()
+      .then((result) => (result.results ?? []).map((row) => row.department_id));
+  }
+
+  /**
+   * Member Directory search (087-04 #321). Church-wide when `departmentIds`
+   * is undefined; otherwise restricted to Active accounts with an Active
+   * enrollment in a program of one of the given departments. Each result
+   * row is flattened by department membership so the domain layer can
+   * assemble a stable read-only projection; department columns are null for
+   * accounts with no enrollment (or none in scope).
+   */
+  searchManagementMembers(
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ): Promise<ManagementMemberSearchRow[]> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const scoped = departmentIds !== undefined;
+    if (scoped && departmentIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    const placeholders = scoped
+      ? departmentIds.map(() => "?").join(", ")
+      : "";
+    const scopePredicate = scoped
+      ? `AND EXISTS (
+           SELECT 1
+             FROM enrollments scoped_enrollments
+             JOIN programs scoped_programs
+               ON scoped_programs.program_id = scoped_enrollments.program_id
+            WHERE scoped_enrollments.member_user_id = accounts.user_id
+              AND scoped_enrollments.status = 'Active'
+              AND scoped_programs.department_id IN (${placeholders})
+         )`
+      : "";
+    const departmentPredicate = scoped
+      ? `AND departments.department_id IN (${placeholders})`
+      : "";
+    return this.db
+      .prepare(
+        `WITH matched_accounts AS (
+           SELECT accounts.user_id
+             FROM accounts
+            WHERE accounts.account_status = 'Active'
+              AND (
+                accounts.name LIKE ? ESCAPE '\\'
+                OR accounts.username LIKE ? ESCAPE '\\'
+                OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+              )
+              ${scopePredicate}
+            ORDER BY accounts.name ASC, accounts.username ASC
+            LIMIT ?
+         )
+         SELECT DISTINCT
+                accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM matched_accounts
+           JOIN accounts ON accounts.user_id = matched_accounts.user_id
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          ${departmentPredicate}
+          ORDER BY accounts.name ASC,
+                   accounts.username ASC,
+                   departments.display_order ASC,
+                   departments.name ASC`
+      )
+      .bind(
+        ...(scoped
+          ? [
+              pattern,
+              pattern,
+              pattern,
+              ...departmentIds,
+              normalizedLimit,
+              ...departmentIds,
+            ]
+          : [pattern, pattern, pattern, normalizedLimit])
+      )
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
   }
 
   private static programUpdateParts(update: ProgramUpdate): {
@@ -626,10 +736,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           availability, source, name, location, cancel_reason, manual_check_in_code,
+           availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
            COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -648,6 +758,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.availability,
         input.source,
         input.name,
+        input.event_type ?? null,
         input.location,
         input.cancel_reason,
         input.check_in_window_opens_at,
@@ -673,10 +784,10 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-         status, availability, source, name, location, cancel_reason, manual_check_in_code,
+         status, availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
          check_in_window_opens_at, check_in_window_closes_at,
          created_by, created_at, updated_by, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
          upper(substr(hex(randomblob(4)), 1, 8)),
          COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
            printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -695,6 +806,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         input.availability,
         input.source,
         input.name,
+        input.event_type ?? null,
         input.location,
         input.cancel_reason,
         input.check_in_window_opens_at,
@@ -933,9 +1045,76 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     );
   }
 
+  async listParticipantNotices(
+    memberUserId: string,
+    retentionCutoffMs: number
+  ): Promise<ParticipantNoticeRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT notice_id, member_user_id, kind, title, body, program_id,
+                event_id, read_at, created_at
+           FROM participant_notices
+          WHERE member_user_id = ? AND created_at > ?
+          ORDER BY created_at DESC, notice_id ASC`
+      )
+      .bind(memberUserId, retentionCutoffMs)
+      .all<ParticipantNoticeRow>();
+    return result.results ?? [];
+  }
+
+  async markAllParticipantNoticesRead(
+    memberUserId: string,
+    readAtMs: number
+  ): Promise<number> {
+    const result = await this.db
+      .prepare(
+        `UPDATE participant_notices
+            SET read_at = ?
+          WHERE member_user_id = ? AND read_at IS NULL`
+      )
+      .bind(readAtMs, memberUserId)
+      .run();
+    return result.meta?.changes ?? 0;
+  }
+
+  async createParticipantNotice(
+    input: ParticipantNoticeCreateInput
+  ): Promise<ParticipantNoticeRow> {
+    await this.db
+      .prepare(
+        `INSERT INTO participant_notices
+           (notice_id, member_user_id, kind, title, body, program_id, event_id,
+            read_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        input.notice_id,
+        input.member_user_id,
+        input.kind,
+        input.title,
+        input.body,
+        input.program_id,
+        input.event_id,
+        input.read_at,
+        input.created_at
+      )
+      .run();
+    return {
+      notice_id: input.notice_id,
+      member_user_id: input.member_user_id,
+      kind: input.kind,
+      title: input.title,
+      body: input.body,
+      program_id: input.program_id,
+      event_id: input.event_id,
+      read_at: input.read_at,
+      created_at: input.created_at,
+    };
+  }
+
   async cancelEvent(
     id: string,
-    reason: string,
+    reason: string | null,
     updatedBy: string,
     updatedAt: string
   ): Promise<EventRow | null> {
@@ -943,7 +1122,12 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .prepare(
         `UPDATE events SET status = 'Cancelled', cancel_reason = ?,
            updated_by = ?, updated_at = ?
-         WHERE event_id = ? AND status = 'Active'`
+         WHERE event_id = ? AND status = 'Active'
+           AND NOT EXISTS (
+             SELECT 1 FROM attendances
+             WHERE attendances.event_id = events.event_id
+               AND attendances.status = 'Active'
+           )`
       )
       .bind(reason, updatedBy, updatedAt, id)
       .run();
@@ -959,6 +1143,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       ends_at?: string;
       name?: string | null;
       location?: string | null;
+      event_type?: string | null;
       check_in_window_opens_at?: string | null;
       check_in_window_closes_at?: string | null;
       availability?: "Active" | "Inactive";
@@ -973,6 +1158,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       ["ends_at", update.ends_at],
       ["name", update.name],
       ["location", update.location],
+      ["event_type", update.event_type],
       // EVT-01 (#251): an absent window field keeps the existing window; an
       // explicit null clears it. Same nullable convention as name/location.
       ["check_in_window_opens_at", update.check_in_window_opens_at],
@@ -1019,6 +1205,33 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       active_enrollments: Number(enrollments?.count ?? 0),
       checked_in: Number(checkedIn?.count ?? 0),
     };
+  }
+  async listActiveAttendanceEventIds(
+    eventIds: readonly string[]
+  ): Promise<Set<string>> {
+    if (eventIds.length === 0) {
+      return new Set();
+    }
+    const ids = await chunkedQuery(eventIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT DISTINCT event_id FROM attendances WHERE event_id IN (${placeholders}) AND status = 'Active'`
+        )
+        .bind(...batch)
+        .all<{ event_id: string }>();
+      return (result.results ?? []).map((r) => r.event_id);
+    });
+    return new Set(ids);
+  }
+  async countActiveAttendance(eventId: string): Promise<number> {
+    const row = await this.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    return Number(row?.count ?? 0);
   }
 
   // --- EVT-02 (#252): preview plans and generation runs ---
@@ -1599,6 +1812,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     }
     return row;
   }
+  async createEnrollmentWithAudit(
+    input: EnrollmentInput,
+    audit: AuditInput
+  ): Promise<EnrollmentRow> {
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO enrollments (enrollment_id, program_id, member_user_id,
+             request_id, status, enrolled_at, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          input.enrollment_id,
+          input.program_id,
+          input.member_user_id,
+          input.request_id,
+          input.status,
+          input.enrolled_at,
+          input.created_by,
+          input.created_at
+        ),
+      this.auditInsertGated(audit, input.enrollment_id),
+    ]);
+    const row = await this.findEnrollmentById(input.enrollment_id);
+    if (!row) {
+      throw new WorkspaceNotFoundError("enrollment", input.enrollment_id);
+    }
+    return row;
+  }
 
   async hasActiveEnrollment(
     programId: string,
@@ -1766,6 +2008,29 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .run();
     return this.findDepartmentManager(input.department_id, input.user_id);
+  }
+
+  /**
+   * Every Admin/Staff account (087-03 #320), with active Department Manager
+   * grants joined for department context. A Staff account with a grant
+   * projects as department-manager; a plain Staff account projects as staff.
+   * Department Manager grants on Member accounts remain scoped access and do
+   * not make those accounts admin-capable for this church-wide matrix.
+   */
+  listElevatedAccounts(): Promise<ElevatedAccountRow[]> {
+    return this.db
+      .prepare(
+        `SELECT a.user_id, a.name, a.role, a.account_status,
+                dm.department_id, d.name AS department_name, d.display_order
+           FROM accounts a
+           LEFT JOIN department_managers dm
+             ON dm.user_id = a.user_id AND dm.revoked_at IS NULL
+           LEFT JOIN departments d ON d.department_id = dm.department_id
+          WHERE a.role IN ('Admin', 'Staff')
+          ORDER BY a.name COLLATE NOCASE, a.user_id, d.display_order, d.name`
+      )
+      .all<ElevatedAccountRow>()
+      .then((result) => result.results);
   }
 
   findProgramLeader(

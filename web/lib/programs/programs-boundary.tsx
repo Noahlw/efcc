@@ -13,7 +13,6 @@ import {
   markManagementNotificationsRead,
 } from "@/lib/programs/program-api";
 import type {
-  Department,
   ManagementAttention,
   ManagementNotificationItem,
   ManagementNotifications,
@@ -21,8 +20,8 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 import { ManagementDirectory } from "./management-directory";
 import { ParticipantDirectory } from "./participant-directory";
+import { ParticipantEventDetailPage } from "./participant-event-detail-page";
 import { ParticipantProgramDetail } from "./participant-program-detail";
-import { ProgramForm } from "./program-form";
 
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
@@ -115,7 +114,7 @@ export function ProgramsBoundary() {
     return () => {
       request.cancelled = true;
     };
-  }, [intent.malformed, loadAccess, locationReady]);
+  }, [intent.malformed, intent.mode, loadAccess, locationReady]);
 
   const managementModeReady =
     access.kind === "ready" && access.projection.hasManagementCapability;
@@ -184,7 +183,10 @@ export function ProgramsBoundary() {
     setSearch(href.slice("/programs".length));
     announce(COPY.programs.programSelected);
   };
-  const navigateManagementTask = (task: ProgramsTask | null) => {
+  const navigateManagementTask = (
+    task: ProgramsTask | null,
+    eventId?: string | null
+  ) => {
     if (!intent.programId && task !== "notifications") {
       return;
     }
@@ -192,6 +194,7 @@ export function ProgramsBoundary() {
       mode: "management",
       programId: task === "notifications" ? null : intent.programId,
       task,
+      eventId,
       hash: intent.hash,
     });
     if (typeof window === "undefined") {
@@ -239,6 +242,30 @@ export function ProgramsBoundary() {
       eventId !== null ? COPY.programs.eventDetailTitle : COPY.programs.events
     );
   };
+  // PUI-05 (#323): participant Event Detail deep links carry program + event
+  // on the participant boundary; null returns to the Program detail.
+  const navigateParticipantEvent = (eventId: string | null) => {
+    if (!intent.programId) {
+      return;
+    }
+    const href = buildProgramsHref({
+      mode: "participant",
+      programId: intent.programId,
+      eventId,
+      hash: intent.hash,
+    });
+    if (typeof window === "undefined") {
+      router.push(href);
+    } else {
+      window.history.pushState(null, "", href);
+    }
+    setSearch(href.slice("/programs".length));
+    announce(
+      eventId !== null
+        ? COPY.programs.eventDetailTitle
+        : COPY.programs.programSelected
+    );
+  };
   // PUI-02: row selection hands off through the canonical opaque Program
   // intent URL — the directory never renders the nested manager.
   const openProgram = (programId: string) => {
@@ -262,8 +289,9 @@ export function ProgramsBoundary() {
         ? requestedMode
         : previousMode.current !== null && previousMode.current !== intent.mode
           ? intent.mode
-          : null;
-    previousMode.current = intent.mode;
+          : intent.mode === "management" && showModeTabs
+            ? "management"
+            : null;
     if (!locationReady || mode === null) {
       return;
     }
@@ -275,7 +303,13 @@ export function ProgramsBoundary() {
     if (!tab) {
       return;
     }
+    previousMode.current = intent.mode;
     tab.focus();
+    queueMicrotask(() => {
+      if (document.contains(tab)) {
+        tab.focus();
+      }
+    });
     focusMode.current = null;
   }, [intent.malformed, intent.mode, locationReady, showModeTabs]);
 
@@ -364,12 +398,18 @@ export function ProgramsBoundary() {
       )}
       {access.kind === "ready" &&
         intent.mode === "participant" &&
-        (intent.programId ? (
+        (intent.programId && intent.eventId ? (
+          <ParticipantEventDetailPage
+            programId={intent.programId}
+            eventId={intent.eventId}
+          />
+        ) : intent.programId ? (
           <ParticipantProgramDetail
             programId={intent.programId}
             canManage={access.projection.hasManagementCapability}
             onManagement={() => navigateMode("management")}
             onBack={() => navigateMode("participant", true, null)}
+            onOpenEvent={navigateParticipantEvent}
           />
         ) : (
           <ParticipantDirectory
@@ -465,13 +505,13 @@ function ManagementPanel({
   onParticipant: () => void;
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string) => void;
-  onTaskChange: (task: ProgramsTask | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null
+  ) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
 }) {
-  const [createDepartments, setCreateDepartments] = useState<
-    Department[] | null
-  >(null);
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
   const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
@@ -603,7 +643,6 @@ function ManagementPanel({
       onOpen={refreshNotifications}
       onMarkRead={markNotificationsRead}
       onViewAll={() => {
-        setCreateDepartments(null);
         onTaskChange("notifications");
       }}
       full={intent.task === "notifications"}
@@ -658,19 +697,9 @@ function ManagementPanel({
           onTaskChange={onTaskChange}
           onEventChange={onEventChange}
         />
-      ) : createDepartments ? (
-        <ProgramForm
-          departments={createDepartments}
-          onSaved={(programId) => {
-            setCreateDepartments(null);
-            onOpenProgram(programId);
-          }}
-          onCancel={() => setCreateDepartments(null)}
-        />
       ) : (
         <ManagementDirectory
           onOpenProgram={onOpenProgram}
-          onCreateProgram={setCreateDepartments}
         />
       )}
     </>

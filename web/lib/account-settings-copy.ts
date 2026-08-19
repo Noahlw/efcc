@@ -1,38 +1,47 @@
-// UI-04 (#196) — Traditional Chinese copy for the Profile 帳戶資料 (Account
-// Settings) sub-surface. Centralized here (mirroring lib/registration-copy.ts,
-// which keeps ticket-scoped copy out of lib/copy.ts) so no user-facing string
-// lives in a component and no credential/token material ever appears.
-//
-// Error-code → user message mapping mirrors `errorCopyFor`'s vocabulary plus the
-// Spec #191 inline-error contract: 409 duplicate username, 422
-// wrong-current-password, short password, and validation all render inline.
+// Spec 084 (Ticket 084-03 / #305) — Traditional Chinese copy for the Profile 帳戶設定
+// (Account Settings) surface and sub-screens against canonical prototype design
+// (design/efcc-participant-checkin-prototype.html).
 
 const SESSION_EXPIRED = "工作階段已過期，請重新登入。";
 
 export const ACCOUNT_SETTINGS_COPY = {
-  sectionTitle: "帳戶資料",
-  sectionLead: "更新你的登入用戶名稱或密碼。更改後將需要重新登入。",
-  usernameTitle: "更改用戶名稱",
-  usernameLabel: "新用戶名稱",
+  sectionTitle: "帳戶設定",
+  sectionLead: "更新你的登入資料。",
+  backToProfile: "帳戶",
+  headerTitle: "帳戶設定",
+
+  // Section 1: 更改登入名稱
+  usernameTitle: "更改登入名稱",
+  usernameLabel: "新登入名稱",
   usernameHint: "用戶名稱用於登入；大小寫與前後空白不會影響唯一性。",
-  usernameSubmit: "更新用戶名稱",
-  usernameSubmitting: "更新中…",
-  passwordTitle: "更改密碼",
-  currentPasswordLabel: "目前密碼",
-  newPasswordLabel: "新密碼",
-  passwordHint: "密碼須至少 8 個字元。",
-  passwordSubmit: "更新密碼",
-  passwordSubmitting: "更新中…",
-  missingUsername: "請輸入用戶名稱。",
-  missingPasswordFields: "請輸入目前密碼及新密碼。",
-  shortPassword: "密碼須至少 8 個字元。",
+  usernameSubmit: "儲存登入名稱",
+  usernameSubmitting: "儲存中…",
+  usernameSuccess: "登入名稱已更新",
+  missingUsername: "請輸入新登入名稱。",
   usernameTaken: "此用戶名稱已被使用。",
-  wrongCurrentPassword: "目前密碼不正確。",
   usernameUnchanged: "用戶名稱沒有變更。",
+
+  // Section 2: 更改密碼
+  passwordTitle: "更改密碼",
+  currentPasswordLabel: "現時密碼",
+  newPasswordLabel: "新密碼",
+  confirmPasswordLabel: "確認新密碼",
+  passwordHint: "最少 8 個字元。",
+  passwordNotice: "更改密碼後，你需要在所有裝置重新登入。",
+  passwordSubmit: "更改密碼",
+  passwordSubmitting: "更改中…",
+  missingPasswordFields: "請輸入現時密碼及最少 8 個字元的新密碼。",
+  passwordMismatch: "兩次輸入的新密碼不一致。",
+  shortPassword: "最少 8 個字元。",
+  wrongCurrentPassword: "現時密碼不正確。",
+  passwordSuccess: "密碼已更新，請重新登入",
+
+  // Offline and general errors
+  offlineError: "未能更新。請重新連線後再試。",
   updated: "帳戶資料已更新。",
   updatedDetail: "所有登入工作階段已終止，即將返回登入頁面。",
   redirecting: "正在返回登入頁面…",
-  networkError: "無法連接伺服器，請檢查網路後再試。",
+  networkError: "未能更新。請重新連線後再試。",
   retry: "重試連接",
   unavailable: "系統暫時無法使用，請稍後再試。",
   forbidden: "您沒有權限執行此操作。",
@@ -56,7 +65,10 @@ export function accountSettingsErrorCopy(
   }
   if (code === "VALIDATION") {
     const d = (detail ?? "").toLowerCase();
-    if (d.includes("current password is incorrect")) {
+    if (
+      d.includes("current password is incorrect") ||
+      d.includes("wrong current password")
+    ) {
       return ACCOUNT_SETTINGS_COPY.wrongCurrentPassword;
     }
     if (d.includes("at least 8 characters") || d.includes("8 chars")) {
@@ -64,6 +76,9 @@ export function accountSettingsErrorCopy(
     }
     if (d.includes("username is required")) {
       return ACCOUNT_SETTINGS_COPY.missingUsername;
+    }
+    if (d.includes("mismatch") || d.includes("passwords do not match")) {
+      return ACCOUNT_SETTINGS_COPY.passwordMismatch;
     }
     return ACCOUNT_SETTINGS_COPY.validationError;
   }

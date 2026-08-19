@@ -227,22 +227,20 @@ describe(ManagementDirectory, () => {
     await userEvent.click(screen.getByRole("button", { name: /社區關懷/u }));
     expect(onOpenProgram).toHaveBeenCalledWith("program-leader");
   });
-  test("offers creation only from a Department management scope", async () => {
+  test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
-    const onCreateProgram = vi.fn();
     render(
       <ManagementDirectory
         onOpenProgram={vi.fn()}
-        onCreateProgram={onCreateProgram}
       />
     );
 
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.createProgram,
-      })
-    );
-    expect(onCreateProgram).toHaveBeenCalledWith(departments);
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.createProgram })
+    ).not.toBeInTheDocument();
   });
 
   test("keeps source-specific attention out of the management directory", async () => {
@@ -284,5 +282,53 @@ describe(ManagementDirectory, () => {
     await waitFor(() =>
       expect(mocks.getManagementDirectory).toHaveBeenCalledTimes(2)
     );
+  });
+
+  test("renders honest empty-scope state when account has zero management scope", async () => {
+    mocks.getManagementDirectory.mockResolvedValue({
+      departments: [],
+      programs: [],
+    });
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.cockpitEmptyScopeTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.cockpitEmptyScopeHint)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  test("reflects revoked scope upon reload without showing stale records", async () => {
+    mocks.getManagementDirectory.mockResolvedValueOnce({
+      departments,
+      programs: programsByDepartment.flat(),
+    });
+    const { unmount } = render(
+      <ManagementDirectory onOpenProgram={vi.fn()} />
+    );
+
+    await expect(
+      screen.findByRole("button", { name: /查經小組/u })
+    ).resolves.toBeInTheDocument();
+    unmount();
+
+    mocks.getManagementDirectory.mockResolvedValueOnce({
+      departments: [],
+      programs: [],
+    });
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.cockpitEmptyScopeTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /查經小組/u })
+    ).not.toBeInTheDocument();
   });
 });

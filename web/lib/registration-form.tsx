@@ -59,7 +59,12 @@ export function RegistrationForm() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (busy) return;
-    if (!username.trim() || !name.trim() || !password) {
+    if (
+      !username.trim() ||
+      !name.trim() ||
+      !phone.trim() ||
+      password.length < 8
+    ) {
       setState({ kind: "error", message: REGISTRATION_COPY.missingFields });
       return;
     }
@@ -68,7 +73,7 @@ export function RegistrationForm() {
       username: username.trim(),
       password,
       name: name.trim(),
-      phone: phone.trim() ? phone.trim() : undefined,
+      phone: phone.trim(),
     })
       .then(() => {
         announce(REGISTRATION_COPY.submittedLive);
@@ -117,12 +122,20 @@ export function RegistrationForm() {
         >
           {REGISTRATION_COPY.doneMessage}
         </p>
-        <Link
-          href="/"
-          style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
-        >
-          {REGISTRATION_COPY.backToLogin}
-        </Link>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <Link
+            href="/"
+            style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
+          >
+            {REGISTRATION_COPY.backToLogin}
+          </Link>
+          <Link
+            href="/guest-check-in"
+            style={{ color: "var(--accent-deep)", fontWeight: 700, textDecoration: "underline" }}
+          >
+            {REGISTRATION_COPY.guestCheckIn}
+          </Link>
+        </div>
       </div>
     );
   }

@@ -15,7 +15,7 @@ import { COPY } from "@/lib/copy";
 import { ParticipantDirectory } from "@/lib/programs/participant-directory";
 import type {
   ParticipantCatalogEntry,
-  ProgramSummary,
+  ParticipantCatalogProgram,
 } from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
@@ -44,11 +44,11 @@ vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.router,
 }));
 
-const programSummary = (
+const catalogProgram = (
   programId: string,
   name: string,
-  overrides: Partial<ProgramSummary> = {}
-): ProgramSummary => ({
+  overrides: Partial<ParticipantCatalogProgram> = {}
+): ParticipantCatalogProgram => ({
   program_id: programId,
   department_id: "dept-1",
   name,
@@ -61,22 +61,32 @@ const programSummary = (
   display_order: 0,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  viewerState: "eligible",
+  nextEventStartsAt: null,
+  upcomingEventCount: 0,
   ...overrides,
 });
 
 const catalogFixture = (
-  programs: ProgramSummary[] = [
-    programSummary("program-1", "查經小組", {
+  programs: ParticipantCatalogProgram[] = [
+    catalogProgram("program-1", "查經小組", {
       description: "週三門徒訓練查經。",
       category: "門徒訓練",
+      viewerState: "active",
+      nextEventStartsAt: "2026-03-10T11:30:00.000Z",
+      upcomingEventCount: 4,
     }),
-    programSummary("program-2", "青年團契", {
+    catalogProgram("program-2", "青年團契", {
       description: "青年聚會。",
       category: "團契",
+      viewerState: "eligible",
+      nextEventStartsAt: "2026-03-15T06:00:00.000Z",
+      upcomingEventCount: 2,
     }),
-    programSummary("program-3", "社區關懷", {
+    catalogProgram("program-3", "社區關懷", {
       description: "長者探訪。",
       category: "關懷",
+      viewerState: "pending",
     }),
   ]
 ): ParticipantCatalogEntry[] => [
@@ -110,10 +120,15 @@ function renderDirectory(
 }
 
 const rowNames = (): string[] =>
-  screen
-    .getAllByRole("button")
-    .filter((button) => button.className.includes("directoryCard"))
-    .map((button) => button.querySelector("span")?.textContent ?? "");
+  [
+    ...document.querySelectorAll<HTMLElement>(
+      "button[class*='directoryCard']"
+    ),
+  ].map(
+    (button) =>
+      button.querySelector<HTMLElement>("span[class*='directoryCardTitle']")
+        ?.textContent ?? ""
+  );
 
 beforeEach(() => {
   mocks.listParticipantCatalog.mockReset();
@@ -126,7 +141,7 @@ afterEach(() => {
 });
 
 describe("PUI-02 participant directory loading and collection", () => {
-  test("shows a busy loading state, then one flat collection keyed by program_id", async () => {
+  test("shows a loading skeleton with aria-label, then flat collection", async () => {
     const pending = Promise.withResolvers<{
       catalog: ParticipantCatalogEntry[];
     }>();
@@ -135,18 +150,20 @@ describe("PUI-02 participant directory loading and collection", () => {
 
     const loading = screen.getByRole("status");
     expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(loading).toHaveTextContent(COPY.programs.catalogLoading);
+    expect(loading).toHaveAttribute(
+      "aria-label",
+      COPY.programs.catalogLoading
+    );
 
     pending.resolve({ catalog: catalogFixture() });
     const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
     expect(within(list).getAllByRole("button")).toHaveLength(3);
-    // Department context renders as recognition metadata, never a nested step.
-    expect(screen.getAllByText("青年事工").length).toBeGreaterThan(0);
+    expect(rowNames()).toStrictEqual(["查經小組", "青年團契", "社區關懷"]);
   });
 
-  test("empty catalog shows a distinct empty state", async () => {
+  test("zero matches shows empty state with clear filters CTA", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
     renderDirectory();
 
@@ -156,49 +173,83 @@ describe("PUI-02 participant directory loading and collection", () => {
     expect(
       screen.getByText(COPY.programs.catalogEmptyHint)
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.catalogClearFilters,
+      })
+    ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  test("rows expose only decision metadata and accessible lifecycle status text", async () => {
+  test("rows expose active, pending, eligible, and managerOnly tags", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        programSummary("program-1", "查經小組", {
-          category: "門徒訓練",
-          lifecycle: "Active",
+        catalogProgram("p-active", "查經小組", {
+          viewerState: "active",
+          nextEventStartsAt: "2026-03-10T11:30:00.000Z",
+          upcomingEventCount: 3,
         }),
-        programSummary("program-2", "青年團契", {
-          category: "團契",
-          lifecycle: "Draft",
+        catalogProgram("p-pending", "青年團契", {
+          viewerState: "pending",
         }),
-        programSummary("program-3", "社區關懷", {
-          category: "關懷",
-          lifecycle: "Archived",
+        catalogProgram("p-eligible", "主日崇拜", {
+          viewerState: "eligible",
+          nextEventStartsAt: "2026-03-15T02:00:00.000Z",
+          upcomingEventCount: 5,
+        }),
+        catalogProgram("p-manager", "事奉團隊", {
+          viewerState: "managerOnly",
         }),
       ]),
     });
     renderDirectory();
 
-    const row = await screen.findByRole("button", {
-      name: /查經小組/u,
-    });
-    expect(row).toHaveTextContent("青年事工");
-    expect(row).toHaveTextContent("門徒訓練");
-    expect(row).toHaveTextContent(COPY.programs.filterActive);
-    const list = screen.getByRole("list", {
+    const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
-    expect(
-      within(list).getByRole("button", { name: /已存檔/u })
-    ).toBeInTheDocument();
-    expect(
-      within(list).getByRole("button", { name: /草稿/u })
-    ).toBeInTheDocument();
-    expect(rowNames()).toHaveLength(3);
+    const buttons = within(list).getAllByRole("button");
+    expect(buttons).toHaveLength(4);
+    expect(buttons[0]).toHaveTextContent(COPY.programs.statusActive);
+    expect(buttons[1]).toHaveTextContent(COPY.programs.statusPending);
+    expect(buttons[2]).toHaveTextContent(COPY.programs.statusEligible);
+    expect(buttons[3]).toHaveTextContent(COPY.programs.statusManagerOnly);
+  });
+
+  test("rows expose withdrawn, cancelled, rejected, and archived tags", async () => {
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("p-withdrawn", "長者團契", {
+          viewerState: "withdrawn",
+          description: "長者聚會簡介",
+        }),
+        catalogProgram("p-cancelled", "夫婦小組", {
+          viewerState: "cancelled",
+          description: "夫婦小組簡介",
+        }),
+        catalogProgram("p-rejected", "少年詩班", {
+          viewerState: "rejected",
+        }),
+        catalogProgram("p-archived", "歷史講座", {
+          viewerState: "archived",
+        }),
+      ]),
+    });
+    renderDirectory();
+
+    const list = await screen.findByRole("list", {
+      name: COPY.programs.catalogListLabel,
+    });
+    const buttons = within(list).getAllByRole("button");
+    expect(buttons).toHaveLength(4);
+    expect(buttons[0]).toHaveTextContent(COPY.programs.statusWithdrawn);
+    expect(buttons[1]).toHaveTextContent(COPY.programs.statusCancelled);
+    expect(buttons[2]).toHaveTextContent(COPY.programs.statusRejected);
+    expect(buttons[3]).toHaveTextContent(COPY.programs.statusArchived);
   });
 
   test("no check-in or management DTO fields are rendered", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({
-      catalog: catalogFixture([programSummary("program-1", "查經小組")]),
+      catalog: catalogFixture([catalogProgram("program-1", "查經小組")]),
     });
     renderDirectory();
 
@@ -209,7 +260,7 @@ describe("PUI-02 participant directory loading and collection", () => {
 });
 
 describe("PUI-02 participant directory search and filters", () => {
-  test("search matches name, description, and category; clearing restores the stable list", async () => {
+  test("search matches name, description, and category; clearing restores all rows", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),
@@ -228,7 +279,7 @@ describe("PUI-02 participant directory search and filters", () => {
     expect(rowNames()).toStrictEqual(["查經小組"]);
 
     await user.clear(search);
-    await user.type(search, "探訪");
+    await user.type(search, "長者");
     expect(rowNames()).toStrictEqual(["社區關懷"]);
 
     await user.click(
@@ -237,104 +288,109 @@ describe("PUI-02 participant directory search and filters", () => {
     expect(rowNames()).toStrictEqual(originalOrder);
   });
 
-  test("lifecycle and participation filter chips narrow the catalog with aria-pressed", async () => {
+  test("filter pill group filters by eligible and active states", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture([
-        programSummary("program-1", "查經小組", { lifecycle: "Active" }),
-        programSummary("program-2", "青年團契", { lifecycle: "Draft" }),
-        programSummary("program-3", "社區關懷", {
-          lifecycle: "Archived",
-          enrollment_mode: "ManagerOnly",
-        }),
+        catalogProgram("p-active", "活躍課程", { viewerState: "active" }),
+        catalogProgram("p-eligible", "可報名課程", { viewerState: "eligible" }),
+        catalogProgram("p-pending", "待審批課程", { viewerState: "pending" }),
+      ]),
+    });
+    renderDirectory();
+
+    await screen.findByRole("button", { name: /活躍課程/u });
+    const filterGroup = screen.getByRole("group", {
+      name: COPY.programs.filterGroupLabel,
+    });
+
+    const allPill = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterAll,
+    });
+    const eligiblePill = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterEligible,
+    });
+    const activePill = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterActive,
+    });
+
+    expect(allPill).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(eligiblePill);
+    expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
+    expect(rowNames()).toStrictEqual(["可報名課程"]);
+
+    await user.click(activePill);
+    expect(activePill).toHaveAttribute("aria-pressed", "true");
+    expect(rowNames()).toStrictEqual(["活躍課程"]);
+  });
+
+  test("filter pill group filters by pending state and resets to all", async () => {
+    const user = userEvent.setup();
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("p-active", "活躍課程", { viewerState: "active" }),
+        catalogProgram("p-pending", "待審批課程", { viewerState: "pending" }),
+      ]),
+    });
+    renderDirectory();
+
+    await screen.findByRole("button", { name: /活躍課程/u });
+    const filterGroup = screen.getByRole("group", {
+      name: COPY.programs.filterGroupLabel,
+    });
+
+    const allPill = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterAll,
+    });
+    const pendingPill = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterPending,
+    });
+
+    await user.click(pendingPill);
+    expect(pendingPill).toHaveAttribute("aria-pressed", "true");
+    expect(rowNames()).toStrictEqual(["待審批課程"]);
+
+    await user.click(allPill);
+    expect(allPill).toHaveAttribute("aria-pressed", "true");
+    expect(rowNames()).toHaveLength(2);
+  });
+
+  test("empty search or filter zero-match is recoverable with clear filters button", async () => {
+    const user = userEvent.setup();
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("p-1", "查經小組", { viewerState: "active" }),
       ]),
     });
     renderDirectory();
 
     await screen.findByRole("button", { name: /查經小組/u });
-    const draftChip = screen.getByRole("button", {
-      name: COPY.programs.filterDraft,
+
+    const filterGroup = screen.getByRole("group", {
+      name: COPY.programs.filterGroupLabel,
     });
-    await user.click(draftChip);
-    expect(draftChip).toHaveAttribute("aria-pressed", "true");
-    expect(rowNames()).toStrictEqual(["青年團契"]);
-
     await user.click(
-      screen.getAllByRole("button", { name: COPY.programs.filterAll })[0]
-    );
-
-    const managerOnlyChip = screen.getByRole("button", {
-      name: COPY.programs.filterManagerOnly,
-    });
-    await user.click(managerOnlyChip);
-    expect(managerOnlyChip).toHaveAttribute("aria-pressed", "true");
-    expect(rowNames()).toStrictEqual(["社區關懷"]);
-
-    await user.click(
-      screen.getAllByRole("button", { name: COPY.programs.filterAll })[1]
-    );
-    expect(rowNames()).toHaveLength(3);
-  });
-  test("filter-only no-match state explains and clears active filters", async () => {
-    const user = userEvent.setup();
-    mocks.listParticipantCatalog.mockResolvedValue({
-      catalog: catalogFixture([programSummary("program-1", "查經小組")]),
-    });
-    renderDirectory();
-
-    await screen.findByRole("button", { name: /查經小組/u });
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.filterDraft })
+      within(filterGroup).getByRole("button", {
+        name: COPY.programs.filterPending,
+      })
     );
 
     await expect(
-      screen.findByRole("heading", { name: COPY.programs.catalogNoMatches })
+      screen.findByRole("heading", { name: COPY.programs.catalogEmpty })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.catalogNoFilterMatchesHint)
+      screen.getByText(COPY.programs.catalogEmptyHint)
     ).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.catalogClearFilters })
-    );
-    await expect(
-      screen.findByRole("button", { name: /查經小組/u })
-    ).resolves.toBeInTheDocument();
-  });
-
-  test("empty search result is distinct and recoverable by clearing", async () => {
-    const user = userEvent.setup();
-    mocks.listParticipantCatalog.mockResolvedValue({
-      catalog: catalogFixture(),
+    const clearButton = screen.getByRole("button", {
+      name: COPY.programs.catalogClearFilters,
     });
-    renderDirectory();
+    await user.click(clearButton);
 
-    await screen.findByRole("button", { name: /查經小組/u });
-    const search = screen.getByRole("searchbox");
-    await user.type(search, "完全不存在");
-
-    await expect(
-      screen.findByRole("heading", {
-        name: `${COPY.programs.catalogNoMatches}「完全不存在」`,
-      })
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
-
-    const panel = document.querySelector<HTMLElement>(
-      "#programs-catalog-state"
-    );
-    if (!panel) {
-      throw new Error("empty-search state panel is not exposed");
-    }
-    await user.click(
-      within(panel).getByRole("button", {
-        name: COPY.programs.catalogClearSearch,
-      })
-    );
     await expect(
       screen.findByRole("button", { name: /查經小組/u })
     ).resolves.toBeInTheDocument();
-    expect(rowNames()).toHaveLength(3);
   });
 });
 
@@ -358,7 +414,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     );
 
     mocks.listParticipantCatalog.mockResolvedValue({
-      catalog: catalogFixture([programSummary("program-2", "新鮮課程")]),
+      catalog: catalogFixture([catalogProgram("program-2", "新鮮課程")]),
     });
     rerender(
       <StrictMode>
@@ -374,7 +430,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
 
     const freshRow = await screen.findByRole("button", { name: /新鮮課程/u });
     stale.resolve({
-      catalog: catalogFixture([programSummary("program-1", "過期課程")]),
+      catalog: catalogFixture([catalogProgram("program-1", "過期課程")]),
     });
     await waitFor(() => {
       expect(
@@ -414,7 +470,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     expect(preserved.closest('[role="status"]')).toHaveTextContent("查經小組");
   });
 
-  test("recoverable transport failure shows a retry that restores the catalog and refocuses on re-error", async () => {
+  test("load-error alert renders with retry CTA and refocuses", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog
       .mockRejectedValueOnce(new Error("offline"))
@@ -426,8 +482,10 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       name: COPY.programs.catalogLoadError,
     });
     expect(heading).toBeInTheDocument();
-    expect(screen.getByText(COPY.error.networkError)).toBeInTheDocument();
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.catalogLoadErrorHint)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.catalogRetry })
@@ -445,7 +503,6 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     await expect(
       screen.findByRole("button", { name: /查經小組/u })
     ).resolves.toBeInTheDocument();
-    expect(screen.getByRole("searchbox")).toBeInTheDocument();
   });
 
   test("FORBIDDEN catalog failure shows the forbidden state with retry", async () => {
@@ -483,7 +540,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     });
   });
 
-  test("row selection hands off the opaque Program id without inventing a second URL grammar", async () => {
+  test("row selection hands off the opaque Program id", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),

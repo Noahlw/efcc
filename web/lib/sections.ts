@@ -11,25 +11,10 @@ import { COPY } from "@/lib/copy";
  * Manager grant (`sectionsForRole`'s `hasManagementGrant` parameter, #215
  * ATT-03).
  */
-const STABLE_NAVIGATION_KEYS: Section["key"][] = [
-  "home",
-  "programs",
-  "events",
-  "scanner",
-  "profile",
-];
-
-/**
- * Server-authorized section projection.
- *
- * Home is a safe authenticated shell placeholder for every account. Events,
- * Scanner, Care, and Permissions remain capability/role-authorized sections;
- * the browser must not infer those permissions from the profile role.
- */
 const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
-  Member: ["home", "profile", "programs"],
-  Staff: ["home", "profile", "programs", "events", "scanner", "care", "permissions"],
-  Admin: ["home", "profile", "programs", "events", "scanner", "care", "permissions"],
+  Member: ["home", "programs", "scanner", "notices", "profile"],
+  Staff: ["home", "programs", "scanner", "management", "profile"],
+  Admin: ["home", "programs", "scanner", "management", "profile"],
 };
 
 function materializeSections(keys: Section["key"][]): Section[] {
@@ -41,32 +26,39 @@ function materializeSections(keys: Section["key"][]): Section[] {
 }
 
 /** Server-projected stable nav metadata consumed verbatim by the shell. */
-export function stableNavigationSections(): Section[] {
-  return materializeSections(STABLE_NAVIGATION_KEYS);
+export function stableNavigationSections(
+  role = "Member",
+  hasManagementGrant = false
+): Section[] {
+  const isManagement =
+    role === "Admin" || role === "Staff" || hasManagementGrant;
+  const keys: Section["key"][] = isManagement
+    ? ["home", "programs", "scanner", "management", "profile"]
+    : ["home", "programs", "scanner", "notices", "profile"];
+  return materializeSections(keys);
 }
 
 /**
  * Sections authorized for a role. Unknown or absent roles use the stable
- * Member-safe base (Home, Profile, Programs).
- *
- * `hasManagementGrant` (#215 ATT-03) additionally authorizes `events` for a
- * Member who holds an active Program Leader or Department Manager grant —
- * roles that already include `events` (Staff/Admin) ignore the flag. The
- * caller is expected to resolve this only for Member accounts; it is never
- * inferred here from the role string.
+ * Member-safe base (Home, Programs, Scanner, Notices, Profile).
  */
 export function sectionsForRole(
   role: string,
   hasManagementGrant = false
 ): Section[] {
-  // hasOwn keeps inherited Object keys such as "constructor" and "toString"
-  // from becoming role projections; unknown values use the Member-safe set.
   const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
     ? ROLE_SECTION_KEYS[role]
     : undefined;
   const keys = allowed ?? ROLE_SECTION_KEYS.Member;
-  if (hasManagementGrant && !keys.includes("events")) {
-    return materializeSections([...keys, "events"]);
+  if (hasManagementGrant && !keys.includes("management")) {
+    const next = [...keys];
+    const noticesIdx = next.indexOf("notices");
+    if (noticesIdx !== -1) {
+      next.splice(noticesIdx, 1, "management");
+    } else {
+      next.push("management");
+    }
+    return materializeSections(next);
   }
   return materializeSections(keys);
 }
@@ -79,12 +71,6 @@ export function sectionsForRole(
  */
 export function defaultSections(): Section[] {
   return [
-    {
-      key: "profile",
-      label: COPY.sections.profile,
-      capability: "READ",
-      requiresServerAuth: false,
-    },
     {
       key: "home",
       label: COPY.sections.home,
@@ -110,8 +96,14 @@ export function defaultSections(): Section[] {
       requiresServerAuth: false,
     },
     {
-      key: "care",
-      label: COPY.sections.care,
+      key: "notices",
+      label: COPY.sections.notices,
+      capability: "READ",
+      requiresServerAuth: false,
+    },
+    {
+      key: "management",
+      label: COPY.sections.management,
       capability: "AUTH",
       requiresServerAuth: false,
     },
@@ -119,6 +111,12 @@ export function defaultSections(): Section[] {
       key: "permissions",
       label: COPY.sections.permissions,
       capability: "AUTH",
+      requiresServerAuth: false,
+    },
+    {
+      key: "profile",
+      label: COPY.sections.profile,
+      capability: "READ",
       requiresServerAuth: false,
     },
   ];

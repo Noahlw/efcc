@@ -14,7 +14,7 @@ export interface RegistrationInput {
   username: string;
   password: string;
   name: string;
-  phone?: string;
+  phone: string;
 }
 
 export interface PendingRegistration {
@@ -28,6 +28,24 @@ export interface PendingRegistration {
 }
 
 export type Decision = "approve" | "reject";
+
+/**
+ * Single-request shape returned by GET /api/v1/auth/registrations/:id
+ * (087-02 #319) for the routable Approval Detail. Includes decided requests
+ * so a past decision stays viewable read-only at the same URL.
+ */
+export interface RegistrationDetail {
+  requestId: string;
+  username: string;
+  name: string;
+  phone: string | null;
+  status: "Pending" | "Active" | "Rejected";
+  role: string;
+  submittedAt: number;
+  decidedAt: number | null;
+  decisionNote: string | null;
+  decision: "Approved" | "Rejected" | null;
+}
 
 /** Row shape returned by GET /api/v1/auth/registrations. */
 export interface RegistrationQueueResponse {
@@ -108,17 +126,56 @@ export async function fetchPendingRegistrations(): Promise<
 }
 
 /**
+ * GET /api/v1/auth/registrations/:id (087-02 #319) — single registration
+ * request for the routable Approval Detail. Requires an Admin/Staff session
+ * (403 otherwise). Pending AND decided requests are returned, so a decided
+ * request remains viewable read-only at the same URL. Safe metadata only;
+ * never credential material.
+ */
+export async function fetchRegistrationDetail(
+  id: string
+): Promise<RegistrationDetail> {
+  const res = await fetch(
+    `/api/v1/auth/registrations/${encodeURIComponent(id)}`,
+    {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    }
+  );
+  if (!res.ok) throw await parseError(res);
+  const body = (await res.json()) as {
+    data?: { registration?: RegistrationDetail };
+  };
+  const registration = body.data?.registration;
+  if (!registration) {
+    throw new RegistrationApiError(404, "NOT_FOUND", "Unknown registration.");
+  }
+  return registration;
+}
+
+/**
  * POST /api/v1/auth/registrations/:id/{approve|reject} — Staff/Admin
  * resolves a Pending request. Idempotent server-side against a repeated
- * action; opposite/redundant transitions are deterministic errors.
+ * action; opposite/redundant transitions are deterministic errors. Reject
+ * REQUIRES a non-empty `note` (ADR-0006, migration 0012): the server 422s
+ * when missing, and the note is stored atomically with the decision.
  */
 export async function decideRegistration(
   id: string,
-  decision: Decision
+  decision: Decision,
+  note?: string
 ): Promise<void> {
   const res = await fetch(`/api/v1/auth/registrations/${id}/${decision}`, {
     method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey() },
+    headers: {
+      "Idempotency-Key": idempotencyKey(),
+      ...(decision === "reject"
+        ? { "Content-Type": "application/json" }
+        : {}),
+    },
+    ...(decision === "reject"
+      ? { body: JSON.stringify({ decisionNote: note ?? "" }) }
+      : {}),
   });
   if (!res.ok) throw await parseError(res);
 }

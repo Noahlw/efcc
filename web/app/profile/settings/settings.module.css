@@ -1,40 +1,203 @@
-/* Dedicated /profile/settings route (live Profile surface). Root fills
-   `.shell-content` (AppShell's scroll box). The AccountSettings component
-   carries its own card/section styling; this module only scopes the back
-   navigation and page rhythm, matching the prototype's 3px #176a87 focus ring. */
+/* Account settings follows the prototype's stacked, low-chrome form cards. */
 
 .page {
+  width: min(100%, 680px);
   min-height: 100%;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 1.5rem) 2rem;
+  color: var(--ink, #171a1d);
+}
+
+.header {
+  height: 72px;
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: clamp(0.75rem, 2vw, 1.5rem);
-  overflow: visible;
+  align-items: center;
+  font-weight: 600;
+}
+
+.intro {
+  padding: 6px 0 20px;
 }
 
 .back {
-  align-self: flex-start;
   display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
   min-height: 44px;
-  padding: 0 0.25rem;
-  border: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 8px;
   border-radius: 8px;
-  background: transparent;
-  color: var(--accent, #9c302c);
-  font-size: 1rem;
-  font-weight: 700;
-  font-family: inherit;
+  color: var(--ink, #171a1d);
+  font-weight: 550;
   text-decoration: none;
-  cursor: pointer;
 }
 
 .back:hover {
-  color: var(--accent-deep, #76231f);
+  background: var(--surface, #f4f5f3);
 }
 
 .back:focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
+}
+
+.backIcon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.intro h1 {
+  margin: 14px 0 0;
+  font-size: clamp(1.65rem, 6vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.intro p {
+  margin: 12px 0 0;
+  color: var(--ink-muted, #59636a);
+  line-height: 1.6;
+}
+
+.section + .section {
+  margin-top: 24px;
+}
+
+.section h2 {
+  margin: 0 0 12px;
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.card {
+  padding: 20px;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 10px;
+  background: var(--surface-raised, #ffffff);
+}
+
+.card form {
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  display: block;
+  color: var(--ink, #171a1d);
+  font-size: 0.92rem;
+  font-weight: 550;
+}
+
+.field input {
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong, #868182);
+  border-radius: 8px;
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.field input:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.field input[aria-invalid="true"] {
+  border-color: var(--error, #b3261e);
+}
+
+.help {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.82rem;
+}
+
+.error,
+.errorPlaceholder {
+  min-height: 20px;
+  margin: 0;
+  color: var(--error, #b3261e);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.errorPlaceholder {
+  color: transparent;
+}
+
+.success {
+  min-height: 20px;
+  margin: 0;
+  color: var(--success, #2e6b37);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.notice {
+  margin: 0;
+  color: var(--ink-muted, #59636a);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.submit,
+.submitPrimary {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submit {
+  border: 1px solid var(--line-strong, #868182);
+  background: var(--surface-raised, #ffffff);
+  color: var(--ink, #171a1d);
+}
+
+.submit:hover {
+  background: var(--surface, #f4f5f3);
+}
+
+.submitPrimary {
+  border: 1px solid var(--accent, #9c302c);
+  background: var(--accent, #9c302c);
+  color: #ffffff;
+}
+
+.submitPrimary:hover {
+  border-color: var(--accent-deep, #76231f);
+  background: var(--accent-deep, #76231f);
+}
+
+.submit:disabled,
+.submitPrimary:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.submit:focus-visible,
+.submitPrimary:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+@media (max-width: 799px) {
+  .page {
+    padding-bottom: 1.5rem;
+  }
+
+  .card {
+    padding: 16px;
+  }
 }

@@ -125,6 +125,18 @@ export class EventRescheduleBlockedError extends Error {
   }
 }
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class EventCancellationBlockedError extends Error {
+  readonly activeAttendanceCount: number;
+  constructor(
+    activeAttendanceCount: number,
+    message = "此聚會已有出席記錄，不能取消；如需更正請使用出席名單的作廢功能。"
+  ) {
+    super(message);
+    this.name = "EventCancellationBlockedError";
+    this.activeAttendanceCount = activeAttendanceCount;
+  }
+}
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class EventAvailabilityConfirmationRequiredError extends Error {
   readonly affectedOperations: number;
 

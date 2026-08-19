@@ -347,6 +347,7 @@ describe("AUTH-06: register", () => {
           username: "dave",
           password: "dave-password-1",
           name: "Dave Ng",
+          phone: "9123 4567",
         },
       }),
       testEnv()
@@ -368,6 +369,7 @@ describe("AUTH-06: register", () => {
           username: "erin",
           password: "erin-password-1",
           name: "Erin Ho",
+          phone: "9123 4568",
         },
       }),
       testEnv()
@@ -394,7 +396,12 @@ describe("AUTH-06: register", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/register", {
         headers: { Origin: HOST, "Idempotency-Key": "idem-reg-3" },
-        body: { username: "grace", password: "short", name: "Grace Wu" },
+        body: {
+          username: "grace",
+          password: "short",
+          name: "Grace Wu",
+          phone: "9123 4569",
+        },
       }),
       testEnv()
     );
@@ -411,6 +418,7 @@ describe("AUTH-06: register", () => {
           username: "dave",
           password: "dave-password-2",
           name: "Dave Again",
+          phone: "9123 4570",
         },
       }),
       testEnv()
@@ -429,6 +437,7 @@ describe("AUTH-06: register", () => {
             username: "race-user",
             password: "race-password-1",
             name: "Race User",
+            phone: "9123 4571",
           },
         }),
         testEnv()
@@ -440,6 +449,7 @@ describe("AUTH-06: register", () => {
             username: "race-user",
             password: "race-password-2",
             name: "Race User",
+            phone: "9123 4571",
           },
         }),
         testEnv()
@@ -534,11 +544,11 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       adminBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs", "events", "scanner", "care", "permissions"]
+      ["home", "programs", "scanner", "management", "profile"]
     );
     assert.deepStrictEqual(
       adminBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "management", "profile"]
     );
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -561,11 +571,11 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       memberBody.data.sections.map((s) => s.key),
-      ["home", "profile", "programs"]
+      ["home", "programs", "scanner", "notices", "profile"]
     );
     assert.deepStrictEqual(
       memberBody.data.navigation.map((s) => s.key),
-      ["home", "programs", "events", "scanner", "profile"]
+      ["home", "programs", "scanner", "notices", "profile"]
     );
   });
 
@@ -833,6 +843,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "hugo",
           password: "hugo-password-1",
           name: "Hugo Ma",
+          phone: "9123 4572",
         },
       }),
       testEnv()
@@ -895,6 +906,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "approve-race",
           password: "approve-race-password",
           name: "Approve Race",
+          phone: "9123 4573",
         },
       }),
       testEnv()
@@ -945,6 +957,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: "iris",
           password: "iris-password-1",
           name: "Iris Lam",
+          phone: "9123 4574",
         },
       }),
       testEnv()
@@ -959,7 +972,9 @@ describe("AUTH-06: registrations approve/reject", () => {
           Origin: HOST,
           Cookie: `efcc_access=${adminAccess}`,
           "Idempotency-Key": "idem-reject-1",
+          "Content-Type": "application/json",
         },
+        body: { decisionNote: "資料不完整" },
       }),
       testEnv()
     );
@@ -968,6 +983,16 @@ describe("AUTH-06: registrations approve/reject", () => {
       data: { accountStatus: string };
     };
     assert.strictEqual(body.data.accountStatus, "rejected");
+
+    // The required rejection note (ADR-0006; migration 0012) is stored
+    // atomically with the terminal transition.
+    const row = await testDb()
+      .prepare(
+        "SELECT rejection_note FROM registration_requests WHERE request_id = ?"
+      )
+      .bind(requestId)
+      .first<{ rejection_note: string | null }>();
+    assert.strictEqual(row?.rejection_note, "資料不完整");
 
     // The rejected user cannot log in (no account was created).
     const login = await worker.fetch(
@@ -989,7 +1014,9 @@ describe("AUTH-06: registrations approve/reject", () => {
           Origin: HOST,
           Cookie: `efcc_access=${adminAccess}`,
           "Idempotency-Key": "idem-reject-1-replay",
+          "Content-Type": "application/json",
         },
+        body: { decisionNote: "重複拒絕（no-op）" },
       }),
       testEnv()
     );
@@ -1098,6 +1125,7 @@ describe("AUTH-06: registrations approve/reject", () => {
           username: candidate,
           password: "iris-password-1",
           name: "Iris Wu",
+          phone: "9123 4575",
         },
       }),
       testEnv()
@@ -1120,6 +1148,215 @@ describe("AUTH-06: registrations approve/reject", () => {
       data: { accountStatus: string };
     };
     assert.strictEqual(body.data.accountStatus, "active");
+  });
+});
+
+describe("087-02 (#319): registration detail read + required rejection note", () => {
+  test("reject without a decisionNote is a 422 and writes nothing", async () => {
+    const reg = await worker.fetch(
+      authRequest("/api/v1/auth/register", {
+        headers: { Origin: HOST, "Idempotency-Key": "idem-reject-note-1" },
+        body: {
+          username: "noel",
+          password: "noel-password-1",
+          name: "Noel Tang",
+          phone: "9123 4576",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(reg.status, 200);
+    const requestId = await registrationIdFor("noel");
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+
+    // Empty body and whitespace-only note both fail closed.
+    for (const [index, body] of [undefined, { decisionNote: "   " }].entries()) {
+      const res = await worker.fetch(
+        authRequest(`/api/v1/auth/registrations/${requestId}/reject`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${adminAccess}`,
+            "Idempotency-Key": `idem-reject-note-1-${index}`,
+            ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          },
+          ...(body === undefined ? {} : { body }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+      const problem = await problemOf(res);
+      assert.strictEqual(problem.code, "VALIDATION");
+    }
+
+    // Nothing was written: the request is still Pending and no account exists.
+    const row = await testDb()
+      .prepare(
+        "SELECT account_status, rejection_note FROM registration_requests WHERE request_id = ?"
+      )
+      .bind(requestId)
+      .first<{ account_status: string; rejection_note: string | null }>();
+    assert.strictEqual(row?.account_status, "Pending");
+    assert.strictEqual(row?.rejection_note, null);
+    const account = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM accounts WHERE username_normalized = ?"
+      )
+      .bind("noel")
+      .first<{ n: number }>();
+    assert.strictEqual(Number(account?.n ?? 0), 0);
+  });
+
+  test("GET /registrations/:id returns the Pending request detail", async () => {
+    const requestId = await registrationIdFor("noel");
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+
+    const res = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${requestId}`, {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 200);
+    const body = (await assertCorrelated(res)) as {
+      data: {
+        registration: {
+          requestId: string;
+          username: string;
+          name: string;
+          phone: string | null;
+          status: string;
+          role: string;
+          submittedAt: number;
+          decidedAt: number | null;
+          decisionNote: string | null;
+          decision: string | null;
+        };
+      };
+    };
+    assert.strictEqual(body.data.registration.requestId, requestId);
+    assert.strictEqual(body.data.registration.username, "noel");
+    assert.strictEqual(body.data.registration.name, "Noel Tang");
+    assert.strictEqual(body.data.registration.phone, "9123 4576");
+    assert.strictEqual(body.data.registration.status, "Pending");
+    assert.strictEqual(body.data.registration.role, "Member");
+    assert.ok(
+      typeof body.data.registration.submittedAt === "number",
+      "submittedAt must be an epoch-millis number"
+    );
+    assert.strictEqual(body.data.registration.decidedAt, null);
+    assert.strictEqual(body.data.registration.decisionNote, null);
+    assert.strictEqual(body.data.registration.decision, null);
+    assertBodyHasNoTokenKeys(body);
+  });
+
+  test("GET /registrations/:id stays viewable read-only after a decision", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+
+    // iris was rejected earlier with a note (see AUTH-06) — the detail
+    // projects the recorded outcome.
+    const rejectedId = await registrationIdFor("iris");
+    const rejected = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${rejectedId}`, {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(rejected.status, 200);
+    const rejectedBody = (await assertCorrelated(rejected)) as {
+      data: {
+        registration: {
+          status: string;
+          decidedAt: number | null;
+          decisionNote: string | null;
+          decision: string | null;
+        };
+      };
+    };
+    assert.strictEqual(rejectedBody.data.registration.status, "Rejected");
+    assert.strictEqual(rejectedBody.data.registration.decision, "Rejected");
+    assert.strictEqual(
+      rejectedBody.data.registration.decisionNote,
+      "資料不完整"
+    );
+    assert.ok(
+      typeof rejectedBody.data.registration.decidedAt === "number",
+      "decidedAt must be set after a decision"
+    );
+
+    // hugo was approved earlier — Active outcome, no note.
+    const approvedId = await registrationIdFor("hugo");
+    const approved = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${approvedId}`, {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${adminAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(approved.status, 200);
+    const approvedBody = (await assertCorrelated(approved)) as {
+      data: {
+        registration: {
+          status: string;
+          decidedAt: number | null;
+          decisionNote: string | null;
+          decision: string | null;
+        };
+      };
+    };
+    assert.strictEqual(approvedBody.data.registration.status, "Active");
+    assert.strictEqual(approvedBody.data.registration.decision, "Approved");
+    assert.strictEqual(approvedBody.data.registration.decisionNote, null);
+    assert.ok(
+      typeof approvedBody.data.registration.decidedAt === "number",
+      "decidedAt must be set after a decision"
+    );
+  });
+
+  test("GET /registrations/:id is Staff-allowed, Member-forbidden, 401/404 guarded", async () => {
+    const requestId = await registrationIdFor("noel");
+
+    const staffAccess = await accessCookieFor("eve", "eve-secret");
+    const staff = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${requestId}`, {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${staffAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(staff.status, 200);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const member = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${requestId}`, {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${memberAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(member.status, 403);
+    assert.strictEqual((await problemOf(member)).code, "FORBIDDEN");
+
+    const anonymous = await worker.fetch(
+      authRequest(`/api/v1/auth/registrations/${requestId}`, {
+        method: "GET",
+        headers: { Origin: HOST },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(anonymous.status, 401);
+    assert.strictEqual((await problemOf(anonymous)).code, "AUTH_REQUIRED");
+
+    const missing = await worker.fetch(
+      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000", {
+        method: "GET",
+        headers: { Origin: HOST, Cookie: `efcc_access=${staffAccess}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(missing.status, 404);
+    assert.strictEqual((await problemOf(missing)).code, "NOT_FOUND");
   });
 });
 

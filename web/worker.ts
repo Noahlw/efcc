@@ -17,6 +17,8 @@
  *
  *   * `/api/v1/attendance*` — D1-native Attendance domain.
  *
+ *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
+ *
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -177,6 +179,7 @@ export default {
             handleApprove,
             handleReject,
             handleListRegistrations,
+            handleRegistrationDetail,
             handleChangeUsername,
             handleChangePassword,
           } = await import("./lib/auth/handlers");
@@ -230,6 +233,16 @@ export default {
             request.method === "GET"
           ) {
             return handleListRegistrations(request, authEnv);
+          }
+          const registrationDetail = url.pathname.match(
+            /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)$/u
+          );
+          if (registrationDetail && request.method === "GET") {
+            return handleRegistrationDetail(
+              request,
+              authEnv,
+              registrationDetail.groups?.id ?? ""
+            );
           }
           if (
             url.pathname === "/api/v1/auth/admin-unlock" &&
@@ -297,13 +310,17 @@ export default {
         handleCreateDepartment,
         handleListDepartments,
         handleListManagementAccess,
+        handleGetManagementHub,
+        handleGetAccountPermissions,
         handleListManagementDirectory,
+        handleSearchManagementMembers,
         handleGetManagementAttention,
         handleGetManagementNotifications,
         handleMarkManagementNotificationsRead,
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
+        handleGetManagementCockpit,
         handleGetDepartment,
         handleListDepartmentManagers,
         handleAssignDepartmentManager,
@@ -339,6 +356,9 @@ export default {
         handleAssignProgramLeader,
         handleRevokeProgramLeader,
         handleListProgramLeaders,
+        handleListParticipantNotices,
+        handleMarkParticipantNoticesRead,
+        handleCreateParticipantNotice,
       } = await import("./lib/programs/program-handlers");
 
       if (
@@ -347,11 +367,26 @@ export default {
       ) {
         return handleListManagementAccess(request, programEnv);
       }
+      if (url.pathname === "/api/v1/programs/hub" && request.method === "GET") {
+        return handleGetManagementHub(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/account-permissions" &&
+        request.method === "GET"
+      ) {
+        return handleGetAccountPermissions(request, programEnv);
+      }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/members" &&
+        request.method === "GET"
+      ) {
+        return handleSearchManagementMembers(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/attention" &&
@@ -372,6 +407,24 @@ export default {
         return handleMarkManagementNotificationsRead(request, programEnv);
       }
       if (
+        url.pathname === "/api/v1/programs/notices" &&
+        request.method === "GET"
+      ) {
+        return handleListParticipantNotices(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notices/read-all" &&
+        request.method === "POST"
+      ) {
+        return handleMarkParticipantNoticesRead(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/notices" &&
+        request.method === "POST"
+      ) {
+        return handleCreateParticipantNotice(request, programEnv);
+      }
+      if (
         url.pathname === "/api/v1/programs/catalog" &&
         request.method === "GET"
       ) {
@@ -385,6 +438,16 @@ export default {
           request,
           programEnv,
           managementProgram.groups?.id ?? ""
+        );
+      }
+      const cockpit = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/cockpit$/u
+      );
+      if (cockpit && request.method === "GET") {
+        return handleGetManagementCockpit(
+          request,
+          programEnv,
+          cockpit.groups?.id ?? ""
         );
       }
       const participantDetail = url.pathname.match(
@@ -863,6 +926,69 @@ export default {
       );
     }
 
+    // ---- Home domain: cookie-only transport, public participant projection
+    if (
+      url.pathname === "/api/v1/home" ||
+      url.pathname.startsWith("/api/v1/home/")
+    ) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const homeEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const { handleGetHome } = await import("./lib/home-handlers");
+      const {
+        handleGetHomeContent,
+        handleGetFeaturedEventPreview,
+        handleSaveHomeDraft,
+        handlePublishHome,
+        handleListHomeAudit,
+      } = await import("./lib/home-cms-handlers");
+
+      if (url.pathname === "/api/v1/home" && request.method === "GET") {
+        return handleGetHome(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/content" && request.method === "GET") {
+        return handleGetHomeContent(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/draft" && request.method === "POST") {
+        return handleSaveHomeDraft(request, homeEnv);
+      }
+      if (
+        url.pathname === "/api/v1/home/publish" &&
+        request.method === "POST"
+      ) {
+        return handlePublishHome(request, homeEnv);
+      }
+      if (url.pathname === "/api/v1/home/audit" && request.method === "GET") {
+        return handleListHomeAudit(request, homeEnv);
+      }
+      const featuredPreviewPrefix = "/api/v1/home/cms/featured-event/";
+      if (
+        url.pathname.startsWith(featuredPreviewPrefix) &&
+        request.method === "GET"
+      ) {
+        const eventId = decodeURIComponent(
+          url.pathname.slice(featuredPreviewPrefix.length)
+        );
+        return handleGetFeaturedEventPreview(request, homeEnv, eventId);
+      }
+
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown home route."
+      );
+    }
+
     // ---- Static assets fallthrough -------------------------------------
     if (!url.pathname.startsWith("/api/")) {
       // Should not normally be reached (run_worker_first scopes this
@@ -870,11 +996,6 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    return authProblemResponse(
-      404,
-      "NOT_FOUND",
-      "Not found",
-      "Unknown route."
-    );
+    return authProblemResponse(404, "NOT_FOUND", "Not found", "Unknown route.");
   },
 } satisfies ExportedHandler<Env>;

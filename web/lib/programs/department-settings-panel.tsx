@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -17,17 +18,23 @@ import type {
   Department,
   DepartmentDetail,
   DepartmentManager,
+  DepartmentModule,
 } from "@/lib/programs/program-api";
 
 import { MemberPicker } from "./member-picker";
+import { ProgramForm } from "./program-form";
 
 import styles from "@/app/programs/programs.module.css";
 
+const MODULE_KEYS: readonly DepartmentModule["module_key"][] = [
+  "program_catalog",
+  "enrollment",
+  "events",
+  "attendance",
+  "custom_forms",
+];
 
-const MODULE_LABEL: Record<
-  DepartmentDetail["modules"][number]["module_key"],
-  string
-> = {
+const MODULE_LABEL: Record<DepartmentModule["module_key"], string> = {
   program_catalog: COPY.programs.moduleProgramCatalog,
   enrollment: COPY.programs.moduleEnrollment,
   events: COPY.programs.moduleEvents,
@@ -35,18 +42,22 @@ const MODULE_LABEL: Record<
   custom_forms: COPY.programs.moduleCustomForms,
 };
 
+
 export const DepartmentSettingsPanel = ({
   department,
   onClose,
+  onOpenProgram,
 }: {
   department: Department;
   onClose: () => void;
+  onOpenProgram?: (programId: string, created?: boolean) => void;
 }) => {
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
   const [managers, setManagers] = useState<DepartmentManager[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
   const mounted = useRef(true);
   const searchManagers = useCallback(
@@ -95,6 +106,7 @@ export const DepartmentSettingsPanel = ({
     }
     setBusy(true);
     setActionError(null);
+    setNotice(null);
     try {
       await operation();
       await load();
@@ -105,7 +117,10 @@ export const DepartmentSettingsPanel = ({
       announce(message);
     } catch (error) {
       if (mounted.current) {
-        const mappedMessage = errorMessage(error);
+        const mappedMessage =
+          error instanceof RpcError && error.problem.code === "NETWORK_ERROR"
+            ? COPY.programs.offlineError
+            : errorMessage(error);
         setActionError(mappedMessage);
         announce(mappedMessage);
       }
@@ -150,6 +165,22 @@ export const DepartmentSettingsPanel = ({
       COPY.programs.departmentManagerRevokedNotice
     );
   };
+  const handleProgramSaved = (programId: string) => {
+    if (onOpenProgram) {
+      onOpenProgram(programId, true);
+      return;
+    }
+    setCreating(false);
+    setNotice(COPY.programs.programCreatedNotice);
+    announce(COPY.programs.programCreatedNotice);
+  };
+
+  const moduleRows =
+    detail === null
+      ? []
+      : MODULE_KEYS.map((moduleKey) =>
+          detail.modules.find(({ module_key }) => module_key === moduleKey)
+        ).filter((module): module is DepartmentModule => module !== undefined);
 
   return (
     <section
@@ -157,6 +188,7 @@ export const DepartmentSettingsPanel = ({
       tabIndex={-1}
       className={styles.moduleSection}
       aria-labelledby={`${department.department_id}-settings-heading`}
+      aria-busy={busy}
     >
       <div className={styles.programSummary}>
         <div>
@@ -186,6 +218,33 @@ export const DepartmentSettingsPanel = ({
         <p aria-live="polite">{COPY.nav.loading}</p>
       ) : (
         <>
+          {creating ? (
+          <ProgramForm
+            departments={[department]}
+            onSaved={handleProgramSaved}
+            onCancel={() => setCreating(false)}
+          />
+        ) : (
+          <>
+            {department.capabilities.manage && (
+              <div className={styles.workspaceActions}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => {
+                    setNotice(null);
+                    setActionError(null);
+                    setCreating(true);
+                  }}
+                  disabled={busy}
+                >
+                  {COPY.programs.createProgram}
+                </button>
+                <p className={styles.fieldHint}>
+                  {COPY.programs.createProgramInDepartmentHint}
+                </p>
+              </div>
+            )}
           {department.capabilities.manage && (
             <form className={styles.form} onSubmit={saveDetails}>
               <label
@@ -234,7 +293,7 @@ export const DepartmentSettingsPanel = ({
                 {COPY.programs.modules}
               </h4>
               <ul className={styles.workspaceTaskList}>
-                {detail.modules.map((module) => (
+                {moduleRows.map((module) => (
                   <li
                     key={module.module_key}
                     className={styles.workspaceTaskRow}
@@ -243,6 +302,7 @@ export const DepartmentSettingsPanel = ({
                     <button
                       className={styles.toggle}
                       type="button"
+                      aria-pressed={module.enabled === 1}
                       disabled={busy}
                       onClick={() =>
                         void runAction(
@@ -344,6 +404,8 @@ export const DepartmentSettingsPanel = ({
                 )}
               </ul>
             </section>
+          )}
+        </>
           )}
         </>
       )}

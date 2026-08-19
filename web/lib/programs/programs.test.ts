@@ -99,12 +99,11 @@ async function assertCorrelated(res: Response): Promise<unknown> {
   return body;
 }
 
-async function problemOf(
-  res: Response
-): Promise<{
+async function problemOf(res: Response): Promise<{
   code: string;
   status: number;
   requestId: string;
+  detail?: string;
   open_operations?: number;
 }> {
   assert.strictEqual(
@@ -170,6 +169,7 @@ async function createProgram(
   departmentId: string,
   body: {
     name: string;
+    description?: string;
     category?: string;
     behavior_type: "Recurring" | "OneOff";
     lifecycle?: "Draft" | "Active" | "Archived";
@@ -191,6 +191,7 @@ async function createProgram(
       },
       body: {
         ...body,
+        description: body.description ?? "測試目的",
         category: body.category ?? "測試類別",
         lifecycle: body.lifecycle ?? "Draft",
         discoverability: body.discoverability ?? "Unlisted",
@@ -807,6 +808,277 @@ describe("MUI-01: capability-aware management reads", () => {
       )
     );
   });
+
+  test("cockpit projection reauthorizes scope, selects next event, and counts live attendance/roster", async () => {
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      ["U999", "Tester Carol", "carol_tester", "9012", "Member", "Active"],
+    ]);
+    await completeCredentialUpgrade(testDb(), {
+      userId: "U999",
+      legacyPin: "9012",
+      newCredential: "carol-tester-secret",
+    });
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const memberAccess = await accessCookieFor(
+      "carol_tester",
+      "carol-tester-secret"
+    );
+
+    const department = await createDepartment(adminAccess, {
+      code: "COCKPIT-01",
+      name: "Cockpit Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Cockpit Test Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+
+    // 1. Unauthorized actor is denied (404 privacy-preserving)
+    const deniedCockpit = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(deniedCockpit.status, 404);
+
+    // Grant bob leader scope on this program
+    const grantLeader = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/leaders`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { user_id: "U002" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(grantLeader.status, 200);
+
+    // 2. Initially no events -> next_event is null, counts 0
+    const initialCockpit = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(initialCockpit.status, 200);
+    const initialBody = (await assertCorrelated(initialCockpit)) as {
+      data: {
+        cockpit: {
+          program_id: string;
+          next_event: unknown;
+          active_event_count: number;
+          pending_enrollment_count: number;
+        };
+      };
+    };
+    assert.strictEqual(initialBody.data.cockpit.program_id, program.program_id);
+    assert.strictEqual(initialBody.data.cockpit.next_event, null);
+    assert.strictEqual(initialBody.data.cockpit.active_event_count, 0);
+    assert.strictEqual(initialBody.data.cockpit.pending_enrollment_count, 0);
+
+    // 3. Create events: past, earlier future, later future, cancelled future
+    const pastStarts = "2020-01-01T10:00:00.000Z";
+    const pastEnds = "2020-01-01T11:00:00.000Z";
+    const nextStarts = "2099-06-01T10:00:00.000Z";
+    const nextEnds = "2099-06-01T11:00:00.000Z";
+    const laterStarts = "2099-06-15T10:00:00.000Z";
+    const laterEnds = "2099-06-15T11:00:00.000Z";
+    const cancelledStarts = "2099-05-01T10:00:00.000Z";
+    const cancelledEnds = "2099-05-01T11:00:00.000Z";
+
+    await createEventFor(adminAccess, program.program_id, {
+      starts_at: pastStarts,
+      ends_at: pastEnds,
+      name: "Past Event",
+      location: "Room A",
+    });
+    const nextEventRow = await createEventFor(adminAccess, program.program_id, {
+      starts_at: nextStarts,
+      ends_at: nextEnds,
+      name: "Next Upcoming Event",
+      location: "Room B",
+    });
+    await createEventFor(adminAccess, program.program_id, {
+      starts_at: laterStarts,
+      ends_at: laterEnds,
+      name: "Later Event",
+      location: "Room C",
+    });
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: cancelledStarts,
+        ends_at: cancelledEnds,
+        name: "Cancelled Event",
+        location: "Room D",
+      }
+    );
+    // Cancel the cancelled event
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "Weather" },
+        }
+      ),
+      testEnv()
+    );
+
+    // Add enrollments and attendance:
+    // 1 active enrollment for Carol
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments (enrollment_id, program_id, member_user_id, status, enrolled_at, created_by, created_at)
+         VALUES ('enr-c1', ?, 'U999', 'Active', datetime('now'), 'U001', datetime('now'))`
+      )
+      .bind(program.program_id)
+      .run();
+
+    // 1 active check-in for nextEvent
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances (attendance_id, event_id, member_user_id, method, status, checked_in_at)
+         VALUES ('att-1', ?, 'U999', 'self_qr_scan', 'Active', datetime('now'))`
+      )
+      .bind(nextEventRow.event_id)
+      .run();
+
+    // 1 pending enrollment request
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollment_requests (request_id, program_id, member_user_id, status, submitted_at, request_version)
+         VALUES ('req-1', ?, 'U002', 'Pending', datetime('now'), 1)`
+      )
+      .bind(program.program_id)
+      .run();
+
+    // 4. Fetch Cockpit projection via GET /api/v1/programs/:id/cockpit
+    const cockpitRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cockpitRes.status, 200);
+    const cockpitData = (await assertCorrelated(cockpitRes)) as {
+      data: {
+        cockpit: {
+          program_id: string;
+          next_event: {
+            event_id: string;
+            program_id: string;
+            title: string | null;
+            name: string | null;
+            starts_at: string;
+            ends_at: string;
+            location: string | null;
+            source: string;
+            is_recurring: boolean;
+            checked_in_count: number;
+            roster_count: number;
+          } | null;
+          active_event_count: number;
+          pending_enrollment_count: number;
+        };
+      };
+    };
+
+    const cockpit = cockpitData.data.cockpit;
+    assert.strictEqual(cockpit.program_id, program.program_id);
+    assert.strictEqual(cockpit.active_event_count, 3); // 3 active events (past, next, later)
+    assert.strictEqual(cockpit.pending_enrollment_count, 1);
+    assert.ok(cockpit.next_event);
+    assert.strictEqual(cockpit.next_event.event_id, nextEventRow.event_id);
+    assert.strictEqual(cockpit.next_event.title, "Next Upcoming Event");
+    assert.strictEqual(cockpit.next_event.name, "Next Upcoming Event");
+    assert.strictEqual(cockpit.next_event.starts_at, nextStarts);
+    assert.strictEqual(cockpit.next_event.location, "Room B");
+    assert.strictEqual(cockpit.next_event.is_recurring, true);
+    assert.strictEqual(cockpit.next_event.checked_in_count, 1);
+    assert.strictEqual(cockpit.next_event.roster_count, 1);
+    assert.ok(
+      !(
+        "manual_check_in_code" in
+        (cockpit.next_event as Record<string, unknown>)
+      )
+    );
+
+    // 5. Also verify getManagementProgram includes the exact same cockpit projection
+    const mgmtRes = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/management`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(mgmtRes.status, 200);
+    const mgmtData = (await assertCorrelated(mgmtRes)) as {
+      data: {
+        cockpit: typeof cockpit;
+      };
+    };
+
+    // Clean up test rows so other suites in this file remain unaffected
+    await testDb()
+      .prepare("DELETE FROM enrollment_requests WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM attendances WHERE event_id = ?")
+      .bind(nextEventRow.event_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM enrollments WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM events WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM program_leaders WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM programs WHERE program_id = ?")
+      .bind(program.program_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM department_modules WHERE department_id = ?")
+      .bind(department.department_id)
+      .run();
+    await testDb()
+      .prepare("DELETE FROM departments WHERE department_id = ?")
+      .bind(department.department_id)
+      .run();
+    assert.deepStrictEqual(mgmtData.data.cockpit, cockpit);
+  });
 });
 describe("NTF-01: management attention", () => {
   async function attentionFor(access: string): Promise<{
@@ -933,18 +1205,22 @@ describe("NTF-01: management attention", () => {
     );
 
     const startsAt = new Date(Date.now() + 2 * 86_400_000);
-    const inactiveEvent = await createEventFor(adminAccess, program.program_id, {
-      starts_at: startsAt.toISOString(),
-      ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
-      name: "需要恢復的聚會",
-      location: "禮堂",
-      check_in_window_opens_at: new Date(
-        startsAt.getTime() - 30 * 60_000
-      ).toISOString(),
-      check_in_window_closes_at: new Date(
-        startsAt.getTime() + 2 * 60 * 60_000
-      ).toISOString(),
-    });
+    const inactiveEvent = await createEventFor(
+      adminAccess,
+      program.program_id,
+      {
+        starts_at: startsAt.toISOString(),
+        ends_at: new Date(startsAt.getTime() + 60 * 60_000).toISOString(),
+        name: "需要恢復的聚會",
+        location: "禮堂",
+        check_in_window_opens_at: new Date(
+          startsAt.getTime() - 30 * 60_000
+        ).toISOString(),
+        check_in_window_closes_at: new Date(
+          startsAt.getTime() + 2 * 60 * 60_000
+        ).toISOString(),
+      }
+    );
     const cancelledEvent = await createEventFor(
       adminAccess,
       program.program_id,
@@ -1110,10 +1386,7 @@ describe("NTF-01: management attention", () => {
     );
     assert.strictEqual(leaderGrant.status, 200);
 
-    const pending = await submitRequest(
-      memberAccess,
-      scopedProgram.program_id
-    );
+    const pending = await submitRequest(memberAccess, scopedProgram.program_id);
     const startsAt = new Date(Date.now() + 3 * 86_400_000);
     const event = await createEventFor(adminAccess, scopedProgram.program_id, {
       starts_at: startsAt.toISOString(),
@@ -1188,10 +1461,9 @@ describe("NTF-01: management attention", () => {
       assert.strictEqual(disabled.status, 200);
     }
     const afterModulesDisabled = await attentionFor(memberAccess);
-    const scopedAfterModulesDisabled =
-      afterModulesDisabled.programs.find(
-        ({ program_id }) => program_id === scopedProgram.program_id
-      );
+    const scopedAfterModulesDisabled = afterModulesDisabled.programs.find(
+      ({ program_id }) => program_id === scopedProgram.program_id
+    );
     assert.deepStrictEqual(scopedAfterModulesDisabled, {
       program_id: scopedProgram.program_id,
       department_id: department.department_id,
@@ -1275,9 +1547,7 @@ describe("NTF-01: management attention", () => {
       "a revoked leader's aggregate must never keep serving the former Program"
     );
     assert.strictEqual(
-      afterRevoke.items.some(
-        (item) => item.program_id === program.program_id
-      ),
+      afterRevoke.items.some((item) => item.program_id === program.program_id),
       false
     );
     assert.strictEqual(afterRevoke.total_actionable_count, 0);
@@ -1308,6 +1578,54 @@ describe("PRG-01: programs", () => {
     assert.ok(program.program_id);
     assert.strictEqual(program.name, "Test Program");
   });
+  test("requires a non-empty purpose and accepts a valid purpose without a category", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PURPOSE-PROG-DEPT",
+      name: "Purpose Program Dept",
+    });
+    const request = (description: string) =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${dept.department_id}/programs`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: {
+              name: "Purpose Program",
+              description,
+              behavior_type: "Recurring",
+              lifecycle: "Draft",
+            },
+          }
+        ),
+        testEnv()
+      );
+
+    const missingPurpose = await request("   ");
+    assert.strictEqual(missingPurpose.status, 422);
+    const missingBody = await problemOf(missingPurpose);
+    assert.strictEqual(
+      missingBody.detail,
+      "name, purpose, behavior_type, and lifecycle are required and must be valid."
+    );
+
+    const created = await request("Weekly discipleship purpose");
+    assert.strictEqual(created.status, 201);
+    const createdBody = (await assertCorrelated(created)) as {
+      data: { program: { description: string; category: string | null } };
+    };
+    assert.strictEqual(
+      createdBody.data.program.description,
+      "Weekly discipleship purpose"
+    );
+    assert.strictEqual(createdBody.data.program.category, null);
+  });
+
 
   test("program creation rejects invalid required settings", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
@@ -1353,6 +1671,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Archived Program",
+            description: "已存檔課程不可直接建立",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Archived",
@@ -1447,6 +1766,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Defaulted Program",
+            description: "測試預設值",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
@@ -1719,6 +2039,7 @@ describe("PRG-01: programs", () => {
           },
           body: {
             name: "Member Program",
+            description: "會員不可建立課程",
             category: "測試類別",
             behavior_type: "OneOff",
             lifecycle: "Draft",
@@ -1772,6 +2093,7 @@ describe("PRG-01: modules", () => {
           },
           body: {
             name: "Blocked Program",
+            description: "模組未啟用時不可建立課程",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
@@ -1897,6 +2219,7 @@ describe("PRG-01: audit", () => {
           },
           body: {
             name: "Idempotency Program",
+            description: "測試冪等性",
             category: "測試類別",
             behavior_type: "Recurring",
             lifecycle: "Draft",
@@ -2704,10 +3027,16 @@ describe("PRG-02: generation", () => {
       .first<{ count: number }>();
     assert.strictEqual(events?.count ?? 0, 0, "no events may be written");
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(oneOff.program_id)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "no generation runs may be written");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "no generation runs may be written"
+    );
   });
 
   test("preview on a program with no schedule rules returns 422 with a FAILED audit row", async () => {
@@ -2716,18 +3045,15 @@ describe("PRG-02: generation", () => {
       behavior_type: "Recurring",
     });
     const res = await worker.fetch(
-      programsRequest(
-        `/api/v1/programs/${noRules.program_id}/events/preview`,
-        {
-          method: "POST",
-          headers: {
-            Origin: HOST,
-            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-            "Content-Type": "application/json",
-          },
-          body: { horizon_days: 14 },
-        }
-      ),
+      programsRequest(`/api/v1/programs/${noRules.program_id}/events/preview`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { horizon_days: 14 },
+      }),
       testEnv()
     );
     assert.strictEqual(res.status, 422);
@@ -2837,7 +3163,11 @@ function auditRowsFor(
   programId: string,
   action: string
 ): Promise<
-  { outcome: string; new_value_json: string | null; correlation_id: string | null }[]
+  {
+    outcome: string;
+    new_value_json: string | null;
+    correlation_id: string | null;
+  }[]
 > {
   return testDb()
     .prepare(
@@ -2940,13 +3270,14 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       location: "副堂",
     });
     const today = hkTodayWallDate();
-    const firstTuesday = addWallDays(
-      today,
-      (2 - wallWeekday(today) + 7) % 7
-    );
+    const firstTuesday = addWallDays(today, (2 - wallWeekday(today) + 7) % 7);
     const cancelDate = addWallDays(firstTuesday, 14);
     const rescheduleDate = addWallDays(firstTuesday, 21);
-    assert.strictEqual(wallWeekday(cancelDate), 2, "exception lands on the rule weekday");
+    assert.strictEqual(
+      wallWeekday(cancelDate),
+      2,
+      "exception lands on the rule weekday"
+    );
     assert.strictEqual(wallWeekday(rescheduleDate), 2);
     await createException(programId, weekly.rule_id, {
       override_date: cancelDate,
@@ -2984,10 +3315,14 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "skip row keeps the original rule times"
     );
     const rescheduled = plan.occurrences.find(
-      (o) => o.occurs_on === rescheduleDate
+      (o) => o.occurs_on === rescheduleDate && o.rule_id === weekly.rule_id
     );
     assert.strictEqual(rescheduled?.skip_reason, null);
-    assert.ok(rescheduled?.exception_id, "reschedule row carries the exception");
+
+    assert.ok(
+      rescheduled?.exception_id,
+      "reschedule row carries the exception"
+    );
     assert.strictEqual(
       rescheduled?.starts_at,
       `${rescheduleDate}T12:30:00.000Z`,
@@ -3149,7 +3484,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     // exists as an event, so the persisted rows must refresh to DUPLICATE
     // instead of silently keeping their original null skip_reason.
     const repeat = await preview(adminAccess, programId, 14);
-    assert.strictEqual(repeat.plan_id, plan.plan_id, "identical inputs resolve to the same plan");
+    assert.strictEqual(
+      repeat.plan_id,
+      plan.plan_id,
+      "identical inputs resolve to the same plan"
+    );
     for (const occurrence of repeat.occurrences) {
       assert.strictEqual(
         occurrence.skip_reason,
@@ -3163,7 +3502,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const repeatGenerate = await generateRequest(programId, repeat.plan_id);
     assert.strictEqual(repeatGenerate.status, 200);
     const repeatGenerateBody = (await assertCorrelated(repeatGenerate)) as {
-      data: { generated: { created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: { created: number; skipped: number; resumed: boolean };
+      };
     };
     assert.strictEqual(repeatGenerateBody.data.generated.created, 0);
     assert.strictEqual(repeatGenerateBody.data.generated.skipped, 2);
@@ -3189,7 +3530,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       4,
       "two rules over the horizon's two Tuesdays"
     );
-    const byDate = new Map<string, { rule_id: string; skip_reason: string | null }[]>();
+    const byDate = new Map<
+      string,
+      { rule_id: string; skip_reason: string | null }[]
+    >();
     for (const occurrence of plan.occurrences) {
       const rows = byDate.get(occurrence.occurs_on) ?? [];
       rows.push({
@@ -3200,10 +3544,18 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     }
     assert.strictEqual(byDate.size, 2, "two distinct dates in the horizon");
     for (const rows of byDate.values()) {
-      assert.strictEqual(rows.length, 2, "both rules materialize the same date");
+      assert.strictEqual(
+        rows.length,
+        2,
+        "both rules materialize the same date"
+      );
       const unmarked = rows.filter((row) => row.skip_reason === null);
       const duplicates = rows.filter((row) => row.skip_reason === "DUPLICATE");
-      assert.strictEqual(unmarked.length, 1, "exactly one rule keeps the start");
+      assert.strictEqual(
+        unmarked.length,
+        1,
+        "exactly one rule keeps the start"
+      );
       assert.strictEqual(
         duplicates.length,
         1,
@@ -3274,7 +3626,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const staleAudits = await auditRowsFor(programId, "EVENT_GENERATE");
     assert.ok(
       staleAudits.some(
-        (row) => row.outcome === "CONFLICT" && row.new_value_json?.includes("stale_plan")
+        (row) =>
+          row.outcome === "CONFLICT" &&
+          row.new_value_json?.includes("stale_plan")
       ),
       "stale generation audits CONFLICT (business conflict, not FAILED)"
     );
@@ -3304,7 +3658,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const first = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(first.status, 200);
     const firstBody = (await assertCorrelated(first)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(firstBody.data.generated.status, "completed");
     assert.strictEqual(firstBody.data.generated.created, 2);
@@ -3314,7 +3676,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const second = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(second.status, 200);
     const secondBody = (await assertCorrelated(second)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(
       secondBody.data.generated.run_id,
@@ -3339,9 +3709,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(new Set(starts).size, 2, "unique (program, starts_at)");
 
     const run = await testDb()
-      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
       .bind(plan.plan_id)
-      .first<{ status: string; created: number; skipped: number; failed: number }>();
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
     assert.ok(run, "a durable generation-run record exists");
     assert.strictEqual(run.status, "completed");
     assert.strictEqual(run.created, 2);
@@ -3388,12 +3765,22 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(events?.count ?? 0, 0, "forbidden generation writes no events");
+    assert.strictEqual(
+      events?.count ?? 0,
+      0,
+      "forbidden generation writes no events"
+    );
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "forbidden generation creates no run records");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "forbidden generation creates no run records"
+    );
   });
 
   test("EVT-02.4 generation resumes from a durable partial run without duplicating events", async () => {
@@ -3440,7 +3827,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const res = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(res.status, 200);
     const body = (await assertCorrelated(res)) as {
-      data: { generated: { run_id: string; status: string; created: number; skipped: number; failed: number; resumed: boolean } };
+      data: {
+        generated: {
+          run_id: string;
+          status: string;
+          created: number;
+          skipped: number;
+          failed: number;
+          resumed: boolean;
+        };
+      };
     };
     assert.strictEqual(
       body.data.generated.run_id,
@@ -3449,7 +3845,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
     assert.strictEqual(body.data.generated.resumed, true);
     assert.strictEqual(body.data.generated.status, "completed");
-    assert.strictEqual(body.data.generated.created, 2, "failed unit is retried");
+    assert.strictEqual(
+      body.data.generated.created,
+      2,
+      "failed unit is retried"
+    );
     assert.strictEqual(body.data.generated.failed, 0);
     // The durable run row itself must be re-settled by the retry, not stuck
     // at the stale partial/failed snapshot the first settlement wrote.
@@ -3475,7 +3875,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.ok(settledRun?.finished_at, "the settled run keeps a finished_at");
 
     const events = await testDb()
-      .prepare("SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC")
+      .prepare(
+        "SELECT starts_at FROM events WHERE program_id = ? ORDER BY starts_at ASC"
+      )
       .bind(programId)
       .all<{ starts_at: string }>();
     assert.strictEqual(events.results?.length, 2);
@@ -3543,9 +3945,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "every preview occurrence materializes exactly once"
     );
     const run = await testDb()
-      .prepare("SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?")
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
       .bind(plan.plan_id)
-      .first<{ status: string; created: number; skipped: number; failed: number }>();
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
     assert.ok(run, "a single durable run records the settled outcome");
     assert.strictEqual(
       run.created + run.skipped + run.failed,
@@ -3586,10 +3995,16 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .first<{ count: number }>();
     assert.strictEqual(events?.count ?? 0, 0, "rejected plans write no events");
     const runs = await testDb()
-      .prepare("SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM program_generation_runs WHERE program_id = ?"
+      )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(runs?.count ?? 0, 0, "rejected plans create no run records");
+    assert.strictEqual(
+      runs?.count ?? 0,
+      0,
+      "rejected plans create no run records"
+    );
   });
 
   test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
@@ -3638,7 +4053,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .first<{ count: number }>();
     assert.strictEqual(plans?.count ?? 0, 0, "no preview plan is persisted");
     const audits = await auditRowsFor(programId, "EVENT_PREVIEW");
-    assert.strictEqual(audits.length, 0, "no EVENT_PREVIEW audit row is written");
+    assert.strictEqual(
+      audits.length,
+      0,
+      "no EVENT_PREVIEW audit row is written"
+    );
 
     // Empty body (no Content-Length) keeps the existing 90-day default.
     const empty = await worker.fetch(
@@ -3657,7 +4076,10 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       90,
       "empty body defaults to 90 days"
     );
-    assert.ok(result.data.plan.rule_count >= 1, "the default preview materializes");
+    assert.ok(
+      result.data.plan.rule_count >= 1,
+      "the default preview materializes"
+    );
   });
 
   test("EVT-02.3 CANCEL exceptions are skipped and RESCHEDULE moves the generated event", async () => {
@@ -3669,10 +4091,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       end_time: "21:00",
     });
     const today = hkTodayWallDate();
-    const firstWednesday = addWallDays(
-      today,
-      (3 - wallWeekday(today) + 7) % 7
-    );
+    const firstWednesday = addWallDays(today, (3 - wallWeekday(today) + 7) % 7);
     const cancelDate = addWallDays(firstWednesday, 7);
     const rescheduleDate = addWallDays(firstWednesday, 14);
     assert.strictEqual(wallWeekday(cancelDate), 3);
@@ -3707,7 +4126,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "the CANCEL occurrence is skipped deterministically"
     );
     const events = await testDb()
-      .prepare("SELECT starts_at, ends_at, location FROM events WHERE program_id = ?")
+      .prepare(
+        "SELECT starts_at, ends_at, location FROM events WHERE program_id = ?"
+      )
       .bind(programId)
       .all<{ starts_at: string; ends_at: string; location: string | null }>();
     const starts = events.results?.map((e) => e.starts_at) ?? [];
@@ -3719,7 +4140,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       starts.some((s) => s === `${rescheduleDate}T12:30:00.000Z`),
       "RESCHEDULE moves the generated event to the new HK wall time"
     );
-    const moved = events.results?.find((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`);
+    const moved = events.results?.find(
+      (e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`
+    );
     assert.strictEqual(moved?.ends_at, `${rescheduleDate}T14:00:00.000Z`);
     const items = await testDb()
       .prepare(
@@ -3784,14 +4207,22 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     });
 
     const plan = await preview(adminAccess, programId, 21);
-    const ruleARows = plan.occurrences.filter((o) => o.rule_id === ruleA.rule_id);
-    const ruleBRows = plan.occurrences.filter((o) => o.rule_id === ruleB.rule_id);
+    const ruleARows = plan.occurrences.filter(
+      (o) => o.rule_id === ruleA.rule_id
+    );
+    const ruleBRows = plan.occurrences.filter(
+      (o) => o.rule_id === ruleB.rule_id
+    );
     assert.ok(
-      ruleARows.some((o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"),
+      ruleARows.some(
+        (o) => o.occurs_on === targetDate && o.skip_reason === "CANCEL"
+      ),
       "rule A occurrence on the date is cancelled"
     );
     assert.ok(
-      ruleBRows.some((o) => o.occurs_on === targetDate && o.skip_reason === null),
+      ruleBRows.some(
+        (o) => o.occurs_on === targetDate && o.skip_reason === null
+      ),
       "rule B occurrence on the same date is untouched by rule A's exception"
     );
 
@@ -3802,11 +4233,15 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .bind(programId)
       .all<{ starts_at: string }>();
     assert.ok(
-      events.results?.some((e) => e.starts_at === `${targetDate}T13:00:00.000Z`),
+      events.results?.some(
+        (e) => e.starts_at === `${targetDate}T13:00:00.000Z`
+      ),
       "rule B's 21:00 HK wall occurrence materializes despite rule A's cancel"
     );
     assert.ok(
-      !events.results?.some((e) => e.starts_at === `${targetDate}T11:30:00.000Z`),
+      !events.results?.some(
+        (e) => e.starts_at === `${targetDate}T11:30:00.000Z`
+      ),
       "rule A's 19:30 HK wall occurrence is skipped"
     );
   });
@@ -3836,7 +4271,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(malformed.status, 422, "non-string location fails closed");
+    assert.strictEqual(
+      malformed.status,
+      422,
+      "non-string location fails closed"
+    );
 
     const clear = await worker.fetch(
       programsRequest(
@@ -4241,12 +4680,13 @@ describe("PRG-02: events", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(cancelled.status, 200);
-    const result = (await assertCorrelated(cancelled)) as {
-      data: { event: { status: string; cancel_reason: string } };
-    };
-    assert.strictEqual(result.data.event.status, "Cancelled");
-    assert.strictEqual(result.data.event.cancel_reason, "惡劣天氣");
+    assert.strictEqual(cancelled.status, 409);
+    const conflict = await problemOf(cancelled);
+    assert.strictEqual(conflict.code, "EVENT_CANCEL_BLOCKED");
+    assert.strictEqual(
+      conflict.detail,
+      "此聚會已有出席記錄，不能取消；如需更正請使用出席名單的作廢功能。"
+    );
 
     const attendances = await testDb()
       .prepare(
@@ -4265,7 +4705,47 @@ describe("PRG-02: events", () => {
       .first<{ action: string; entity_type: string; outcome: string }>();
     assert.ok(audit, "EVENT_CANCEL audit row must exist");
     assert.strictEqual(audit.entity_type, "event");
-    assert.strictEqual(audit.outcome, "SUCCESS");
+    assert.strictEqual(audit.outcome, "CONFLICT");
+
+    const noAttendance = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2026-10-06T10:00:00.000Z",
+          ends_at: "2026-10-06T11:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    const noAttendanceBody = (await assertCorrelated(noAttendance)) as {
+      data: { event: { event_id: string } };
+    };
+    const allowed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${noAttendanceBody.data.event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: null },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(allowed.status, 200);
+    const allowedBody = (await assertCorrelated(allowed)) as {
+      data: { event: { status: string; cancel_reason: string | null } };
+    };
+    assert.strictEqual(allowedBody.data.event.status, "Cancelled");
+    assert.strictEqual(allowedBody.data.event.cancel_reason, null);
   });
 
   test("Members see only Active events; managers see all", async () => {
@@ -4469,7 +4949,7 @@ describe("EVT-01: event operations (#251)", () => {
     assert.ok(event.manual_check_in_code, "event carries a check-in code");
   });
 
-  test("GET detail projects leaders and participant summary; member 403; unknown 404", async () => {
+  test("GET detail projects operator fields for managers; enrolled member gets the participant projection; non-enrolled 403; unknown 404", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-11T10:00:00.000Z",
       ends_at: "2026-09-11T11:00:00.000Z",
@@ -4507,7 +4987,12 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(res.status, 200);
     const result = (await assertCorrelated(res)) as {
       data: {
-        event: { event_id: string; program_id: string; availability: string };
+        event: {
+          event_id: string;
+          program_id: string;
+          program_name: string;
+          availability: string;
+        };
         leaders: unknown[];
         participant_summary: { active_enrollments: number; checked_in: number };
       };
@@ -4515,10 +5000,58 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(result.data.event.event_id, event.event_id);
     assert.strictEqual(result.data.event.program_id, programId);
     assert.strictEqual(result.data.event.availability, "Active");
+    assert.strictEqual(
+      typeof result.data.event.program_name,
+      "string",
+      "operator projection surfaces program_name from the JOIN"
+    );
+    assert.ok(result.data.event.program_name.length > 0);
     assert.ok(Array.isArray(result.data.leaders));
     assert.strictEqual(result.data.participant_summary.active_enrollments, 1);
     assert.strictEqual(result.data.participant_summary.checked_in, 1);
 
+    // Enrolled member gets a slim participant projection: no leaders, no
+    // attendance numbers, but the event row + program_name are present so
+    // the participant detail page can render the header and CTA.
+    const memberRes = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberRes.status, 200);
+    const memberResult = (await assertCorrelated(memberRes)) as {
+      data: {
+        event: {
+          event_id: string;
+          program_id: string;
+          program_name: string;
+          manual_check_in_code: string | null;
+        };
+        leaders: unknown[];
+        participant_summary: { active_enrollments: number; checked_in: number };
+      };
+    };
+    assert.strictEqual(memberResult.data.event.event_id, event.event_id);
+    assert.strictEqual(memberResult.data.event.program_name.length > 0, true);
+    assert.strictEqual(memberResult.data.leaders.length, 0);
+    assert.strictEqual(memberResult.data.participant_summary.active_enrollments, 0);
+    assert.strictEqual(memberResult.data.participant_summary.checked_in, 0);
+    assert.strictEqual(memberResult.data.event.manual_check_in_code, null);
+
+    // Non-enrolled member is denied — never a projection leak.
+    await testDb()
+      .prepare(
+        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
+      )
+      .bind(programId)
+      .run();
     const denied = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${programId}/events/${event.event_id}`,
@@ -4531,7 +5064,7 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(denied.status, 403);
+    assert.strictEqual(denied.status, 404);
 
     const unknown = await worker.fetch(
       programsRequest(
@@ -4549,12 +5082,6 @@ describe("EVT-01: event operations (#251)", () => {
 
     // Teardown: leave the shared Program without participant state so later
     // tests control their own fixtures.
-    await testDb()
-      .prepare(
-        "DELETE FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' AND status = 'Active'"
-      )
-      .bind(programId)
-      .run();
     await testDb()
       .prepare("DELETE FROM attendances WHERE event_id = ?")
       .bind(event.event_id)
@@ -4632,7 +5159,7 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
-  test("PATCH rejects rescheduling once Attendance exists, but allows non-schedule edits", async () => {
+  test("PATCH edits schedule and identity fields when attendance exists", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2026-09-15T20:00:00.000Z",
       ends_at: "2026-09-15T21:00:00.000Z",
@@ -4659,17 +5186,14 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(reschedule.status, 409);
-    const rescheduleProblem = await problemOf(reschedule);
-    assert.strictEqual(rescheduleProblem.code, "EVENT_RESCHEDULE_BLOCKED");
-    const unchanged = await testDb()
-      .prepare("SELECT starts_at FROM events WHERE event_id = ?")
-      .bind(event.event_id)
-      .first<{ starts_at: string }>();
+    assert.strictEqual(reschedule.status, 200);
+    const rescheduleBody = (await assertCorrelated(reschedule)) as {
+      data: { event: { starts_at: string } };
+    };
     assert.strictEqual(
-      unchanged?.starts_at,
-      "2026-09-15T20:00:00.000Z",
-      "blocked reschedule must not move the event"
+      rescheduleBody.data.event.starts_at,
+      "2026-09-15T20:15:00.000Z",
+      "attendance history must be preserved while moving the event"
     );
 
     const endsChange = await worker.fetch(
@@ -4689,8 +5213,8 @@ describe("EVT-01: event operations (#251)", () => {
     );
     assert.strictEqual(
       endsChange.status,
-      409,
-      "ends_at is also a schedule field and must be blocked identically"
+      200,
+      "ends_at remains editable once attendance exists"
     );
 
     const nameChange = await worker.fetch(
@@ -5135,9 +5659,15 @@ describe("EVT-01: event operations (#251)", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(resolve.status, 409);
-    const body = await problemOf(resolve);
-    assert.strictEqual(body.code, "EVENT_UNAVAILABLE");
+    assert.strictEqual(resolve.status, 200);
+    const resolveBody = (await resolve.json()) as {
+      data: {
+        events: unknown[];
+        latest: { availability: string };
+      };
+    };
+    assert.deepStrictEqual(resolveBody.data.events, []);
+    assert.strictEqual(resolveBody.data.latest.availability, "Inactive");
 
     const checkIn = await worker.fetch(
       programsRequest(`/api/v1/attendance/self`, {
@@ -5610,11 +6140,18 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(res.status, 200);
     const responseBody = (await assertCorrelated(res)) as {
       data: {
-        request: { request_id: string; status: string; request_version: number };
+        request: {
+          request_id: string;
+          status: string;
+          request_version: number;
+        };
         enrollment: null;
       };
     };
-    assert.strictEqual(responseBody.data.request.request_id, request.request_id);
+    assert.strictEqual(
+      responseBody.data.request.request_id,
+      request.request_id
+    );
     assert.strictEqual(responseBody.data.request.status, "Rejected");
     assert.strictEqual(responseBody.data.request.request_version, 2);
     assert.strictEqual(responseBody.data.enrollment, null);
@@ -5676,7 +6213,10 @@ describe("PRG-03: enrollment requests", () => {
     const terminalProgramId = await freshRequestProgram(
       "REQ-5A Terminal Program"
     );
-    const terminalRequest = await submitRequest(memberAccess, terminalProgramId);
+    const terminalRequest = await submitRequest(
+      memberAccess,
+      terminalProgramId
+    );
     const approved = await decideRequest(
       adminAccess,
       terminalProgramId,
@@ -5918,7 +6458,8 @@ describe("PRG-03: enrollment requests", () => {
     };
     assert.ok(
       snapshotBody.data.requests.some(
-        (row) => row.request_id === request.request_id && row.status === "Approved"
+        (row) =>
+          row.request_id === request.request_id && row.status === "Approved"
       )
     );
     assert.ok(
@@ -6001,7 +6542,7 @@ describe("PRG-03: enrollments", () => {
     unlistedId = unlisted.program_id;
   });
 
-  test("ENR-1 assisted enrollment creates an Active record with no fake request", async () => {
+  test("ENR-1 assisted enrollment is capability-gated, mode-independent, and audited atomically", async () => {
     const res = await assistedEnrollFor(adminAccess, managerOnlyId, "U002");
     assert.strictEqual(res.status, 201);
     const result = (await assertCorrelated(res)) as {
@@ -6016,6 +6557,13 @@ describe("PRG-03: enrollments", () => {
     assert.strictEqual(result.data.enrollment.status, "Active");
     assert.strictEqual(result.data.enrollment.request_id, null);
 
+    const audit = await testDb()
+      .prepare(
+        "SELECT outcome FROM audit_events WHERE action = 'ENROLLMENT_CREATE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
+      )
+      .bind(result.data.enrollment.enrollment_id)
+      .first<{ outcome: string }>();
+    assert.strictEqual(audit?.outcome, "SUCCESS");
     const requests = await testDb()
       .prepare(
         "SELECT request_id FROM enrollment_requests WHERE program_id = ?"
@@ -6024,12 +6572,23 @@ describe("PRG-03: enrollments", () => {
       .all<{ request_id: string }>();
     assert.strictEqual(requests.results?.length, 0, "no fake request row");
 
-    const wrongMode = await assistedEnrollFor(
+    const memberRequest = await assistedEnrollFor(
       adminAccess,
       requestProgramId,
       "U002"
     );
-    assert.strictEqual(wrongMode.status, 422);
+    assert.strictEqual(
+      memberRequest.status,
+      201,
+      "program enrollment mode must not block a manager"
+    );
+
+    const denied = await assistedEnrollFor(
+      memberAccess,
+      requestProgramId,
+      "U003"
+    );
+    assert.strictEqual(denied.status, 403, "manage scope is required");
   });
 
   test("ENR-2 inactive and unknown assisted members are rejected and audited", async () => {
@@ -6138,7 +6697,9 @@ describe("PRG-03: enrollments", () => {
       .first<{ enrollment_id: string }>();
     assert.ok(carolEnrollment);
     await testDb()
-      .prepare("UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?")
+      .prepare(
+        "UPDATE enrollments SET created_by = 'U002' WHERE enrollment_id = ?"
+      )
       .bind(carolEnrollment.enrollment_id)
       .run();
     const thirdParty = await assistedEnrollFor(
@@ -6351,7 +6912,11 @@ describe("PRG-03: enrollments", () => {
       "Approved",
       1
     );
-    assert.strictEqual(retry.status, 200, "same-actor retry is a quiet success");
+    assert.strictEqual(
+      retry.status,
+      200,
+      "same-actor retry is a quiet success"
+    );
     const body = (await assertCorrelated(retry)) as {
       data: { request: { status: string; request_version: number } };
     };
@@ -7273,6 +7838,9 @@ describe("PUI-02: participant catalog", () => {
       name: string;
       lifecycle: string;
       discoverability: string;
+      viewerState: string;
+      nextEventStartsAt: string | null;
+      upcomingEventCount: number;
     }[];
   }
 
@@ -7472,6 +8040,325 @@ describe("PUI-02: participant catalog", () => {
       "module-disabled Department must be omitted"
     );
   });
+  test("projects viewerState per program across all viewer states", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-STATES",
+      name: "PUI-02 States Dept",
+    });
+
+    // 1. Eligible (MemberRequest with no relationship)
+    const pEligible = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Eligible",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+
+    // 2. ManagerOnly (ManagerOnly with no relationship)
+    const pManagerOnly = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 ManagerOnly",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+
+    // 3. Archived
+    const pArchived = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Archived",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    await worker.fetch(
+      programsRequest(`/api/v1/programs/${pArchived.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+
+    // 4. Pending request
+    const pPending = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Pending",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    await submitRequest(memberAccess, pPending.program_id);
+
+    // 5. Active enrollment
+    const pActive = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Active",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqActive = await submitRequest(memberAccess, pActive.program_id);
+    const decideActive = await decideRequest(
+      adminAccess,
+      pActive.program_id,
+      reqActive.request_id,
+      "Approved"
+    );
+    assert.strictEqual(decideActive.status, 200);
+
+    // 6. Rejected request
+    const pRejected = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Rejected",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqRejected = await submitRequest(memberAccess, pRejected.program_id);
+    const decideReject = await decideRequest(
+      adminAccess,
+      pRejected.program_id,
+      reqRejected.request_id,
+      "Rejected"
+    );
+    assert.strictEqual(decideReject.status, 200);
+
+    // 7. Withdrawn request
+    const pWithdrawn = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Withdrawn",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const reqWithdrawn = await submitRequest(
+      memberAccess,
+      pWithdrawn.program_id
+    );
+    const withdrawRes = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${pWithdrawn.program_id}/enrollment-requests/${reqWithdrawn.request_id}/withdraw`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(withdrawRes.status, 200);
+
+    // 8. Cancelled enrollment
+    const pCancelled = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-02 Cancelled",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    const enrollRes = await assistedEnrollFor(
+      adminAccess,
+      pCancelled.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrollRes.status, 201);
+    const enrollBody = (await assertCorrelated(enrollRes)) as {
+      data: { enrollment: { enrollment_id: string } };
+    };
+    const cancelRes = await cancelEnrollmentFor(
+      memberAccess,
+      pCancelled.program_id,
+      enrollBody.data.enrollment.enrollment_id
+    );
+    assert.strictEqual(cancelRes.status, 200);
+
+    // 9. Archived program with active enrollment -> archived takes precedence
+    const pArchivedWithEnrollment = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 Archived Active",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "ManagerOnly",
+      }
+    );
+    await assistedEnrollFor(
+      adminAccess,
+      pArchivedWithEnrollment.program_id,
+      "U002"
+    );
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${pArchivedWithEnrollment.program_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { lifecycle: "Archived" },
+        }
+      ),
+      testEnv()
+    );
+
+    const body = await catalogOf(memberAccess);
+    const entry = body.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(entry, "department must appear");
+    const byName = new Map(
+      entry.programs.map((program) => [program.name, program.viewerState])
+    );
+
+    assert.strictEqual(byName.get("PUI-02 Eligible"), "eligible");
+    assert.strictEqual(byName.get("PUI-02 ManagerOnly"), "managerOnly");
+    assert.strictEqual(byName.get("PUI-02 Archived"), "archived");
+    assert.strictEqual(byName.get("PUI-02 Pending"), "pending");
+    assert.strictEqual(byName.get("PUI-02 Active"), "active");
+    assert.strictEqual(byName.get("PUI-02 Rejected"), "rejected");
+    assert.strictEqual(byName.get("PUI-02 Withdrawn"), "withdrawn");
+    assert.strictEqual(byName.get("PUI-02 Cancelled"), "cancelled");
+    assert.strictEqual(byName.get("PUI-02 Archived Active"), "archived");
+  });
+
+  test("projects nextEventStartsAt and upcomingEventCount from future active events", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-02-EVENTS",
+      name: "PUI-02 Events Dept",
+    });
+
+    const programNoEvents = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 No Events",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+
+    const programWithEvents = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 With Events",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+
+    // Past event (2020)
+    await createEventFor(adminAccess, programWithEvents.program_id, {
+      starts_at: "2020-01-01T10:00:00.000Z",
+      ends_at: "2020-01-01T12:00:00.000Z",
+    });
+
+    // Future active event 1 (earlier)
+    const futureEvent1 = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-06-01T10:00:00.000Z",
+        ends_at: "2028-06-01T12:00:00.000Z",
+      }
+    );
+
+    // Future active event 2 (later)
+    await createEventFor(adminAccess, programWithEvents.program_id, {
+      starts_at: "2028-06-15T10:00:00.000Z",
+      ends_at: "2028-06-15T12:00:00.000Z",
+    });
+
+    // Future cancelled event (should not count)
+    const cancelledEvent = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-05-01T10:00:00.000Z",
+        ends_at: "2028-05-01T12:00:00.000Z",
+      }
+    );
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programWithEvents.program_id}/events/${cancelledEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "Cancelled for testing" },
+        }
+      ),
+      testEnv()
+    );
+
+    // Future inactive availability event (should not count)
+    const inactiveEvent = await createEventFor(
+      adminAccess,
+      programWithEvents.program_id,
+      {
+        starts_at: "2028-05-15T10:00:00.000Z",
+        ends_at: "2028-05-15T12:00:00.000Z",
+      }
+    );
+    await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programWithEvents.program_id}/events/${inactiveEvent.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive", confirm: true },
+        }
+      ),
+      testEnv()
+    );
+
+    const body = await catalogOf(memberAccess);
+    const entry = body.data.catalog.find(
+      (candidate) => candidate.department.department_id === dept.department_id
+    );
+    assert.ok(entry, "department must appear");
+
+    const pNoEvents = entry.programs.find(
+      (p) => p.program_id === programNoEvents.program_id
+    );
+    assert.ok(pNoEvents);
+    assert.strictEqual(pNoEvents.nextEventStartsAt, null);
+    assert.strictEqual(pNoEvents.upcomingEventCount, 0);
+
+    const pWithEvents = entry.programs.find(
+      (p) => p.program_id === programWithEvents.program_id
+    );
+    assert.ok(pWithEvents);
+    assert.strictEqual(
+      pWithEvents.nextEventStartsAt,
+      "2028-06-01T10:00:00.000Z"
+    );
+    assert.strictEqual(pWithEvents.upcomingEventCount, 2);
+  });
 });
 describe("PUI-03: participant Program detail", () => {
   interface ParticipantDetailResponse {
@@ -7498,6 +8385,8 @@ describe("PUI-03: participant Program detail", () => {
           ends_at: string;
           status: string;
           source: string;
+          name: string | null;
+          location: string | null;
           manual_check_in_code?: unknown;
           check_in_window_opens_at?: unknown;
           check_in_window_closes_at?: unknown;
@@ -7580,6 +8469,8 @@ describe("PUI-03: participant Program detail", () => {
         body: {
           starts_at: "2099-03-04T11:30:00.000Z",
           ends_at: "2099-03-04T13:00:00.000Z",
+          name: "第三課聚會",
+          location: "二樓禮堂",
         },
       }),
       testEnv()
@@ -7598,10 +8489,52 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(detail.schedule_rules[0]?.start_time, "19:30");
     assert.strictEqual(detail.events.length, 1);
     assert.strictEqual(detail.events[0]?.status, "Active");
+    // The next-meeting card consumes the real meeting title/venue.
+    assert.strictEqual(detail.events[0]?.name, "第三課聚會");
+    assert.strictEqual(detail.events[0]?.location, "二樓禮堂");
     const raw = JSON.stringify(detail);
     assert.ok(!raw.includes("check_in_token"));
     assert.ok(!raw.includes("manual_check_in_code"));
     assert.ok(!raw.includes("capabilities"));
+    assert.ok(!raw.includes("check_in_window_opens_at"));
+    assert.ok(!raw.includes("check_in_window_closes_at"));
+  });
+
+  test("projects null meeting title and venue when the event row has none", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-NULLEVENT",
+      name: "PUI-03 Null Event Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Null Event Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const event = await worker.fetch(
+      programsRequest(`/api/v1/programs/${created.program_id}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2099-05-06T11:30:00.000Z",
+          ends_at: "2099-05-06T13:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(event.status, 201);
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const body = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(body.data.detail.events.length, 1);
+    assert.strictEqual(body.data.detail.events[0]?.name, null);
+    assert.strictEqual(body.data.detail.events[0]?.location, null);
   });
 
   test("keeps multiple active events for a OneOff participant detail", async () => {
@@ -7908,9 +8841,7 @@ describe("NTF-01: management notification read state (#256)", () => {
     assert.strictEqual(scopedItems.length, 2);
     const initialUnreadCount = listed.data.unread_count;
     assert.ok(scopedItems.some((item) => item.kind === "enrollment"));
-    const inactiveItem = scopedItems.find(
-      (item) => item.kind === "event"
-    );
+    const inactiveItem = scopedItems.find((item) => item.kind === "event");
     assert.ok(inactiveItem);
     assert.strictEqual(inactiveItem?.read, false);
 
@@ -7923,12 +8854,10 @@ describe("NTF-01: management notification read state (#256)", () => {
           "Content-Type": "application/json",
         },
         body: {
-          items: scopedItems.map(
-            ({ source_key, source_revision }) => ({
-              source_key,
-              source_revision,
-            })
-          ),
+          items: scopedItems.map(({ source_key, source_revision }) => ({
+            source_key,
+            source_revision,
+          })),
         },
       }),
       testEnv()
@@ -7948,12 +8877,10 @@ describe("NTF-01: management notification read state (#256)", () => {
           "Content-Type": "application/json",
         },
         body: {
-          items: scopedItems.map(
-            ({ source_key, source_revision }) => ({
-              source_key,
-              source_revision,
-            })
-          ),
+          items: scopedItems.map(({ source_key, source_revision }) => ({
+            source_key,
+            source_revision,
+          })),
         },
       }),
       testEnv()
@@ -8004,8 +8931,7 @@ describe("NTF-01: management notification read state (#256)", () => {
       };
     };
     const cancelledItem = revisedBody.data.items.find(
-      (item) =>
-        item.kind === "event" && item.program_id === program.program_id
+      (item) => item.kind === "event" && item.program_id === program.program_id
     );
     assert.ok(cancelledItem);
     assert.strictEqual(cancelledItem?.status, "Cancelled");

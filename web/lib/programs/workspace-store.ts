@@ -126,6 +126,22 @@ export interface MemberOptionRow {
   username: string;
 }
 
+/**
+ * One flattened row of the Member Directory search (087-04 #321): an Active
+ * account joined with one of its Active-enrollment departments (null
+ * department columns when the account has no enrollment / none in scope).
+ */
+export interface ManagementMemberSearchRow {
+  user_id: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  role: string;
+  account_status: string;
+  department_id: string | null;
+  department_name: string | null;
+}
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -190,6 +206,9 @@ export interface ScheduleExceptionRow {
   created_by: string | null;
   created_at: string;
 }
+export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
+export type RecurrenceTag = "無" | "每週" | "每月";
+
 export interface EventInput {
   program_id: string;
   starts_at: string;
@@ -198,6 +217,7 @@ export interface EventInput {
   availability: EventAvailability;
   source: EventSource;
   name: string | null;
+  event_type?: EventType | null;
   location: string | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
@@ -217,6 +237,7 @@ export interface EventRow {
   availability: EventAvailability;
   source: EventSource;
   name: string | null;
+  event_type: EventType | null;
   location: string | null;
   cancel_reason: string | null;
   created_by: string | null;
@@ -225,6 +246,10 @@ export interface EventRow {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleExceptionRow | null;
+  /** Derived recurrence tag (e.g. '每週' | '每月' | '無'). */
+  recurrence_tag?: RecurrenceTag | null;
+  /** Whether active check-in/attendance records exist for this event. */
+  has_attendance?: boolean;
   manual_check_in_code: string | null;
   check_in_window_opens_at: string | null;
   check_in_window_closes_at: string | null;
@@ -264,6 +289,35 @@ export interface NotificationReadStateInput {
 
 export interface NotificationReadStateRow extends NotificationReadStateInput {
   read_at: string;
+}
+
+// 085-07 (#324) — participant Notices. Rows are durable messages created via
+// the admin POST /api/v1/programs/notices endpoint and scoped to exactly one
+// member. read_at/created_at are epoch milliseconds (read_at null = unread).
+export type ParticipantNoticeKind = "event" | "program" | "account";
+
+export interface ParticipantNoticeRow {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface ParticipantNoticeCreateInput {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
 }
 
 export interface GenerateResult {
@@ -447,6 +501,22 @@ export interface DepartmentManagerRevokeInput {
   revoked_at: string;
 }
 
+/**
+ * One row of the Account Permissions projection (087-03 #320): an
+ * admin-capable Admin/Staff account joined with one of its active Department
+ * Manager grants. Accounts without a grant yield one row with null
+ * department columns.
+ */
+export interface ElevatedAccountRow {
+  user_id: string;
+  name: string;
+  role: "Admin" | "Staff" | "Member";
+  account_status: string;
+  department_id: string | null;
+  department_name: string | null;
+  display_order: number | null;
+}
+
 export interface AuditInput {
   audit_id: string;
   inserted_at: string;
@@ -493,6 +563,19 @@ export interface WorkspaceStore {
     limit: number,
     programId?: string
   ) => Promise<MemberOptionRow[]>;
+  /** Department ids the user actively manages (revoked_at IS NULL). */
+  listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /**
+   * Active accounts matching identity/contact fields, optionally constrained
+   * to Active enrollments under the supplied departments. Rows are flattened
+   * by department so the domain layer can assemble a stable read-only Member
+   * Directory projection (087-04 #321).
+   */
+  searchManagementMembers: (
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ) => Promise<ManagementMemberSearchRow[]>;
 
   setDepartmentModule: (
     departmentId: string,
@@ -566,9 +649,21 @@ export interface WorkspaceStore {
     states: readonly NotificationReadStateInput[],
     readAt: string
   ) => Promise<number>;
+  // 085-07 (#324) — participant Notices store seam.
+  listParticipantNotices: (
+    memberUserId: string,
+    retentionCutoffMs: number
+  ) => Promise<ParticipantNoticeRow[]>;
+  markAllParticipantNoticesRead: (
+    memberUserId: string,
+    readAtMs: number
+  ) => Promise<number>;
+  createParticipantNotice: (
+    input: ParticipantNoticeCreateInput
+  ) => Promise<ParticipantNoticeRow>;
   cancelEvent: (
     id: string,
-    reason: string,
+    reason: string | null,
     updatedBy: string,
     updatedAt: string
   ) => Promise<EventRow | null>;
@@ -579,6 +674,7 @@ export interface WorkspaceStore {
       ends_at?: string;
       name?: string | null;
       location?: string | null;
+      event_type?: EventType | null;
       check_in_window_opens_at?: string | null;
       check_in_window_closes_at?: string | null;
       availability?: EventAvailability;
@@ -593,14 +689,16 @@ export interface WorkspaceStore {
     active_enrollments: number;
     checked_in: number;
   }>;
+  countActiveAttendance: (eventId: string) => Promise<number>;
+  listActiveAttendanceEventIds: (
+    eventIds: readonly string[]
+  ) => Promise<Set<string>>;
 
   // --- EVT-02 (#252): preview plans and generation runs ---
 
   findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
   findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
-  listPreviewOccurrences: (
-    planId: string
-  ) => Promise<PreviewOccurrenceRow[]>;
+  listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
   /** Persist a preview plan and its exact occurrence rows idempotently. */
   replacePreviewPlan: (
     plan: PreviewPlanRow,
@@ -618,9 +716,7 @@ export interface WorkspaceStore {
   }) => Promise<{ run: GenerationRunRow; created: boolean }>;
   listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
   /** Record one attempt durably; false when the row already exists. */
-  recordGenerationRunItem: (
-    input: GenerationRunItemInput
-  ) => Promise<boolean>;
+  recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
   /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,
@@ -682,6 +778,10 @@ export interface WorkspaceStore {
   ) => Promise<EnrollmentRequestRow | null>;
 
   createEnrollment: (input: EnrollmentInput) => Promise<EnrollmentRow>;
+  createEnrollmentWithAudit: (
+    input: EnrollmentInput,
+    audit: AuditInput
+  ) => Promise<EnrollmentRow>;
   hasActiveEnrollment: (
     programId: string,
     memberUserId: string
@@ -710,6 +810,7 @@ export interface WorkspaceStore {
   revokeDepartmentManager: (
     input: DepartmentManagerRevokeInput
   ) => Promise<DepartmentManagerRow | null>;
+  listElevatedAccounts: () => Promise<ElevatedAccountRow[]>;
 
   findProgramLeader: (
     programId: string,

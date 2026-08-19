@@ -47,7 +47,15 @@
     "lib/programs/department-manager.test.ts",
     "lib/programs/programs.test.ts",
     "lib/programs/programs-250.test.ts",
+    "lib/programs/hub-directory.test.ts",
+    "lib/programs/account-permissions.test.ts",
+    "lib/programs/member-directory.test.ts",
+    "lib/programs/notices-worker.test.ts",
     "lib/service-envelope.ts",
+    "lib/home-handlers.ts",
+    "lib/home-worker.test.ts",
+    "lib/home-cms-handlers.ts",
+    "lib/home-cms-worker.test.ts",
     "lib/service-envelope.test.ts"
   ]
 }

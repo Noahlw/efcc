@@ -34,6 +34,21 @@ export interface AttendanceEvent {
   status: "Active" | "Cancelled";
   availability: "Active" | "Inactive";
 }
+
+export interface AttendanceResolveLatest {
+  status: "Active" | "Cancelled";
+  availability: "Active" | "Inactive";
+  starts_at: string | null;
+  check_in_window_opens_at: string | null;
+  program_id: string;
+  program_name: string;
+}
+
+export interface AttendanceResolveResult {
+  events: AttendanceEvent[];
+  latest?: AttendanceResolveLatest | null;
+  enrolled?: boolean;
+}
 /** Explicitly safe fields for chooser/context projections; credentials stay server-side. */
 export interface AttendanceEventSummary {
   event_id: string;
@@ -394,31 +409,23 @@ async function matchingEventState(
   db: D1Database,
   byProgramToken: boolean,
   value: string
-): Promise<Pick<AttendanceEvent, "status" | "availability"> | null> {
+): Promise<AttendanceResolveLatest | null> {
   const row = await db
     .prepare(
-      `SELECT e.status, e.availability FROM events e JOIN programs p ON p.program_id = e.program_id
+      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              p.program_id, p.name AS program_name
+         FROM events e JOIN programs p ON p.program_id = e.program_id
         WHERE ${entryWhere(byProgramToken)}
         ORDER BY e.starts_at DESC LIMIT 1`
     )
     .bind(value)
-    .first<Pick<AttendanceEvent, "status" | "availability">>();
+    .first<AttendanceResolveLatest>();
   return row ?? null;
 }
-async function hasProgramToken(
-  db: D1Database,
-  value: string
-): Promise<boolean> {
-  const row = await db
-    .prepare(`SELECT 1 FROM programs WHERE check_in_token = ? LIMIT 1`)
-    .bind(value)
-    .first();
-  return row !== null;
-}
+
 interface ResolveLookup {
   events: AttendanceEvent[];
-  latest: Pick<AttendanceEvent, "status" | "availability"> | null;
-  programTokenLookup: boolean;
+  latest: AttendanceResolveLatest | null;
 }
 
 async function resolveLookup(
@@ -428,64 +435,44 @@ async function resolveLookup(
   value: string
 ): Promise<ResolveLookup> {
   let events: AttendanceEvent[];
-  let latest: Pick<AttendanceEvent, "status" | "availability"> | null = null;
-  let programTokenLookup = Boolean(token);
+  let latest: AttendanceResolveLatest | null = null;
   if (token || code) {
     const byProgramToken = Boolean(token);
     events = await openEvents(db, byProgramToken, value);
     if (events.length === 0) {
       latest = await matchingEventState(db, byProgramToken, value);
     }
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
 
   events = await openEvents(db, false, value);
   if (events.length > 0) {
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
   // The typed value may be a cancelled/closed Event's manual code, so check
   // that status before falling back to the Program token column.
   latest = await matchingEventState(db, false, value);
   if (latest !== null) {
-    return { events, latest, programTokenLookup };
+    return { events, latest };
   }
-  programTokenLookup = true;
   events = await openEvents(db, true, value);
   if (events.length === 0) {
     latest = await matchingEventState(db, true, value);
   }
-  return { events, latest, programTokenLookup };
+  return { events, latest };
 }
 
 async function resolveNoEvents(
   db: D1Database,
-  latest: Pick<AttendanceEvent, "status" | "availability"> | null,
-  programTokenLookup: boolean,
-  value: string,
+  latest: AttendanceResolveLatest | null,
+  memberUserId: string | null,
   id: string
 ): Promise<Response> {
-  if (
-    latest === null &&
-    programTokenLookup &&
-    (await hasProgramToken(db, value))
-  ) {
-    return json(200, { events: [] }, id);
+  let enrolled = false;
+  if (latest && memberUserId) {
+    enrolled = await hasActiveEnrollment(db, latest.program_id, memberUserId);
   }
-  if (latest?.status === "Cancelled") {
-    return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
-  }
-  if (latest?.availability === "Inactive") {
-    return problem(
-      409,
-      "EVENT_UNAVAILABLE",
-      "此聚會已暫停開放，不能簽到。",
-      id
-    );
-  }
-  if (latest?.status === "Active") {
-    return problem(409, "CHECK_IN_CLOSED", "簽到時間已結束或尚未開始。", id);
-  }
-  return problem(404, "CHECK_IN_NOT_FOUND", "找不到可用的簽到聚會。", id);
+  return json(200, { events: [], latest: latest ?? null, enrolled }, id);
 }
 
 async function audit(
@@ -525,6 +512,52 @@ async function audit(
     .run();
 }
 
+/**
+ * Scanner deep-link resolver. Looks up the event by id and mirrors the
+ * existing resolveLookup contract: returns the open event when eligible,
+ * else falls through to `latest` describing why the caller cannot check in.
+ */
+async function resolveByEventId(
+  db: D1Database,
+  eventId: string
+): Promise<ResolveLookup> {
+  const result = await db
+    .prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.manual_check_in_code, e.check_in_window_opens_at,
+              e.check_in_window_closes_at, e.status, e.availability
+         FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE e.event_id = ?
+        ORDER BY e.starts_at ASC`
+    )
+    .bind(eventId)
+    .all<AttendanceEvent>();
+  const events = (result.results ?? []).filter((event) => isOpen(event));
+  if (events.length > 0) {
+    return { events, latest: null };
+  }
+  const latest = await matchingEventStateById(db, eventId);
+  return { events: [], latest };
+}
+
+async function matchingEventStateById(
+  db: D1Database,
+  eventId: string
+): Promise<AttendanceResolveLatest | null> {
+  const row = await db
+    .prepare(
+      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              p.program_id, p.name AS program_name
+         FROM events e JOIN programs p ON p.program_id = e.program_id
+        WHERE e.event_id = ?`
+    )
+    .bind(eventId)
+    .first<AttendanceResolveLatest>();
+  return row ?? null;
+}
+
+
 export async function handleResolve(
   request: Request,
   env: AttendanceEnv
@@ -534,7 +567,12 @@ export async function handleResolve(
   const token = url.searchParams.get("program_token");
   const code = url.searchParams.get("manual_code");
   const entry = url.searchParams.get("entry");
-  const explicitCount = [token, code].filter(Boolean).length;
+  const eventId = url.searchParams.get("event");
+  // The scanner deep-link (?event=<id>) is an explicit pre-select and is
+  // mutually exclusive with the credential-shaped params; otherwise the
+  // caller is asking the server to resolve ambiguity it cannot.
+  const explicitCount =
+    [token, code, eventId].filter(Boolean).length;
   if (explicitCount > 1) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
@@ -542,17 +580,35 @@ export async function handleResolve(
   // as a manual code first (globally unique per migration 0003), then as a
   // Program token. No client-side length heuristic decides identity.
   const value = token ?? code ?? entry ?? "";
+  if (eventId) {
+    const currentActor = await actor(request, env, id, false);
+    const memberUserId =
+      currentActor && !(currentActor instanceof Response)
+        ? currentActor.user_id
+        : null;
+    const { events, latest } = await resolveByEventId(env.DB, eventId);
+    if (events.length === 0) {
+      return resolveNoEvents(env.DB, latest, memberUserId, id);
+    }
+    return json(200, { events }, id);
+  }
   if (!value) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
-  const { events, latest, programTokenLookup } = await resolveLookup(
+  const currentActor = await actor(request, env, id, false);
+  const memberUserId =
+    currentActor && !(currentActor instanceof Response)
+      ? currentActor.user_id
+      : null;
+
+  const { events, latest } = await resolveLookup(
     env.DB,
     token,
     code,
     value
   );
   if (events.length === 0) {
-    return resolveNoEvents(env.DB, latest, programTokenLookup, value, id);
+    return resolveNoEvents(env.DB, latest, memberUserId, id);
   }
   return json(200, { events }, id);
 }

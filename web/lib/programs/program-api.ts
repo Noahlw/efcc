@@ -12,10 +12,22 @@ import type {
   AttendanceEvent as AttendanceEventType,
   AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
+  AttendanceResolveLatest as AttendanceResolveLatestType,
+  AttendanceResolveResult as AttendanceResolveResultType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
 
+import type { ManagementHubView } from "./hub-types";
 import type { ProgramsManagementAccess } from "./programs-access";
+
+// Management Hub directory (087-01 #310): the worker projection is the single
+// source for group/row copy; the browser renders it verbatim. Wire types are
+// shared via hub-types.ts (both tsconfig programs can include it).
+export type {
+  ManagementHubGroup,
+  ManagementHubRow,
+  ManagementHubView,
+} from "./hub-types";
 
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
@@ -23,6 +35,8 @@ export type {
   AttendanceEvent,
   AttendanceEventSummary,
   AttendanceMember,
+  AttendanceResolveLatest,
+  AttendanceResolveResult,
   AttendanceRow,
 } from "@/lib/attendance";
 
@@ -94,6 +108,50 @@ export type ManagementProgramSettings = ManagementProgram &
 export interface ManagementDirectory {
   departments: Department[];
   programs: ManagementProgram[];
+}
+export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
+
+export interface AccountPermissionAccount {
+  userId: string;
+  name: string;
+  role: AccountPermissionRoleKey;
+  departments: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+export interface AccountPermissionRole {
+  key: AccountPermissionRoleKey;
+  label: string;
+  scope: string;
+  assignmentState: "assigned" | "assignable";
+}
+
+export interface AccountPermissionsView {
+  accounts: AccountPermissionAccount[];
+  roles: AccountPermissionRole[];
+}
+
+export interface ManagementCockpitNextEvent {
+  event_id: string;
+  program_id: string;
+  title: string | null;
+  name: string | null;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  source: "SCHEDULE" | "MANUAL";
+  is_recurring: boolean;
+  checked_in_count: number;
+  roster_count: number;
+}
+
+export interface ManagementCockpitView {
+  program_id: string;
+  next_event: ManagementCockpitNextEvent | null;
+  active_event_count: number;
+  pending_enrollment_count: number;
 }
 
 export interface ManagementAttentionProgram {
@@ -208,9 +266,25 @@ export interface DepartmentSummary {
   display_order: number;
 }
 
+export type ParticipantCatalogViewerState =
+  | "active"
+  | "pending"
+  | "eligible"
+  | "managerOnly"
+  | "withdrawn"
+  | "cancelled"
+  | "rejected"
+  | "archived";
+
+export interface ParticipantCatalogProgram extends ProgramSummary {
+  viewerState: ParticipantCatalogViewerState;
+  nextEventStartsAt: string | null;
+  upcomingEventCount: number;
+}
+
 export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
-  programs: ProgramSummary[];
+  programs: ParticipantCatalogProgram[];
 }
 export interface ParticipantScheduleRule {
   rule_id: string;
@@ -228,6 +302,10 @@ export interface ParticipantEventSummary {
   ends_at: string;
   status: "Active";
   source: "SCHEDULE" | "MANUAL";
+  /** Projected from the real event row; null when the meeting has no title. */
+  name: string | null;
+  /** Projected from the real event row; null when the meeting has no venue. */
+  location: string | null;
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -285,6 +363,9 @@ export interface ScheduleRule {
   updated_at: string;
 }
 
+export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
+export type RecurrenceTag = "無" | "每週" | "每月";
+
 export interface ScheduleException {
   exception_id: string;
   rule_id: string;
@@ -298,6 +379,7 @@ export interface ScheduleException {
 export interface ProgramEvent {
   event_id: string;
   program_id: string;
+  program_name: string;
   starts_at: string;
   ends_at: string;
   status: "Active" | "Cancelled";
@@ -305,6 +387,7 @@ export interface ProgramEvent {
   availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
   name?: string | null;
+  event_type?: EventType | null;
   location?: string | null;
   manual_check_in_code?: string | null;
   check_in_window_opens_at?: string | null;
@@ -314,6 +397,10 @@ export interface ProgramEvent {
   updated_at: string;
   /** Matching schedule exception (attributed rule + HK wall date), if any. */
   exception?: ScheduleException | null;
+  /** Derived recurrence tag (e.g. '每週' | '每月' | '無'). */
+  recurrence_tag?: RecurrenceTag | null;
+  /** Whether active check-in/attendance records exist for this event. */
+  has_attendance?: boolean;
 }
 export interface EventDetail {
   event: ProgramEvent;
@@ -384,6 +471,22 @@ export interface MemberOption {
   user_id: string;
   name: string;
   username: string;
+}
+/** Server-scoped Member Directory result (Management Hub, Spec 087 US 13-15). */
+export type MemberDirectoryRole = "Admin" | "Staff" | "Member";
+
+export interface MemberDirectoryDepartment {
+  id: string;
+  name: string;
+}
+
+export interface MemberDirectoryMember {
+  userId: string;
+  name: string;
+  phone: string | null;
+  role: MemberDirectoryRole;
+  status: "Active";
+  departments: MemberDirectoryDepartment[];
 }
 
 export interface GenerateResult {
@@ -475,7 +578,10 @@ async function programsFetch<T>(
   path: string,
   method: "POST" | "GET" | "PATCH" | "DELETE",
   body?: unknown,
-  options: { idempotencyKey?: string | null } = {}
+  options: {
+    idempotencyKey?: string | null;
+    cache?: "no-store";
+  } = {}
 ): Promise<T> {
   let res: Response;
   try {
@@ -486,6 +592,7 @@ async function programsFetch<T>(
         ...idempotencyHeaders(method, options.idempotencyKey),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(options.cache === undefined ? {} : { cache: options.cache }),
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
@@ -677,7 +784,12 @@ export function listDepartments(): Promise<{
 }
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
-  return programsFetch("/api/v1/programs/management-directory", "GET");
+  return programsFetch(
+    "/api/v1/programs/management-directory",
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
 }
 
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
@@ -711,6 +823,32 @@ export function markManagementNotificationsRead(
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   return programsFetch("/api/v1/programs/access", "GET");
+}
+
+/**
+ * GET /api/v1/programs/hub — capability-filtered Management Hub directory.
+ * `no-store`: a revoked scope must be reflected on the next load.
+ */
+export function getManagementHub(): Promise<ManagementHubView> {
+  return programsFetch("/api/v1/programs/hub", "GET", undefined, {
+    cache: "no-store",
+  });
+}
+
+/**
+ * GET /api/v1/programs/account-permissions — Admin/Staff-only Account
+ * Permissions matrix (087-03 #320). `no-store`: role changes must be
+ * reflected on the next load.
+ */
+export function getAccountPermissions(): Promise<AccountPermissionsView> {
+  return programsFetch(
+    "/api/v1/programs/account-permissions",
+    "GET",
+    undefined,
+    {
+      cache: "no-store",
+    }
+  );
 }
 
 /** GET /api/v1/programs/catalog — narrow participant directory projection. */
@@ -771,10 +909,25 @@ export function getManagementProgram(programId: string): Promise<{
   program: ManagementProgramSettings;
   department: Department;
   modules: DepartmentModule[];
+  cockpit: ManagementCockpitView;
 }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/management`,
-    "GET"
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
+export function getManagementCockpit(
+  programId: string
+): Promise<{ cockpit: ManagementCockpitView }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/cockpit`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
   );
 }
 /** POST /api/v1/programs/departments/:id/programs */
@@ -861,6 +1014,17 @@ export function searchMemberOptions(
     `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
     "GET"
   );
+}
+/** GET /api/v1/programs/members?q=...&limit=... — server-scoped directory. */
+export function searchManagementMembers(
+  query: string,
+  options?: { limit?: number }
+): Promise<{ members: MemberDirectoryMember[] }> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */
@@ -988,6 +1152,7 @@ export function createEvent(
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
+    event_type?: EventType | null;
   }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
@@ -1026,6 +1191,7 @@ export function updateEvent(
     starts_at?: string;
     ends_at?: string;
     name?: string | null;
+    event_type?: EventType | null;
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
@@ -1056,12 +1222,12 @@ export function setEventAvailability(
 export function cancelEvent(
   programId: string,
   eventId: string,
-  reason: string
+  reason?: string | null
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { reason }
+    { reason: reason ?? null }
   );
 }
 
@@ -1080,7 +1246,9 @@ export function resolveAttendance(input: {
   program_token?: string;
   manual_code?: string;
   entry?: string;
-}): Promise<{ events: AttendanceEventType[] }> {
+  /** Scanner deep-link pre-select: look up the event by id and return it. */
+  event?: string;
+}): Promise<AttendanceResolveResultType> {
   const search = new URLSearchParams();
   if (input.program_token) {
     search.set("program_token", input.program_token);
@@ -1090,6 +1258,9 @@ export function resolveAttendance(input: {
   }
   if (input.entry) {
     search.set("entry", input.entry);
+  }
+  if (input.event) {
+    search.set("event", input.event);
   }
   return programsFetch(`/api/v1/attendance/resolve?${search}`, "GET");
 }
