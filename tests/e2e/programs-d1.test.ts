@@ -1353,9 +1353,10 @@ test.describe("NTC-01 participant Notices", () => {
       const setCookie = loginResponse.headers()["set-cookie"];
       const authCookie = setCookie?.split(";")[0];
       expect(authCookie).toBeTruthy();
-      const adminHeaders = authCookie
-        ? { Cookie: authCookie, Origin: TARGET_ORIGIN }
-        : { Origin: TARGET_ORIGIN };
+      const adminHeaders: Record<string, string> = { Origin: TARGET_ORIGIN };
+      if (authCookie) {
+        adminHeaders["Cookie"] = authCookie;
+      }
       const directoryResponse = await api.get(
         `${TARGET_ORIGIN}/api/v1/programs/management-directory`,
         { headers: adminHeaders }
@@ -1376,10 +1377,6 @@ test.describe("NTC-01 participant Notices", () => {
         }
       );
       expect(enrollResponse.status()).toBe(201);
-      // Let the local worker settle after the API burst; the member's
-      // browser login right after can otherwise race the still-busy
-      // workerd and stall on the permission-check redirect.
-      await page.waitForTimeout(250);
       try {
         await run();
       } finally {
@@ -1494,7 +1491,9 @@ test.describe("NTC-01 participant Notices", () => {
       await page.goto("/notices");
       await page.getByRole("link", { name: /聚會提醒/u }).click();
       await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
-      await page.getByRole("button", { name: COPY.backToOrigin }).click();
+      const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
+      await expect(backBtn).toBeVisible();
+      await backBtn.click();
       await expect(page).toHaveURL(/\/notices$/u);
       await expect(
         page.getByRole("list", { name: COPY.noticesListLabel })

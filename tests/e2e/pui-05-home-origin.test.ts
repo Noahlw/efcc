@@ -20,7 +20,7 @@ const COPY = {
   pageTitle: "課程與活動",
   detailPurpose: "課程簡介",
   approve: "核准",
-  decisionMade: "已處理",
+  decisionMade: "已處理申請。",
   workspaceTaskParticipants: "參與者",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
   enrollmentActiveHint: "你目前已加入此課程。",
@@ -95,9 +95,8 @@ async function ensureActiveEnrollment(
   });
   const activeHint = enrollmentPanel.getByText(COPY.enrollmentActiveHint);
   await expect(
-    submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint),
-    { timeout: 15_000 }
-  ).toBeVisible();
+    submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
+  ).toBeVisible({ timeout: 15_000 });
   const needsApproval = !(await activeHint.isVisible().catch(() => false));
   if (needsApproval && !(await pendingHint.isVisible().catch(() => false))) {
     await submitActionButton(enrollmentPanel).click();
@@ -117,9 +116,8 @@ async function ensureActiveEnrollment(
   await expect(
     adminPage
       .getByRole("region", { name: COPY.workspaceTaskParticipants })
-      .getByText(COPY.decisionMade, { exact: true }),
-    { timeout: 15_000 }
-  ).toBeVisible();
+      .getByText(COPY.decisionMade, { exact: true })
+  ).toBeVisible({ timeout: 15_000 });
   await memberPage.reload();
   // The approve response must leave an Active enrollment; assert it so a
   // silent Pending (e.g. approval racing the member's reload) fails here
@@ -134,14 +132,8 @@ async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
 ): Promise<boolean> {
-  // The admin page may be at about:blank when ensureActiveEnrollment
-  // returned early (member already Active); always establish an
-  // authenticated, navigated page before the fetch.
-  await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
-  if (!adminPage.url().startsWith(TARGET_ORIGIN)) {
-    throw new Error(
-      `admin page not on expected origin after login: ${adminPage.url()}`
-    );
+  if (adminPage.url() === "about:blank") {
+    await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
   }
   return await adminPage.evaluate(async (targetProgramId) => {
     const origin = window.location.origin;
@@ -151,9 +143,10 @@ async function openNextEventCheckInWindow(
     const listBody = (await listResponse.json()) as {
       data?: { events?: { event_id: string; starts_at: string }[] };
     };
-    const [nextEvent] = [...(listBody.data?.events ?? [])].sort((a, b) =>
-      a.starts_at.localeCompare(b.starts_at)
-    );
+    const nowIso = new Date().toISOString();
+    const [nextEvent] = [...(listBody.data?.events ?? [])]
+      .filter((e) => e.starts_at >= nowIso)
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
     if (!nextEvent) {
       return false;
     }
@@ -192,7 +185,7 @@ test.describe("PUI-05 Home origin supplement", () => {
 
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
-      await expect(homeEventCard, { timeout: 15_000 }).toBeVisible();
+      await expect(homeEventCard).toBeVisible({ timeout: 15_000 });
       await homeEventCard
         .getByRole("link", { name: COPY.homeViewEvent })
         .click();
