@@ -2276,12 +2276,17 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     const firstProgram = page
       .getByRole("list", { name: "可管理課程" })
       .getByRole("button")
+      .filter({ hasText: "E2E_DEMO_成人查經" })
       .first();
     // Capture the row's program name before navigating (the directory
-    // unmounts once the Cockpit opens).
+    // unmounts once the Cockpit opens). Read the card-title span, not
+    // the whole row: textContent() concatenates name + description +
+    // department with no newline separators in the accessible tree.
     const firstProgramName = required(
       "first program name",
-      (await firstProgram.textContent())?.split("\n")[0]?.trim()
+      (
+        await firstProgram.locator("span").first().textContent()
+      )?.trim()
     );
     await firstProgram.focus();
     await firstProgram.press("Enter");
