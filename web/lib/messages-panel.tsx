@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AnnouncementDetail, Icon } from "@/app/home/page";
 import { COPY } from "@/lib/copy";
+import { hkMonthDayLabel } from "@/lib/hk-time";
 import { listAnnouncements } from "@/lib/home-api";
 import type { HomeAnnouncement } from "@/lib/home-api";
 import { buildMessagesHref, parseMessagesIntent } from "@/lib/messages-intent";
@@ -18,28 +19,10 @@ type ListState =
   | { kind: "ready"; announcements: HomeAnnouncement[] }
   | { kind: "error" };
 
-function announcementDate(value: string | null): string {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const parts = new Intl.DateTimeFormat("zh-Hant-HK", {
-    day: "numeric",
-    month: "numeric",
-    timeZone: "Asia/Hong_Kong",
-  }).formatToParts(date);
-  const month = parts.find((entry) => entry.type === "month")?.value ?? "";
-  const day = parts.find((entry) => entry.type === "day")?.value ?? "";
-  return month && day ? `${month}月${day}日` : "";
-}
-
 function toDetail(row: HomeAnnouncement) {
   return {
     title: row.title,
-    date: announcementDate(row.publishedAt),
+    date: row.publishedAt ? hkMonthDayLabel(row.publishedAt) : "",
     summary: row.summary,
     externalUrl: row.ctaUrl,
   };
@@ -130,7 +113,7 @@ export const MessagesPanel = () => {
                   <span className={homeStyles.cardDescription}>
                     {row.summary}
                     {row.publishedAt
-                      ? ` · ${announcementDate(row.publishedAt)}`
+                      ? ` · ${hkMonthDayLabel(row.publishedAt)}`
                       : ""}
                   </span>
                 </span>

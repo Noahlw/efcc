@@ -51,7 +51,9 @@ describe(MessagesPanel, () => {
   test("renders the empty Notices-style chrome", async () => {
     mocks.listAnnouncements.mockResolvedValue({ announcements: [] });
     render(<MessagesPanel />);
-    await expect(screen.findByText(COPY.home.messagesEmpty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.home.messagesEmpty)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.home.messagesEmptyHint)).toBeInTheDocument();
   });
 
@@ -60,6 +62,7 @@ describe(MessagesPanel, () => {
     render(<MessagesPanel />);
     const row = await screen.findByRole("link", { name: /本週崇拜/u });
     expect(row).toHaveAttribute("href", "/messages?content=church-msg-1");
+    expect(row).toHaveTextContent("8月15日");
   });
 
   test("opens detail from the content URL and backs to the list", async () => {
@@ -68,7 +71,9 @@ describe(MessagesPanel, () => {
       new URLSearchParams("content=church-msg-1")
     );
     render(<MessagesPanel />);
-    await expect(screen.findByTestId("announcement-detail")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("announcement-detail")
+    ).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: COPY.home.churchNews })
     );

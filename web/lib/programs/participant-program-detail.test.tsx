@@ -343,6 +343,20 @@ describe("PUI-03 participant Program detail", () => {
     }
   );
 
+  test("keeps sticky withdraw below the management entry when the viewer can manage", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ enrollment: enrollmentFor("active") })
+    );
+    renderDetail({ canManage: true });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByRole("button", { name: COPY.programs.enterManagement })
+    ).toBeInTheDocument();
+    const actions = screen.getAllByRole("button");
+    expect(actions.at(-1)).toHaveAccessibleName(COPY.programs.cancelEnrollment);
+  });
+
   test("ManagerOnly renders the 由同工安排 tag, read-only note, and no self-enroll action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({

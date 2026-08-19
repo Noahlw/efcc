@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  hkMonthDayLabel,
   hkNoticeListLabel,
   hkShortDateLabel,
   hkShortTimeLabel,
@@ -12,6 +13,7 @@ describe("hk short date/time labels", () => {
     // 2026-08-20T11:30:00.000Z = 19:30 HKT on Thursday.
     expect(hkShortDateLabel("2026-08-20T11:30:00.000Z")).toBe("8月20日（四）");
     expect(hkShortTimeLabel("2026-08-20T11:30:00.000Z")).toBe("晚上 7:30");
+    expect(hkMonthDayLabel("2026-08-20T11:30:00.000Z")).toBe("8月20日");
   });
 
   test("uses 早上 before noon and 下午 from noon until 6pm", () => {

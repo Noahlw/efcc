@@ -334,6 +334,7 @@ export const ParticipantProgramDetail = ({
   } = state.detail;
   const status = statusForDetail(state.detail);
   const nextEvent = scheduledEvents[0] ?? null;
+  const nextLocation = nextEvent ? eventLocation(nextEvent) : null;
   const history = buildEnrollmentHistory(enrollment);
   const nextConflict = conflictNote(
     state.detail,
@@ -396,12 +397,12 @@ export const ParticipantProgramDetail = ({
                 {hkShortTimeRange(nextEvent.starts_at, nextEvent.ends_at)}
               </span>
             </p>
-            {eventLocation(nextEvent) && (
+            {nextLocation ? (
               <p className={styles.programDetailFactRow}>
                 <EventFactIcon name="pin" />
-                <span>{eventLocation(nextEvent)}</span>
+                <span>{nextLocation}</span>
               </p>
-            )}
+            ) : null}
           </div>
           {nextConflict && (
             <p className={styles.programDetailConflict} role="note">
@@ -434,20 +435,23 @@ export const ParticipantProgramDetail = ({
             className={styles.programDetailList}
             aria-label={COPY.programs.scheduleTitle}
           >
-            {scheduledEvents.map((event) => (
-              <li key={event.event_id} className={styles.programDetailEvent}>
-                <time className={styles.eventDate} dateTime={event.starts_at}>
-                  {hkMonthDayLabel(event.starts_at)}
-                </time>
-                <div className={styles.programDetailScheduleCopy}>
-                  <strong>{eventTitle(event, program.name)}</strong>
-                  <span className={styles.eventSource}>
-                    {eventWhen(event)}
-                    {eventLocation(event) ? ` · ${eventLocation(event)}` : ""}
-                  </span>
-                </div>
-              </li>
-            ))}
+            {scheduledEvents.map((event) => {
+              const location = eventLocation(event);
+              return (
+                <li key={event.event_id} className={styles.programDetailEvent}>
+                  <time className={styles.eventDate} dateTime={event.starts_at}>
+                    {hkMonthDayLabel(event.starts_at)}
+                  </time>
+                  <div className={styles.programDetailScheduleCopy}>
+                    <strong>{eventTitle(event, program.name)}</strong>
+                    <span className={styles.eventSource}>
+                      {eventWhen(event)}
+                      {location ? ` · ${location}` : ""}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className={styles.programDetailMuted}>
@@ -483,14 +487,6 @@ export const ParticipantProgramDetail = ({
         </section>
       )}
 
-      <ParticipantEnrollment
-        program={program}
-        enrollment={enrollment}
-        enrollmentAccess={enrollmentAccess}
-        scheduleRules={scheduleRules}
-        events={state.detail.events}
-        onRefresh={refreshDetail}
-      />
       {canManage && (
         <div className={styles.managementEntry}>
           <div>
@@ -506,6 +502,14 @@ export const ParticipantProgramDetail = ({
           </button>
         </div>
       )}
+      <ParticipantEnrollment
+        program={program}
+        enrollment={enrollment}
+        enrollmentAccess={enrollmentAccess}
+        scheduleRules={scheduleRules}
+        events={state.detail.events}
+        onRefresh={refreshDetail}
+      />
     </article>
   );
 };
