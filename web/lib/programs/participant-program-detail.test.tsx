@@ -153,7 +153,7 @@ afterEach(() => {
 describe("PUI-03 participant Program detail", () => {
   test("renders the reworked detail layout with icon card, event schedule, and back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
-    const { onBack, onOpenEvent } = renderDetail();
+    const { onBack, onOpenEvent } = renderDetail({ canManage: true });
 
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     const heading = await screen.findByRole("heading", {
@@ -199,6 +199,22 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByRole("button", { name: COPY.programs.detailBack })
     );
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  test("hides the view-event-detail CTA for a viewer with no Active enrollment", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const nextCard = screen.getByRole("article", { name: "第三課聚會" });
+    // #389 gap-fix: getEventDetail's participant projection 404s without an
+    // Active enrollment (department-workspace.ts hasActiveEnrollment gate),
+    // so this CTA must not render for a plain unenrolled, non-managing view.
+    expect(
+      within(nextCard).queryByRole("button", {
+        name: COPY.programs.viewEventDetail,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("renders the member's own enrollment history", async () => {

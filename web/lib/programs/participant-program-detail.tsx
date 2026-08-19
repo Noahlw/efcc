@@ -336,6 +336,9 @@ export const ParticipantProgramDetail = ({
   const nextEvent = scheduledEvents[0] ?? null;
   const nextLocation = nextEvent ? eventLocation(nextEvent) : null;
   const history = buildEnrollmentHistory(enrollment);
+  const hasActiveEnrollment =
+    enrollment?.enrollments.some((item) => item.status === "Active") ?? false;
+  const canOpenEventDetail = canManage || hasActiveEnrollment;
   const nextConflict = conflictNote(
     state.detail,
     nextEvent,
@@ -409,14 +412,16 @@ export const ParticipantProgramDetail = ({
               {nextConflict}
             </p>
           )}
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => onOpenEvent(nextEvent.event_id)}
-            aria-label={COPY.programs.viewEventDetail}
-          >
-            {COPY.programs.viewEventDetail}
-          </button>
+          {canOpenEventDetail && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => onOpenEvent(nextEvent.event_id)}
+              aria-label={COPY.programs.viewEventDetail}
+            >
+              {COPY.programs.viewEventDetail}
+            </button>
+          )}
         </article>
       )}
 

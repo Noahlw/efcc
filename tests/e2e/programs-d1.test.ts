@@ -52,7 +52,7 @@ const COPY = {
   detailPurpose: "課程簡介",
   detailEvents: "近期活動",
   detailUnavailable: "無法開啟這個課程",
-  detailBack: "返回課程目錄",
+  detailBack: "課程",
   nextMeeting: "下一次聚會",
   detailEventLocation: "地點",
   viewEventDetail: "查看聚會詳情",
@@ -1059,27 +1059,27 @@ test.describe("PUI-03 participant Program detail", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    // #389 dropped the separate 課程簡介 subheading; the program-name
+    // title id is the stable arrival signal for Program detail now.
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     // The detail surfaces the real next-meeting projection: mono label,
     // meeting title, date/time, and the event-detail action.
     await expect(page.getByText(COPY.nextMeeting)).toBeVisible();
+    // #389 gap-fix: no Active enrollment means getEventDetail's participant
+    // projection 404s, so the CTA must not render for this unenrolled member.
     await expect(
       page.getByRole("button", { name: COPY.viewEventDetail })
-    ).toBeVisible();
-    // Schedule rules render as the 聚會時間表 table (E2E_DEMO_成人查經 is
-    // seeded with a weekly rule and generated meetings).
+    ).toHaveCount(0);
+    // #389 replaced the schedule-rule table with a unified real-event list
+    // (聚會時間表), seeded weekly for E2E_DEMO_成人查經.
     await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
+      page.getByRole("list", { name: COPY.scheduleTitle })
     ).toBeVisible();
 
     await page.reload();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
+      page.getByRole("list", { name: COPY.scheduleTitle })
     ).toBeVisible();
 
     await page.getByRole("button", { name: COPY.detailBack }).click();
@@ -1149,10 +1149,16 @@ test.describe("PUI-05 participant Event Detail", () => {
         submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
       ).toBeVisible();
       const needsApproval = !(await activeHint.isVisible().catch(() => false));
-      if (
-        needsApproval &&
-        !(await pendingHint.isVisible().catch(() => false))
-      ) {
+      const isFreshUnenrolled =
+        needsApproval && !(await pendingHint.isVisible().catch(() => false));
+      if (isFreshUnenrolled) {
+        // #389 gap-fix: no Active enrollment means getEventDetail's
+        // participant projection 404s (department-workspace.ts
+        // hasActiveEnrollment gate), so the 查看聚會詳情 CTA must not
+        // render here — offering it would be a predictable dead click.
+        await expect(
+          memberPage.getByRole("button", { name: COPY.viewEventDetail })
+        ).toHaveCount(0);
         await submitActionButton(enrollmentPanel).click();
         await expect(pendingHint).toBeVisible();
       }
@@ -1183,9 +1189,9 @@ test.describe("PUI-05 participant Event Detail", () => {
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).
       await memberPage.goto(`/programs?program=${programId}#overview`);
-      await expect(
-        memberPage.getByRole("heading", { name: COPY.detailPurpose })
-      ).toBeVisible();
+      // #389 dropped the separate 課程簡介 subheading; the program-name
+      // title id is the stable arrival signal for Program detail now.
+      await expect(memberPage.locator("#program-detail-title")).toBeVisible();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
       });
