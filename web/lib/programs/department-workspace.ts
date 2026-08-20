@@ -545,7 +545,12 @@ function parseParticipantInstant(value: string): number | null {
     return null;
   }
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : null;
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+  return new Date(timestamp).toISOString().slice(0, 16) === value.slice(0, 16)
+    ? timestamp
+    : null;
 }
 
 export function participantSelfCheckInAvailable(

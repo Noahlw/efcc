@@ -8461,7 +8461,7 @@ describe("PUI-03: participant Program detail", () => {
       participantSelfCheckInAvailable(
         {
           ...event,
-          check_in_window_opens_at: "0",
+          check_in_window_opens_at: "2026-02-31T10:00:00Z",
           check_in_window_closes_at: "9999-12-31T23:59:59Z",
         },
         program,
