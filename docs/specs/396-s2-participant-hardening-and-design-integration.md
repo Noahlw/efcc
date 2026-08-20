@@ -166,3 +166,13 @@ Deferred cross-cutting questions live under the existing root map [#366](https:/
 - [#398](https://github.com/Noahlw/efcc/issues/398) — Event Detail pre-window guidance prototype (`wayfinder:prototype`, blocked for production by #370).
 - [#399](https://github.com/Noahlw/efcc/issues/399) — Data-driven announcement venue contract (`wayfinder:grilling`, depends on #373).
 - [#400](https://github.com/Noahlw/efcc/issues/400) — Management Messages contextual shell contract (`wayfinder:grilling`, depends on #369).
+
+## Implementation tickets
+
+The approved tracer-bullet implementation set is published under this spec:
+
+- [#401](https://github.com/Noahlw/efcc/issues/401) — Member-specific self-check-in availability projection.
+- [#402](https://github.com/Noahlw/efcc/issues/402) — Program Detail schedule and enrollment affordances; blocked by #401.
+- [#403](https://github.com/Noahlw/efcc/issues/403) — Programs forbidden recovery and long-copy hardening.
+- [#404](https://github.com/Noahlw/efcc/issues/404) — Home long-copy rendering.
+- [#405](https://github.com/Noahlw/efcc/issues/405) — S2 participant integration gate; blocked by #401–#404.
