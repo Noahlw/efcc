@@ -66,7 +66,7 @@
 | `notices-loading` | **Implemented; Deferred skeleton variant** | `web/lib/notices-panel.tsx:138-149`; `web/lib/notices-panel.module.css:204-206` | Text loading output has polite announcement/`aria-busy` and no layout shift; three-row shimmer remains deferred. |
 | `notices-empty` | **Implemented** | `web/lib/notices-panel.tsx:187,193-198`; `web/lib/notices-panel.module.css:175-194` | Empty card is centered, mark-all is disabled, and copy matches the participant export. |
 | `notices-error` | **Implemented** | `web/lib/notices-panel.tsx:151-169`; `web/lib/notices-panel.test.tsx:174-193` | Alert and 44px Retry re-run the load path; no stale mutation state leaks. |
-| `notices-offline` | **Implemented shell + Selected action prototype** | `web/lib/app-shell.tsx:58`; `web/lib/notices-panel.tsx:105-136`; `web/lib/notices-api.ts:65-71` | Shared OfflineBanner and reactive API failure preserve truth. Prototype may test disabling `全部標示已讀` while offline; production change requires its own acceptance trace. |
+| `notices-offline` | **Implemented** | `web/lib/app-shell.tsx:58`; `web/lib/notices-panel.tsx:105-136`; `web/lib/notices-api.ts:65-71` | Server remains canonical for account-level `read_at`; client updates optimistically, POST stays idempotent, and offline failure is announced without pretending persistence succeeded. Do not add an online-disable branch. |
 | `notices-permission` | **Implemented** | `web/lib/app-shell.tsx:159-179`; `web/lib/forbidden-view.tsx`; `web/lib/programs/program-handlers.ts:2849` | Unauthorized access uses the standard shell/Worker ForbiddenView; no in-panel permission card. |
 | `notices-long-copy` | **Implemented** | `web/lib/notices-panel.module.css:89-150`; `web/lib/notices-panel.tsx:50-74` | `overflow-wrap:anywhere` plus `min-width:0` keeps title/body tokens inside the row; timestamp remains readable and no horizontal scroll occurs. |
 
@@ -98,7 +98,7 @@
 | Home/Programs/Notices shared long-copy guards | **Selected** | — | Prototype `overflow-wrap:anywhere`; no line clamp or copy loss. Notices current rule is already Implemented. |
 | Elapsed-time loading hints | **Rejected** | — | No 8-second timers or latency-specific copy in participant Sections. |
 | Event Lifecycle Visibility | **Deferred** | `optional` | Separate future ticket for participant cancelled/rescheduled rows, explicit lifecycle copy, and danger/pending dots. Current contract remains active-only. |
-| Notices offline mark-all disable | **Selected** | — | Prototype/docs only. Production disabled/re-enable semantics require a separate acceptance trace; current reactive error remains live behavior. |
+| Notices offline mark-all disable | **Rejected** | — | Notices read state remains server-canonical with client optimistic presentation and reactive failure; native offline disable would create a second ownership model. |
 | Evidence-blocked queue | **None** | — | Add a row only when a required viewport/state produces a reproducible failure or a real contract contradiction. |
 
 ## Prototype artifacts
