@@ -611,8 +611,10 @@ test.describe("PUI-01 Programs boundary", () => {
     ).toBeTruthy();
     await page.goto(`/programs?program=${programId}#overview`);
     await expect(page.locator("#program-detail-title")).toBeVisible();
+    // #391 fix A: BoundaryFrame suppresses its own catalog header (and the
+    // role/aria-labelledby that pointed at it) while a participant program
+    // detail is showing -- the child <article> is the region landmark now.
     const panel = page.locator("#programs-mode-panel");
-    await expect(panel).toHaveAttribute("role", "region");
 
     await page.getByRole("button", { name: COPY.enterManagement }).click();
     await expect(page).toHaveURL(
