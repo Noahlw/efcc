@@ -537,7 +537,18 @@ export interface ParticipantEventSummary {
   self_check_in_available: boolean;
 }
 
-function participantSelfCheckInAvailable(
+const ISO_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u;
+
+function parseParticipantInstant(value: string): number | null {
+  if (!ISO_INSTANT_PATTERN.test(value)) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function participantSelfCheckInAvailable(
   event: Pick<
     EventRow,
     | "status"
@@ -561,11 +572,11 @@ function participantSelfCheckInAvailable(
   ) {
     return false;
   }
-  const opensAt = Date.parse(event.check_in_window_opens_at);
-  const closesAt = Date.parse(event.check_in_window_closes_at);
+  const opensAt = parseParticipantInstant(event.check_in_window_opens_at);
+  const closesAt = parseParticipantInstant(event.check_in_window_closes_at);
   return (
-    Number.isFinite(opensAt) &&
-    Number.isFinite(closesAt) &&
+    opensAt !== null &&
+    closesAt !== null &&
     now >= opensAt &&
     now <= closesAt
   );
@@ -1995,10 +2006,7 @@ export class DepartmentWorkspace {
       this.listEvents(ctx, programId),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
-    const hasActiveEnrollment =
-      enrollmentState.snapshot?.enrollments.some(
-        (enrollment) => enrollment.status === "Active"
-      ) ?? false;
+    const hasActiveEnrollment = enrollmentState.hasActiveEnrollment;
     return {
       program: this.programSummary(view),
       department: this.departmentSummary(department),
@@ -2043,20 +2051,28 @@ export class DepartmentWorkspace {
   ): Promise<{
     access: ParticipantEnrollmentAccess;
     snapshot: ParticipantEnrollmentSnapshot | null;
+    hasActiveEnrollment: boolean;
   }> {
-    if (
-      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
-    ) {
-      return { access: "Unavailable", snapshot: null };
-    }
-    if (!view.capabilities.enroll) {
-      return { access: "Ineligible", snapshot: null };
-    }
     const { requests, enrollments } =
       await this.store.listParticipantEnrollmentSnapshot(
         view.program_id,
         ctx.actorUserId
       );
+    const hasActiveEnrollment = enrollments.some(
+      (enrollment) => enrollment.status === "Active"
+    );
+    if (
+      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
+    ) {
+      return {
+        access: "Unavailable",
+        snapshot: null,
+        hasActiveEnrollment,
+      };
+    }
+    if (!view.capabilities.enroll) {
+      return { access: "Ineligible", snapshot: null, hasActiveEnrollment };
+    }
     return {
       access: "Eligible",
       snapshot: {
@@ -2077,6 +2093,7 @@ export class DepartmentWorkspace {
             cancelled_at: enrollment.cancelled_at,
           })),
       },
+      hasActiveEnrollment,
     };
   }
 
