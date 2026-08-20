@@ -348,6 +348,72 @@ export function AnnouncementDetail({
   );
 }
 
+function HomeLoadingSkeleton() {
+  return (
+    <div
+      className={`${styles.page} ${styles.skeletonPage}`}
+      data-testid="home-loading-skeleton"
+    >
+      <section
+        className={styles.skeletonRegion}
+        data-testid="home-loading-state"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <output className={styles.skeletonAnnouncement}>
+          {COPY.home.loading}
+        </output>
+        <div aria-hidden="true">
+          <div className={styles.skeletonIntro}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDate}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonText}`}
+            />
+          </div>
+          <div className={styles.skeletonEventCard}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonBadge}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonTitle}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonAction}`}
+            />
+          </div>
+          <div className={styles.skeletonSection}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
+            />
+          </div>
+          <div className={styles.skeletonSection}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function HomeView({
   featuredEvent: initialEvent,
   featuredProgram: initialProgram,
@@ -427,13 +493,7 @@ export function HomeView({
   }
 
   if (!hasInitialData && loadState === "loading") {
-    return (
-      <div className={styles.page}>
-        <section className={styles.emptyCard} data-testid="home-loading-state">
-          <output aria-busy="true">{COPY.home.loading}</output>
-        </section>
-      </div>
-    );
+    return <HomeLoadingSkeleton />;
   }
 
   if (!hasInitialData && loadState === "error") {

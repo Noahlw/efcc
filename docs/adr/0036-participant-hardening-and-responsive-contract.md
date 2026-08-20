@@ -1,0 +1,13 @@
+# Participant Hardening and Responsive Contract
+
+**Status:** accepted
+
+Phase 391 hardening is governed by Product Contract Precedence: authentication, authorization, route/state behavior, accessibility, responsive usability, and shared tokens outrank literal geometry copied from a static participant export. The Shared Shell keeps its established 800px mobile/desktop transition; participant body content stays fluid rather than gaining device-specific presets or a broad export-only 680px/radius migration. The required responsive evidence probes are 320, 375, 390, 414, 799, 800, and 1440px, with `scrollWidth <= innerWidth`, 44px touch targets, focus/keyboard behavior, and dock/rail clearance.
+
+The Visual Hardening Matrix classifies each case as Implemented, Selected for prototype exploration, Deferred, Rejected, or Evidence-blocked. `Selected` means prototype candidate only; `optional` is an independent tag, not a delivery status. Evidence-blocked requires a reproducible failure or an unresolved product-contract contradiction. No elapsed-time loading hints are added.
+
+Program Detail keeps `schedule_rules` and concrete `upcomingEvents` as separate domain data inside one grouped panel, hides empty groups, and explores a lifecycle-dot presentation for the active Upcoming Event Set. The participant set is capped at four events on phone-width layouts and eight on desktop-width layouts. Active lifecycle dots are neutral; future cancelled/rescheduled visibility is an independent optional ticket with danger/pending treatment. `可簽到` is visible only when attendance is actually available. Member detail shows a latest Participant Enrollment Summary, not a full enrollment-history timeline; the Manager Workspace owns full history. Enrollment mutation states use one movable action control, never duplicated inline and sticky controls.
+
+Home loading is the one production exception to the docs-only hardening pass: its structural skeleton mirrors the greeting, next-event, announcements, and Explore geometry, uses the existing loading announcement and `aria-busy`, and adds no timer hint. Its acceptance trace is `docs/specs/393-s2-home-structural-skeleton-acceptance-plan.md`. Static harden HTML remains review-only and does not authorize API, authorization, enrollment, or route changes.
+
+**Consequences:** Future visual changes must link to a matrix row and its observable acceptance. Literal export values such as 680px body width, 10px/9px local radii, 78px dock, and export hex borders are not defects when they conflict with shared tokens or shell contracts. A cancelled/rescheduled participant lifecycle view requires a separate ticket and decision rather than silently expanding the active-only Event set.

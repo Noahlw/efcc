@@ -6,7 +6,10 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import {
+  defaultSections,
+  stableNavigationSections,
+} from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -131,11 +134,17 @@ function stubHomeEndpoint(options: HomeRouteOptions = {}) {
 
   const data = {
     featuredEvent:
-      options.featuredEvent !== undefined ? options.featuredEvent : defaultEvent,
+      options.featuredEvent === undefined
+        ? defaultEvent
+        : options.featuredEvent,
     announcement:
-      options.announcement !== undefined ? options.announcement : defaultAnnouncement,
+      options.announcement === undefined
+        ? defaultAnnouncement
+        : options.announcement,
     exploreProgram:
-      options.exploreProgram !== undefined ? options.exploreProgram : defaultExploreProgram,
+      options.exploreProgram === undefined
+        ? defaultExploreProgram
+        : options.exploreProgram,
   };
 
   return async (route: Route) => {
@@ -190,14 +199,62 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
     await expect(eventCard).toBeVisible();
     await expect(eventCard.getByText(COPY.home.enrolledBadge)).toBeVisible();
     await expect(eventCard.getByText("門徒訓練基礎課")).toBeVisible();
-    await expect(eventCard.getByRole("heading", { level: 2, name: "第三課聚會" })).toBeVisible();
+    await expect(
+      eventCard.getByRole("heading", { level: 2, name: "第三課聚會" })
+    ).toBeVisible();
     await expect(eventCard.getByText("二樓禮堂")).toBeVisible();
 
     // 3. CTA navigates to /programs
-    const viewEventButton = eventCard.getByRole("link", { name: COPY.home.viewEvent });
+    const viewEventButton = eventCard.getByRole("link", {
+      name: COPY.home.viewEvent,
+    });
     await expect(viewEventButton).toBeVisible();
     await viewEventButton.click();
     await expect(page).toHaveURL(/\/programs/);
+  });
+
+  test("Home keeps a structural skeleton distinct from empty while projection is pending", async ({
+    page,
+  }) => {
+    await initAuthenticatedPage(page);
+    await page.unroute("**/api/v1/home");
+    let release!: () => void;
+    // oxlint-disable-next-line promise/avoid-new -- hold the intercepted response
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/v1/home", async (route) => {
+      await pending;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          requestId: "r-home-skeleton",
+          data: {
+            featuredEvent: null,
+            announcement: null,
+            exploreProgram: null,
+          },
+        }),
+      });
+    });
+
+    await page.goto("/home");
+    const loading = page.getByTestId("home-loading-state");
+    await expect(page.getByTestId("home-loading-skeleton")).toBeVisible();
+    await expect(loading).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByTestId("home-empty-state")).toHaveCount(0);
+    const geometry = await page.evaluate(() => ({
+      innerWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
+    await expect(
+      page.getByTestId("home-loading-skeleton").locator("a,button")
+    ).toHaveCount(0);
+    release();
+    await expect(page.getByTestId("home-empty-state")).toBeVisible();
+    await expect(page.getByTestId("home-loading-skeleton")).toHaveCount(0);
   });
 
   test("Home renders empty state when member is not enrolled in any upcoming event", async ({
@@ -212,11 +269,15 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
     // 2. Empty State
     const emptyState = page.getByTestId("home-empty-state");
     await expect(emptyState).toBeVisible();
-    await expect(emptyState.getByRole("heading", { level: 2, name: COPY.home.emptyTitle })).toBeVisible();
+    await expect(
+      emptyState.getByRole("heading", { level: 2, name: COPY.home.emptyTitle })
+    ).toBeVisible();
     await expect(emptyState.getByText(COPY.home.emptySubtitle)).toBeVisible();
 
     // 3. CTA navigates to /programs
-    const exploreProgramsButton = emptyState.getByRole("link", { name: COPY.home.explorePrograms });
+    const exploreProgramsButton = emptyState.getByRole("link", {
+      name: COPY.home.explorePrograms,
+    });
     await expect(exploreProgramsButton).toBeVisible();
     await exploreProgramsButton.click();
     await expect(page).toHaveURL(/\/programs/);
@@ -242,36 +303,59 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
     await page.goto("/home");
 
     // 1. Church news section and card on home
-    await expect(page.getByRole("heading", { level: 2, name: COPY.home.churchNews })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 2, name: COPY.home.churchNews })
+    ).toBeVisible();
     const announcementCard = page.getByTestId("announcement-card");
     await expect(announcementCard).toBeVisible();
-    await expect(announcementCard.getByText("本週崇拜及聚會安排")).toBeVisible();
+    await expect(
+      announcementCard.getByText("本週崇拜及聚會安排")
+    ).toBeVisible();
 
     // 2. Click opens announcement detail
     await announcementCard.click();
 
     const detailView = page.getByTestId("announcement-detail");
     await expect(detailView).toBeVisible();
-    await expect(detailView.getByRole("heading", { level: 1, name: "本週崇拜及聚會安排" })).toBeVisible();
+    await expect(
+      detailView.getByRole("heading", { level: 1, name: "本週崇拜及聚會安排" })
+    ).toBeVisible();
     await expect(detailView.getByText("8月15日")).toBeVisible();
-    await expect(detailView.getByText("請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。")).toBeVisible();
+    await expect(
+      detailView.getByText(
+        "請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。"
+      )
+    ).toBeVisible();
 
     // 3. Venue information
-    await expect(detailView.getByRole("heading", { level: 2, name: COPY.home.venueTitle })).toBeVisible();
-    await expect(detailView.getByText(COPY.home.venueInstructions)).toBeVisible();
+    await expect(
+      detailView.getByRole("heading", { level: 2, name: COPY.home.venueTitle })
+    ).toBeVisible();
+    await expect(
+      detailView.getByText(COPY.home.venueInstructions)
+    ).toBeVisible();
     await expect(detailView.getByText(COPY.home.worshipLocation)).toBeVisible();
     await expect(detailView.getByText(COPY.home.familyRoom)).toBeVisible();
-    await expect(detailView.getByText(COPY.home.visitorReception)).toBeVisible();
+    await expect(
+      detailView.getByText(COPY.home.visitorReception)
+    ).toBeVisible();
 
     // 4. External link properties
-    const externalLink = detailView.getByRole("link", { name: new RegExp(COPY.home.externalLink) });
+    const externalLink = detailView.getByRole("link", {
+      name: new RegExp(COPY.home.externalLink),
+    });
     await expect(externalLink).toBeVisible();
-    await expect(externalLink).toHaveAttribute("href", "https://example.com/venue-details");
+    await expect(externalLink).toHaveAttribute(
+      "href",
+      "https://example.com/venue-details"
+    );
     await expect(externalLink).toHaveAttribute("target", "_blank");
     await expect(externalLink).toHaveAttribute("rel", "noopener");
 
     // 5. Back button returns to home
-    const backButton = detailView.getByRole("button", { name: new RegExp(COPY.home.backHome) });
+    const backButton = detailView.getByRole("button", {
+      name: new RegExp(COPY.home.backHome),
+    });
     await expect(backButton).toBeVisible();
     await backButton.click();
 
@@ -293,10 +377,14 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
     await page.goto("/home");
 
     // 1. Explore section
-    await expect(page.getByRole("heading", { level: 2, name: COPY.home.explore })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 2, name: COPY.home.explore })
+    ).toBeVisible();
 
     // 2. All programs link navigates to /programs
-    const allProgramsLink = page.getByRole("link", { name: COPY.home.allPrograms });
+    const allProgramsLink = page.getByRole("link", {
+      name: COPY.home.allPrograms,
+    });
     await expect(allProgramsLink).toBeVisible();
     await allProgramsLink.click();
     await expect(page).toHaveURL(/\/programs/);

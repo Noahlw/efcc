@@ -345,6 +345,13 @@ describe("HomeView Component", () => {
     renderWithApp(<HomeView />);
 
     expect(screen.getByTestId("home-loading-state")).toBeInTheDocument();
+    expect(screen.getByTestId("home-loading-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("home-loading-state")).toHaveAttribute(
+      "aria-busy",
+      "true"
+    );
+    expect(screen.queryByTestId("home-empty-state")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
     pending.resolve(
       HttpResponse.json({
         requestId: "r-home-empty",
