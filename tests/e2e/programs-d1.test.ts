@@ -610,9 +610,7 @@ test.describe("PUI-01 Programs boundary", () => {
       "catalog fixture must expose a visible Program"
     ).toBeTruthy();
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     const panel = page.locator("#programs-mode-panel");
     await expect(panel).toHaveAttribute("role", "region");
 
@@ -656,9 +654,7 @@ test.describe("PUI-01 Programs boundary", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}#overview$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
   });
 
   test("malformed direct intent stays recoverable inside Programs", async ({
@@ -1037,9 +1033,7 @@ test.describe("PUI-02 participant Programs directory", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.detailBack })
     ).toBeVisible();
@@ -1612,9 +1606,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
 
     const enrollmentPanel = enrollmentPanelOf(page);
     const requestButton = submitActionButton(enrollmentPanel);
@@ -1848,9 +1840,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.enroll })).toHaveCount(
       0
