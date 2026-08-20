@@ -720,7 +720,7 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.goToScan,
     });
     expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
-    expect(cta).toHaveClass(styles.actionButton);
+    expect(cta).toHaveClass(styles.button);
     expect(cta.parentElement).toHaveClass(styles.stickyActionBar);
 
     // No management controls.
@@ -756,6 +756,11 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.queryByRole("status", { name: COPY.programs.checkInAvailable })
     ).not.toBeInTheDocument();
+    expect(screen.getByText(/簽到時間尚未開始/u)).toBeInTheDocument();
+    const closedCta = screen.getByRole("link", {
+      name: COPY.programs.goToScan,
+    });
+    expect(closedCta).toHaveClass(styles.secondaryButton);
   });
 
   test("participant projection back uses the supplied onBack callback (history.back wrapper)", async () => {

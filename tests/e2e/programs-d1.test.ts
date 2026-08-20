@@ -1203,7 +1203,14 @@ test.describe("PUI-05 participant Event Detail", () => {
       await expect(
         memberPage.locator("#participant-event-title")
       ).toBeVisible();
-      await expect(memberPage.getByText(COPY.eventInstructions)).toBeVisible();
+      // Instructions copy is state-conditional (open vs. closed check-in
+      // window, #391 fix D/E); assert whichever one the real event window
+      // actually shows rather than assuming the open-state copy.
+      await expect(
+        memberPage
+          .getByText(COPY.eventInstructions, { exact: false })
+          .or(memberPage.getByText(/簽到時間尚未開始/u))
+      ).toBeVisible();
       await expect(
         memberPage.getByRole("button", { name: COPY.backToOrigin })
       ).toBeVisible();

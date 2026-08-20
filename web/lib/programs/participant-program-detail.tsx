@@ -105,12 +105,13 @@ function statusForDetail(detail: ParticipantProgramDetailData): {
   return { label: COPY.programs.statusEligible, kind: "pending" };
 }
 
-function eventTitle(
-  event: ParticipantEventSummary,
-  programName: string
-): string {
+function eventTitle(event: ParticipantEventSummary, index: number): string {
   const view = event as ParticipantEventView;
-  return view.name?.trim() || view.title?.trim() || programName;
+  return (
+    view.name?.trim() ||
+    view.title?.trim() ||
+    COPY.programs.sessionFallback.replace("{n}", String(index + 1))
+  );
 }
 
 function eventWhen(event: ParticipantEventSummary): string {
@@ -390,7 +391,7 @@ export const ParticipantProgramDetail = ({
             id="program-detail-next-event"
             className={styles.programDetailNextEventTitle}
           >
-            {eventTitle(nextEvent, program.name)}
+            {eventTitle(nextEvent, 0)}
           </h3>
           <div className={styles.programDetailInfoCard}>
             <p className={styles.programDetailFactRow}>
@@ -440,7 +441,7 @@ export const ParticipantProgramDetail = ({
             className={styles.programDetailList}
             aria-label={COPY.programs.scheduleTitle}
           >
-            {scheduledEvents.map((event) => {
+            {scheduledEvents.map((event, index) => {
               const location = eventLocation(event);
               return (
                 <li key={event.event_id} className={styles.programDetailEvent}>
@@ -448,7 +449,7 @@ export const ParticipantProgramDetail = ({
                     {hkMonthDayLabel(event.starts_at)}
                   </time>
                   <div className={styles.programDetailScheduleCopy}>
-                    <strong>{eventTitle(event, program.name)}</strong>
+                    <strong>{eventTitle(event, index)}</strong>
                     <span className={styles.eventSource}>
                       {eventWhen(event)}
                       {location ? ` · ${location}` : ""}

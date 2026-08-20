@@ -11,7 +11,6 @@ import { listAnnouncements } from "@/lib/home-api";
 import type { HomeAnnouncement } from "@/lib/home-api";
 import { buildMessagesHref, parseMessagesIntent } from "@/lib/messages-intent";
 
-import homeStyles from "@/app/home/home.module.css";
 import styles from "@/lib/notices-panel.module.css";
 
 type ListState =
@@ -103,21 +102,21 @@ export const MessagesPanel = () => {
       ) : (
         <ul className={styles.list} aria-label={COPY.home.messagesListLabel}>
           {state.announcements.map((row) => (
-            <li key={row.contentId}>
+            <li key={row.contentId} className={styles.item}>
               <Link
-                className={homeStyles.listCard}
+                className={styles.messageLink}
                 href={buildMessagesHref(row.contentId)}
               >
-                <span>
-                  <span className={homeStyles.cardTitle}>{row.title}</span>
-                  <span className={homeStyles.cardDescription}>
+                <span className={styles.itemCopy}>
+                  <span className={styles.itemTitle}>{row.title}</span>
+                  <span className={styles.itemBody}>
                     {row.summary}
                     {row.publishedAt
                       ? ` · ${hkMonthDayLabel(row.publishedAt)}`
                       : ""}
                   </span>
                 </span>
-                <Icon name="chevron" className={homeStyles.chevron} />
+                <Icon name="chevron" className={styles.messageChevron} />
               </Link>
             </li>
           ))}

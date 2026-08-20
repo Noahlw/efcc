@@ -147,6 +147,29 @@
   white-space: nowrap;
 }
 
+.messageLink {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.875rem;
+  min-height: 72px;
+  padding: 1rem;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.messageLink:hover {
+  background: var(--surface, #f4f5f3);
+}
+
+.messageChevron {
+  width: 20px;
+  height: 20px;
+  color: var(--ink-muted, #59636a);
+  flex: 0 0 auto;
+}
+
 .empty {
   padding: 2.125rem 1.375rem;
   border: 1px solid var(--line, #d6dcde);
@@ -199,14 +222,5 @@
 @media (max-width: 560px) {
   .page {
     padding-inline: 1rem;
-  }
-
-  .itemLink {
-    grid-template-columns: 12px minmax(0, 1fr);
-  }
-
-  .itemTime {
-    grid-column: 2;
-    margin-top: 0.125rem;
   }
 }

@@ -316,9 +316,11 @@ export function AnnouncementDetail({
       className={`${styles.page} ${styles.detailPage}`}
       data-testid="announcement-detail"
     >
-      <div className={styles.detailTopbar}>
-        <span>{COPY.home.churchNews}</span>
-      </div>
+      {backLabel !== COPY.home.churchNews && (
+        <div className={styles.detailTopbar}>
+          <span>{COPY.home.churchNews}</span>
+        </div>
+      )}
       <div className={styles.detailIntro}>
         <button type="button" className={styles.backButton} onClick={onBack}>
           <Icon name="back" className={styles.backIcon} />

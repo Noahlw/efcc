@@ -6,7 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
-import { hkShortDateLabel, hkShortTimeRange } from "@/lib/hk-time";
+import {
+  hkShortDateLabel,
+  hkShortTimeLabel,
+  hkShortTimeRange,
+} from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
@@ -412,7 +416,7 @@ export const EventDetail = ({
           aria-label={COPY.programs.backToOrigin}
           onClick={onBack}
         >
-          ← {COPY.programs.backToOrigin}
+          <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
         </button>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
@@ -458,12 +462,19 @@ export const EventDetail = ({
             {COPY.programs.checkInInstructionsHeading}
           </h2>
           <p className={styles.programDetailDescription}>
-            {COPY.programs.eventInstructions}
+            {checkInOpen
+              ? COPY.programs.eventInstructions
+              : event.check_in_window_opens_at
+                ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
+                : COPY.programs.eventInstructionsClosed}
           </p>
         </section>
 
         <div className={styles.stickyActionBar}>
-          <Link href={scanHref} className={styles.actionButton}>
+          <Link
+            href={scanHref}
+            className={checkInOpen ? styles.button : styles.secondaryButton}
+          >
             {COPY.programs.goToScan}
           </Link>
         </div>

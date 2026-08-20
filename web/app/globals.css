@@ -20,6 +20,10 @@
       --error          #b3261e  (error state)
       --error-surface   #fbeeed
       --error-border    #e5b4b0
+      --pending        #8a5b16  (pending/awaiting-review state)
+      --pending-surface #f3eee8
+      --pending-border  #c1ad95
+      --skeleton       #e3e0e1  (loading placeholder)
    ========================================================================== */
 :root {
   --surface: #f4f5f3;
@@ -37,6 +41,10 @@
   --error: #b3261e;
   --error-surface: #fbeeed;
   --error-border: #e5b4b0;
+  --pending: #8a5b16;
+  --pending-surface: #f3eee8;
+  --pending-border: #c1ad95;
+  --skeleton: #e3e0e1;
   --font-sans:
     -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
     "Microsoft JhengHei", Arial, sans-serif;

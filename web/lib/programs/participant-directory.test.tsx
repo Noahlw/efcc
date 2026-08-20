@@ -255,7 +255,7 @@ describe("PUI-02 participant directory loading and collection", () => {
 });
 
 describe("PUI-02 participant directory search and filters", () => {
-  test("catalog search is icon-only with an accessible name", async () => {
+  test("catalog search is icon-only with an accessible name and visible placeholder", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),
     });
@@ -271,7 +271,10 @@ describe("PUI-02 participant directory search and filters", () => {
     const search = screen.getByRole("searchbox", {
       name: COPY.programs.catalogSearchLabel,
     });
-    expect(search).not.toHaveAttribute("placeholder");
+    expect(search).toHaveAttribute(
+      "placeholder",
+      COPY.programs.catalogSearchLabel
+    );
     expect(search.closest("div")?.querySelector("svg")).not.toBeNull();
   });
 

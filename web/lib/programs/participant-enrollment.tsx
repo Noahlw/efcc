@@ -201,14 +201,16 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestRejectedHint}
           </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={onRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-          </button>
+          <div className={styles.stickyActionBar}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={onRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+            </button>
+          </div>
         </>
       );
     }
@@ -219,14 +221,16 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestWithdrawnHint}
           </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={onRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-          </button>
+          <div className={styles.stickyActionBar}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={onRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+            </button>
+          </div>
         </>
       );
     }
@@ -241,14 +245,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentCancelledHint}
         </p>
-        <button
-          type="button"
-          className={styles.actionButton}
-          disabled={busy}
-          onClick={onRequest}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-        </button>
+        <div className={styles.stickyActionBar}>
+          <button
+            type="button"
+            className={styles.button}
+            disabled={busy}
+            onClick={onRequest}
+          >
+            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+          </button>
+        </div>
       </>
     );
   }
@@ -260,14 +266,16 @@ const EnrollmentAction = ({
     );
   }
   return (
-    <button
-      type="button"
-      className={styles.actionButton}
-      disabled={busy}
-      onClick={onRequest}
-    >
-      {busy ? COPY.programs.submitting : COPY.programs.enroll}
-    </button>
+    <div className={styles.stickyActionBar}>
+      <button
+        type="button"
+        className={styles.button}
+        disabled={busy}
+        onClick={onRequest}
+      >
+        {busy ? COPY.programs.submitting : COPY.programs.enroll}
+      </button>
+    </div>
   );
 };
 
@@ -310,21 +318,37 @@ export const ParticipantEnrollment = ({
   }, []);
 
   useEffect(() => {
-    if (confirmKind === null) {
+    const dialogEl = dialogRef.current;
+    if (!dialogEl) {
       return;
     }
-    const dismissButton = dialogRef.current?.querySelector<HTMLButtonElement>(
+    if (confirmKind === null) {
+      if (dialogEl.open) {
+        dialogEl.close();
+      }
+      return;
+    }
+    // Native showModal() renders in the top layer with a real backdrop and
+    // traps Tab focus inside the dialog automatically -- no hand-rolled
+    // focus trap needed. The dismiss button still gets explicit initial
+    // focus since showModal()'s own default (the dialog element itself)
+    // isn't the most useful landing spot here.
+    if (!dialogEl.open) {
+      dialogEl.showModal();
+    }
+    const dismissButton = dialogEl.querySelector<HTMLButtonElement>(
       "[data-confirm-dismiss]"
     );
     dismissButton?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeConfirm();
-      }
+    // The native dialog already closes itself on Escape (firing `cancel`
+    // before `close`); hook that to run the same focus-restore path as an
+    // explicit dismiss click.
+    const onCancel = (event: Event) => {
+      event.preventDefault();
+      closeConfirm();
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    dialogEl.addEventListener("cancel", onCancel);
+    return () => dialogEl.removeEventListener("cancel", onCancel);
   }, [closeConfirm, confirmKind]);
 
   const runAction = useCallback(
@@ -492,7 +516,6 @@ export const ParticipantEnrollment = ({
 
       {confirmKind !== null && (
         <dialog
-          open
           ref={dialogRef}
           className={styles.participantConfirm}
           aria-modal="true"

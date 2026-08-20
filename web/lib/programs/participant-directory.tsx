@@ -321,40 +321,43 @@ export const ParticipantDirectory = ({
         <>
           <div className={styles.directorySearch}>
             <div className={styles.directorySearchRow}>
-              <svg
-                aria-hidden="true"
-                className={styles.directorySearchIcon}
-                focusable="false"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  cx="11"
-                  cy="11"
-                  fill="none"
-                  r="7"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.8"
+              <div className={styles.directorySearchInputWrap}>
+                <svg
+                  aria-hidden="true"
+                  className={styles.directorySearchIcon}
+                  focusable="false"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    cx="11"
+                    cy="11"
+                    fill="none"
+                    r="7"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="m20 20-4-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+                <input
+                  id="programs-catalog-search"
+                  aria-label={COPY.programs.catalogSearchLabel}
+                  placeholder={COPY.programs.catalogSearchLabel}
+                  className={styles.input}
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
                 />
-                <path
-                  d="m20 20-4-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.8"
-                />
-              </svg>
-              <input
-                id="programs-catalog-search"
-                aria-label={COPY.programs.catalogSearchLabel}
-                className={styles.input}
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoComplete="off"
-              />
+              </div>
               {searching && (
                 <button
                   className={styles.clearButton}

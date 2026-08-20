@@ -1252,8 +1252,15 @@
 
 .directorySearchRow {
   display: flex;
-  position: relative;
   gap: 0.5rem;
+}
+
+.directorySearchInputWrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
 }
 
 .directorySearchIcon {
@@ -1267,9 +1274,8 @@
   pointer-events: none;
 }
 
-.directorySearchRow .input {
-  flex: 1;
-  min-width: 0;
+.directorySearchInputWrap .input {
+  width: 100%;
   padding-left: 2.5rem;
 }
 
@@ -1331,8 +1337,8 @@
 
 .filterChip[aria-pressed="true"] {
   color: var(--surface-raised);
-  background: #171a1d;
-  border-color: #171a1d;
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 .directorySrOnly {
@@ -1368,7 +1374,7 @@
   display: block;
   height: 11px;
   border-radius: var(--radius-pill);
-  background: #e3e0e1;
+  background: var(--skeleton);
 }
 
 .directorySkeletonBarShort {
@@ -1411,9 +1417,9 @@
 }
 
 .directoryStatusPending {
-  border-color: #c1ad95;
-  color: #8a5b16;
-  background: #f3eee8;
+  border-color: var(--pending-border);
+  color: var(--pending);
+  background: var(--pending-surface);
 }
 
 .directoryStatusNeutral {
@@ -1423,9 +1429,9 @@
 }
 
 .directoryStatusDanger {
-  border-color: #d7a199;
-  color: #b3261e;
-  background: #fbecea;
+  border-color: var(--error-border);
+  color: var(--error);
+  background: var(--error-surface);
 }
 
 .directoryList {
@@ -1561,9 +1567,9 @@
 }
 
 .participantDirectoryCard .directoryStatusPending {
-  border-color: #c1ad95;
-  color: #8a5b16;
-  background: #f3eee8;
+  border-color: var(--pending-border);
+  color: var(--pending);
+  background: var(--pending-surface);
 }
 
 .participantDirectoryCard .directoryStatusNeutral {
@@ -1573,14 +1579,22 @@
 }
 
 .participantDirectoryCard .directoryStatusDanger {
-  border-color: #d7a199;
-  color: #b3261e;
-  background: #fbecea;
+  border-color: var(--error-border);
+  color: var(--error);
+  background: var(--error-surface);
 }
 
 .programDetail {
   display: grid;
   gap: 1.25rem;
+  /* On short pages (few/no upcoming events, e.g. a OneOff program) there
+     isn't enough natural scroll height for .stickyActionBar's sticky
+     offset to clear the last content block without covering it —
+     impeccable critique #391 (T5A). Reserve room for the tallest sticky
+     bar (dock 72px + gap + one 44px button + its own padding/margin). */
+  padding-bottom: calc(
+    72px + 0.625rem + 44px + 1.25rem + 1.5rem + env(safe-area-inset-bottom, 0px)
+  );
 }
 
 .programDetailBack {
@@ -2126,10 +2140,10 @@
 .programDetailConflict {
   margin: 0;
   padding: 0.625rem 0.75rem;
-  border: 1px solid #c1ad95;
+  border: 1px solid var(--pending-border);
   border-radius: var(--radius-sm);
-  background: #f3eee8;
-  color: #6e4a14;
+  background: var(--pending-surface);
+  color: var(--pending);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -2284,6 +2298,18 @@
 }
 
 .stickyActionBar .dangerButton {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.stickyActionBar .button {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.stickyActionBar .secondaryButton {
   display: block;
   width: 100%;
   text-align: center;
