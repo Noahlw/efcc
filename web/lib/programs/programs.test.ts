@@ -8470,6 +8470,19 @@ describe("PUI-03: participant Program detail", () => {
       ),
       false
     );
+    assert.strictEqual(
+      participantSelfCheckInAvailable(
+        {
+          ...event,
+          check_in_window_opens_at: "2099-06-01T10:00:00Z\n",
+          check_in_window_closes_at: "9999-12-31T23:59:59Z",
+        },
+        program,
+        true,
+        opening
+      ),
+      false
+    );
   });
 
   test("projects availability only for an enrolled Member in an open window", async () => {

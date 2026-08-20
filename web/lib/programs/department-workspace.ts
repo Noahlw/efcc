@@ -538,7 +538,7 @@ export interface ParticipantEventSummary {
 }
 
 const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u;
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z(?![\s\S])/u;
 
 function parseParticipantInstant(value: string): number | null {
   if (!ISO_INSTANT_PATTERN.test(value)) {
