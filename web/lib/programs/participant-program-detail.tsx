@@ -443,6 +443,11 @@ export const ParticipantProgramDetail = ({
           >
             {scheduledEvents.map((event, index) => {
               const location = eventLocation(event);
+              const selfCheckInAvailable =
+                event.self_check_in_available === true &&
+                !canManage &&
+                program.lifecycle !== "Archived" &&
+                program.enrollment_mode !== "ManagerOnly";
               return (
                 <li key={event.event_id} className={styles.programDetailEvent}>
                   <time className={styles.eventDate} dateTime={event.starts_at}>
@@ -454,6 +459,15 @@ export const ParticipantProgramDetail = ({
                       {eventWhen(event)}
                       {location ? ` · ${location}` : ""}
                     </span>
+                    {selfCheckInAvailable && (
+                      <span
+                        className={`${styles.directoryStatus} ${styles.directoryStatusNeutral}`}
+                        role="status"
+                        aria-label={COPY.programs.checkInAvailable}
+                      >
+                        {COPY.programs.checkInAvailable}
+                      </span>
+                    )}
                   </div>
                 </li>
               );

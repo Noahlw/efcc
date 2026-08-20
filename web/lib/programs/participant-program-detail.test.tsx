@@ -106,6 +106,7 @@ const detailFixture = (
       source: "SCHEDULE",
       name: "第三課聚會",
       location: "二樓禮堂",
+      self_check_in_available: false,
     },
     {
       event_id: "event-2",
@@ -116,6 +117,7 @@ const detailFixture = (
       source: "SCHEDULE",
       name: "第四課聚會",
       location: "二樓禮堂",
+      self_check_in_available: false,
     },
   ],
   enrollment: snapshot(),
@@ -199,6 +201,84 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByRole("button", { name: COPY.programs.detailBack })
     );
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  test("renders only a strict true availability projection", async () => {
+    const base = detailFixture();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+        events: [
+          {
+            ...base.events[0],
+            self_check_in_available: true,
+          },
+          {
+            ...base.events[1],
+            self_check_in_available:
+              "true" as unknown as ParticipantProgramDetailData["events"][number]["self_check_in_available"],
+          },
+        ],
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(screen.getAllByText(COPY.programs.checkInAvailable)).toHaveLength(1);
+  });
+
+  test("does not expose availability for management or archived views", async () => {
+    const base = detailFixture();
+    const activeEnrollment = snapshot({
+      enrollments: [
+        {
+          enrollment_id: "enrollment-1",
+          status: "Active",
+          enrolled_at: "2099-03-02T00:00:00.000Z",
+          cancelled_at: null,
+        },
+      ],
+    });
+
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "同工安排課程", {
+          enrollment_mode: "ManagerOnly",
+        }),
+        enrollment: activeEnrollment,
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail({ canManage: true });
+    await screen.findByRole("heading", { name: "同工安排課程" });
+    expect(
+      screen.queryByText(COPY.programs.checkInAvailable)
+    ).not.toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "已封存課程", {
+          lifecycle: "Archived",
+        }),
+        enrollment: activeEnrollment,
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "已封存課程" });
+    expect(
+      screen.queryByText(COPY.programs.checkInAvailable)
+    ).not.toBeInTheDocument();
   });
 
   test("hides the view-event-detail CTA for a viewer with no Active enrollment", async () => {
@@ -451,6 +531,7 @@ describe("PUI-03 participant Program detail", () => {
             source: "SCHEDULE",
             name: "第三課聚會",
             location: null,
+            self_check_in_available: false,
           },
         ],
       })

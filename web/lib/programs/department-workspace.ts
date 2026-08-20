@@ -533,6 +533,42 @@ export interface ParticipantEventSummary {
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  /** Server-derived participant affordance; never an attendance authority. */
+  self_check_in_available: boolean;
+}
+
+function participantSelfCheckInAvailable(
+  event: Pick<
+    EventRow,
+    | "status"
+    | "availability"
+    | "check_in_window_opens_at"
+    | "check_in_window_closes_at"
+  >,
+  program: Pick<ProgramView, "lifecycle" | "enrollment_mode" | "capabilities">,
+  hasActiveEnrollment: boolean,
+  now = Date.now()
+): boolean {
+  if (
+    !hasActiveEnrollment ||
+    program.capabilities.manage ||
+    program.lifecycle === "Archived" ||
+    program.enrollment_mode === "ManagerOnly" ||
+    event.status !== "Active" ||
+    event.availability !== "Active" ||
+    event.check_in_window_opens_at === null ||
+    event.check_in_window_closes_at === null
+  ) {
+    return false;
+  }
+  const opensAt = Date.parse(event.check_in_window_opens_at);
+  const closesAt = Date.parse(event.check_in_window_closes_at);
+  return (
+    Number.isFinite(opensAt) &&
+    Number.isFinite(closesAt) &&
+    now >= opensAt &&
+    now <= closesAt
+  );
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -1959,6 +1995,10 @@ export class DepartmentWorkspace {
       this.listEvents(ctx, programId),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
+    const hasActiveEnrollment =
+      enrollmentState.snapshot?.enrollments.some(
+        (enrollment) => enrollment.status === "Active"
+      ) ?? false;
     return {
       program: this.programSummary(view),
       department: this.departmentSummary(department),
@@ -1986,6 +2026,11 @@ export class DepartmentWorkspace {
           // check-in and operator fields stay private here.
           name: event.name,
           location: event.location,
+          self_check_in_available: participantSelfCheckInAvailable(
+            event,
+            view,
+            hasActiveEnrollment
+          ),
         })),
       enrollment: enrollmentState.snapshot,
       enrollment_access: enrollmentState.access,
