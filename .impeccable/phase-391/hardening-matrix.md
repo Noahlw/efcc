@@ -113,3 +113,14 @@
   - one mutation action element per actionable state;
   - no participant history timeline.
 - Existing Section harden HTML files remain check-only references; they are not production fixtures.
+
+## Wayfinder follow-ups
+
+The existing root map is [#366](https://github.com/Noahlw/efcc/issues/366). Cross-cutting work that should survive the S2 stack is tracked as children rather than promoted into the active #396 implementation contract:
+
+- [#397](https://github.com/Noahlw/efcc/issues/397) — Event Lifecycle Visibility (`wayfinder:grilling`, `type:optional`).
+- [#398](https://github.com/Noahlw/efcc/issues/398) — Event Detail pre-window guidance prototype (`wayfinder:prototype`, production blocked by #370).
+- [#399](https://github.com/Noahlw/efcc/issues/399) — Data-driven announcement venue contract (`wayfinder:grilling`, depends on #373).
+- [#400](https://github.com/Noahlw/efcc/issues/400) — Management Messages contextual shell contract (`wayfinder:grilling`, depends on #369).
+
+Rejected rows remain rejected and low-value no-failure visual variants remain matrix notes only.

@@ -157,3 +157,12 @@ The child PR uses the local-first READY gate:
 ## Stop condition
 
 Stop when every promoted production case and every acceptance ID above is implemented, the #383 override table is fully covered, the local-first gate is green, and optional/deferred/rejected work remains out of the child diff.
+
+## Wayfinder follow-ups
+
+Deferred cross-cutting questions live under the existing root map [#366](https://github.com/Noahlw/efcc/issues/366), not in the promoted production scope:
+
+- [#397](https://github.com/Noahlw/efcc/issues/397) — Event Lifecycle Visibility (`wayfinder:grilling`, `type:optional`).
+- [#398](https://github.com/Noahlw/efcc/issues/398) — Event Detail pre-window guidance prototype (`wayfinder:prototype`, blocked for production by #370).
+- [#399](https://github.com/Noahlw/efcc/issues/399) — Data-driven announcement venue contract (`wayfinder:grilling`, depends on #373).
+- [#400](https://github.com/Noahlw/efcc/issues/400) — Management Messages contextual shell contract (`wayfinder:grilling`, depends on #369).
