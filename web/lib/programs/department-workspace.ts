@@ -32,6 +32,7 @@ import type {
   ManagementHubRow,
   ManagementHubView,
 } from "./hub-types";
+import { parseIsoInstant } from "./iso-instant";
 import {
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
@@ -537,22 +538,6 @@ export interface ParticipantEventSummary {
   self_check_in_available: boolean;
 }
 
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z(?![\s\S])/u;
-
-function parseParticipantInstant(value: string): number | null {
-  if (!ISO_INSTANT_PATTERN.test(value)) {
-    return null;
-  }
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return null;
-  }
-  return new Date(timestamp).toISOString().slice(0, 16) === value.slice(0, 16)
-    ? timestamp
-    : null;
-}
-
 export function participantSelfCheckInAvailable(
   event: Pick<
     EventRow,
@@ -577,8 +562,8 @@ export function participantSelfCheckInAvailable(
   ) {
     return false;
   }
-  const opensAt = parseParticipantInstant(event.check_in_window_opens_at);
-  const closesAt = parseParticipantInstant(event.check_in_window_closes_at);
+  const opensAt = parseIsoInstant(event.check_in_window_opens_at);
+  const closesAt = parseIsoInstant(event.check_in_window_closes_at);
   return (
     opensAt !== null &&
     closesAt !== null &&
