@@ -236,6 +236,31 @@ describe("PUI-03 participant Program detail", () => {
     expect(screen.getAllByText(COPY.programs.checkInAvailable)).toHaveLength(1);
   });
 
+  test("keeps server availability visible with unrelated management access", async () => {
+    const base = detailFixture();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail({ canManage: true });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByText(COPY.programs.checkInAvailable)
+    ).toBeInTheDocument();
+  });
+
   test("does not expose availability for management or archived views", async () => {
     const base = detailFixture();
     const activeEnrollment = snapshot({

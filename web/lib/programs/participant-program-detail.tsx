@@ -445,7 +445,6 @@ export const ParticipantProgramDetail = ({
               const location = eventLocation(event);
               const selfCheckInAvailable =
                 event.self_check_in_available === true &&
-                !canManage &&
                 program.lifecycle !== "Archived" &&
                 program.enrollment_mode !== "ManagerOnly";
               return (
