@@ -396,9 +396,15 @@ export const ParticipantDirectory = ({
               className={`${styles.boundaryState} ${styles.directoryEmpty}`}
             >
               <h2 className={styles.boundaryTitle}>
-                {COPY.programs.catalogEmpty}
+                {programs.length === 0
+                  ? COPY.programs.catalogNoPrograms
+                  : COPY.programs.catalogEmpty}
               </h2>
-              <p>{COPY.programs.catalogEmptyHint}</p>
+              <p>
+                {programs.length === 0
+                  ? COPY.programs.catalogNoProgramsHint
+                  : COPY.programs.catalogEmptyHint}
+              </p>
               <button
                 className={styles.retry}
                 type="button"

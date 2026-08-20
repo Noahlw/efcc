@@ -4,10 +4,6 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 
-const TARGET_ORIGIN = new URL(
-  process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787"
-).origin;
-
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
   process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN.credential;
@@ -191,7 +187,7 @@ test.describe("PUI-05 Home origin supplement", () => {
         .click();
       await expect(memberPage).toHaveURL(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=[^&]+$`,
           "u"
         )
       );
@@ -205,5 +201,25 @@ test.describe("PUI-05 Home origin supplement", () => {
     } finally {
       await memberContext.close();
     }
+  });
+
+  test("Home Explore opens Program Detail and returns Home", async ({
+    page,
+  }) => {
+    await loginAs(page, MEMBER_USER, MEMBER_CRED);
+    await page.goto("/home");
+    const exploreCard = page.getByTestId("explore-card");
+    await expect(exploreCard).toBeVisible({ timeout: 15_000 });
+    await expect(exploreCard).toHaveAttribute(
+      "href",
+      /\/programs\?program=[^&]+&from=home/u
+    );
+    await exploreCard.click();
+    await expect(page).toHaveURL(/\/programs\?program=[^&]+&from=home$/u);
+    await expect(
+      page.getByRole("heading", { name: /E2E_DEMO_/u })
+    ).toBeVisible();
+    await page.getByRole("button", { name: "課程", exact: true }).click();
+    await expect(page).toHaveURL(/\/home$/u);
   });
 });

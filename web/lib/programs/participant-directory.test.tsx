@@ -158,15 +158,15 @@ describe("PUI-02 participant directory loading and collection", () => {
     expect(rowNames()).toStrictEqual(["查經小組", "青年團契", "社區關懷"]);
   });
 
-  test("zero matches shows empty state with clear filters CTA", async () => {
+  test("true empty catalog shows a no-programs state", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
     renderDirectory();
 
     await expect(
-      screen.findByRole("heading", { name: COPY.programs.catalogEmpty })
+      screen.findByRole("heading", { name: COPY.programs.catalogNoPrograms })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.catalogEmptyHint)
+      screen.getByText(COPY.programs.catalogNoProgramsHint)
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {

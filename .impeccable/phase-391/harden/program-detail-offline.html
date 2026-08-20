@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Program Detail Offline (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: clamp(1.25rem, 3vw, 2rem);
+        display: grid;
+        gap: 1rem;
+      }
+      .panel {
+        border: 1px solid #e5b4b0;
+        border-radius: 8px;
+        background: #fbeeed;
+        padding: 0.625rem 0.75rem;
+        color: #b3261e;
+        font-size: 0.875rem;
+      }
+      .muted {
+        color: #59636a;
+        line-height: 1.6;
+        font-size: 0.875rem;
+      }
+      .sticky {
+        position: sticky;
+        bottom: calc(72px + 0.625rem + env(safe-area-inset-bottom, 0px));
+        z-index: 5;
+        margin-top: 1rem;
+        padding: 0.625rem;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        background: color-mix(in srgb, #fff 94%, transparent);
+        box-shadow: 0 -8px 24px rgba(23, 26, 29, 0.1);
+      }
+      .sticky button {
+        width: 100%;
+        min-height: 44px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        border: 1px solid #9c302c;
+        background: #fff;
+        color: #9c302c;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-offline.html — check-only —
+        worktree 15956de
+      </p>
+      <h1 style="font-size: 1.1rem">
+        Offline before submit (navigator.onLine false)
+      </h1>
+      <div class="card">
+        <div class="panel" role="alert">未能提交。請重新連線後再試。</div>
+        <h3 style="margin: 0">報名</h3>
+        <p class="muted">可報名</p>
+        <p class="muted">
+          申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。
+        </p>
+        <div class="sticky"><button type="button">報名</button></div>
+        <p style="color: #59636a; line-height: 1.6; font-size: 0.9rem">
+          Live guards: <code>showOfflineError()</code> at
+          <code>participant-enrollment.tsx:264-269</code> sets
+          <code>actionError = COPY.programs.enrollmentOfflineError</code> +
+          <code>announce(message)</code>. Called from
+          <code>runAction</code> guard (<code>299-301</code>) and
+          <code>beginConfirm</code> guard (<code>397-399</code>) before any
+          fetch. Rendering is <code>output.panelError[role=alert]</code> at
+          <code>461-464</code>. Detail load offline has no separate guard —
+          falls back to recoverable error branch (`NETWORK_ERROR` via
+          <code>errorCopyFor</code>). No duplicate shell banner inside detail;
+          <code>AppShell OfflineBanner</code> is the single source.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

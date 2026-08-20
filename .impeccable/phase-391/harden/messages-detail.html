@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Detail harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 4vw, 1.5rem) 2rem;
+      color: var(--ink);
+    }
+    .detailPage {
+      padding-bottom: 2rem;
+    }
+    .detailTopbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      font-weight: 600;
+    }
+    .detailIntro {
+      padding: 6px 0 20px;
+    }
+    .detailIntro h1 {
+      margin: 14px 0 0;
+      font-size: clamp(1.72rem, 6vw, 2.25rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+    }
+    .detailIntro p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      font-size: 0.96rem;
+      line-height: 1.6;
+    }
+    .dateTag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 14px;
+      color: var(--ink-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .backButton {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: -8px;
+      padding: 8px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .backIcon {
+      width: 20px;
+      height: 20px;
+    }
+    .venueCard {
+      padding: 20px;
+      background: var(--surface-raised);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .venueCard h2 {
+      margin: 0;
+      font-size: 1.08rem;
+      font-weight: 650;
+    }
+    .venueCard p {
+      margin: 10px 0 0;
+      color: var(--ink-muted);
+      line-height: 1.7;
+    }
+    .venueCard ul {
+      margin: 14px 0 0;
+      padding-left: 20px;
+      color: var(--ink-muted);
+      line-height: 1.7;
+    }
+    .externalLinkRow {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .externalLink {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--ink-muted);
+      font-size: 0.8rem;
+      text-decoration: none;
+    }
+    .externalLink:hover {
+      text-decoration: underline;
+    }
+    .externalIcon {
+      width: 15px;
+      height: 15px;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    .case {
+      margin-top: 28px;
+      padding: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+    @media (max-width: 799px) {
+      .page {
+        padding-bottom: 1.5rem;
+      }
+      .venueCard {
+        padding: 20px 16px;
+      }
+    }
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · detail harden</span
+      >
+    </header>
+    <main class="page detailPage">
+      <h2
+        style="
+          font-size: 0.82rem;
+          color: var(--ink-muted);
+          margin: 12px 0 0;
+          border-top: 1px solid var(--line);
+          padding-top: 12px;
+        "
+      >
+        Case A — 標準詳情（從 /messages 進入，backLabel=教會消息，無 topbar）
+      </h2>
+      <div class="detailIntro">
+        <button class="backButton" type="button">
+          <svg
+            class="backIcon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="m15 18-6-6 6-6" /></svg
+          >教會消息
+        </button>
+        <time class="dateTag">8月15日</time>
+        <h1>本週崇拜及聚會安排</h1>
+        <p>請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。</p>
+      </div>
+      <article class="venueCard">
+        <h2>到達場地</h2>
+        <p>
+          請按現場指示前往聚會地點，禮堂入口設有接待同工協助登記。如需輪椅通道或其他協助，請提前聯絡教會辦公室。
+        </p>
+        <ul>
+          <li>崇拜及主要聚會：二樓禮堂</li>
+          <li>親子室：一樓副堂旁</li>
+          <li>訪客接待：正門大堂</li>
+        </ul>
+        <div class="externalLinkRow">
+          <a class="externalLink" href="#" target="_blank" rel="noopener"
+            ><svg
+              class="externalIcon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path
+                d="M15 3h6v6M10 14 21 3M18 13v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h7"
+              /></svg
+            >聚會場地資料 · 外部連結</a
+          >
+        </div>
+      </article>
+      <div class="case">
+        <strong>Check:</strong> Back label is <code>教會消息</code> (not 首頁).
+        Live uses <code>router.push("/messages")</code>. Design detail uses
+        <code>首頁</code> back to home — divergence M-05. Tap target 44px OK. At
+        320, H1 clamp 1.65→2.2rem wraps without overflow.
+      </div>
+    </main>
+    <main
+      class="page detailPage"
+      style="
+        border-top: 2px solid var(--line);
+        margin-top: 12px;
+        padding-top: 12px;
+      "
+    >
+      <h2 style="font-size: 0.82rem; color: var(--ink-muted); margin: 0">
+        Case B — 長標題、無外部連結（venue card 無外部連結行）
+      </h2>
+      <div class="detailIntro">
+        <button class="backButton" type="button">
+          <svg
+            class="backIcon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="m15 18-6-6 6-6" /></svg
+          >教會消息
+        </button>
+        <time class="dateTag">12月25日</time>
+        <h1>聖誕崇拜及聯歡聚會特別安排連同場地變更詳情與報名須知長標題測試</h1>
+        <p>
+          請留意聖誕崇拜改於正堂舉行，聯歡聚會於副堂，請提前十五分鐘到達以便登記及領取場刊，逾時恕不留位，場地座位有限先到先得。
+        </p>
+      </div>
+      <article class="venueCard">
+        <h2>到達場地</h2>
+        <p>
+          請按現場指示前往聚會地點，禮堂入口設有接待同工協助登記。如需輪椅通道或其他協助，請提前聯絡教會辦公室。
+        </p>
+        <ul>
+          <li>崇拜及主要聚會：二樓禮堂</li>
+          <li>親子室：一樓副堂旁</li>
+          <li>訪客接待：正門大堂</li>
+        </ul>
+      </article>
+      <div class="case">
+        <strong>Check:</strong> H1 uses <code>text-wrap: pretty</code> (global)
+        — long CJK wraps by character, no overflow. Venue card without external
+        link has <strong>no</strong> top border — correct (conditional:
+        <code>announcement.externalUrl &amp;&amp;</code>). Verify scrollWidth at
+        320.
+      </div>
+    </main>
+    <main
+      class="page detailPage"
+      style="
+        border-top: 2px solid var(--line);
+        margin-top: 12px;
+        padding-top: 12px;
+      "
+    >
+      <h2 style="font-size: 0.82rem; color: var(--ink-muted); margin: 0">
+        Case C — 從首頁進入（backLabel=首頁，顯示 topbar “教會消息”）
+      </h2>
+      <div class="detailTopbar"><span>教會消息</span></div>
+      <div class="detailIntro">
+        <button class="backButton" type="button">
+          <svg
+            class="backIcon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="m15 18-6-6 6-6" /></svg
+          >首頁
+        </button>
+        <time class="dateTag">8月15日</time>
+        <h1>本週崇拜及聚會安排</h1>
+        <p>請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。</p>
+      </div>
+      <article class="venueCard">
+        <h2>到達場地</h2>
+        <p>請按現場指示前往聚會地點，禮堂入口設有接待同工協助登記。</p>
+        <ul>
+          <li>崇拜及主要聚會：二樓禮堂</li>
+          <li>親子室：一樓副堂旁</li>
+          <li>訪客接待：正門大堂</li>
+        </ul>
+      </article>
+      <div class="case">
+        <strong>Check:</strong> Home's <code>AnnouncementDetail</code> shows
+        <code>.detailTopbar</code> only when
+        <code>backLabel !== 教會消息</code>. From messages, topbar suppressed —
+        avoids double “教會消息” (shell header already shows it via
+        <code>NON_DOCK_SECTION_TITLES</code>). From home, topbar appears + shell
+        shows 顯恩堂. Both intentional, but 72px topbar adds vertical rhythm
+        difference — verify no double-header at 390.
+      </div>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "detail scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

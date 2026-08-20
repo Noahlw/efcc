@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Program Detail Unavailable (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: clamp(1.25rem, 3vw, 2rem);
+      }
+      .boundaryState {
+        padding: 1rem;
+        border: 1px solid #d6dcde;
+        border-radius: 8px;
+        background: #f4f5f3;
+      }
+      h2 {
+        font-size: 1.35rem;
+        font-weight: 800;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        color: #59636a;
+        line-height: 1.6;
+      }
+      .retry {
+        min-height: 44px;
+        padding: 0.5625rem 1.125rem;
+        border: 1px solid #9c302c;
+        border-radius: 8px;
+        background: none;
+        color: #9c302c;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      @media (max-width: 799.98px) {
+        .retry {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-unavailable.html —
+        check-only — worktree 15956de
+      </p>
+      <h1>Unavailable (無法開啟這個課程)</h1>
+      <div class="card">
+        <section
+          id="program-detail-state"
+          class="boundaryState"
+          tabindex="-1"
+          role="status"
+        >
+          <h2>無法開啟這個課程</h2>
+          <p>這個課程目前不可用，或你未有權限查看。請返回課程目錄。</p>
+          <button class="retry" type="button">課程</button>
+        </section>
+        <p style="color: #59636a; line-height: 1.6; font-size: 0.9rem">
+          Live:
+          <code>participant-program-detail.tsx:89-96 + 162-178</code> (<code
+            >RpcError NOT_FOUND/FORBIDDEN → unavailable</code
+          >) + <code>announce(detailUnavailable)</code>. Button calls
+          <code>onBack = navigateMode("participant",true,null)</code> at
+          <code>programs-boundary.tsx:564</code> →
+          <code>window.history.replaceState("/programs")</code>. No ID echoed
+          (privacy per <code>participant-program-detail.test.tsx:443</code>).
+          Design has no 404; this hardens strings
+          <code
+            >copy.ts:779-781 detailUnavailable/Hint + 775 detailBack
+            "課程"</code
+          >.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

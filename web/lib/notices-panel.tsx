@@ -23,12 +23,14 @@ function noticeHref(notice: Notice): string {
       mode: "participant",
       programId: notice.program_id,
       eventId: notice.event_id,
+      origin: "notices",
     });
   }
   if (notice.kind === "program" && notice.program_id) {
     return buildProgramsHref({
       mode: "participant",
       programId: notice.program_id,
+      origin: "notices",
     });
   }
   if (notice.kind === "account") {

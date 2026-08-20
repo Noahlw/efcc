@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Loading harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+    }
+    .state {
+      display: block;
+      margin: 0;
+      padding: 1rem;
+      border-radius: 8px;
+      line-height: 1.6;
+      color: var(--ink-muted);
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 1rem;
+      }
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · loading harden</span
+      >
+    </header>
+    <main class="page" aria-label="教會消息清單">
+      <output class="state" aria-busy="true">正在載入教會消息…</output>
+      <p class="muted" style="margin-top: 16px">
+        Check-only: two loading paths render identically but
+        <em>without</em> the <code>.pageHeader</code> that the ready state
+        shows. This causes a layout shift (CLS) when content arrives (header
+        appears). Paths: (1)
+        <code>web/app/messages/page.tsx:12-16</code> Suspense fallback, (2)
+        <code>web/lib/messages-panel.tsx:64-70</code> state.loading. Both lack
+        header; design has no loading variant. Assert:
+        <code>aria-busy="true"</code> present, no duplicate H1. Compare to
+        notices loading (<code>notices-panel.tsx:133</code> also lacks header —
+        same pattern, intentional).<br /><strong>320/390/414:</strong> output is
+        single line, no wrap risk; scrollWidth ≤ innerWidth at all widths.
+      </p>
+      <hr
+        style="margin: 28px 0; border: 0; border-top: 1px solid var(--line)"
+      />
+      <h2 style="font-size: 0.9rem; color: var(--ink-muted); margin: 0 0 10px">
+        Skeleton alternative (proposal, not live)
+      </h2>
+      <div
+        style="
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          background: var(--surface-raised);
+          overflow: hidden;
+        "
+      >
+        <div
+          style="
+            height: 72px;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 14px;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+          "
+        >
+          <div
+            style="height: 14px; background: #e8ecee; border-radius: 6px"
+          ></div>
+          <div
+            style="
+              width: 20px;
+              height: 20px;
+              background: #e8ecee;
+              border-radius: 50%;
+            "
+          ></div>
+        </div>
+        <div
+          style="
+            height: 72px;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 14px;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+          "
+        >
+          <div
+            style="
+              height: 14px;
+              background: #eef2f3;
+              border-radius: 6px;
+              width: 70%;
+            "
+          ></div>
+          <div
+            style="
+              width: 20px;
+              height: 20px;
+              background: #eef2f3;
+              border-radius: 50%;
+            "
+          ></div>
+        </div>
+        <div
+          style="
+            height: 72px;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 14px;
+            align-items: center;
+          "
+        >
+          <div
+            style="
+              height: 14px;
+              background: #e8ecee;
+              border-radius: 6px;
+              width: 55%;
+            "
+          ></div>
+          <div
+            style="
+              width: 20px;
+              height: 20px;
+              background: #e8ecee;
+              border-radius: 50%;
+            "
+          ></div>
+        </div>
+      </div>
+      <p class="muted">
+        If shimmer desired later, keep <code>.pageHeader</code> + skeleton list
+        to avoid CLS. Current live is text-only (P3; no fix required unless CLS
+        measured).
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "loading scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

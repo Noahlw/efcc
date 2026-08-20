@@ -29,6 +29,9 @@ import {
   hkWallDateTimeLabel,
 } from "@/lib/programs/recurrence";
 
+import { buildProgramsHref } from "./programs-intent";
+import type { ProgramsOrigin } from "./programs-intent";
+
 import styles from "@/app/programs/programs.module.css";
 
 const ICON_STROKE = {
@@ -131,6 +134,7 @@ export const EventDetail = ({
   programId,
   eventId,
   canManage,
+  origin,
   onBack,
   onAttentionRefresh,
   onAuthRequired,
@@ -138,6 +142,7 @@ export const EventDetail = ({
   programId: string;
   eventId: string;
   canManage: boolean;
+  origin?: ProgramsOrigin;
   onBack: () => void;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
@@ -371,21 +376,40 @@ export const EventDetail = ({
   };
 
   if (loadError !== null && detail === null) {
+    const programHref = buildProgramsHref({
+      mode: canManage ? "management" : "participant",
+      programId,
+      ...(canManage ? { task: "events" as const } : {}),
+      ...(canManage || origin === undefined ? {} : { origin }),
+    });
     return (
       <section
         className={styles.workspaceTask}
         aria-label={COPY.programs.eventDetailTitle}
       >
+        <h2 className={styles.boundaryTitle}>
+          {COPY.programs.eventDetailRecoveryTitle}
+        </h2>
         <p className={styles.panelError} role="alert">
           {loadError}
         </p>
-        <button
-          type="button"
-          className={styles.retry}
-          onClick={() => void load()}
-        >
-          {COPY.error.retry}
-        </button>
+        <div className={styles.programDetailActions}>
+          <button
+            type="button"
+            className={styles.retry}
+            onClick={() => void load()}
+          >
+            {COPY.error.retry}
+          </button>
+          {programHref !== "/programs" && (
+            <Link href={programHref} className={styles.secondaryButton}>
+              {COPY.programs.eventDetailViewProgram}
+            </Link>
+          )}
+          <Link href="/programs" className={styles.secondaryButton}>
+            {COPY.programs.eventDetailBackToCatalog}
+          </Link>
+        </div>
       </section>
     );
   }

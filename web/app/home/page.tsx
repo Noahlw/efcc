@@ -77,42 +77,38 @@ function formatAnnouncementDate(value: string): string {
   return parts ? `${parts.month}月${parts.day}日` : value;
 }
 
-async function loadHomeProjection(): Promise<HomeProjection | null> {
-  try {
-    const data = await getHome();
-    const featuredEvent =
-      data.featuredEvent?.isEnrolled === true
-        ? {
-            eventId: data.featuredEvent.eventId,
-            programId: data.featuredEvent.programId,
-            eventTitle: data.featuredEvent.title,
-            programTitle: data.featuredEvent.programTitle,
-            startsAt: data.featuredEvent.startAt ?? data.featuredEvent.startsAt,
-            endsAt: data.featuredEvent.endAt ?? data.featuredEvent.endsAt,
-            location: data.featuredEvent.location,
-          }
-        : null;
-    const rawAnnouncement = data.announcement;
-    const announcement = rawAnnouncement?.publishedAt
+async function loadHomeProjection(): Promise<HomeProjection> {
+  const data = await getHome();
+  const featuredEvent =
+    data.featuredEvent?.isEnrolled === true
       ? {
-          title: rawAnnouncement.title,
-          date: formatAnnouncementDate(rawAnnouncement.publishedAt),
-          summary: rawAnnouncement.summary,
-          externalUrl: externalUrlFrom(rawAnnouncement.ctaUrl),
+          eventId: data.featuredEvent.eventId,
+          programId: data.featuredEvent.programId,
+          eventTitle: data.featuredEvent.title,
+          programTitle: data.featuredEvent.programTitle,
+          startsAt: data.featuredEvent.startAt ?? data.featuredEvent.startsAt,
+          endsAt: data.featuredEvent.endAt ?? data.featuredEvent.endsAt,
+          location: data.featuredEvent.location,
         }
       : null;
-    const rawProgram = data.exploreProgram;
-    const featuredProgram = rawProgram
-      ? {
-          programId: rawProgram.programId,
-          name: rawProgram.title,
-          description: rawProgram.summary,
-        }
-      : null;
-    return { featuredEvent, announcement, featuredProgram };
-  } catch {
-    return null;
-  }
+  const rawAnnouncement = data.announcement;
+  const announcement = rawAnnouncement?.publishedAt
+    ? {
+        title: rawAnnouncement.title,
+        date: formatAnnouncementDate(rawAnnouncement.publishedAt),
+        summary: rawAnnouncement.summary,
+        externalUrl: externalUrlFrom(rawAnnouncement.ctaUrl),
+      }
+    : null;
+  const rawProgram = data.exploreProgram;
+  const featuredProgram = rawProgram
+    ? {
+        programId: rawProgram.programId,
+        name: rawProgram.title,
+        description: rawProgram.summary,
+      }
+    : null;
+  return { featuredEvent, announcement, featuredProgram };
 }
 
 function eventIsUpcoming(startsAt: string | null): boolean {
@@ -125,68 +121,64 @@ async function loadParticipantProjection(): Promise<{
   event: HomeEvent | null;
   program: HomeProgram | null;
 }> {
-  try {
-    const { catalog } = await listParticipantCatalog();
-    const programs = catalog
-      .flatMap((entry) => entry.programs)
-      .filter(
-        (program) =>
-          program.lifecycle === "Active" && program.discoverability === "Listed"
-      )
-      .toSorted((a, b) => a.display_order - b.display_order);
-    const featuredProgram =
-      programs.find((program) => program.enrollment_mode === "MemberRequest") ??
-      null;
-    const details = await Promise.all(
-      programs.map(async (program) => {
-        try {
-          return await getParticipantProgramDetail(program.program_id);
-        } catch {
-          return null;
-        }
-      })
+  const { catalog } = await listParticipantCatalog();
+  const programs = catalog
+    .flatMap((entry) => entry.programs)
+    .filter(
+      (program) =>
+        program.lifecycle === "Active" && program.discoverability === "Listed"
+    )
+    .toSorted((a, b) => a.display_order - b.display_order);
+  const featuredProgram =
+    programs.find((program) => program.enrollment_mode === "MemberRequest") ??
+    null;
+  const details = await Promise.all(
+    programs.map(async (program) => {
+      try {
+        return await getParticipantProgramDetail(program.program_id);
+      } catch {
+        return null;
+      }
+    })
+  );
+  const upcoming = details
+    .flatMap((detail) => {
+      if (
+        !detail?.enrollment?.enrollments.some(
+          (enrollment) => enrollment.status === "Active"
+        )
+      ) {
+        return [];
+      }
+      return detail.events
+        .filter(
+          (event) =>
+            event.status === "Active" && eventIsUpcoming(event.starts_at)
+        )
+        .map((event) => ({
+          eventId: event.event_id,
+          programId: event.program_id,
+          eventTitle: null,
+          programTitle: detail.program.name,
+          startsAt: event.starts_at,
+          endsAt: event.ends_at,
+          location: null,
+        }));
+    })
+    .toSorted(
+      (a, b) => Date.parse(a.startsAt ?? "") - Date.parse(b.startsAt ?? "")
     );
-    const upcoming = details
-      .flatMap((detail) => {
-        if (
-          !detail?.enrollment?.enrollments.some(
-            (enrollment) => enrollment.status === "Active"
-          )
-        ) {
-          return [];
-        }
-        return detail.events
-          .filter(
-            (event) =>
-              event.status === "Active" && eventIsUpcoming(event.starts_at)
-          )
-          .map((event) => ({
-            eventId: event.event_id,
-            programId: event.program_id,
-            eventTitle: null,
-            programTitle: detail.program.name,
-            startsAt: event.starts_at,
-            endsAt: event.ends_at,
-            location: null,
-          }));
-      })
-      .toSorted(
-        (a, b) => Date.parse(a.startsAt ?? "") - Date.parse(b.startsAt ?? "")
-      );
 
-    return {
-      event: upcoming[0] ?? null,
-      program: featuredProgram
-        ? {
-            programId: featuredProgram.program_id,
-            name: featuredProgram.name,
-            description: featuredProgram.description,
-          }
-        : null,
-    };
-  } catch {
-    return { event: null, program: null };
-  }
+  return {
+    event: upcoming[0] ?? null,
+    program: featuredProgram
+      ? {
+          programId: featuredProgram.program_id,
+          name: featuredProgram.name,
+          description: featuredProgram.description,
+        }
+      : null,
+  };
 }
 
 function localDateParts(value: string | Date): {
@@ -362,32 +354,55 @@ export function HomeView({
   announcement: initialAnnouncement,
 }: HomeViewProps = {}) {
   const { bootstrap } = useApp();
+  const hasInitialData =
+    initialEvent !== undefined ||
+    initialProgram !== undefined ||
+    initialAnnouncement !== undefined;
   const [projection, setProjection] = useState<HomeProjection | null>(null);
   const [participant, setParticipant] = useState<{
     event: HomeEvent | null;
     program: HomeProgram | null;
   }>({ event: null, program: null });
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
+    hasInitialData ? "ready" : "loading"
+  );
+  const [reloadKey, setReloadKey] = useState(0);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
 
   useEffect(() => {
     let mounted = true;
-    void loadHomeProjection().then(async (nextProjection) => {
-      if (!mounted) {
-        return;
-      }
-      setProjection(nextProjection);
-      if (nextProjection === null) {
-        const nextParticipant = await loadParticipantProjection();
-        if (mounted) {
+    const load = async () => {
+      setLoadState("loading");
+      try {
+        const nextProjection = await loadHomeProjection();
+        if (!mounted) {
+          return;
+        }
+        setProjection(nextProjection);
+        setParticipant({ event: null, program: null });
+        setLoadState("ready");
+      } catch {
+        try {
+          const nextParticipant = await loadParticipantProjection();
+          if (!mounted) {
+            return;
+          }
+          setProjection(null);
           setParticipant(nextParticipant);
+          setLoadState("ready");
+        } catch {
+          if (mounted) {
+            setLoadState("error");
+          }
         }
       }
-    });
+    };
+    void load();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   const event =
     initialEvent !== undefined
@@ -411,6 +426,33 @@ export function HomeView({
     );
   }
 
+  if (!hasInitialData && loadState === "loading") {
+    return (
+      <div className={styles.page}>
+        <section className={styles.emptyCard} data-testid="home-loading-state">
+          <output aria-busy="true">{COPY.home.loading}</output>
+        </section>
+      </div>
+    );
+  }
+
+  if (!hasInitialData && loadState === "error") {
+    return (
+      <div className={styles.page}>
+        <section className={styles.emptyCard} data-testid="home-error-state">
+          <p role="alert">{COPY.home.loadError}</p>
+          <button
+            className={styles.primaryAction}
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+          >
+            {COPY.home.retry}
+          </button>
+        </section>
+      </div>
+    );
+  }
+
   const programTitle = event?.programTitle ?? program?.name;
   const eventHref =
     event?.eventId && event.programId
@@ -418,8 +460,16 @@ export function HomeView({
           mode: "participant",
           programId: event.programId,
           eventId: event.eventId,
+          origin: "home",
         })
       : "/programs";
+  const exploreProgramHref = program?.programId
+    ? buildProgramsHref({
+        mode: "participant",
+        programId: program.programId,
+        origin: "home",
+      })
+    : "/programs";
   const title = event?.eventTitle ?? "";
   const date = eventDate(event?.startsAt ?? null);
   const time = eventTimeRange(event?.startsAt ?? null, event?.endsAt ?? null);
@@ -499,7 +549,7 @@ export function HomeView({
             </Link>
           </div>
           <Link
-            href="/programs"
+            href={exploreProgramHref}
             className={styles.listCard}
             data-testid="explore-card"
           >

@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Long copy harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+    }
+    .pageHeader {
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .pageTitle {
+      margin: 0;
+      font-size: clamp(1.75rem, 5vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+    .list {
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-raised);
+      list-style: none;
+    }
+    .item + .item {
+      border-top: 1px solid var(--line);
+    }
+    .messageLink {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.875rem;
+      min-height: 72px;
+      padding: 1rem;
+      color: inherit;
+      text-decoration: none;
+      text-align: left;
+    }
+    .messageLink:hover {
+      background: #f4f5f3;
+    }
+    .messageChevron {
+      width: 20px;
+      height: 20px;
+      color: var(--ink-muted);
+      flex: 0 0 auto;
+    }
+    .itemCopy {
+      min-width: 0;
+    }
+    .itemTitle,
+    .itemBody {
+      display: block;
+    }
+    .itemTitle {
+      color: var(--ink);
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+    .itemBody {
+      margin-top: 0.3125rem;
+      color: var(--ink-muted);
+      font-size: 0.9375rem;
+      line-height: 1.55;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 8px;
+      border: 1px solid #c1ad95;
+      border-radius: 6px;
+      background: #f3eee8;
+      color: var(--ink);
+      font-size: 0.75rem;
+    }
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 1rem;
+      }
+    }
+    a:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · long-copy harden</span
+      >
+    </header>
+    <main class="page">
+      <header class="pageHeader"><h1 class="pageTitle">教會消息</h1></header>
+      <ul class="list" aria-label="教會消息清單">
+        <li class="item">
+          <a class="messageLink" href="?content=long-1"
+            ><span class="itemCopy"
+              ><span class="itemTitle"
+                >這是一個非常長的教會公告標題，用來測試在320寬度下是否會造成橫向滾動或省略號截斷，以及換行是否保持可讀性</span
+              ><span class="itemBody"
+                >請留意本週三晚聚會改於二樓禮堂舉行，其他聚會時間維持不變，歡迎邀請親友一同參與並提前報名以便場地安排
+                · 8月15日</span
+              ></span
+            ><svg
+              class="messageChevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="m9 18 6-6-6-6" /></svg
+          ></a>
+        </li>
+        <li class="item">
+          <a class="messageLink" href="?content=long-2"
+            ><span class="itemCopy"
+              ><span class="itemTitle"
+                >中秋聯歡感恩崇拜報名開始歡迎邀請親友一同參與以及攜帶月餅分享的長標題測試</span
+              ><span class="itemBody"
+                >歡迎邀請親友一同參與https://example.com/very/long/url/that/might/not/break/without/word-break/test-8月8日</span
+              ></span
+            ><svg
+              class="messageChevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="m9 18 6-6-6-6" /></svg
+          ></a>
+        </li>
+        <li class="item">
+          <a class="messageLink" href="?content=long-3"
+            ><span class="itemCopy"
+              ><span class="itemTitle">停車場維修通告</span
+              ><span class="itemBody"
+                >本主日教會停車場暫停開放，請使用附近咪錶位或公共交通工具，並留意現場同工指示
+                · 8月1日</span
+              ></span
+            ><svg
+              class="messageChevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="m9 18 6-6-6-6" /></svg
+          ></a>
+        </li>
+        <li class="item">
+          <a class="messageLink" href="?content=long-4"
+            ><span class="itemCopy"
+              ><span class="itemTitle"
+                >🔔🎉 Emoji 與英文 Mixed: Christmas Service Announcement for
+                English Congregation</span
+              ><span class="itemBody"
+                >English summary with mixed languages · 12月25日</span
+              ></span
+            ><svg
+              class="messageChevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="m9 18 6-6-6-6" /></svg
+          ></a>
+        </li>
+      </ul>
+      <div
+        style="
+          margin-top: 16px;
+          padding: 12px;
+          border: 1px dashed var(--line);
+          border-radius: 10px;
+          background: #fff;
+          font-size: 0.82rem;
+          line-height: 1.6;
+          color: var(--ink-muted);
+        "
+      >
+        <strong>320/390/414 checks:</strong><br />
+        • Title + body are <code>display:block</code> inside
+        <code>.itemCopy{min-width:0}</code> —
+        <code>grid: minmax(0,1fr) auto</code> prevents blowout; long CJK wraps
+        naturally.<br />
+        • Date suffix is inline in <code>.itemBody</code> (<code
+          >summary · M月D日</code
+        >), not a separate column — wraps with body, unlike notices'
+        <code>.itemTime</code> right-column.<br />
+        • Chevron is <code>20×20 flex:none</code> — stays right-aligned, never
+        wraps.<br />
+        • <span class="badge">⚠ Proposal</span> Live lacks
+        <code>overflow-wrap:break-word</code> on
+        <code>.itemTitle/.itemBody</code>. Case 2 injects an unbroken URL —
+        without break, it forces overflow on 320. Add
+        <code>overflow-wrap:anywhere</code> to both spans (P2 fix). Test at 320:
+        this row should not increase <code>scrollWidth</code>.<br />
+        • Tap target: <code>.messageLink min-height:72px padding:1rem</code> —
+        whole row is the link; passes 44px WCAG.<br />
+        • Verify:
+        <code>document.documentElement.scrollWidth === innerWidth</code> at all
+        viewports.
+      </div>
+      <p class="muted" style="margin-top: 12px">
+        Source:
+        <code>web/lib/notices-panel.module.css:150-171</code>
+        (<code>.messageLink</code>/<code>.messageChevron</code>) lacks break
+        handling. This harden stresses the list where CMS copy is longest.
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "long-copy scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

@@ -9,11 +9,11 @@ const mocks = vi.hoisted(() => ({
   announce: vi.fn(),
 }));
 
-vi.mock(import('@/lib/notices-api'), () => ({
+vi.mock(import("@/lib/notices-api"), () => ({
   listNotices: mocks.listNotices,
   markAllNoticesRead: mocks.markAllNoticesRead,
 }));
-vi.mock(import('@/lib/live-region'), () => ({ announce: mocks.announce }));
+vi.mock(import("@/lib/live-region"), () => ({ announce: mocks.announce }));
 
 import { COPY } from "@/lib/copy";
 import type { Notice } from "@/lib/notices-api";
@@ -62,19 +62,20 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByText(unreadEvent.title)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(unreadEvent.title)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.notices.noticesUnread)).toBeInTheDocument();
     // The HK wall label depends on ICU locale data (space vs narrow
     // no-break space differs across Node builds), so anchor the timestamp
     // assertion on the env-independent ISO dateTime attribute instead of
     // the exact localized string.
     const expectedIso = new Date(unreadEvent.created_at).toISOString();
-    const timeLabel = screen.getByText((_, element) => 
-      (
+    const timeLabel = screen.getByText(
+      (_, element) =>
         element !== null &&
         element.tagName === "TIME" &&
         element.getAttribute("dateTime") === expectedIso
-      )
     );
     expect(timeLabel).toBeInTheDocument();
     expect(timeLabel).toHaveTextContent("8月16日");
@@ -105,21 +106,19 @@ describe(NoticesPanel, () => {
     const todayIso = new Date(todayNotice.created_at).toISOString();
     const yesterdayIso = new Date(yesterdayNotice.created_at).toISOString();
     expect(
-      screen.getByText((_, element) => 
-        (
+      screen.getByText(
+        (_, element) =>
           element !== null &&
           element.tagName === "TIME" &&
           element.getAttribute("dateTime") === todayIso
-        )
       )
     ).toHaveTextContent("今天");
     expect(
-      screen.getByText((_, element) => 
-        (
+      screen.getByText(
+        (_, element) =>
           element !== null &&
           element.tagName === "TIME" &&
           element.getAttribute("dateTime") === yesterdayIso
-        )
       )
     ).toHaveTextContent("昨天");
   });
@@ -154,7 +153,9 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByText(COPY.notices.noticesEmpty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesEmpty)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText(COPY.notices.noticesEmptyHint)).toBeInTheDocument();
   });
 
@@ -178,11 +179,15 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByText(COPY.notices.noticesLoadError)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesLoadError)
+    ).resolves.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: COPY.notices.noticesRetry })
     );
-    await expect(screen.findByText(COPY.notices.noticesEmpty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.notices.noticesEmpty)
+    ).resolves.toBeInTheDocument();
     expect(mocks.listNotices).toHaveBeenCalledTimes(2);
   });
 
@@ -194,7 +199,12 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByRole("link", { name: /聚會提醒/ })).resolves.toHaveAttribute("href", "/programs?program=program-adult&event=event-1");
+    await expect(
+      screen.findByRole("link", { name: /聚會提醒/ })
+    ).resolves.toHaveAttribute(
+      "href",
+      "/programs?program=program-adult&from=notices&event=event-1"
+    );
   });
 
   test("routes program notices to the participant program detail", async () => {
@@ -209,7 +219,12 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByRole("link", { name: /報名結果/ })).resolves.toHaveAttribute("href", "/programs?program=program-adult");
+    await expect(
+      screen.findByRole("link", { name: /報名結果/ })
+    ).resolves.toHaveAttribute(
+      "href",
+      "/programs?program=program-adult&from=notices"
+    );
   });
 
   test("routes account notices to the profile page", async () => {
@@ -220,6 +235,8 @@ describe(NoticesPanel, () => {
 
     render(<NoticesPanel />);
 
-    await expect(screen.findByRole("link", { name: /帳戶更新/ })).resolves.toHaveAttribute("href", "/profile");
+    await expect(
+      screen.findByRole("link", { name: /帳戶更新/ })
+    ).resolves.toHaveAttribute("href", "/profile");
   });
 });

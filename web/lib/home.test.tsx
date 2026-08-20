@@ -244,7 +244,7 @@ describe("HomeView Component", () => {
     expect(viewEventLink).toBeInTheDocument();
     expect(viewEventLink).toHaveAttribute(
       "href",
-      "/programs?program=p-disc&event=e-101"
+      "/programs?program=p-disc&from=home&event=e-101"
     );
   });
 
@@ -320,7 +320,10 @@ describe("HomeView Component", () => {
     expect(allProgramsLink).toHaveAttribute("href", "/programs");
 
     const exploreCard = screen.getByTestId("explore-card");
-    expect(exploreCard).toHaveAttribute("href", "/programs");
+    expect(exploreCard).toHaveAttribute(
+      "href",
+      "/programs?program=p-intro&from=home"
+    );
     expect(screen.getByText("慕道入門課程")).toBeInTheDocument();
     expect(screen.getByText("現正接受報名 · 9月7日開始")).toBeInTheDocument();
   });
@@ -334,6 +337,61 @@ describe("HomeView Component", () => {
     expect(screen.getByText("門徒訓練基礎課")).toBeInTheDocument();
     expect(screen.getByTestId("announcement-card")).toBeInTheDocument();
     expect(screen.getByTestId("explore-card")).toBeInTheDocument();
+  });
+
+  test("keeps Home loading distinct from a resolved empty state", async () => {
+    const pending = Promise.withResolvers<Response>();
+    server.use(http.get("/api/v1/home", () => pending.promise));
+    renderWithApp(<HomeView />);
+
+    expect(screen.getByTestId("home-loading-state")).toBeInTheDocument();
+    pending.resolve(
+      HttpResponse.json({
+        requestId: "r-home-empty",
+        data: {
+          featuredEvent: null,
+          announcement: null,
+          exploreProgram: null,
+        },
+      })
+    );
+    await expect(
+      screen.findByTestId("home-empty-state")
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("shows a recoverable Home error and retries", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/home", () => new HttpResponse(null, { status: 500 })),
+      http.get(
+        "/api/v1/programs/catalog",
+        () => new HttpResponse(null, { status: 500 })
+      )
+    );
+    renderWithApp(<HomeView />);
+
+    await expect(
+      screen.findByTestId("home-error-state")
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(COPY.home.loadError);
+
+    server.use(
+      http.get("/api/v1/home", () =>
+        HttpResponse.json({
+          requestId: "r-home-retry",
+          data: {
+            featuredEvent: null,
+            announcement: null,
+            exploreProgram: null,
+          },
+        })
+      )
+    );
+    await user.click(screen.getByRole("button", { name: COPY.home.retry }));
+    await expect(
+      screen.findByTestId("home-empty-state")
+    ).resolves.toBeInTheDocument();
   });
 });
 

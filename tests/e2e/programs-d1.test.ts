@@ -1537,7 +1537,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /聚會提醒/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices&event=[^&]+$/u
+        );
       },
       browser
     );
@@ -1557,7 +1559,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /聚會提醒/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices&event=[^&]+$/u
+        );
         const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
         await expect(backBtn).toBeVisible();
         await backBtn.click();
@@ -1584,7 +1588,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /報名結果/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices$/u
+        );
       },
       browser
     );

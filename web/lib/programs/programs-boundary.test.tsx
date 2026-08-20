@@ -200,6 +200,33 @@ describe("Programs intent", () => {
     ).toBe("/programs?program=program-1#overview");
   });
 
+  test("preserves and validates participant detail origins", () => {
+    expect(
+      buildProgramsHref({
+        mode: "participant",
+        programId: "program-1",
+        origin: "home",
+      })
+    ).toBe("/programs?program=program-1&from=home");
+    expect(parseProgramsIntent("?program=program-1&from=home")).toStrictEqual({
+      mode: "participant",
+      programId: "program-1",
+      hash: null,
+      origin: "home",
+      malformed: false,
+    });
+    expect(
+      parseProgramsIntent("?program=program-1&from=unknown").malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent("?mode=management&program=program-1&from=home")
+        .malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent("?program=program-1&from=home&from=home").malformed
+    ).toBeTruthy();
+  });
+
   test("keeps management mode URL-addressable and rejects malformed intent", () => {
     expect(
       buildProgramsHref({ mode: "management", programId: "program-1" })
@@ -541,7 +568,7 @@ describe("Programs boundary", () => {
       await screen.findByRole("button", { name: /青年團契/u })
     );
 
-    expect(window.location.search).toBe("?program=program-2");
+    expect(window.location.search).toBe("?program=program-2&from=programs");
     expect(window.location.hash).toBe("#overview");
   });
 
@@ -569,6 +596,25 @@ describe("Programs boundary", () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.pageTitle })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("returns a Home-origin Program Detail to Home", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?program=program-1&from=home"
+    );
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+
+    render(<ProgramsBoundary />);
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.detailBack })
+    );
+    expect(mocks.replace).toHaveBeenCalledWith("/home");
   });
 
   test("PUI-05: renders the participant Event Detail from a program+event intent", async () => {
@@ -611,6 +657,12 @@ describe("Programs boundary", () => {
     expect(
       screen.getByRole("link", { name: COPY.programs.goToScan })
     ).toHaveAttribute("href", "/scanner?event=event-42");
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.backToOrigin })
+    );
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/programs?program=program-1&from=programs"
+    );
   });
 
   test("shows a compact accessible management entry from server scope and preserves Program intent", async () => {
@@ -1025,7 +1077,7 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     await userEvent.click(row);
 
     expect(window.location.pathname).toBe("/programs");
-    expect(window.location.search).toBe("?program=program-1");
+    expect(window.location.search).toBe("?program=program-1&from=programs");
     expect(window.location.hash).toBe("");
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.replace).not.toHaveBeenCalled();

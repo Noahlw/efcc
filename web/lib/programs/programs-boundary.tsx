@@ -28,7 +28,11 @@ import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
 import type { ManagementAttentionState } from "./programs-attention";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
-import type { ProgramsIntent, ProgramsTask } from "./programs-intent";
+import type {
+  ProgramsIntent,
+  ProgramsOrigin,
+  ProgramsTask,
+} from "./programs-intent";
 import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
 import { useAsyncResource } from "./use-async-resource";
@@ -44,12 +48,19 @@ type AccessState =
  * and direct History API (client), then sync the boundary's own `search`
  * state -- every navigate/open callback below shares this one path instead
  * of repeating the router-vs-history branch. */
+interface ProgramsHistoryState {
+  efccSection: "programs";
+  efccParent?: "program-detail";
+}
+
 function applyProgramsNavigation(
   router: AppRouterInstance,
   setSearch: (value: string) => void,
   href: string,
-  replace = false
+  replace = false,
+  historyState?: ProgramsHistoryState
 ): void {
+  const nextHistoryState = historyState ?? { efccSection: "programs" };
   if (typeof window === "undefined") {
     if (replace) {
       router.replace(href);
@@ -57,11 +68,28 @@ function applyProgramsNavigation(
       router.push(href);
     }
   } else if (replace) {
-    window.history.replaceState(null, "", href);
+    window.history.replaceState(nextHistoryState, "", href);
   } else {
-    window.history.pushState(null, "", href);
+    window.history.pushState(nextHistoryState, "", href);
   }
   setSearch(href.slice("/programs".length));
+}
+
+function participantOriginHref(origin: ProgramsOrigin | undefined): string {
+  switch (origin) {
+    case "home": {
+      return "/home";
+    }
+    case "notices": {
+      return "/notices";
+    }
+    case "messages": {
+      return "/messages";
+    }
+    default: {
+      return "/programs";
+    }
+  }
 }
 
 const TASK_LABEL_BY_TASK: Record<ProgramsTask, string> = {
@@ -470,6 +498,7 @@ const ProgramsBoundaryBody = ({
   navigateManagementTask,
   navigateManagementEvent,
   navigateParticipantEvent,
+  navigateParticipantBack,
   openProgram,
 }: {
   access: AccessState;
@@ -488,6 +517,7 @@ const ProgramsBoundaryBody = ({
   ) => void;
   navigateManagementEvent: (eventId: string | null) => void;
   navigateParticipantEvent: (eventId: string | null) => void;
+  navigateParticipantBack: () => void;
   openProgram: (programId: string) => void;
 }) => (
   <>
@@ -555,13 +585,14 @@ const ProgramsBoundaryBody = ({
         <ParticipantEventDetailPage
           programId={intent.programId}
           eventId={intent.eventId}
+          origin={intent.origin}
         />
       ) : intent.programId ? (
         <ParticipantProgramDetail
           programId={intent.programId}
           canManage={access.projection.hasManagementCapability}
           onManagement={() => navigateMode("management")}
-          onBack={() => navigateMode("participant", true, null)}
+          onBack={navigateParticipantBack}
           onOpenEvent={navigateParticipantEvent}
         />
       ) : (
@@ -694,6 +725,14 @@ export const ProgramsBoundary = () => {
         : COPY.programs.participantMode
     );
   };
+  const navigateParticipantBack = () => {
+    const href = participantOriginHref(intent.origin);
+    if (href === "/programs") {
+      navigateMode("participant", true, null);
+      return;
+    }
+    router.replace(href);
+  };
   const openManagementProgram = (programId: string) => {
     const href = buildProgramsHref({
       mode: "management",
@@ -754,8 +793,12 @@ export const ProgramsBoundary = () => {
       programId: intent.programId,
       eventId,
       hash: intent.hash,
+      origin: intent.origin ?? "programs",
     });
-    applyProgramsNavigation(router, setSearch, href);
+    applyProgramsNavigation(router, setSearch, href, false, {
+      efccSection: "programs",
+      efccParent: "program-detail",
+    });
     announce(
       eventId === null
         ? COPY.programs.programSelected
@@ -769,6 +812,7 @@ export const ProgramsBoundary = () => {
       mode: "participant",
       programId,
       hash: intent.hash,
+      origin: "programs",
     });
     applyProgramsNavigation(router, setSearch, href);
     announce(COPY.programs.programSelected);
@@ -835,6 +879,7 @@ export const ProgramsBoundary = () => {
         navigateManagementTask={navigateManagementTask}
         navigateManagementEvent={navigateManagementEvent}
         navigateParticipantEvent={navigateParticipantEvent}
+        navigateParticipantBack={navigateParticipantBack}
         openProgram={openProgram}
       />
     </BoundaryFrame>

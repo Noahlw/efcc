@@ -40,8 +40,10 @@ const SAMPLE = {
 };
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/messages");
   mocks.listAnnouncements.mockReset();
   mocks.push.mockReset();
+  mocks.router.replace.mockReset();
   mocks.searchParams.mockReturnValue(new URLSearchParams());
 });
 
@@ -61,14 +63,18 @@ describe(MessagesPanel, () => {
     mocks.listAnnouncements.mockResolvedValue({ announcements: [SAMPLE] });
     render(<MessagesPanel />);
     const row = await screen.findByRole("link", { name: /本週崇拜/u });
-    expect(row).toHaveAttribute("href", "/messages?content=church-msg-1");
+    expect(row).toHaveAttribute(
+      "href",
+      "/messages?content=church-msg-1&from=messages"
+    );
     expect(row).toHaveTextContent("8月15日");
+    expect(screen.getByText(COPY.home.messagesLead)).toBeInTheDocument();
   });
 
-  test("opens detail from the content URL and backs to the list", async () => {
+  test("opens detail from the content URL and replaces back to the list", async () => {
     mocks.listAnnouncements.mockResolvedValue({ announcements: [SAMPLE] });
     mocks.searchParams.mockReturnValue(
-      new URLSearchParams("content=church-msg-1")
+      new URLSearchParams("content=church-msg-1&from=messages")
     );
     render(<MessagesPanel />);
     await expect(
@@ -77,6 +83,21 @@ describe(MessagesPanel, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.home.churchNews })
     );
-    expect(mocks.push).toHaveBeenCalledWith("/messages");
+    expect(window.location.pathname).toBe("/messages");
+    expect(window.location.search).toBe("");
+  });
+
+  test("shows recovery for malformed content intent", async () => {
+    mocks.listAnnouncements.mockResolvedValue({ announcements: [SAMPLE] });
+    mocks.searchParams.mockReturnValue(new URLSearchParams("content=bad/id"));
+    render(<MessagesPanel />);
+    await expect(
+      screen.findByText(COPY.home.messagesNotFound)
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.home.messagesBack })
+    );
+    expect(window.location.pathname).toBe("/messages");
+    expect(window.location.search).toBe("");
   });
 });

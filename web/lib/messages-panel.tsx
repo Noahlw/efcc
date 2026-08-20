@@ -30,8 +30,24 @@ function toDetail(row: HomeAnnouncement) {
 export const MessagesPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const intent = parseMessagesIntent(`?${searchParams.toString()}`);
+  const queryString = searchParams.toString();
+  const intent = parseMessagesIntent(`?${queryString}`);
   const [state, setState] = useState<ListState>({ kind: "loading" });
+  const [showListOverride, setShowListOverride] = useState(false);
+  const selected =
+    !showListOverride && state.kind === "ready" && intent.contentId
+      ? state.announcements.find((row) => row.contentId === intent.contentId)
+      : undefined;
+
+  const navigateToList = useCallback(() => {
+    const href = buildMessagesHref();
+    if (typeof window !== "undefined") {
+      window.history.replaceState({ efccSection: "messages" }, "", href);
+      setShowListOverride(true);
+      return;
+    }
+    router.replace(href);
+  }, [router]);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -47,19 +63,18 @@ export const MessagesPanel = () => {
     void load();
   }, [load]);
 
-  if (state.kind === "ready" && intent.contentId) {
-    const selected = state.announcements.find(
-      (row) => row.contentId === intent.contentId
+  useEffect(() => {
+    setShowListOverride(false);
+  }, [queryString]);
+
+  if (state.kind === "ready" && selected) {
+    return (
+      <AnnouncementDetail
+        announcement={toDetail(selected)}
+        backLabel={COPY.home.churchNews}
+        onBack={navigateToList}
+      />
     );
-    if (selected) {
-      return (
-        <AnnouncementDetail
-          announcement={toDetail(selected)}
-          backLabel={COPY.home.churchNews}
-          onBack={() => router.push(buildMessagesHref())}
-        />
-      );
-    }
   }
 
   if (state.kind === "loading") {
@@ -89,10 +104,32 @@ export const MessagesPanel = () => {
     );
   }
 
+  if (
+    !showListOverride &&
+    (intent.malformed ||
+      (state.kind === "ready" && intent.contentId !== null && !selected))
+  ) {
+    return (
+      <div className={styles.page}>
+        <header className={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>{COPY.home.churchNews}</h1>
+          <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
+        </header>
+        <p className={styles.error} role="alert">
+          {COPY.home.messagesNotFound}
+        </p>
+        <button className={styles.retry} type="button" onClick={navigateToList}>
+          {COPY.home.messagesBack}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
         <h1 className={styles.pageTitle}>{COPY.home.churchNews}</h1>
+        <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
       </header>
       {state.announcements.length === 0 ? (
         <div className={styles.empty}>
@@ -105,7 +142,7 @@ export const MessagesPanel = () => {
             <li key={row.contentId} className={styles.item}>
               <Link
                 className={styles.messageLink}
-                href={buildMessagesHref(row.contentId)}
+                href={buildMessagesHref(row.contentId, "messages")}
               >
                 <span className={styles.itemCopy}>
                   <span className={styles.itemTitle}>{row.title}</span>

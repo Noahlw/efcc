@@ -1410,25 +1410,25 @@
   fill: none;
 }
 
-.directoryStatusSuccess {
+.directoryStatus.directoryStatusSuccess {
   border-color: var(--success-border);
   color: var(--success);
   background: var(--success-surface);
 }
 
-.directoryStatusPending {
+.directoryStatus.directoryStatusPending {
   border-color: var(--pending-border);
   color: var(--pending);
   background: var(--pending-surface);
 }
 
-.directoryStatusNeutral {
+.directoryStatus.directoryStatusNeutral {
   border-color: var(--line);
   color: var(--ink-muted);
   background: var(--surface-raised);
 }
 
-.directoryStatusDanger {
+.directoryStatus.directoryStatusDanger {
   border-color: var(--error-border);
   color: var(--error);
   background: var(--error-surface);
@@ -2007,7 +2007,8 @@
     flex-direction: column;
   }
 
-  .programDetailActions > button {
+  .programDetailActions > button,
+  .programDetailActions > a {
     width: 100%;
   }
 }

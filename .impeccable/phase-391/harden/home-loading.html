@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Home — Loading harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --line-strong: #aeb8bc;
+      --accent: #9c302c;
+      --focus: #176a87;
+      --skeleton: #e3e0e1;
+      --success: #2e6b37;
+      --success-surface: #eef4ef;
+      --success-border: #b9cfbe;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .page {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 4vw, 1.5rem)
+        calc(1.5rem + 72px + env(safe-area-inset-bottom));
+      color: var(--ink);
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .dateTag {
+      display: inline-flex;
+      margin-bottom: 10px;
+      color: var(--ink-muted);
+      font:
+        600 0.72rem ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+      letter-spacing: 0.08em;
+    }
+    .skeleton {
+      border-radius: 8px;
+      background: linear-gradient(
+        90deg,
+        var(--skeleton) 25%,
+        #eee 37%,
+        var(--skeleton) 63%
+      );
+      background-size: 400% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0% {
+        background-position: 100% 0;
+      }
+      100% {
+        background-position: 0 0;
+      }
+    }
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(1.72rem, 6vw, 2.25rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .intro p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      font-size: 0.96rem;
+      line-height: 1.6;
+    }
+    .card {
+      background: var(--surface-raised);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 22px;
+    }
+    .listCard {
+      width: 100%;
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid #868182;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .primary {
+      width: 100%;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .skeleton {
+        animation: none;
+      }
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: var(--ink-muted)"
+        >示範 · loading proposal</span
+      >
+    </header>
+    <main class="page" aria-labelledby="loading-note">
+      <div class="intro">
+        <div
+          class="dateTag skeleton"
+          style="width: 120px; height: 14px"
+          aria-hidden="true"
+        ></div>
+        <h1>
+          <span
+            class="skeleton"
+            style="
+              display: inline-block;
+              width: 180px;
+              height: 34px;
+              vertical-align: middle;
+            "
+          ></span>
+        </h1>
+        <p>
+          <span
+            class="skeleton"
+            style="display: inline-block; width: 220px; height: 16px"
+          ></span>
+        </p>
+      </div>
+      <div style="display: grid; gap: 16px">
+        <div
+          class="card"
+          role="status"
+          aria-busy="true"
+          aria-label="正在載入下一項聚會"
+        >
+          <div
+            class="skeleton"
+            style="width: 64px; height: 28px; border-radius: 99px"
+          ></div>
+          <div
+            class="skeleton"
+            style="margin-top: 14px; width: 160px; height: 18px"
+          ></div>
+          <div
+            class="skeleton"
+            style="margin-top: 10px; width: 200px; height: 26px"
+          ></div>
+          <div style="display: grid; gap: 9px; margin: 20px 0">
+            <div class="skeleton" style="height: 20px"></div>
+            <div class="skeleton" style="height: 20px"></div>
+            <div class="skeleton" style="height: 20px"></div>
+          </div>
+          <div
+            class="primary skeleton"
+            aria-hidden="true"
+            style="border-color: var(--skeleton); background: var(--skeleton)"
+          ></div>
+        </div>
+        <section>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: end;
+              margin: 28px 0 12px;
+            "
+          >
+            <div class="skeleton" style="width: 96px; height: 20px"></div>
+            <div class="skeleton" style="width: 64px; height: 20px"></div>
+          </div>
+          <div class="listCard">
+            <span
+              ><span
+                class="skeleton"
+                style="display: block; width: 140px; height: 16px"
+              ></span
+              ><span
+                class="skeleton"
+                style="
+                  display: block;
+                  margin-top: 8px;
+                  width: 200px;
+                  height: 12px;
+                "
+              ></span></span
+            ><span
+              class="skeleton"
+              style="width: 20px; height: 20px; border-radius: 4px"
+            ></span>
+          </div>
+        </section>
+        <section>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: end;
+              margin: 28px 0 12px;
+            "
+          >
+            <div class="skeleton" style="width: 64px; height: 20px"></div>
+            <div class="skeleton" style="width: 64px; height: 20px"></div>
+          </div>
+          <div class="listCard">
+            <span
+              ><span
+                class="skeleton"
+                style="display: block; width: 120px; height: 16px"
+              ></span
+              ><span
+                class="skeleton"
+                style="
+                  display: block;
+                  margin-top: 8px;
+                  width: 180px;
+                  height: 12px;
+                "
+              ></span></span
+            ><span
+              class="skeleton"
+              style="width: 20px; height: 20px; border-radius: 4px"
+            ></span>
+          </div>
+        </section>
+      </div>
+      <p
+        id="loading-note"
+        style="
+          margin-top: 18px;
+          color: var(--ink-muted);
+          font-size: 0.84rem;
+          line-height: 1.6;
+        "
+      >
+        <strong>Check-only:</strong> Loading (skeleton) proposal for
+        <code>web/app/home/page.tsx:359-400</code>. Today Home flashes the empty
+        state (<code>暫時沒有與你有關的聚會</code>) while
+        <code>getHome()</code> is in-flight — P1-02. This skeleton keeps
+        <code>scrollWidth &le; innerWidth</code>, preserves
+        <code>48px / 72px / 44px</code> hit areas, and is
+        <code>aria-busy</code>. Open at 320 / 390 / 414 — skeleton CTA stays
+        full-width, listCard grid stays <code>minmax(0,1fr) auto</code>.
+      </p>
+      <p style="color: var(--ink-muted); font-size: 0.78rem">
+        Toggle offline in DevTools → skeleton persists; reload shows error
+        harden.
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      document.documentElement.setAttribute("data-harden", "home-loading");
+      console.log(
+        "scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

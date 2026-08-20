@@ -15,8 +15,8 @@
   margin: 0;
   color: var(--ink, #171a1d);
   font-size: clamp(1.75rem, 5vw, 2.25rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
@@ -125,11 +125,13 @@
 .itemTitle,
 .itemBody {
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .itemTitle {
   color: var(--ink, #171a1d);
   font-size: 1rem;
+  font-weight: 600;
   line-height: 1.4;
 }
 

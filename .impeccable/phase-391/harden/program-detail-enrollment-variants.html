@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Enrollment Variants (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      @media (max-width: 799.98px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: 1rem;
+        display: grid;
+        gap: 0.5rem;
+      }
+      .badge {
+        display: inline-flex;
+        min-height: 26px;
+        align-items: center;
+        padding: 0.1875rem 0.5625rem;
+        border-radius: 99px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        width: fit-content;
+      }
+      .b-pending {
+        border: 1px solid #c1ad95;
+        color: #8a5b16;
+        background: #f3eee8;
+      }
+      .b-success {
+        border: 1px solid #b9cfbe;
+        color: #2e6b37;
+        background: #eef4ef;
+      }
+      .b-neutral {
+        border: 1px solid #d6dcde;
+        color: #59636a;
+        background: #fff;
+      }
+      .b-danger {
+        border: 1px solid #e5b4b0;
+        color: #b3261e;
+        background: #fbeeed;
+      }
+      .muted {
+        color: #59636a;
+        font-size: 0.875rem;
+        line-height: 1.6;
+        margin: 0;
+      }
+      .sticky {
+        margin-top: 0.75rem;
+        padding: 0.625rem;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        background: color-mix(in srgb, #fff 94%, transparent);
+        position: sticky;
+        bottom: calc(72px + 0.625rem + env(safe-area-inset-bottom, 0px));
+      }
+      .sticky button {
+        width: 100%;
+        min-height: 44px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        display: block;
+        text-align: center;
+      }
+      .action {
+        border: 1px solid #9c302c;
+        background: none;
+        color: #9c302c;
+      }
+      .danger {
+        border: 1px solid #b3261e;
+        background: #b3261e;
+        color: #fff;
+      }
+      .button {
+        border: 0;
+        background: #9c302c;
+        color: #fff;
+      }
+      .empty {
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        background: #fff;
+        color: #59636a;
+        font-size: 0.875rem;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-enrollment-variants.html —
+        check-only — 8 lifecycle variants at 320/390 — worktree 15956de
+      </p>
+      <h1 style="font-size: 1.1rem">
+        Enrollment Panel Variants (sticky 320 stress)
+      </h1>
+      <div class="grid">
+        <div class="card">
+          <span class="badge b-pending">可報名</span>
+          <p class="muted">可報名</p>
+          <p class="muted">申請前請確認時間是否適合…</p>
+          <div class="sticky">
+            <button class="button" type="button">報名</button>
+          </div>
+          <small style="color: #59636a"
+            >Eligible — <code>EnrollmentAction:229-238 button</code></small
+          >
+        </div>
+        <div class="card">
+          <span class="badge b-pending">待審批</span>
+          <p class="muted">待處理</p>
+          <p class="muted">申請已送出，等待課程負責人處理。</p>
+          <div class="sticky">
+            <button class="action" type="button">取消申請</button>
+          </div>
+          <small>Pending — <code>138-153 actionButton</code></small>
+        </div>
+        <div class="card">
+          <span class="badge b-success">已參加</span>
+          <p class="muted">已加入</p>
+          <p class="muted">你目前已加入此課程。</p>
+          <div class="sticky">
+            <button class="danger" type="button">退出課程</button>
+          </div>
+          <small>Active — <code>120-135 dangerButton</code></small>
+        </div>
+        <div class="card">
+          <span class="badge b-neutral">已退出</span>
+          <p class="muted">已取消</p>
+          <p class="muted">這次報名已取消；如課程仍開放，可重新申請。</p>
+          <div class="sticky">
+            <button class="button" type="button">重新報名</button>
+          </div>
+          <small>Cancelled — <code>204-220 button</code></small>
+        </div>
+        <div class="card">
+          <span class="badge b-danger">已拒絕</span>
+          <p class="muted">已拒絕</p>
+          <p class="muted">上次申請未獲接納；如課程仍開放，可重新申請。</p>
+          <div class="sticky">
+            <button class="button" type="button">重新報名</button>
+          </div>
+          <small>Rejected — <code>163-179</code></small>
+        </div>
+        <div class="card">
+          <span class="badge b-neutral">已取消申請</span>
+          <p class="muted">已撤回</p>
+          <p class="muted">你已撤回上次申請；如課程仍開放，可重新申請。</p>
+          <div class="sticky">
+            <button class="button" type="button">重新報名</button>
+          </div>
+          <small>Withdrawn — <code>182-199</code></small>
+        </div>
+        <div class="card">
+          <span class="badge b-neutral">由同工安排</span>
+          <p class="muted">此課程由同工安排參加</p>
+          <div class="empty">
+            無 CTA — <code>112-114 ManagerOnly</code> read-only
+          </div>
+          <small>ManagerOnly — no sticky bar at all</small>
+        </div>
+        <div class="card">
+          <span class="badge b-neutral">已封存</span>
+          <p class="muted">此課程已存檔，不能提交新的報名。</p>
+          <div class="empty">無 CTA — <code>102-103 Archived</code></div>
+          <small>Archived — no CTA</small>
+        </div>
+      </div>
+      <div
+        style="
+          margin-top: 1rem;
+          padding: 1rem;
+          border: 1px dashed #aeb8bc;
+          border-radius: 8px;
+          background: #fff;
+        "
+      >
+        <strong>Responsive note:</strong> Each sticky bar is
+        <code>display:block width:100%</code> inside
+        <code>.stickyActionBar</code> — single CTA never wraps. At 320 the 8
+        cards collapse to 1 column, each sticky stays full-width; no
+        <code>scrollWidth &gt; innerWidth</code>. Advisory text
+        <code>enrollmentScheduleAdvisory</code> only appears for Eligible when
+        schedules/events exist (<code>canRequest && (schedules||events)</code>
+        at <code>365-366</code>). All labels from
+        <code>copy.ts:1057-1130</code>.
+      </div>
+    </div>
+  </body>
+</html>

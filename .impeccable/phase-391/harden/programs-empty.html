@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Programs Empty / No-Results (check-only proposal)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px 20px 100px;
+      }
+      .card {
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        background: #fff;
+        padding: 20px 20px;
+      }
+      .boundaryState {
+        border: 1px solid #d6dcde;
+        border-radius: 8px;
+        background: #f4f5f3;
+        padding: 1rem;
+      }
+      .directoryEmpty {
+        margin-top: 0.75rem;
+        padding: 2.125rem 1.375rem;
+        text-align: center;
+        background: #f4f5f3;
+        border: 1px solid #d6dcde;
+        border-radius: 8px;
+      }
+      .retry {
+        font: inherit;
+        font-weight: 700;
+        color: #9c302c;
+        background: none;
+        border: 1px solid #9c302c;
+        border-radius: 8px;
+        padding: 0.5625rem 1.125rem;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .retry:hover {
+        background: #9c302c;
+        color: #fff;
+      }
+      .alt {
+        margin-top: 1.25rem;
+        padding: 1rem;
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .chip {
+        display: inline-flex;
+        min-height: 26px;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 99px;
+        font-size: 0.72rem;
+        font-weight: 550;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        margin: 0.5rem 0;
+        color: #59636a;
+        line-height: 1.6;
+      }
+      .note {
+        font-size: 0.85rem;
+        color: #6e4a14;
+        background: #f3eee8;
+        border: 1px solid #c1ad95;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/programs-empty.html — check-only proposal,
+        not production UI. Compares current live empty vs. hardened candidate.
+      </p>
+      <h1>
+        Proposal A — Current live empty (catalog = 0 OR filtered = 0 shares one
+        state)
+      </h1>
+      <div class="card">
+        <div class="directoryEmpty" id="programs-catalog-state">
+          <h2 style="margin: 0 0 0.5rem; font-size: 1.35rem; font-weight: 800">
+            找不到相關課程
+          </h2>
+          <p>請嘗試其他關鍵字或清除篩選。</p>
+          <button class="retry" type="button">清除篩選</button>
+        </div>
+        <p style="font-size: 0.85rem; color: #59636a; margin-top: 0.75rem">
+          Live:
+          <code>web/lib/programs/participant-directory.tsx:374-394</code> —
+          single <code>filtered.length===0</code> branch covers both “no
+          programs at all” and “no matches for query/filter”. Same
+          heading/copy/CTA. Source:
+          <code>web/app/programs/programs.module.css:1366-1371</code>
+          <code>.directoryEmpty</code>.
+        </p>
+      </div>
+
+      <h1 style="margin-top: 1.5rem">
+        Proposal B — Hardened split (review-only candidate)
+      </h1>
+      <div class="card">
+        <div class="directoryEmpty">
+          <h2 style="margin: 0 0 0.5rem">目前沒有可顯示的課程</h2>
+          <p>
+            你的帳戶目前沒有可瀏覽的課程，或課程目錄尚未建立。請聯絡同工或稍後再試。
+          </p>
+          <p style="font-size: 0.9rem">已嘗試搜尋或篩選？</p>
+          <button class="retry" type="button">清除搜尋與篩選</button>
+        </div>
+        <div class="alt">
+          <strong>candidate rationale (not auto-applied):</strong>
+          <ul style="margin: 0.5rem 0 0 1rem; line-height: 1.6; color: #59636a">
+            <li>
+              Disambiguate <em>empty catalog</em> (0 programs, system state)
+              from <em>no-results</em> (query/filter kept, user state). Live
+              conflates them, which masks the “ask your leader” path when the
+              account truly has no programs.
+            </li>
+            <li>
+              CTA should reset both <code>query</code> and <code>filter</code> —
+              live already does <code>setQuery("") + setFilter("all")</code> for
+              this case, correct; but copy “清除篩選” undersells that it also
+              clears the search. Candidate uses “清除搜尋與篩選”.
+            </li>
+            <li>
+              Fix direction if adopted: in
+              <code>participant-directory.tsx:374</code> branch, derive
+              <code>isTrueEmpty = (programs?.length===0)</code> vs
+              <code
+                >isFilteredEmpty = filtered.length===0 &&
+                programs.length>0</code
+              >; render two variants with distinct headings and same CTA
+              handler. No API change. Keep one
+              <code>#programs-catalog-state</code> for focus.
+            </li>
+          </ul>
+          <p class="note">
+            P2 — low traffic today (Member with 0 programs rare in dev seed),
+            but member self-creation flow or permission change can land here.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

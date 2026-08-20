@@ -618,13 +618,28 @@ describe("EVT-01 event detail", () => {
       <EventDetail
         programId="program-1"
         eventId="missing"
-        canManage
+        canManage={false}
         onBack={() => {}}
       />
     );
     await expect(
       screen.findByText(COPY.error.notFound)
     ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: COPY.programs.eventDetailRecoveryTitle,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.eventDetailViewProgram,
+      })
+    ).toHaveAttribute("href", "/programs?program=program-1");
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.eventDetailBackToCatalog,
+      })
+    ).toHaveAttribute("href", "/programs");
     mocks.getEvent.mockResolvedValue(detailFixture());
     await userEvent.click(
       screen.getByRole("button", { name: COPY.error.retry })

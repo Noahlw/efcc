@@ -21,4 +21,24 @@ describe("messages intent", () => {
       "/messages?content=church-msg-1"
     );
   });
+
+  test("preserves only validated list/detail origins", () => {
+    expect(
+      parseMessagesIntent("?content=church-msg-1&from=messages")
+    ).toStrictEqual({
+      contentId: "church-msg-1",
+      origin: "messages",
+      malformed: false,
+    });
+    expect(
+      parseMessagesIntent("?content=church-msg-1&from=unknown").malformed
+    ).toBeTruthy();
+    expect(
+      parseMessagesIntent("?content=church-msg-1&from=messages&from=messages")
+        .malformed
+    ).toBeTruthy();
+    expect(buildMessagesHref("church-msg-1", "messages")).toBe(
+      "/messages?content=church-msg-1&from=messages"
+    );
+  });
 });
