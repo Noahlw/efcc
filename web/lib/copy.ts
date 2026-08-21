@@ -791,6 +791,8 @@ export const COPY = {
     detailEventLocation: "地點",
     viewEventDetail: "查看聚會詳情",
     scheduleTitle: "聚會時間表",
+    scheduleRulesGroup: "時間規則",
+    scheduleEventsGroup: "即將舉行",
     conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
     archivedNote: "此課程已封存，暫不接受報名",
     detailBehavior: "形式",
@@ -1125,6 +1127,7 @@ export const COPY = {
     enrollmentHistory: "你的報名紀錄",
     enrollmentScheduleAdvisory:
       "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
+    enrollmentEventDetailAdvisory: "加入後可查看聚會詳情",
     enrollmentUnavailableNote: "目前無法在此頁處理你的報名。",
     enrollmentIneligibleNote: "你目前沒有此課程的報名資格。",
     enrollmentDraftNote: "此課程尚未開放報名。",

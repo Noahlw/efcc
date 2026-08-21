@@ -17,13 +17,11 @@ import type {
   ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
+import { WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 import { rememberDeepLink } from "@/lib/session";
 
 import { EventFactIcon } from "./event-detail";
-import {
-  buildEnrollmentHistory,
-  ParticipantEnrollment,
-} from "./participant-enrollment";
+import { ParticipantEnrollment } from "./participant-enrollment";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -63,6 +61,18 @@ type DetailConflictView = ParticipantProgramDetailData & {
 function eventIsUpcoming(startsAt: string): boolean {
   const timestamp = Date.parse(startsAt);
   return Number.isFinite(timestamp) && timestamp >= Date.now();
+}
+
+const MOBILE_EVENT_CAP = 4;
+const DESKTOP_EVENT_CAP = 8;
+const DESKTOP_EVENT_MEDIA_QUERY = "(min-width: 800px)";
+
+function scheduleRuleLabel(
+  rule: ParticipantProgramDetailData["schedule_rules"][number]
+): string {
+  return rule.recurrence === "WEEKLY"
+    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${rule.start_time}–${rule.end_time}`
+    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
 }
 
 function statusForDetail(detail: ParticipantProgramDetailData): {
@@ -158,6 +168,106 @@ const statusClass: Record<StatusKind, string> = {
   danger: styles.directoryStatusDanger,
 };
 
+interface ParticipantScheduleProps {
+  program: ParticipantProgramDetailData["program"];
+  scheduleRules: ParticipantProgramDetailData["schedule_rules"];
+  events: ParticipantProgramDetailData["events"];
+}
+
+const ParticipantSchedule = ({
+  program,
+  scheduleRules,
+  events,
+}: ParticipantScheduleProps) => (
+  <section
+    className={styles.programDetailSection}
+    aria-labelledby="program-detail-schedule"
+  >
+    <h3 id="program-detail-schedule" className={styles.programDetailHeading}>
+      {COPY.programs.scheduleTitle}
+    </h3>
+    {scheduleRules.length > 0 && (
+      <div className={styles.programDetailScheduleGroup}>
+        <h4
+          id="program-detail-schedule-rules"
+          className={styles.programDetailSubheading}
+        >
+          {COPY.programs.scheduleRulesGroup}
+        </h4>
+        <ul
+          className={styles.programDetailList}
+          aria-label={COPY.programs.scheduleRulesGroup}
+        >
+          {scheduleRules.map((rule) => (
+            <li key={rule.rule_id} className={styles.programDetailEvent}>
+              <span className={styles.programDetailScheduleCopy}>
+                {scheduleRuleLabel(rule)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+    {events.length > 0 && (
+      <div className={styles.programDetailScheduleGroup}>
+        <h4
+          id="program-detail-schedule-events"
+          className={styles.programDetailSubheading}
+        >
+          {COPY.programs.scheduleEventsGroup}
+        </h4>
+        <ul
+          className={styles.programDetailList}
+          aria-label={COPY.programs.scheduleEventsGroup}
+        >
+          {events.map((event, index) => {
+            const location = eventLocation(event);
+            const selfCheckInAvailable =
+              event.self_check_in_available === true &&
+              program.lifecycle !== "Archived" &&
+              program.enrollment_mode !== "ManagerOnly";
+            return (
+              <li key={event.event_id} className={styles.programDetailEvent}>
+                <time className={styles.eventDate} dateTime={event.starts_at}>
+                  {hkMonthDayLabel(event.starts_at)}
+                </time>
+                <div className={styles.programDetailScheduleCopy}>
+                  <strong>{eventTitle(event, index)}</strong>
+                  <span className={styles.eventSource}>
+                    {eventWhen(event)}
+                    {location ? ` · ${location}` : ""}
+                  </span>
+                  <span className={styles.programDetailLifecycle}>
+                    <span
+                      className={styles.programDetailLifecycleDot}
+                      aria-hidden="true"
+                    />
+                    {COPY.programs.eventActive}
+                  </span>
+                  {selfCheckInAvailable && (
+                    <span
+                      className={`${styles.directoryStatus} ${styles.directoryStatusNeutral}`}
+                      role="status"
+                      aria-label={COPY.programs.checkInAvailable}
+                    >
+                      {COPY.programs.checkInAvailable}
+                    </span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    )}
+    {scheduleRules.length === 0 && events.length === 0 && (
+      <p className={styles.programDetailMuted}>
+        {COPY.programs.detailEventsNone}
+      </p>
+    )}
+  </section>
+);
+
 export const ParticipantProgramDetail = ({
   programId,
   onBack,
@@ -171,6 +281,21 @@ export const ParticipantProgramDetail = ({
   const mounted = useRef(true);
   const requestId = useRef(0);
   const retryFocusPending = useRef(false);
+
+  const [eventLimit, setEventLimit] = useState(MOBILE_EVENT_CAP);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mediaQuery = window.matchMedia(DESKTOP_EVENT_MEDIA_QUERY);
+    const updateEventLimit = () => {
+      setEventLimit(mediaQuery.matches ? DESKTOP_EVENT_CAP : MOBILE_EVENT_CAP);
+    };
+    updateEventLimit();
+    mediaQuery.addEventListener("change", updateEventLimit);
+    return () => mediaQuery.removeEventListener("change", updateEventLimit);
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -266,6 +391,11 @@ export const ParticipantProgramDetail = ({
       .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
   }, [state]);
 
+  const visibleEvents = useMemo(
+    () => scheduledEvents.slice(0, eventLimit),
+    [eventLimit, scheduledEvents]
+  );
+
   if (state.kind === "loading") {
     return (
       <section
@@ -336,10 +466,11 @@ export const ParticipantProgramDetail = ({
   const status = statusForDetail(state.detail);
   const nextEvent = scheduledEvents[0] ?? null;
   const nextLocation = nextEvent ? eventLocation(nextEvent) : null;
-  const history = buildEnrollmentHistory(enrollment);
   const hasActiveEnrollment =
     enrollment?.enrollments.some((item) => item.status === "Active") ?? false;
   const canOpenEventDetail = canManage || hasActiveEnrollment;
+  const showEventDetailAdvisory =
+    !canOpenEventDetail && scheduledEvents.length > 0;
   const nextConflict = conflictNote(
     state.detail,
     nextEvent,
@@ -426,85 +557,11 @@ export const ParticipantProgramDetail = ({
         </article>
       )}
 
-      <section
-        className={styles.programDetailSection}
-        aria-labelledby="program-detail-schedule"
-      >
-        <h3
-          id="program-detail-schedule"
-          className={styles.programDetailHeading}
-        >
-          {COPY.programs.scheduleTitle}
-        </h3>
-        {scheduledEvents.length > 0 ? (
-          <ul
-            className={styles.programDetailList}
-            aria-label={COPY.programs.scheduleTitle}
-          >
-            {scheduledEvents.map((event, index) => {
-              const location = eventLocation(event);
-              const selfCheckInAvailable =
-                event.self_check_in_available === true &&
-                program.lifecycle !== "Archived" &&
-                program.enrollment_mode !== "ManagerOnly";
-              return (
-                <li key={event.event_id} className={styles.programDetailEvent}>
-                  <time className={styles.eventDate} dateTime={event.starts_at}>
-                    {hkMonthDayLabel(event.starts_at)}
-                  </time>
-                  <div className={styles.programDetailScheduleCopy}>
-                    <strong>{eventTitle(event, index)}</strong>
-                    <span className={styles.eventSource}>
-                      {eventWhen(event)}
-                      {location ? ` · ${location}` : ""}
-                    </span>
-                    {selfCheckInAvailable && (
-                      <span
-                        className={`${styles.directoryStatus} ${styles.directoryStatusNeutral}`}
-                        role="status"
-                        aria-label={COPY.programs.checkInAvailable}
-                      >
-                        {COPY.programs.checkInAvailable}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.detailEventsNone}
-          </p>
-        )}
-      </section>
-
-      {history.length > 0 && (
-        <section
-          className={styles.programDetailHistory}
-          aria-labelledby="program-enrollment-history-title"
-        >
-          <h3
-            id="program-enrollment-history-title"
-            className={styles.programDetailHeading}
-          >
-            {COPY.programs.enrollmentHistory}
-          </h3>
-          <ul
-            className={styles.eventList}
-            aria-label={COPY.programs.enrollmentHistory}
-          >
-            {history.map((item) => (
-              <li key={item.id} className={styles.eventRow}>
-                <span className={styles.eventDate}>{item.label}</span>
-                <time className={styles.eventSource} dateTime={item.at}>
-                  {hkMonthDayLabel(item.at)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <ParticipantSchedule
+        program={program}
+        scheduleRules={scheduleRules}
+        events={visibleEvents}
+      />
 
       {canManage && (
         <div className={styles.managementEntry}>
@@ -527,6 +584,7 @@ export const ParticipantProgramDetail = ({
         enrollmentAccess={enrollmentAccess}
         scheduleRules={scheduleRules}
         events={state.detail.events}
+        showEventDetailAdvisory={showEventDetailAdvisory}
         onRefresh={refreshDetail}
       />
     </article>

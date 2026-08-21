@@ -12,10 +12,10 @@ import type { Browser, Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
-import {
-  restoreEventWindow,
-  type EventWindowSetup,
-  type EventWindowSnapshot,
+import { restoreEventWindow } from "./participant-event-window";
+import type {
+  EventWindowSetup,
+  EventWindowSnapshot,
 } from "./participant-event-window";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
@@ -75,6 +75,9 @@ const COPY = {
   noticesRetry: "重試載入通知",
   noticesLoadError: "未能載入通知。",
   scheduleTitle: "聚會時間表",
+  scheduleRulesGroup: "時間規則",
+  scheduleEventsGroup: "即將舉行",
+  enrollmentEventDetailAdvisory: "加入後可查看聚會詳情",
   conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
   archivedNote: "此課程已封存，暫不接受報名",
   catalogSearchLabel: "搜尋課程",
@@ -1141,16 +1144,30 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(
       page.getByRole("button", { name: COPY.viewEventDetail })
     ).toHaveCount(0);
-    // #389 replaced the schedule-rule table with a unified real-event list
-    // (聚會時間表), seeded weekly for E2E_DEMO_成人查經.
+    // The grouped schedule keeps recurrence rules and concrete Events
+    // semantically distinct, while the requestable member sees only the
+    // enrollment-gated affordance (not a dead Event Detail CTA).
     await expect(
-      page.getByRole("list", { name: COPY.scheduleTitle })
+      page.getByRole("heading", { name: COPY.scheduleRulesGroup })
     ).toBeVisible();
+    const eventsGroup = page.getByRole("list", {
+      name: COPY.scheduleEventsGroup,
+    });
+    await expect(eventsGroup).toBeVisible();
+    await expect(
+      page.getByText(COPY.enrollmentEventDetailAdvisory, { exact: true })
+    ).toBeVisible();
+    for (const width of [320, 375, 390, 414, 799, 800, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(eventsGroup.getByRole("listitem")).toHaveCount(
+        width < 800 ? 4 : 8
+      );
+    }
 
     await page.reload();
     await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
-      page.getByRole("list", { name: COPY.scheduleTitle })
+      page.getByRole("list", { name: COPY.scheduleEventsGroup })
     ).toBeVisible();
 
     await page.getByRole("button", { name: COPY.detailBack }).click();

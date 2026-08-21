@@ -12,7 +12,6 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   ParticipantEnrollmentAccess,
-  ParticipantEnrollmentRequest,
   ParticipantEnrollmentSnapshot,
   ParticipantEventSummary,
   ParticipantScheduleRule,
@@ -27,13 +26,8 @@ export interface ParticipantEnrollmentProps {
   enrollmentAccess: ParticipantEnrollmentAccess;
   scheduleRules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
+  showEventDetailAdvisory?: boolean;
   onRefresh: () => Promise<void>;
-}
-
-export interface HistoryItem {
-  id: string;
-  label: string;
-  at: string;
 }
 
 type ConfirmKind = "withdraw" | "cancel";
@@ -49,58 +43,6 @@ function errorMessage(error: unknown): string {
     return COPY.programs.enrollmentUnavailableNote;
   }
   return errorCopyFor(error.problem.code, error.problem.detail);
-}
-
-function requestStatusLabel(
-  status: ParticipantEnrollmentRequest["status"]
-): string | null {
-  switch (status) {
-    case "Pending": {
-      return COPY.programs.requestPending;
-    }
-    case "Rejected": {
-      return COPY.programs.requestRejected;
-    }
-    case "Withdrawn": {
-      return COPY.programs.requestWithdrawn;
-    }
-    case "Approved": {
-      return null;
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-export function buildEnrollmentHistory(
-  enrollment: ParticipantEnrollmentSnapshot | null
-): HistoryItem[] {
-  if (!enrollment) {
-    return [];
-  }
-  return [
-    ...enrollment.requests.flatMap((request) => {
-      const label = requestStatusLabel(request.status);
-      return label === null
-        ? []
-        : [
-            {
-              id: `request-${request.request_id}`,
-              label,
-              at: request.decided_at ?? request.submitted_at,
-            },
-          ];
-    }),
-    ...enrollment.enrollments.map((item) => ({
-      id: `enrollment-${item.enrollment_id}`,
-      label:
-        item.status === "Active"
-          ? COPY.programs.enrollmentActive
-          : COPY.programs.enrollmentCancelled,
-      at: item.cancelled_at ?? item.enrolled_at,
-    })),
-  ].toSorted((a, b) => b.at.localeCompare(a.at));
 }
 
 interface EnrollmentActionProps {
@@ -285,6 +227,7 @@ export const ParticipantEnrollment = ({
   enrollmentAccess,
   scheduleRules,
   events,
+  showEventDetailAdvisory = false,
   onRefresh,
 }: ParticipantEnrollmentProps) => {
   const [busy, setBusy] = useState(false);
@@ -511,6 +454,12 @@ export const ParticipantEnrollment = ({
       {showScheduleAdvisory && (
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentScheduleAdvisory}
+        </p>
+      )}
+
+      {showEventDetailAdvisory && canRequest && (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.enrollmentEventDetailAdvisory}
         </p>
       )}
 
