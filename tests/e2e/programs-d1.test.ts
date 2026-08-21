@@ -505,6 +505,60 @@ function enrollmentPanelOf(page: Page): Locator {
   });
 }
 
+async function openEventCheckInWindow(
+  adminPage: Page,
+  programId: string
+): Promise<string | null> {
+  if (adminPage.url() === "about:blank") {
+    await loginAs(
+      adminPage,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+  }
+  return adminPage.evaluate(async (targetProgramId) => {
+    const origin = window.location.origin;
+    const response = await fetch(
+      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
+    );
+    const body = (await response.json()) as {
+      data?: {
+        events?: {
+          event_id: string;
+          starts_at: string;
+          status: string;
+          availability: string;
+        }[];
+      };
+    };
+    const nowIso = new Date().toISOString();
+    const event = [...(body.data?.events ?? [])]
+      .filter(
+        (candidate) =>
+          candidate.status === "Active" &&
+          candidate.availability === "Active" &&
+          candidate.starts_at >= nowIso
+      )
+      .sort((left, right) => left.starts_at.localeCompare(right.starts_at))[0];
+    if (!event) {
+      return null;
+    }
+    const now = Date.now();
+    const patch = await fetch(
+      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(event.event_id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
+          check_in_window_closes_at: new Date(now + 45 * 60_000).toISOString(),
+        }),
+      }
+    );
+    return patch.ok ? event.event_id : null;
+  }, programId);
+}
+
 test.beforeAll(() => {
   for (const [name, value] of [
     ["PROGRAMS_ADMIN_USERNAME", ADMIN_USER],
@@ -1195,6 +1249,8 @@ test.describe("PUI-05 participant Event Detail", () => {
         ).toBeVisible();
         await memberPage.reload();
       }
+      const openedEventId = await openEventCheckInWindow(page, programId);
+      expect(openedEventId).toBeTruthy();
 
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).
@@ -1236,6 +1292,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         )
         .at(0)?.event_id;
       expect(expectedEventId).toBeTruthy();
+      expect(expectedEventId).toBe(openedEventId);
       const programDetailUrl = memberPage.url();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
@@ -1259,20 +1316,12 @@ test.describe("PUI-05 participant Event Detail", () => {
       // window, #391 fix D/E); assert whichever one the real event window
       // actually shows rather than assuming the open-state copy.
       await expect(
-        memberPage
-          .getByText(COPY.eventInstructions, { exact: false })
-          .or(memberPage.getByText(/簽到時間尚未開始/u))
+        memberPage.getByText(COPY.eventInstructions, { exact: false })
       ).toBeVisible();
       await expect(
         memberPage.getByRole("button", { name: COPY.backToOrigin })
       ).toBeVisible();
-      // 可簽到 badge is conditional on the real check-in window; assert it
-      // only when present (the acceptance requires it only when the window is
-      // currently open).
-      const badge = memberPage.getByText(COPY.checkInAvailable);
-      if ((await badge.count()) > 0) {
-        await expect(badge.first()).toBeVisible();
-      }
+      await expect(memberPage.getByText(COPY.checkInAvailable)).toBeVisible();
 
       // 前往掃描 deep-links into the scanner with this exact event; the flow
       // resolves it (server returns the matching event pre-selected).
