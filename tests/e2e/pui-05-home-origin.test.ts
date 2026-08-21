@@ -151,7 +151,15 @@ async function clearMemberEnrollment(
   const active = panel.getByRole("button", {
     name: COPY.cancelEnrollment,
   });
-  if (await active.isVisible().catch(() => false)) {
+  const pending = panel.getByRole("button", {
+    name: COPY.withdrawRequest,
+  });
+  const submit = submitActionButton(panel);
+  await expect(submit.or(active).or(pending)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  if (await active.isVisible()) {
     await active.click();
     await memberPage
       .getByRole("dialog", { name: COPY.cancelConfirmTitle })
@@ -159,13 +167,10 @@ async function clearMemberEnrollment(
         name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
       })
       .click();
-    await expect(submitActionButton(panel)).toBeVisible();
   }
 
-  const pending = panel.getByRole("button", {
-    name: COPY.withdrawRequest,
-  });
-  if (await pending.isVisible().catch(() => false)) {
+  await expect(submit.or(pending)).toBeVisible({ timeout: 15_000 });
+  if (await pending.isVisible()) {
     await pending.click();
     await memberPage
       .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
@@ -173,14 +178,14 @@ async function clearMemberEnrollment(
         name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
       })
       .click();
-    await expect(submitActionButton(panel)).toBeVisible();
   }
+  await expect(submit).toBeVisible({ timeout: 15_000 });
 }
 
 async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
-): Promise<boolean> {
+): Promise<string | null> {
   if (adminPage.url() === "about:blank") {
     await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
   }
@@ -197,7 +202,7 @@ async function openNextEventCheckInWindow(
       .filter((e) => e.starts_at >= nowIso)
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
     if (!nextEvent) {
-      return false;
+      return null;
     }
     const now = Date.now();
     const patchResponse = await fetch(
@@ -211,7 +216,7 @@ async function openNextEventCheckInWindow(
         }),
       }
     );
-    return patchResponse.ok;
+    return patchResponse.ok ? nextEvent.event_id : null;
   }, programId);
 }
 
@@ -229,7 +234,8 @@ test.describe("PUI-05 Home origin supplement", () => {
         (await catalogProgramIds(memberPage, "E2E_DEMO_成人查經"))[0] ?? "";
       expect(programId).toBeTruthy();
       await ensureActiveEnrollment(memberPage, page, programId);
-      expect(await openNextEventCheckInWindow(page, programId)).toBe(true);
+      const expectedEventId = await openNextEventCheckInWindow(page, programId);
+      expect(expectedEventId).toBeTruthy();
 
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
@@ -240,7 +246,7 @@ test.describe("PUI-05 Home origin supplement", () => {
       const eventHref = await eventLink.getAttribute("href");
       expect(eventHref).toMatch(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=[^&#]+$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=${encodeURIComponent(expectedEventId ?? "")}$`,
           "u"
         )
       );
@@ -258,10 +264,13 @@ test.describe("PUI-05 Home origin supplement", () => {
       await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(/\/home$/u);
     } finally {
-      if (programId) {
-        await clearMemberEnrollment(memberPage, programId);
+      try {
+        if (programId) {
+          await clearMemberEnrollment(memberPage, programId);
+        }
+      } finally {
+        await memberContext.close();
       }
-      await memberContext.close();
     }
   });
 

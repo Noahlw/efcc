@@ -511,7 +511,13 @@ async function resetMemberEnrollment(page: Page): Promise<void> {
   const active = panel.getByRole("button", {
     name: COPY.cancelEnrollment,
   });
-  if (await active.isVisible().catch(() => false)) {
+  const pending = panel.getByText(COPY.requestPendingHint, { exact: true });
+  const submit = submitActionButton(panel);
+  await expect(submit.or(active).or(pending)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  if (await active.isVisible()) {
     await active.click();
     await page
       .getByRole("dialog", { name: COPY.cancelConfirmTitle })
@@ -519,11 +525,10 @@ async function resetMemberEnrollment(page: Page): Promise<void> {
         name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
       })
       .click();
-    await expect(submitActionButton(panel)).toBeVisible();
   }
 
-  const pending = panel.getByText(COPY.requestPendingHint, { exact: true });
-  if (await pending.isVisible().catch(() => false)) {
+  await expect(submit.or(pending)).toBeVisible({ timeout: 15_000 });
+  if (await pending.isVisible()) {
     await panel.getByRole("button", { name: COPY.withdrawRequest }).click();
     await page
       .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
@@ -531,8 +536,8 @@ async function resetMemberEnrollment(page: Page): Promise<void> {
         name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
       })
       .click();
-    await expect(submitActionButton(panel)).toBeVisible();
   }
+  await expect(submit).toBeVisible({ timeout: 15_000 });
 }
 
 test.beforeAll(() => {
@@ -1215,10 +1220,45 @@ test.describe("PUI-05 participant Event Detail", () => {
 
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).
+      const detailResponsePromise = memberPage.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          response
+            .url()
+            .includes(
+              `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`
+            )
+      );
       await memberPage.goto(`/programs?program=${programId}#overview`);
+      const detailResponse = await detailResponsePromise;
+      const detailBody = (await detailResponse.json()) as {
+        data?: {
+          detail?: {
+            events?: {
+              event_id: string;
+              starts_at: string;
+              status: string;
+            }[];
+          };
+        };
+      };
       // #389 dropped the separate 課程簡介 subheading; the program-name
       // title id is the stable arrival signal for Program detail now.
       await expect(memberPage.locator("#program-detail-title")).toBeVisible();
+      const expectedEventId = [...(detailBody.data?.detail?.events ?? [])]
+        .filter(
+          (event) =>
+            event.status === "Active" &&
+            Number.isFinite(Date.parse(event.starts_at)) &&
+            Date.parse(event.starts_at) >= Date.now()
+        )
+        .sort(
+          (left, right) =>
+            Date.parse(left.starts_at) - Date.parse(right.starts_at)
+        )
+        .at(0)?.event_id;
+      expect(expectedEventId).toBeTruthy();
+      const programDetailUrl = memberPage.url();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
       });
@@ -1226,10 +1266,11 @@ test.describe("PUI-05 participant Event Detail", () => {
       await eventDetailButton.click();
       await expect(memberPage).toHaveURL(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=[^&#]+#overview$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=${encodeURIComponent(expectedEventId ?? "")}#overview$`,
           "u"
         )
       );
+      const eventDetailUrl = memberPage.url();
 
       // Event detail: the event-name heading (PUI-05 renders the real event
       // title, not a fixed label), back action, instructions, and scan CTA.
@@ -1265,7 +1306,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         ctaHref ?? "",
         "http://x"
       ).searchParams.get("event");
-      expect(eventIdFromCta).toBeTruthy();
+      expect(eventIdFromCta).toBe(expectedEventId);
       const resolvePromise = memberPage.waitForResponse(
         (response) =>
           response.url().includes("/api/v1/attendance/resolve") &&
@@ -1274,7 +1315,12 @@ test.describe("PUI-05 participant Event Detail", () => {
             .includes(`event=${encodeURIComponent(eventIdFromCta ?? "")}`)
       );
       await scanCta.click();
-      await expect(memberPage).toHaveURL(/\/scanner\?event=[^&]+$/u);
+      await expect(memberPage).toHaveURL(
+        new RegExp(
+          `/scanner\\?event=${encodeURIComponent(expectedEventId ?? "")}$`,
+          "u"
+        )
+      );
       const resolveResponse = await resolvePromise;
       const resolveBody = (await resolveResponse.json()) as {
         data?: { events?: { event_id?: string }[] };
@@ -1295,19 +1341,9 @@ test.describe("PUI-05 participant Event Detail", () => {
       // hardcoded target): browser back restores the event detail, then the
       // program detail.
       await memberPage.goBack();
-      await expect(memberPage).toHaveURL(
-        new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=[^&#]+#overview$`,
-          "u"
-        )
-      );
+      await expect(memberPage).toHaveURL(eventDetailUrl);
       await memberPage.goBack();
-      await expect(memberPage).toHaveURL(
-        new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}(?:&from=programs)?#overview$`,
-          "u"
-        )
-      );
+      await expect(memberPage).toHaveURL(programDetailUrl);
     } finally {
       if (programId) {
         // Failure-safe cleanup: cancel any Active enrollment and withdraw
