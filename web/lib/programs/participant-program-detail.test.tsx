@@ -247,7 +247,7 @@ describe("PUI-03 participant Program detail", () => {
           ends_at: new Date(Date.parse(startsAt) + 90 * 60_000).toISOString(),
           name: `第 ${index + 1} 課聚會`,
         };
-      });
+      }).toReversed();
       mocks.getParticipantProgramDetail.mockResolvedValue(
         detailFixture({ events })
       );
@@ -264,12 +264,31 @@ describe("PUI-03 participant Program detail", () => {
       });
       expect(within(eventsGroup).getAllByRole("listitem")).toHaveLength(4);
 
+      const assertEventRows = (limit: number) => {
+        const dates = [...eventsGroup.querySelectorAll("time")].map(
+          (time) => time.dateTime
+        );
+        expect(dates).toStrictEqual(dates.toSorted());
+        expect(new Set(dates).size).toBe(limit);
+        expect(
+          within(eventsGroup).getAllByText(COPY.programs.eventActive, {
+            exact: true,
+          })
+        ).toHaveLength(limit);
+        expect(
+          eventsGroup.querySelectorAll('[aria-hidden="true"]')
+        ).toHaveLength(limit);
+      };
+
+      assertEventRows(4);
+
       desktop = true;
       await act(() => {
         listener?.();
       });
       await waitFor(() => {
         expect(within(eventsGroup).getAllByRole("listitem")).toHaveLength(8);
+        assertEventRows(8);
       });
     } finally {
       Object.defineProperty(window, "matchMedia", {

@@ -1157,8 +1157,16 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(
       page.getByText(COPY.enrollmentEventDetailAdvisory, { exact: true })
     ).toBeVisible();
-    for (const width of [320, 375, 390, 414, 799, 800, 1440]) {
-      await page.setViewportSize({ width, height: 844 });
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
       await expect(eventsGroup.getByRole("listitem")).toHaveCount(
         width < 800 ? 4 : 8
       );
@@ -1728,7 +1736,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("list", { name: COPY.enrollmentHistory })
-    ).toContainText(COPY.requestPending);
+    ).toHaveCount(0);
 
     // Dismissing the confirm dialog leaves the request intact.
     await enrollmentPanel

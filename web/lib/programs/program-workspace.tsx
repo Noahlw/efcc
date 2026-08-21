@@ -36,8 +36,8 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 import {
   HK_UTC_OFFSET_MINUTES,
+  formatScheduleRuleLabel,
   hkWallDateTimeLabel,
-  WEEKDAY_LABELS,
 } from "@/lib/programs/recurrence";
 import { ProgramSettings } from "./program-settings";
 
@@ -851,12 +851,6 @@ type PreviewState =
   | { kind: "empty" }
   | { kind: "error"; message: string; stale: boolean };
 
-function ruleLabel(rule: ScheduleRule): string {
-  return rule.recurrence === "WEEKLY"
-    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${rule.start_time}–${rule.end_time}`
-    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
-}
-
 const RecurringSchedulePanel = ({
   programId,
   onGenerated,
@@ -1116,7 +1110,9 @@ const RecurringSchedulePanel = ({
                       ? occurrence.location
                       : COPY.programs.eventLocationPlaceholder}
                   </span>
-                  <span>{rule ? ruleLabel(rule) : occurrence.rule_id}</span>
+                  <span>
+                    {rule ? formatScheduleRuleLabel(rule) : occurrence.rule_id}
+                  </span>
                   {occurrence.skip_reason === "CANCEL" && (
                     <span className={styles.eventCancelled}>
                       {COPY.programs.previewOccurrenceSkipped}

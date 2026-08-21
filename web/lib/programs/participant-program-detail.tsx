@@ -17,7 +17,7 @@ import type {
   ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
-import { WEEKDAY_LABELS } from "@/lib/programs/recurrence";
+import { formatScheduleRuleLabel } from "@/lib/programs/recurrence";
 import { rememberDeepLink } from "@/lib/session";
 
 import { EventFactIcon } from "./event-detail";
@@ -66,14 +66,6 @@ function eventIsUpcoming(startsAt: string): boolean {
 const MOBILE_EVENT_CAP = 4;
 const DESKTOP_EVENT_CAP = 8;
 const DESKTOP_EVENT_MEDIA_QUERY = "(min-width: 800px)";
-
-function scheduleRuleLabel(
-  rule: ParticipantProgramDetailData["schedule_rules"][number]
-): string {
-  return rule.recurrence === "WEEKLY"
-    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${rule.start_time}–${rule.end_time}`
-    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
-}
 
 function statusForDetail(detail: ParticipantProgramDetailData): {
   label: string;
@@ -201,7 +193,7 @@ const ParticipantSchedule = ({
           {scheduleRules.map((rule) => (
             <li key={rule.rule_id} className={styles.programDetailEvent}>
               <span className={styles.programDetailScheduleCopy}>
-                {scheduleRuleLabel(rule)}
+                {formatScheduleRuleLabel(rule)}
               </span>
             </li>
           ))}
