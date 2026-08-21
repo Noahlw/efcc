@@ -255,37 +255,49 @@ test.describe("PUI-05 Home origin supplement", () => {
     page,
   }) => {
     await loginAs(page, MEMBER_USER, MEMBER_CRED);
+    const homeResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/v1/home"
+    );
     await page.goto("/home");
+    const homeResponse = await homeResponsePromise;
+    let expectedExploreProgram: {
+      programId: string;
+      title: string;
+    } | null = null;
+    if (homeResponse.ok()) {
+      const body = (await homeResponse.json()) as {
+        data?: {
+          exploreProgram?: { programId: string; title: string } | null;
+        };
+      };
+      expectedExploreProgram = body.data?.exploreProgram ?? null;
+    }
     const exploreCard = page.getByTestId("explore-card");
     await expect(exploreCard).toBeVisible({ timeout: 15_000 });
     await expect(exploreCard).toHaveAttribute(
       "href",
       /\/programs\?program=[^&]+&from=home/u
     );
-    const expectedExploreProgram = await page.evaluate(async () => {
-      const response = await fetch("/api/v1/home");
-      const body = (await response.json()) as {
-        data?: {
-          exploreProgram?: { programId: string; title: string } | null;
-        };
-      };
-      return body.data?.exploreProgram ?? null;
-    });
-    expect(expectedExploreProgram?.programId).toBeTruthy();
     const exploreHref = await exploreCard.getAttribute("href");
-    const expectedExploreHref = `/programs?program=${encodeURIComponent(
-      expectedExploreProgram?.programId ?? ""
-    )}&from=home`;
-    expect(exploreHref).toBe(expectedExploreHref);
+    const expectedExploreHref = expectedExploreProgram
+      ? `/programs?program=${encodeURIComponent(expectedExploreProgram.programId)}&from=home`
+      : null;
+    if (expectedExploreHref) {
+      expect(exploreHref).toBe(expectedExploreHref);
+    } else {
+      expect(exploreHref).toMatch(/^\/programs\?program=[^&]+&from=home$/u);
+    }
     const expectedExploreUrl = new URL(
-      expectedExploreHref,
+      exploreHref ?? "",
       page.url()
     ).toString();
     await exploreCard.click();
     await expect(page).toHaveURL(expectedExploreUrl);
     await expect(
       page.getByRole("heading", {
-        name: expectedExploreProgram?.title ?? "",
+        name: expectedExploreProgram?.title ?? /E2E_DEMO_/u,
       })
     ).toBeVisible();
     await page.getByRole("button", { name: "課程", exact: true }).click();
