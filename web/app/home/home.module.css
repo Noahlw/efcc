@@ -329,6 +329,7 @@
 .cardTitle,
 .cardDescription {
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .cardTitle {

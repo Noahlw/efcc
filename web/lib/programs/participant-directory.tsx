@@ -35,6 +35,7 @@ export interface ParticipantDirectoryProps {
   canManage: boolean;
   onManagement: () => void;
   onOpenProgram: (programId: string) => void;
+  onHome: () => void;
 }
 
 type CatalogState =
@@ -135,6 +136,7 @@ export const ParticipantDirectory = ({
   canManage,
   onManagement,
   onOpenProgram,
+  onHome,
 }: ParticipantDirectoryProps) => {
   const router = useRouter();
   const [state, setState] = useState<CatalogState>({ kind: "loading" });
@@ -311,8 +313,14 @@ export const ParticipantDirectory = ({
               ? COPY.programs.catalogForbiddenHint
               : COPY.programs.catalogLoadErrorHint}
           </p>
-          <button className={styles.retry} type="button" onClick={retryCatalog}>
-            {COPY.programs.catalogRetry}
+          <button
+            className={styles.retry}
+            type="button"
+            onClick={state.failure === "forbidden" ? onHome : retryCatalog}
+          >
+            {state.failure === "forbidden"
+              ? COPY.nav.backToHome
+              : COPY.programs.catalogRetry}
           </button>
         </section>
       )}

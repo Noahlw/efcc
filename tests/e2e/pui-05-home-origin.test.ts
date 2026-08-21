@@ -211,6 +211,57 @@ async function openNextEventCheckInWindow(
 }
 
 test.describe("PUI-05 Home origin supplement", () => {
+  test("Home long Explore copy wraps without horizontal overflow", async ({
+    page,
+  }) => {
+    await loginAs(page, MEMBER_USER, MEMBER_CRED);
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longSummary =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
+    await page.route("**/api/v1/home", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        data?: {
+          exploreProgram?: {
+            title?: string;
+            summary?: string | null;
+          } | null;
+        };
+      };
+      const exploreProgram = body.data?.exploreProgram;
+      if (!exploreProgram) {
+        await route.fulfill({ response });
+        return;
+      }
+      exploreProgram.title = longTitle;
+      exploreProgram.summary = longSummary;
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/home");
+
+    const card = page.getByTestId("explore-card");
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(longTitle);
+    await expect(card).toContainText(longSummary);
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const geometry = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
+      await expect(card).toBeVisible();
+    }
+  });
+
   test("Home next-event card opens event detail with 可簽到 and back-nav", async ({
     page,
     browser,

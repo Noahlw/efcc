@@ -78,6 +78,12 @@ const COPY = {
   scheduleRulesGroup: "時間規則",
   scheduleEventsGroup: "即將舉行",
   enrollmentEventDetailAdvisory: "加入後可查看聚會詳情",
+  backHome: "返回首頁",
+  catalogForbidden: "無法載入課程目錄",
+  catalogForbiddenHint: "你沒有權限查看課程目錄。",
+  catalogLoadError: "未能載入課程",
+  catalogLoadErrorHint: "請檢查網絡後再試。你的搜尋條件會保留。",
+  catalogRetry: "重新載入",
   conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
   archivedNote: "此課程已封存，暫不接受報名",
   catalogSearchLabel: "搜尋課程",
@@ -820,6 +826,106 @@ test.describe("PUI-02 participant Programs directory", () => {
 
     const ids = await catalogProgramIds(page, "E2E_DEMO_社區關懷");
     expect(ids).toHaveLength(0);
+  });
+
+  test("forbidden catalog exposes only the authenticated Home escape", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.route("**/api/v1/programs/catalog", async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: 403,
+          code: "FORBIDDEN",
+          title: "Forbidden",
+          detail: COPY.catalogForbiddenHint,
+        }),
+      });
+    });
+    await page.goto("/programs");
+
+    await expect(
+      page.getByRole("heading", { name: COPY.catalogForbidden })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.backHome })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.catalogRetry })
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: COPY.backHome }).click();
+    await expect(page).toHaveURL(/\/home$/u);
+  });
+
+  test("long catalog copy wraps without moving controls or causing overflow", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longSecondary =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
+    await page.route("**/api/v1/programs/catalog", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        data?: {
+          catalog?: {
+            programs?: Record<string, unknown>[];
+          }[];
+        };
+      };
+      const target = body.data?.catalog?.[0]?.programs?.[0];
+      if (!target) {
+        await route.fulfill({ response });
+        return;
+      }
+      target.name = longTitle;
+      target.description = longSecondary;
+      target.viewerState = "withdrawn";
+      target.nextEventStartsAt = null;
+      target.upcomingEventCount = 0;
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/programs");
+
+    const card = page.getByRole("button", { name: /超長課程名稱/u });
+    await expect(card).toBeVisible();
+    await expect(
+      page.getByRole("searchbox", { name: COPY.catalogSearchLabel })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: COPY.filterGroupLabel })
+    ).toBeVisible();
+    await expect(card).toContainText(longSecondary);
+    await expect(card.locator("svg")).toBeVisible();
+
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const geometry = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
+      await expect(card).toBeVisible();
+      await expect(card.locator("svg")).toBeVisible();
+    }
   });
 
   test("admin sees the Unlisted fixture through scoped management access", async ({

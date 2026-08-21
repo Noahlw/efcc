@@ -903,13 +903,12 @@ describe("Programs boundary", () => {
       screen.queryByRole("heading", { name: COPY.programs.participantMode })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.programs.retryAccess })
+      screen.getByRole("button", { name: COPY.nav.backToHome })
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/programs");
-    expect(window.location.search).toBe("");
-    expect(window.location.hash).toBe("");
-    expect(mocks.replace).not.toHaveBeenCalled();
-    expect(mocks.push).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.nav.backToHome })
+    );
+    expect(mocks.replace).toHaveBeenCalledWith("/home");
   });
 
   test("moves focus to loading status when retry replaces an error", async () => {
@@ -969,15 +968,10 @@ describe("Programs boundary", () => {
     ).not.toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.retryAccess })
+      screen.getByRole("button", { name: COPY.nav.backToHome })
     );
-    await waitFor(() => {
-      expect(mocks.getManagementAccess).toHaveBeenCalledTimes(2);
-    });
-    await expect(
-      screen.findByRole("heading", { name: COPY.error.forbidden })
-    ).resolves.toBeInTheDocument();
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.replace).toHaveBeenCalledWith("/home");
+    expect(mocks.getManagementAccess).toHaveBeenCalledOnce();
   });
 
   test("keeps malformed intent recoverable at the Programs boundary", async () => {

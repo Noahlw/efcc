@@ -493,6 +493,7 @@ const ProgramsBoundaryBody = ({
   access,
   intent,
   retryAccess,
+  onHome,
   navigateMode,
   openManagementProgram,
   navigateManagementTask,
@@ -504,6 +505,7 @@ const ProgramsBoundaryBody = ({
   access: AccessState;
   intent: ProgramsIntent;
   retryAccess: () => void;
+  onHome: () => void;
   navigateMode: (
     mode: "participant" | "management",
     replace?: boolean,
@@ -536,8 +538,8 @@ const ProgramsBoundaryBody = ({
           kind="error"
           title={COPY.error.forbidden}
           message={COPY.nav.unauthorized}
-          actionLabel={COPY.programs.retryAccess}
-          onAction={retryAccess}
+          actionLabel={COPY.nav.backToHome}
+          onAction={onHome}
         />
       )}
     {access.kind === "error" &&
@@ -600,6 +602,7 @@ const ProgramsBoundaryBody = ({
           programId={null}
           canManage={access.projection.hasManagementCapability}
           onManagement={() => navigateMode("management")}
+          onHome={onHome}
           onOpenProgram={openProgram}
         />
       ))}
@@ -874,6 +877,7 @@ export const ProgramsBoundary = () => {
         access={access}
         intent={intent}
         retryAccess={retryAccess}
+        onHome={() => router.replace("/home")}
         navigateMode={navigateMode}
         openManagementProgram={openManagementProgram}
         navigateManagementTask={navigateManagementTask}

@@ -107,16 +107,18 @@ function renderDirectory(
   props: Partial<Parameters<typeof ParticipantDirectory>[0]> = {}
 ) {
   const onManagement = vi.fn<() => void>();
+  const onHome = vi.fn<() => void>();
   const onOpenProgram = vi.fn<(programId: string) => void>();
   const view = render(
     <ParticipantDirectory
       programId={props.programId ?? null}
       canManage={props.canManage ?? false}
       onManagement={props.onManagement ?? onManagement}
+      onHome={props.onHome ?? onHome}
       onOpenProgram={props.onOpenProgram ?? onOpenProgram}
     />
   );
-  return { onManagement, onOpenProgram, view };
+  return { onManagement, onOpenProgram, onHome, view };
 }
 
 const rowNames = (): string[] =>
@@ -251,6 +253,28 @@ describe("PUI-02 participant directory loading and collection", () => {
     await screen.findByRole("button", { name: /查經小組/u });
     expect(screen.queryByText(/check_in_token/iu)).not.toBeInTheDocument();
     expect(screen.queryByText(/capabilities/iu)).not.toBeInTheDocument();
+  });
+
+  test("keeps long title and URL-like secondary content in the card", async () => {
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longSecondary =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("program-long", longTitle, {
+          viewerState: "withdrawn",
+          description: longSecondary,
+          nextEventStartsAt: null,
+          upcomingEventCount: 0,
+        }),
+      ]),
+    });
+    renderDirectory();
+
+    const card = await screen.findByRole("button", { name: /超長課程名稱/u });
+    expect(card).toHaveTextContent(longTitle);
+    expect(card).toHaveTextContent(longSecondary);
+    expect(card.querySelector("svg")).toBeInTheDocument();
   });
 });
 
@@ -425,6 +449,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           key="stale"
           programId={null}
           canManage={false}
+          onHome={vi.fn<() => void>()}
           onManagement={vi.fn<() => void>()}
           onOpenProgram={vi.fn<(programId: string) => void>()}
         />
@@ -441,6 +466,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           programId={null}
           canManage={false}
           onManagement={vi.fn<() => void>()}
+          onHome={vi.fn<() => void>()}
           onOpenProgram={vi.fn<(programId: string) => void>()}
         />
       </StrictMode>
@@ -523,12 +549,12 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  test("FORBIDDEN catalog failure shows the forbidden state with retry", async () => {
+  test("FORBIDDEN catalog failure shows the forbidden state with Home escape", async () => {
     const user = userEvent.setup();
-    mocks.listParticipantCatalog
-      .mockRejectedValueOnce(new RpcError({ code: "FORBIDDEN", status: 403 }))
-      .mockResolvedValueOnce({ catalog: catalogFixture() });
-    renderDirectory();
+    mocks.listParticipantCatalog.mockRejectedValueOnce(
+      new RpcError({ code: "FORBIDDEN", status: 403 })
+    );
+    const { onHome } = renderDirectory();
 
     await expect(
       screen.findByRole("heading", {
@@ -538,13 +564,13 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     expect(
       screen.getByText(COPY.programs.catalogForbiddenHint)
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.catalogRetry })
+    ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.catalogRetry })
-    );
-    await expect(
-      screen.findByRole("button", { name: /查經小組/u })
-    ).resolves.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.nav.backToHome }));
+    expect(onHome).toHaveBeenCalledOnce();
+    expect(mocks.listParticipantCatalog).toHaveBeenCalledOnce();
   });
 
   test("expired session defers to login and stores the deep link", async () => {

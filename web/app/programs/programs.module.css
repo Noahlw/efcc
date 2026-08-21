@@ -1471,6 +1471,11 @@
   font-weight: 800;
 }
 
+.directoryCardTitle,
+.directoryCardSecondary {
+  overflow-wrap: anywhere;
+}
+
 .directoryCardDescription {
   color: var(--ink-muted);
   line-height: 1.5;
