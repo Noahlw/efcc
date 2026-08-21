@@ -6,6 +6,11 @@ export interface EventWindowSnapshot {
   closesAt: string | null;
 }
 
+export interface EventWindowSetup {
+  snapshot: EventWindowSnapshot;
+  opened: boolean;
+}
+
 export async function restoreEventWindow(
   adminPage: Page,
   programId: string,

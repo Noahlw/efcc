@@ -14,6 +14,7 @@ import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
 import {
   restoreEventWindow,
+  type EventWindowSetup,
   type EventWindowSnapshot,
 } from "./participant-event-window";
 
@@ -512,7 +513,7 @@ function enrollmentPanelOf(page: Page): Locator {
 async function openEventCheckInWindow(
   adminPage: Page,
   programId: string
-): Promise<EventWindowSnapshot | null> {
+): Promise<EventWindowSetup | null> {
   if (adminPage.url() === "about:blank") {
     await loginAs(
       adminPage,
@@ -550,24 +551,29 @@ async function openEventCheckInWindow(
       return null;
     }
     const now = Date.now();
-    const patch = await fetch(
-      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(event.event_id)}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
-          check_in_window_closes_at: new Date(now + 45 * 60_000).toISOString(),
-        }),
-      }
-    );
-    return patch.ok
-      ? {
-          eventId: event.event_id,
-          opensAt: event.check_in_window_opens_at,
-          closesAt: event.check_in_window_closes_at,
+    const snapshot = {
+      eventId: event.event_id,
+      opensAt: event.check_in_window_opens_at,
+      closesAt: event.check_in_window_closes_at,
+    };
+    try {
+      const patch = await fetch(
+        `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(event.event_id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 45 * 60_000
+            ).toISOString(),
+          }),
         }
-      : null;
+      );
+      return { snapshot, opened: patch.ok };
+    } catch {
+      return { snapshot, opened: false };
+    }
   }, programId);
 }
 
@@ -1262,8 +1268,9 @@ test.describe("PUI-05 participant Event Detail", () => {
         ).toBeVisible();
         await memberPage.reload();
       }
-      openedEvent = await openEventCheckInWindow(page, programId);
-      expect(openedEvent?.eventId).toBeTruthy();
+      const eventSetup = await openEventCheckInWindow(page, programId);
+      openedEvent = eventSetup?.snapshot ?? null;
+      expect(eventSetup?.opened).toBe(true);
 
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).

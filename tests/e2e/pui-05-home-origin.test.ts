@@ -6,6 +6,7 @@ import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
 import {
   restoreEventWindow,
+  type EventWindowSetup,
   type EventWindowSnapshot,
 } from "./participant-event-window";
 
@@ -149,7 +150,7 @@ async function ensureActiveEnrollment(
 async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
-): Promise<EventWindowSnapshot | null> {
+): Promise<EventWindowSetup | null> {
   if (adminPage.url() === "about:blank") {
     await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
   }
@@ -183,24 +184,29 @@ async function openNextEventCheckInWindow(
       return null;
     }
     const now = Date.now();
-    const patchResponse = await fetch(
-      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(nextEvent.event_id)}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
-          check_in_window_closes_at: new Date(now + 45 * 60_000).toISOString(),
-        }),
-      }
-    );
-    return patchResponse.ok
-      ? {
-          eventId: nextEvent.event_id,
-          opensAt: nextEvent.check_in_window_opens_at,
-          closesAt: nextEvent.check_in_window_closes_at,
+    const snapshot = {
+      eventId: nextEvent.event_id,
+      opensAt: nextEvent.check_in_window_opens_at,
+      closesAt: nextEvent.check_in_window_closes_at,
+    };
+    try {
+      const patchResponse = await fetch(
+        `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(nextEvent.event_id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 45 * 60_000
+            ).toISOString(),
+          }),
         }
-      : null;
+      );
+      return { snapshot, opened: patchResponse.ok };
+    } catch {
+      return { snapshot, opened: false };
+    }
   }, programId);
 }
 
@@ -219,9 +225,9 @@ test.describe("PUI-05 Home origin supplement", () => {
         (await catalogProgramIds(memberPage, "E2E_DEMO_成人查經"))[0] ?? "";
       expect(programId).toBeTruthy();
       await ensureActiveEnrollment(memberPage, page, programId);
-      openedEvent = await openNextEventCheckInWindow(page, programId);
-      expect(openedEvent?.eventId).toBeTruthy();
-
+      const eventSetup = await openNextEventCheckInWindow(page, programId);
+      openedEvent = eventSetup?.snapshot ?? null;
+      expect(eventSetup?.opened).toBe(true);
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
       await expect(homeEventCard).toBeVisible({ timeout: 15_000 });
