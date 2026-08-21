@@ -195,11 +195,23 @@ async function openNextEventCheckInWindow(
       `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
     );
     const listBody = (await listResponse.json()) as {
-      data?: { events?: { event_id: string; starts_at: string }[] };
+      data?: {
+        events?: {
+          event_id: string;
+          starts_at: string;
+          status: string;
+          availability: string;
+        }[];
+      };
     };
     const nowIso = new Date().toISOString();
     const [nextEvent] = [...(listBody.data?.events ?? [])]
-      .filter((e) => e.starts_at >= nowIso)
+      .filter(
+        (event) =>
+          event.status === "Active" &&
+          event.availability === "Active" &&
+          event.starts_at >= nowIso
+      )
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
     if (!nextEvent) {
       return null;
