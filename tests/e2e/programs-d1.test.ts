@@ -76,7 +76,7 @@ const COPY = {
   catalogNoMatches: "找不到相關課程",
   catalogEmpty: "找不到相關課程",
   catalogEmptyHint: "請嘗試其他關鍵字或清除篩選。",
-  catalogClearFilters: "清除篩選",
+  catalogClearFilters: "清除搜尋與篩選",
   catalogListLabel: "課程目錄",
   filterGroupLabel: "課程篩選",
   filterAll: "全部",
@@ -502,6 +502,38 @@ function enrollmentPanelOf(page: Page): Locator {
   return page.getByRole("region", {
     name: new RegExp(`^${COPY.enrollment}$`, "u"),
   });
+}
+
+async function resetMemberEnrollment(page: Page): Promise<void> {
+  const panel = enrollmentPanelOf(page);
+  await expect(panel).toBeVisible();
+
+  const active = panel.getByRole("button", {
+    name: COPY.cancelEnrollment,
+  });
+  if (await active.isVisible().catch(() => false)) {
+    await active.click();
+    await page
+      .getByRole("dialog", { name: COPY.cancelConfirmTitle })
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
+      })
+      .click();
+    await expect(submitActionButton(panel)).toBeVisible();
+    return;
+  }
+
+  const pending = panel.getByText(COPY.requestPendingHint, { exact: true });
+  if (await pending.isVisible().catch(() => false)) {
+    await panel.getByRole("button", { name: COPY.withdrawRequest }).click();
+    await page
+      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
+      })
+      .click();
+    await expect(submitActionButton(panel)).toBeVisible();
+  }
 }
 
 test.beforeAll(() => {
@@ -1033,7 +1065,7 @@ test.describe("PUI-02 participant Programs directory", () => {
     expect(programId).toBeTruthy();
     await page.getByRole("button", { name: /E2E_DEMO_成人查經/u }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/programs\\?program=${programId}$`, "u")
+      new RegExp(`/programs\\?program=${programId}&from=programs$`, "u")
     );
     await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
@@ -1195,7 +1227,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       await eventDetailButton.click();
       await expect(memberPage).toHaveURL(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=[^&#]+#overview$`,
           "u"
         )
       );
@@ -1266,13 +1298,16 @@ test.describe("PUI-05 participant Event Detail", () => {
       await memberPage.goBack();
       await expect(memberPage).toHaveURL(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=[^&#]+#overview$`,
           "u"
         )
       );
       await memberPage.goBack();
       await expect(memberPage).toHaveURL(
-        new RegExp(`/programs\\?program=${programId}#overview$`, "u")
+        new RegExp(
+          `/programs\\?program=${encodeURIComponent(programId)}(?:&from=programs)?#overview$`,
+          "u"
+        )
       );
     } finally {
       if (programId) {
@@ -1622,6 +1657,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
 
     await page.goto(`/programs?program=${programId}#overview`);
     await expect(page.locator("#program-detail-title")).toBeVisible();
+    await resetMemberEnrollment(page);
 
     const enrollmentPanel = enrollmentPanelOf(page);
     const requestButton = submitActionButton(enrollmentPanel);
@@ -1636,9 +1672,8 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     await expect(
       enrollmentPanel.getByRole("button", { name: COPY.withdrawRequest })
     ).toBeVisible();
-    // The real request is also projected into the member's own history.
     await expect(
-      enrollmentPanel.getByRole("list", { name: COPY.enrollmentHistory })
+      page.getByRole("list", { name: COPY.enrollmentHistory })
     ).toContainText(COPY.requestPending);
 
     // Dismissing the confirm dialog leaves the request intact.

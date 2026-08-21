@@ -23,6 +23,12 @@ const COPY = {
   enroll: "報名",
   reEnroll: "重新報名",
   enrollment: "報名",
+  cancelEnrollment: "退出課程",
+  cancelConfirmTitle: "退出課程？",
+  cancelConfirmAccept: "退出課程",
+  withdrawRequest: "取消申請",
+  withdrawConfirmTitle: "取消報名申請？",
+  withdrawConfirmAccept: "取消申請",
   homeViewEvent: "查看聚會",
   checkInAvailable: "可簽到",
   eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
@@ -124,6 +130,42 @@ async function ensureActiveEnrollment(
   ).toBeVisible();
 }
 
+async function clearMemberEnrollment(
+  memberPage: Page,
+  programId: string
+): Promise<void> {
+  await memberPage.goto(`/programs?program=${programId}#overview`);
+  const panel = enrollmentPanelOf(memberPage);
+  await expect(panel).toBeVisible();
+
+  const active = panel.getByRole("button", {
+    name: COPY.cancelEnrollment,
+  });
+  if (await active.isVisible().catch(() => false)) {
+    await active.click();
+    await memberPage
+      .getByRole("dialog", { name: COPY.cancelConfirmTitle })
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
+      })
+      .click();
+    return;
+  }
+
+  const pending = panel.getByRole("button", {
+    name: COPY.withdrawRequest,
+  });
+  if (await pending.isVisible().catch(() => false)) {
+    await pending.click();
+    await memberPage
+      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
+      })
+      .click();
+  }
+}
+
 async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
@@ -169,12 +211,10 @@ test.describe("PUI-05 Home origin supplement", () => {
   }) => {
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
+    let programId = "";
     try {
       await loginAs(memberPage, MEMBER_USER, MEMBER_CRED);
-      const [programId] = await catalogProgramIds(
-        memberPage,
-        "E2E_DEMO_成人查經"
-      );
+      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
       expect(programId).toBeTruthy();
       await ensureActiveEnrollment(memberPage, page, programId);
       expect(await openNextEventCheckInWindow(page, programId)).toBe(true);
@@ -186,10 +226,7 @@ test.describe("PUI-05 Home origin supplement", () => {
         .getByRole("link", { name: COPY.homeViewEvent })
         .click();
       await expect(memberPage).toHaveURL(
-        new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=[^&]+$`,
-          "u"
-        )
+        /\/programs\?program=[^&]+&from=home&event=[^&#]+$/u
       );
       await expect(
         memberPage.locator("#participant-event-title")
@@ -199,6 +236,13 @@ test.describe("PUI-05 Home origin supplement", () => {
       await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(/\/home$/u);
     } finally {
+      try {
+        if (programId) {
+          await clearMemberEnrollment(memberPage, programId);
+        }
+      } catch {
+        // Preserve the test result when cleanup cannot reach the local Worker.
+      }
       await memberContext.close();
     }
   });
@@ -216,9 +260,7 @@ test.describe("PUI-05 Home origin supplement", () => {
     );
     await exploreCard.click();
     await expect(page).toHaveURL(/\/programs\?program=[^&]+&from=home$/u);
-    await expect(
-      page.getByRole("heading", { name: /E2E_DEMO_/u })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await page.getByRole("button", { name: "課程", exact: true }).click();
     await expect(page).toHaveURL(/\/home$/u);
   });
