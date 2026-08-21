@@ -306,11 +306,18 @@ test.describe("PUI-05 Home origin supplement", () => {
     ).toString();
     await exploreCard.click();
     await expect(page).toHaveURL(expectedExploreUrl);
-    await expect(
-      page.getByRole("heading", {
-        name: expectedExploreProgram?.title ?? /E2E_DEMO_/u,
-      })
-    ).toBeVisible();
+    if (expectedExploreProgram) {
+      await expect(
+        page.getByRole("heading", {
+          name: expectedExploreProgram.title,
+          exact: true,
+        })
+      ).toBeVisible();
+    } else {
+      await expect(
+        page.getByRole("heading", { name: /E2E_DEMO_/u })
+      ).toBeVisible();
+    }
     await page.getByRole("button", { name: "課程", exact: true }).click();
     await expect(page).toHaveURL(/\/home$/u);
   });
