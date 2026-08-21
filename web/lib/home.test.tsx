@@ -248,6 +248,58 @@ describe("HomeView Component", () => {
     );
   });
 
+  test("keeps long Home card and announcement detail copy visible", async () => {
+    const user = userEvent.setup();
+    const longTitle = "超長聚會標題：門徒訓練與社區同行計劃";
+    const longValue =
+      "https://example.invalid/home/this-is-a-deliberately-unbroken-value";
+    renderWithApp(
+      <HomeView
+        featuredEvent={{
+          ...SAMPLE_EVENT,
+          eventTitle: longTitle,
+          programTitle: `${longTitle}課程`,
+          location: longValue,
+        }}
+        featuredProgram={{
+          ...SAMPLE_PROGRAM,
+          name: longTitle,
+          description: longValue,
+        }}
+        announcement={{
+          ...SAMPLE_ANNOUNCEMENT,
+          title: longTitle,
+          summary: longValue,
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("next-event-card")).toHaveTextContent(longTitle);
+    expect(screen.getByTestId("next-event-card")).toHaveTextContent(longValue);
+    expect(
+      screen.getByRole("link", { name: COPY.home.viewEvent })
+    ).toBeVisible();
+    expect(screen.getByTestId("announcement-card")).toHaveTextContent(
+      longTitle
+    );
+    expect(screen.getByTestId("announcement-card")).toHaveTextContent(
+      longValue
+    );
+    expect(screen.getByTestId("explore-card")).toHaveTextContent(longTitle);
+    expect(screen.getByTestId("explore-card")).toHaveTextContent(longValue);
+
+    await user.click(screen.getByTestId("announcement-card"));
+    expect(screen.getByTestId("announcement-detail")).toHaveTextContent(
+      longTitle
+    );
+    expect(screen.getByTestId("announcement-detail")).toHaveTextContent(
+      longValue
+    );
+    expect(
+      screen.getByRole("button", { name: new RegExp(COPY.home.backHome) })
+    ).toBeVisible();
+  });
+
   test("renders church news section and opens announcement detail upon clicking card", async () => {
     const user = userEvent.setup();
     renderWithApp(

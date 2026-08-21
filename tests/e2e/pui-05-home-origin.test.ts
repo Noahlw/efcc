@@ -222,27 +222,56 @@ test.describe("PUI-05 Home origin supplement", () => {
       const response = await route.fetch();
       const body = (await response.json()) as {
         data?: {
+          featuredEvent?: {
+            title?: string;
+            programTitle?: string;
+            location?: string | null;
+            isEnrolled?: boolean;
+          } | null;
+          announcement?: {
+            title?: string;
+            summary?: string;
+          } | null;
           exploreProgram?: {
             title?: string;
             summary?: string | null;
           } | null;
         };
       };
+      const featuredEvent = body.data?.featuredEvent;
+      const announcement = body.data?.announcement;
       const exploreProgram = body.data?.exploreProgram;
-      if (!exploreProgram) {
+      if (!featuredEvent || !announcement || !exploreProgram) {
         await route.fulfill({ response });
         return;
       }
+      featuredEvent.isEnrolled = true;
+      featuredEvent.title = longTitle;
+      featuredEvent.programTitle = `${longTitle}課程`;
+      featuredEvent.location = longSummary;
+      announcement.title = longTitle;
+      announcement.summary = longSummary;
       exploreProgram.title = longTitle;
       exploreProgram.summary = longSummary;
       await route.fulfill({ response, json: body });
     });
     await page.goto("/home");
 
-    const card = page.getByTestId("explore-card");
-    await expect(card).toBeVisible();
-    await expect(card).toContainText(longTitle);
-    await expect(card).toContainText(longSummary);
+    const eventCard = page.getByTestId("next-event-card");
+    const announcementCard = page.getByTestId("announcement-card");
+    const exploreCard = page.getByTestId("explore-card");
+    await expect(eventCard).toBeVisible();
+    await expect(announcementCard).toBeVisible();
+    await expect(exploreCard).toBeVisible();
+    await expect(eventCard).toContainText(longTitle);
+    await expect(eventCard).toContainText(longSummary);
+    await expect(announcementCard).toContainText(longTitle);
+    await expect(announcementCard).toContainText(longSummary);
+    await expect(exploreCard).toContainText(longTitle);
+    await expect(exploreCard).toContainText(longSummary);
+    await expect(
+      page.getByRole("link", { name: COPY.homeViewEvent })
+    ).toBeVisible();
     for (const [width, height] of [
       [320, 812],
       [375, 844],
@@ -255,48 +284,67 @@ test.describe("PUI-05 Home origin supplement", () => {
       await page.setViewportSize({ width, height });
       const geometry = await page.evaluate(() => {
         const outlet = document.querySelector<HTMLElement>("#shell-content");
-        const card = document.querySelector<HTMLElement>(
-          '[data-testid="explore-card"]'
-        );
-        const title = card?.querySelector<HTMLElement>(
-          '[class*="cardTitle"]'
-        );
-        const description = card?.querySelector<HTMLElement>(
-          '[class*="cardDescription"]'
-        );
-        const chevron = card?.querySelector<SVGElement>(
-          '[class*="chevron"]'
-        );
-        if (!outlet || !card || !title || !description || !chevron) {
+        const cards = [
+          ...document.querySelectorAll<HTMLElement>(
+            '[data-testid="next-event-card"], [data-testid="announcement-card"], [data-testid="explore-card"]'
+          ),
+        ];
+        const primaryActions = [
+          ...document.querySelectorAll<HTMLElement>('[class*="primaryAction"]'),
+        ];
+        if (!outlet || cards.length !== 3) {
           throw new Error("Home long-copy geometry fixture is incomplete");
         }
-        const right = (element: Element) => element.getBoundingClientRect().right;
+        const right = (element: Element) =>
+          element.getBoundingClientRect().right;
         return {
           outletClientWidth: outlet.clientWidth,
           outletScrollWidth: outlet.scrollWidth,
-          titleClientWidth: title.clientWidth,
-          titleScrollWidth: title.scrollWidth,
-          descriptionClientWidth: description.clientWidth,
-          descriptionScrollWidth: description.scrollWidth,
-          cardRight: right(card),
-          chevronRight: right(chevron),
           outletRight: right(outlet),
+          cards: cards.map((card) => {
+            const chevron =
+              card.querySelector<SVGElement>('[class*="chevron"]');
+            const textNodes = [
+              ...card.querySelectorAll<HTMLElement>("h1,h2,p,span"),
+            ];
+            return {
+              clientWidth: card.clientWidth,
+              scrollWidth: card.scrollWidth,
+              right: right(card),
+              textOverflow: textNodes.some(
+                (text) => text.scrollWidth > text.clientWidth
+              ),
+              chevronRight: chevron ? right(chevron) : null,
+            };
+          }),
+          primaryActionRights: primaryActions.map(right),
         };
       });
       expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
         geometry.outletClientWidth
       );
-      expect(geometry.titleScrollWidth).toBeLessThanOrEqual(
-        geometry.titleClientWidth
-      );
-      expect(geometry.descriptionScrollWidth).toBeLessThanOrEqual(
-        geometry.descriptionClientWidth
-      );
-      expect(geometry.chevronRight).toBeLessThanOrEqual(
-        geometry.cardRight + 1
-      );
-      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.outletRight + 1);
-      await expect(card).toBeVisible();
+      for (const cardGeometry of geometry.cards) {
+        expect(cardGeometry.scrollWidth).toBeLessThanOrEqual(
+          cardGeometry.clientWidth
+        );
+        expect(cardGeometry.textOverflow).toBe(false);
+        expect(cardGeometry.right).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+        if (cardGeometry.chevronRight !== null) {
+          expect(cardGeometry.chevronRight).toBeLessThanOrEqual(
+            cardGeometry.right + 1
+          );
+        }
+      }
+      for (const primaryActionRight of geometry.primaryActionRights) {
+        expect(primaryActionRight).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+      }
+      await expect(eventCard).toBeVisible();
+      await expect(announcementCard).toBeVisible();
+      await expect(exploreCard).toBeVisible();
     }
   });
 

@@ -201,6 +201,18 @@
   line-height: 1.55;
 }
 
+.programTitle,
+.eventCard h2,
+.emptyCard h2,
+.eventRow > span,
+.detailIntro h1,
+.detailIntro p,
+.venueCard p,
+.venueCard li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .eventIcon,
 .externalIcon {
   width: 19px;
