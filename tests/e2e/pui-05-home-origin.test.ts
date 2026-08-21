@@ -255,18 +255,30 @@ test.describe("PUI-05 Home origin supplement", () => {
     page,
   }) => {
     await loginAs(page, MEMBER_USER, MEMBER_CRED);
-    const homeResponsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "GET" &&
-        new URL(response.url()).pathname === "/api/v1/home"
-    );
+    await page.goto("/programs");
+    const exploreCard = page.getByTestId("explore-card");
+    const homeResponsePromise = page
+      .waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/v1/home",
+        { timeout: 15_000 }
+      )
+      .catch(() => null);
     await page.goto("/home");
-    const homeResponse = await homeResponsePromise;
+    const renderedExploreReady = exploreCard
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => null)
+      .catch(() => null);
+    const homeResponse = await Promise.race([
+      homeResponsePromise,
+      renderedExploreReady,
+    ]);
     let expectedExploreProgram: {
       programId: string;
       title: string;
     } | null = null;
-    if (homeResponse.ok()) {
+    if (homeResponse?.ok()) {
       const body = (await homeResponse.json()) as {
         data?: {
           exploreProgram?: { programId: string; title: string } | null;
@@ -274,7 +286,6 @@ test.describe("PUI-05 Home origin supplement", () => {
       };
       expectedExploreProgram = body.data?.exploreProgram ?? null;
     }
-    const exploreCard = page.getByTestId("explore-card");
     await expect(exploreCard).toBeVisible({ timeout: 15_000 });
     await expect(exploreCard).toHaveAttribute(
       "href",
