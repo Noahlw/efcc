@@ -549,6 +549,53 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("retry preserves active search and filter state", async () => {
+    const user = userEvent.setup();
+    mocks.listParticipantCatalog
+      .mockResolvedValueOnce({ catalog: catalogFixture() })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ catalog: catalogFixture() });
+    const { onHome, onManagement, onOpenProgram, view } = renderDirectory();
+
+    await screen.findByRole("button", { name: /查經小組/u });
+    const search = screen.getByRole("searchbox", {
+      name: COPY.programs.catalogSearchLabel,
+    });
+    await user.type(search, "青年");
+    const filterGroup = screen.getByRole("group", {
+      name: COPY.programs.filterGroupLabel,
+    });
+    const eligible = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterEligible,
+    });
+    await user.click(eligible);
+    expect(rowNames()).toStrictEqual(["青年團契"]);
+
+    mocks.router = { ...mocks.router };
+    view.rerender(
+      <ParticipantDirectory
+        programId={null}
+        canManage={false}
+        onHome={onHome}
+        onManagement={onManagement}
+        onOpenProgram={onOpenProgram}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.catalogLoadError,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.catalogRetry })
+    );
+
+    await screen.findByRole("button", { name: /青年團契/u });
+    expect(screen.getByRole("searchbox")).toHaveValue("青年");
+    const eligibleAfter = within(
+      screen.getByRole("group", { name: COPY.programs.filterGroupLabel })
+    ).getByRole("button", { name: COPY.programs.filterEligible });
+    expect(eligibleAfter).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("FORBIDDEN catalog failure shows the forbidden state with Home escape", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockRejectedValueOnce(

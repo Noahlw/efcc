@@ -918,11 +918,79 @@ test.describe("PUI-02 participant Programs directory", () => {
       [1440, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      const geometry = await page.evaluate(() => ({
-        innerWidth: window.innerWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-      }));
-      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
+      const geometry = await page.evaluate(() => {
+        const outlet = document.querySelector<HTMLElement>("#shell-content");
+        const card = document.querySelector<HTMLElement>(
+          'button[class*="participantDirectoryCard"]'
+        );
+        const body = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardBody"]'
+        );
+        const title = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardTitle"]'
+        );
+        const secondary = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardSecondary"]'
+        );
+        const chevron = card?.querySelector<SVGElement>(
+          '[class*="directoryChevron"]'
+        );
+        const search = document.querySelector<HTMLElement>(
+          "#programs-catalog-search"
+        );
+        const filters = document.querySelector<HTMLElement>(
+          '[class*="directoryFilters"]'
+        );
+        if (
+          !outlet ||
+          !card ||
+          !body ||
+          !title ||
+          !secondary ||
+          !chevron ||
+          !search ||
+          !filters
+        ) {
+          throw new Error("long-copy geometry fixture is incomplete");
+        }
+        const right = (element: Element) =>
+          element.getBoundingClientRect().right;
+        return {
+          outletClientWidth: outlet.clientWidth,
+          outletScrollWidth: outlet.scrollWidth,
+          bodyClientWidth: body.clientWidth,
+          bodyScrollWidth: body.scrollWidth,
+          titleClientWidth: title.clientWidth,
+          titleScrollWidth: title.scrollWidth,
+          secondaryClientWidth: secondary.clientWidth,
+          secondaryScrollWidth: secondary.scrollWidth,
+          cardRight: right(card),
+          chevronRight: right(chevron),
+          outletRight: right(outlet),
+          searchRight: right(search),
+          filtersRight: right(filters),
+        };
+      });
+      expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
+        geometry.outletClientWidth
+      );
+      expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(
+        geometry.bodyClientWidth
+      );
+      expect(geometry.titleScrollWidth).toBeLessThanOrEqual(
+        geometry.titleClientWidth
+      );
+      expect(geometry.secondaryScrollWidth).toBeLessThanOrEqual(
+        geometry.secondaryClientWidth
+      );
+      expect(geometry.chevronRight).toBeLessThanOrEqual(geometry.cardRight + 1);
+      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.outletRight + 1);
+      expect(geometry.searchRight).toBeLessThanOrEqual(
+        geometry.outletRight + 1
+      );
+      expect(geometry.filtersRight).toBeLessThanOrEqual(
+        geometry.outletRight + 1
+      );
       await expect(card).toBeVisible();
       await expect(card.locator("svg")).toBeVisible();
     }

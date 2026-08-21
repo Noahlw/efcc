@@ -253,11 +253,49 @@ test.describe("PUI-05 Home origin supplement", () => {
       [1440, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      const geometry = await page.evaluate(() => ({
-        innerWidth: window.innerWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-      }));
-      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
+      const geometry = await page.evaluate(() => {
+        const outlet = document.querySelector<HTMLElement>("#shell-content");
+        const card = document.querySelector<HTMLElement>(
+          '[data-testid="explore-card"]'
+        );
+        const title = card?.querySelector<HTMLElement>(
+          '[class*="cardTitle"]'
+        );
+        const description = card?.querySelector<HTMLElement>(
+          '[class*="cardDescription"]'
+        );
+        const chevron = card?.querySelector<SVGElement>(
+          '[class*="chevron"]'
+        );
+        if (!outlet || !card || !title || !description || !chevron) {
+          throw new Error("Home long-copy geometry fixture is incomplete");
+        }
+        const right = (element: Element) => element.getBoundingClientRect().right;
+        return {
+          outletClientWidth: outlet.clientWidth,
+          outletScrollWidth: outlet.scrollWidth,
+          titleClientWidth: title.clientWidth,
+          titleScrollWidth: title.scrollWidth,
+          descriptionClientWidth: description.clientWidth,
+          descriptionScrollWidth: description.scrollWidth,
+          cardRight: right(card),
+          chevronRight: right(chevron),
+          outletRight: right(outlet),
+        };
+      });
+      expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
+        geometry.outletClientWidth
+      );
+      expect(geometry.titleScrollWidth).toBeLessThanOrEqual(
+        geometry.titleClientWidth
+      );
+      expect(geometry.descriptionScrollWidth).toBeLessThanOrEqual(
+        geometry.descriptionClientWidth
+      );
+      expect(geometry.chevronRight).toBeLessThanOrEqual(
+        geometry.cardRight + 1
+      );
+      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.outletRight + 1);
       await expect(card).toBeVisible();
     }
   });
