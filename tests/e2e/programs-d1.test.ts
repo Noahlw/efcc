@@ -1373,9 +1373,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       // when closed it returns an empty events list and the scanner shows the
       // outcome screen (never a different event).
       expect(Array.isArray(resolveBody.data?.events)).toBe(true);
-      if (resolvedIds.length > 0) {
-        expect(resolvedIds).toEqual([eventIdFromCta]);
-      }
+      expect(resolvedIds).toEqual([eventIdFromCta]);
 
       // Back navigation returns to the originating Program detail (no
       // hardcoded target): browser back restores the event detail, then the
