@@ -262,12 +262,22 @@ test.describe("PUI-05 Home origin supplement", () => {
       "href",
       /\/programs\?program=[^&]+&from=home/u
     );
+    const expectedExploreProgram = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/home");
+      const body = (await response.json()) as {
+        data?: {
+          exploreProgram?: { programId: string; title: string } | null;
+        };
+      };
+      return body.data?.exploreProgram ?? null;
+    });
+    expect(expectedExploreProgram?.programId).toBeTruthy();
     const exploreHref = await exploreCard.getAttribute("href");
     const exploreProgramId = new URL(
       exploreHref ?? "",
       "http://127.0.0.1"
     ).searchParams.get("program");
-    expect(exploreProgramId).toBeTruthy();
+    expect(exploreProgramId).toBe(expectedExploreProgram?.programId);
     const expectedExploreUrl = new URL(
       exploreHref ?? "",
       page.url()
@@ -275,7 +285,9 @@ test.describe("PUI-05 Home origin supplement", () => {
     await exploreCard.click();
     await expect(page).toHaveURL(expectedExploreUrl);
     await expect(
-      page.getByRole("heading", { name: /E2E_DEMO_/u })
+      page.getByRole("heading", {
+        name: expectedExploreProgram?.title ?? "",
+      })
     ).toBeVisible();
     await page.getByRole("button", { name: "課程", exact: true }).click();
     await expect(page).toHaveURL(/\/home$/u);
