@@ -273,13 +273,12 @@ test.describe("PUI-05 Home origin supplement", () => {
     });
     expect(expectedExploreProgram?.programId).toBeTruthy();
     const exploreHref = await exploreCard.getAttribute("href");
-    const exploreProgramId = new URL(
-      exploreHref ?? "",
-      "http://127.0.0.1"
-    ).searchParams.get("program");
-    expect(exploreProgramId).toBe(expectedExploreProgram?.programId);
+    const expectedExploreHref = `/programs?program=${encodeURIComponent(
+      expectedExploreProgram?.programId ?? ""
+    )}&from=home`;
+    expect(exploreHref).toBe(expectedExploreHref);
     const expectedExploreUrl = new URL(
-      exploreHref ?? "",
+      expectedExploreHref,
       page.url()
     ).toString();
     await exploreCard.click();

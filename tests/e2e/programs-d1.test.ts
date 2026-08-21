@@ -1040,6 +1040,8 @@ test.describe("PUI-02 participant Programs directory", () => {
     await expect(
       page.getByRole("button", { name: COPY.detailBack })
     ).toBeVisible();
+    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await expect(page).toHaveURL(/\/programs$/u);
   });
 });
 
@@ -1318,7 +1320,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       // program detail.
       await memberPage.goBack();
       await expect(memberPage).toHaveURL(eventDetailUrl);
-      await memberPage.goBack();
+      await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(programDetailUrl);
     } finally {
       try {
