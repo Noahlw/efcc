@@ -12,6 +12,10 @@ import type { Browser, Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
+import {
+  restoreEventWindow,
+  type EventWindowSnapshot,
+} from "./participant-event-window";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
@@ -508,7 +512,7 @@ function enrollmentPanelOf(page: Page): Locator {
 async function openEventCheckInWindow(
   adminPage: Page,
   programId: string
-): Promise<string | null> {
+): Promise<EventWindowSnapshot | null> {
   if (adminPage.url() === "about:blank") {
     await loginAs(
       adminPage,
@@ -528,6 +532,8 @@ async function openEventCheckInWindow(
           starts_at: string;
           status: string;
           availability: string;
+          check_in_window_opens_at: string | null;
+          check_in_window_closes_at: string | null;
         }[];
       };
     };
@@ -555,7 +561,13 @@ async function openEventCheckInWindow(
         }),
       }
     );
-    return patch.ok ? event.event_id : null;
+    return patch.ok
+      ? {
+          eventId: event.event_id,
+          opensAt: event.check_in_window_opens_at,
+          closesAt: event.check_in_window_closes_at,
+        }
+      : null;
   }, programId);
 }
 
@@ -1181,6 +1193,7 @@ test.describe("PUI-05 participant Event Detail", () => {
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
     let programId = "";
+    let openedEvent: EventWindowSnapshot | null = null;
     try {
       await loginAs(
         memberPage,
@@ -1249,8 +1262,8 @@ test.describe("PUI-05 participant Event Detail", () => {
         ).toBeVisible();
         await memberPage.reload();
       }
-      const openedEventId = await openEventCheckInWindow(page, programId);
-      expect(openedEventId).toBeTruthy();
+      openedEvent = await openEventCheckInWindow(page, programId);
+      expect(openedEvent?.eventId).toBeTruthy();
 
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).
@@ -1292,7 +1305,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         )
         .at(0)?.event_id;
       expect(expectedEventId).toBeTruthy();
-      expect(expectedEventId).toBe(openedEventId);
+      expect(expectedEventId).toBe(openedEvent?.eventId);
       const programDetailUrl = memberPage.url();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
@@ -1374,12 +1387,18 @@ test.describe("PUI-05 participant Event Detail", () => {
     } finally {
       try {
         if (programId) {
-          await memberPage.goto(`/programs?program=${programId}#overview`);
-          await resetParticipantEnrollment(
-            memberPage,
-            enrollmentPanelOf(memberPage),
-            COPY
-          );
+          try {
+            if (openedEvent) {
+              await restoreEventWindow(page, programId, openedEvent);
+            }
+          } finally {
+            await memberPage.goto(`/programs?program=${programId}#overview`);
+            await resetParticipantEnrollment(
+              memberPage,
+              enrollmentPanelOf(memberPage),
+              COPY
+            );
+          }
         }
       } finally {
         await memberContext.close();

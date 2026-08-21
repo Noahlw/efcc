@@ -4,6 +4,10 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
+import {
+  restoreEventWindow,
+  type EventWindowSnapshot,
+} from "./participant-event-window";
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
@@ -145,7 +149,7 @@ async function ensureActiveEnrollment(
 async function openNextEventCheckInWindow(
   adminPage: Page,
   programId: string
-): Promise<string | null> {
+): Promise<EventWindowSnapshot | null> {
   if (adminPage.url() === "about:blank") {
     await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
   }
@@ -161,6 +165,8 @@ async function openNextEventCheckInWindow(
           starts_at: string;
           status: string;
           availability: string;
+          check_in_window_opens_at: string | null;
+          check_in_window_closes_at: string | null;
         }[];
       };
     };
@@ -188,7 +194,13 @@ async function openNextEventCheckInWindow(
         }),
       }
     );
-    return patchResponse.ok ? nextEvent.event_id : null;
+    return patchResponse.ok
+      ? {
+          eventId: nextEvent.event_id,
+          opensAt: nextEvent.check_in_window_opens_at,
+          closesAt: nextEvent.check_in_window_closes_at,
+        }
+      : null;
   }, programId);
 }
 
@@ -200,14 +212,15 @@ test.describe("PUI-05 Home origin supplement", () => {
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
     let programId = "";
+    let openedEvent: EventWindowSnapshot | null = null;
     try {
       await loginAs(memberPage, MEMBER_USER, MEMBER_CRED);
       programId =
         (await catalogProgramIds(memberPage, "E2E_DEMO_成人查經"))[0] ?? "";
       expect(programId).toBeTruthy();
       await ensureActiveEnrollment(memberPage, page, programId);
-      const expectedEventId = await openNextEventCheckInWindow(page, programId);
-      expect(expectedEventId).toBeTruthy();
+      openedEvent = await openNextEventCheckInWindow(page, programId);
+      expect(openedEvent?.eventId).toBeTruthy();
 
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
@@ -218,8 +231,7 @@ test.describe("PUI-05 Home origin supplement", () => {
       const eventHref = await eventLink.getAttribute("href");
       expect(eventHref).toMatch(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=${encodeURIComponent(expectedEventId ?? "")}$`,
-          "u"
+          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=${encodeURIComponent(openedEvent?.eventId ?? "")}$`
         )
       );
       const expectedEventUrl = new URL(
@@ -238,12 +250,18 @@ test.describe("PUI-05 Home origin supplement", () => {
     } finally {
       try {
         if (programId) {
-          await memberPage.goto(`/programs?program=${programId}#overview`);
-          await resetParticipantEnrollment(
-            memberPage,
-            enrollmentPanelOf(memberPage),
-            COPY
-          );
+          try {
+            if (openedEvent) {
+              await restoreEventWindow(page, programId, openedEvent);
+            }
+          } finally {
+            await memberPage.goto(`/programs?program=${programId}#overview`);
+            await resetParticipantEnrollment(
+              memberPage,
+              enrollmentPanelOf(memberPage),
+              COPY
+            );
+          }
         }
       } finally {
         await memberContext.close();
