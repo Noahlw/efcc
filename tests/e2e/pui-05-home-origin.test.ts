@@ -108,12 +108,22 @@ async function ensureActiveEnrollment(
     return;
   }
   await loginAs(adminPage, ADMIN_USER, ADMIN_CRED);
+  const memberName = await memberPage.evaluate(async () => {
+    const response = await fetch("/api/v1/auth/me");
+    if (!response.ok) {
+      return "";
+    }
+    const body = (await response.json()) as {
+      data?: { user?: { name?: string } };
+    };
+    return body.data?.user?.name ?? "";
+  });
   await adminPage.goto(
     `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
   );
   const requestRow = adminPage
     .getByRole("listitem")
-    .filter({ hasText: "E2E Member" });
+    .filter({ hasText: memberName || "E2E Member" });
   await requestRow.getByRole("button", { name: COPY.approve }).click();
   await expect(
     adminPage
@@ -149,6 +159,7 @@ async function clearMemberEnrollment(
         name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
       })
       .click();
+    await expect(submitActionButton(panel)).toBeVisible();
     return;
   }
 
@@ -163,6 +174,7 @@ async function clearMemberEnrollment(
         name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
       })
       .click();
+    await expect(submitActionButton(panel)).toBeVisible();
   }
 }
 
@@ -214,7 +226,8 @@ test.describe("PUI-05 Home origin supplement", () => {
     let programId = "";
     try {
       await loginAs(memberPage, MEMBER_USER, MEMBER_CRED);
-      [programId] = await catalogProgramIds(memberPage, "E2E_DEMO_成人查經");
+      programId =
+        (await catalogProgramIds(memberPage, "E2E_DEMO_成人查經"))[0] ?? "";
       expect(programId).toBeTruthy();
       await ensureActiveEnrollment(memberPage, page, programId);
       expect(await openNextEventCheckInWindow(page, programId)).toBe(true);
@@ -226,7 +239,10 @@ test.describe("PUI-05 Home origin supplement", () => {
         .getByRole("link", { name: COPY.homeViewEvent })
         .click();
       await expect(memberPage).toHaveURL(
-        /\/programs\?program=[^&]+&from=home&event=[^&#]+$/u
+        new RegExp(
+          `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=[^&#]+$`,
+          "u"
+        )
       );
       await expect(
         memberPage.locator("#participant-event-title")
@@ -236,12 +252,8 @@ test.describe("PUI-05 Home origin supplement", () => {
       await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(/\/home$/u);
     } finally {
-      try {
-        if (programId) {
-          await clearMemberEnrollment(memberPage, programId);
-        }
-      } catch {
-        // Preserve the test result when cleanup cannot reach the local Worker.
+      if (programId) {
+        await clearMemberEnrollment(memberPage, programId);
       }
       await memberContext.close();
     }
@@ -258,9 +270,19 @@ test.describe("PUI-05 Home origin supplement", () => {
       "href",
       /\/programs\?program=[^&]+&from=home/u
     );
+    const exploreHref = await exploreCard.getAttribute("href");
+    const exploreProgramId = new URL(
+      exploreHref ?? "",
+      "http://127.0.0.1"
+    ).searchParams.get("program");
+    expect(exploreProgramId).toBeTruthy();
     await exploreCard.click();
-    await expect(page).toHaveURL(/\/programs\?program=[^&]+&from=home$/u);
-    await expect(page.locator("#program-detail-title")).toBeVisible();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?program=${exploreProgramId}&from=home$`, "u")
+    );
+    await expect(
+      page.getByRole("heading", { name: /E2E_DEMO_/u })
+    ).toBeVisible();
     await page.getByRole("button", { name: "課程", exact: true }).click();
     await expect(page).toHaveURL(/\/home$/u);
   });
