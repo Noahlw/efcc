@@ -160,7 +160,6 @@ async function clearMemberEnrollment(
       })
       .click();
     await expect(submitActionButton(panel)).toBeVisible();
-    return;
   }
 
   const pending = panel.getByRole("button", {

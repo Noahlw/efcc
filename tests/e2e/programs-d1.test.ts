@@ -520,7 +520,6 @@ async function resetMemberEnrollment(page: Page): Promise<void> {
       })
       .click();
     await expect(submitActionButton(panel)).toBeVisible();
-    return;
   }
 
   const pending = panel.getByText(COPY.requestPendingHint, { exact: true });
