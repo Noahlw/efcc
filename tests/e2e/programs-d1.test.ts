@@ -1160,6 +1160,17 @@ test.describe("PUI-05 participant Event Detail", () => {
         await expect(pendingHint).toBeVisible();
       }
       if (needsApproval) {
+        const memberName = await memberPage.evaluate(async () => {
+          const response = await fetch("/api/v1/auth/me");
+          if (!response.ok) {
+            return "";
+          }
+          const body = (await response.json()) as {
+            data?: { user?: { name?: string } };
+          };
+          return body.data?.user?.name ?? "";
+        });
+        expect(memberName).toBeTruthy();
         await loginAs(
           page,
           required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -1170,7 +1181,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         );
         const requestRow = page
           .getByRole("listitem")
-          .filter({ hasText: "E2E Member" });
+          .filter({ hasText: memberName });
         await expect(
           requestRow.getByRole("button", { name: COPY.approve })
         ).toBeVisible();
@@ -1310,66 +1321,18 @@ test.describe("PUI-05 participant Event Detail", () => {
       await memberPage.goBack();
       await expect(memberPage).toHaveURL(programDetailUrl);
     } finally {
-      if (programId) {
-        // Failure-safe cleanup: cancel any Active enrollment and withdraw
-        // any Pending request so later queue/roster counts stay stable
-        // (same contract as PUI-04's cleanup, member self-service API).
-        await memberPage.evaluate(async (id) => {
-          const enrollmentsResponse = await fetch(
-            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
+      try {
+        if (programId) {
+          await memberPage.goto(`/programs?program=${programId}#overview`);
+          await resetParticipantEnrollment(
+            memberPage,
+            enrollmentPanelOf(memberPage),
+            COPY
           );
-          const enrollmentsBody = (await enrollmentsResponse.json()) as {
-            data?: {
-              enrollments?: {
-                enrollment_id: string;
-                member_user_id: string;
-                status: string;
-              }[];
-            };
-          };
-          const enrollment = enrollmentsBody.data?.enrollments?.find(
-            (row) =>
-              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
-          );
-          if (enrollment) {
-            await fetch(
-              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: "{}",
-              }
-            );
-          }
-          const requestsResponse = await fetch(
-            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
-          );
-          const requestsBody = (await requestsResponse.json()) as {
-            data?: {
-              requests?: {
-                request_id: string;
-                member_user_id: string;
-                status: string;
-              }[];
-            };
-          };
-          const request = requestsBody.data?.requests?.find(
-            (row) =>
-              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
-          );
-          if (request) {
-            await fetch(
-              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: "{}",
-              }
-            );
-          }
-        }, programId);
+        }
+      } finally {
+        await memberContext.close();
       }
-      await memberContext.close();
     }
   });
 });
