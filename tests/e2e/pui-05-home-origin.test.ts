@@ -234,15 +234,22 @@ test.describe("PUI-05 Home origin supplement", () => {
       await memberPage.goto("/home");
       const homeEventCard = memberPage.getByTestId("next-event-card");
       await expect(homeEventCard).toBeVisible({ timeout: 15_000 });
-      await homeEventCard
-        .getByRole("link", { name: COPY.homeViewEvent })
-        .click();
-      await expect(memberPage).toHaveURL(
+      const eventLink = homeEventCard.getByRole("link", {
+        name: COPY.homeViewEvent,
+      });
+      const eventHref = await eventLink.getAttribute("href");
+      expect(eventHref).toMatch(
         new RegExp(
           `/programs\\?program=${encodeURIComponent(programId)}&from=home&event=[^&#]+$`,
           "u"
         )
       );
+      const expectedEventUrl = new URL(
+        eventHref ?? "",
+        memberPage.url()
+      ).toString();
+      await eventLink.click();
+      await expect(memberPage).toHaveURL(expectedEventUrl);
       await expect(
         memberPage.locator("#participant-event-title")
       ).toBeVisible();
@@ -275,10 +282,12 @@ test.describe("PUI-05 Home origin supplement", () => {
       "http://127.0.0.1"
     ).searchParams.get("program");
     expect(exploreProgramId).toBeTruthy();
+    const expectedExploreUrl = new URL(
+      exploreHref ?? "",
+      page.url()
+    ).toString();
     await exploreCard.click();
-    await expect(page).toHaveURL(
-      new RegExp(`/programs\\?program=${exploreProgramId}&from=home$`, "u")
-    );
+    await expect(page).toHaveURL(expectedExploreUrl);
     await expect(
       page.getByRole("heading", { name: /E2E_DEMO_/u })
     ).toBeVisible();
