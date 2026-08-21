@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
+import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
@@ -118,12 +119,13 @@ async function ensureActiveEnrollment(
     };
     return body.data?.user?.name ?? "";
   });
+  expect(memberName).toBeTruthy();
   await adminPage.goto(
     `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
   );
   const requestRow = adminPage
     .getByRole("listitem")
-    .filter({ hasText: memberName || "E2E Member" });
+    .filter({ hasText: memberName });
   await requestRow.getByRole("button", { name: COPY.approve }).click();
   await expect(
     adminPage
@@ -138,48 +140,6 @@ async function ensureActiveEnrollment(
   await expect(
     enrollmentPanelAfter.getByText(COPY.enrollmentActiveHint)
   ).toBeVisible();
-}
-
-async function clearMemberEnrollment(
-  memberPage: Page,
-  programId: string
-): Promise<void> {
-  await memberPage.goto(`/programs?program=${programId}#overview`);
-  const panel = enrollmentPanelOf(memberPage);
-  await expect(panel).toBeVisible();
-
-  const active = panel.getByRole("button", {
-    name: COPY.cancelEnrollment,
-  });
-  const pending = panel.getByRole("button", {
-    name: COPY.withdrawRequest,
-  });
-  const submit = submitActionButton(panel);
-  await expect(submit.or(active).or(pending)).toBeVisible({
-    timeout: 15_000,
-  });
-
-  if (await active.isVisible()) {
-    await active.click();
-    await memberPage
-      .getByRole("dialog", { name: COPY.cancelConfirmTitle })
-      .getByRole("button", {
-        name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
-      })
-      .click();
-  }
-
-  await expect(submit.or(pending)).toBeVisible({ timeout: 15_000 });
-  if (await pending.isVisible()) {
-    await pending.click();
-    await memberPage
-      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
-      .getByRole("button", {
-        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
-      })
-      .click();
-  }
-  await expect(submit).toBeVisible({ timeout: 15_000 });
 }
 
 async function openNextEventCheckInWindow(
@@ -278,7 +238,12 @@ test.describe("PUI-05 Home origin supplement", () => {
     } finally {
       try {
         if (programId) {
-          await clearMemberEnrollment(memberPage, programId);
+          await memberPage.goto(`/programs?program=${programId}#overview`);
+          await resetParticipantEnrollment(
+            memberPage,
+            enrollmentPanelOf(memberPage),
+            COPY
+          );
         }
       } finally {
         await memberContext.close();

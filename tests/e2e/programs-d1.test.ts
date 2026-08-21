@@ -11,6 +11,7 @@ import { expect, test } from "@playwright/test";
 import type { Browser, Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
+import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
@@ -502,42 +503,6 @@ function enrollmentPanelOf(page: Page): Locator {
   return page.getByRole("region", {
     name: new RegExp(`^${COPY.enrollment}$`, "u"),
   });
-}
-
-async function resetMemberEnrollment(page: Page): Promise<void> {
-  const panel = enrollmentPanelOf(page);
-  await expect(panel).toBeVisible();
-
-  const active = panel.getByRole("button", {
-    name: COPY.cancelEnrollment,
-  });
-  const pending = panel.getByText(COPY.requestPendingHint, { exact: true });
-  const submit = submitActionButton(panel);
-  await expect(submit.or(active).or(pending)).toBeVisible({
-    timeout: 15_000,
-  });
-
-  if (await active.isVisible()) {
-    await active.click();
-    await page
-      .getByRole("dialog", { name: COPY.cancelConfirmTitle })
-      .getByRole("button", {
-        name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
-      })
-      .click();
-  }
-
-  await expect(submit.or(pending)).toBeVisible({ timeout: 15_000 });
-  if (await pending.isVisible()) {
-    await panel.getByRole("button", { name: COPY.withdrawRequest }).click();
-    await page
-      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
-      .getByRole("button", {
-        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
-      })
-      .click();
-  }
-  await expect(submit).toBeVisible({ timeout: 15_000 });
 }
 
 test.beforeAll(() => {
@@ -1692,9 +1657,8 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
 
     await page.goto(`/programs?program=${programId}#overview`);
     await expect(page.locator("#program-detail-title")).toBeVisible();
-    await resetMemberEnrollment(page);
-
     const enrollmentPanel = enrollmentPanelOf(page);
+    await resetParticipantEnrollment(page, enrollmentPanel, COPY);
     const requestButton = submitActionButton(enrollmentPanel);
     await expect(requestButton).toBeVisible();
     await expect(
