@@ -39,6 +39,7 @@ const COPY = {
   checkInAvailable: "可簽到",
   eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
   backToOrigin: "返回",
+  homeBack: "首頁",
 };
 
 interface CatalogEntry {
@@ -231,6 +232,7 @@ test.describe("PUI-05 Home origin supplement", () => {
           announcement?: {
             title?: string;
             summary?: string;
+            ctaUrl?: string | null;
           } | null;
           exploreProgram?: {
             title?: string;
@@ -250,6 +252,7 @@ test.describe("PUI-05 Home origin supplement", () => {
       featuredEvent.programTitle = `${longTitle}課程`;
       featuredEvent.location = longSummary;
       announcement.title = longTitle;
+      announcement.ctaUrl = "https://example.invalid/home-venue";
       announcement.summary = longSummary;
       exploreProgram.title = longTitle;
       exploreProgram.summary = longSummary;
@@ -302,8 +305,16 @@ test.describe("PUI-05 Home origin supplement", () => {
           outletScrollWidth: outlet.scrollWidth,
           outletRight: right(outlet),
           cards: cards.map((card) => {
+            const isEventCard = card.dataset.testid === "next-event-card";
             const chevron =
               card.querySelector<SVGElement>('[class*="chevron"]');
+            const eventIcons = card.querySelectorAll('[class*="eventIcon"]');
+            if (
+              (isEventCard && eventIcons.length < 3) ||
+              (!isEventCard && !chevron)
+            ) {
+              throw new Error("Home card controls are incomplete");
+            }
             const textNodes = [
               ...card.querySelectorAll<HTMLElement>("h1,h2,p,span"),
             ];
@@ -314,6 +325,9 @@ test.describe("PUI-05 Home origin supplement", () => {
               textOverflow: textNodes.some(
                 (text) => text.scrollWidth > text.clientWidth
               ),
+              isEventCard,
+              eventIconCount: eventIcons.length,
+              chevronPresent: chevron !== null,
               chevronRight: chevron ? right(chevron) : null,
             };
           }),
@@ -324,6 +338,10 @@ test.describe("PUI-05 Home origin supplement", () => {
         geometry.outletClientWidth
       );
       for (const cardGeometry of geometry.cards) {
+        expect(cardGeometry.isEventCard ? cardGeometry.eventIconCount : 0).toBe(
+          cardGeometry.isEventCard ? 3 : 0
+        );
+        expect(cardGeometry.chevronPresent).toBe(!cardGeometry.isEventCard);
         expect(cardGeometry.scrollWidth).toBeLessThanOrEqual(
           cardGeometry.clientWidth
         );
@@ -337,15 +355,92 @@ test.describe("PUI-05 Home origin supplement", () => {
           );
         }
       }
+      expect(geometry.primaryActionRights).toHaveLength(1);
       for (const primaryActionRight of geometry.primaryActionRights) {
         expect(primaryActionRight).toBeLessThanOrEqual(
           geometry.outletRight + 1
         );
       }
+      await expect(
+        page.getByRole("link", { name: COPY.homeViewEvent })
+      ).toBeVisible();
       await expect(eventCard).toBeVisible();
       await expect(announcementCard).toBeVisible();
       await expect(exploreCard).toBeVisible();
     }
+    await announcementCard.click();
+    const detail = page.getByTestId("announcement-detail");
+    const detailBack = page.getByRole("button", { name: COPY.homeBack });
+    const detailExternal = detail.getByRole("link");
+    await expect(detail).toBeVisible();
+    await expect(detail).toContainText(longTitle);
+    await expect(detail).toContainText(longSummary);
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const detailGeometry = await page.evaluate(() => {
+        const outlet = document.querySelector<HTMLElement>("#shell-content");
+        const detailPage = document.querySelector<HTMLElement>(
+          '[data-testid="announcement-detail"]'
+        );
+        const back = detailPage?.querySelector<HTMLElement>(
+          '[class*="backButton"]'
+        );
+        const external = detailPage?.querySelector<HTMLElement>(
+          '[class*="externalLink"]'
+        );
+        if (!outlet || !detailPage || !back || !external) {
+          throw new Error("announcement detail geometry fixture is incomplete");
+        }
+        const right = (element: Element) =>
+          element.getBoundingClientRect().right;
+        const textNodes = [
+          ...detailPage.querySelectorAll<HTMLElement>("h1,h2,p,li"),
+        ];
+        return {
+          outletClientWidth: outlet.clientWidth,
+          outletScrollWidth: outlet.scrollWidth,
+          outletRight: right(outlet),
+          detailClientWidth: detailPage.clientWidth,
+          detailScrollWidth: detailPage.scrollWidth,
+          textOverflow: textNodes.some(
+            (text) => text.scrollWidth > text.clientWidth
+          ),
+          backRight: right(back),
+          externalRight: right(external),
+        };
+      });
+      expect(detailGeometry.outletScrollWidth).toBeLessThanOrEqual(
+        detailGeometry.outletClientWidth
+      );
+      expect(detailGeometry.detailScrollWidth).toBeLessThanOrEqual(
+        detailGeometry.detailClientWidth
+      );
+      expect(detailGeometry.textOverflow).toBe(false);
+      expect(detailGeometry.backRight).toBeLessThanOrEqual(
+        detailGeometry.outletRight + 1
+      );
+      expect(detailGeometry.externalRight).toBeLessThanOrEqual(
+        detailGeometry.outletRight + 1
+      );
+      await expect(detailBack).toBeVisible();
+      await expect(detailExternal).toBeVisible();
+      await detailBack.focus();
+      expect(
+        await detailBack.evaluate(
+          (element) => document.activeElement === element
+        )
+      ).toBe(true);
+    }
+    await detailBack.click();
+    await expect(exploreCard).toBeVisible();
   });
 
   test("Home next-event card opens event detail with 可簽到 and back-nav", async ({
