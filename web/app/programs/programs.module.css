@@ -1623,11 +1623,6 @@
   color: var(--error);
   background: var(--error-surface);
 }
-.participantDirectoryCard .directoryStatusDanger {
-  border-color: var(--error-border);
-  color: var(--error);
-  background: var(--error-surface);
-}
 
 .programDetail {
   display: grid;
