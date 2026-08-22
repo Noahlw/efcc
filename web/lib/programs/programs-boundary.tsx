@@ -60,6 +60,15 @@ function applyProgramsNavigation(
   replace = false,
   historyState?: ProgramsHistoryState
 ): void {
+  if (
+    !replace &&
+    typeof window !== "undefined" &&
+    href === `${window.location.pathname}${window.location.search}`
+  ) {
+    // Rapid double-click/duplicate-call to the exact current URL --
+    // skip the push so it does not leave a duplicate history entry.
+    return;
+  }
   const nextHistoryState = historyState ?? { efccSection: "programs" };
   if (typeof window === "undefined") {
     if (replace) {

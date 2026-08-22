@@ -237,6 +237,7 @@ export const ParticipantEnrollment = ({
   const mounted = useRef(true);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const errorRef = useRef<HTMLOutputElement | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -244,6 +245,15 @@ export const ParticipantEnrollment = ({
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    // Focus errors are set while the acting button is disabled/mid-flight,
+    // which drops keyboard focus to document.body once it re-enables --
+    // move focus to the visible alert instead of leaving it stranded.
+    if (actionError !== null) {
+      errorRef.current?.focus();
+    }
+  }, [actionError]);
 
   const showOfflineError = useCallback(() => {
     const message = COPY.programs.enrollmentOfflineError;
@@ -398,13 +408,17 @@ export const ParticipantEnrollment = ({
           ),
         COPY.programs.requestWithdrawnNotice
       );
-    }
-    if (kind === "cancel" && activeEnrollment) {
+    } else if (kind === "cancel" && activeEnrollment) {
       void runAction(
         () =>
           cancelEnrollment(program.program_id, activeEnrollment.enrollment_id),
         COPY.programs.enrollmentCancelledNotice
       );
+    } else if (kind !== null) {
+      // Server state changed while the confirm dialog was open (e.g. the
+      // request/enrollment this confirm targeted no longer exists) --
+      // reconcile the UI instead of silently no-opping.
+      void onRefresh();
     }
   };
 
@@ -431,7 +445,12 @@ export const ParticipantEnrollment = ({
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <output
+          ref={errorRef}
+          className={styles.panelError}
+          role="alert"
+          tabIndex={-1}
+        >
           {actionError}
         </output>
       )}

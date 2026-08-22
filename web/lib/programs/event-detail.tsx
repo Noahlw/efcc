@@ -150,6 +150,7 @@ export const EventDetail = ({
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const recoveryRef = useRef<HTMLHeadingElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -215,6 +216,11 @@ export const EventDetail = ({
       document.getElementById("participant-event-title")?.focus();
     }
   }, [canManage, detail]);
+  useEffect(() => {
+    if (loadError !== null && detail === null) {
+      recoveryRef.current?.focus();
+    }
+  }, [loadError, detail]);
 
   const runAction = useCallback(
     async (
@@ -375,46 +381,54 @@ export const EventDetail = ({
     );
   };
 
-  if (loadError !== null && detail === null) {
-    const programHref = buildProgramsHref({
-      mode: canManage ? "management" : "participant",
-      programId,
-      ...(canManage ? { task: "events" as const } : {}),
-      ...(canManage || origin === undefined ? {} : { origin }),
-    });
+  if (detail === null) {
+    if (loadError !== null) {
+      const programHref = buildProgramsHref({
+        mode: canManage ? "management" : "participant",
+        programId,
+        ...(canManage ? { task: "events" as const } : {}),
+        ...(canManage || origin === undefined ? {} : { origin }),
+      });
+      return (
+        <section
+          className={styles.workspaceTask}
+          aria-label={COPY.programs.eventDetailTitle}
+        >
+          <h2 ref={recoveryRef} className={styles.boundaryTitle} tabIndex={-1}>
+            {COPY.programs.eventDetailRecoveryTitle}
+          </h2>
+          <p className={styles.panelError} role="alert">
+            {loadError}
+          </p>
+          <div className={styles.programDetailActions}>
+            <button
+              type="button"
+              className={styles.retry}
+              onClick={() => void load()}
+            >
+              {COPY.error.retry}
+            </button>
+            {programHref !== "/programs" && (
+              <Link href={programHref} className={styles.secondaryButton}>
+                {COPY.programs.eventDetailViewProgram}
+              </Link>
+            )}
+            <Link href="/programs" className={styles.secondaryButton}>
+              {COPY.programs.eventDetailBackToCatalog}
+            </Link>
+          </div>
+        </section>
+      );
+    }
     return (
-      <section
+      <output
         className={styles.workspaceTask}
+        aria-busy="true"
         aria-label={COPY.programs.eventDetailTitle}
       >
-        <h2 className={styles.boundaryTitle}>
-          {COPY.programs.eventDetailRecoveryTitle}
-        </h2>
-        <p className={styles.panelError} role="alert">
-          {loadError}
-        </p>
-        <div className={styles.programDetailActions}>
-          <button
-            type="button"
-            className={styles.retry}
-            onClick={() => void load()}
-          >
-            {COPY.error.retry}
-          </button>
-          {programHref !== "/programs" && (
-            <Link href={programHref} className={styles.secondaryButton}>
-              {COPY.programs.eventDetailViewProgram}
-            </Link>
-          )}
-          <Link href="/programs" className={styles.secondaryButton}>
-            {COPY.programs.eventDetailBackToCatalog}
-          </Link>
-        </div>
-      </section>
+        {COPY.programs.eventDetailLoading}
+      </output>
     );
-  }
-  if (detail === null) {
-    return null;
   }
   const { event, leaders, participant_summary } = detail;
   const cancelled = event.status === "Cancelled";

@@ -1168,6 +1168,7 @@ export const COPY = {
     goToScan: "前往掃描",
     backToOrigin: "返回",
     eventDetailNotFound: "找不到此聚會。",
+    eventDetailLoading: "正在載入聚會詳情…",
     eventDetailRecoveryTitle: "無法開啟這個聚會",
     eventDetailViewProgram: "查看課程詳情",
     eventDetailBackToCatalog: "返回課程目錄",
