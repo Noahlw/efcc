@@ -5,6 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
+import {
+  hkShortDateLabel,
+  hkShortTimeLabel,
+  hkShortTimeRange,
+} from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
@@ -23,7 +28,48 @@ import {
   hkWallDateTimeLabel,
 } from "@/lib/programs/recurrence";
 
+import { buildProgramsHref } from "./programs-intent";
+import type { ProgramsOrigin } from "./programs-intent";
+
 import styles from "@/app/programs/programs.module.css";
+
+const ICON_STROKE = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  strokeWidth: 1.8,
+};
+
+export const EventFactIcon = ({
+  name,
+}: {
+  name: "calendar" | "pin" | "back";
+}) => (
+  <svg
+    aria-hidden="true"
+    className={styles.programDetailFactIcon}
+    focusable="false"
+    viewBox="0 0 24 24"
+  >
+    {name === "calendar" && (
+      <>
+        <rect {...ICON_STROKE} x="3" y="5" width="18" height="16" rx="2" />
+        <path {...ICON_STROKE} d="M16 3v4M8 3v4M3 10h18" />
+      </>
+    )}
+    {name === "pin" && (
+      <>
+        <path
+          {...ICON_STROKE}
+          d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"
+        />
+        <circle {...ICON_STROKE} cx="12" cy="10" r="2.5" />
+      </>
+    )}
+    {name === "back" && <path {...ICON_STROKE} d="m15 18-6-6 6-6" />}
+  </svg>
+);
 
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
@@ -83,10 +129,12 @@ export function hkWallInputToIso(
  * Rendered by ProgramWorkspace when a management events task carries an
  * `event` deep link; every mutation is re-authorized server-side.
  */
+/* oxlint-disable-next-line eslint/complexity -- EVT-01 branch matrix is one state machine; splitting it would scatter the transitions */
 export const EventDetail = ({
   programId,
   eventId,
   canManage,
+  origin,
   onBack,
   onAttentionRefresh,
   onAuthRequired,
@@ -94,6 +142,7 @@ export const EventDetail = ({
   programId: string;
   eventId: string;
   canManage: boolean;
+  origin?: ProgramsOrigin;
   onBack: () => void;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
@@ -101,6 +150,7 @@ export const EventDetail = ({
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const recoveryRef = useRef<HTMLHeadingElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -163,9 +213,15 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
+      /* oxlint-disable-next-line unicorn/prefer-query-selector -- exact id lookup on participant-event-title */
       document.getElementById("participant-event-title")?.focus();
     }
   }, [canManage, detail]);
+  useEffect(() => {
+    if (loadError !== null && detail === null) {
+      recoveryRef.current?.focus();
+    }
+  }, [loadError, detail]);
 
   const runAction = useCallback(
     async (
@@ -253,6 +309,7 @@ export const EventDetail = ({
         setUndoAvailable(true);
         return COPY.programs.eventAvailabilityNotice;
       },
+      /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {
         // A concurrent enrollment/check-in can make the server require
         // confirmation even when the loaded summary looked safe; surface
@@ -310,6 +367,7 @@ export const EventDetail = ({
         setUndoAvailable(false);
         return COPY.programs.eventCancelledNotice;
       },
+      /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {
         if (
           error instanceof RpcError &&
@@ -326,27 +384,54 @@ export const EventDetail = ({
     );
   };
 
-  if (loadError !== null && detail === null) {
+  if (detail === null) {
+    if (loadError !== null) {
+      const programHref = buildProgramsHref({
+        mode: canManage ? "management" : "participant",
+        programId,
+        ...(canManage ? { task: "events" as const } : {}),
+        ...(canManage || origin === undefined ? {} : { origin }),
+      });
+      return (
+        <section
+          className={styles.workspaceTask}
+          aria-label={COPY.programs.eventDetailTitle}
+        >
+          <h2 ref={recoveryRef} className={styles.boundaryTitle} tabIndex={-1}>
+            {COPY.programs.eventDetailRecoveryTitle}
+          </h2>
+          <p className={styles.panelError} role="alert">
+            {loadError}
+          </p>
+          <div className={styles.programDetailActions}>
+            <button
+              type="button"
+              className={styles.retry}
+              onClick={() => void load()}
+            >
+              {COPY.error.retry}
+            </button>
+            {programHref !== "/programs" && (
+              <Link href={programHref} className={styles.secondaryButton}>
+                {COPY.programs.eventDetailViewProgram}
+              </Link>
+            )}
+            <Link href="/programs" className={styles.secondaryButton}>
+              {COPY.programs.eventDetailBackToCatalog}
+            </Link>
+          </div>
+        </section>
+      );
+    }
     return (
-      <section
+      <output
         className={styles.workspaceTask}
+        aria-busy="true"
         aria-label={COPY.programs.eventDetailTitle}
       >
-        <p className={styles.panelError} role="alert">
-          {loadError}
-        </p>
-        <button
-          type="button"
-          className={styles.retry}
-          onClick={() => void load()}
-        >
-          {COPY.error.retry}
-        </button>
-      </section>
+        {COPY.programs.eventDetailLoading}
+      </output>
     );
-  }
-  if (detail === null) {
-    return null;
   }
   const { event, leaders, participant_summary } = detail;
   const cancelled = event.status === "Cancelled";
@@ -356,8 +441,13 @@ export const EventDetail = ({
     const programName = event.program_name ?? event.program_id;
     const checkInOpen = checkInWindowIsOpen(event);
     const scanHref = `/scanner?event=${encodeURIComponent(event.event_id)}`;
-    const eventTitle = event.name ?? hkWallDateTimeLabel(event.starts_at);
-    const eventTime = `${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`;
+    const eventTitle =
+      event.name ??
+      (event.program_name
+        ? COPY.programs.eventFallbackTitle.replace("{name}", event.program_name)
+        : hkWallDateTimeLabel(event.starts_at));
+    const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
+    const instructionsHeadingId = "participant-event-instructions";
 
     return (
       <section
@@ -371,12 +461,13 @@ export const EventDetail = ({
           aria-label={COPY.programs.backToOrigin}
           onClick={onBack}
         >
-          ← {COPY.programs.backToOrigin}
+          <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
         </button>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
             <span
               className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
+              /* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- role=status pill must stay a span to keep rendered markup stable */
               role="status"
               aria-label={COPY.programs.checkInAvailable}
             >
@@ -393,33 +484,48 @@ export const EventDetail = ({
           </h1>
         </header>
 
-        <dl className={styles.programDetailFacts}>
-          <div>
-            <dt>{COPY.programs.detailEventTime}</dt>
-            <dd>
-              <time dateTime={event.starts_at}>{eventTime}</time>
-            </dd>
-          </div>
+        <article className={styles.programDetailInfoCard}>
+          <p
+            className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
+          >
+            <EventFactIcon name="calendar" />
+            <time dateTime={event.starts_at}>{whenLabel}</time>
+          </p>
           {event.location && (
-            <div>
-              <dt>{COPY.programs.detailEventLocation}</dt>
-              <dd>{event.location}</dd>
-            </div>
+            <p className={styles.programDetailFactRow}>
+              <EventFactIcon name="pin" />
+              <span>{event.location}</span>
+            </p>
           )}
-        </dl>
+        </article>
 
         <section
           className={styles.programDetailSection}
-          aria-label={COPY.programs.eventInstructions}
+          aria-labelledby={instructionsHeadingId}
         >
+          <h2
+            id={instructionsHeadingId}
+            className={styles.programDetailHeading}
+          >
+            {COPY.programs.checkInInstructionsHeading}
+          </h2>
           <p className={styles.programDetailDescription}>
-            {COPY.programs.eventInstructions}
+            {checkInOpen
+              ? COPY.programs.eventInstructions
+              : event.check_in_window_opens_at
+                ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
+                : COPY.programs.eventInstructionsClosed}
           </p>
         </section>
 
-        <Link href={scanHref} className={styles.actionButton}>
-          {COPY.programs.goToScan}
-        </Link>
+        <div className={styles.actionBarCard}>
+          <Link
+            href={scanHref}
+            className={checkInOpen ? styles.button : styles.secondaryButton}
+          >
+            {COPY.programs.goToScan}
+          </Link>
+        </div>
       </section>
     );
   }
@@ -733,7 +839,10 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="opens_at"
-                    required={event.check_in_window_opens_at != null}
+                    required={
+                      event.check_in_window_opens_at !== null &&
+                      event.check_in_window_opens_at !== undefined
+                    }
                     defaultValue={hkWallInputValue(
                       event.check_in_window_opens_at
                     )}
@@ -745,7 +854,10 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="closes_at"
-                    required={event.check_in_window_opens_at != null}
+                    required={
+                      event.check_in_window_closes_at !== null &&
+                      event.check_in_window_closes_at !== undefined
+                    }
                     defaultValue={hkWallInputValue(
                       event.check_in_window_closes_at
                     )}

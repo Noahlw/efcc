@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>S2 Hardening Proposals — Side by Side</title>
+<style>
+:root{color-scheme:light;--surface:#f4f5f3;--panel:#fff;--ink:#171a1d;--muted:#59636a;--line:#d6dcde;--accent:#9c302c}
+*{box-sizing:border-box}html,body{margin:0;background:var(--surface);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",sans-serif}body{padding:24px}.intro{max-width:1180px;margin:0 auto 24px}.intro h1{margin:0;font-size:clamp(1.6rem,3vw,2.3rem)}.intro p{color:var(--muted);line-height:1.6}.group{max-width:1180px;margin:28px auto}.group h2{font-size:1.2rem;margin:0 0 10px}.group>p{margin:0 0 12px;color:var(--muted);font-size:.9rem}.case{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}.case h3{font-size:1rem;margin:0;padding:12px 16px;border-bottom:1px solid var(--line)}.comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line)}.pane{background:var(--panel);min-width:0}.pane header{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 12px;background:#fafbfa;border-bottom:1px solid var(--line);font-size:.8rem;font-weight:700}.pane a{color:var(--accent);font-weight:600}.pane iframe{display:block;width:100%;height:620px;border:0;background:var(--surface)}.meta{padding:10px 16px;color:var(--muted);font-size:.82rem;line-height:1.5;border-top:1px solid var(--line)}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em}@media(max-width:760px){body{padding:12px}.comparison{grid-template-columns:1fr}.pane iframe{height:560px}}
+</style>
+</head>
+<body>
+<main class="intro">
+<h1>S2 Participant Hardening Proposals</h1>
+<p>Side-by-side, check-only comparison. Left is the authoritative participant design export; right is a proposed edge-state treatment. These files do not change production UI. Review each case before selecting any implementation work.</p>
+<p>Viewport controls are inside each proposal. For production acceptance, repeat the selected case against local <code>wrangler dev</code> at 320, 375, 390, and 414px.</p>
+</main>
+<div id="gallery"></div>
+<script>
+const groups=[
+ {name:'Home / 首頁',design:'home.html',report:'../reviews/home.md',items:['home-loading.html','home-empty.html','home-error.html','home-offline.html','home-permission.html','home-long-copy.html']},
+ {name:'Programs / 課程目錄',design:'programs.html',report:'../reviews/programs.md',items:['programs-loading.html','programs-empty.html','programs-error.html','programs-offline.html','programs-permission.html','programs-long-copy.html']},
+ {name:'Program Detail / 課程詳情',design:'program-detail.html',report:'../reviews/program-detail.md',items:['program-detail-loading.html','program-detail-unavailable.html','program-detail-error.html','program-detail-offline.html','program-detail-permission.html','program-detail-long-copy.html','program-detail-enrollment-variants.html']},
+ {name:'Event Detail / 聚會詳情',design:'event-detail.html',report:'../reviews/event-detail.md',items:['event-detail-open.html','event-detail-closed.html','event-detail-unenrolled.html','event-detail-loading.html','event-detail-error.html','event-detail-offline.html','event-detail-long-copy.html']},
+ {name:'Notices Section / 通知功能區',design:'notices.html',report:'../reviews/notices.md',items:['notices-loading.html','notices-empty.html','notices-error.html','notices-offline.html','notices-permission.html','notices-long-copy.html']},
+ {name:'Messages / 消息',design:'messages.html',report:'../reviews/messages.md',items:['messages-loading.html','messages-empty.html','messages-error.html','messages-offline.html','messages-permission.html','messages-long-copy.html','messages-detail.html']}
+];
+const root=document.querySelector('#gallery');
+for(const group of groups){
+ const section=document.createElement('section'); section.className='group';
+ section.innerHTML=`<h2>${group.name}</h2><p>Review report: <a href="${group.report}" target="_blank" rel="noreferrer">open evidence</a>. The export is a visual baseline; edge-state differences are intentional proposals.</p>`;
+ for(const file of group.items){
+  const card=document.createElement('article'); card.className='case';
+  card.innerHTML=`<h3>${file.replace(/\.html$/,'')}</h3><div class="comparison"><div class="pane"><header><span>Design reference</span><a href="http://127.0.0.1:8788/participant/${group.design}" target="_blank" rel="noreferrer">open</a></header><iframe loading="lazy" src="http://127.0.0.1:8788/participant/${group.design}" title="Design reference ${group.design}"></iframe></div><div class="pane"><header><span>Harden proposal</span><a href="${file}" target="_blank" rel="noreferrer">open</a></header><iframe loading="lazy" src="${file}" title="Harden proposal ${file}"></iframe></div></div><div class="meta">Check-only artifact: <code>${file}</code>. No production code is wired to this proposal.</div>`;
+  section.append(card);
+ }
+ root.append(section);
+}
+</script>
+</body>
+</html>

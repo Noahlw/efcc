@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Permission harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+    }
+    .card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-raised);
+      text-align: center;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    .card p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      line-height: 1.6;
+    }
+    .btn {
+      margin-top: 14px;
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--line-strong, #aeb8bc);
+      border-radius: 8px;
+      background: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 1rem;
+      }
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · permission harden</span
+      >
+    </header>
+    <main class="page">
+      <div class="card" role="status">
+        <h2>目前無法查看教會消息</h2>
+        <p>此內容需要已登入的會員身份。請返回首頁或重新登入。</p>
+        <button class="btn" type="button" onclick="location.href = '/home'">
+          返回首頁
+        </button>
+      </div>
+      <p class="muted" style="margin-top: 16px">
+        <strong>Check-only (no live permission gate):</strong> Messages is
+        <em>un-gated</em> for all authenticated roles (Member/Staff/Admin) — no
+        <code>isPermitted</code> branch. Unauthenticated 401 is handled by
+        <code>AppShell</code> via <code>router.replace("/")</code> +
+        <code>rememberDeepLink</code> (user returns after login). No inline
+        “無權限” card exists today. This proposal shows what an inline hint
+        <em>would</em> look like using the same <code>.empty</code> chrome to
+        avoid inventing new chrome. <strong>Do not implement</strong> unless
+        spec adds a gated audience.
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "permission scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

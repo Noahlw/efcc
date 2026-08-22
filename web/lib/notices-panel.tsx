@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COPY } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
+import { hkNoticeListLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
 import type { Notice, NoticesResult } from "@/lib/notices-api";
@@ -23,12 +23,14 @@ function noticeHref(notice: Notice): string {
       mode: "participant",
       programId: notice.program_id,
       eventId: notice.event_id,
+      origin: "notices",
     });
   }
   if (notice.kind === "program" && notice.program_id) {
     return buildProgramsHref({
       mode: "participant",
       programId: notice.program_id,
+      origin: "notices",
     });
   }
   if (notice.kind === "account") {
@@ -41,8 +43,9 @@ function noticeTime(createdAt: number): {
   dateTime: string;
   label: string;
 } {
-  const dateTime = new Date(createdAt).toISOString();
-  return { dateTime, label: hkWallLabel(dateTime) };
+  const safeCreatedAt = Number.isFinite(createdAt) ? createdAt : Date.now();
+  const dateTime = new Date(safeCreatedAt).toISOString();
+  return { dateTime, label: hkNoticeListLabel(dateTime) };
 }
 
 function NoticeRow({ notice }: { notice: Notice }) {
@@ -74,17 +77,24 @@ function NoticeRow({ notice }: { notice: Notice }) {
 export function NoticesPanel() {
   const [state, setState] = useState<NoticesState>({ kind: "loading" });
   const [marking, setMarking] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
   const requestVersion = useRef(0);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
     setState({ kind: "loading" });
+    setMarkError(null);
     try {
       const result = await listNotices();
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "ready", result });
     } catch {
-      if (requestVersion.current !== version) {return;}
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "error" });
     }
   }, []);
@@ -96,16 +106,28 @@ export function NoticesPanel() {
     };
   }, [load]);
 
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, [state.kind]);
+
   const markAllRead = async () => {
     if (state.kind !== "ready" || state.result.unread_count === 0 || marking) {
       return;
     }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setMarkError(COPY.notices.noticesMarkAllReadError);
+      announce(COPY.notices.noticesMarkAllReadError);
+      return;
+    }
     setMarking(true);
+    setMarkError(null);
     try {
       await markAllNoticesRead();
       const markedAt = Date.now();
       setState((current) => {
-        if (current.kind !== "ready") {return current;}
+        if (current.kind !== "ready") {
+          return current;
+        }
         return {
           kind: "ready",
           result: {
@@ -121,6 +143,7 @@ export function NoticesPanel() {
       });
       announce(COPY.notices.noticesMarkedAllRead);
     } catch {
+      setMarkError(COPY.notices.noticesMarkAllReadError);
       announce(COPY.notices.noticesMarkAllReadError);
     } finally {
       setMarking(false);
@@ -130,8 +153,10 @@ export function NoticesPanel() {
   if (state.kind === "loading") {
     return (
       <section
+        ref={panelRef}
         className={styles.panel}
         aria-label={COPY.notices.noticesListLabel}
+        tabIndex={-1}
       >
         <output className={styles.state} aria-busy="true">
           {COPY.notices.noticesLoading}
@@ -143,8 +168,10 @@ export function NoticesPanel() {
   if (state.kind === "error") {
     return (
       <section
+        ref={panelRef}
         className={styles.panel}
         aria-label={COPY.notices.noticesListLabel}
+        tabIndex={-1}
       >
         <p className={styles.error} role="alert">
           {COPY.notices.noticesLoadError}
@@ -163,9 +190,16 @@ export function NoticesPanel() {
   const { notices, unread_count: unreadCount } = state.result;
   return (
     <section
+      ref={panelRef}
       className={styles.panel}
       aria-label={COPY.notices.noticesListLabel}
+      tabIndex={-1}
     >
+      {markError !== null && (
+        <p className={styles.error} role="alert">
+          {markError}
+        </p>
+      )}
       <div className={styles.toolbar}>
         {unreadCount > 0 && (
           <span className={styles.unreadCount}>

@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/require-top-level-describe -- shared fixture hooks cover all PUI-02 describes */
+/* oxlint-disable vitest/require-top-level-describe, vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with -- shared fixture hooks cover all PUI-02 describes */
 import {
   cleanup,
   render,
@@ -107,23 +107,23 @@ function renderDirectory(
   props: Partial<Parameters<typeof ParticipantDirectory>[0]> = {}
 ) {
   const onManagement = vi.fn<() => void>();
+  const onHome = vi.fn<() => void>();
   const onOpenProgram = vi.fn<(programId: string) => void>();
   const view = render(
     <ParticipantDirectory
       programId={props.programId ?? null}
       canManage={props.canManage ?? false}
       onManagement={props.onManagement ?? onManagement}
+      onHome={props.onHome ?? onHome}
       onOpenProgram={props.onOpenProgram ?? onOpenProgram}
     />
   );
-  return { onManagement, onOpenProgram, view };
+  return { onManagement, onOpenProgram, onHome, view };
 }
 
 const rowNames = (): string[] =>
   [
-    ...document.querySelectorAll<HTMLElement>(
-      "button[class*='directoryCard']"
-    ),
+    ...document.querySelectorAll<HTMLElement>("button[class*='directoryCard']"),
   ].map(
     (button) =>
       button.querySelector<HTMLElement>("span[class*='directoryCardTitle']")
@@ -150,10 +150,7 @@ describe("PUI-02 participant directory loading and collection", () => {
 
     const loading = screen.getByRole("status");
     expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(loading).toHaveAttribute(
-      "aria-label",
-      COPY.programs.catalogLoading
-    );
+    expect(loading).toHaveAttribute("aria-label", COPY.programs.catalogLoading);
 
     pending.resolve({ catalog: catalogFixture() });
     const list = await screen.findByRole("list", {
@@ -163,15 +160,15 @@ describe("PUI-02 participant directory loading and collection", () => {
     expect(rowNames()).toStrictEqual(["查經小組", "青年團契", "社區關懷"]);
   });
 
-  test("zero matches shows empty state with clear filters CTA", async () => {
+  test("true empty catalog shows a no-programs state", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
     renderDirectory();
 
     await expect(
-      screen.findByRole("heading", { name: COPY.programs.catalogEmpty })
+      screen.findByRole("heading", { name: COPY.programs.catalogNoPrograms })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.catalogEmptyHint)
+      screen.getByText(COPY.programs.catalogNoProgramsHint)
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -257,9 +254,54 @@ describe("PUI-02 participant directory loading and collection", () => {
     expect(screen.queryByText(/check_in_token/iu)).not.toBeInTheDocument();
     expect(screen.queryByText(/capabilities/iu)).not.toBeInTheDocument();
   });
+
+  test("keeps long title and URL-like secondary content in the card", async () => {
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longSecondary =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("program-long", longTitle, {
+          viewerState: "withdrawn",
+          description: longSecondary,
+          nextEventStartsAt: null,
+          upcomingEventCount: 0,
+        }),
+      ]),
+    });
+    renderDirectory();
+
+    const card = await screen.findByRole("button", { name: /超長課程名稱/u });
+    expect(card).toHaveTextContent(longTitle);
+    expect(card).toHaveTextContent(longSecondary);
+    expect(card.querySelector("svg")).toBeInTheDocument();
+  });
 });
 
 describe("PUI-02 participant directory search and filters", () => {
+  test("catalog search is icon-only with an accessible name and visible placeholder", async () => {
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture(),
+    });
+    renderDirectory();
+
+    await screen.findByRole("button", { name: /查經小組/u });
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.participantMode })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.catalogSearchLabel)
+    ).not.toBeInTheDocument();
+    const search = screen.getByRole("searchbox", {
+      name: COPY.programs.catalogSearchLabel,
+    });
+    expect(search).toHaveAttribute(
+      "placeholder",
+      COPY.programs.catalogSearchLabel
+    );
+    expect(search.closest("div")?.querySelector("svg")).not.toBeNull();
+  });
+
   test("search matches name, description, and category; clearing restores all rows", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({
@@ -407,6 +449,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           key="stale"
           programId={null}
           canManage={false}
+          onHome={vi.fn<() => void>()}
           onManagement={vi.fn<() => void>()}
           onOpenProgram={vi.fn<(programId: string) => void>()}
         />
@@ -423,6 +466,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           programId={null}
           canManage={false}
           onManagement={vi.fn<() => void>()}
+          onHome={vi.fn<() => void>()}
           onOpenProgram={vi.fn<(programId: string) => void>()}
         />
       </StrictMode>
@@ -505,12 +549,59 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  test("FORBIDDEN catalog failure shows the forbidden state with retry", async () => {
+  test("retry preserves active search and filter state", async () => {
     const user = userEvent.setup();
     mocks.listParticipantCatalog
-      .mockRejectedValueOnce(new RpcError({ code: "FORBIDDEN", status: 403 }))
+      .mockResolvedValueOnce({ catalog: catalogFixture() })
+      .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce({ catalog: catalogFixture() });
-    renderDirectory();
+    const { onHome, onManagement, onOpenProgram, view } = renderDirectory();
+
+    await screen.findByRole("button", { name: /查經小組/u });
+    const search = screen.getByRole("searchbox", {
+      name: COPY.programs.catalogSearchLabel,
+    });
+    await user.type(search, "青年");
+    const filterGroup = screen.getByRole("group", {
+      name: COPY.programs.filterGroupLabel,
+    });
+    const eligible = within(filterGroup).getByRole("button", {
+      name: COPY.programs.filterEligible,
+    });
+    await user.click(eligible);
+    expect(rowNames()).toStrictEqual(["青年團契"]);
+
+    mocks.router = { ...mocks.router };
+    view.rerender(
+      <ParticipantDirectory
+        programId={null}
+        canManage={false}
+        onHome={onHome}
+        onManagement={onManagement}
+        onOpenProgram={onOpenProgram}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.catalogLoadError,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.catalogRetry })
+    );
+
+    await screen.findByRole("button", { name: /青年團契/u });
+    expect(screen.getByRole("searchbox")).toHaveValue("青年");
+    const eligibleAfter = within(
+      screen.getByRole("group", { name: COPY.programs.filterGroupLabel })
+    ).getByRole("button", { name: COPY.programs.filterEligible });
+    expect(eligibleAfter).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("FORBIDDEN catalog failure shows the forbidden state with Home escape", async () => {
+    const user = userEvent.setup();
+    mocks.listParticipantCatalog.mockRejectedValueOnce(
+      new RpcError({ code: "FORBIDDEN", status: 403 })
+    );
+    const { onHome } = renderDirectory();
 
     await expect(
       screen.findByRole("heading", {
@@ -520,13 +611,13 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     expect(
       screen.getByText(COPY.programs.catalogForbiddenHint)
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.catalogRetry })
+    ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.catalogRetry })
-    );
-    await expect(
-      screen.findByRole("button", { name: /查經小組/u })
-    ).resolves.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.nav.backToHome }));
+    expect(onHome).toHaveBeenCalledOnce();
+    expect(mocks.listParticipantCatalog).toHaveBeenCalledOnce();
   });
 
   test("expired session defers to login and stores the deep link", async () => {

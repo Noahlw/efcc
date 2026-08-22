@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Empty harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+    }
+    .pageHeader {
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .pageTitle {
+      margin: 0;
+      font-size: clamp(1.75rem, 5vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+    .empty {
+      padding: 2.125rem 1.375rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-raised);
+      text-align: center;
+    }
+    .emptyTitle {
+      margin: 0;
+      font-size: 1.125rem;
+      line-height: 1.4;
+    }
+    .emptyHint {
+      margin: 0.5rem 0 0;
+      color: var(--ink-muted);
+      line-height: 1.6;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 1rem;
+      }
+    }
+    a:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · empty harden</span
+      >
+    </header>
+    <main class="page">
+      <header class="pageHeader"><h1 class="pageTitle">教會消息</h1></header>
+      <div class="empty" role="status">
+        <h2 class="emptyTitle">暫時沒有教會消息</h2>
+        <p class="emptyHint">有新公告時會在這裡顯示。</p>
+      </div>
+      <p class="muted" style="margin-top: 16px">
+        Check-only: live renders this exact .empty chrome at
+        <code>web/lib/messages-panel.tsx:88-93</code> when
+        <code>announcements.length===0</code>. Design authority
+        <code>participant/messages.html</code> trailing comment (lines 111-118)
+        specifies identical chrome: h2 “暫時沒有教會消息” + p
+        “有新公告時會在這裡顯示。” centered, matching
+        <code>notices-panel.module.css:150-168</code> .empty (12px radius,
+        2.125rem padding). Verify at 320/390/414: no overflow, centered, 760px
+        page still within viewport (scrollWidth ≤ innerWidth).<br />
+        <strong>Assert:</strong> <code>aria-label="教會消息清單"</code> is NOT
+        rendered in empty state (live wraps list only when populated:
+        <code>ul[aria-label]</code> vs <code>div.empty</code>). SR should
+        announce H1 + emptyHint. Confirm no stray list semantics.
+      </p>
+      <hr
+        style="margin: 28px 0; border: 0; border-top: 1px solid var(--line)"
+      />
+      <div
+        style="
+          border: 1px dashed var(--line);
+          border-radius: 10px;
+          padding: 12px;
+          background: #fff;
+          font-size: 0.84rem;
+          line-height: 1.6;
+          color: var(--ink-muted);
+        "
+      >
+        Design (<code>messages.html</code>):
+        <code
+          >&lt;h1&gt;教會消息&lt;/h1&gt;&lt;p&gt;崇拜、聚會安排及教會公告。&lt;/p&gt;</code
+        >
+        + populated list container. Empty is comment-only, not rendered,
+        instructing to replace list with this card. Live omits the
+        <code>&lt;p&gt;</code> lead — captured as M-01 in report.
+      </div>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "empty scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

@@ -194,15 +194,14 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
     insets: { top: 0, left: 0, right: 0, bottom: 34 },
   });
 
-  const paddings = await page.evaluate(() => {
+  const layout = await page.evaluate(() => {
     const nav = document.querySelector<HTMLElement>(".nav-phone");
-    // The shell is a flex column; the scrollable outlet that must reserve the
-    // bottom nav height + safe-area inset is .shell-content (Ui01 shell
-    // contract).
     const shell = document.querySelector<HTMLElement>(".shell-content");
+    const navStyle = nav ? getComputedStyle(nav) : null;
+    const shellStyle = shell ? getComputedStyle(shell) : null;
     return {
-      navBottom: nav ? getComputedStyle(nav).paddingBottom : null,
-      shellBottom: shell ? getComputedStyle(shell).paddingBottom : null,
+      navBottom: navStyle ? navStyle.bottom : null,
+      shellBottom: shellStyle ? shellStyle.paddingBottom : null,
     };
   });
 
@@ -210,11 +209,14 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   // outlet intentionally reserves nothing (padding-bottom: 0).
   const expectedShell = isMobile(testInfo.project.name) ? "118px" : "0px";
 
-  expect(paddings.navBottom, "bottom nav must pad the safe-area inset").toBe(
-    "34px"
-  );
+  if (isMobile(testInfo.project.name)) {
+    expect(
+      layout.navBottom,
+      "floating dock bottom offset must clear the safe-area inset"
+    ).toBe("44px");
+  }
   expect(
-    paddings.shellBottom,
+    layout.shellBottom,
     "page outlet must reserve the nav height plus safe-area inset"
   ).toBe(expectedShell);
 });

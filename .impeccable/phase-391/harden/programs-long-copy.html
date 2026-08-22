@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Programs Long Copy / Overflow (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        border: 1px solid #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .item {
+        margin: 0;
+      }
+      .card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.875rem;
+        min-height: 72px;
+        padding: 1rem;
+        border: 0;
+        background: #fff;
+        width: 100%;
+        text-align: left;
+      }
+      .card + .item {
+        border-top: 1px solid #d6dcde;
+      }
+      .status {
+        display: inline-flex;
+        min-height: 26px;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 99px;
+        font-size: 0.72rem;
+        font-weight: 550;
+        border: 1px solid #d6dcde;
+        color: #59636a;
+      }
+      .title {
+        display: block;
+        margin-top: 0.5625rem;
+        font-weight: 800;
+        word-break: break-word;
+      }
+      .secondary {
+        display: block;
+        margin-top: 0.3125rem;
+        color: #59636a;
+        font-size: 0.86rem;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .chev {
+        width: 20px;
+        height: 20px;
+        stroke: #59636a;
+        stroke-width: 1.75;
+        fill: none;
+        flex: none;
+      }
+      .alt {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .input {
+        flex: 1;
+        min-width: 0;
+        font: inherit;
+        padding: 0.5625rem 0.75rem;
+        border: 1px solid #aeb8bc;
+        border-radius: 8px;
+        min-height: 44px;
+      }
+      .clear {
+        min-height: 44px;
+        padding: 0.5rem 0.875rem;
+        border: 1px solid #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      @media (max-width: 767px) {
+        .row {
+          flex-direction: column;
+        }
+        .clear {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/programs-long-copy.html — check-only
+        proposal
+      </p>
+      <h1 style="font-size: 1.1rem">
+        Long-copy stress (title + secondary + search)
+      </h1>
+      <div class="row" style="margin-bottom: 0.75rem">
+        <input
+          class="input"
+          value="一個非常長的搜尋字串，用來測試在 320 寬度下的輸入框是否會擠壓清除按鈕或造成橫向捲動"
+        />
+        <button class="clear" type="button">清除搜尋</button>
+      </div>
+      <ul class="list" aria-label="課程目錄">
+        <li class="item">
+          <button class="card" type="button">
+            <span style="min-width: 0"
+              ><span class="status">可報名</span
+              ><span class="title"
+                >門徒訓練基礎課 — 包含一個非常長的課程名稱以測試在 320
+                寬度下的換行與省略行為是否正常且不會造成卡片橫向溢出</span
+              ><span class="secondary"
+                >下一次聚會：8月26日（星期三） · 共 12 節 —
+                這是描述或副標題的長文本，包含類別與聚會資訊，應該在卡片內正確換行</span
+              ></span
+            ><svg class="chev" viewBox="0 0 24 24">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+          </button>
+        </li>
+        <li class="item">
+          <button class="card" type="button">
+            <span style="min-width: 0"
+              ><span
+                class="status"
+                style="
+                  border-color: #c1ad95;
+                  color: #8a5b16;
+                  background: #f3eee8;
+                "
+                >待審批</span
+              ><span class="title">同行成長小組</span
+              ><span class="secondary">已提交申請 · 待審批</span></span
+            ><svg class="chev" viewBox="0 0 24 24">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+          </button>
+        </li>
+        <li class="item">
+          <button class="card" type="button">
+            <span style="min-width: 0"
+              ><span
+                class="status"
+                style="
+                  border-color: #d7a199;
+                  color: #b3261e;
+                  background: #fbecea;
+                "
+                >已拒絕</span
+              ><span class="title"
+                >姊妹福音班 —
+                另一個超長標題，測試在窄螢幕下的標題與狀態膠囊是否會重疊或被切斷，以及箭頭是否保持對齊</span
+              ><span class="secondary"
+                >上次申請未獲批准，可重新提交 — 這段副標題也很長，用來驗證卡片在
+                320 與 375 下的垂直高度自適應與內部間距</span
+              ></span
+            ><svg class="chev" viewBox="0 0 24 24">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+          </button>
+        </li>
+      </ul>
+
+      <div class="alt">
+        <strong>What this hardens:</strong>
+        <ul style="line-height: 1.6; color: #59636a">
+          <li>
+            <code>.participantDirectoryCard</code> uses
+            <code>grid-template-columns:minmax(0,1fr) auto</code> +
+            <code>.directoryCardBody{min-width:0}</code> + title/secondary
+            <code>word-break:break-word</code> (implicit via block) — verified
+            at 320/375/390/414: <code>scrollWidth===innerWidth</code>, no
+            <code>overflowEls</code>, chips stay single row (<code
+              >filterChipsTop</code
+            >
+            single value), search row at 320 stacks (<code
+              >flex-direction:column</code
+            >
+            per <code>programs.module.css:1072-1076</code>) so clear button
+            never clips.
+          </li>
+          <li>
+            Search: <code>.directorySearchRow{flex:1; min-width:0}</code> on
+            input prevents flex blowout; long query stays inside input with
+            native horizontal scroll, not document scroll. Verified with 64-char
+            query at 320: <code>docSW 320</code>.
+          </li>
+          <li>
+            Chips:
+            <code
+              >.directoryFilterGroup{flex-wrap:nowrap; overflow-x:auto}</code
+            >
+            — at 320 total chips ~262px fits without scroll; wider content would
+            scroll horizontally within group, not page. No wrapping, no clipping
+            of first/last chip (padding <code>.125rem 0 .875rem</code> reserves
+            scrollbar gutter).
+          </li>
+          <li>
+            Proposed safeguard if needed: add
+            <code>overflow-wrap:anywhere</code> to
+            <code>.directoryCardTitle</code> for URLs or 40-char English program
+            codes; current Chinese copy does not need it but
+            <code>program.name</code> is user-entered.
+          </li>
+        </ul>
+        <p
+          style="
+            font-size: 0.85rem;
+            color: #6e4a14;
+            background: #f3eee8;
+            border: 1px solid #c1ad95;
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+          "
+        >
+          Fix direction if hardening: add one line to
+          <code>programs.module.css:1450-1453</code> —
+          <code>.directoryCardTitle{overflow-wrap:anywhere}</code> (and same for
+          <code>.directoryCardSecondary</code>). No structure change.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

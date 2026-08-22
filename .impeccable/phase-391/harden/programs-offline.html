@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Programs Offline (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .banner {
+        background: #f3eee8;
+        border: 1px solid #c1ad95;
+        color: #6e4a14;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+      }
+      .card {
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        background: #fff;
+        padding: 20px;
+      }
+      .alt {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/programs-offline.html — check-only proposal
+      </p>
+      <h1 style="font-size: 1.1rem">Offline candidate</h1>
+      <div class="banner">
+        你目前處於離線狀態，課程清單可能不是最新。恢復連線後會自動更新。
+      </div>
+      <div class="card">
+        <h2 style="font-size: 1rem; margin: 0 0 0.5rem">課程</h2>
+        <p style="color: #59636a; margin: 0 0 1rem">
+          （若離線前已載入，卡片列表仍可瀏覽與搜尋、篩選；點擊卡片會嘗試載入詳情並顯示「無法載入課程內容」）
+        </p>
+        <p style="font-size: 0.9rem; color: #59636a">
+          Live shell already renders <code>&lt;OfflineBanner/&gt;</code> at top
+          of <code>AppShell</code> (<code>web/lib/app-shell.tsx:49</code>) for
+          every Section, so this banner is not duplicated in Programs. Catalog
+          search/filter remains client-side and works offline on cached catalog;
+          detail navigation shows recoverable error with retry.
+        </p>
+      </div>
+      <div class="alt">
+        <strong>No production change proposed:</strong>
+        <ul style="line-height: 1.6; color: #59636a">
+          <li>
+            Keep using the shared <code>OfflineBanner</code> — do not add a
+            second offline notice inside <code>ParticipantDirectory</code>.
+          </li>
+          <li>
+            If a future hardening is desired, the <code>recoverable</code> error
+            panel in <code>participant-directory.tsx:300</code> could append
+            “離線時請檢查網絡” when <code>navigator.onLine===false</code>, but
+            today the generic hint “請檢查網絡後再試” already covers it.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

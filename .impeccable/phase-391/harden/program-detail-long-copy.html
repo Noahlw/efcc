@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Program Detail Long Copy (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+        overflow-x: hidden;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: clamp(1.25rem, 3vw, 2rem);
+        display: grid;
+        gap: 1.25rem;
+      }
+      .badge {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        padding: 0.25rem 0.625rem;
+        border-radius: 99px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        border: 1px solid #c1ad95;
+        color: #8a5b16;
+        background: #f3eee8;
+        width: fit-content;
+      }
+      h2 {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 800;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .desc {
+        color: #59636a;
+        line-height: 1.6;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .list {
+        display: grid;
+        gap: 0.5rem;
+        margin: 0;
+        padding-left: 1.25rem;
+        line-height: 1.6;
+      }
+      .event {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .copy {
+        display: grid;
+      }
+      .copy strong {
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .source {
+        font-size: 0.75rem;
+        color: #59636a;
+        word-break: break-word;
+      }
+      .sticky {
+        position: sticky;
+        bottom: calc(72px + 0.625rem + env(safe-area-inset-bottom, 0px));
+        z-index: 5;
+        margin-top: 1.5rem;
+        padding: 0.625rem;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        background: color-mix(in srgb, #fff 94%, transparent);
+        box-shadow: 0 -8px 24px rgba(23, 26, 29, 0.1);
+      }
+      .sticky button {
+        width: 100%;
+        min-height: 44px;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .button {
+        background: #9c302c;
+        color: #fff;
+        border: 1px solid #9c302c;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      @media (max-width: 799.98px) {
+        .page {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-long-copy.html — check-only
+        — worktree 15956de — test at 320
+      </p>
+      <h1 style="font-size: 1.1rem">Long-copy stress (320 vs 390)</h1>
+      <div class="card">
+        <button
+          type="button"
+          style="
+            display: inline-flex;
+            gap: 0.375rem;
+            min-height: 44px;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #aeb8bc;
+            border-radius: 8px;
+            background: #fff;
+            font-weight: 700;
+          "
+        >
+          ← 課程
+        </button>
+        <div
+          style="
+            display: grid;
+            gap: 0.375rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #d6dcde;
+          "
+        >
+          <span class="badge">可報名</span>
+          <h2>
+            門徒訓練基礎課 — 包含一個非常長的課程名稱以測試在 320
+            寬度下的換行與省略行為是否正常且不會造成卡片橫向溢出，甚至包含
+            EnglishLongProgramNameWithoutSpacesToTestOverflowWrap
+          </h2>
+          <p class="desc">
+            這是一段非常長的課程簡介，用來測試在窄螢幕下的描述換行與 sticky
+            覆蓋：包含多行、包含 URL
+            https://example.com/very/long/path/that/should/not/break/layout/at/320
+            — 應該在卡片內正確換行，且 sticky bar 不應覆蓋最後一行（靠 article
+            padding-bottom
+            保留）。在基督裡建立根基，循序漸進認識信仰、讀經與教會生活，並延伸到非常長的中文段落。
+          </p>
+        </div>
+        <div
+          style="
+            padding: 1.25rem;
+            border: 1px solid #d6dcde;
+            border-radius: 8px;
+            background: #fff;
+          "
+        >
+          <span
+            style="
+              color: #59636a;
+              font-family: ui-monospace, monospace;
+              font-size: 0.72rem;
+              letter-spacing: 0.08em;
+            "
+            >下一次聚會</span
+          >
+          <h3 style="margin: 0.5rem 0">
+            第三課聚會 — 一個超長的聚會標題以測試在 390 下是否會把日曆行擠壓
+          </h3>
+          <p
+            style="
+              color: #59636a;
+              display: flex;
+              flex-wrap: wrap;
+              gap: 0.5rem;
+              margin: 0;
+            "
+          >
+            📅 8月26日（三）晚上 7:30–9:00
+          </p>
+          <p
+            style="
+              color: #59636a;
+              display: flex;
+              gap: 0.5rem;
+              margin: 0.5rem 0 0;
+            "
+          >
+            <span>📍</span
+            ><span style="word-break: break-word; overflow-wrap: anywhere"
+              >二樓禮堂 —
+              一個非常長的地點描述，包含副堂、禮堂A/B座、地址行2，應該換行而不是讓卡片橫向捲動</span
+            >
+          </p>
+        </div>
+        <ul class="list" aria-label="聚會時間表">
+          <li class="event">
+            <time datetime="2099-08-26T11:30:00.000Z" style="color: #171a1d"
+              >8月26日</time
+            >
+            <div class="copy">
+              <strong
+                >第一節聚會 — 超長標題 EnglishWithoutSpacesLongTitle</strong
+              ><span class="source"
+                >晚上 7:30–8:45 · 二樓禮堂 — 長地點副文本應該換行</span
+              >
+            </div>
+          </li>
+          <li class="event">
+            <time datetime="2099-09-02T11:30:00.000Z">9月2日</time>
+            <div class="copy">
+              <strong>第二節</strong
+              ><span class="source"
+                >晚上 7:30–8:45 · 另一個超長地點描述以測試 flex-wrap</span
+              >
+            </div>
+          </li>
+        </ul>
+        <div class="sticky">
+          <button class="button" type="button">報名</button>
+        </div>
+      </div>
+      <div
+        style="
+          margin-top: 1rem;
+          padding: 1rem;
+          border: 1px dashed #aeb8bc;
+          border-radius: 8px;
+          background: #fff;
+        "
+      >
+        <strong>What this hardens:</strong>
+        <ul style="line-height: 1.6; color: #59636a">
+          <li>
+            <code>h2.boundaryTitle</code> +
+            <code>.programDetailDescription</code> have no fixed width — at 320
+            they wrap; added <code>overflow-wrap:anywhere</code> here as
+            proposal for URLs/English codes. Live already has
+            <code>line-height:1.6</code> and <code>word-break</code> implicit
+            via block; verify <code>sw===iw</code> at 320.
+          </li>
+          <li>
+            Schedule <code>.programDetailEvent flex-wrap</code> prevents
+            location from pushing time off-screen — long location wraps below,
+            not beside.
+          </li>
+          <li>
+            Sticky bar <code>width:100%</code> inside
+            <code>.stickyActionBar</code> never overflows; article
+            <code>padding-bottom calc(72+0.625+44+1.25+1.5+safe-area)</code>
+            keeps last row above sticky on short OneOff pages (T5A).
+          </li>
+        </ul>
+        <p
+          style="
+            font-size: 0.85rem;
+            color: #6e4a14;
+            background: #f3eee8;
+            border: 1px solid #c1ad95;
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+          "
+        >
+          Fix if needed: add one line at
+          <code>programs.module.css:1605 / 1640</code> —
+          <code
+            >h2.boundaryTitle, p.programDetailDescription
+            {overflow-wrap:anywhere}</code
+          >. No structure change.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,17 +1,26 @@
 "use client";
+/* oxlint-disable eslint/complexity, eslint/no-use-before-define, react/function-component-definition, promise/prefer-await-to-then, unicorn/no-negated-condition */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { AnnouncementDetail, Icon } from "@/lib/announcement-detail";
+import type { AnnouncementData } from "@/lib/announcement-detail";
+import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
+import {
+  hkShortDateLabel,
+  hkShortTimeLabel,
+  hkShortTimeRange,
+} from "@/lib/hk-time";
 import { getHome } from "@/lib/home-api";
-import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import {
   getParticipantProgramDetail,
   listParticipantCatalog,
 } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 
 import styles from "./home.module.css";
 
@@ -29,13 +38,6 @@ export interface HomeProgram {
   programId: string;
   name: string;
   description: string | null;
-}
-
-export interface AnnouncementData {
-  title: string;
-  date: string;
-  summary: string;
-  externalUrl: string | null;
 }
 
 interface HomeProjection {
@@ -71,42 +73,38 @@ function formatAnnouncementDate(value: string): string {
   return parts ? `${parts.month}月${parts.day}日` : value;
 }
 
-async function loadHomeProjection(): Promise<HomeProjection | null> {
-  try {
-    const data = await getHome();
-    const featuredEvent =
-      data.featuredEvent?.isEnrolled === true
-        ? {
-            eventId: data.featuredEvent.eventId,
-            programId: data.featuredEvent.programId,
-            eventTitle: data.featuredEvent.title,
-            programTitle: data.featuredEvent.programTitle,
-            startsAt: data.featuredEvent.startAt ?? data.featuredEvent.startsAt,
-            endsAt: data.featuredEvent.endAt ?? data.featuredEvent.endsAt,
-            location: data.featuredEvent.location,
-          }
-        : null;
-    const rawAnnouncement = data.announcement;
-    const announcement = rawAnnouncement?.publishedAt
+async function loadHomeProjection(): Promise<HomeProjection> {
+  const data = await getHome();
+  const featuredEvent =
+    data.featuredEvent?.isEnrolled === true
       ? {
-          title: rawAnnouncement.title,
-          date: formatAnnouncementDate(rawAnnouncement.publishedAt),
-          summary: rawAnnouncement.summary,
-          externalUrl: externalUrlFrom(rawAnnouncement.ctaUrl),
+          eventId: data.featuredEvent.eventId,
+          programId: data.featuredEvent.programId,
+          eventTitle: data.featuredEvent.title,
+          programTitle: data.featuredEvent.programTitle,
+          startsAt: data.featuredEvent.startAt ?? data.featuredEvent.startsAt,
+          endsAt: data.featuredEvent.endAt ?? data.featuredEvent.endsAt,
+          location: data.featuredEvent.location,
         }
       : null;
-    const rawProgram = data.exploreProgram;
-    const featuredProgram = rawProgram
-      ? {
-          programId: rawProgram.programId,
-          name: rawProgram.title,
-          description: rawProgram.summary,
-        }
-      : null;
-    return { featuredEvent, announcement, featuredProgram };
-  } catch {
-    return null;
-  }
+  const rawAnnouncement = data.announcement;
+  const announcement = rawAnnouncement?.publishedAt
+    ? {
+        title: rawAnnouncement.title,
+        date: formatAnnouncementDate(rawAnnouncement.publishedAt),
+        summary: rawAnnouncement.summary,
+        externalUrl: externalUrlFrom(rawAnnouncement.ctaUrl),
+      }
+    : null;
+  const rawProgram = data.exploreProgram;
+  const featuredProgram = rawProgram
+    ? {
+        programId: rawProgram.programId,
+        name: rawProgram.title,
+        description: rawProgram.summary,
+      }
+    : null;
+  return { featuredEvent, announcement, featuredProgram };
 }
 
 function eventIsUpcoming(startsAt: string | null): boolean {
@@ -119,68 +117,64 @@ async function loadParticipantProjection(): Promise<{
   event: HomeEvent | null;
   program: HomeProgram | null;
 }> {
-  try {
-    const { catalog } = await listParticipantCatalog();
-    const programs = catalog
-      .flatMap((entry) => entry.programs)
-      .filter(
-        (program) =>
-          program.lifecycle === "Active" && program.discoverability === "Listed"
-      )
-      .toSorted((a, b) => a.display_order - b.display_order);
-    const featuredProgram =
-      programs.find((program) => program.enrollment_mode === "MemberRequest") ??
-      null;
-    const details = await Promise.all(
-      programs.map(async (program) => {
-        try {
-          return await getParticipantProgramDetail(program.program_id);
-        } catch {
-          return null;
-        }
-      })
+  const { catalog } = await listParticipantCatalog();
+  const programs = catalog
+    .flatMap((entry) => entry.programs)
+    .filter(
+      (program) =>
+        program.lifecycle === "Active" && program.discoverability === "Listed"
+    )
+    .toSorted((a, b) => a.display_order - b.display_order);
+  const featuredProgram =
+    programs.find((program) => program.enrollment_mode === "MemberRequest") ??
+    null;
+  const details = await Promise.all(
+    programs.map(async (program) => {
+      try {
+        return await getParticipantProgramDetail(program.program_id);
+      } catch {
+        return null;
+      }
+    })
+  );
+  const upcoming = details
+    .flatMap((detail) => {
+      if (
+        !detail?.enrollment?.enrollments.some(
+          (enrollment) => enrollment.status === "Active"
+        )
+      ) {
+        return [];
+      }
+      return detail.events
+        .filter(
+          (event) =>
+            event.status === "Active" && eventIsUpcoming(event.starts_at)
+        )
+        .map((event) => ({
+          eventId: event.event_id,
+          programId: event.program_id,
+          eventTitle: null,
+          programTitle: detail.program.name,
+          startsAt: event.starts_at,
+          endsAt: event.ends_at,
+          location: null,
+        }));
+    })
+    .toSorted(
+      (a, b) => Date.parse(a.startsAt ?? "") - Date.parse(b.startsAt ?? "")
     );
-    const upcoming = details
-      .flatMap((detail) => {
-        if (
-          !detail?.enrollment?.enrollments.some(
-            (enrollment) => enrollment.status === "Active"
-          )
-        ) {
-          return [];
-        }
-        return detail.events
-          .filter(
-            (event) =>
-              event.status === "Active" && eventIsUpcoming(event.starts_at)
-          )
-          .map((event) => ({
-            eventId: event.event_id,
-            programId: event.program_id,
-            eventTitle: null,
-            programTitle: detail.program.name,
-            startsAt: event.starts_at,
-            endsAt: event.ends_at,
-            location: null,
-          }));
-      })
-      .toSorted(
-        (a, b) => Date.parse(a.startsAt ?? "") - Date.parse(b.startsAt ?? "")
-      );
 
-    return {
-      event: upcoming[0] ?? null,
-      program: featuredProgram
-        ? {
-            programId: featuredProgram.program_id,
-            name: featuredProgram.name,
-            description: featuredProgram.description,
-          }
-        : null,
-    };
-  } catch {
-    return { event: null, program: null };
-  }
+  return {
+    event: upcoming[0] ?? null,
+    program: featuredProgram
+      ? {
+          programId: featuredProgram.program_id,
+          name: featuredProgram.name,
+          description: featuredProgram.description,
+        }
+      : null,
+  };
 }
 
 function localDateParts(value: string | Date): {
@@ -209,77 +203,22 @@ function greetingDate(): string {
 }
 
 function eventDate(value: string | null): string | null {
-  const parts = value ? localDateParts(value) : null;
-  return parts ? `${parts.month}月${parts.day}日（${parts.weekday}）` : null;
+  return value && Number.isFinite(Date.parse(value))
+    ? hkShortDateLabel(value)
+    : null;
 }
 
-function eventTime(value: string | null): string | null {
-  if (!value) {
+function eventTimeRange(
+  startsAt: string | null,
+  endsAt: string | null
+): string | null {
+  if (!startsAt || !Number.isFinite(Date.parse(startsAt))) {
     return null;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
+  if (!endsAt || !Number.isFinite(Date.parse(endsAt))) {
+    return hkShortTimeLabel(startsAt);
   }
-  return new Intl.DateTimeFormat("zh-Hant-HK", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Hong_Kong",
-  }).format(date);
-}
-
-function Icon({
-  name,
-  className,
-}: {
-  name: "calendar" | "clock" | "pin" | "chevron" | "back" | "external";
-  className?: string;
-}) {
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
-  };
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      focusable="false"
-      viewBox="0 0 24 24"
-    >
-      {name === "calendar" && (
-        <>
-          <rect {...common} x="3" y="5" width="18" height="16" rx="2" />
-          <path {...common} d="M16 3v4M8 3v4M3 10h18" />
-        </>
-      )}
-      {name === "clock" && (
-        <>
-          <circle {...common} cx="12" cy="12" r="9" />
-          <path {...common} d="M12 7v5l3 2" />
-        </>
-      )}
-      {name === "pin" && (
-        <>
-          <path
-            {...common}
-            d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"
-          />
-          <circle {...common} cx="12" cy="10" r="2.5" />
-        </>
-      )}
-      {name === "chevron" && <path {...common} d="m9 18 6-6-6-6" />}
-      {name === "back" && <path {...common} d="m15 18-6-6 6-6" />}
-      {name === "external" && (
-        <path
-          {...common}
-          d="M15 3h6v6M10 14 21 3M18 13v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h7"
-        />
-      )}
-    </svg>
-  );
+  return hkShortTimeRange(startsAt, endsAt);
 }
 
 function EventRow({
@@ -297,52 +236,68 @@ function EventRow({
   );
 }
 
-export function AnnouncementDetail({
-  announcement,
-  onBack,
-}: {
-  announcement: AnnouncementData;
-  onBack: () => void;
-}) {
+function HomeLoadingSkeleton() {
   return (
     <div
-      className={`${styles.page} ${styles.detailPage}`}
-      data-testid="announcement-detail"
+      className={`${styles.page} ${styles.skeletonPage}`}
+      data-testid="home-loading-skeleton"
     >
-      <div className={styles.detailTopbar}>
-        <span>{COPY.home.churchNews}</span>
-      </div>
-      <div className={styles.detailIntro}>
-        <button type="button" className={styles.backButton} onClick={onBack}>
-          <Icon name="back" className={styles.backIcon} />
-          {COPY.home.backHome}
-        </button>
-        <time className={styles.dateTag}>{announcement.date}</time>
-        <h1>{announcement.title}</h1>
-        <p>{announcement.summary}</p>
-      </div>
-      <article className={styles.venueCard}>
-        <h2>{COPY.home.venueTitle}</h2>
-        <p>{COPY.home.venueInstructions}</p>
-        <ul>
-          <li>{COPY.home.worshipLocation}</li>
-          <li>{COPY.home.familyRoom}</li>
-          <li>{COPY.home.visitorReception}</li>
-        </ul>
-        {announcement.externalUrl && (
-          <div className={styles.externalLinkRow}>
-            <a
-              href={announcement.externalUrl}
-              target="_blank"
-              rel="noopener"
-              className={styles.externalLink}
-            >
-              <Icon name="external" className={styles.externalIcon} />
-              {COPY.home.externalLink}
-            </a>
+      <section
+        className={styles.skeletonRegion}
+        data-testid="home-loading-state"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <output className={styles.skeletonAnnouncement}>
+          {COPY.home.loading}
+        </output>
+        <div aria-hidden="true">
+          <div className={styles.skeletonIntro}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDate}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonText}`}
+            />
           </div>
-        )}
-      </article>
+          <div className={styles.skeletonEventCard}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonBadge}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonTitle}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonAction}`}
+            />
+          </div>
+          <div className={styles.skeletonSection}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
+            />
+          </div>
+          <div className={styles.skeletonSection}>
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
+            />
+            <span
+              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -353,32 +308,90 @@ export function HomeView({
   announcement: initialAnnouncement,
 }: HomeViewProps = {}) {
   const { bootstrap } = useApp();
+  const hasInitialData =
+    initialEvent !== undefined ||
+    initialProgram !== undefined ||
+    initialAnnouncement !== undefined;
   const [projection, setProjection] = useState<HomeProjection | null>(null);
   const [participant, setParticipant] = useState<{
     event: HomeEvent | null;
     program: HomeProgram | null;
   }>({ event: null, program: null });
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
+    hasInitialData ? "ready" : "loading"
+  );
+  const [reloadKey, setReloadKey] = useState(0);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
 
+  const openAnnouncement = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.history.pushState(
+        { efccOverlay: "announcement" },
+        "",
+        window.location.href
+      );
+    }
+    setAnnouncementOpen(true);
+  }, []);
+
+  const closeAnnouncement = useCallback(() => {
+    setAnnouncementOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onPopState = () => {
+      setAnnouncementOpen(window.history.state?.efccOverlay === "announcement");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
-    void loadHomeProjection().then(async (nextProjection) => {
-      if (!mounted) {
-        return;
-      }
-      setProjection(nextProjection);
-      if (nextProjection === null) {
-        const nextParticipant = await loadParticipantProjection();
-        if (mounted) {
+    const load = async () => {
+      setLoadState("loading");
+      try {
+        const nextProjection = await loadHomeProjection();
+        if (!mounted) {
+          return;
+        }
+        setProjection(nextProjection);
+        setParticipant({ event: null, program: null });
+        setLoadState("ready");
+      } catch (primaryError) {
+        if (
+          primaryError instanceof RpcError &&
+          primaryError.problem.status === 401
+        ) {
+          if (mounted) {
+            setLoadState("error");
+          }
+          return;
+        }
+        try {
+          const nextParticipant = await loadParticipantProjection();
+          if (!mounted) {
+            return;
+          }
+          setProjection(null);
           setParticipant(nextParticipant);
+          setLoadState("ready");
+        } catch {
+          if (mounted) {
+            setLoadState("error");
+          }
         }
       }
-    });
+    };
+    void load();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   const event =
     initialEvent !== undefined
@@ -397,8 +410,29 @@ export function HomeView({
     return (
       <AnnouncementDetail
         announcement={announcement}
-        onBack={() => setAnnouncementOpen(false)}
+        onBack={closeAnnouncement}
       />
+    );
+  }
+
+  if (!hasInitialData && loadState === "loading") {
+    return <HomeLoadingSkeleton />;
+  }
+
+  if (!hasInitialData && loadState === "error") {
+    return (
+      <div className={styles.page}>
+        <section className={styles.emptyCard} data-testid="home-error-state">
+          <p role="alert">{COPY.home.loadError}</p>
+          <button
+            className={styles.primaryAction}
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+          >
+            {COPY.home.retry}
+          </button>
+        </section>
+      </div>
     );
   }
 
@@ -409,18 +443,29 @@ export function HomeView({
           mode: "participant",
           programId: event.programId,
           eventId: event.eventId,
+          origin: "home",
         })
       : "/programs";
+  const exploreProgramHref = program?.programId
+    ? buildProgramsHref({
+        mode: "participant",
+        programId: program.programId,
+        origin: "home",
+      })
+    : "/programs";
   const title = event?.eventTitle ?? "";
   const date = eventDate(event?.startsAt ?? null);
-  const startTime = eventTime(event?.startsAt ?? null);
-  const endTime = eventTime(event?.endsAt ?? null);
-  const time = startTime && endTime ? `${startTime}–${endTime}` : startTime;
+  const time = eventTimeRange(event?.startsAt ?? null, event?.endsAt ?? null);
 
   return (
     <div className={styles.page} data-testid="home-page">
       <div className={styles.intro}>
-        <time className={styles.dateTag}>{greetingDate()}</time>
+        <time
+          className={styles.dateTag}
+          dateTime={new Date().toISOString().slice(0, 10)}
+        >
+          {greetingDate()}
+        </time>
         <h1>
           {COPY.home.greeting}，{displayName}
         </h1>
@@ -436,11 +481,15 @@ export function HomeView({
             <p className={styles.programTitle}>{programTitle}</p>
           )}
           {title && <h2>{title}</h2>}
-          <div className={styles.eventDetails}>
-            {date && <EventRow icon="calendar">{date}</EventRow>}
-            {time && <EventRow icon="clock">{time}</EventRow>}
-            {event.location && <EventRow icon="pin">{event.location}</EventRow>}
-          </div>
+          {(date || time || event.location) && (
+            <div className={styles.eventDetails}>
+              {date && <EventRow icon="calendar">{date}</EventRow>}
+              {time && <EventRow icon="clock">{time}</EventRow>}
+              {event.location && (
+                <EventRow icon="pin">{event.location}</EventRow>
+              )}
+            </div>
+          )}
           <Link href={eventHref} className={styles.primaryAction}>
             {COPY.home.viewEvent}
           </Link>
@@ -460,12 +509,17 @@ export function HomeView({
           className={styles.section}
           aria-labelledby="church-news-heading"
         >
-          <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
+          <div className={styles.sectionHeading}>
+            <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
+            <Link href="/messages" className={styles.sectionLink}>
+              {COPY.home.viewAllMessages}
+            </Link>
+          </div>
           <button
             type="button"
             className={styles.listCard}
             data-testid="announcement-card"
-            onClick={() => setAnnouncementOpen(true)}
+            onClick={openAnnouncement}
           >
             <span>
               <span className={styles.cardTitle}>{announcement.title}</span>
@@ -487,7 +541,7 @@ export function HomeView({
             </Link>
           </div>
           <Link
-            href="/programs"
+            href={exploreProgramHref}
             className={styles.listCard}
             data-testid="explore-card"
           >

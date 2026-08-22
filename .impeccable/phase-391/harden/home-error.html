@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Home — Error harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --accent: #9c302c;
+      --accent-deep: #76231f;
+      --focus: #176a87;
+      --error: #b3261e;
+      --error-surface: #fbeeed;
+      --error-border: #e5b4b0;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .page {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 4vw, 1.5rem)
+        calc(1.5rem + 72px + env(safe-area-inset-bottom));
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .intro {
+      padding: 8px 0 22px;
+    }
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(1.72rem, 6vw, 2.25rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .intro p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      font-size: 0.96rem;
+      line-height: 1.6;
+    }
+    .dateTag {
+      display: inline-flex;
+      margin-bottom: 10px;
+      color: var(--ink-muted);
+      font:
+        600 0.72rem ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+      letter-spacing: 0.08em;
+    }
+    .errorPanel {
+      padding: 18px;
+      border: 1px solid var(--error-border);
+      border-radius: 10px;
+      background: var(--error-surface);
+      color: var(--ink);
+    }
+    .errorPanel h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    .errorPanel p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      line-height: 1.6;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .btnPrimary {
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btnPrimary:hover {
+      background: var(--accent-deep);
+      border-color: var(--accent-deep);
+    }
+    .btnGhost {
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btnPrimary:focus-visible,
+    .btnGhost:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: var(--ink-muted)"
+        >示範 · error proposal</span
+      >
+    </header>
+    <main class="page">
+      <div class="intro">
+        <div class="dateTag">星期三 · 8月20日</div>
+        <h1>早晨，陳小明</h1>
+        <p>下一項與你有關的安排。</p>
+      </div>
+      <section class="errorPanel" role="alert" aria-live="assertive">
+        <h2>未能載入首頁</h2>
+        <p>
+          無法連接伺服器，請檢查網絡後再試。已載入的內容仍可瀏覽；不需要重新登入。
+        </p>
+        <div class="row">
+          <button type="button" class="btnPrimary">重試載入</button>
+          <a href="/programs" class="btnGhost">前往課程</a>
+        </div>
+      </section>
+      <p
+        style="
+          margin-top: 16px;
+          color: var(--ink-muted);
+          font-size: 0.84rem;
+          line-height: 1.6;
+        "
+      >
+        <strong>Check-only:</strong> Error proposal for
+        <code>web/app/home/page.tsx:113-115 catch</code> +
+        <code>124-190 catch</code>. Today a 5xx /
+        <code>MALFORMED_RESPONSE</code> / offline collapses to the empty state
+        <code>暫時沒有…</code> with no <code>role=alert</code> — P1-02. This
+        panel is <code>44px</code> hit, focus-visible <code>#176a87</code>, and
+        does not push <code>scrollWidth</code> beyond <code>innerWidth</code> at
+        320. The <code>前往課程</code> ghost is the safe fallback (catalog does
+        not require home data).
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

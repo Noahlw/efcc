@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Program Detail Loading (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: clamp(1.25rem, 3vw, 2rem);
+      }
+      .boundaryState {
+        padding: 1rem;
+        border: 1px solid #d6dcde;
+        border-radius: 8px;
+        background: #f4f5f3;
+      }
+      .boundaryState[aria-busy="true"] {
+        background: #f4f5f3;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 0.5rem;
+      }
+      .note {
+        color: #59636a;
+        line-height: 1.6;
+        font-size: 0.9rem;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-loading.html — check-only
+        proposal — worktree 15956de
+      </p>
+      <h1>Loading (正在載入課程內容…)</h1>
+      <div class="card">
+        <section
+          id="program-detail-state"
+          class="boundaryState"
+          tabindex="-1"
+          role="status"
+          aria-busy="true"
+        >
+          <p>正在載入課程內容…</p>
+        </section>
+        <p class="note">
+          Live source:
+          <code>web/lib/programs/participant-program-detail.tsx:148-160</code>
+          (<code
+            >if(state.kind==="loading") return
+            section#program-detail-state.boundaryState[role=status][aria-busy=true]</code
+          >) + <code>announce(COPY.programs.detailLoading)</code> at
+          <code>66-67</code>. No skeleton; focus moved to
+          <code>#program-detail-state</code> via <code>useEffect 117-131</code>.
+          Design has no loading (static). Harden: keep as-is; if perceived
+          latency grows, add 8s polite hint outside panel (not inside) — not
+          needed now.
+        </p>
+      </div>
+      <div
+        style="
+          margin-top: 1rem;
+          padding: 1rem;
+          border: 1px dashed #aeb8bc;
+          border-radius: 8px;
+          background: #fff;
+        "
+      >
+        <strong>Responsive:</strong> panel <code>max-width:60ch</code> per
+        <code>programs.module.css:1167-1172</code> — never overflows at 320/390.
+        No CTA to wrap.
+      </div>
+    </div>
+  </body>
+</html>

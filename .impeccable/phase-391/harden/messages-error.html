@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Messages — Error harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --line-strong: #aeb8bc;
+      --accent: #9c302c;
+      --focus: #176a87;
+      --error: #b3261e;
+      --error-surface: #fbeeed;
+      --error-border: #e5b4b0;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+    }
+    .error {
+      display: block;
+      margin: 0;
+      padding: 1rem;
+      border: 1px solid var(--error-border);
+      border-radius: 8px;
+      line-height: 1.6;
+      background: var(--error-surface);
+      color: var(--error);
+    }
+    .retry {
+      margin-top: 0.75rem;
+      min-height: 44px;
+      padding-inline: 0.75rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .retry:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      text-decoration: underline;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 560px) {
+      .page {
+        padding-inline: 1rem;
+      }
+    }
+    button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · error harden</span
+      >
+    </header>
+    <main class="page">
+      <p class="error" role="alert">未能載入教會消息。</p>
+      <button class="retry" type="button">重試載入教會消息</button>
+      <p class="muted" style="margin-top: 16px">
+        Check-only: error at <code>web/lib/messages-panel.tsx:72-85</code>
+        <code>&lt;p class=error role=alert&gt;</code> +
+        <code>button.retry</code>. Same tokens as notices
+        <code>notices-panel.tsx:143-159</code>, but COPY keys differ.
+        <code>retry</code> is 44px min-height, bordered, hover turns cinnabar.
+        No CTA wrapping risk.<br /><strong>320/390/414:</strong> error box is
+        block, wraps naturally; retry stays single line. scrollWidth ≤
+        innerWidth at narrow.
+      </p>
+      <hr
+        style="margin: 28px 0; border: 0; border-top: 1px solid var(--line)"
+      />
+      <h2 style="font-size: 0.9rem; color: var(--ink-muted); margin: 0 0 10px">
+        Offline 叠加 (check)
+      </h2>
+      <div
+        style="
+          position: relative;
+          height: 60px;
+          background: var(--surface);
+          border: 1px dashed var(--line);
+          border-radius: 10px;
+          display: grid;
+          place-items: center;
+          color: var(--ink-muted);
+          font-size: 0.82rem;
+        "
+      >
+        Global <code>OfflineBanner</code> fixed at
+        <code>top: max(8px, safe-area-inset-top)</code> — error sits below it,
+        no overlap.
+      </div>
+      <p class="muted">
+        Live <code>listAnnouncements()</code> throws
+        <code>NETWORK_ERROR</code> when offline → same error state + banner. No
+        double-retry needed.
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "error scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

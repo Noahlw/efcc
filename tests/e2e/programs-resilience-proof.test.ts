@@ -58,7 +58,7 @@ const COPY = {
   // COPY.login (submit button label)
   login: "登入",
   // COPY.sections.programs
-  pageTitle: "課程與活動",
+  pageTitle: "課程",
   // COPY.restore.expired
   restoreExpired: "工作階段已過期，請重新登入。",
   // COPY.error.networkError

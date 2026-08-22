@@ -27,6 +27,7 @@ import type {
   DepartmentView,
   UpdateScheduleRuleCommand,
 } from "./department-workspace";
+import { isIsoInstant } from "./iso-instant";
 import {
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
@@ -1497,16 +1498,6 @@ export async function handleSetModule(
 // ---------------------------------------------------------------------------
 // PRG-02 (#198): schedule rules, exceptions, generation, events.
 // ---------------------------------------------------------------------------
-
-function isIsoInstant(v: unknown): v is string {
-  if (typeof v !== "string") {
-    return false;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/u.test(v)) {
-    return false;
-  }
-  return !Number.isNaN(Date.parse(v));
-}
 
 function isDayOfWeekValue(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 6;

@@ -306,6 +306,8 @@ export interface ParticipantEventSummary {
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  /** Server-derived participant affordance; never an attendance authority. */
+  self_check_in_available: boolean;
 }
 
 export interface ParticipantEnrollmentRequest {

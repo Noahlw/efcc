@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PROTOTYPE — Program Detail upcoming Events</title>
+    <style>
+      :root {
+        --surface: #f4f5f3;
+        --surface-raised: #fff;
+        --ink: #171a1d;
+        --ink-muted: #59636a;
+        --line: #d6dcde;
+        --line-strong: #aeb8bc;
+        --accent: #9c302c;
+        --accent-soft: #fbecea;
+        --focus: #0f6b78;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --dock: 72px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Noto Sans TC", "PingFang TC",
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--surface);
+      }
+      main {
+        width: min(100% - 40px, 680px);
+        margin: 0 auto;
+        padding: 24px 0 150px;
+      }
+      .prototype-banner {
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        color: #6e4a14;
+        background: #f3eee8;
+        border: 1px solid #c1ad95;
+        border-radius: var(--radius-sm);
+        font-size: 0.78rem;
+        line-height: 1.45;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(1.65rem, 6vw, 2.2rem);
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+      }
+      .eyebrow {
+        margin: 14px 0 8px;
+        color: var(--ink-muted);
+        font:
+          700 0.72rem/1.2 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .lead {
+        margin: 10px 0 20px;
+        color: var(--ink-muted);
+        line-height: 1.6;
+      }
+      .grouped-panel {
+        padding: 20px;
+        background: var(--surface-raised);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      .group + .group {
+        margin-top: 20px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+      }
+      .group h2 {
+        margin: 0 0 10px;
+        font-size: 1rem;
+        line-height: 1.3;
+      }
+      .rule-row {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 14px;
+        padding: 8px 0;
+        color: var(--ink-muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+      }
+      .rule-label {
+        color: var(--ink);
+        font:
+          700 0.75rem/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .event-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .event-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 54px minmax(0, 1fr);
+        gap: 14px;
+        padding: 12px 0;
+        border-top: 1px solid var(--line);
+      }
+      .event-row:first-child {
+        border-top: 0;
+        padding-top: 2px;
+      }
+      .event-date {
+        color: var(--ink-muted);
+        font:
+          700 0.78rem/1.35 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .event-date strong {
+        display: block;
+        color: var(--ink);
+        font-size: 1.05rem;
+      }
+      .event-title {
+        margin: 0;
+        font-weight: 700;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+      .event-meta {
+        margin: 4px 0 0;
+        color: var(--ink-muted);
+        font-size: 0.86rem;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
+      .dot {
+        position: absolute;
+        top: 19px;
+        left: 49px;
+        width: 8px;
+        height: 8px;
+        transform: translateX(-50%);
+        border-radius: 50%;
+        background: var(--ink-muted);
+      }
+      .dot-variant .event-row {
+        grid-template-columns: 54px minmax(0, 1fr);
+        padding-left: 10px;
+      }
+      .dot-variant .event-date {
+        padding-left: 8px;
+      }
+      .dot-variant .event-row::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 49px;
+        width: 1px;
+        background: var(--line);
+      }
+      .dot-variant .event-row:first-child::before {
+        top: 17px;
+      }
+      .dot-variant .event-row:last-child::before {
+        bottom: 17px;
+      }
+      .rail-variant .event-list {
+        position: relative;
+        padding-left: 28px;
+      }
+      .rail-variant .event-list::before {
+        content: "";
+        position: absolute;
+        top: 10px;
+        bottom: 10px;
+        left: 7px;
+        width: 1px;
+        background: var(--line-strong);
+      }
+      .rail-variant .event-row {
+        display: block;
+        min-height: 56px;
+        padding: 10px 0 10px 16px;
+        border-top: 0;
+      }
+      .rail-variant .event-row::before {
+        content: "";
+        position: absolute;
+        top: 17px;
+        left: -24px;
+        width: 8px;
+        height: 8px;
+        border: 2px solid var(--surface-raised);
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 1px var(--line-strong);
+      }
+      .rail-variant .event-date {
+        display: inline;
+        margin-right: 8px;
+      }
+      .rail-variant .event-date strong {
+        display: inline;
+        font-size: 0.9rem;
+      }
+      .rail-variant .event-title {
+        display: inline;
+      }
+      .rail-variant .event-meta {
+        margin-top: 4px;
+      }
+      .baseline-variant .grouped-panel {
+        padding: 16px;
+        border-radius: var(--radius-md);
+        background: var(--surface);
+      }
+      .baseline-variant .group + .group {
+        margin-top: 14px;
+        padding-top: 14px;
+      }
+      .baseline-variant .event-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: baseline;
+        padding: 7px 0;
+        border-top: 0;
+      }
+      .baseline-variant .event-date strong {
+        display: inline;
+        margin-right: 6px;
+        font-size: 0.9rem;
+      }
+      .baseline-variant .event-meta {
+        display: inline;
+        margin: 0;
+      }
+      .note {
+        margin: 16px 0 0;
+        color: var(--ink-muted);
+        font-size: 0.8rem;
+        line-height: 1.5;
+      }
+      .lifecycle-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        margin: 0 0 12px;
+        color: var(--ink-muted);
+        font-size: 0.78rem;
+        line-height: 1.4;
+      }
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .legend-dot {
+        width: 8px;
+        height: 8px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--ink-muted);
+      }
+      .attendance-label {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 6px;
+        color: #17633a;
+        background: #e2f2e5;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .switcher {
+        position: fixed;
+        z-index: 2;
+        right: 50%;
+        bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: min(calc(100% - 24px), 440px);
+        padding: 8px;
+        transform: translateX(50%);
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        box-shadow: 0 8px 24px rgba(23, 26, 29, 0.12);
+      }
+      .switcher button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0 10px;
+        color: var(--ink);
+        background: var(--surface-raised);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        font: inherit;
+        cursor: pointer;
+      }
+      .switcher button:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .switcher .label {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+        font-size: 0.82rem;
+        line-height: 1.25;
+      }
+      @media (max-width: 799.98px) {
+        main {
+          width: min(100% - 32px, 680px);
+          padding-top: 16px;
+        }
+        .grouped-panel {
+          padding: 16px;
+        }
+        .rule-row {
+          grid-template-columns: 56px minmax(0, 1fr);
+          gap: 10px;
+        }
+        .dot-variant .event-row {
+          grid-template-columns: 48px minmax(0, 1fr);
+          gap: 10px;
+        }
+        .dot-variant .event-row::before {
+          left: 43px;
+        }
+        .dot {
+          left: 43px;
+        }
+      }
+      @media (max-width: 359px) {
+        main {
+          width: min(100% - 24px, 680px);
+        }
+        .grouped-panel {
+          padding: 14px;
+        }
+        .event-row {
+          gap: 10px;
+        }
+        .switcher {
+          bottom: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="prototype-root"></main>
+    <nav class="switcher" aria-label="Prototype variants">
+      <button id="previous" type="button" aria-label="上一個 variant">←</button>
+      <span class="label" id="variant-label"></span>
+      <button id="next" type="button" aria-label="下一個 variant">→</button>
+    </nav>
+    <script>
+      const events = [
+        {
+          day: "20",
+          month: "8月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: true,
+        },
+        {
+          day: "27",
+          month: "8月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "03",
+          month: "9月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "10",
+          month: "9月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "17",
+          month: "9月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "24",
+          month: "9月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "01",
+          month: "10月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+        {
+          day: "08",
+          month: "10月",
+          title: "成人查經：羅馬書",
+          meta: "星期三 19:30–21:00 · 二樓禮堂",
+          attendance: false,
+        },
+      ];
+      const variants = [
+        {
+          id: "dot",
+          name: "Variant 1 · Lifecycle dots + rows",
+          className: "dot-variant",
+          note: "Dots represent Event lifecycle: Active is neutral. The compact 可簽到 label appears only when attendance is actually available.",
+        },
+        {
+          id: "rail",
+          name: "Variant 3 · Compact date rail",
+          className: "rail-variant",
+          note: "The rail compresses repeated dates into one vertical rhythm; lifecycle dots remain optional visual reinforcement.",
+        },
+        {
+          id: "baseline",
+          name: "Baseline · Current live density",
+          className: "baseline-variant",
+          note: "Comparison baseline: current flex rows, with the same responsive four/eight-event data scope.",
+        },
+      ];
+      const params = new URLSearchParams(location.search);
+      let selected = variants.findIndex(
+        (variant) => variant.id === params.get("variant")
+      );
+      if (selected < 0) selected = 0;
+      const root = document.getElementById("prototype-root");
+      const label = document.getElementById("variant-label");
+      function eventRows(variant, visibleEvents) {
+        return visibleEvents
+          .map(
+            (event) => `
+        <li class="event-row">
+          ${variant.id === "dot" ? '<span class="dot" aria-hidden="true"></span>' : ""}
+          <time class="event-date" datetime="2026-${event.month === "8月" ? "08" : "09"}-${event.day}"><strong>${event.day}</strong>${event.month}</time>
+          <div><p class="event-title">${event.title}</p><p class="event-meta">${event.meta}${event.attendance ? '<span class="attendance-label">可簽到</span>' : ""}</p></div>
+        </li>`
+          )
+          .join("");
+      }
+      function render() {
+        const variant = variants[selected];
+        const visibleEvents =
+          window.innerWidth >= 800 ? events.slice(0, 8) : events.slice(0, 4);
+        root.className = variant.className;
+        root.innerHTML = `
+        <p class="prototype-banner"><strong>PROTOTYPE ONLY</strong> · Program Detail upcoming-event treatment · no production route, state mutation, or API contract.</p>
+        <p class="eyebrow">課程詳情 · harden exploration</p>
+        <h1>成人查經</h1>
+        <p class="lead">先保留 recurrence rule 同 concrete upcoming Events 嘅 data split；以下比較三種減少垂直 bulk 嘅 presentation。</p>
+        <p class="lifecycle-legend" aria-label="聚會狀態說明">
+          <span class="legend-item"><span class="legend-dot" aria-hidden="true"></span>Active（neutral）</span>
+          <span class="legend-item"><span class="attendance-label">可簽到</span>只在 attendance 可用時顯示</span>
+        </p>
+        <section class="grouped-panel" aria-labelledby="schedule-title">
+          <div class="group">
+            <h2 id="schedule-title">時間規則</h2>
+            <div class="rule-row"><span class="rule-label">每週</span><span>星期三 · 19:30–21:00</span></div>
+          </div>
+          <div class="group">
+            <h2>即將舉行 · 未來 ${visibleEvents.length} 場</h2>
+            <ol class="event-list">${eventRows(variant, visibleEvents)}</ol>
+          </div>
+        </section>
+        <p class="note">${variant.note} · prototype renders 4 active future Events on phone and 8 on desktop.</p>`;
+        label.textContent = variant.name;
+        params.set("variant", variant.id);
+        history.replaceState(
+          null,
+          "",
+          `${location.pathname}?${params.toString()}`
+        );
+      }
+      function move(delta) {
+        selected = (selected + delta + variants.length) % variants.length;
+        render();
+      }
+      document
+        .getElementById("previous")
+        .addEventListener("click", () => move(-1));
+      document.getElementById("next").addEventListener("click", () => move(1));
+      render();
+    </script>
+  </body>
+</html>

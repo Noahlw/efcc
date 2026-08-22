@@ -86,8 +86,7 @@ function problemFromPayload(
       problem[key] = value;
     }
   }
-  problem.status =
-    typeof source.status === "number" ? source.status : status;
+  problem.status = typeof source.status === "number" ? source.status : status;
   if (requestId && !problem.requestId) {
     problem.requestId = requestId;
   }
@@ -100,10 +99,10 @@ function hasData(value: unknown): value is { data: unknown } {
 }
 
 /** One fetch to the cookie-only home surface. Never builds auth headers. */
-export async function getHome(): Promise<HomeData> {
+async function homeGet<T>(path: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch("/api/v1/home", {
+    res = await fetch(path, {
       method: "GET",
       signal: AbortSignal.timeout(30_000),
     });
@@ -151,5 +150,17 @@ export async function getHome(): Promise<HomeData> {
       requestId,
     });
   }
-  return parsed.data as HomeData;
+  return parsed.data as T;
+}
+
+export function getHome(): Promise<HomeData> {
+  return homeGet<HomeData>("/api/v1/home");
+}
+
+export function listAnnouncements(): Promise<{
+  announcements: HomeAnnouncement[];
+}> {
+  return homeGet<{ announcements: HomeAnnouncement[] }>(
+    "/api/v1/home/announcements"
+  );
 }

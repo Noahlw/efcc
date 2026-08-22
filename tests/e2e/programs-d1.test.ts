@@ -11,6 +11,12 @@ import { expect, test } from "@playwright/test";
 import type { Browser, Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
+import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
+import { restoreEventWindow } from "./participant-event-window";
+import type {
+  EventWindowSetup,
+  EventWindowSnapshot,
+} from "./participant-event-window";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
@@ -42,8 +48,8 @@ const COPY = {
   sessionExpired: {
     reLogin: "重新登入",
   },
-  pageTitle: "課程與活動",
-  pageLead: "課程與活動集中於此，先了解適合你的下一步。",
+  pageTitle: "課程",
+  pageLead: "尋找合適的課程，查看聚會及報名狀態。",
   participantMode: "參與者模式",
   managementMode: "管理模式",
   enterManagement: "進入管理模式",
@@ -52,7 +58,7 @@ const COPY = {
   detailPurpose: "課程簡介",
   detailEvents: "近期活動",
   detailUnavailable: "無法開啟這個課程",
-  detailBack: "返回課程目錄",
+  detailBack: "課程",
   nextMeeting: "下一次聚會",
   detailEventLocation: "地點",
   viewEventDetail: "查看聚會詳情",
@@ -69,6 +75,15 @@ const COPY = {
   noticesRetry: "重試載入通知",
   noticesLoadError: "未能載入通知。",
   scheduleTitle: "聚會時間表",
+  scheduleRulesGroup: "時間規則",
+  scheduleEventsGroup: "即將舉行",
+  enrollmentEventDetailAdvisory: "加入後可查看聚會詳情",
+  backHome: "返回首頁",
+  catalogForbidden: "無法載入課程目錄",
+  catalogForbiddenHint: "你沒有權限查看課程目錄。",
+  catalogLoadError: "未能載入課程",
+  catalogLoadErrorHint: "請檢查網絡後再試。你的搜尋條件會保留。",
+  catalogRetry: "重新載入",
   conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",
   archivedNote: "此課程已封存，暫不接受報名",
   catalogSearchLabel: "搜尋課程",
@@ -76,7 +91,7 @@ const COPY = {
   catalogNoMatches: "找不到相關課程",
   catalogEmpty: "找不到相關課程",
   catalogEmptyHint: "請嘗試其他關鍵字或清除篩選。",
-  catalogClearFilters: "清除篩選",
+  catalogClearFilters: "清除搜尋與篩選",
   catalogListLabel: "課程目錄",
   filterGroupLabel: "課程篩選",
   filterAll: "全部",
@@ -124,6 +139,9 @@ const COPY = {
   notificationTitle: "管理通知",
   notificationZero: "目前沒有新的管理通知。",
   notificationViewAll: "查看全部通知",
+  viewAllMessages: "查看全部",
+  churchNews: "教會消息",
+  demoChurchNews: "E2E_DEMO_教會消息",
   hubTitle: "管理工作",
   hubLead: "在你獲授權的範圍內處理會員、課程、聚會及內容工作。",
   hubGroupMemberPermissions: "會員與權限",
@@ -501,6 +519,73 @@ function enrollmentPanelOf(page: Page): Locator {
   });
 }
 
+async function openEventCheckInWindow(
+  adminPage: Page,
+  programId: string
+): Promise<EventWindowSetup | null> {
+  if (adminPage.url() === "about:blank") {
+    await loginAs(
+      adminPage,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+  }
+  return adminPage.evaluate(async (targetProgramId) => {
+    const origin = window.location.origin;
+    const response = await fetch(
+      `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
+    );
+    const body = (await response.json()) as {
+      data?: {
+        events?: {
+          event_id: string;
+          starts_at: string;
+          status: string;
+          availability: string;
+          check_in_window_opens_at: string | null;
+          check_in_window_closes_at: string | null;
+        }[];
+      };
+    };
+    const nowIso = new Date().toISOString();
+    const event = [...(body.data?.events ?? [])]
+      .filter(
+        (candidate) =>
+          candidate.status === "Active" &&
+          candidate.availability === "Active" &&
+          candidate.starts_at >= nowIso
+      )
+      .sort((left, right) => left.starts_at.localeCompare(right.starts_at))[0];
+    if (!event) {
+      return null;
+    }
+    const now = Date.now();
+    const snapshot = {
+      eventId: event.event_id,
+      opensAt: event.check_in_window_opens_at,
+      closesAt: event.check_in_window_closes_at,
+    };
+    try {
+      const patch = await fetch(
+        `${origin}/api/v1/programs/${encodeURIComponent(targetProgramId)}/events/${encodeURIComponent(event.event_id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            check_in_window_opens_at: new Date(now - 15 * 60_000).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 45 * 60_000
+            ).toISOString(),
+          }),
+        }
+      );
+      return { snapshot, opened: patch.ok };
+    } catch {
+      return { snapshot, opened: false };
+    }
+  }, programId);
+}
+
 test.beforeAll(() => {
   for (const [name, value] of [
     ["PROGRAMS_ADMIN_USERNAME", ADMIN_USER],
@@ -536,7 +621,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     await expect(page.locator("#programs-mode-panel")).toBeVisible();
     await expect(page.getByText(COPY.pageLead)).toBeVisible();
@@ -564,7 +649,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     await expect(page.locator("#programs-mode-panel")).toBeVisible();
   });
@@ -579,7 +664,7 @@ test.describe("PUI-01 Programs boundary", () => {
     );
 
     await expect(
-      page.getByRole("heading", { name: COPY.participantMode })
+      page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     const hasManagement = await hasProjectedManagementCapability(page);
     const managementButton = page.getByRole("button", {
@@ -607,11 +692,11 @@ test.describe("PUI-01 Programs boundary", () => {
       "catalog fixture must expose a visible Program"
     ).toBeTruthy();
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
+    // #391 fix A: BoundaryFrame suppresses its own catalog header (and the
+    // role/aria-labelledby that pointed at it) while a participant program
+    // detail is showing -- the child <article> is the region landmark now.
     const panel = page.locator("#programs-mode-panel");
-    await expect(panel).toHaveAttribute("role", "region");
 
     await page.getByRole("button", { name: COPY.enterManagement }).click();
     await expect(page).toHaveURL(
@@ -653,9 +738,7 @@ test.describe("PUI-01 Programs boundary", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}#overview$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
   });
 
   test("malformed direct intent stays recoverable inside Programs", async ({
@@ -743,6 +826,174 @@ test.describe("PUI-02 participant Programs directory", () => {
 
     const ids = await catalogProgramIds(page, "E2E_DEMO_社區關懷");
     expect(ids).toHaveLength(0);
+  });
+
+  test("forbidden catalog exposes only the authenticated Home escape", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.route("**/api/v1/programs/catalog", async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: 403,
+          code: "FORBIDDEN",
+          title: "Forbidden",
+          detail: COPY.catalogForbiddenHint,
+        }),
+      });
+    });
+    await page.goto("/programs");
+
+    await expect(
+      page.getByRole("heading", { name: COPY.catalogForbidden })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.backHome })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.catalogRetry })
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: COPY.backHome }).click();
+    await expect(page).toHaveURL(/\/home$/u);
+  });
+
+  test("long catalog copy wraps without moving controls or causing overflow", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longSecondary =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
+    await page.route("**/api/v1/programs/catalog", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        data?: {
+          catalog?: {
+            programs?: Record<string, unknown>[];
+          }[];
+        };
+      };
+      const target = body.data?.catalog?.[0]?.programs?.[0];
+      if (!target) {
+        await route.fulfill({ response });
+        return;
+      }
+      target.name = longTitle;
+      target.description = longSecondary;
+      target.viewerState = "withdrawn";
+      target.nextEventStartsAt = null;
+      target.upcomingEventCount = 0;
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto("/programs");
+
+    const card = page.getByRole("button", { name: /超長課程名稱/u });
+    await expect(card).toBeVisible();
+    await expect(
+      page.getByRole("searchbox", { name: COPY.catalogSearchLabel })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: COPY.filterGroupLabel })
+    ).toBeVisible();
+    await expect(card).toContainText(longSecondary);
+    await expect(card.locator("svg")).toBeVisible();
+
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      const geometry = await page.evaluate(() => {
+        const outlet = document.querySelector<HTMLElement>("#shell-content");
+        const card = document.querySelector<HTMLElement>(
+          'button[class*="participantDirectoryCard"]'
+        );
+        const body = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardBody"]'
+        );
+        const title = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardTitle"]'
+        );
+        const secondary = card?.querySelector<HTMLElement>(
+          '[class*="directoryCardSecondary"]'
+        );
+        const chevron = card?.querySelector<SVGElement>(
+          '[class*="directoryChevron"]'
+        );
+        const search = document.querySelector<HTMLElement>(
+          "#programs-catalog-search"
+        );
+        const filters = document.querySelector<HTMLElement>(
+          '[class*="directoryFilters"]'
+        );
+        if (
+          !outlet ||
+          !card ||
+          !body ||
+          !title ||
+          !secondary ||
+          !chevron ||
+          !search ||
+          !filters
+        ) {
+          throw new Error("long-copy geometry fixture is incomplete");
+        }
+        const right = (element: Element) =>
+          element.getBoundingClientRect().right;
+        return {
+          outletClientWidth: outlet.clientWidth,
+          outletScrollWidth: outlet.scrollWidth,
+          bodyClientWidth: body.clientWidth,
+          bodyScrollWidth: body.scrollWidth,
+          titleClientWidth: title.clientWidth,
+          titleScrollWidth: title.scrollWidth,
+          secondaryClientWidth: secondary.clientWidth,
+          secondaryScrollWidth: secondary.scrollWidth,
+          cardRight: right(card),
+          chevronRight: right(chevron),
+          outletRight: right(outlet),
+          searchRight: right(search),
+          filtersRight: right(filters),
+        };
+      });
+      expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
+        geometry.outletClientWidth
+      );
+      expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(
+        geometry.bodyClientWidth
+      );
+      expect(geometry.titleScrollWidth).toBeLessThanOrEqual(
+        geometry.titleClientWidth
+      );
+      expect(geometry.secondaryScrollWidth).toBeLessThanOrEqual(
+        geometry.secondaryClientWidth
+      );
+      expect(geometry.chevronRight).toBeLessThanOrEqual(geometry.cardRight + 1);
+      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.outletRight + 1);
+      expect(geometry.searchRight).toBeLessThanOrEqual(
+        geometry.outletRight + 1
+      );
+      expect(geometry.filtersRight).toBeLessThanOrEqual(
+        geometry.outletRight + 1
+      );
+      await expect(card).toBeVisible();
+      await expect(card.locator("svg")).toBeVisible();
+    }
   });
 
   test("admin sees the Unlisted fixture through scoped management access", async ({
@@ -1032,14 +1283,14 @@ test.describe("PUI-02 participant Programs directory", () => {
     expect(programId).toBeTruthy();
     await page.getByRole("button", { name: /E2E_DEMO_成人查經/u }).click();
     await expect(page).toHaveURL(
-      new RegExp(`/programs\\?program=${programId}$`, "u")
+      new RegExp(`/programs\\?program=${programId}&from=programs$`, "u")
     );
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.detailBack })
     ).toBeVisible();
+    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await expect(page).toHaveURL(/\/programs$/u);
   });
 });
 
@@ -1056,27 +1307,49 @@ test.describe("PUI-03 participant Program detail", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    // #389 dropped the separate 課程簡介 subheading; the program-name
+    // title id is the stable arrival signal for Program detail now.
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     // The detail surfaces the real next-meeting projection: mono label,
     // meeting title, date/time, and the event-detail action.
     await expect(page.getByText(COPY.nextMeeting)).toBeVisible();
+    // #389 gap-fix: no Active enrollment means getEventDetail's participant
+    // projection 404s, so the CTA must not render for this unenrolled member.
     await expect(
       page.getByRole("button", { name: COPY.viewEventDetail })
-    ).toBeVisible();
-    // Schedule rules render as the 聚會時間表 table (E2E_DEMO_成人查經 is
-    // seeded with a weekly rule and generated meetings).
+    ).toHaveCount(0);
+    // The grouped schedule keeps recurrence rules and concrete Events
+    // semantically distinct, while the requestable member sees only the
+    // enrollment-gated affordance (not a dead Event Detail CTA).
     await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
+      page.getByRole("heading", { name: COPY.scheduleRulesGroup })
     ).toBeVisible();
+    const eventsGroup = page.getByRole("list", {
+      name: COPY.scheduleEventsGroup,
+    });
+    await expect(eventsGroup).toBeVisible();
+    await expect(
+      page.getByText(COPY.enrollmentEventDetailAdvisory, { exact: true })
+    ).toBeVisible();
+    for (const [width, height] of [
+      [320, 812],
+      [375, 844],
+      [390, 844],
+      [414, 844],
+      [799, 900],
+      [800, 900],
+      [1440, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(eventsGroup.getByRole("listitem")).toHaveCount(
+        width < 800 ? 4 : 8
+      );
+    }
 
     await page.reload();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("table", { name: COPY.scheduleTitle })
+      page.getByRole("list", { name: COPY.scheduleEventsGroup })
     ).toBeVisible();
 
     await page.getByRole("button", { name: COPY.detailBack }).click();
@@ -1125,6 +1398,7 @@ test.describe("PUI-05 participant Event Detail", () => {
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
     let programId = "";
+    let openedEvent: EventWindowSnapshot | null = null;
     try {
       await loginAs(
         memberPage,
@@ -1146,14 +1420,31 @@ test.describe("PUI-05 participant Event Detail", () => {
         submitActionButton(enrollmentPanel).or(pendingHint).or(activeHint)
       ).toBeVisible();
       const needsApproval = !(await activeHint.isVisible().catch(() => false));
-      if (
-        needsApproval &&
-        !(await pendingHint.isVisible().catch(() => false))
-      ) {
+      const isFreshUnenrolled =
+        needsApproval && !(await pendingHint.isVisible().catch(() => false));
+      if (isFreshUnenrolled) {
+        // #389 gap-fix: no Active enrollment means getEventDetail's
+        // participant projection 404s (department-workspace.ts
+        // hasActiveEnrollment gate), so the 查看聚會詳情 CTA must not
+        // render here — offering it would be a predictable dead click.
+        await expect(
+          memberPage.getByRole("button", { name: COPY.viewEventDetail })
+        ).toHaveCount(0);
         await submitActionButton(enrollmentPanel).click();
         await expect(pendingHint).toBeVisible();
       }
       if (needsApproval) {
+        const memberName = await memberPage.evaluate(async () => {
+          const response = await fetch("/api/v1/auth/me");
+          if (!response.ok) {
+            return "";
+          }
+          const body = (await response.json()) as {
+            data?: { user?: { name?: string } };
+          };
+          return body.data?.user?.name ?? "";
+        });
+        expect(memberName).toBeTruthy();
         await loginAs(
           page,
           required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -1164,7 +1455,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         );
         const requestRow = page
           .getByRole("listitem")
-          .filter({ hasText: "E2E Member" });
+          .filter({ hasText: memberName });
         await expect(
           requestRow.getByRole("button", { name: COPY.approve })
         ).toBeVisible();
@@ -1176,13 +1467,52 @@ test.describe("PUI-05 participant Event Detail", () => {
         ).toBeVisible();
         await memberPage.reload();
       }
+      const eventSetup = await openEventCheckInWindow(page, programId);
+      openedEvent = eventSetup?.snapshot ?? null;
+      expect(eventSetup?.opened).toBe(true);
 
       // From Program detail, open the next-meeting event detail (boundary
       // intent deep link: /programs?program=<id>&event=<eventId>).
+      const detailResponsePromise = memberPage.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          response
+            .url()
+            .includes(
+              `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`
+            )
+      );
       await memberPage.goto(`/programs?program=${programId}#overview`);
-      await expect(
-        memberPage.getByRole("heading", { name: COPY.detailPurpose })
-      ).toBeVisible();
+      const detailResponse = await detailResponsePromise;
+      const detailBody = (await detailResponse.json()) as {
+        data?: {
+          detail?: {
+            events?: {
+              event_id: string;
+              starts_at: string;
+              status: string;
+            }[];
+          };
+        };
+      };
+      // #389 dropped the separate 課程簡介 subheading; the program-name
+      // title id is the stable arrival signal for Program detail now.
+      await expect(memberPage.locator("#program-detail-title")).toBeVisible();
+      const expectedEventId = [...(detailBody.data?.detail?.events ?? [])]
+        .filter(
+          (event) =>
+            event.status === "Active" &&
+            Number.isFinite(Date.parse(event.starts_at)) &&
+            Date.parse(event.starts_at) >= Date.now()
+        )
+        .sort(
+          (left, right) =>
+            Date.parse(left.starts_at) - Date.parse(right.starts_at)
+        )
+        .at(0)?.event_id;
+      expect(expectedEventId).toBeTruthy();
+      expect(expectedEventId).toBe(openedEvent?.eventId);
+      const programDetailUrl = memberPage.url();
       const eventDetailButton = memberPage.getByRole("button", {
         name: COPY.viewEventDetail,
       });
@@ -1190,27 +1520,27 @@ test.describe("PUI-05 participant Event Detail", () => {
       await eventDetailButton.click();
       await expect(memberPage).toHaveURL(
         new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
+          `/programs\\?program=${encodeURIComponent(programId)}&from=programs&event=${encodeURIComponent(expectedEventId ?? "")}#overview$`,
           "u"
         )
       );
+      const eventDetailUrl = memberPage.url();
 
       // Event detail: the event-name heading (PUI-05 renders the real event
       // title, not a fixed label), back action, instructions, and scan CTA.
       await expect(
         memberPage.locator("#participant-event-title")
       ).toBeVisible();
-      await expect(memberPage.getByText(COPY.eventInstructions)).toBeVisible();
+      // Instructions copy is state-conditional (open vs. closed check-in
+      // window, #391 fix D/E); assert whichever one the real event window
+      // actually shows rather than assuming the open-state copy.
+      await expect(
+        memberPage.getByText(COPY.eventInstructions, { exact: false })
+      ).toBeVisible();
       await expect(
         memberPage.getByRole("button", { name: COPY.backToOrigin })
       ).toBeVisible();
-      // 可簽到 badge is conditional on the real check-in window; assert it
-      // only when present (the acceptance requires it only when the window is
-      // currently open).
-      const badge = memberPage.getByText(COPY.checkInAvailable);
-      if ((await badge.count()) > 0) {
-        await expect(badge.first()).toBeVisible();
-      }
+      await expect(memberPage.getByText(COPY.checkInAvailable)).toBeVisible();
 
       // 前往掃描 deep-links into the scanner with this exact event; the flow
       // resolves it (server returns the matching event pre-selected).
@@ -1222,7 +1552,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         ctaHref ?? "",
         "http://x"
       ).searchParams.get("event");
-      expect(eventIdFromCta).toBeTruthy();
+      expect(eventIdFromCta).toBe(expectedEventId);
       const resolvePromise = memberPage.waitForResponse(
         (response) =>
           response.url().includes("/api/v1/attendance/resolve") &&
@@ -1231,7 +1561,12 @@ test.describe("PUI-05 participant Event Detail", () => {
             .includes(`event=${encodeURIComponent(eventIdFromCta ?? "")}`)
       );
       await scanCta.click();
-      await expect(memberPage).toHaveURL(/\/scanner\?event=[^&]+$/u);
+      await expect(memberPage).toHaveURL(
+        new RegExp(
+          `/scanner\\?event=${encodeURIComponent(expectedEventId ?? "")}$`,
+          "u"
+        )
+      );
       const resolveResponse = await resolvePromise;
       const resolveBody = (await resolveResponse.json()) as {
         data?: { events?: { event_id?: string }[] };
@@ -1244,86 +1579,75 @@ test.describe("PUI-05 participant Event Detail", () => {
       // when closed it returns an empty events list and the scanner shows the
       // outcome screen (never a different event).
       expect(Array.isArray(resolveBody.data?.events)).toBe(true);
-      if (resolvedIds.length > 0) {
-        expect(resolvedIds).toEqual([eventIdFromCta]);
-      }
+      expect(resolvedIds).toEqual([eventIdFromCta]);
 
       // Back navigation returns to the originating Program detail (no
       // hardcoded target): browser back restores the event detail, then the
       // program detail.
       await memberPage.goBack();
-      await expect(memberPage).toHaveURL(
-        new RegExp(
-          `/programs\\?program=${encodeURIComponent(programId)}&event=[^&]+$`,
-          "u"
-        )
-      );
-      await memberPage.goBack();
-      await expect(memberPage).toHaveURL(
-        new RegExp(`/programs\\?program=${programId}#overview$`, "u")
-      );
+      await expect(memberPage).toHaveURL(eventDetailUrl);
+      await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
+      await expect(memberPage).toHaveURL(programDetailUrl);
     } finally {
-      if (programId) {
-        // Failure-safe cleanup: cancel any Active enrollment and withdraw
-        // any Pending request so later queue/roster counts stay stable
-        // (same contract as PUI-04's cleanup, member self-service API).
-        await memberPage.evaluate(async (id) => {
-          const enrollmentsResponse = await fetch(
-            `/api/v1/programs/${encodeURIComponent(id)}/enrollments`
-          );
-          const enrollmentsBody = (await enrollmentsResponse.json()) as {
-            data?: {
-              enrollments?: {
-                enrollment_id: string;
-                member_user_id: string;
-                status: string;
-              }[];
-            };
-          };
-          const enrollment = enrollmentsBody.data?.enrollments?.find(
-            (row) =>
-              row.member_user_id === "U-E2E-MEMBER" && row.status === "Active"
-          );
-          if (enrollment) {
-            await fetch(
-              `/api/v1/programs/${encodeURIComponent(id)}/enrollments/${encodeURIComponent(enrollment.enrollment_id)}/cancel`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: "{}",
-              }
+      try {
+        if (programId) {
+          try {
+            if (openedEvent) {
+              await restoreEventWindow(page, programId, openedEvent);
+            }
+          } finally {
+            await memberPage.goto(`/programs?program=${programId}#overview`);
+            await resetParticipantEnrollment(
+              memberPage,
+              enrollmentPanelOf(memberPage),
+              COPY
             );
           }
-          const requestsResponse = await fetch(
-            `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests`
-          );
-          const requestsBody = (await requestsResponse.json()) as {
-            data?: {
-              requests?: {
-                request_id: string;
-                member_user_id: string;
-                status: string;
-              }[];
-            };
-          };
-          const request = requestsBody.data?.requests?.find(
-            (row) =>
-              row.member_user_id === "U-E2E-MEMBER" && row.status === "Pending"
-          );
-          if (request) {
-            await fetch(
-              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(request.request_id)}/withdraw`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: "{}",
-              }
-            );
-          }
-        }, programId);
+        }
+      } finally {
+        await memberContext.close();
       }
-      await memberContext.close();
     }
+  });
+});
+
+test.describe("MSG-01 participant Messages", () => {
+  test("Home 查看全部 opens the Messages list", async ({ page }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/home");
+    await page.getByRole("link", { name: COPY.viewAllMessages }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.churchNews })
+    ).toBeVisible();
+  });
+
+  test("list opens detail and back returns to the same row", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
+    );
+    await page.goto("/messages");
+    const row = page.getByRole("link", {
+      name: new RegExp(COPY.demoChurchNews, "u"),
+    });
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByTestId("announcement-detail")).toBeVisible();
+    await expect(page).toHaveURL(/\/messages\?content=/u);
+    await page.getByRole("button", { name: COPY.churchNews }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(page.getByTestId("announcement-detail")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.demoChurchNews, "u") })
+    ).toBeVisible();
   });
 });
 
@@ -1485,7 +1809,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /聚會提醒/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices&event=[^&]+$/u
+        );
       },
       browser
     );
@@ -1505,7 +1831,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /聚會提醒/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+&event=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices&event=[^&]+$/u
+        );
         const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
         await expect(backBtn).toBeVisible();
         await backBtn.click();
@@ -1532,7 +1860,9 @@ test.describe("NTC-01 participant Notices", () => {
         );
         await page.goto("/notices");
         await page.getByRole("link", { name: /報名結果/u }).click();
-        await expect(page).toHaveURL(/\/programs\?program=[^&]+$/u);
+        await expect(page).toHaveURL(
+          /\/programs\?program=[^&]+&from=notices$/u
+        );
       },
       browser
     );
@@ -1563,11 +1893,9 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
-
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     const enrollmentPanel = enrollmentPanelOf(page);
+    await resetParticipantEnrollment(page, enrollmentPanel, COPY);
     const requestButton = submitActionButton(enrollmentPanel);
     await expect(requestButton).toBeVisible();
     await expect(
@@ -1580,10 +1908,9 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     await expect(
       enrollmentPanel.getByRole("button", { name: COPY.withdrawRequest })
     ).toBeVisible();
-    // The real request is also projected into the member's own history.
     await expect(
-      enrollmentPanel.getByRole("list", { name: COPY.enrollmentHistory })
-    ).toContainText(COPY.requestPending);
+      page.getByRole("list", { name: COPY.enrollmentHistory })
+    ).toHaveCount(0);
 
     // Dismissing the confirm dialog leaves the request intact.
     await enrollmentPanel
@@ -1799,9 +2126,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     expect(programId).toBeTruthy();
 
     await page.goto(`/programs?program=${programId}#overview`);
-    await expect(
-      page.getByRole("heading", { name: COPY.detailPurpose })
-    ).toBeVisible();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.enroll })).toHaveCount(
       0

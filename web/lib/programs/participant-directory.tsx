@@ -35,6 +35,7 @@ export interface ParticipantDirectoryProps {
   canManage: boolean;
   onManagement: () => void;
   onOpenProgram: (programId: string) => void;
+  onHome: () => void;
 }
 
 type CatalogState =
@@ -135,6 +136,7 @@ export const ParticipantDirectory = ({
   canManage,
   onManagement,
   onOpenProgram,
+  onHome,
 }: ParticipantDirectoryProps) => {
   const router = useRouter();
   const [state, setState] = useState<CatalogState>({ kind: "loading" });
@@ -245,9 +247,6 @@ export const ParticipantDirectory = ({
 
   return (
     <>
-      <h2 className={styles.boundaryTitle}>{COPY.programs.participantMode}</h2>
-      <p className={styles.boundaryLead}>{COPY.programs.participantLead}</p>
-
       {state.kind === "ready" &&
         programId !== null &&
         (selectedProgram ? (
@@ -314,8 +313,14 @@ export const ParticipantDirectory = ({
               ? COPY.programs.catalogForbiddenHint
               : COPY.programs.catalogLoadErrorHint}
           </p>
-          <button className={styles.retry} type="button" onClick={retryCatalog}>
-            {COPY.programs.catalogRetry}
+          <button
+            className={styles.retry}
+            type="button"
+            onClick={state.failure === "forbidden" ? onHome : retryCatalog}
+          >
+            {state.failure === "forbidden"
+              ? COPY.nav.backToHome
+              : COPY.programs.catalogRetry}
           </button>
         </section>
       )}
@@ -323,22 +328,44 @@ export const ParticipantDirectory = ({
       {programs && (
         <>
           <div className={styles.directorySearch}>
-            <label
-              className={styles.directorySearchLabel}
-              htmlFor="programs-catalog-search"
-            >
-              {COPY.programs.catalogSearchLabel}
-            </label>
             <div className={styles.directorySearchRow}>
-              <input
-                id="programs-catalog-search"
-                className={styles.input}
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={COPY.programs.catalogSearchPlaceholder}
-                autoComplete="off"
-              />
+              <div className={styles.directorySearchInputWrap}>
+                <svg
+                  aria-hidden="true"
+                  className={styles.directorySearchIcon}
+                  focusable="false"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    cx="11"
+                    cy="11"
+                    fill="none"
+                    r="7"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="m20 20-4-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+                <input
+                  id="programs-catalog-search"
+                  aria-label={COPY.programs.catalogSearchLabel}
+                  placeholder={COPY.programs.catalogSearchLabel}
+                  className={styles.input}
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
               {searching && (
                 <button
                   className={styles.clearButton}
@@ -377,9 +404,15 @@ export const ParticipantDirectory = ({
               className={`${styles.boundaryState} ${styles.directoryEmpty}`}
             >
               <h2 className={styles.boundaryTitle}>
-                {COPY.programs.catalogEmpty}
+                {programs.length === 0
+                  ? COPY.programs.catalogNoPrograms
+                  : COPY.programs.catalogEmpty}
               </h2>
-              <p>{COPY.programs.catalogEmptyHint}</p>
+              <p>
+                {programs.length === 0
+                  ? COPY.programs.catalogNoProgramsHint
+                  : COPY.programs.catalogEmptyHint}
+              </p>
               <button
                 className={styles.retry}
                 type="button"
@@ -412,20 +445,46 @@ export const ParticipantDirectory = ({
                       onClick={() => onOpenProgram(program.program_id)}
                     >
                       <span className={styles.directoryCardBody}>
-                        <span
-                          className={`${styles.directoryStatus} ${
-                            styles[
-                              `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
-                            ]
-                          }`}
-                        >
-                          {tag.label}
+                        <span className={styles.directoryCardTopRow}>
+                          <span
+                            className={`${styles.directoryStatus} ${
+                              styles[
+                                `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
+                              ]
+                            }`}
+                          >
+                            {tag.label}
+                          </span>
+                          {program.category && (
+                            <span className={styles.directoryCategory}>
+                              {program.category}
+                            </span>
+                          )}
                         </span>
                         <span className={styles.directoryCardTitle}>
                           {program.name}
                         </span>
                         <span className={styles.directoryCardSecondary}>
-                          {secondaryCopy}
+                          {program.viewerState === "active" ||
+                          program.viewerState === "eligible" ? (
+                            nextEventDateLabel(program.nextEventStartsAt) ? (
+                              <>
+                                {COPY.programs.catalogActivePrefix}
+                                {nextEventDateLabel(program.nextEventStartsAt)}
+                                {" · "}
+                                <span className={styles.nowrap}>
+                                  {COPY.programs.catalogEventCountSuffix.replace(
+                                    "{count}",
+                                    String(program.upcomingEventCount)
+                                  )}
+                                </span>
+                              </>
+                            ) : (
+                              (program.description ?? "")
+                            )
+                          ) : (
+                            secondaryCopy
+                          )}
                         </span>
                       </span>
                       <svg

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Program Detail Permission (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      @media (max-width: 799.98px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 12px;
+        padding: 1.25rem;
+        display: grid;
+        gap: 0.625rem;
+      }
+      .badge {
+        display: inline-flex;
+        min-height: 26px;
+        align-items: center;
+        padding: 0.1875rem 0.5625rem;
+        border-radius: 99px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+      .badge-pending {
+        border: 1px solid #c1ad95;
+        color: #8a5b16;
+        background: #f3eee8;
+      }
+      .badge-neutral {
+        border: 1px solid #d6dcde;
+        color: #59636a;
+        background: #fff;
+      }
+      .secondary {
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+        color: #171a1d;
+        font-weight: 700;
+        cursor: pointer;
+        width: 100%;
+        text-align: center;
+      }
+      .hidden {
+        color: #59636a;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        background: #fff;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: #fff;
+        border: 1px solid #d6dcde;
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/program-detail-permission.html — check-only
+        — worktree 15956de
+      </p>
+      <h1>Permission gate: canManage / hasActiveEnrollment</h1>
+      <div class="grid">
+        <div class="card">
+          <span class="badge badge-pending">可報名</span>
+          <h2 style="margin: 0; font-size: 1.25rem">E2E_DEMO_成人查經</h2>
+          <p style="color: #59636a; line-height: 1.6; margin: 0">
+            每週聚會的本機示範課程。
+          </p>
+          <div
+            style="
+              padding: 1.25rem;
+              background: #fff;
+              border: 1px solid #d6dcde;
+              border-radius: 8px;
+            "
+          >
+            <span
+              style="
+                color: #59636a;
+                font-family: ui-monospace, monospace;
+                font-size: 0.72rem;
+                letter-spacing: 0.08em;
+              "
+              >下一次聚會</span
+            >
+            <h3 style="margin: 0.5rem 0">第三課聚會</h3>
+            <p
+              style="
+                color: #59636a;
+                display: flex;
+                gap: 0.5rem;
+                align-items: center;
+                margin: 0;
+              "
+            >
+              📅 8月26日（三）晚上 7:30–8:45
+            </p>
+            <div class="hidden" style="margin-top: 0.75rem">
+              加入後可查看聚會詳情 —
+              <code
+                >canOpenEventDetail=false (canManage false &&
+                hasActiveEnrollment false)</code
+              >
+              at <code>participant-program-detail.tsx:337</code> hides
+              <code>secondaryButton "查看聚會詳情"</code> (commit 57400ecf). No
+              CTA.
+            </div>
+          </div>
+          <p style="color: #59636a; font-size: 0.85rem">
+            Member eligible, no enrollment — no CTA, read-only.
+          </p>
+        </div>
+        <div class="card">
+          <span
+            class="badge badge-pending"
+            style="border-color: #b9cfbe; color: #2e6b37; background: #eef4ef"
+            >已參加</span
+          >
+          <h2 style="margin: 0; font-size: 1.25rem">E2E_DEMO_成人查經</h2>
+          <p style="color: #59636a; line-height: 1.6; margin: 0">
+            每週聚會的本機示範課程。
+          </p>
+          <div
+            style="
+              padding: 1.25rem;
+              background: #fff;
+              border: 1px solid #d6dcde;
+              border-radius: 8px;
+            "
+          >
+            <span
+              style="
+                color: #59636a;
+                font-family: ui-monospace, monospace;
+                font-size: 0.72rem;
+                letter-spacing: 0.08em;
+              "
+              >下一次聚會</span
+            >
+            <h3 style="margin: 0.5rem 0">第三課聚會</h3>
+            <p
+              style="
+                color: #59636a;
+                display: flex;
+                gap: 0.5rem;
+                align-items: center;
+                margin: 0;
+              "
+            >
+              📅 8月26日（三）晚上 7:30–8:45
+            </p>
+            <button class="secondary" type="button" style="margin-top: 0.75rem">
+              查看聚會詳情
+            </button>
+            <p style="color: #59636a; font-size: 0.85rem; margin: 0.5rem 0 0">
+              With active enrollment — <code>hasActiveEnrollment true</code> →
+              CTA visible, calls <code>onOpenEvent(event_id)</code> →
+              <code>navigateParticipantEvent</code> →
+              <code
+                >buildProgramsHref({mode:"participant",programId,eventId})</code
+              >
+              at <code>programs-boundary.tsx:269-282</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        style="
+          margin-top: 1rem;
+          padding: 1rem;
+          border: 1px dashed #aeb8bc;
+          border-radius: 8px;
+          background: #fff;
+        "
+      >
+        <strong>Fix if parity for eligible needs visual CTA:</strong> at
+        <code>participant-program-detail.tsx:413-423</code> replace
+        <code>{canOpenEventDetail && &lt;button&gt;}</code> with else branch
+        <code
+          >&lt;p
+          class={styles.programDetailMuted}&gt;加入後可查看聚會詳情&lt;/p&gt;</code
+        >
+        — one line, no API.
+      </div>
+    </div>
+  </body>
+</html>

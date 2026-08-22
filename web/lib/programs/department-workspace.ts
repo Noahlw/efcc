@@ -32,6 +32,7 @@ import type {
   ManagementHubRow,
   ManagementHubView,
 } from "./hub-types";
+import { parseIsoInstant } from "./iso-instant";
 import {
   DepartmentManagerConflictError,
   DepartmentManagerNotAssignedError,
@@ -533,6 +534,42 @@ export interface ParticipantEventSummary {
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  /** Server-derived participant affordance; never an attendance authority. */
+  self_check_in_available: boolean;
+}
+
+export function participantSelfCheckInAvailable(
+  event: Pick<
+    EventRow,
+    | "status"
+    | "availability"
+    | "check_in_window_opens_at"
+    | "check_in_window_closes_at"
+  >,
+  program: Pick<ProgramView, "lifecycle" | "enrollment_mode" | "capabilities">,
+  hasActiveEnrollment: boolean,
+  now = Date.now()
+): boolean {
+  if (
+    !hasActiveEnrollment ||
+    program.capabilities.manage ||
+    program.lifecycle === "Archived" ||
+    program.enrollment_mode === "ManagerOnly" ||
+    event.status !== "Active" ||
+    event.availability !== "Active" ||
+    event.check_in_window_opens_at === null ||
+    event.check_in_window_closes_at === null
+  ) {
+    return false;
+  }
+  const opensAt = parseIsoInstant(event.check_in_window_opens_at);
+  const closesAt = parseIsoInstant(event.check_in_window_closes_at);
+  return (
+    opensAt !== null &&
+    closesAt !== null &&
+    now >= opensAt &&
+    now <= closesAt
+  );
 }
 
 export interface ParticipantEnrollmentRequest {
@@ -1959,6 +1996,7 @@ export class DepartmentWorkspace {
       this.listEvents(ctx, programId),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
+    const hasActiveEnrollment = enrollmentState.hasActiveEnrollment;
     return {
       program: this.programSummary(view),
       department: this.departmentSummary(department),
@@ -1986,6 +2024,11 @@ export class DepartmentWorkspace {
           // check-in and operator fields stay private here.
           name: event.name,
           location: event.location,
+          self_check_in_available: participantSelfCheckInAvailable(
+            event,
+            view,
+            hasActiveEnrollment
+          ),
         })),
       enrollment: enrollmentState.snapshot,
       enrollment_access: enrollmentState.access,
@@ -1998,20 +2041,28 @@ export class DepartmentWorkspace {
   ): Promise<{
     access: ParticipantEnrollmentAccess;
     snapshot: ParticipantEnrollmentSnapshot | null;
+    hasActiveEnrollment: boolean;
   }> {
-    if (
-      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
-    ) {
-      return { access: "Unavailable", snapshot: null };
-    }
-    if (!view.capabilities.enroll) {
-      return { access: "Ineligible", snapshot: null };
-    }
     const { requests, enrollments } =
       await this.store.listParticipantEnrollmentSnapshot(
         view.program_id,
         ctx.actorUserId
       );
+    const hasActiveEnrollment = enrollments.some(
+      (enrollment) => enrollment.status === "Active"
+    );
+    if (
+      !(await this.isModuleEnabled(view.department_id, MODULE_KEY.ENROLLMENT))
+    ) {
+      return {
+        access: "Unavailable",
+        snapshot: null,
+        hasActiveEnrollment,
+      };
+    }
+    if (!view.capabilities.enroll) {
+      return { access: "Ineligible", snapshot: null, hasActiveEnrollment };
+    }
     return {
       access: "Eligible",
       snapshot: {
@@ -2032,6 +2083,7 @@ export class DepartmentWorkspace {
             cancelled_at: enrollment.cancelled_at,
           })),
       },
+      hasActiveEnrollment,
     };
   }
 

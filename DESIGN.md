@@ -17,6 +17,10 @@ colors:
   error: "#b3261e"
   error-surface: "#fbeeed"
   error-border: "#e5b4b0"
+  pending: "#8a5b16"
+  pending-surface: "#f3eee8"
+  pending-border: "#c1ad95"
+  skeleton: "#e3e0e1"
 typography:
   display:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', sans-serif"
@@ -107,6 +111,10 @@ The palette uses civic neutral surfaces with high-contrast ink and a restrained 
 - **Focus Teal** (#176a87): High-contrast focus-visible indicator ring.
 - **Success Green** (#2e6b37): Positive confirmation and enabled state.
 - **Error Red** (#b3261e): Error, warning, and destructive confirmation state.
+- **Pending** (--pending `#8a5b16`): pending/awaiting-review state.
+- **Pending Surface** (--pending-surface `#f3eee8`): pending/awaiting-review surface tint.
+- **Pending Border** (--pending-border `#c1ad95`): pending/awaiting-review border.
+- **Skeleton** (--skeleton `#e3e0e1`): loading placeholder.
 
 ### Named Rules
 

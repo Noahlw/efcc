@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harden — Programs Loading (check-only)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #f4f5f3;
+        color: #171a1d;
+        font-family: system-ui, sans-serif;
+      }
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .skel {
+        border: 1px solid #d6dcde;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .bar {
+        height: 11px;
+        border-radius: 999px;
+        background: #e3e0e1;
+      }
+      .card {
+        padding: 1.125rem 1rem;
+        border-bottom: 1px solid #d6dcde;
+        min-height: 88px;
+      }
+      .card:last-child {
+        border-bottom: 0;
+      }
+      .alt {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px dashed #aeb8bc;
+        border-radius: 8px;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <p style="font-size: 0.8rem; color: #59636a">
+        .impeccable/phase-391/harden/programs-loading.html — check-only proposal
+      </p>
+      <h1 style="font-size: 1.1rem">Current live loading</h1>
+      <section
+        id="programs-catalog-state"
+        tabindex="-1"
+        role="status"
+        aria-busy="true"
+        aria-label="正在載入課程"
+      >
+        <span
+          style="
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+          "
+          >正在載入課程</span
+        >
+        <div class="skel" aria-hidden="true">
+          <div class="card">
+            <span class="bar" style="display: block"></span
+            ><span
+              class="bar"
+              style="display: block; width: 62%; margin-top: 0.75rem"
+            ></span>
+          </div>
+          <div class="card">
+            <span class="bar"></span
+            ><span class="bar" style="width: 62%; margin-top: 0.75rem"></span>
+          </div>
+          <div class="card">
+            <span class="bar"></span
+            ><span class="bar" style="width: 62%; margin-top: 0.75rem"></span>
+          </div>
+        </div>
+      </section>
+      <p style="font-size: 0.85rem; color: #59636a">
+        Live: <code>participant-directory.tsx:268-298</code>
+        <code>state.kind==="loading"</code> skeleton; announces
+        <code>COPY.programs.catalogLoading</code>. CSS
+        <code>programs.module.css:1325-1365</code>. No search/filter shown
+        during loading — correct to avoid interaction before data.
+      </p>
+      <div class="alt">
+        <strong>Hardening note (if needed):</strong>
+        <ul style="line-height: 1.6; color: #59636a">
+          <li>
+            Current is correct: keep search/filters hidden until
+            <code>programs</code> is non-null, otherwise a user could type a
+            query that is discarded on load. No change recommended beyond
+            keeping the <code>announce()</code> at
+            <code>participant-directory.tsx:158</code>.
+          </li>
+          <li>
+            Long-load edge: if still loading after 8s, consider polite hint
+            “仍在載入，如網絡較慢請稍候” via live region — not required for
+            390x844 fixtures.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

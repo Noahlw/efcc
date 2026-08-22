@@ -1,5 +1,6 @@
 /* oxlint-disable vitest/require-top-level-describe, vitest/max-expects -- shared fixture hooks cover all detail describes; contract tests assert the full visible surface */
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -106,6 +107,7 @@ const detailFixture = (
       source: "SCHEDULE",
       name: "第三課聚會",
       location: "二樓禮堂",
+      self_check_in_available: false,
     },
     {
       event_id: "event-2",
@@ -116,6 +118,7 @@ const detailFixture = (
       source: "SCHEDULE",
       name: "第四課聚會",
       location: "二樓禮堂",
+      self_check_in_available: false,
     },
   ],
   enrollment: snapshot(),
@@ -151,9 +154,9 @@ afterEach(() => {
 });
 
 describe("PUI-03 participant Program detail", () => {
-  test("renders purpose, status tag, next-meeting card, schedule table, and the back action", async () => {
+  test("renders the reworked detail layout with icon card, event schedule, and back action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
-    const { onBack, onOpenEvent } = renderDetail();
+    const { onBack, onOpenEvent } = renderDetail({ canManage: true });
 
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     const heading = await screen.findByRole("heading", {
@@ -173,21 +176,36 @@ describe("PUI-03 participant Program detail", () => {
       within(nextCard).getByText(COPY.programs.nextMeeting)
     ).toBeInTheDocument();
     expect(
-      within(nextCard).getByText(/2099\/03\/04 19:30/u)
+      within(nextCard).getByText("3月4日（三）晚上 7:30–9:00")
     ).toBeInTheDocument();
     expect(within(nextCard).getByText("二樓禮堂")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
+    ).not.toBeInTheDocument();
     await userEvent.click(
       within(nextCard).getByRole("button", {
         name: COPY.programs.viewEventDetail,
       })
     );
-    expect(onOpenEvent).toHaveBeenCalledOnce();
-    expect(onOpenEvent).toHaveBeenCalledWith("event-1");
+    expect(onOpenEvent).toHaveBeenCalledExactlyOnceWith("event-1");
 
-    const schedule = screen.getByRole("table", {
-      name: COPY.programs.scheduleTitle,
+    const rules = screen.getByRole("list", {
+      name: COPY.programs.scheduleRulesGroup,
     });
-    expect(within(schedule).getByText(/19:30/u)).toBeInTheDocument();
+    expect(
+      within(rules).getByText("每週 星期三 晚上 7:30–9:00")
+    ).toBeInTheDocument();
+    const schedule = screen.getByRole("list", {
+      name: COPY.programs.scheduleEventsGroup,
+    });
+    expect(within(schedule).getByText("第三課聚會")).toBeInTheDocument();
+    expect(within(schedule).getByText("第四課聚會")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", { name: COPY.programs.enrollmentHistory })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.detailBack })
+    ).toHaveTextContent("課程");
 
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailBack })
@@ -195,7 +213,328 @@ describe("PUI-03 participant Program detail", () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  test("renders the member's own enrollment history", async () => {
+  test("groups schedule sources and caps upcoming events at 800px", async () => {
+    let desktop = false;
+    let listener: (() => void) | undefined;
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn<() => MediaQueryList>(() => {
+        const media = {
+          get matches() {
+            return desktop;
+          },
+          media: "(min-width: 800px)",
+          addEventListener: (_type: string, handler: () => void): void => {
+            listener = handler;
+          },
+          removeEventListener: vi.fn<() => void>(),
+        };
+        return media as unknown as MediaQueryList;
+      }),
+    });
+
+    try {
+      const base = detailFixture();
+      const events = Array.from({ length: 10 }, (_, index) => {
+        const startsAt = new Date(
+          Date.UTC(2099, 2, index + 1, 11, 30)
+        ).toISOString();
+        return {
+          ...base.events[0],
+          event_id: `event-${index + 1}`,
+          starts_at: startsAt,
+          ends_at: new Date(Date.parse(startsAt) + 90 * 60_000).toISOString(),
+          name: `第 ${index + 1} 課聚會`,
+        };
+      }).toReversed();
+      mocks.getParticipantProgramDetail.mockResolvedValue(
+        detailFixture({ events })
+      );
+      renderDetail();
+
+      await screen.findByRole("heading", { name: "青年門徒小組" });
+      expect(
+        screen.getByRole("heading", {
+          name: COPY.programs.scheduleRulesGroup,
+        })
+      ).toBeInTheDocument();
+      const eventsGroup = screen.getByRole("list", {
+        name: COPY.programs.scheduleEventsGroup,
+      });
+      expect(within(eventsGroup).getAllByRole("listitem")).toHaveLength(4);
+
+      const assertEventRows = (limit: number) => {
+        const dates = [...eventsGroup.querySelectorAll("time")].map(
+          (time) => time.dateTime
+        );
+        expect(dates).toStrictEqual(dates.toSorted());
+        expect(new Set(dates).size).toBe(limit);
+        expect(
+          within(eventsGroup).getAllByText(COPY.programs.eventActive, {
+            exact: true,
+          })
+        ).toHaveLength(limit);
+        expect(
+          eventsGroup.querySelectorAll('[aria-hidden="true"]')
+        ).toHaveLength(limit);
+      };
+
+      assertEventRows(4);
+
+      desktop = true;
+      await act(() => {
+        listener?.();
+      });
+      await waitFor(() => {
+        expect(within(eventsGroup).getAllByRole("listitem")).toHaveLength(8);
+        assertEventRows(8);
+      });
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  test("hides empty schedule groups and keeps the empty state truthful", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ schedule_rules: [], events: [] })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.scheduleRulesGroup })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.scheduleEventsGroup })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.detailEventsNone)
+    ).toBeInTheDocument();
+  });
+
+  test("hides only the empty schedule group", async () => {
+    const base = detailFixture();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ schedule_rules: [], events: [base.events[0]] })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.scheduleRulesGroup })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.scheduleEventsGroup })
+    ).toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ events: [] })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.scheduleRulesGroup })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.scheduleEventsGroup })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.detailEventsNone)
+    ).not.toBeInTheDocument();
+  });
+
+  test("renders only a strict true availability projection", async () => {
+    const base = detailFixture();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+        events: [
+          {
+            ...base.events[0],
+            self_check_in_available: true,
+          },
+          {
+            ...base.events[1],
+            self_check_in_available:
+              "true" as unknown as ParticipantProgramDetailData["events"][number]["self_check_in_available"],
+          },
+        ],
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(screen.getAllByText(COPY.programs.checkInAvailable)).toHaveLength(1);
+  });
+
+  test("keeps server availability visible with unrelated management access", async () => {
+    const base = detailFixture();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail({ canManage: true });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByText(COPY.programs.checkInAvailable)
+    ).toBeInTheDocument();
+  });
+
+  test("does not expose availability for management or archived views", async () => {
+    const base = detailFixture();
+    const activeEnrollment = snapshot({
+      enrollments: [
+        {
+          enrollment_id: "enrollment-1",
+          status: "Active",
+          enrolled_at: "2099-03-02T00:00:00.000Z",
+          cancelled_at: null,
+        },
+      ],
+    });
+
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "同工安排課程", {
+          enrollment_mode: "ManagerOnly",
+        }),
+        enrollment: activeEnrollment,
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail({ canManage: true });
+    await screen.findByRole("heading", { name: "同工安排課程" });
+    expect(
+      screen.queryByText(COPY.programs.checkInAvailable)
+    ).not.toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "已封存課程", {
+          lifecycle: "Archived",
+        }),
+        enrollment: activeEnrollment,
+        events: [{ ...base.events[0], self_check_in_available: true }],
+      })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "已封存課程" });
+    expect(
+      screen.queryByText(COPY.programs.checkInAvailable)
+    ).not.toBeInTheDocument();
+  });
+
+  test("hides the view-event-detail CTA for a viewer with no Active enrollment", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const nextCard = screen.getByRole("article", { name: "第三課聚會" });
+    // #389 gap-fix: getEventDetail's participant projection 404s without an
+    // Active enrollment (department-workspace.ts hasActiveEnrollment gate),
+    // so this CTA must not render for a plain unenrolled, non-managing view.
+    expect(
+      within(nextCard).queryByRole("button", {
+        name: COPY.programs.viewEventDetail,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("shows the event-detail advisory only for a requestable unenrolled member", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    renderDetail();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByText(COPY.programs.enrollmentEventDetailAdvisory)
+    ).toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "同工安排課程", {
+          enrollment_mode: "ManagerOnly",
+        }),
+      })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "同工安排課程" });
+    expect(
+      screen.queryByText(COPY.programs.enrollmentEventDetailAdvisory)
+    ).not.toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "已封存課程", {
+          lifecycle: "Archived",
+        }),
+      })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "已封存課程" });
+    expect(
+      screen.queryByText(COPY.programs.enrollmentEventDetailAdvisory)
+    ).not.toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+      })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.queryByText(COPY.programs.enrollmentEventDetailAdvisory)
+    ).not.toBeInTheDocument();
+
+    cleanup();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ events: [] })
+    );
+    renderDetail();
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.queryByText(COPY.programs.enrollmentEventDetailAdvisory)
+    ).not.toBeInTheDocument();
+  });
+
+  test("does not render a member enrollment history timeline", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({
         enrollment: snapshot({
@@ -221,15 +560,12 @@ describe("PUI-03 participant Program detail", () => {
     renderDetail();
 
     await screen.findByRole("heading", { name: "青年門徒小組" });
-    const history = screen.getByRole("list", {
-      name: COPY.programs.enrollmentHistory,
-    });
     expect(
-      within(history).getByText(COPY.programs.requestPending)
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { name: COPY.programs.enrollmentHistory })
+    ).not.toBeInTheDocument();
     expect(
-      within(history).getByText(COPY.programs.enrollmentCancelled)
-    ).toBeInTheDocument();
+      screen.queryByRole("list", { name: COPY.programs.enrollmentHistory })
+    ).not.toBeInTheDocument();
   });
 
   const enrollmentFor = (state: string): ParticipantEnrollmentSnapshot => {
@@ -335,6 +671,20 @@ describe("PUI-03 participant Program detail", () => {
     }
   );
 
+  test("keeps sticky withdraw below the management entry when the viewer can manage", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({ enrollment: enrollmentFor("active") })
+    );
+    renderDetail({ canManage: true });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.getByRole("button", { name: COPY.programs.enterManagement })
+    ).toBeInTheDocument();
+    const actions = screen.getAllByRole("button");
+    expect(actions.at(-1)).toHaveAccessibleName(COPY.programs.cancelEnrollment);
+  });
+
   test("ManagerOnly renders the 由同工安排 tag, read-only note, and no self-enroll action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({
@@ -413,6 +763,7 @@ describe("PUI-03 participant Program detail", () => {
             source: "SCHEDULE",
             name: "第三課聚會",
             location: null,
+            self_check_in_available: false,
           },
         ],
       })

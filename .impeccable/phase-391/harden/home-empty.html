@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Home — Empty harden (check-only)</title>
+  <style>
+    :root {
+      --surface: #f4f5f3;
+      --surface-raised: #fff;
+      --ink: #171a1d;
+      --ink-muted: #59636a;
+      --line: #d6dcde;
+      --line-strong: #aeb8bc;
+      --accent: #9c302c;
+      --accent-deep: #76231f;
+      --focus: #176a87;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family:
+        PingFang TC,
+        Noto Sans TC,
+        Microsoft JhengHei,
+        system-ui,
+        sans-serif;
+    }
+    .page {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 4vw, 1.5rem)
+        calc(1.5rem + 72px + env(safe-area-inset-bottom));
+    }
+    .header {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 3vw, 1.5rem);
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    .intro {
+      padding: 8px 0 22px;
+    }
+    .intro h1 {
+      margin: 0;
+      font-size: clamp(1.72rem, 6vw, 2.25rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .intro p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      font-size: 0.96rem;
+      line-height: 1.6;
+    }
+    .dateTag {
+      display: inline-flex;
+      margin-bottom: 10px;
+      color: var(--ink-muted);
+      font:
+        600 0.72rem ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+      letter-spacing: 0.08em;
+    }
+    .emptyCard {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 34px 22px;
+      text-align: center;
+    }
+    .emptyCard h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+    .emptyCard p {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      line-height: 1.65;
+    }
+    .primary {
+      width: 100%;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 18px;
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .primary:hover {
+      background: var(--accent-deep);
+      border-color: var(--accent-deep);
+    }
+    .section {
+      margin-top: 28px;
+    }
+    .sectionHeading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .sectionHeading h2 {
+      margin: 0 0 12px;
+      font-size: 1.14rem;
+      font-weight: 650;
+    }
+    .sectionLink {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 2px;
+      font-size: 0.9rem;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .sectionLink:hover {
+      text-decoration: underline;
+    }
+    .listCard {
+      width: 100%;
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid #868182;
+      border-radius: 10px;
+      background: #fff;
+      text-align: left;
+    }
+    .cardTitle {
+      font-weight: 650;
+      display: block;
+    }
+    .cardDesc {
+      margin-top: 5px;
+      color: var(--ink-muted);
+      font-size: 0.86rem;
+      display: block;
+    }
+    .chev {
+      width: 20px;
+      height: 20px;
+      color: var(--ink-muted);
+    }
+    .muted {
+      color: var(--ink-muted);
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: calc(72px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 8px 12px env(safe-area-inset-bottom);
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .nav span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--ink-muted);
+      text-align: center;
+    }
+  </style>
+  <body>
+    <header class="header">
+      <span style="font-weight: 800">顯恩堂</span
+      ><span style="font-size: 0.75rem; color: #59636a"
+        >示範 · empty proposals</span
+      >
+    </header>
+    <main class="page">
+      <div class="intro">
+        <div class="dateTag">星期三 · 8月20日</div>
+        <h1>早晨，陳小明</h1>
+        <p>下一項與你有關的安排。</p>
+      </div>
+
+      <h2 style="font-size: 0.9rem; color: var(--ink-muted); margin: 0 0 10px">
+        Case A — 空狀態（有 Explore）
+      </h2>
+      <section class="emptyCard" data-testid="home-empty-state">
+        <h2>暫時沒有與你有關的聚會</h2>
+        <p>你未有已報名的聚會。探索課程，尋找合適的參加機會。</p>
+        <a href="/programs" class="primary" style="margin-top: 16px"
+          >探索課程</a
+        >
+      </section>
+      <section class="section" aria-labelledby="explore-a">
+        <div class="sectionHeading">
+          <h2 id="explore-a">探索</h2>
+          <a href="/programs" class="sectionLink">全部課程</a>
+        </div>
+        <a
+          href="/programs?program=p-intro"
+          class="listCard"
+          style="text-decoration: none; color: inherit"
+        >
+          <span
+            ><span class="cardTitle">慕道入門課程</span
+            ><span class="cardDesc">現正接受報名 · 9月7日開始</span></span
+          >
+          <svg
+            class="chev"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </a>
+      </section>
+      <p class="muted" style="margin-top: 12px">
+        Case A 斷言：<code>emptyCard</code> 48px CTA 與 Explore
+        <code>listCard</code> 同時可見；Explore 的 <code>href</code> 必須是
+        <code>/programs?program=&lt;id&gt;</code>（P1-01），不是裸
+        <code>/programs</code>。
+      </p>
+
+      <hr
+        style="margin: 28px 0; border: 0; border-top: 1px solid var(--line)"
+      />
+
+      <h2 style="font-size: 0.9rem; color: var(--ink-muted); margin: 0 0 10px">
+        Case B — 空-空（無 Explore）
+      </h2>
+      <section class="emptyCard">
+        <h2>暫時沒有與你有關的聚會</h2>
+        <p>你未有已報名的聚會。探索課程，尋找合適的參加機會。</p>
+        <a href="/programs" class="primary" style="margin-top: 16px"
+          >探索課程</a
+        >
+      </section>
+      <p class="muted" style="margin-top: 12px">
+        Case B 斷言：當
+        <code>exploreProgram === null</code>（無合資格課程）時，Explore
+        <code>section</code> 整段不渲染，頁面不留 28px 空隙；<code
+          >emptyCard</code
+        >
+        仍是單一 CTA。驗證 <code>scrollWidth &le; innerWidth</code> 在 320
+        仍成立。
+      </p>
+
+      <p class="muted" style="margin-top: 18px">
+        <strong>Check-only:</strong> 同時覆蓋已測試的 enrolled 分支（見
+        <code>home-loading.html</code> 的 skeleton 對照）與
+        <code
+          >home.test.ts: "Home renders empty state when member is not
+          enrolled"</code
+        >。
+      </p>
+    </main>
+    <nav class="nav" aria-label="主要導航">
+      <span>首頁</span><span>課程</span><span>掃描</span><span>通知</span
+      ><span>帳戶</span>
+    </nav>
+    <script>
+      console.log(
+        "empty scrollWidth",
+        document.documentElement.scrollWidth,
+        "innerWidth",
+        window.innerWidth
+      );
+    </script>
+  </body>
+</html>

@@ -943,7 +943,8 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
-      const { handleGetHome } = await import("./lib/home-handlers");
+      const { handleGetHome, handleGetAnnouncements } =
+        await import("./lib/home-handlers");
       const {
         handleGetHomeContent,
         handleGetFeaturedEventPreview,
@@ -954,6 +955,12 @@ export default {
 
       if (url.pathname === "/api/v1/home" && request.method === "GET") {
         return handleGetHome(request, homeEnv);
+      }
+      if (
+        url.pathname === "/api/v1/home/announcements" &&
+        request.method === "GET"
+      ) {
+        return handleGetAnnouncements(request, homeEnv);
       }
       if (url.pathname === "/api/v1/home/content" && request.method === "GET") {
         return handleGetHomeContent(request, homeEnv);

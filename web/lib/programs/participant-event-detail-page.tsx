@@ -6,20 +6,47 @@ import { useCallback } from "react";
 import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail } from "./event-detail";
+import { buildProgramsHref } from "./programs-intent";
+import type { ProgramsOrigin } from "./programs-intent";
 
-export function ParticipantEventDetailPage({
+export const ParticipantEventDetailPage = ({
   programId,
   eventId,
+  origin,
 }: {
   programId: string;
   eventId: string;
-}) {
+  origin?: ProgramsOrigin;
+}) => {
   const pathname = usePathname();
   const router = useRouter();
 
   const handleBack = useCallback(() => {
-    window.history.back();
-  }, []);
+    const hasInternalHistory =
+      typeof window !== "undefined" &&
+      window.history.state?.efccParent === "program-detail";
+    if (hasInternalHistory) {
+      window.history.back();
+      return;
+    }
+    if (origin === "home" || origin === "notices" || origin === "messages") {
+      router.replace(
+        origin === "home"
+          ? "/home"
+          : origin === "notices"
+            ? "/notices"
+            : "/messages"
+      );
+      return;
+    }
+    router.replace(
+      buildProgramsHref({
+        mode: "participant",
+        programId,
+        origin: origin ?? "programs",
+      })
+    );
+  }, [origin, programId, router]);
 
   const handleAuthRequired = useCallback(() => {
     rememberDeepLink(
@@ -33,8 +60,9 @@ export function ParticipantEventDetailPage({
       programId={programId}
       eventId={eventId}
       canManage={false}
+      origin={origin}
       onBack={handleBack}
       onAuthRequired={handleAuthRequired}
     />
   );
-}
+};

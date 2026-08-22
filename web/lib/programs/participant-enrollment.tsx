@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   cancelEnrollment,
@@ -13,7 +12,6 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   ParticipantEnrollmentAccess,
-  ParticipantEnrollmentRequest,
   ParticipantEnrollmentSnapshot,
   ParticipantEventSummary,
   ParticipantScheduleRule,
@@ -28,13 +26,8 @@ export interface ParticipantEnrollmentProps {
   enrollmentAccess: ParticipantEnrollmentAccess;
   scheduleRules: ParticipantScheduleRule[];
   events: ParticipantEventSummary[];
+  showEventDetailAdvisory?: boolean;
   onRefresh: () => Promise<void>;
-}
-
-interface HistoryItem {
-  id: string;
-  label: string;
-  at: string;
 }
 
 type ConfirmKind = "withdraw" | "cancel";
@@ -50,28 +43,6 @@ function errorMessage(error: unknown): string {
     return COPY.programs.enrollmentUnavailableNote;
   }
   return errorCopyFor(error.problem.code, error.problem.detail);
-}
-
-function requestStatusLabel(
-  status: ParticipantEnrollmentRequest["status"]
-): string | null {
-  switch (status) {
-    case "Pending": {
-      return COPY.programs.requestPending;
-    }
-    case "Rejected": {
-      return COPY.programs.requestRejected;
-    }
-    case "Withdrawn": {
-      return COPY.programs.requestWithdrawn;
-    }
-    case "Approved": {
-      return null;
-    }
-    default: {
-      return null;
-    }
-  }
 }
 
 interface EnrollmentActionProps {
@@ -124,14 +95,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentActiveHint}
         </p>
-        <button
-          type="button"
-          className={styles.dangerButton}
-          disabled={busy}
-          onClick={() => onBeginConfirm("cancel")}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.cancelEnrollment}
-        </button>
+        <div className={styles.actionBarCard}>
+          <button
+            type="button"
+            className={styles.dangerButton}
+            disabled={busy}
+            onClick={() => onBeginConfirm("cancel")}
+          >
+            {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
+          </button>
+        </div>
       </>
     );
   }
@@ -142,14 +115,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.requestPendingHint}
         </p>
-        <button
-          type="button"
-          className={styles.actionButton}
-          disabled={busy}
-          onClick={() => onBeginConfirm("withdraw")}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.withdrawRequest}
-        </button>
+        <div className={styles.actionBarCard}>
+          <button
+            type="button"
+            className={styles.actionButton}
+            disabled={busy}
+            onClick={() => onBeginConfirm("withdraw")}
+          >
+            {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
+          </button>
+        </div>
       </>
     );
   }
@@ -168,14 +143,16 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestRejectedHint}
           </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={onRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-          </button>
+          <div className={styles.actionBarCard}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={onRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+            </button>
+          </div>
         </>
       );
     }
@@ -186,14 +163,16 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestWithdrawnHint}
           </p>
-          <button
-            type="button"
-            className={styles.actionButton}
-            disabled={busy}
-            onClick={onRequest}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-          </button>
+          <div className={styles.actionBarCard}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={onRequest}
+            >
+              {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+            </button>
+          </div>
         </>
       );
     }
@@ -208,14 +187,16 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentCancelledHint}
         </p>
-        <button
-          type="button"
-          className={styles.actionButton}
-          disabled={busy}
-          onClick={onRequest}
-        >
-          {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-        </button>
+        <div className={styles.actionBarCard}>
+          <button
+            type="button"
+            className={styles.button}
+            disabled={busy}
+            onClick={onRequest}
+          >
+            {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
+          </button>
+        </div>
       </>
     );
   }
@@ -227,14 +208,16 @@ const EnrollmentAction = ({
     );
   }
   return (
-    <button
-      type="button"
-      className={styles.actionButton}
-      disabled={busy}
-      onClick={onRequest}
-    >
-      {busy ? COPY.programs.submitting : COPY.programs.enroll}
-    </button>
+    <div className={styles.actionBarCard}>
+      <button
+        type="button"
+        className={styles.button}
+        disabled={busy}
+        onClick={onRequest}
+      >
+        {busy ? COPY.programs.submitting : COPY.programs.enroll}
+      </button>
+    </div>
   );
 };
 
@@ -244,6 +227,7 @@ export const ParticipantEnrollment = ({
   enrollmentAccess,
   scheduleRules,
   events,
+  showEventDetailAdvisory = false,
   onRefresh,
 }: ParticipantEnrollmentProps) => {
   const [busy, setBusy] = useState(false);
@@ -253,6 +237,7 @@ export const ParticipantEnrollment = ({
   const mounted = useRef(true);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const errorRef = useRef<HTMLOutputElement | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -260,6 +245,15 @@ export const ParticipantEnrollment = ({
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    // Focus errors are set while the acting button is disabled/mid-flight,
+    // which drops keyboard focus to document.body once it re-enables --
+    // move focus to the visible alert instead of leaving it stranded.
+    if (actionError !== null) {
+      errorRef.current?.focus();
+    }
+  }, [actionError]);
 
   const showOfflineError = useCallback(() => {
     const message = COPY.programs.enrollmentOfflineError;
@@ -277,21 +271,37 @@ export const ParticipantEnrollment = ({
   }, []);
 
   useEffect(() => {
-    if (confirmKind === null) {
+    const dialogEl = dialogRef.current;
+    if (!dialogEl) {
       return;
     }
-    const dismissButton = dialogRef.current?.querySelector<HTMLButtonElement>(
+    if (confirmKind === null) {
+      if (dialogEl.open) {
+        dialogEl.close();
+      }
+      return;
+    }
+    // Native showModal() renders in the top layer with a real backdrop and
+    // traps Tab focus inside the dialog automatically -- no hand-rolled
+    // focus trap needed. The dismiss button still gets explicit initial
+    // focus since showModal()'s own default (the dialog element itself)
+    // isn't the most useful landing spot here.
+    if (!dialogEl.open) {
+      dialogEl.showModal();
+    }
+    const dismissButton = dialogEl.querySelector<HTMLButtonElement>(
       "[data-confirm-dismiss]"
     );
     dismissButton?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeConfirm();
-      }
+    // The native dialog already closes itself on Escape (firing `cancel`
+    // before `close`); hook that to run the same focus-restore path as an
+    // explicit dismiss click.
+    const onCancel = (event: Event) => {
+      event.preventDefault();
+      closeConfirm();
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    dialogEl.addEventListener("cancel", onCancel);
+    return () => dialogEl.removeEventListener("cancel", onCancel);
   }, [closeConfirm, confirmKind]);
 
   const runAction = useCallback(
@@ -365,34 +375,6 @@ export const ParticipantEnrollment = ({
   const showScheduleAdvisory =
     canRequest && (scheduleRules.length > 0 || events.length > 0);
 
-  const history = useMemo<HistoryItem[]>(() => {
-    if (!enrollment) {
-      return [];
-    }
-    return [
-      ...enrollment.requests.flatMap((request) => {
-        const label = requestStatusLabel(request.status);
-        return label === null
-          ? []
-          : [
-              {
-                id: `request-${request.request_id}`,
-                label,
-                at: request.decided_at ?? request.submitted_at,
-              },
-            ];
-      }),
-      ...enrollment.enrollments.map((item) => ({
-        id: `enrollment-${item.enrollment_id}`,
-        label:
-          item.status === "Active"
-            ? COPY.programs.enrollmentActive
-            : COPY.programs.enrollmentCancelled,
-        at: item.cancelled_at ?? item.enrolled_at,
-      })),
-    ].toSorted((a, b) => b.at.localeCompare(a.at));
-  }, [enrollment]);
-
   const beginConfirm = (kind: ConfirmKind) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       showOfflineError();
@@ -426,13 +408,17 @@ export const ParticipantEnrollment = ({
           ),
         COPY.programs.requestWithdrawnNotice
       );
-    }
-    if (kind === "cancel" && activeEnrollment) {
+    } else if (kind === "cancel" && activeEnrollment) {
       void runAction(
         () =>
           cancelEnrollment(program.program_id, activeEnrollment.enrollment_id),
         COPY.programs.enrollmentCancelledNotice
       );
+    } else if (kind !== null) {
+      // Server state changed while the confirm dialog was open (e.g. the
+      // request/enrollment this confirm targeted no longer exists) --
+      // reconcile the UI instead of silently no-opping.
+      void onRefresh();
     }
   };
 
@@ -459,7 +445,12 @@ export const ParticipantEnrollment = ({
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <output
+          ref={errorRef}
+          className={styles.panelError}
+          role="alert"
+          tabIndex={-1}
+        >
           {actionError}
         </output>
       )}
@@ -485,36 +476,14 @@ export const ParticipantEnrollment = ({
         </p>
       )}
 
-      {history.length > 0 && (
-        <section
-          className={styles.programDetailHistory}
-          aria-labelledby="program-enrollment-history-title"
-        >
-          <h4
-            id="program-enrollment-history-title"
-            className={styles.programDetailSubheading}
-          >
-            {COPY.programs.enrollmentHistory}
-          </h4>
-          <ul
-            className={styles.eventList}
-            aria-label={COPY.programs.enrollmentHistory}
-          >
-            {history.map((item) => (
-              <li key={item.id} className={styles.eventRow}>
-                <span className={styles.eventDate}>{item.label}</span>
-                <time className={styles.eventSource} dateTime={item.at}>
-                  {hkWallLabel(item.at)}
-                </time>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {showEventDetailAdvisory && canRequest && (
+        <p className={styles.programDetailMuted}>
+          {COPY.programs.enrollmentEventDetailAdvisory}
+        </p>
       )}
 
       {confirmKind !== null && (
         <dialog
-          open
           ref={dialogRef}
           className={styles.participantConfirm}
           aria-modal="true"

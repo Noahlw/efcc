@@ -7,8 +7,8 @@ export default defineProject({
     alias: { "@": import.meta.dirname ?? "" },
   },
   test: {
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     environment: "jsdom",
     include: [
       "lib/app.test.tsx",
@@ -21,6 +21,9 @@ export default defineProject({
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
       "lib/home.test.tsx",
+      "lib/hk-time.test.ts",
+      "lib/messages-intent.test.ts",
+      "lib/messages-panel.test.tsx",
       "lib/management-hub.test.tsx",
       "lib/settings-hub.test.tsx",
       "lib/permissions-panel.test.tsx",

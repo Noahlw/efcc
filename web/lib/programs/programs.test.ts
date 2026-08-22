@@ -24,6 +24,7 @@ import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { D1CapabilityAuthorizer } from "./capability-authorizer";
+import { participantSelfCheckInAvailable } from "./department-workspace";
 import { D1WorkspaceStore } from "./d1-workspace-store";
 import { addWallDays, hkTodayWallDate, wallWeekday } from "./recurrence";
 
@@ -8387,6 +8388,7 @@ describe("PUI-03: participant Program detail", () => {
           source: string;
           name: string | null;
           location: string | null;
+          self_check_in_available: boolean;
           manual_check_in_code?: unknown;
           check_in_window_opens_at?: unknown;
           check_in_window_closes_at?: unknown;
@@ -8426,6 +8428,234 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(res.status, 200);
     return (await assertCorrelated(res)) as ParticipantDetailResponse;
   };
+
+  test("treats valid window endpoints as inclusive and rejects malformed values", () => {
+    const program = {
+      lifecycle: "Active",
+      enrollment_mode: "MemberRequest",
+      capabilities: {
+        manage: false,
+        publish: false,
+        enroll: true,
+        leader_assign: false,
+      },
+    } as const;
+    const event = {
+      status: "Active",
+      availability: "Active",
+      check_in_window_opens_at: "2099-06-01T10:00:00Z",
+      check_in_window_closes_at: "2099-06-01T11:00:00Z",
+    } as const;
+    const opening = Date.parse(event.check_in_window_opens_at);
+    const closing = Date.parse(event.check_in_window_closes_at);
+
+    assert.strictEqual(
+      participantSelfCheckInAvailable(event, program, true, opening),
+      true
+    );
+    assert.strictEqual(
+      participantSelfCheckInAvailable(event, program, true, closing),
+      true
+    );
+    assert.strictEqual(
+      participantSelfCheckInAvailable(
+        {
+          ...event,
+          check_in_window_opens_at: "2026-02-31T10:00:00Z",
+          check_in_window_closes_at: "9999-12-31T23:59:59Z",
+        },
+        program,
+        true,
+        opening
+      ),
+      false
+    );
+    assert.strictEqual(
+      participantSelfCheckInAvailable(
+        {
+          ...event,
+          check_in_window_opens_at: "2099-06-01T10:00:00Z\n",
+          check_in_window_closes_at: "9999-12-31T23:59:59Z",
+        },
+        program,
+        true,
+        opening
+      ),
+      false
+    );
+  });
+
+  test("projects availability only for an enrolled Member in an open window", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "S2-INT-AVAIL-POSITIVE",
+      name: "S2 Availability Positive Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "S2 Availability Positive Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const now = Date.now();
+    const event = await createEventFor(adminAccess, created.program_id, {
+      starts_at: new Date(now - 15 * 60_000).toISOString(),
+      ends_at: new Date(now + 15 * 60_000).toISOString(),
+      name: "目前可簽到聚會",
+      check_in_window_opens_at: new Date(now - 5 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 5 * 60_000).toISOString(),
+    });
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+
+    const beforeEnrollment = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      beforeEnrollment.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+
+    const enrolled = await assistedEnrollFor(
+      adminAccess,
+      created.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrolled.status, 201);
+    const enrollmentRow = await testDb()
+      .prepare(
+        "SELECT enrollment_id FROM enrollments WHERE program_id = ? AND member_user_id = ?"
+      )
+      .bind(created.program_id, "U002")
+      .first<{ enrollment_id: string }>();
+    assert.ok(enrollmentRow);
+    const open = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      open.data.detail.events[0]?.self_check_in_available,
+      true
+    );
+    assert.strictEqual(
+      typeof open.data.detail.events[0]?.self_check_in_available,
+      "boolean"
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE enrollments SET status = 'Cancelled', cancelled_at = ? WHERE enrollment_id = ?"
+      )
+      .bind(new Date(Date.now()).toISOString(), enrollmentRow.enrollment_id)
+      .run();
+    const afterEnrollmentCancel = await detailOf(
+      memberAccess,
+      created.program_id
+    );
+    assert.strictEqual(
+      afterEnrollmentCancel.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE enrollments SET status = 'Active', cancelled_at = NULL WHERE enrollment_id = ?"
+      )
+      .bind(enrollmentRow.enrollment_id)
+      .run();
+    const afterEnrollmentRestore = await detailOf(
+      memberAccess,
+      created.program_id
+    );
+    assert.strictEqual(
+      afterEnrollmentRestore.data.detail.events[0]?.self_check_in_available,
+      true
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_opens_at = ?, check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind("0", "9999-12-31T23:59:59Z", event.event_id)
+      .run();
+    const malformedWindow = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      malformedWindow.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_opens_at = ?, check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(
+        new Date(Date.now() - 5 * 60_000).toISOString(),
+        new Date(Date.now() + 5 * 60_000).toISOString(),
+        event.event_id
+      )
+      .run();
+    const restoredWindow = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      restoredWindow.data.detail.events[0]?.self_check_in_available,
+      true
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(new Date(Date.now() - 60_000).toISOString(), event.event_id)
+      .run();
+    const afterWindow = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      afterWindow.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE programs SET lifecycle = 'Archived' WHERE program_id = ?"
+      )
+      .bind(created.program_id)
+      .run();
+    const archived = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(
+      archived.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+  });
+
+  test("does not grant availability to management-only actors", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "S2-INT-AVAIL-MANAGER",
+      name: "S2 Availability Manager Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "S2 Availability Manager Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "ManagerOnly",
+    });
+    const now = Date.now();
+    await createEventFor(adminAccess, created.program_id, {
+      starts_at: new Date(now - 15 * 60_000).toISOString(),
+      ends_at: new Date(now + 15 * 60_000).toISOString(),
+      check_in_window_opens_at: new Date(now - 5 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 5 * 60_000).toISOString(),
+    });
+
+    const manager = await detailOf(adminAccess, created.program_id);
+    assert.strictEqual(
+      manager.data.detail.events[0]?.self_check_in_available,
+      false
+    );
+
+    await testDb()
+      .prepare(
+        "UPDATE events SET availability = 'Inactive' WHERE program_id = ?"
+      )
+      .bind(created.program_id)
+      .run();
+    const inactive = await detailOf(adminAccess, created.program_id);
+    assert.strictEqual(inactive.data.detail.events.length, 0);
+  });
 
   test("requires a cookie-authenticated session", async () => {
     const res = await worker.fetch(

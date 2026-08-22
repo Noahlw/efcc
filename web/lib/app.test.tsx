@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -1606,12 +1607,12 @@ describe("Shell", () => {
       });
     });
 
-    test("programs page renders COPY.sections.programs title", async () => {
+    test("programs page renders COPY.programs.pageTitle", async () => {
       setAuthHint();
       render(<ProgramsPage />);
       await waitFor(() => {
         expect(
-          screen.getByRole("heading", { name: COPY.sections.programs })
+          screen.getByRole("heading", { name: COPY.programs.pageTitle })
         ).toBeInTheDocument();
       });
     });
