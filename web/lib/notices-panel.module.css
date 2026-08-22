@@ -2,7 +2,8 @@
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1.25rem, 4vw, 2.75rem) 4rem;
+  padding: clamp(0.75rem, 2vh, 1.25rem) clamp(1rem, 4vw, 1.5rem)
+    calc(6rem + env(safe-area-inset-bottom, 0px));
 }
 
 .pageHeader {
@@ -33,56 +34,62 @@
 
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.5rem 1rem;
-  min-height: 2.75rem;
-  margin-bottom: 0.75rem;
+  min-height: 2.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
 }
 
 .unreadCount {
-  margin-right: auto;
-  color: var(--ink-muted, #59636a);
-  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #9c302c) 8%, transparent);
+  color: var(--accent, #9c302c);
+  font-size: 0.8125rem;
   font-weight: 700;
 }
 
 .markAll,
 .retry {
   min-height: 44px;
-  padding: 0.5rem 0.125rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
   border: 0;
-  border-radius: var(--radius-sm, 8px);
   background: transparent;
-  color: var(--ink, #171a1d);
+  color: var(--accent, #9c302c);
   font: inherit;
-  font-weight: 700;
+  font-size: 0.8125rem;
+  font-weight: 750;
   cursor: pointer;
 }
 
 .markAll:hover:not(:disabled),
 .retry:hover {
-  color: var(--accent, #9c302c);
+  color: var(--accent-deep, #76231f);
   text-decoration: underline;
 }
 
 .markAll:disabled {
   color: var(--ink-muted, #59636a);
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .list {
   overflow: hidden;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: var(--radius-md, 12px);
+  border: none;
+  border-radius: 1.125rem;
   background: var(--surface-raised, #fff);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 6%, transparent);
   list-style: none;
 }
-
 .item + .item {
   border-top: 1px solid var(--line, #d6dcde);
 }
@@ -107,12 +114,12 @@
 .readDot {
   width: 8px;
   height: 8px;
-  margin-top: 0.4375rem;
+  margin-top: 0.375rem;
   border-radius: 50%;
 }
 
 .unreadDot {
-  background: var(--error, #b3261e);
+  background: var(--accent, #9c302c);
 }
 
 .readDot {
@@ -121,6 +128,11 @@
 
 .itemCopy {
   min-width: 0;
+}
+@media (max-width: 799.98px) {
+  .pageHeader {
+    display: none;
+  }
 }
 
 .itemTitle,
