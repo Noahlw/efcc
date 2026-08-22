@@ -237,6 +237,8 @@ export const COPY = {
   offlineBanner: "現時沒有網絡。你仍可查看已載入內容；提交前請重新連線。",
   home: {
     greeting: "早晨",
+    churchName: "播道會顯恩堂",
+    messageReadMore: "閱讀全文 ›",
     subtitle: "下一項與你有關的安排。",
     loading: "正在載入首頁…",
     loadError: "首頁暫時無法載入。",
@@ -791,6 +793,8 @@ export const COPY = {
     detailEventLocation: "地點",
     viewEventDetail: "查看聚會詳情",
     scheduleTitle: "聚會時間表",
+    scheduleExpandAll: "顯示全部 {count} 節 ↓",
+    eventFallbackTitle: "{name} 聚會",
     scheduleRulesGroup: "時間規則",
     scheduleEventsGroup: "即將舉行",
     conflictNote: "此時段與「{program}」聚會時間相近，僅供提示，不影響報名。",

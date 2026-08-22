@@ -266,7 +266,10 @@ const ParticipantSchedule = ({
             className={styles.programDetailExpandButton}
             onClick={onExpandAll}
           >
-            顯示全部 {totalEventCount} 節 ↓
+            {COPY.programs.scheduleExpandAll.replace(
+              "{count}",
+              String(totalEventCount)
+            )}
           </button>
         )}
       </div>

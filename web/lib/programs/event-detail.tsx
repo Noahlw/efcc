@@ -441,7 +441,7 @@ export const EventDetail = ({
     const eventTitle =
       event.name ??
       (event.program_name
-        ? `${event.program_name} 聚會`
+        ? COPY.programs.eventFallbackTitle.replace("{name}", event.program_name)
         : hkWallDateTimeLabel(event.starts_at));
     const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
     const instructionsHeadingId = "participant-event-instructions";

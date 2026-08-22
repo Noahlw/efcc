@@ -323,7 +323,7 @@ export function AnnouncementDetail({
         <h1>{announcement.title}</h1>
         <p>{announcement.summary}</p>
       </div>
-      {/* ponytail: venueCard is identical for every announcement by design
+      {/* ponytail: TODO(CMS) venueCard is identical for every announcement by design
           (impeccable audit P2-06) -- read from announcement.venue instead
           once the CMS ships a per-announcement venue field. */}
       <article className={styles.venueCard}>

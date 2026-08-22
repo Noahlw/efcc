@@ -190,9 +190,9 @@ export const MessagesPanel = () => {
                 <h2 className={styles.messageCardTitle}>{row.title}</h2>
                 <p className={styles.messageCardDesc}>{row.summary}</p>
                 <div className={styles.messageCardFoot}>
-                  <span>播道會顯恩堂</span>
+                  <span>{COPY.home.churchName}</span>
                   <strong className={styles.messageActionLink}>
-                    閱讀全文 ›
+                    {COPY.home.messageReadMore}
                   </strong>
                 </div>
               </Link>

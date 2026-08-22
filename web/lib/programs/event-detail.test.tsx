@@ -670,6 +670,25 @@ describe("EVT-01 event detail", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("a nameless event falls back to the COPY-composed program title", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: { ...detailFixture().event, name: null },
+      })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+      />
+    );
+    await expect(
+      screen.findByRole("heading", { name: "顯恩堂主日學 聚會" })
+    ).resolves.toBeInTheDocument();
+  });
+
   // 085-04 (#323) participant projection — Spec 085 US 23-24.
   test("participant projection shows badge + title/program/when/where + instructions + CTA", async () => {
     const now = Date.now();
