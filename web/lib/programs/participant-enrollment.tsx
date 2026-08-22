@@ -95,7 +95,7 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentActiveHint}
         </p>
-        <div className={styles.stickyActionBar}>
+        <div className={styles.actionBarCard}>
           <button
             type="button"
             className={styles.dangerButton}
@@ -115,7 +115,7 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.requestPendingHint}
         </p>
-        <div className={styles.stickyActionBar}>
+        <div className={styles.actionBarCard}>
           <button
             type="button"
             className={styles.actionButton}
@@ -143,7 +143,7 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestRejectedHint}
           </p>
-          <div className={styles.stickyActionBar}>
+          <div className={styles.actionBarCard}>
             <button
               type="button"
               className={styles.button}
@@ -163,7 +163,7 @@ const EnrollmentAction = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.requestWithdrawnHint}
           </p>
-          <div className={styles.stickyActionBar}>
+          <div className={styles.actionBarCard}>
             <button
               type="button"
               className={styles.button}
@@ -187,7 +187,7 @@ const EnrollmentAction = ({
         <p className={styles.programDetailMuted}>
           {COPY.programs.enrollmentCancelledHint}
         </p>
-        <div className={styles.stickyActionBar}>
+        <div className={styles.actionBarCard}>
           <button
             type="button"
             className={styles.button}
@@ -208,7 +208,7 @@ const EnrollmentAction = ({
     );
   }
   return (
-    <div className={styles.stickyActionBar}>
+    <div className={styles.actionBarCard}>
       <button
         type="button"
         className={styles.button}

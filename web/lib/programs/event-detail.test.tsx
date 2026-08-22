@@ -755,7 +755,7 @@ describe("EVT-01 event detail", () => {
     });
     expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
     expect(cta).toHaveClass(styles.button);
-    expect(cta.parentElement).toHaveClass(styles.stickyActionBar);
+    expect(cta.parentElement).toHaveClass(styles.actionBarCard);
 
     // No management controls.
     expect(

@@ -2426,7 +2426,7 @@
   flex: 0 0 auto;
 }
 
-.stickyActionBar {
+.actionBarCard {
   position: static;
   bottom: auto;
   z-index: auto;
@@ -2438,25 +2438,25 @@
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
-.stickyActionBar .actionButton {
+.actionBarCard .actionButton {
   display: block;
   width: 100%;
   text-align: center;
 }
 
-.stickyActionBar .dangerButton {
+.actionBarCard .dangerButton {
   display: block;
   width: 100%;
   text-align: center;
 }
 
-.stickyActionBar .button {
+.actionBarCard .button {
   display: block;
   width: 100%;
   text-align: center;
 }
 
-.stickyActionBar .secondaryButton {
+.actionBarCard .secondaryButton {
   display: block;
   width: 100%;
   text-align: center;

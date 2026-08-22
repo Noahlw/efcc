@@ -173,7 +173,7 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
         .parentElement
-    ).toHaveClass(styles.stickyActionBar);
+    ).toHaveClass(styles.actionBarCard);
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
@@ -248,7 +248,7 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
         .parentElement
-    ).toHaveClass(styles.stickyActionBar);
+    ).toHaveClass(styles.actionBarCard);
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );

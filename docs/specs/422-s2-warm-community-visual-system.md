@@ -18,6 +18,7 @@ The S2 participant Sections adopt the **Warm Community Visual System** as their 
 6. **Button Hierarchy:** Pill primary (cinnabar), quiet (neutral tint), disabled with reason.
 7. **Bottom Navigation:** Floating dock with scanner as a normal tab; active tab is an accent capsule.
 8. **Scroll Clearance:** Every scrolling view reserves bottom clearance above the floating dock.
+9. **Action bars:** every participant action bar renders static in normal document flow — supersedes the #385/#383 sticky-CTA requirement (user ruling 2026-08-22).
 
 ## Delivery Sequence
 

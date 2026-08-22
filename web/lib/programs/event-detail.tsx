@@ -1,5 +1,4 @@
 "use client";
-/* oxlint-disable eslint/complexity, react/function-component-definition, promise/prefer-await-to-callbacks, jsx-a11y/prefer-tag-over-role, eslint/no-eq-null, eslint/eqeqeq, unicorn/prefer-query-selector */
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -130,6 +129,7 @@ export function hkWallInputToIso(
  * Rendered by ProgramWorkspace when a management events task carries an
  * `event` deep link; every mutation is re-authorized server-side.
  */
+/* oxlint-disable-next-line eslint/complexity -- EVT-01 branch matrix is one state machine; splitting it would scatter the transitions */
 export const EventDetail = ({
   programId,
   eventId,
@@ -213,6 +213,7 @@ export const EventDetail = ({
   }, [load]);
   useEffect(() => {
     if (!canManage && detail !== null) {
+      /* oxlint-disable-next-line unicorn/prefer-query-selector -- exact id lookup on participant-event-title */
       document.getElementById("participant-event-title")?.focus();
     }
   }, [canManage, detail]);
@@ -308,6 +309,7 @@ export const EventDetail = ({
         setUndoAvailable(true);
         return COPY.programs.eventAvailabilityNotice;
       },
+      /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {
         // A concurrent enrollment/check-in can make the server require
         // confirmation even when the loaded summary looked safe; surface
@@ -365,6 +367,7 @@ export const EventDetail = ({
         setUndoAvailable(false);
         return COPY.programs.eventCancelledNotice;
       },
+      /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {
         if (
           error instanceof RpcError &&
@@ -464,6 +467,7 @@ export const EventDetail = ({
           {checkInOpen && (
             <span
               className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
+              /* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- role=status pill must stay a span to keep rendered markup stable */
               role="status"
               aria-label={COPY.programs.checkInAvailable}
             >
@@ -514,7 +518,7 @@ export const EventDetail = ({
           </p>
         </section>
 
-        <div className={styles.stickyActionBar}>
+        <div className={styles.actionBarCard}>
           <Link
             href={scanHref}
             className={checkInOpen ? styles.button : styles.secondaryButton}
@@ -835,7 +839,10 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="opens_at"
-                    required={event.check_in_window_opens_at != null}
+                    required={
+                      event.check_in_window_opens_at !== null &&
+                      event.check_in_window_opens_at !== undefined
+                    }
                     defaultValue={hkWallInputValue(
                       event.check_in_window_opens_at
                     )}
@@ -847,7 +854,10 @@ export const EventDetail = ({
                   <input
                     type="datetime-local"
                     name="closes_at"
-                    required={event.check_in_window_opens_at != null}
+                    required={
+                      event.check_in_window_closes_at !== null &&
+                      event.check_in_window_closes_at !== undefined
+                    }
                     defaultValue={hkWallInputValue(
                       event.check_in_window_closes_at
                     )}
