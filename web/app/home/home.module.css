@@ -341,11 +341,6 @@
   background: var(--surface, #f4f5f3);
 }
 
-.listCard:hover {
-  border-color: var(--line-strong, #868182);
-  background: var(--surface, #f4f5f3);
-}
-
 .cardTitle,
 .cardDescription {
   display: block;
