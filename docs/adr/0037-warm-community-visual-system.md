@@ -1,0 +1,7 @@
+# Warm Community Visual System
+
+**Status:** accepted
+
+The S2 participant Sections adopt the **Warm Community Visual System** as their display language: rounded single-layer group cards, pill buttons, solid-tint pill badges, sticky-free single title in chrome, and a floating dock bottom navigation with the scanner as a normal dock tab (no FAB punch-through). It was selected from three rendered Style Tiles (Calm Ledger / Warm Community / Compact Utility, `.scratch/s2-style-tiles/`) by side-by-side phone-width comparison — rendered pages, not prose. Per ruling on #422, the system contributes **layout language only**: all colours remain the existing EFCC tokens (`--surface`, `--surface-raised`, cinnabar `--accent`, state colour pairs); no new palette is introduced. Phone viewports are reskinned first; desktop extends the same system afterwards.
+
+**Consequences:** Program Detail is the reference implementation (V1 忠實重排); the five remaining participant Sections follow in the #422 loop. The Time Display Contract (`CONTEXT.md`) governs time chips: spoken 12-hour ranges render as unbreakable units; schedule-rule labels switch from raw stored 24-hour strings to the shared spoken formatter. The Surface Layer Rule retires card-in-card nesting in these screens. Component tests asserting on removed nested-card classes or the old rule-label format need updating; Playwright phone suites are the regression gate. The discarded tiles and variant pages remain in `.scratch/` as decision evidence, not production assets.
