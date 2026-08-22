@@ -19,6 +19,8 @@ import { COPY } from "@/lib/copy";
 import type { Notice } from "@/lib/notices-api";
 import { NoticesPanel } from "@/lib/notices-panel";
 
+import styles from "@/lib/notices-panel.module.css";
+
 const unreadEvent: Notice = {
   notice_id: "notice-event",
   kind: "event",
@@ -238,5 +240,26 @@ describe(NoticesPanel, () => {
     await expect(
       screen.findByRole("link", { name: /帳戶更新/ })
     ).resolves.toHaveAttribute("href", "/profile");
+  });
+
+  test("keeps the toolbar pinned to unread chip and mark-all button for wrap", async () => {
+    mocks.listNotices.mockResolvedValue({
+      notices: [unreadEvent],
+      unread_count: 120,
+    });
+
+    render(<NoticesPanel />);
+
+    await expect(
+      screen.findByText(unreadEvent.title)
+    ).resolves.toBeInTheDocument();
+    const toolbar = document.querySelector(`.${styles.toolbar}`);
+    expect(toolbar).not.toBeNull();
+    const children = [...(toolbar?.children ?? [])];
+    expect(children).toHaveLength(2);
+    expect(children.map((child) => child.tagName)).toStrictEqual([
+      "SPAN",
+      "BUTTON",
+    ]);
   });
 });
