@@ -1592,14 +1592,7 @@
 .programDetail {
   display: grid;
   gap: 1.25rem;
-  /* On short pages (few/no upcoming events, e.g. a OneOff program) there
-     isn't enough natural scroll height for .stickyActionBar's sticky
-     offset to clear the last content block without covering it —
-     impeccable critique #391 (T5A). Reserve room for the tallest sticky
-     bar (dock 72px + gap + one 44px button + its own padding/margin). */
-  padding-bottom: calc(
-    72px + 0.625rem + 44px + 1.25rem + 1.5rem + env(safe-area-inset-bottom, 0px)
-  );
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 }
 
 .programDetailBack {
@@ -2314,9 +2307,9 @@
 }
 
 .stickyActionBar {
-  position: sticky;
-  bottom: calc(72px + 0.625rem + env(safe-area-inset-bottom, 0px));
-  z-index: 5;
+  position: static;
+  bottom: auto;
+  z-index: auto;
   margin-top: 1.5rem;
   padding: 0.625rem;
   border: 1px solid var(--line);
