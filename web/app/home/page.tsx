@@ -2,8 +2,9 @@
 /* oxlint-disable eslint/complexity, eslint/no-use-before-define, react/function-component-definition, promise/prefer-await-to-then, unicorn/no-negated-condition */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
@@ -322,6 +323,9 @@ export function AnnouncementDetail({
         <h1>{announcement.title}</h1>
         <p>{announcement.summary}</p>
       </div>
+      {/* ponytail: venueCard is identical for every announcement by design
+          (impeccable audit P2-06) -- read from announcement.venue instead
+          once the CMS ships a per-announcement venue field. */}
       <article className={styles.venueCard}>
         <h2>{COPY.home.venueTitle}</h2>
         <p>{COPY.home.venueInstructions}</p>
@@ -436,6 +440,32 @@ export function HomeView({
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
 
+  const openAnnouncement = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.history.pushState(
+        { efccOverlay: "announcement" },
+        "",
+        window.location.href
+      );
+    }
+    setAnnouncementOpen(true);
+  }, []);
+
+  const closeAnnouncement = useCallback(() => {
+    setAnnouncementOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onPopState = () => {
+      setAnnouncementOpen(window.history.state?.efccOverlay === "announcement");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -448,7 +478,16 @@ export function HomeView({
         setProjection(nextProjection);
         setParticipant({ event: null, program: null });
         setLoadState("ready");
-      } catch {
+      } catch (primaryError) {
+        if (
+          primaryError instanceof RpcError &&
+          primaryError.problem.status === 401
+        ) {
+          if (mounted) {
+            setLoadState("error");
+          }
+          return;
+        }
         try {
           const nextParticipant = await loadParticipantProjection();
           if (!mounted) {
@@ -487,7 +526,7 @@ export function HomeView({
     return (
       <AnnouncementDetail
         announcement={announcement}
-        onBack={() => setAnnouncementOpen(false)}
+        onBack={closeAnnouncement}
       />
     );
   }
@@ -537,7 +576,12 @@ export function HomeView({
   return (
     <div className={styles.page} data-testid="home-page">
       <div className={styles.intro}>
-        <time className={styles.dateTag}>{greetingDate()}</time>
+        <time
+          className={styles.dateTag}
+          dateTime={new Date().toISOString().slice(0, 10)}
+        >
+          {greetingDate()}
+        </time>
         <h1>
           {COPY.home.greeting}，{displayName}
         </h1>
@@ -553,11 +597,15 @@ export function HomeView({
             <p className={styles.programTitle}>{programTitle}</p>
           )}
           {title && <h2>{title}</h2>}
-          <div className={styles.eventDetails}>
-            {date && <EventRow icon="calendar">{date}</EventRow>}
-            {time && <EventRow icon="clock">{time}</EventRow>}
-            {event.location && <EventRow icon="pin">{event.location}</EventRow>}
-          </div>
+          {(date || time || event.location) && (
+            <div className={styles.eventDetails}>
+              {date && <EventRow icon="calendar">{date}</EventRow>}
+              {time && <EventRow icon="clock">{time}</EventRow>}
+              {event.location && (
+                <EventRow icon="pin">{event.location}</EventRow>
+              )}
+            </div>
+          )}
           <Link href={eventHref} className={styles.primaryAction}>
             {COPY.home.viewEvent}
           </Link>
@@ -587,7 +635,7 @@ export function HomeView({
             type="button"
             className={styles.listCard}
             data-testid="announcement-card"
-            onClick={() => setAnnouncementOpen(true)}
+            onClick={openAnnouncement}
           >
             <span>
               <span className={styles.cardTitle}>{announcement.title}</span>
