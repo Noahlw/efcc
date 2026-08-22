@@ -1739,8 +1739,17 @@
   overflow: hidden;
 }
 
+/* Warm Community: subheadings stay in the a11y tree but are visually hidden (reuse sr-only pattern) */
 .programDetailScheduleGroup .programDetailSubheading {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .programDetailEvent {
