@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AnnouncementDetail, Icon } from "@/app/home/page";
+import { AnnouncementDetail } from "@/app/home/page";
 import { COPY } from "@/lib/copy";
 import { hkMonthDayLabel } from "@/lib/hk-time";
 import { listAnnouncements } from "@/lib/home-api";
@@ -168,23 +168,32 @@ export const MessagesPanel = () => {
           <p className={styles.emptyHint}>{COPY.home.messagesEmptyHint}</p>
         </div>
       ) : (
-        <ul className={styles.list} aria-label={COPY.home.messagesListLabel}>
+        <ul
+          className={styles.messageFeed}
+          aria-label={COPY.home.messagesListLabel}
+        >
           {state.announcements.map((row) => (
-            <li key={row.contentId} className={styles.item}>
+            <li key={row.contentId} className={styles.messageCardItem}>
               <Link
-                className={styles.messageLink}
+                className={styles.messageCard}
                 href={buildMessagesHref(row.contentId, "messages")}
               >
-                <span className={styles.itemCopy}>
-                  <span className={styles.itemTitle}>{row.title}</span>
-                  <span className={styles.itemBody}>
-                    {row.summary}
-                    {row.publishedAt
-                      ? ` · ${hkMonthDayLabel(row.publishedAt)}`
-                      : ""}
-                  </span>
-                </span>
-                <Icon name="chevron" className={styles.messageChevron} />
+                <div className={styles.messageCardTop}>
+                  <span className={styles.messageCategoryTag}>教會公告</span>
+                  {row.publishedAt && (
+                    <span className={styles.messageDate}>
+                      {hkMonthDayLabel(row.publishedAt)}
+                    </span>
+                  )}
+                </div>
+                <h2 className={styles.messageCardTitle}>{row.title}</h2>
+                <p className={styles.messageCardDesc}>{row.summary}</p>
+                <div className={styles.messageCardFoot}>
+                  <span>播道會顯恩堂</span>
+                  <strong className={styles.messageActionLink}>
+                    閱讀全文 ›
+                  </strong>
+                </div>
               </Link>
             </li>
           ))}
