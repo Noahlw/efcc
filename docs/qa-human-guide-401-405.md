@@ -177,3 +177,43 @@ Each width must keep `scrollWidth ≤ clientWidth` and controls ≥ 44×44 px.
 - Badge-color drift (ADR-0033 pre-existing) — accepted, not in scope.
 
 Happy QA — when you hit a failure, note the **width + account + program ID + response JSON** and the fix belongs to the lowest responsible stack layer (#401–#404), not the #405 trace.
+
+---
+
+## 10) S2 Full Harden Pass (PRs #413, #418, #419, #420, #421)
+
+This upper stack layer was audited across all 6 S2 participant screens using Impeccable's `harden` and `adapt` dimensions (loading, empty, error, offline, permissions, double-submission, edge-case copy, focus restore, deep-link sanitization) and implemented on stacked branches:
+
+| PR | Issue | Scope | Key QA Checks |
+|---|---|---|---|
+| **#413** | #412 | Program Detail enrollment bar | `.stickyActionBar` is `position: static` -- renders inline in normal flow after schedule/advisory copy, zero overlap with status/hint text at 320/375/390/414px. |
+| **#418** | #414 | Home hardening | 1) Force `/api/v1/home` 401: no catalog fallback burst, single error shows. 2) Open announcement card: phone hardware/gesture back closes overlay and stays on `/home` (doesn't exit). 3) Next-event with no date/time/location: no empty 40px `.eventDetails` gap. 4) Greeting `<time>` has ISO `dateTime`. |
+| **#419** | #415 | Notices hardening | 1) Mark-all-read with network cut: visible red `role="alert"` appears (not silent re-enable). 2) Offline pre-flight guard blocks dispatch immediately. 3) Malformed `created_at` doesn't crash with `RangeError`. 4) Focus lands on container after load/retry transition. 5) Toolbar wraps gracefully at 320px with large unread count. |
+| **#420** | #416 | Messages hardening | 1) In-app back after opening detail: native browser back button exits Messages cleanly (no duplicate history entry / stuck press). 2) Error state includes `教會消息` header. 3) `load()` has `requestVersion` guard against slow/retry races. |
+| **#421** | #417 | Programs cluster hardening | 1) Double-click program card rapidly: exactly one history entry pushed (one back press returns to catalog). 2) Enrollment action error: focus moves to the alert output (doesn't drop to body). 3) Program description/title: long unbroken tokens wrap (`overflow-wrap: anywhere`). 4) Stale confirm dialog: reconciles via `onRefresh()` instead of silent no-op. 5) Event Detail: renders accessible `aria-busy` loading indicator on initial mount and retries (no blank flash). 6) Event Detail recovery/404: focus moves to recovery heading. |
+
+### Complete PR Stack Reference (Bottom to Top)
+
+```
+[base: 88b96afa on feat/389]
+  ↑
+#406: feat/401-self-check-in-availability (self_check_in_available projection, 可簽到)
+  ↑
+#407: feat/402-program-detail-affordances (grouped schedule, 4/8 row caps, advisory)
+  ↑
+#409: feat/403-programs-recovery (403->/home, 5xx->retry, long-copy wrap, empty bifurcated)
+  ↑
+#410: feat/404-home-long-copy (7-width Home long-copy wrapping, skeleton/empty/error tri-state)
+  ↑
+#411: feat/405-s2-integration-gate (verification-only gate record, 69/69 promoted Playwright)
+  ↑
+#413: feat/412-enrollment-bar-static (enrollment bar static position, no overlap)
+  ↑
+#418: feat/414-home-hardening (401 fast-fail, overlay back-nav, empty wrapper guard)
+  ↑
+#419: feat/415-notices-hardening (visible mark-all error, offline guard, safe date parse)
+  ↑
+#420: feat/416-messages-hardening (back-button history deduplication, error header)
+  ↑
+#421: feat/417-programs-cluster-hardening (double-nav guard, focus restore, ED loading skeleton)
+```
