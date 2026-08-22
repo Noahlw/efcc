@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AnnouncementDetail } from "@/app/home/page";
+import { AnnouncementDetail } from "@/lib/announcement-detail";
 import { COPY } from "@/lib/copy";
 import { hkMonthDayLabel } from "@/lib/hk-time";
 import { listAnnouncements } from "@/lib/home-api";

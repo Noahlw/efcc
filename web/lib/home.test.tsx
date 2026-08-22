@@ -14,12 +14,14 @@ import {
 } from "vitest";
 
 import HomePage, {
-  AnnouncementDetail,
   HomeView,
-  type AnnouncementData,
   type HomeEvent,
   type HomeProgram,
 } from "@/app/home/page";
+import {
+  AnnouncementDetail,
+  type AnnouncementData,
+} from "@/lib/announcement-detail";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
