@@ -92,6 +92,8 @@ export function spokenTimeRangeFromHHMM(
   if (Number.isNaN(sh) || Number.isNaN(eh)) {
     return `${startHHMM}–${endHHMM}`;
   }
+  const sPeriod = hkDayPeriod(sh);
+  const ePeriod = hkDayPeriod(eh);
   const s12 = sh % 12 === 0 ? 12 : sh % 12;
   const e12 = eh % 12 === 0 ? 12 : eh % 12;
   const smStr = String(sm).padStart(2, "0");
