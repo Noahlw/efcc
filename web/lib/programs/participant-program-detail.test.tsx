@@ -193,7 +193,7 @@ describe("PUI-03 participant Program detail", () => {
       name: COPY.programs.scheduleRulesGroup,
     });
     expect(
-      within(rules).getByText("每週 星期三 19:30–21:00")
+      within(rules).getByText("每週 星期三 晚上 7:30–9:00")
     ).toBeInTheDocument();
     const schedule = screen.getByRole("list", {
       name: COPY.programs.scheduleEventsGroup,

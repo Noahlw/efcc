@@ -1,4 +1,5 @@
 import { COPY } from "@/lib/copy";
+import { spokenTimeRangeFromHHMM } from "@/lib/hk-time";
 
 /**
  * EFCC Programs domain — Asia/Hong_Kong wall-clock recurrence math (PRG-02
@@ -313,7 +314,8 @@ export const WEEKDAY_LABELS = [
 ];
 
 export function formatScheduleRuleLabel(rule: ScheduleRuleLike): string {
+  const timeRange = spokenTimeRangeFromHHMM(rule.start_time, rule.end_time);
   return rule.recurrence === "WEEKLY"
-    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${rule.start_time}–${rule.end_time}`
-    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${rule.start_time}–${rule.end_time}`;
+    ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0] ?? ""} ${timeRange}`
+    : `${COPY.programs.ruleMonthly} ${rule.month_day ?? ""}日 ${timeRange}`;
 }

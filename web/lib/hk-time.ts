@@ -70,6 +70,37 @@ export function hkMonthDayLabel(iso: string): string {
   const { month, day } = hkWallParts(iso);
   return `${month}月${day}日`;
 }
+/** Day numeral zero-padded for calendar chip: "26" or "02". */
+export function hkDayPadded(iso: string): string {
+  const { day } = hkWallParts(iso);
+  return day.padStart(2, "0");
+}
+
+/** Month + weekday badge label for calendar chip: "8月·三". */
+export function hkMonthWeekdayLabel(iso: string): string {
+  const { month, weekday } = hkWallParts(iso);
+  return `${month}月·${weekday}`;
+}
+
+/** Spoken time range from two HH:MM strings: "晚上 7:30–8:45". */
+export function spokenTimeRangeFromHHMM(
+  startHHMM: string,
+  endHHMM: string
+): string {
+  const [sh, sm] = startHHMM.split(":").map(Number);
+  const [eh, em] = endHHMM.split(":").map(Number);
+  if (Number.isNaN(sh) || Number.isNaN(eh)) {
+    return `${startHHMM}–${endHHMM}`;
+  }
+  const s12 = sh % 12 === 0 ? 12 : sh % 12;
+  const e12 = eh % 12 === 0 ? 12 : eh % 12;
+  const smStr = String(sm).padStart(2, "0");
+  const emStr = String(em).padStart(2, "0");
+  if (sPeriod === ePeriod) {
+    return `${sPeriod} ${s12}:${smStr}–${e12}:${emStr}`;
+  }
+  return `${sPeriod} ${s12}:${smStr}–${ePeriod} ${e12}:${emStr}`;
+}
 
 /** Short HK time with 早上/下午/晚上: 晚上 7:30. */
 export function hkShortTimeLabel(iso: string): string {

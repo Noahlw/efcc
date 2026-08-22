@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
-  hkMonthDayLabel,
+  hkDayPadded,
+  hkMonthWeekdayLabel,
   hkShortDateLabel,
   hkShortTimeRange,
 } from "@/lib/hk-time";
@@ -164,12 +165,16 @@ interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
   scheduleRules: ParticipantProgramDetailData["schedule_rules"];
   events: ParticipantProgramDetailData["events"];
+  totalEventCount?: number;
+  onExpandAll?: () => void;
 }
 
 const ParticipantSchedule = ({
   program,
   scheduleRules,
   events,
+  totalEventCount = 0,
+  onExpandAll,
 }: ParticipantScheduleProps) => (
   <section
     className={styles.programDetailSection}
@@ -221,7 +226,12 @@ const ParticipantSchedule = ({
             return (
               <li key={event.event_id} className={styles.programDetailEvent}>
                 <time className={styles.eventDate} dateTime={event.starts_at}>
-                  {hkMonthDayLabel(event.starts_at)}
+                  <b className={styles.eventDateDay}>
+                    {hkDayPadded(event.starts_at)}
+                  </b>
+                  <span className={styles.eventDateMonth}>
+                    {hkMonthWeekdayLabel(event.starts_at)}
+                  </span>
                 </time>
                 <div className={styles.programDetailScheduleCopy}>
                   <strong>{eventTitle(event, index)}</strong>
@@ -250,6 +260,15 @@ const ParticipantSchedule = ({
             );
           })}
         </ul>
+        {totalEventCount > events.length && onExpandAll && (
+          <button
+            type="button"
+            className={styles.programDetailExpandButton}
+            onClick={onExpandAll}
+          >
+            顯示全部 {totalEventCount} 節 ↓
+          </button>
+        )}
       </div>
     )}
     {scheduleRules.length === 0 && events.length === 0 && (
@@ -517,7 +536,9 @@ export const ParticipantProgramDetail = ({
             {eventTitle(nextEvent, 0)}
           </h3>
           <div className={styles.programDetailInfoCard}>
-            <p className={styles.programDetailFactRow}>
+            <p
+              className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
+            >
               <EventFactIcon name="calendar" />
               <span>
                 {hkShortDateLabel(nextEvent.starts_at)}
@@ -553,6 +574,8 @@ export const ParticipantProgramDetail = ({
         program={program}
         scheduleRules={scheduleRules}
         events={visibleEvents}
+        totalEventCount={scheduledEvents.length}
+        onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
       />
 
       {canManage && (
