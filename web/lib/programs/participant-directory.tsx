@@ -445,20 +445,46 @@ export const ParticipantDirectory = ({
                       onClick={() => onOpenProgram(program.program_id)}
                     >
                       <span className={styles.directoryCardBody}>
-                        <span
-                          className={`${styles.directoryStatus} ${
-                            styles[
-                              `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
-                            ]
-                          }`}
-                        >
-                          {tag.label}
+                        <span className={styles.directoryCardTopRow}>
+                          <span
+                            className={`${styles.directoryStatus} ${
+                              styles[
+                                `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
+                              ]
+                            }`}
+                          >
+                            {tag.label}
+                          </span>
+                          {program.category && (
+                            <span className={styles.directoryCategory}>
+                              {program.category}
+                            </span>
+                          )}
                         </span>
                         <span className={styles.directoryCardTitle}>
                           {program.name}
                         </span>
                         <span className={styles.directoryCardSecondary}>
-                          {secondaryCopy}
+                          {program.viewerState === "active" ||
+                          program.viewerState === "eligible" ? (
+                            nextEventDateLabel(program.nextEventStartsAt) ? (
+                              <>
+                                {COPY.programs.catalogActivePrefix}
+                                {nextEventDateLabel(program.nextEventStartsAt)}
+                                {" · "}
+                                <span className={styles.nowrap}>
+                                  {COPY.programs.catalogEventCountSuffix.replace(
+                                    "{count}",
+                                    String(program.upcomingEventCount)
+                                  )}
+                                </span>
+                              </>
+                            ) : (
+                              (program.description ?? "")
+                            )
+                          ) : (
+                            secondaryCopy
+                          )}
                         </span>
                       </span>
                       <svg
