@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AnnouncementDetail, Icon } from "@/app/home/page";
 import { COPY } from "@/lib/copy";
@@ -34,12 +34,31 @@ export const MessagesPanel = () => {
   const intent = parseMessagesIntent(`?${queryString}`);
   const [state, setState] = useState<ListState>({ kind: "loading" });
   const [showListOverride, setShowListOverride] = useState(false);
+  const requestVersion = useRef(0);
+  const cameFromListRef = useRef(false);
   const selected =
     !showListOverride && state.kind === "ready" && intent.contentId
       ? state.announcements.find((row) => row.contentId === intent.contentId)
       : undefined;
 
+  useEffect(() => {
+    if (!selected) {
+      cameFromListRef.current = true;
+    }
+  }, [selected]);
+
   const navigateToList = useCallback(() => {
+    // Row selection pushes a real history entry via <Link>; go back to
+    // it directly instead of replacing the current entry, so the native
+    // browser back button does not land on a duplicate /messages entry.
+    if (
+      typeof window !== "undefined" &&
+      cameFromListRef.current &&
+      window.history.length > 1
+    ) {
+      window.history.back();
+      return;
+    }
     const href = buildMessagesHref();
     if (typeof window !== "undefined") {
       window.history.replaceState({ efccSection: "messages" }, "", href);
@@ -50,11 +69,19 @@ export const MessagesPanel = () => {
   }, [router]);
 
   const load = useCallback(async () => {
+    requestVersion.current += 1;
+    const version = requestVersion.current;
     setState({ kind: "loading" });
     try {
       const result = await listAnnouncements();
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "ready", announcements: result.announcements });
     } catch {
+      if (requestVersion.current !== version) {
+        return;
+      }
       setState({ kind: "error" });
     }
   }, []);
@@ -90,6 +117,10 @@ export const MessagesPanel = () => {
   if (state.kind === "error") {
     return (
       <div className={styles.page}>
+        <header className={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>{COPY.home.churchNews}</h1>
+          <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
+        </header>
         <p className={styles.error} role="alert">
           {COPY.home.messagesLoadError}
         </p>
