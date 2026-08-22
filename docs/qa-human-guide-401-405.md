@@ -217,3 +217,50 @@ This upper stack layer was audited across all 6 S2 participant screens using Imp
   ↑
 #421: feat/417-programs-cluster-hardening (double-nav guard, focus restore, ED loading skeleton)
 ```
+  ↑
+#423: feat/422-pd-v1-visual-system (Warm Community visual system: 6 screens reskinned + floating dock)
+```
+
+---
+
+## 11) S2 Warm Community Visual System Reskin (PR #423 on #422)
+
+### What Changed
+All 6 participant screens reskinned under the **Warm Community Visual System** (ADR-0037, Spec #422) on the existing EFCC cinnabar + neutral token palette. Solves the 12 systemic phone-viewport defects identified in `.scratch/s2-phone-polish-evidence.md`:
+
+1. **Floating Navigation Dock:** `.nav-phone` transformed to a rounded translucent pill with integrated scanner tab (no punch-through FAB, no label collisions, lifts above home indicator via `bottom: calc(0.625rem + env(safe-area-inset-bottom))`).
+2. **Program Detail (PD-V1):** Single-layer white rounded group cards, clean text back link in chrome, calendar-chip schedule rows, spoken time contract (`晚上 7:30–8:45`, unbreakable), interactive `顯示全部 13 節 ↓` expander button.
+3. **Event Detail (ED-V1):** Event/program name as prominent H1 (no more raw ISO timestamp H1 bug), fact rows for date/time/venue, and clear disabled-with-reason CTA when check-in is not open.
+4. **Programs Catalog (PROG-V1):** Department group cards with hairline dividers, spacious filter chips with $\ge 10\text{px}$ touch separation, zero orphan text (`共 13 節` stays unified).
+5. **Home (HOME-V1):** Proportional next-meeting hero card ($<25\%$ viewport height), single-line greeting without stray space, aligned section headers with `查看全部 ›` / `全部課程 ›` links.
+6. **Notices (NOT-V1):** Fixed-axis indicator column keeping unread dots and read text on the exact same vertical left margin.
+7. **Messages (MSG-V2):** Elevated news feed cards with category tags, clean date formatting, and `閱讀全文 ›` call-to-action.
+
+### QA Walkthrough Steps (Phone Viewport 390×844)
+
+1. **Home (`/home`):**
+   - Login as `E2E_member` / `E2E_member!dev`
+   - Verify greeting renders `早晨，Noah` (or member name) cleanly with no stray space before comma.
+   - Verify next-meeting card is compact with unbroken `晚上 7:30–8:45` time range.
+   - Verify Church News and Explore sections have right-aligned red action links.
+2. **Programs Catalog (`/programs`):**
+   - Verify filter chips have comfortable spacing and active chip is solid cinnabar.
+   - Verify department cards (`成區 · 門徒事工`, `青區 · 青年事工`) group rows with hairline dividers.
+   - Verify `共 13 節` never wraps `節` onto an orphaned line.
+3. **Program Detail (`/programs?program=...`):**
+   - Open `E2E_DEMO_成人查經`
+   - Verify back link renders as `< 課程` at top left.
+   - Verify upcoming events show stacked calendar date chips (`26 / 8月·三`).
+   - Click `顯示全部 13 節 ↓` and verify the schedule list expands smoothly to all 13 sessions.
+   - Scroll to bottom and verify the enrollment section is fully visible above the floating dock.
+4. **Event Detail (`/programs?program=...&event=...`):**
+   - Click `查看聚會詳情` on an event
+   - Verify H1 title is `成人查經 聚會` (or event title), not a raw ISO timestamp.
+   - Verify when check-in is closed, the button displays `簽到未開放` with countdown hint.
+5. **Notices (`/notices`):**
+   - Verify unread notices have a red dot, and read notice title (`帳戶資料更新`) shares the **exact same left alignment** as unread titles.
+   - Verify `全部標示已讀` has a comfortable touch target.
+6. **Messages (`/messages`):**
+   - Verify announcements render as separate elevated feed cards with category tag (`教會公告`), date, and `閱讀全文 ›` footer.
+7. **Floating Dock (All Screens):**
+   - Verify dock floats cleanly above the bottom safe area with no overlapping text.
