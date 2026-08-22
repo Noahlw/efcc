@@ -512,13 +512,13 @@ export const ParticipantProgramDetail = ({
         >
           {status.label}
         </span>
-        <h2
+        <h1
           id="program-detail-title"
           className={styles.boundaryTitle}
           tabIndex={-1}
         >
           {program.name}
-        </h2>
+        </h1>
         <p className={styles.programDetailDescription}>
           {program.description ?? COPY.programs.programDescriptionEmpty}
         </p>

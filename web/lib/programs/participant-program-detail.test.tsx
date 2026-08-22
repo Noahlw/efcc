@@ -170,6 +170,10 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByText("為青年建立穩定的同行與學習空間。")
     ).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.statusEligible)).toBeInTheDocument();
+    // #425: the page title is the document's single level-1 heading.
+    expect(
+      screen.getByRole("heading", { level: 1, name: "青年門徒小組" })
+    ).toBeInTheDocument();
 
     const nextCard = screen.getByRole("article", { name: "第三課聚會" });
     expect(
