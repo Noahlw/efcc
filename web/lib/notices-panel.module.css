@@ -130,11 +130,12 @@
   min-width: 0;
 }
 @media (max-width: 799.98px) {
-  /* Phone keeps exactly one visible h1 (Warm Community single-title rule):
-     compact section title instead of the desktop document header. */
+  /* Warm Community single-title rule: the shell's contextual top bar owns
+     the visible section title on phone, so the page h1 stays in the
+     accessibility tree but does not repeat it visually. */
   .pageHeader {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 0.75rem;
@@ -143,17 +144,23 @@
   }
 
   .pageTitle {
-    font-size: 1.0625rem;
-    font-weight: 800;
-    letter-spacing: 0;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .pageLead {
     margin: 0;
     font-size: 0.78rem;
+    font-weight: 600;
     line-height: 1.4;
-    text-align: right;
-    max-width: 50%;
+    color: var(--ink-muted, #59636a);
   }
 }
 
