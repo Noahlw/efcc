@@ -438,7 +438,11 @@ export const EventDetail = ({
     const programName = event.program_name ?? event.program_id;
     const checkInOpen = checkInWindowIsOpen(event);
     const scanHref = `/scanner?event=${encodeURIComponent(event.event_id)}`;
-    const eventTitle = event.name ?? hkWallDateTimeLabel(event.starts_at);
+    const eventTitle =
+      event.name ??
+      (event.program_name
+        ? `${event.program_name} 聚會`
+        : hkWallDateTimeLabel(event.starts_at));
     const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
     const instructionsHeadingId = "participant-event-instructions";
 
@@ -477,7 +481,9 @@ export const EventDetail = ({
         </header>
 
         <article className={styles.programDetailInfoCard}>
-          <p className={styles.programDetailFactRow}>
+          <p
+            className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
+          >
             <EventFactIcon name="calendar" />
             <time dateTime={event.starts_at}>{whenLabel}</time>
           </p>
