@@ -130,8 +130,30 @@
   min-width: 0;
 }
 @media (max-width: 799.98px) {
+  /* Phone keeps exactly one visible h1 (Warm Community single-title rule):
+     compact section title instead of the desktop document header. */
   .pageHeader {
-    display: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line, #d6dcde);
+  }
+
+  .pageTitle {
+    font-size: 1.0625rem;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+
+  .pageLead {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    text-align: right;
+    max-width: 50%;
   }
 }
 

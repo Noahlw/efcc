@@ -178,8 +178,9 @@ export const MessagesPanel = () => {
                 className={styles.messageCard}
                 href={buildMessagesHref(row.contentId, "messages")}
               >
+                {/* ponytail: category pill returns when home_content ships a
+                    category column -- the STRICT schema has none today. */}
                 <div className={styles.messageCardTop}>
-                  <span className={styles.messageCategoryTag}>教會公告</span>
                   {row.publishedAt && (
                     <span className={styles.messageDate}>
                       {hkMonthDayLabel(row.publishedAt)}
