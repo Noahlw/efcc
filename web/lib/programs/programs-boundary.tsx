@@ -768,6 +768,7 @@ export const ProgramsBoundary = () => {
       programId: task === "notifications" ? null : intent.programId,
       task,
       eventId,
+      created: undefined,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);

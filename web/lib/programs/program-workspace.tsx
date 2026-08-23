@@ -2164,8 +2164,9 @@ export const ProgramWorkspace = ({
   const [courseProgramOverride, setCourseProgramOverride] =
     useState<Program | null>(null);
   const [courseNotice, setCourseNotice] = useState<string | null>(null);
+  const createdFlash = created && courseView === "overview" && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
-    created ? COPY.programs.programCreatedNotice : null
+    createdFlash ? COPY.programs.programCreatedNotice : null
   );
   const mounted = useRef(true);
   useEffect(() => {

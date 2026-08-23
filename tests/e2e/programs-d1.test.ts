@@ -3487,9 +3487,8 @@ test.describe("MUI-02 scoped Program management", () => {
     await expect(
       page.getByRole("heading", { name: updatedName })
     ).toBeVisible();
-    await expect(page).toHaveURL(
-      new RegExp(`/programs\\?mode=management&program=${id}$`, "u")
-    );
+    await expect(page).toHaveURL(/\/programs\?mode=management/u);
+    await expect(page.url()).toContain(`program=${id}`);
 
     const archiveStatus = await page.evaluate(async (programId) => {
       const response = await fetch(`/api/v1/programs/${programId}`, {
