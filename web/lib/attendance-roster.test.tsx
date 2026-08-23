@@ -134,8 +134,9 @@ describe("AttendanceRoster", () => {
 
     expect(screen.getByText(COPY.attendance.rosterStatusActive)).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: EVENT.name ?? "" })
+      screen.getByRole("heading", { name: COPY.attendance.rosterTitle })
     ).toBeVisible();
+    expect(screen.getByText(/週六聚會/u)).toBeVisible();
     expect(
       screen.getByText(COPY.attendance.checkedInCount(1, 2))
     ).toBeVisible();

@@ -51,6 +51,8 @@ import styles from "@/app/programs/programs.module.css";
 export interface ProgramWorkspaceProps {
   programId: string;
   task?: ProgramsTask;
+  /** Creation flash carried to the new management Cockpit. */
+  created?: boolean;
   /** EVT-01 (#251): management Event deep link under the events or participants task. */
   eventId?: string | null;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
@@ -2148,6 +2150,7 @@ export const ProgramWorkspace = ({
   programId,
   task,
   eventId,
+  created = false,
   attention = null,
   onAttentionRefresh = () => {},
   onBack,
@@ -2161,6 +2164,9 @@ export const ProgramWorkspace = ({
   const [courseProgramOverride, setCourseProgramOverride] =
     useState<Program | null>(null);
   const [courseNotice, setCourseNotice] = useState<string | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
+    created ? COPY.programs.programCreatedNotice : null
+  );
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -2172,6 +2178,7 @@ export const ProgramWorkspace = ({
     setCourseView("overview");
     setCourseProgramOverride(null);
     setCourseNotice(null);
+    setWorkspaceNotice(created ? COPY.programs.programCreatedNotice : null);
   }, [programId]);
   const { state, run: loadWorkspace, retry } = useAsyncResource<
     {
@@ -2421,6 +2428,12 @@ export const ProgramWorkspace = ({
           </span>
         </div>
       </header>
+
+      {workspaceNotice !== null && (
+        <output className={styles.panelNotice} aria-live="polite">
+          {workspaceNotice}
+        </output>
+      )}
 
       {task && (
         <WorkspaceNavigation

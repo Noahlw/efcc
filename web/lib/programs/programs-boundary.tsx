@@ -316,7 +316,7 @@ const ManagementPanel = ({
   intent: ProgramsIntent;
   onParticipant: () => void;
   onRecoverParticipant: () => void;
-  onOpenProgram: (programId: string) => void;
+  onOpenProgram: (programId: string, created?: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
@@ -482,6 +482,7 @@ const ManagementPanel = ({
           programId={intent.programId}
           task={intent.task}
           eventId={intent.eventId ?? null}
+          created={intent.created}
           attention={attention}
           onAttentionRefresh={refreshAttention}
           onBack={onBackDirectory}
@@ -521,7 +522,7 @@ const ProgramsBoundaryBody = ({
     programId?: string | null,
     hash?: string | null
   ) => void;
-  openManagementProgram: (programId: string) => void;
+  openManagementProgram: (programId: string, created?: boolean) => void;
   navigateManagementTask: (
     task: ProgramsTask | null,
     eventId?: string | null
@@ -745,10 +746,11 @@ export const ProgramsBoundary = () => {
     }
     router.replace(href);
   };
-  const openManagementProgram = (programId: string) => {
+  const openManagementProgram = (programId: string, created?: boolean) => {
     const href = buildProgramsHref({
       mode: "management",
       programId,
+      created,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);

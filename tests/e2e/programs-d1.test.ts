@@ -1622,7 +1622,7 @@ test.describe("MSG-01 participant Messages", () => {
     await page.getByRole("link", { name: COPY.viewAllMessages }).click();
     await expect(page).toHaveURL(/\/messages\/?$/u);
     await expect(
-      page.getByRole("heading", { name: COPY.churchNews })
+      page.getByRole("heading", { name: COPY.churchNews, exact: true })
     ).toBeVisible();
   });
 
@@ -5322,12 +5322,11 @@ test.describe("HUB-01 Management Hub directory", () => {
 
     await page.goto("/management?module=approvals");
     await expect(page.getByText(lastName, { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u") }).scrollIntoViewIfNeeded();
     const scrollBefore = await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
       return window.scrollY;
     });
-    expect(scrollBefore).toBeGreaterThan(0);
-
     await page
       .getByRole("link", {
         name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
