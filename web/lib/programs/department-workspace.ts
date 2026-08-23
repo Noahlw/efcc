@@ -1496,20 +1496,31 @@ export class DepartmentWorkspace {
       }
     }
     const accounts = [...accountsByUser.values()];
-    const heldRoles = new Set(accounts.map((account) => account.role));
+    const heldRoles: Record<string, true> = {};
+    for (const row of rows) {
+      if (row.role === ROLE.ADMIN) {
+        heldRoles["admin"] = true;
+      }
+      if (row.role === ROLE.STAFF) {
+        heldRoles["staff"] = true;
+      }
+      if (row.department_id !== null) {
+        heldRoles["department-manager"] = true;
+      }
+    }
     const permissionsCopy = COPY.permissions;
     const roles: AccountPermissionRole[] = [
       {
         key: "admin",
         label: permissionsCopy.roleAdmin,
         scope: permissionsCopy.roleAdminScope,
-        assignmentState: heldRoles.has("admin") ? "assigned" : "assignable",
+        assignmentState: heldRoles["admin"] ? "assigned" : "assignable",
       },
       {
         key: "department-manager",
         label: permissionsCopy.roleDepartmentManager,
         scope: permissionsCopy.roleDepartmentManagerScope,
-        assignmentState: heldRoles.has("department-manager")
+        assignmentState: heldRoles["department-manager"]
           ? "assigned"
           : "assignable",
       },
@@ -1517,7 +1528,7 @@ export class DepartmentWorkspace {
         key: "staff",
         label: permissionsCopy.roleStaff,
         scope: permissionsCopy.roleStaffScope,
-        assignmentState: heldRoles.has("staff") ? "assigned" : "assignable",
+        assignmentState: heldRoles["staff"] ? "assigned" : "assignable",
       },
     ];
     return { accounts, roles };

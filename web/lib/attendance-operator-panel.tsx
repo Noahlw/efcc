@@ -265,10 +265,11 @@ export const AttendanceRoster = ({
         </div>
         <div className={styles.rosterHeadingRow}>
           <div>
-            <h1 className={styles.title}>{eventTitle}</h1>
+            <h1 className={styles.title}>{COPY.attendance.rosterTitle}</h1>
             <p className={styles.lead}>
-              {hkWallLabel(event.starts_at)}
+              {eventTitle}
               {event.location ? ` · ${event.location}` : ""}
+              {` · ${hkWallLabel(event.starts_at)}`}
             </p>
           </div>
           <p className={styles.rosterCount} aria-live="polite">

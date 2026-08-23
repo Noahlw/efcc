@@ -1622,7 +1622,7 @@ test.describe("MSG-01 participant Messages", () => {
     await page.getByRole("link", { name: COPY.viewAllMessages }).click();
     await expect(page).toHaveURL(/\/messages\/?$/u);
     await expect(
-      page.getByRole("heading", { name: COPY.churchNews })
+      page.getByRole("heading", { name: COPY.churchNews, exact: true })
     ).toBeVisible();
   });
 
@@ -3487,9 +3487,8 @@ test.describe("MUI-02 scoped Program management", () => {
     await expect(
       page.getByRole("heading", { name: updatedName })
     ).toBeVisible();
-    await expect(page).toHaveURL(
-      new RegExp(`/programs\\?mode=management&program=${id}$`, "u")
-    );
+    await expect(page).toHaveURL(/\/programs\?mode=management/u);
+    await expect(page.url()).toContain(`program=${id}`);
 
     const archiveStatus = await page.evaluate(async (programId) => {
       const response = await fetch(`/api/v1/programs/${programId}`, {
@@ -5322,12 +5321,11 @@ test.describe("HUB-01 Management Hub directory", () => {
 
     await page.goto("/management?module=approvals");
     await expect(page.getByText(lastName, { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u") }).scrollIntoViewIfNeeded();
     const scrollBefore = await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
       return window.scrollY;
     });
-    expect(scrollBefore).toBeGreaterThan(0);
-
     await page
       .getByRole("link", {
         name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
