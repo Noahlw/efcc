@@ -820,6 +820,51 @@ describe(SelfCheckInPanel, () => {
     }
   });
 
+  test("forbidden self submit stays on confirmation with a focused retry", async () => {
+    server.use(
+      resolveHandler({ events: [EVENT] }),
+      http.post("/api/v1/attendance/self", () =>
+        HttpResponse.json(
+          {
+            status: 403,
+            code: "FORBIDDEN",
+            title: "Forbidden",
+            detail: "你沒有權限執行此操作。",
+          },
+          { status: 403 }
+        )
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+    await openManualEntry();
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualCodeLabel)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.continue })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.error.forbidden);
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.retry })
+    ).toHaveFocus();
+    expect(
+      screen.getByRole("heading", { name: COPY.attendance.confirmTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.attendance.successTitle })
+    ).toBeNull();
+  });
+
   test("offline confirmation shows inline error, keeps state, and re-confirm succeeds", async () => {
     let attempts = 0;
     server.use(
