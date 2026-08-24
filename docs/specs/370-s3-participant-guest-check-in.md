@@ -119,14 +119,25 @@ receives only an ARIA announcement as evidence their attendance was recorded.
 
 ## Solution
 
-Rebuild the presentation of `/scanner` (self mode) and `/guest-check-in` against the extracted
-design, to a visual language chosen by a rendered Style Tile round held **before** implementation.
-Add a lazily-loaded QR decode fallback so camera scanning works on iOS and Firefox. Freeze every
-server, authorization, audit, state and accessibility contract that production already establishes.
+Make the Scanner Section camera-first. A plain `/scanner` entry immediately becomes a full-screen
+dark camera surface and starts the camera/decoder probe; it does not show the method list first. The
+live state contains only a short overlay instruction, the middle scanning frame and one bottom
+`停止掃描` action. No top chrome appears, but the persistent Shared Shell dock/rail remains visible.
 
-Ordering is deliberately inverted from S2. S2 built the functional stack first and reskinned it last
-(#422 → ADR-0037 → PR #423), which meant reworking six freshly shipped Sections. S3 picks the target
-first so the rebuild has one unambiguous destination.
+When the user stops scanning, release camera tracks and return to a light fallback surface with two
+equal, real controls: `輸入代碼` and `出示會員 QR`. When camera permission is denied, explain the
+cause and recovery, show a separate primary `重試相機` action, and keep the two fallback cards
+available. When the browser/device cannot provide a usable decoder, omit retry and show the same
+fallback cards. Manual entry is an in-flow screen, not an always-visible entry card.
+
+A deep link carrying `program_token`, `manual_code` or `event` skips camera opening and resolves its
+known intent directly. Guest entry remains public, one visible step for the common single-event
+case, and never requests camera permission.
+
+Add the iOS/Firefox QR decode fallback and freeze every server, authorization, audit, state and
+accessibility contract that production already establishes. The prototype at `.scratch/s3-prototype/`
+is the visual authority: faithful export geometry for non-camera states, hardened full-screen camera
+states, and clarified copy hierarchy.
 
 ---
 
@@ -144,7 +155,7 @@ following. Each is cited so an implementer cannot mistake it for a delta to "fix
 | F-05 | `查看課程詳情` links to the resolved program | `web/lib/attendance-scanner-ui.tsx:530-532` — `buildProgramsHref({ programId: outcome.latest.program_id })` | hardcoded `openProgram('intro')` |
 | F-06 | Programmatic focus to the heading of each step | `web/lib/self-check-in-panel.tsx:63-96` | none — live region only |
 | F-07 | Localized Traditional Chinese announcements on every transition | `web/lib/use-attendance-flow.ts:148-184` | falls back to raw `"scan-chooser"` |
-| F-08 | Single-column method grid below 560px | `web/lib/attendance-panel.module.css:316-320` | 2-column at every width |
+| F-08 | Fallback method list is one full-width control per row at every phone width; no 2-up false-affordance grid | new S3 method-list contract, prototype `.scratch/s3-prototype/` | export 2-column grid at `scan.html:93-95` |
 | F-09 | `aria-busy` on every submitting control | `self-check-in-panel.tsx:363`, `attendance-scanner-ui.tsx:317` | `disabled` only |
 | F-10 | `pattern="[0-9]{6}"` + non-digit stripping on the code input | `self-check-in-panel.tsx:350-352` | `maxLength` only |
 | F-11 | Dedicated retry control on recoverable submit failure, focused via `retryRef` | `self-check-in-panel.tsx:187, 257-262` | user re-taps the primary button |
@@ -153,6 +164,9 @@ following. Each is cited so an implementer cannot mistake it for a delta to "fix
 | F-14 | Guest credential handoff to login survives | `web/lib/guest-context.ts:50`, `web/app/page.tsx:113-114`, proven by `web/lib/app.test.tsx:282-299` | none |
 | F-15 | Terminal states are in-flow, not addressable routes | `self-check-in-panel.tsx:220-285` | prototype models them as screens |
 | F-16 | Dynamic check-in window derivation | `attendance.ts:374-380`, `attendance-scanner-ui.tsx:454-468` | literal `7:00 PM` |
+| F-17 | Plain `/scanner` entry opens the camera immediately; credential deep links skip camera and resolve directly | `use-attendance-flow.ts:226-243` is the deep-link seam; new camera-first entry contract | current manual-first panel |
+| F-18 | Live camera is full-screen dark with only one bottom stop action; fallback methods are hidden until stop/failure | new S3 interaction contract, prototype `.scratch/s3-prototype/` camera frames | current card-bound camera + always-visible method grid |
+| F-19 | Permission denied and unsupported/unavailable are distinct states; denied gets retry, unsupported does not promise retry | `getUserMedia` failure vs capability probe outcome in `use-qr-camera.ts:82-110` | one generic `cameraUnavailable` state |
 
 Governing rule: **ADR-0036 Product Contract Precedence.** Where the export conflicts with
 authentication, authorization, route/state behaviour, accessibility, responsive usability or shared
@@ -162,55 +176,68 @@ design tokens, the contract wins and the export loses.
 
 ## User stories
 
-### Scan surface — member
+### Camera-first member flow
 
-1. As a Member on an iPhone, I want the camera scanner to work, so that the 掃描 tab does what its
-   name says on the device I actually own.
-2. As a Member, I want the scan surface to present camera and manual code entry as peers, so that
-   typing a code is a first-class path and not an apology.
-3. As a Member whose camera cannot run, I want to show my own Member QR for a leader to scan, so
-   that a missing camera never leaves me with only a six-digit code.
-4. As a Member whose browser cannot decode, I want an immediate, clearly worded manual-code path,
-   so that a missing capability never blocks check-in.
-5. As a Member whose code matches several open meetings, I want to choose explicitly, so that I am
-   never checked into the wrong meeting.
-6. As a Member, I want to confirm the meeting before anything is recorded, so that a misread code is
-   reversible at zero cost.
-7. As a Member, I want success, already-checked-in, not-yet-open, cancelled and not-enrolled to each
-   look like a considered outcome rather than an error, so that a normal situation never reads as a
-   failure.
+1. As a Member entering plain `/scanner`, I want the camera to start immediately, so that check-in
+   feels like opening a camera tool rather than configuring a form.
+2. As a Member, I want the live Scanner Section to be a full-screen dark camera surface, so that
+   the QR frame is the only visual focus.
+3. As a Member, I want one short instruction above the middle scan frame, so that I understand what
+   the frame is for without a card full of competing content.
+4. As a Member, I want one bottom `停止掃描` action while the camera is live, so that I can release
+   the camera and reveal other methods when I choose.
+5. As a Member whose camera permission was denied, I want a clear explanation and a `重試相機`
+   action, so that I can enable permission in browser settings and try again.
+6. As a Member on an unsupported device/browser, I want the product to say camera scanning is
+   unavailable without promising a retry that cannot work, so that I can use another method
+   immediately.
+7. As a Member after stopping or failing camera startup, I want two equally clear fallback choices —
+   `輸入代碼` and `出示會員 QR` — so that the recovery screen stays simple and actionable.
+8. As a Member, I want the manual screen to ask for the six-digit Event Manual Check-In Code, so
+   that typing remains a dependable fallback.
+9. As a Member, I want to show my Member QR for a leader to scan, so that a missing camera or
+   missing event code does not block attendance.
+10. As a Member whose code matches several open meetings, I want to choose explicitly, so that I am
+    never checked into the wrong meeting.
+11. As a Member, I want to confirm the meeting before anything is recorded, so that a misread code
+    is reversible at zero cost.
+12. As a Member, I want success, already-checked-in, not-yet-open, cancelled and not-enrolled to
+    each look like a considered outcome rather than an error.
 
 ### Guest surface
 
-8. As a visitor, I want one form asking for the meeting code, my Chinese name and my phone, so that
-   check-in at the door is a single action.
-9. As a visitor, I want a real completion screen, so that I know my attendance was recorded and I
-   can put my phone away.
-10. As a visitor arriving by the printed venue QR, I want the meeting already resolved, so that I
-   only supply my own details.
-11. As a visitor, I do not want a camera permission prompt on a page where I have not yet identified
-   myself.
-12. As a visitor whose phone is already checked in, I want a neutral, non-alarming message.
+13. As a visitor, I want one form asking for the meeting code, my name and my phone, so that
+    check-in at the door is a single action.
+14. As a visitor, I want a real completion screen, so that I know my attendance was recorded and
+    can put my phone away.
+15. As a visitor arriving by the printed venue QR, I want the meeting already resolved, so that I
+    only supply my own details.
+16. As a visitor, I do not want a camera permission prompt on a page where I have not yet identified
+    myself.
+17. As a visitor whose phone is already checked in, I want a neutral, non-alarming message.
 
 ### Cross-cutting
 
-13. As any user at 320px, I want every check-in surface to fit without horizontal scrolling.
-14. As a screen-reader user, I want each step change announced in Traditional Chinese with focus
-   moved to the new heading.
+18. As any user at 320px, I want every check-in surface to fit without horizontal scrolling.
+19. As a screen-reader user, I want each step change announced in Traditional Chinese with focus
+    moved to the new heading.
 
 ### D1 — Faithful prototype precedes implementation
 
 One prototype at `.scratch/s3-prototype/` reproduces the seven `design_export/participant/*.html`
 screens verbatim — `scan`, `scan-chooser`, `scan-context`, `checkin-result`, `scan-outcome`,
 `guest-checkin`, `guest-result` — plus the hardened states production requires that the export does
-not draw (camera live, decoder probing, unavailable, invalid code, offline, submitting, submit-failed,
-quiet duplicate, cancelled, not-enrolled, guest validation, guest duplicate, long-content stress, and
-the two member-QR screens for the assisted path). 23 frames, grouped into six sections, each citing
-its export lines or its extension reason on the frame.
-
-Geometry is taken from the export: `max-width 680px` main (`scan.html:52`), 72px chrome
-(`scan.html:82`), 280px viewfinder with one square border inset 15% (`scan.html:87`), 2-up method
-grid. The demo scenario switcher (`scan.html:99-126`) is absent — `design_export/README.md` flags it
+not draw (camera opening/live, stop-to-fallback, permission denied, unsupported, manual entry, invalid
+code, offline, submitting, submit-failed, quiet duplicate, cancelled, not-enrolled, guest validation,
+guest duplicate, long-content stress, the two member-QR screens for the assisted path, and the desktop
+manual-only boundary). 25 frames, grouped into seven sections, each citing its export lines or its
+extension reason on the frame.
+Geometry is taken from the export for the light non-camera states: `max-width 680px` main
+(`scan.html:52`), 72px chrome (`scan.html:82`), 280px pre-camera viewfinder with one square border
+inset 15% (`scan.html:87`). The camera-first live states intentionally override that pre-camera
+geometry with a full-screen dark surface, open-corner frame and persistent navigation; the fallback
+method list is one full-width control per row.
+The demo scenario switcher (`scan.html:99-126`) is absent — `design_export/README.md` flags it
 demo-only and this spec lists it under "Design bugs not to port".
 
 Where the export diverges from the shipped EFCC tokens, both values are present and switched by
@@ -263,11 +290,13 @@ into route files instead of containing it in the hook.
 
 Ripple is four files: `use-qr-camera.ts`, `use-attendance-flow.ts:38, 207, 258`,
 `self-check-in-panel.tsx:301`, and `attendance-scanner-ui.tsx:75-81` — where `cameraAvailable` is
-already optional with a default. Manual code entry is a first-class peer (A-01, D5), so it remains
-available for the whole probe and no loading state is required.
+already optional with a default. Fallback methods remain hidden while live and become available only
+after `停止掃描` or a camera-start failure.
 
-`attendance-scanner-ui.tsx:113` already emits `data-camera-available={cameraAvailable}` on the start
-button. That is the observable the load-order E2E asserts; no new test affordance is needed.
+The load-order E2E observes the rendered state rather than a start-button data attribute: plain
+`/scanner` must enter `scan-opening`, settle to `scan-live` when the ponyfill is ready, and never
+render fallback method controls while live. A failed probe must settle to `scan-denied` or
+`scan-unsupported` with the correct recovery hierarchy.
 
 **The probe must always terminate.** Tri-state introduces a failure mode the boolean gate could not
 have: a `null` that never settles renders neither a viewfinder nor the unavailable notice, which is
@@ -290,6 +319,52 @@ by code regardless of how the probe ends. `reportUnavailableOnMount` fires once,
 
 A timeout is required, not optional: a stalled fetch never rejects, so error handling alone cannot
 guarantee termination.
+
+### D2b — Camera-first entry and permission recovery
+
+Plain `/scanner` entry has one camera-first state machine:
+
+```
+plain /scanner
+  → scan-opening
+  → scan-live                         [camera stream + decoder ready]
+  → scan-fallback                     [user taps 停止掃描; tracks released]
+
+scan-opening
+  → scan-live                         [permission/decoder ready]
+  → scan-denied                       [permission denied]
+  → scan-unsupported                  [no usable decoder/device camera]
+
+scan-denied
+  → scan-live                         [重試相機 succeeds]
+  → scan-fallback                     [輸入代碼 or 出示會員 QR]
+
+scan-unsupported
+  → scan-fallback                     [輸入代碼 or 出示會員 QR]
+```
+
+The live surface is dark and full-screen, with no top chrome but persistent Shared Shell navigation.
+On phone it keeps the existing light floating dock; on desktop the rail remains visible and is
+dark-themed only while live Scanner is active. The live surface contains one short overlay hint,
+one middle scan frame and one bottom `停止掃描` action positioned immediately above the dock/rail
+safe area. The opening state keeps the same dark surface and frame, announces `正在開啟相機…`, and
+disables the stop action until the stream is ready.
+
+`重試相機` is shown only when the failure reason is permission denial or another recoverable
+`getUserMedia` failure. Its message is complete and actionable:
+
+`相機權限未開啟。請在瀏覽器設定允許相機，再按「重試相機」。`
+
+Unsupported/unavailable has no retry promise:
+
+`相機掃描不可用。你仍可用以下方式簽到。`
+Both failure states show equal light fallback controls with short visible labels `輸入代碼` and
+`出示會員 QR`; supporting lines retain the full outcome. The manual screen and Member-QR screen
+are light surfaces. Deep links carrying `program_token`, `manual_code` or `event` skip camera
+opening and resolve their known intent directly. At desktop width, `/scanner` renders only manual
+Event Manual Check-In Code entry while the Shared Shell rail remains; it never renders the camera
+Scanner page. `/guest-check-in` remains outside this camera-first contract and never requests camera
+permission.
 
 ### D3 — Guest flow
 
@@ -322,25 +397,20 @@ prompts for camera permission before any identity exists.
 
 `ScannerChooser` (member) and `ScannerEventPicker` (guest) converge on one component.
 
-### D3b — Three check-in methods, one surface
+### D3b — Three check-in methods and fallback hierarchy
 
-The scan surface offers three peer methods, all server-backed today and all visible without
-requiring the camera first:
+The Scanner Section has three server-backed methods, but the camera is the only method shown on
+plain entry. The other two appear after `停止掃描` or a camera failure:
 
-| # | Method | Server method | Route |
+| # | Method | Visible when | Server method |
 | --- | --- | --- | --- |
-| 1 | 掃描課程 QR | `self_qr_scan` (camera decode) | `handleSelfCheckIn` |
-| 2 | 輸入聚會代碼 | `self_manual_code` (six-digit Event Manual Check-In Code) | same |
-| 3 | 請負責人協助簽到 | member shows Member QR → `handleAssistedCheckIn` (`attendance.ts:1087-1148`) | Event detail assisted path |
+| 1 | 掃描課程 QR | `scan-opening` → `scan-live` | `self_qr_scan` |
+| 2 | 輸入代碼 | `scan-fallback`, `scan-denied`, `scan-unsupported` | `self_manual_code` |
+| 3 | 出示會員 QR | `scan-fallback`, `scan-denied`, `scan-unsupported` | `handleAssistedCheckIn` (`attendance.ts:1087-1148`) |
 
-Method 3 is new to the design. It removes the dead end where a member whose camera cannot run
-had only a six-digit code to fall back on; a leader scans the Member QR with the existing Assisted
-Scanner. Shown as an in-flow state of `/scanner` per D4, so the member never loses check-in
-context. The scan surface therefore lists **輸入聚會代碼** and **請負責人協助簽到** as two full-width
-rows — every row is a real control with icon, title, one explanatory line and a trailing chevron.
-The export's 2-up grid that paired a `<button>` with a `<div role="note">` of near-identical
-styling (scan.html:94-95) was a false affordance and is not reproduced; the camera-permission
-reassurance becomes a quiet hint line.
+The fallback cards have equal visual weight and short visible titles. Supporting lines explain the
+next consequence. The design's 2-up grid that paired a `<button>` with a `<div role="note">` of
+near-identical styling (`scan.html:94-95`) is not reproduced; while live, no method cards are shown.
 
 ### D4 — Terminal screens are in-flow states
 
@@ -447,8 +517,8 @@ The prototype exposes both via `[data-tokens]` on `<html>`, so Group D can be de
 | --- | --- |
 | E-01 focus management | **KEEP** — F-06 |
 | E-02 localized announcements | **KEEP** — F-07 |
-| E-03 single column < 560px | **KEEP** — F-08 |
-| E-04 viewfinder sizing | **HYBRID** — keep fluid `min(100%, 280px)`; adopt the design's corner reticle treatment |
+| E-03 fallback method rows | **KEEP** — F-08: one full-width row, no 2-up grid at any width |
+| E-04 live camera frame | **ADOPT** — full-screen dark camera with an open-corner frame centered in the remaining viewport; fallback/manual screens do not render camera |
 | E-05 input mode & pattern | **KEEP** — F-10 |
 | E-06 `aria-busy` | **KEEP** — F-09 |
 
@@ -462,43 +532,57 @@ listed under [Design bugs not to port](#design-bugs-not-to-port).
 ```
                        ┌──────────────── /scanner (self) ────────────────┐
 
-event-detail --[前往掃描]--> scan
-dock --[掃描]--> scan
-deep link /scanner?event=<id> | ?program_token=<t> | ?manual_code=<c> --> scan (auto-resolve)
+plain /scanner -------------------------------> scan-opening
+deep link /scanner?event=<id> | ?program_token=<t> | ?manual_code=<c>
+  --------------------------------------------> resolve(known intent; skip camera)
 
-scan --[開始掃描 → camera decode]--------> resolve(entry)
-scan --[輸入聚會代碼 → 六位數代碼 + 繼續]--> resolve(entry)
-scan --[請負責人協助簽到]-------------------> member-qr
+scan-opening --[camera/decoder ready]----------> scan-live
+scan-opening --[permission denied]-------------> scan-denied
+scan-opening --[unsupported/unavailable]-------> scan-unsupported
 
-resolve → 0 open events  --> scan            [inline error B-02 invalid; nothing written]
-resolve → network failure --> scan           [inline error B-02 offline]
-resolve → 1 open event   --> scan-context    [confirmation]
+scan-live --[QR decoded]-----------------------> resolve(entry)
+scan-live --[停止掃描]--------------------------> scan-fallback [release tracks]
+
+scan-denied --[重試相機 succeeds]---------------> scan-live
+scan-denied --[輸入代碼]------------------------> scan-manual
+scan-denied --[出示會員 QR]--------------------> member-qr
+
+scan-unsupported --[輸入代碼]------------------> scan-manual
+scan-unsupported --[出示會員 QR]---------------> member-qr
+
+scan-fallback --[輸入代碼]---------------------> scan-manual
+scan-fallback --[出示會員 QR]------------------> member-qr
+
+scan-manual --[六位數代碼 + 繼續]--------------> resolve(entry)
+resolve → 0 open events  --> scan-manual      [inline B-02 invalid; nothing written]
+resolve → network failure --> scan-fallback    [inline B-02 offline; nothing written]
+resolve → 1 open event   --> scan-context      [confirmation]
 resolve → n>1 open events --> scan-chooser
 resolve → ineligible     --> scan-outcome(kind)
 
-scan-chooser --[重新掃描]--> scan
+scan-chooser --[重新掃描]--> scan-opening
 scan-chooser --[select row]--> scan-context
 
-scan-context --[不是這個聚會, n>1]--> scan-chooser      [nothing written]
-scan-context --[不是這個聚會, n=1]--> scan              [nothing written]
+scan-context --[不是這個聚會, n>1]--> scan-chooser [nothing written]
+scan-context --[不是這個聚會, n=1]--> scan-opening [nothing written]
 scan-context --[確認簽到 → 201 success]--> checkin-result(success)
 scan-context --[確認簽到 → 200 duplicate]--> checkin-result(duplicate)
 scan-context --[確認簽到 → recoverable error]--> scan-context [inline error + focused 重試簽到]
 
 scan-outcome(kind ∈ {window-not-open, cancelled, not-enrolled, forbidden})
-scan-outcome --[返回掃描]--> scan
+scan-outcome --[返回掃描]--> scan-opening
 scan-outcome --[查看課程詳情, not-enrolled only]--> /programs?programId=<resolved>
 
 checkin-result --[返回首頁]--> /home
-checkin-result --[再次簽到]--> scan
+checkin-result --[再次簽到]--> scan-opening
 
-member-qr --[返回簽到方式]--> scan
-member-qr --[負責人掃描 Member QR (assisted)]--> checkin-result  [via handleAssistedCheckIn; member-qr stays in-flow per D4, never navigates to /account]
+member-qr --[返回簽到方式]--> scan-fallback
+member-qr --[負責人掃描 Member QR (assisted)]--> checkin-result [handleAssistedCheckIn; in-flow]
 
                     ┌──────────── /guest-check-in (public) ────────────┐
 
 login --[訪客簽到]--> guest-checkin
-printed QR --> /guest-check-in?program_token=<t>  --> guest-checkin (auto-resolve)
+printed QR --> /guest-check-in?program_token=<t> --> guest-checkin (auto-resolve)
 
 guest-checkin --[確認簽到]--> resolve(entry) then guestCheckIn
     → 0 events        --> guest-checkin [inline B-11 / B-02 invalid; nothing written]
@@ -582,23 +666,31 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 1. `page.addInitScript(() => { delete (window as { BarcodeDetector?: unknown }).BarcodeDetector; })`
    before navigation, so the page loads with no native detector.
-2. Assert the start control settles to `data-camera-available="true"`
-   (`attendance-scanner-ui.tsx:113`) — this fails if the capability is resolved at first render, if
-   the import is ordered late, or if the tri-state never settles.
-3. Assert no request to any origin other than the application's own is issued for the wasm.
-
-### Other testing rules
+2. Assert plain `/scanner` enters `scan-opening`, imports the ponyfill before the probe deadline,
+   transitions to `scan-live`, renders no fallback methods while live, and keeps the persistent
+   navigation visible. A permission-denied fixture must instead land on `scan-denied` with
+   `重試相機`; an unsupported fixture lands on `scan-unsupported` without retry.
+3. Assert `停止掃描` releases the stream and transitions to the light fallback with equal `輸入代碼`
+   and `出示會員 QR` controls. Assert no request to any origin other than the application's own is
+   issued for the wasm.
 
 - Every adopted delta needs a test that would fail on the prior behaviour. Group D is exempt —
-  token values are asserted by the tile ADR, not by unit tests.
+  token values are asserted by the prototype's export/shipped token toggle and the measured table,
+  not by unit tests.
 - The blank-state characterization test asserts non-blankness across the zero-event, unknown-event,
   not-enrolled and malformed-intent tuples. It passes on day one by design; its purpose is to make
   the rebuild unable to regress F-15.
 - Playwright at the seven widths locked by ADR-0036: 320×844, 375×844, 390×844, 414×844, 799×900,
   800×900, 1440×900, against local `wrangler dev` + local D1 with `E2E_` fixtures per ADR-0029.
+- Plain `/scanner` E2E enters the opening state and starts the camera automatically; no method cards
+  are present while live. The live state asserts a dark full-screen surface, one short hint, one
+  middle frame, the persistent navigation and only `停止掃描`.
+- Stop releases camera tracks and reveals the light fallback surface with equal `輸入代碼` and
+  `出示會員 QR` controls. Permission-denied asserts failure/cause/recovery copy plus `重試相機`;
+  unsupported/unavailable asserts no retry promise.
 - No suite in this repository can prove iOS. Playwright drives Chromium; WebKit-in-Playwright is not
   Safari, and a spoofed user agent does not remove an API. The detector-deleted E2E proves the
-  *fallback path*; the iPhone smoke in [Verification](#verification) is a required, honestly-labelled
+  fallback path; the iPhone smoke in [Verification](#verification) is a required, honestly-labelled
   manual step, not optional evidence.
 
 ---
@@ -612,7 +704,8 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 - An offline submission queue. `production-route-intent.json` places it explicitly out of scope;
   the contract is inline error plus manual retry.
 - Event Detail pre-window presentation (#398) — remains its own ticket.
-- A second visual language. Tiles contribute layout only; colours stay on the EFCC palette.
+- A new visual language beyond the faithful export and clarified camera-first mode. The live camera
+  is the only dark full-screen mode; fallback/manual/Member-QR surfaces stay light.
 
 ---
 
@@ -620,21 +713,27 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 - Every one of the 42 deltas has a recorded direction, and every **ADOPT** and **HYBRID** delta is
   visibly satisfied and covered by a test that would fail on the prior behaviour.
-- No frozen contract F-01 … F-16 is weakened. Each has an assertion or an explicit citation showing
+- No frozen contract F-01 … F-19 is weakened. Each has an assertion or an explicit citation showing
   it is untouched.
+- Plain `/scanner` enters `scan-opening` and automatically starts the camera probe; credential
+  deep links skip camera opening and resolve directly.
+- `scan-opening` and `scan-live` are full-screen dark camera states with no top chrome, a short
+  overlay hint, one middle scan frame, and the persistent navigation visible. The live state exposes
+  only `停止掃描`; the opening state disables it until the camera is ready.
+- `停止掃描` releases camera tracks and reveals a light fallback surface with equal `輸入代碼` and
+  `出示會員 QR` controls. No fallback method appears while the camera is live.
+- Permission-denied shows `相機權限未開啟。請在瀏覽器設定允許相機，再按「重試相機」。` and a
+  separate primary `重試相機`; unsupported/unavailable shows no retry promise.
 - Camera QR scanning works on iOS Safari and Firefox via the lazily-loaded ponyfill, with the wasm
   served same-origin and no third-party request issued.
-- With the native detector removed before page load, the start control settles to
-  `data-camera-available="true"` and a decode reaches the resolve path. This assertion fails if the
-  capability is resolved at first render or the ponyfill is imported too late.
-- The capability probe always terminates. At the panel seam, with the native detector absent and the
-  ponyfill import forced to reject, the surface settles to the camera-unavailable state with manual
-  entry usable — never a render with neither viewfinder nor notice. Same assertion for a failed wasm
-  fetch and for a probe that exceeds its timeout.
+- With the native detector removed before page load, the opening state settles to live or to the
+  correct denied/unsupported fallback; the probe never remains indefinite.
+- The persistent mobile dock remains visible over live camera, with `停止掃描` positioned above its
+  height and safe-area inset. The desktop rail remains visible, but desktop `/scanner` renders only
+  manual Event Manual Check-In Code entry — never the camera Scanner page.
 - Chromium and Android Chrome download neither the ponyfill nor the wasm.
 - Guest check-in completes in one visible step for a single open event, presents a selection step
   when several are open, writes nothing when zero match, and ends on a real completion screen.
-- The scan surface lists **輸入聚會代碼** and **請負責人協助簽到** as peer methods — every row a real control — with no false-affordance note; the member-QR path shows a large Member QR, the member's name and ID, and returns to the scan flow after the leader's scan (in-flow per D4, never navigating to /account).
 - `/guest-check-in` issues no camera permission prompt.
 - The normal scan context never renders blank for any reachable state tuple; the characterization
   test proves it.
@@ -642,38 +741,39 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 - Terminal states remain in-flow and unaddressable; no new route is introduced.
 - Responsive and accessibility checks pass at all seven ADR-0036 widths, including keyboard-only
   completion when no decoder is available.
-- 掃描 is the Section name in the dock, the header and the glossary.
 - `pnpm --dir web typecheck` and `pnpm --dir web test:components` pass.
 
 ## Verification
 
-1. Prototype at `.scratch/s3-prototype/` reviewed — 23 frames (7 faithful + 13 hardened + member-QR pair + stress) at 320/390/430 in both token modes, zero clipped overflow, zero sub-44px targets — before any production file changes.
+1. Prototype at `.scratch/s3-prototype/` reviewed — 25 frames (camera opening/live, fallback, denied,
+   unsupported, manual, invalid/offline, member-QR pair, faithful export states, terminal states,
+   guest states and stress) at 320/390/430, with persistent dock in camera frames, zero clipped
+   overflow and zero sub-44px targets — before production file changes.
 2. Relevant component, Worker and Playwright suites green at the seven widths against local
    `wrangler dev` + local D1 with fresh `E2E_` fixtures.
-3. Exercise valid, expired, not-enrolled, forbidden, duplicate, network-failure, zero-event,
-   multi-event, decoder-absent and keyboard-only paths on both surfaces.
-4. Verify repeated submission and audit behaviour against the real server contract. A screenshot or
+3. Exercise plain `/scanner` auto-open, live `停止掃描` → fallback, permission denied → retry,
+   unsupported → no retry, manual code, Member QR help, valid, expired, not-enrolled, forbidden,
+   duplicate, network-failure, zero-event, multi-event, decoder-absent and keyboard-only paths.
+4. Verify desktop `/scanner` renders only manual Event Manual Check-In Code entry and never the camera
+   Scanner page; verify the desktop rail remains visible.
+5. Verify repeated submission and audit behaviour against the real server contract. A screenshot or
    a local state toggle is not proof.
-5. **Required manual iPhone smoke**, recorded in the S3-02 ticket: a real iPhone against local
-   `wrangler dev` over LAN, scanning a printed Program QR, reaching a recorded attendance. Note the
-   device, iOS version and browser.
-6. Scoped impeccable audit per ticket, limited to the files that ticket touches. Fix every mechanical
+6. **Required manual iPhone smoke**, recorded in the camera ticket: a real iPhone against local
+   `wrangler dev` over LAN, entering plain `/scanner`, observing the permission prompt, reaching the
+   live camera, tapping `停止掃描`, and completing via manual code after denial. Note device, iOS
+   version and browser.
+7. Scoped impeccable audit per ticket, limited to the files that ticket touches. Fix every mechanical
    finding; list anything requiring judgement for review rather than deciding it silently.
-7. Final layer is verification-only: no production runtime, API, schema or Cloudflare changes.
+8. Final layer is verification-only: no production runtime, API, schema or Cloudflare changes.
 
 ---
 
 ## Implementation tickets
 
-Stacked linearly on `main` @ `0780062b`, each PR based on the previous branch. Reviewed slices are
-never force-updated.
-
-| Ticket | Title | Blocked by | Output |
-| --- | --- | --- | --- |
-| S3-01 | Harden and land the faithful prototype + shared-component fork | — | `.scratch/s3-prototype/` (23 frames) → `web/` visuals, `ScannerStatusOutput` fork per D6 |
-| S3-02 | QR decode fallback + self-hosted wasm + camera ADR | — (parallel with S3-01) | `barcode-detector/ponyfill`, `setZXingModuleOverrides`, ADR superseding 0015, manual iPhone smoke |
-| S3-03 | Wire the three member methods and rebuild the member flow | S3-01, S3-02 | scan (method list) → manual code / member-QR → chooser → confirm → result / outcome, honours D3b |
-| S3-04 | Rebuild guest: single form, completion screen, camera removal + guest ADR | S3-01, S3-03 | one-step flow, `guest-result`, ADR amending 0028 scope |
+| S3-01 | Camera-first prototype + shared-component fork | — | `.scratch/s3-prototype/` → `web/` camera/fallback visuals; `ScannerStatusOutput` fork per D6 |
+| S3-02 | QR decode fallback + self-hosted wasm + camera ADR | — (parallel with S3-01) | `barcode-detector/ponyfill`, auto-open probe, denied/unsupported split, same-origin wasm, ADR superseding 0015 |
+| S3-03 | Wire the camera-first member flow and three methods | S3-01, S3-02 | live dark camera + persistent nav, stop-to-fallback, manual code, Member QR, chooser/confirm/result/outcome, desktop manual-only boundary |
+| S3-04 | Rebuild guest: single form, completion screen, camera removal + guest ADR | S3-01, S3-03 | one-step guest flow, `guest-result`, duplicate/validation states, ADR-0028 pointer |
 | S3-05 | CONTEXT.md and ADR-0015 supersession | S3-02, S3-04 | glossary corrections and new terms |
 | S3-06 | Verify S3 integration gate | S3-01 … S3-05 | verification-only PR, no production diff |
 
