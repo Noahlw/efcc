@@ -305,6 +305,136 @@
   color: inherit;
   line-height: 1.5;
 }
+.cameraStage {
+  position: relative;
+  min-height: 760px;
+  margin: 0;
+  padding: 92px 20px 142px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+  background: radial-gradient(
+    120% 80% at 50% 28%,
+    #344342 0%,
+    #172021 56%,
+    #050708 100%
+  );
+}
+
+.cameraStageOpening .cameraFrame {
+  opacity: 0.3;
+}
+
+.cameraStageOpening .cameraCorner {
+  border-color: rgb(255 255 255 / 45%);
+}
+
+.cameraHint {
+  position: absolute;
+  top: 112px;
+  left: 20px;
+  right: 20px;
+  margin: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 70%);
+}
+
+.cameraState {
+  position: absolute;
+  top: 50%;
+  left: 20px;
+  right: 20px;
+  z-index: 1;
+  margin: 0;
+  transform: translateY(-50%);
+  text-align: center;
+  color: rgb(255 255 255 / 88%);
+  font-size: 1rem;
+}
+
+.cameraFrameLive {
+  position: relative;
+  width: min(74%, 286px);
+  aspect-ratio: 1;
+}
+
+.cameraFrameLive .video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.cameraCornerLive {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgb(255 255 255 / 92%);
+}
+
+.cameraCornerLiveTopLeft {
+  top: 0;
+  left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.cameraCornerLiveTopRight {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.cameraCornerLiveBottomLeft {
+  bottom: 0;
+  left: 0;
+  border-right: 0;
+  border-top: 0;
+}
+
+.cameraCornerLiveBottomRight {
+  bottom: 0;
+  right: 0;
+  border-left: 0;
+  border-top: 0;
+}
+
+.cameraStop {
+  position: absolute;
+  right: 20px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  left: 20px;
+  min-height: 48px;
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  background: rgb(0 0 0 / 48%);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cameraStop:hover {
+  background: rgb(0 0 0 / 68%);
+}
+
+.cameraStop:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.cameraStop:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 
 .methodSection {
   display: grid;
@@ -834,10 +964,6 @@
   .inputRow {
     grid-template-columns: 1fr auto;
     align-items: end;
-  }
-
-  .methodGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

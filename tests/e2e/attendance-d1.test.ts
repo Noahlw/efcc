@@ -114,7 +114,10 @@ const COPY = {
   eventCancelled: "此聚會已取消，不能簽到。",
   loginForMember: "登入後以成員身份簽到",
   camera: "使用相機掃描 QR",
+  cameraLiveHint: "將二維碼放入框內掃描",
+  stopScan: "停止掃描",
   invalidEntry: "請從有效的 QR 或聚會代碼進入簽到。",
+  invalidEntryCode: "找不到此代碼對應的聚會，請確認後重試。",
   enrollmentRequired: "報名狀態不符合簽到條件。",
   notFound: "找不到請求的資料。",
   invalidPhoneDetail: "請輸入有效電話號碼。",
@@ -148,11 +151,14 @@ const COPY = {
   cameraUnavailableHint:
     "你可以檢查瀏覽器權限，或改用下面的聚會代碼繼續 — 兩種方式同樣可靠。",
   manualEntryTitle: "輸入聚會代碼",
+  manualMethodTitle: "輸入代碼",
+  manualCodeLabel: "六位數代碼",
   manualEntryHint: "相機不可用時，輸入現場顯示的六位數代碼。",
   manualOnlyTitle: "只在你按下後使用相機",
   manualOnlyHint: "相機權限只會在開始掃描時請求。",
   scanMethodTitle: "簽到方式",
   invalidManualCode: "請輸入六位數聚會代碼。",
+  continue: "繼續",
   chooseMeeting: "選擇要簽到的聚會",
   chooseMeetingHint: "此二維碼可用於多個聚會，請揀選你參加的那一個。",
   recognizedMultiple: "已辨識多個聚會",
@@ -426,6 +432,35 @@ async function resolveTokenAndChoose(
   await candidateRows.nth(index).click();
 }
 
+async function expectSelfScannerEntry(page: Page): Promise<void> {
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 800;
+  if (isDesktop) {
+    const desktopManual = page.locator("[data-scanner-state='desktop-manual']");
+    await expect(desktopManual).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: COPY.manualCodeLabel })
+    ).toBeVisible();
+    return;
+  }
+  const liveStage = page.locator("[data-camera-state='live']");
+  await expect(liveStage).toBeVisible();
+  await expect(
+    liveStage.getByText(COPY.cameraLiveHint, { exact: true })
+  ).toBeVisible();
+}
+
+async function openSelfManualEntry(page: Page): Promise<void> {
+  await expectSelfScannerEntry(page);
+  if ((await page.locator("[data-camera-state='live']").count()) > 0) {
+    await page.getByRole("button", { name: COPY.stopScan }).click();
+    await page
+      .getByRole("button", { name: new RegExp(COPY.manualMethodTitle) })
+      .click();
+  }
+  await expect(page.locator("#attendance-code")).toBeVisible();
+  await expect(page.locator("#attendance-code")).toBeFocused();
+}
+
 test.beforeAll(async ({ playwright }) => {
   const adminUsername = required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER);
   const adminCredential = required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED);
@@ -473,6 +508,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 出席課程 ${fresh("P")}`,
+        description: "S3 attendance acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -551,7 +587,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `E2E 未報名課程 ${fresh("P")}`,
-        category: "測試",
+        description: "S3 unenrolled acceptance fixture",
         behavior_type: "Recurring",
         lifecycle: "Active",
         discoverability: "Listed",
@@ -588,17 +624,8 @@ test.beforeAll(async ({ playwright }) => {
     expect(unenrolledCancelled.status).toBe(200);
 
     const cancelledEvent = await createEvent(-90, 90);
-    // Seed one pre-cancellation check-in so the cancelled event's roster
-    // stays readable for operators after the cancellation (J: the roster
-    // heading must still render).
-    const preCancel = await guestCheckIn(
-      admin.api,
-      cancelledEvent.event_id,
-      cancelledEvent.manual_check_in_code,
-      `E2E訪客 ${fresh("JC")}`,
-      freshPhone()
-    );
-    expect(preCancel.status).toBe(201);
+    // Cancellation is rejected once active Attendance exists; keep this
+    // fixture empty so the cancelled-event outcome remains deterministic.
     const cancelled = await patchJson(
       admin.api,
       `/api/v1/programs/${programId}/events/${cancelledEvent.event_id}`,
@@ -849,9 +876,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       // 再次簽到 → fresh scan; re-resolving the same event → confirmation →
       // quiet neutral duplicate result, never an error.
       await scanAgain.click();
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
       await resolveTokenAndChoose(page, fixtures.checkInToken, 1);
       await expect(
         page.getByRole("heading", { name: COPY.confirmTitle })
@@ -908,9 +933,7 @@ test.describe("ATT-04 QR attendance proof", () => {
     const page = await memberContext.newPage();
     try {
       await page.goto("/scanner");
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
       await expect(
         page.getByText(COPY.assistedOpen, { exact: true })
       ).toHaveCount(0);
@@ -939,37 +962,25 @@ test.describe("ATT-04 QR attendance proof", () => {
     const page = await memberContext.newPage();
     try {
       await page.goto("/scanner");
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
-      await expect(page.getByText(COPY.scanLead)).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: COPY.startScan })
-      ).toBeVisible();
-      await expect(page.getByText(COPY.manualEntryTitle)).toBeVisible();
-      await expect(page.getByText(COPY.manualOnlyTitle)).toBeVisible();
-
-      // Open manual code entry
-      await page
-        .getByRole("button", { name: new RegExp(COPY.manualEntryTitle) })
-        .click();
+      await expectSelfScannerEntry(page);
+      await openSelfManualEntry(page);
       const codeInput = page.locator("#attendance-code");
       await expect(codeInput).toBeVisible();
       await expect(codeInput).toBeFocused();
 
       // Fewer than 6 digits: client validation rejects without sending request
       await codeInput.fill("12345");
-      await page.getByRole("button", { name: COPY.resolve }).click();
+      await page.getByRole("button", { name: COPY.continue }).click();
       await expect(statusText(page, COPY.invalidManualCode)).toBeVisible();
       await expect(codeInput).toBeFocused();
 
-      // Unknown 6-digit code: server returns latest: null -> inline error with retry
+      // Unknown 6-digit code: server returns latest: null -> inline error
       await codeInput.fill("999999");
-      await page.getByRole("button", { name: COPY.resolve }).click();
-      await expect(statusText(page, COPY.invalidEntry)).toBeVisible();
+      await page.getByRole("button", { name: COPY.continue }).click();
+      await expect(statusText(page, COPY.invalidEntryCode)).toBeVisible();
       await expect(
         page.locator("main output[data-tone='error']")
-      ).toContainText(COPY.invalidEntry);
+      ).toContainText(COPY.invalidEntryCode);
     } finally {
       await memberContext.close();
     }
@@ -996,9 +1007,7 @@ test.describe("ATT-04 QR attendance proof", () => {
 
       // 重新掃描 button returns to main scan view
       await page.getByRole("button", { name: COPY.rescan }).click();
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
 
       // Re-resolve via the deep link and select a candidate
       await page.goto(`/scanner?program_token=${fixtures.checkInToken}`);
@@ -1035,9 +1044,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       ).toBeVisible();
       await expect(page.getByText(COPY.outcomeCancelledBody)).toBeVisible();
       await page.getByRole("button", { name: COPY.backToScan }).click();
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
 
       // 2. Not enrolled outcome with program detail CTA
       await page.goto(
@@ -1055,9 +1062,7 @@ test.describe("ATT-04 QR attendance proof", () => {
         `/programs?program=${fixtures.unenrolledProgramId}`
       );
       await page.getByRole("button", { name: COPY.backToScan }).click();
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
 
       // 3. Window not open outcome
       await page.goto(
@@ -1067,9 +1072,7 @@ test.describe("ATT-04 QR attendance proof", () => {
         page.getByRole("heading", { name: COPY.outcomeWindowTitle })
       ).toBeVisible();
       await page.getByRole("button", { name: COPY.backToScan }).click();
-      await expect(
-        page.getByRole("heading", { name: COPY.scanTitle })
-      ).toBeVisible();
+      await expectSelfScannerEntry(page);
     } finally {
       await memberContext.close();
     }
@@ -1118,14 +1121,7 @@ test.describe("ATT-04 QR attendance proof", () => {
         // 不是這個聚會 → single-event resolve returns to the scanner main
         // screen for re-resolution.
         await page.getByRole("button", { name: COPY.notThisEvent }).click();
-        await expect(
-          page.getByRole("heading", { name: COPY.scanTitle })
-        ).toBeVisible();
-        await expect(
-          page.getByRole("button", {
-            name: new RegExp(COPY.manualEntryTitle),
-          })
-        ).toBeVisible();
+        await expectSelfScannerEntry(page);
       } finally {
         await memberContext.close();
       }
@@ -1621,14 +1617,11 @@ test.describe("ATT-04 QR attendance proof", () => {
       await page.goto(
         `/events?eventId=${encodeURIComponent(fixtures.cancelledEvent.event_id)}`
       );
-      // The deep link loads the cancelled event directly: the roster is
-      // still readable (one pre-cancellation check-in was seeded in
-      // beforeAll), the cancellation notice shows, and none of the
-      // check-in tools apply. The chooser （已取消） suffix is covered by
-      // the operator-panel component tests (the chooser itself only lists
-      // the 50 most recent events on the shared worker).
-      // The roster is still readable, so operators can see who had checked
-      // in before the cancellation.
+      // The deep link loads the cancelled event directly: its roster remains
+      // readable, the cancellation notice shows, and none of the check-in
+      // tools apply. The chooser （已取消） suffix is covered by the
+      // operator-panel component tests (the chooser itself only lists the
+      // 50 most recent events on the shared worker).
       await expect(
         page.getByRole("heading", { name: /E2E 聚會/u })
       ).toBeVisible();
