@@ -247,9 +247,10 @@ is fidelity plus hardening, not invention.
 The design-system selection artifact is `.scratch/s3-system-prototypes/index.html`: three candidates
 (Civic Minimal Continuity, Camera-first Utility, Warm Operational Ledger) render the same 9
 representative surfaces — eight S3 frames and one S7 operator mode-switch frame — with two composition
-modes but one shared token/control grammar. S7 preserves the management export's top
-`本人簽到` / `代為簽到` switch and the global Shared Shell dock; chooser, roster, audited mutations
-and settings remain separate S7 scope rather than being designed prematurely in S3.
+modes but one shared token/control grammar. **Selected system: A — Civic Minimal Continuity.**
+S7 preserves the management export's top `本人簽到` / `代為簽到` switch and the global Shared Shell
+dock; chooser, roster, audited mutations and settings remain separate S7 scope rather than being
+designed prematurely in S3.
 
 ### D2 — QR decode fallback
 
