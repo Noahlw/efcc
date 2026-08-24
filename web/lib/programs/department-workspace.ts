@@ -1500,12 +1500,12 @@ export class DepartmentWorkspace {
     for (const row of rows) {
       if (row.role === ROLE.ADMIN) {
         heldRoles["admin"] = true;
-      }
-      if (row.role === ROLE.STAFF) {
-        heldRoles["staff"] = true;
-      }
-      if (row.department_id !== null) {
+      } else if (row.department_id !== null) {
+        // Staff accounts with an active department grant are projected as
+        // department-manager, not as both roles.
         heldRoles["department-manager"] = true;
+      } else if (row.role === ROLE.STAFF) {
+        heldRoles["staff"] = true;
       }
     }
     const permissionsCopy = COPY.permissions;
