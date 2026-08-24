@@ -1,0 +1,14 @@
+/* Candidate A — Civic Minimal Continuity
+ * Shared product grammar stays closest to the export: crisp hairlines, small
+ * radius, measured typography, calm light fallback surfaces. */
+:root { --radius-sm: 8px; --radius-md: 10px; --accent-tint: #f7efee; }
+.system-thesis { border-left-color: var(--line-strong); }
+.light-page, .desktop-page { padding: 20px; }
+.light-page h2, .desktop-page h2 { font-weight: 650; letter-spacing: -.02em; }
+.method-stack button, .form-card, .event-card, .mutation-card { box-shadow: 0 1px 0 rgb(23 26 29 / 4%); }
+.method-stack button { border-radius: 10px; }
+.method-stack button:hover { background: #f7f7f7; }
+.camera-stage, .operator-camera { background: #1c1e1f; }
+.camera-frame i { border-color: #6bb3c7; }
+.primary { border-radius: 8px; }
+.status-pill { border-radius: 999px; }

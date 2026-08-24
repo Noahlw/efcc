@@ -229,9 +229,8 @@ screens verbatim — `scan`, `scan-chooser`, `scan-context`, `checkin-result`, `
 `guest-checkin`, `guest-result` — plus the hardened states production requires that the export does
 not draw (camera opening/live, stop-to-fallback, permission denied, unsupported, manual entry, invalid
 code, offline, submitting, submit-failed, quiet duplicate, cancelled, not-enrolled, guest validation,
-guest duplicate, long-content stress, the two member-QR screens for the assisted path, and the desktop
-manual-only boundary). 25 frames, grouped into seven sections, each citing its export lines or its
-extension reason on the frame.
+guest duplicate, long-content stress, the desktop manual-only boundary and the Account shortcut).
+23 frames, grouped into six sections, each citing its export lines or its extension reason on the frame.
 Geometry is taken from the export for the light non-camera states: `max-width 680px` main
 (`scan.html:52`), 72px chrome (`scan.html:82`), 280px pre-camera viewfinder with one square border
 inset 15% (`scan.html:87`). The camera-first live states intentionally override that pre-camera
@@ -244,6 +243,13 @@ Where the export diverges from the shipped EFCC tokens, both values are present 
 `[data-tokens]` on `<html>`, so Group D resolves by looking. See [Group D](#group-d--tokens--visual).
 No Style Tile round is required — the design already exists in `design_export`; this prototype's job
 is fidelity plus hardening, not invention.
+
+The design-system selection artifact is `.scratch/s3-system-prototypes/index.html`: three candidates
+(Civic Minimal Continuity, Camera-first Utility, Warm Operational Ledger) render the same 13
+representative surfaces — eight S3 frames and five S7 operator frames — with two composition modes
+but one shared token/control grammar. S7 preserves the management export's top
+`本人簽到` / `代為簽到` switch and the global Shared Shell dock; it does not collapse the operator
+chooser/roster/audited mutation contracts into the S3 self flow.
 
 ### D2 — QR decode fallback
 
@@ -359,8 +365,9 @@ Unsupported/unavailable has no retry promise:
 
 `相機掃描不可用。你仍可用以下方式簽到。`
 Both failure states show equal light fallback controls with short visible labels `輸入代碼` and
-`出示會員 QR`; supporting lines retain the full outcome. The manual screen and Member-QR screen
-are light surfaces. Deep links carrying `program_token`, `manual_code` or `event` skip camera
+`出示會員 QR`; supporting lines retain the full outcome. The manual screen is a light in-flow state;
+the Member QR action navigates to the existing Account Section, which already renders the Member QR.
+No new QR screen is introduced. Deep links carrying `program_token`, `manual_code` or `event` skip camera
 opening and resolve their known intent directly. At desktop width, `/scanner` renders only manual
 Event Manual Check-In Code entry while the Shared Shell rail remains; it never renders the camera
 Scanner page. `/guest-check-in` remains outside this camera-first contract and never requests camera
@@ -402,11 +409,11 @@ prompts for camera permission before any identity exists.
 The Scanner Section has three server-backed methods, but the camera is the only method shown on
 plain entry. The other two appear after `停止掃描` or a camera failure:
 
-| # | Method | Visible when | Server method |
+| # | Method | Visible when | Destination / server method |
 | --- | --- | --- | --- |
 | 1 | 掃描課程 QR | `scan-opening` → `scan-live` | `self_qr_scan` |
 | 2 | 輸入代碼 | `scan-fallback`, `scan-denied`, `scan-unsupported` | `self_manual_code` |
-| 3 | 出示會員 QR | `scan-fallback`, `scan-denied`, `scan-unsupported` | `handleAssistedCheckIn` (`attendance.ts:1087-1148`) |
+| 3 | 出示會員 QR | `scan-fallback`, `scan-denied`, `scan-unsupported` | `/account` (existing Account Section; its Member QR is scanned by the operator path) |
 
 The fallback cards have equal visual weight and short visible titles. Supporting lines explain the
 next consequence. The design's 2-up grid that paired a `<button>` with a `<div role="note">` of
@@ -545,13 +552,13 @@ scan-live --[停止掃描]--------------------------> scan-fallback [release tra
 
 scan-denied --[重試相機 succeeds]---------------> scan-live
 scan-denied --[輸入代碼]------------------------> scan-manual
-scan-denied --[出示會員 QR]--------------------> member-qr
+scan-denied --[出示會員 QR]--------------------> /account [existing Member QR]
 
 scan-unsupported --[輸入代碼]------------------> scan-manual
-scan-unsupported --[出示會員 QR]---------------> member-qr
+scan-unsupported --[出示會員 QR]---------------> /account [existing Member QR]
 
 scan-fallback --[輸入代碼]---------------------> scan-manual
-scan-fallback --[出示會員 QR]------------------> member-qr
+scan-fallback --[出示會員 QR]------------------> /account [existing Member QR]
 
 scan-manual --[六位數代碼 + 繼續]--------------> resolve(entry)
 resolve → 0 open events  --> scan-manual      [inline B-02 invalid; nothing written]
@@ -575,9 +582,6 @@ scan-outcome --[查看課程詳情, not-enrolled only]--> /programs?programId=<r
 
 checkin-result --[返回首頁]--> /home
 checkin-result --[再次簽到]--> scan-opening
-
-member-qr --[返回簽到方式]--> scan-fallback
-member-qr --[負責人掃描 Member QR (assisted)]--> checkin-result [handleAssistedCheckIn; in-flow]
 
                     ┌──────────── /guest-check-in (public) ────────────┐
 
@@ -699,6 +703,8 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 - Management roster, attendance correction, void, guest correction — S7.
 - The assisted / operator scanner surface. It keeps the current `ScannerStatusOutput` untouched (D6).
+- S7 operator runtime implementation remains separate; the five S7 frames in
+  `.scratch/s3-system-prototypes/` are design-system compatibility evidence only, not S3 build scope.
 - Any new backend table or endpoint. The traced contract is sufficient; D3 proves the guest rebuild
   needs no server change.
 - An offline submission queue. `production-route-intent.json` places it explicitly out of scope;
@@ -721,7 +727,8 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
   overlay hint, one middle scan frame, and the persistent navigation visible. The live state exposes
   only `停止掃描`; the opening state disables it until the camera is ready.
 - `停止掃描` releases camera tracks and reveals a light fallback surface with equal `輸入代碼` and
-  `出示會員 QR` controls. No fallback method appears while the camera is live.
+  `出示會員 QR` controls. The Member QR control navigates to the existing Account Section; no new
+  Member QR screen or in-flow waiting state is introduced. No fallback method appears while live.
 - Permission-denied shows `相機權限未開啟。請在瀏覽器設定允許相機，再按「重試相機」。` and a
   separate primary `重試相機`; unsupported/unavailable shows no retry promise.
 - Camera QR scanning works on iOS Safari and Firefox via the lazily-loaded ponyfill, with the wasm
@@ -745,15 +752,16 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 ## Verification
 
-1. Prototype at `.scratch/s3-prototype/` reviewed — 25 frames (camera opening/live, fallback, denied,
-   unsupported, manual, invalid/offline, member-QR pair, faithful export states, terminal states,
+1. Prototype at `.scratch/s3-prototype/` reviewed — 23 frames (camera opening/live, fallback, denied,
+   unsupported, manual, invalid/offline, Account shortcut, faithful export states, terminal states,
    guest states and stress) at 320/390/430, with persistent dock in camera frames, zero clipped
    overflow and zero sub-44px targets — before production file changes.
 2. Relevant component, Worker and Playwright suites green at the seven widths against local
    `wrangler dev` + local D1 with fresh `E2E_` fixtures.
 3. Exercise plain `/scanner` auto-open, live `停止掃描` → fallback, permission denied → retry,
-   unsupported → no retry, manual code, Member QR help, valid, expired, not-enrolled, forbidden,
-   duplicate, network-failure, zero-event, multi-event, decoder-absent and keyboard-only paths.
+   unsupported → no retry, manual code, Member QR → Account navigation, valid, expired, not-enrolled,
+   forbidden, duplicate, network-failure, zero-event, multi-event, decoder-absent and keyboard-only
+   paths.
 4. Verify desktop `/scanner` renders only manual Event Manual Check-In Code entry and never the camera
    Scanner page; verify the desktop rail remains visible.
 5. Verify repeated submission and audit behaviour against the real server contract. A screenshot or

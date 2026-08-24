@@ -4,14 +4,13 @@
  * `src` cites the design export where a screen reproduces it; `ext` marks where
  * this prototype extends the design, with the reason.
  *
- * THREE CHECK-IN PATHS, all server-backed today:
  *   1. 掃描課程 QR      → self_qr_scan     (camera reads the venue Program QR)
  *   2. 輸入聚會代碼      → self_manual_code (six-digit Event Manual Check-In Code)
- *   3. 請負責人協助簽到  → assisted        (member shows Member QR; leader scans it
- *                                          via handleAssistedCheckIn)
+ *   3. 出示會員 QR       → /account       (existing Account Section owns the QR;
+ *                                          no new Member QR screen)
  *
- * Path 3 is new to the design. It removes the dead end where a member whose
- * camera cannot run had only a six-digit code to fall back on.
+ * Path 3 is a navigation shortcut, not a new attendance state. It removes the
+ * dead end where a member whose camera cannot run had only a six-digit code.
  *
  * The demo scenario switcher (scan.html:99-126) is absent by design:
  * design_export/README.md flags it demo-only.
@@ -53,11 +52,11 @@ const fallbackMethods = () => `
         </span>
         ${ico("chevron")}
       </button>
-      <button type="button" class="method">
+      <button type="button" class="method" data-destination="/account">
         <span class="method-icon">${ico("qr", 22)}</span>
         <span class="method-text">
           <strong>出示會員 QR</strong>
-          <span>出示你的會員 QR 碼，由聚會負責人掃描。</span>
+          <span>開啟帳戶，出示你的會員 QR 碼。</span>
         </span>
         ${ico("chevron")}
       </button>
@@ -265,61 +264,6 @@ const SCREENS = [
         <h1 class="h1-sub">輸入聚會代碼</h1>
         <p class="lead-plain">桌面版只支援手動代碼簽到。請輸入現場顯示的六位數代碼。</p>
         ${manualForm("desktop-code")}
-      </div>`,
-  },
-  /* ---------------- Assisted path (new) ---------------- */
-  {
-    id: "member-qr",
-    group: "協助簽到",
-    label: "出示會員 QR 碼",
-    ext: "NEW SCREEN. The third path: the member shows their Member QR and a leader scans it with the Assisted Scanner (handleAssistedCheckIn, attendance.ts:1087-1148). Kept as an in-flow state of /scanner per D4, so the member never loses check-in context. Screen brightness matters here — a dim phone will not scan.",
-    live: "請負責人掃描你的會員 QR 碼",
-    body: `
-      ${chromeBar("協助簽到")}
-      <div style="padding:6px 0 18px">
-        ${backBtn("返回簽到方式")}
-        <h1 class="h1-sub">出示會員 QR 碼</h1>
-        <p class="lead-plain">請聚會負責人掃描下面的 QR 碼，完成你的簽到。</p>
-      </div>
-      <article class="card card--qr">
-        <div class="qr-plate" role="img" aria-label="你的會員 QR 碼">
-          <span class="qr-art"></span>
-        </div>
-        <p class="qr-name">${F.member}</p>
-        <p class="qr-id">${F.memberId}</p>
-      </article>
-      <p class="hint-row">
-        <span class="notice-icon">${ico("info", 18)}</span>
-        <span>負責人掃描後，這個畫面會自動顯示簽到結果。</span>
-      </p>
-      <div class="actions">
-        <button type="button" class="btn btn--secondary">調高螢幕亮度</button>
-      </div>`,
-  },
-
-  {
-    id: "member-qr-waiting",
-    group: "協助簽到",
-    label: "等待負責人掃描",
-    ext: "Between showing the QR and the leader's scan landing. The member should never wonder whether it worked, so the state is explicit and the QR stays on screen.",
-    live: "等待負責人掃描",
-    body: `
-      ${chromeBar("協助簽到")}
-      <div style="padding:6px 0 18px">
-        ${backBtn("返回簽到方式")}
-        <h1 class="h1-sub">出示會員 QR 碼</h1>
-        <p class="lead-plain">請聚會負責人掃描下面的 QR 碼，完成你的簽到。</p>
-      </div>
-      <article class="card card--qr">
-        <div class="qr-plate" role="img" aria-label="你的會員 QR 碼">
-          <span class="qr-art"></span>
-        </div>
-        <p class="qr-name">${F.member}</p>
-        <p class="qr-id">${F.memberId}</p>
-      </article>
-      <div class="waiting" role="status">
-        <span class="waiting-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>等待負責人掃描…</span>
       </div>`,
   },
 
