@@ -746,6 +746,7 @@ describe(SelfCheckInPanel, () => {
     // The duplicate is a quiet neutral result — never an error tone or alert.
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByText(COPY.attendance.submitFailure)).toBeNull();
+    expect(screen.queryByText("att-1")).toBeNull();
     // Same two result actions as the success screen.
     expect(
       screen.getByRole("link", { name: COPY.attendance.backHome })

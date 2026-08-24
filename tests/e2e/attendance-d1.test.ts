@@ -928,6 +928,7 @@ test.describe("ATT-04 QR attendance proof", () => {
       expect(again.status()).toBe(200);
       const body = (await again.json()) as { data: { outcome: string } };
       expect(body.data.outcome).toBe("duplicate");
+      expect(Object.keys(body.data).sort()).toEqual(["outcome"]);
     } finally {
       await api.dispose();
     }
@@ -1146,6 +1147,40 @@ test.describe("ATT-04 QR attendance proof", () => {
     }
   });
 
+  test("D7b member ambiguous 不是這個聚會 returns to chooser without a self write", async ({
+    browser,
+  }) => {
+    const memberContext = await browser.newContext({
+      storageState: fixtures.memberState,
+    });
+    const page = await memberContext.newPage();
+    let selfPosts = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/v1/attendance/self"
+      ) {
+        selfPosts += 1;
+      }
+    });
+    try {
+      await page.goto(
+        `/scanner?program_token=${encodeURIComponent(fixtures.checkInToken)}`
+      );
+      const candidates = page.locator("section[class*='chooser'] ul button");
+      await expect(candidates).toHaveCount(2);
+      await candidates.nth(0).click();
+      await page.getByRole("button", { name: COPY.notThisEvent }).click();
+      const chooserHeading = await page.getByRole("heading", {
+        name: COPY.chooseMeeting,
+      });
+      await expect(chooserHeading).toBeVisible();
+      await expect(chooserHeading).toBeFocused();
+      expect(selfPosts).toBe(0);
+    } finally {
+      await memberContext.close();
+    }
+  });
   test("D8 member server submit failure shows inline error and retry re-attempts the same event", async ({
     browser,
   }) => {
@@ -1188,14 +1223,14 @@ test.describe("ATT-04 QR attendance proof", () => {
       const retryButton = page.getByRole("button", { name: COPY.retry });
       await expect(retryButton).toBeVisible();
 
-      // Retry re-attempts the same confirmation: the real server answers
-      // "already checked in" (D ran first) → quiet duplicate result.
+      // Retry re-attempts the same confirmation. The fixture may already have
+      // an active row when this test is selected in isolation, so the real
+      // server can truthfully return either success or quiet duplicate.
       await retryButton.click();
       await expect(
-        page.getByRole("heading", { name: COPY.duplicateTitle })
-      ).toBeVisible();
-      await expect(
-        page.getByText(COPY.duplicateBody, { exact: true })
+        page.getByRole("heading", {
+          name: new RegExp(`${COPY.successTitle}|${COPY.duplicateTitle}`, "u"),
+        })
       ).toBeVisible();
     } finally {
       await memberContext.close();
