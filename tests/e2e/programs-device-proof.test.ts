@@ -308,9 +308,16 @@ test("Scanner is camera-first on phone and manual-only on desktop", async ({
     await expect(
       page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
     ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: new RegExp(COPY.fallbackMemberQr) })
-    ).toHaveAttribute("href", "/profile");
+    const memberQrLink = page.getByRole("link", {
+      name: new RegExp(COPY.fallbackMemberQr),
+    });
+    await expect(memberQrLink).toHaveAttribute("href", "/profile?from=scanner");
+    await memberQrLink.click();
+    await expect(page).toHaveURL(/\/profile\?from=scanner$/u);
+    await expect(page.getByRole("link", { name: "返回掃描" })).toHaveAttribute(
+      "href",
+      "/scanner"
+    );
   } finally {
     await context.close();
   }

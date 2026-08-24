@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
-import { isPermitted } from "@/lib/sections";
-import { AppShell } from "@/lib/app-shell";
 import { useApp } from "@/lib/app-context";
+import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { EmptyState } from "@/lib/empty-state";
 import { QrCode } from "@/lib/qr-code";
+import { isPermitted } from "@/lib/sections";
 
 import styles from "./profile.module.css";
 
@@ -19,14 +20,24 @@ function ChevronIcon() {
       viewBox="0 0 20 20"
       focusable="false"
     >
-      <path d="m7 4 5 6-5 6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="m7 4 5 6-5 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
-
 function ProfileContent() {
   const { bootstrap, signOut } = useApp();
-  const profile = bootstrap.profile;
+  const [returnToScanner, setReturnToScanner] = useState(false);
+  const { profile } = bootstrap;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setReturnToScanner(params.get("from") === "scanner");
+  }, []);
 
   if (!profile.name && !profile.username) {
     return (
@@ -34,6 +45,11 @@ function ProfileContent() {
         <header className={styles.header}>
           <span>{COPY.sections.profile}</span>
         </header>
+        {returnToScanner && (
+          <Link href="/scanner" className={styles.backLink}>
+            {COPY.attendance.backToScan}
+          </Link>
+        )}
         <div className={styles.intro}>
           <h1>{COPY.profile.title}</h1>
           <p>{COPY.profile.subtitle}</p>
@@ -45,7 +61,9 @@ function ProfileContent() {
 
   const displayName = profile.name || profile.username;
   const hasQrCode = Boolean(profile.qrCodeString);
-  const isActive = /^(active|enabled|有效|已啟用)$/i.test(profile.status.trim());
+  const isActive = /^(active|enabled|有效|已啟用)$/i.test(
+    profile.status.trim()
+  );
   const statusText = isActive ? COPY.profile.statusValid : profile.status;
 
   return (
@@ -54,6 +72,11 @@ function ProfileContent() {
         <span>{COPY.sections.profile}</span>
       </div>
 
+      {returnToScanner && (
+        <Link href="/scanner" className={styles.backLink}>
+          {COPY.attendance.backToScan}
+        </Link>
+      )}
       <div className={styles.intro}>
         <h1>{COPY.profile.title}</h1>
         <p>{COPY.profile.subtitle}</p>
@@ -81,10 +104,15 @@ function ProfileContent() {
         </p>
       </article>
 
-      <section className={styles.detailsCard} aria-labelledby="profile-details-title">
+      <section
+        className={styles.detailsCard}
+        aria-labelledby="profile-details-title"
+      >
         <details className={styles.details}>
           <summary>
-            <span id="profile-details-title">{COPY.profile.accountDetails}</span>
+            <span id="profile-details-title">
+              {COPY.profile.accountDetails}
+            </span>
             <ChevronIcon />
           </summary>
           <dl className={styles.detailList}>
@@ -108,12 +136,17 @@ function ProfileContent() {
         </details>
       </section>
 
-      <section className={styles.actions} aria-labelledby="profile-settings-title">
+      <section
+        className={styles.actions}
+        aria-labelledby="profile-settings-title"
+      >
         <h2 id="profile-settings-title">{COPY.profile.settingsTitle}</h2>
         <div className={styles.actionList}>
           <Link href="/profile/settings" className={styles.actionRow}>
             <span>
-              <span className={styles.actionTitle}>{COPY.profile.accountSettings}</span>
+              <span className={styles.actionTitle}>
+                {COPY.profile.accountSettings}
+              </span>
               <span className={styles.actionDescription}>
                 {COPY.profile.accountSettingsHint}
               </span>
@@ -126,7 +159,9 @@ function ProfileContent() {
               className={styles.actionRow}
             >
               <span>
-                <span className={styles.actionTitle}>{COPY.profile.settingsEntry}</span>
+                <span className={styles.actionTitle}>
+                  {COPY.profile.settingsEntry}
+                </span>
                 <span className={styles.actionDescription}>
                   {COPY.profile.settingsEntryHint}
                 </span>

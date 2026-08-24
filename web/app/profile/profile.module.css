@@ -18,6 +18,22 @@
 .intro {
   padding: 8px 0 22px;
 }
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0.25rem 0 0.25rem;
+  color: var(--accent-deep, #76231f);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.backLink:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 .intro h1 {
   margin: 0;
@@ -203,7 +219,9 @@
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .actionRow:hover {
