@@ -195,8 +195,9 @@ design tokens, the contract wins and the export loses.
    `輸入代碼` and `出示會員 QR` — so that the recovery screen stays simple and actionable.
 8. As a Member, I want the manual screen to ask for the six-digit Event Manual Check-In Code, so
    that typing remains a dependable fallback.
-9. As a Member, I want to show my Member QR for a leader to scan, so that a missing camera or
-   missing event code does not block attendance.
+9. As a Member whose camera cannot run, I want `出示會員 QR` to open my existing Account Section,
+   so that I can show the Member QR already displayed there for a leader to scan without adding a
+   new attendance screen.
 10. As a Member whose code matches several open meetings, I want to choose explicitly, so that I am
     never checked into the wrong meeting.
 11. As a Member, I want to confirm the meeting before anything is recorded, so that a misread code
