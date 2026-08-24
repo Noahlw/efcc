@@ -51,11 +51,11 @@ const cameraAvailable = useState(() =>
   Boolean(window.BarcodeDetector && navigator.mediaDevices?.getUserMedia)
 )[0];
 ```
-
 WebKit implements no Barcode Detection API, so Safari, Chrome iOS, and every other iOS browser
 resolve `cameraAvailable = false`, fire `onUnavailable()` on mount, and never render a viewfinder.
-Firefox is equally affected. In a Hong Kong congregation this is the majority device. The dock tab
-is named 掃描.
+Firefox is equally affected. In a Hong Kong congregation this is the majority device. The dock
+renders `COPY.sections.scanner` — **簽到** today (`copy.ts:287` via `sections.ts` → `nav-bar.tsx`);
+the design's 掃描 is the delta D5 will adopt, not the current name.
 
 **This constraint was known, recorded, and then lost.** Two research notes in this repository
 rejected exactly the design that later shipped:
@@ -168,51 +168,55 @@ design tokens, the contract wins and the export loses.
    name says on the device I actually own.
 2. As a Member, I want the scan surface to present camera and manual code entry as peers, so that
    typing a code is a first-class path and not an apology.
-3. As a Member whose browser cannot decode, I want an immediate, clearly worded manual-code path,
+3. As a Member whose camera cannot run, I want to show my own Member QR for a leader to scan, so
+   that a missing camera never leaves me with only a six-digit code.
+4. As a Member whose browser cannot decode, I want an immediate, clearly worded manual-code path,
    so that a missing capability never blocks check-in.
-4. As a Member whose code matches several open meetings, I want to choose explicitly, so that I am
+5. As a Member whose code matches several open meetings, I want to choose explicitly, so that I am
    never checked into the wrong meeting.
-5. As a Member, I want to confirm the meeting before anything is recorded, so that a misread code is
+6. As a Member, I want to confirm the meeting before anything is recorded, so that a misread code is
    reversible at zero cost.
-6. As a Member, I want success, already-checked-in, not-yet-open, cancelled and not-enrolled to each
+7. As a Member, I want success, already-checked-in, not-yet-open, cancelled and not-enrolled to each
    look like a considered outcome rather than an error, so that a normal situation never reads as a
    failure.
 
 ### Guest surface
 
-7. As a visitor, I want one form asking for the meeting code, my Chinese name and my phone, so that
+8. As a visitor, I want one form asking for the meeting code, my Chinese name and my phone, so that
    check-in at the door is a single action.
-8. As a visitor, I want a real completion screen, so that I know my attendance was recorded and I
+9. As a visitor, I want a real completion screen, so that I know my attendance was recorded and I
    can put my phone away.
-9. As a visitor arriving by the printed venue QR, I want the meeting already resolved, so that I
+10. As a visitor arriving by the printed venue QR, I want the meeting already resolved, so that I
    only supply my own details.
-10. As a visitor, I do not want a camera permission prompt on a page where I have not yet identified
-    myself.
-11. As a visitor whose phone is already checked in, I want a neutral, non-alarming message.
+11. As a visitor, I do not want a camera permission prompt on a page where I have not yet identified
+   myself.
+12. As a visitor whose phone is already checked in, I want a neutral, non-alarming message.
 
 ### Cross-cutting
 
-12. As any user at 320px, I want every check-in surface to fit without horizontal scrolling.
-13. As a screen-reader user, I want each step change announced in Traditional Chinese with focus
-    moved to the new heading.
+13. As any user at 320px, I want every check-in surface to fit without horizontal scrolling.
+14. As a screen-reader user, I want each step change announced in Traditional Chinese with focus
+   moved to the new heading.
 
----
+### D1 — Faithful prototype precedes implementation
 
-## Implementation decisions
+One prototype at `.scratch/s3-prototype/` reproduces the seven `design_export/participant/*.html`
+screens verbatim — `scan`, `scan-chooser`, `scan-context`, `checkin-result`, `scan-outcome`,
+`guest-checkin`, `guest-result` — plus the hardened states production requires that the export does
+not draw (camera live, decoder probing, unavailable, invalid code, offline, submitting, submit-failed,
+quiet duplicate, cancelled, not-enrolled, guest validation, guest duplicate, long-content stress, and
+the two member-QR screens for the assisted path). 23 frames, grouped into six sections, each citing
+its export lines or its extension reason on the frame.
 
-### D1 — Style Tile round precedes implementation
+Geometry is taken from the export: `max-width 680px` main (`scan.html:52`), 72px chrome
+(`scan.html:82`), 280px viewfinder with one square border inset 15% (`scan.html:87`), 2-up method
+grid. The demo scenario switcher (`scan.html:99-126`) is absent — `design_export/README.md` flags it
+demo-only and this spec lists it under "Design bugs not to port".
 
-Three complete tiles rendered as static HTML under `.scratch/s3-style-tiles/`, covering all seven
-states:
-
-`scan` · `scan-chooser` · `scan-context` (confirm) · `checkin-result` · `scan-outcome` ·
-`guest-checkin` · `guest-result`
-
-The viewfinder is drawn as a representative still frame (dark plate, corner reticles, sample QR) —
-a static tile cannot hold a camera stream, and the stream's appearance is fixed by the video element
-regardless. Compared side by side at 320 and 390. Colours stay on the existing EFCC token palette;
-tiles contribute layout language only, exactly as ADR-0037 constrained S2. The pick is recorded as a
-new ADR before any production file changes.
+Where the export diverges from the shipped EFCC tokens, both values are present and switched by
+`[data-tokens]` on `<html>`, so Group D resolves by looking. See [Group D](#group-d--tokens--visual).
+No Style Tile round is required — the design already exists in `design_export`; this prototype's job
+is fidelity plus hardening, not invention.
 
 ### D2 — QR decode fallback
 
@@ -318,6 +322,26 @@ prompts for camera permission before any identity exists.
 
 `ScannerChooser` (member) and `ScannerEventPicker` (guest) converge on one component.
 
+### D3b — Three check-in methods, one surface
+
+The scan surface offers three peer methods, all server-backed today and all visible without
+requiring the camera first:
+
+| # | Method | Server method | Route |
+| --- | --- | --- | --- |
+| 1 | 掃描課程 QR | `self_qr_scan` (camera decode) | `handleSelfCheckIn` |
+| 2 | 輸入聚會代碼 | `self_manual_code` (six-digit Event Manual Check-In Code) | same |
+| 3 | 請負責人協助簽到 | member shows Member QR → `handleAssistedCheckIn` (`attendance.ts:1087-1148`) | Event detail assisted path |
+
+Method 3 is new to the design. It removes the dead end where a member whose camera cannot run
+had only a six-digit code to fall back on; a leader scans the Member QR with the existing Assisted
+Scanner. Shown as an in-flow state of `/scanner` per D4, so the member never loses check-in
+context. The scan surface therefore lists **輸入聚會代碼** and **請負責人協助簽到** as two full-width
+rows — every row is a real control with icon, title, one explanatory line and a trailing chevron.
+The export's 2-up grid that paired a `<button>` with a `<div role="note">` of near-identical
+styling (scan.html:94-95) was a false affordance and is not reproduced; the camera-permission
+reassurance becomes a quiet hint line.
+
 ### D4 — Terminal screens are in-flow states
 
 `checkin-result`, `scan-outcome` and `guest-result` become full-bleed presentations under the
@@ -328,9 +352,11 @@ redirect guard, reintroducing the blank-render class of bug by construction.
 
 ### D5 — Section naming
 
-**掃描** becomes canonical across the dock tab, the page header and the glossary, adopting the design
-(`efcc-participant-checkin-prototype.dc.html:413`). `COPY.sections.scanner` and
-`COPY.attendance.title` change from 簽到 to 掃描 (`web/lib/copy.ts:287`). Justified now that D2 makes
+**掃描** becomes canonical for the Section name, adopting the design
+(`efcc-participant-checkin-prototype.dc.html:413`). `COPY.sections.scanner` (`copy.ts:287`
+via `sections.ts` → `nav-bar.tsx`) and `COPY.attendance.title` (`copy.ts:48`) change from
+簽到 to 掃描 — two strings; the page H1 `聚會簽到` already matches the design and is unchanged,
+and `web/app/prototype/` is excluded. Justified now that D2 makes
 the camera function on every device.
 
 ### D6 — Shared-component fork
@@ -358,7 +384,7 @@ Direction values: **ADOPT** design · **KEEP** production · **HYBRID** (reason 
 
 | ID | Surface | Design | Production | Direction |
 | --- | --- | --- | --- | --- |
-| A-01 | scan | Manual entry is a modal overlay (`<aside role="dialog" aria-modal="true">`, prototype 653-668) | Inline conditional form (`self-check-in-panel.tsx:329-372`) | **KEEP** — an inline peer to the camera expresses "manual first-class" (locked in `production-route-intent.json`); a modal frames it as a fallback. Tile round confirms the composition. |
+| A-01 | scan | Manual entry is a modal overlay (`<aside role="dialog" aria-modal="true">`, prototype 653-668) | Inline conditional form (`self-check-in-panel.tsx:329-372`) | **KEEP** — inline is correct (locked `manual first-class`), but the surface now lists two full-width method rows — every row a real control — rather than the export's 2-up grid that paired a button with a div note. |
 | A-02 | guest | Single consolidated form, one submit | Two-step resolve → identity (`attendance-panel.tsx:87-180`) | **ADOPT** — per D3, one visible step, chooser only when ambiguous |
 | A-03 | guest | Top back-link `返回` | Two footer links (`attendance-panel.tsx:190-212`) | **HYBRID** — adopt the top `返回`; keep `登入後以成員身份簽到`, which carries the F-14 credential handoff |
 | A-04 | guest | No camera on the guest form | Embedded `ScannerCamera` (`attendance-panel.tsx:81-86`) | **ADOPT** — remove, per D3 |
@@ -376,13 +402,13 @@ Adopted strings are normative and reproduced verbatim.
 | --- | --- | --- | --- |
 | B-01 | scan header | **ADOPT** | `掃描` |
 | B-02 | scan errors | **ADOPT** | invalid: `找不到此代碼對應的聚會，請確認後重試。` · offline: `現時沒有網絡，未能核實聚會資料。請重新連線後再試一次。` |
-| B-03 | code input | **ADOPT** | label `六位數代碼`, placeholder `000000` |
-| B-04 | code submit | **HYBRID** | idle `繼續`; a busy variant is required by F-09 and has no design counterpart — use `繼續中…` |
+| B-03 | code input | **ADOPT with exception** | label `六位數代碼`, placeholder `例如 482913` (design's `000000` reads as a literal value to type; guest form's `例如 482913` is kept for both per Q7) |
+| B-04 | code submit | **HYBRID** | idle `繼續`; busy keeps shipped `查找中…` (`copy.ts:69`) — no invention |
 | B-05 | scan-outcome, not yet open | **HYBRID** | `此聚會的簽到時段將於 {time} 開始（聚會開始前 {n} 分鐘）。開放後可以重新掃描或輸入代碼簽到。` — adopt the wording, keep the derived time and the conditional clause (F-16). The design's `7:00 PM` and unconditional `30 分鐘` are literals. |
 | B-06 | guest back | **HYBRID** | `返回` as the back affordance; retain `登入後以成員身份簽到` (F-14) |
 | B-07 | guest lead | **ADOPT** | `輸入聚會代碼及聯絡資料，完成今次出席記錄。` |
 | B-08 | guest code field | **ADOPT** | label `聚會代碼`, placeholder `例如 482913` |
-| B-09 | guest name field | **ADOPT** | `中文姓名` |
+| B-09 | guest name field | **KEEP** | keep `姓名` (design's `中文姓名` demands a Chinese name from a visitor who may not have one; `姓名` per Q7) |
 | B-10 | guest phone hint | **HYBRID** | `只用於今次聚會跟進。例如：9123 4567 或 +852 9123 4567` — the design states purpose, production states format; a visitor needs both |
 | B-11 | guest validation | **ADOPT** | `請輸入聚會代碼、姓名及電話。` |
 | B-12 | guest submit | **ADOPT** | `確認簽到`; busy variant required by F-09 |
@@ -400,12 +426,20 @@ Adopted strings are normative and reproduced verbatim.
 
 ### Group D — Tokens / visual
 
-All nine (`D-01` radius 10 vs 12, `D-02` button radius 9 vs 8, `D-03` border `#868182` vs
-`#aeb8bc`, `D-04` hover `#8c2e2a` vs `#76231f`, `D-05` focus ring `#6495aa` vs `#176a87` and offset
-3 vs 2, `D-06` success pill triad, `D-07` pill radius, `D-08` heading scale/weight, `D-09` eyebrow
-tracking) are **deferred to the Style Tile ADR**. They are not ported literally. ADR-0037's rule
-holds: the export contributes layout language, colours stay on the existing EFCC token palette.
-`D-05` additionally may not reduce focus-ring contrast — ADR-0036 precedence.
+Resolves per value by measurement (ADR-0036 precedence: accessibility outranks export geometry).
+The prototype exposes both via `[data-tokens]` on `<html>`, so Group D can be decided by looking.
+
+| ID | Export | Shipped | Contrast check | Resolution |
+| --- | --- | --- | --- | --- |
+| D-01 card radius | 10px | 12px | no a11y stake | **KEEP shipped** — matches the six S2 Sections already on 12px |
+| D-02 button radius | 9px | 8px | no a11y stake | **KEEP shipped** |
+| D-03 border `--line-strong` | #868182 on white 3.83 | **#aeb8bc on white 2.02 — FAILS 3.0** | 3.0 non-text minimum | **ADOPT export** — shipped value is a live a11y defect (`attendance-panel.module.css:98,152`) |
+| D-04 hover | #8c2e2a | #76231f | no contrast stake | **KEEP shipped** |
+| D-05 focus ring | #6495aa on surface 2.99 — **FAILS 3.0** | #176a87 on surface 5.57 | 3.0 UI component minimum | **KEEP shipped** |
+| D-06 success pill | #e9f0ea / #9cb49d | #eef4ef / #b9cfbe | both pass 4.5 | **KEEP shipped** |
+| D-07 pill radius | 99px | 999px | none | **KEEP shipped** |
+| D-08 heading scale | clamp 1.72-2.25rem / 600 | 1.5rem / 800 | none | **KEEP shipped** |
+| D-09 eyebrow tracking | 0.08em | 0.04em | none | **KEEP shipped** |
 
 ### Group E — Accessibility & responsive
 
@@ -433,7 +467,8 @@ dock --[掃描]--> scan
 deep link /scanner?event=<id> | ?program_token=<t> | ?manual_code=<c> --> scan (auto-resolve)
 
 scan --[開始掃描 → camera decode]--------> resolve(entry)
-scan --[六位數代碼 + 繼續]---------------> resolve(entry)
+scan --[輸入聚會代碼 → 六位數代碼 + 繼續]--> resolve(entry)
+scan --[請負責人協助簽到]-------------------> member-qr
 
 resolve → 0 open events  --> scan            [inline error B-02 invalid; nothing written]
 resolve → network failure --> scan           [inline error B-02 offline]
@@ -456,6 +491,9 @@ scan-outcome --[查看課程詳情, not-enrolled only]--> /programs?programId=<r
 
 checkin-result --[返回首頁]--> /home
 checkin-result --[再次簽到]--> scan
+
+member-qr --[返回簽到方式]--> scan
+member-qr --[負責人掃描 Member QR (assisted)]--> checkin-result  [via handleAssistedCheckIn; member-qr stays in-flow per D4, never navigates to /account]
 
                     ┌──────────── /guest-check-in (public) ────────────┐
 
@@ -505,6 +543,7 @@ Audit actions — `attendance.ts:478-513`: `attendance.check_in` with outcome `S
 5. **Unconditional `可簽到` badge on Event Detail.** Governed by the S2 `self_check_in_available`
    server projection (#401), not by the prototype's static pill.
 6. **Client-memory duplicate tracking.** See F-01.
+7. **Method list false affordance (scan.html:94-95).** The export pairs a `<button>輸入聚會代碼</button>` with a `<div role="note">只在你按下後使用相機</div>` of near-identical border, padding and radius (only `#868182` vs `#d6dcde` differs). The note looks like a peer control on the scan entry, and on the camera-unavailable path it directly contradicts the alert above it. The rebuild lists two full-width method rows — every row a real control — and makes the permission reassurance a quiet hint line (prototype fix verified in `.scratch/s3-prototype/`).
 
 ---
 
@@ -595,6 +634,7 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 - Chromium and Android Chrome download neither the ponyfill nor the wasm.
 - Guest check-in completes in one visible step for a single open event, presents a selection step
   when several are open, writes nothing when zero match, and ends on a real completion screen.
+- The scan surface lists **輸入聚會代碼** and **請負責人協助簽到** as peer methods — every row a real control — with no false-affordance note; the member-QR path shows a large Member QR, the member's name and ID, and returns to the scan flow after the leader's scan (in-flow per D4, never navigating to /account).
 - `/guest-check-in` issues no camera permission prompt.
 - The normal scan context never renders blank for any reachable state tuple; the characterization
   test proves it.
@@ -607,7 +647,7 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 ## Verification
 
-1. Style Tile round completed, pick recorded in an ADR, before any production file changes.
+1. Prototype at `.scratch/s3-prototype/` reviewed — 23 frames (7 faithful + 13 hardened + member-QR pair + stress) at 320/390/430 in both token modes, zero clipped overflow, zero sub-44px targets — before any production file changes.
 2. Relevant component, Worker and Playwright suites green at the seven widths against local
    `wrangler dev` + local D1 with fresh `E2E_` fixtures.
 3. Exercise valid, expired, not-enrolled, forbidden, duplicate, network-failure, zero-event,
@@ -630,15 +670,16 @@ never force-updated.
 
 | Ticket | Title | Blocked by | Output |
 | --- | --- | --- | --- |
-| S3-01 | Style Tile round for the check-in surfaces + visual ADR | — | 3 rendered tiles over 7 states in `.scratch/s3-style-tiles/`, user pick, new ADR |
+| S3-01 | Harden and land the faithful prototype + shared-component fork | — | `.scratch/s3-prototype/` (23 frames) → `web/` visuals, `ScannerStatusOutput` fork per D6 |
 | S3-02 | QR decode fallback + self-hosted wasm + camera ADR | — (parallel with S3-01) | `barcode-detector/ponyfill`, `setZXingModuleOverrides`, ADR superseding 0015, manual iPhone smoke |
-| S3-03 | Rebuild the five member states to the picked tile | S3-01, S3-02 | scan, chooser, confirm, result, outcome |
+| S3-03 | Wire the three member methods and rebuild the member flow | S3-01, S3-02 | scan (method list) → manual code / member-QR → chooser → confirm → result / outcome, honours D3b |
 | S3-04 | Rebuild guest: single form, completion screen, camera removal + guest ADR | S3-01, S3-03 | one-step flow, `guest-result`, ADR amending 0028 scope |
 | S3-05 | CONTEXT.md and ADR-0015 supersession | S3-02, S3-04 | glossary corrections and new terms |
 | S3-06 | Verify S3 integration gate | S3-01 … S3-05 | verification-only PR, no production diff |
 
-Three ADRs, each independently reversible: camera/decode (supersedes ADR-0015), guest check-in
-surface contract, scan visual system.
+Two ADRs, each independently reversible: camera/decode (supersedes ADR-0015), guest check-in
+surface contract. No separate visual-system ADR — the faithful prototype is authoritative on visuals;
+Group D resolves per value by measurement and is recorded in the spec, not a new ADR.
 
 ## Handoff to the next slice
 
