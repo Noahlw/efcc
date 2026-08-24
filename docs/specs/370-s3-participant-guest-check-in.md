@@ -245,11 +245,11 @@ No Style Tile round is required — the design already exists in `design_export`
 is fidelity plus hardening, not invention.
 
 The design-system selection artifact is `.scratch/s3-system-prototypes/index.html`: three candidates
-(Civic Minimal Continuity, Camera-first Utility, Warm Operational Ledger) render the same 13
-representative surfaces — eight S3 frames and five S7 operator frames — with two composition modes
-but one shared token/control grammar. S7 preserves the management export's top
-`本人簽到` / `代為簽到` switch and the global Shared Shell dock; it does not collapse the operator
-chooser/roster/audited mutation contracts into the S3 self flow.
+(Civic Minimal Continuity, Camera-first Utility, Warm Operational Ledger) render the same 9
+representative surfaces — eight S3 frames and one S7 operator mode-switch frame — with two composition
+modes but one shared token/control grammar. S7 preserves the management export's top
+`本人簽到` / `代為簽到` switch and the global Shared Shell dock; chooser, roster, audited mutations
+and settings remain separate S7 scope rather than being designed prematurely in S3.
 
 ### D2 — QR decode fallback
 
@@ -703,8 +703,8 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 - Management roster, attendance correction, void, guest correction — S7.
 - The assisted / operator scanner surface. It keeps the current `ScannerStatusOutput` untouched (D6).
-- S7 operator runtime implementation remains separate; the five S7 frames in
-  `.scratch/s3-system-prototypes/` are design-system compatibility evidence only, not S3 build scope.
+- S7 operator runtime implementation remains separate; the single S7 mode-switch frame in
+  `.scratch/s3-system-prototypes/` is design-system compatibility evidence only, not S3 build scope.
 - Any new backend table or endpoint. The traced contract is sufficient; D3 proves the guest rebuild
   needs no server change.
 - An offline submission queue. `production-route-intent.json` places it explicitly out of scope;

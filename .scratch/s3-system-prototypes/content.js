@@ -114,34 +114,6 @@ const S7 = [
     note: "Operator composition: top segmented switch is the mode selector; global dock remains navigation. This is not the S3 self camera state.",
     body: `<section class="operator-camera"><div class="operator-top"><span>${icon("back")}掃描二維碼</span><div class="mode-switch"><b>本人簽到</b><span>代為簽到</span></div></div><p class="camera-hint">將二維碼放入框內掃描</p><div class="camera-frame small"><i></i><i></i><i></i><i></i></div><button class="camera-fab">${icon("camera")}<small>開始掃描</small></button><button class="operator-link">無法使用相機？輸入代碼</button>${nav(true)}</section>`,
   },
-  {
-    id: "s7-chooser",
-    track: "S7 · Operator",
-    label: "S7-02 · Eligible-event chooser",
-    note: "Operator entry is an eligible projection, not a typed-code resolution. Loading, error and empty states are part of this system.",
-    body: `<div class="light-page operator"><div class="identity-bar"><b>陳小明</b><small>管理員</small>${icon("info")}</div><div class="backline">${icon("back")} 返回</div><h2>聚會／出席</h2><p class="lead">選擇一個開放簽到的聚會，處理出席點名及代簽。</p><div class="section-label">可簽到聚會</div><div class="method-stack"><button><span><b>${FIX.event}</b><small>${FIX.when} · ${FIX.where}</small></span>${icon("chevron")}</button><button><span><b>慕道入門課程 · 第一課</b><small>9月7日（日）上午 11:00 · 一樓副堂</small></span>${icon("chevron")}</button></div></div>`,
-  },
-  {
-    id: "s7-roster",
-    track: "S7 · Operator",
-    label: "S7-03 · Roster / data",
-    note: "Dense operator composition: counts, provenance, masked guest phone and preserved status rows.",
-    body: `<div class="light-page operator"><div class="identity-bar"><b>陳小明</b><small>管理員</small>${icon("info")}</div><div class="backline">${icon("back")} 返回聚會</div><span class="status-pill">開放簽到</span><h2>出席點名</h2><p class="lead">${FIX.event} · ${FIX.when}</p><div class="stat-grid"><b><strong>9</strong>已簽到</b><b><strong>3</strong>未簽到</b><b><strong>12</strong>已報名</b></div><div class="section-label">名單</div><div class="roster"><div><span><b>陳小明</b><small>會員 · 自己掃描</small></span><em>已簽到</em></div><div><span><b>張俊豪</b><small>會員 · 同工代簽</small></span><em>已簽到</em></div><div><span><b>黃小姐（訪客）</b><small>訪客 · 電話資料待核對</small></span><button>修正</button></div></div></div>`,
-  },
-  {
-    id: "s7-mutations",
-    track: "S7 · Operator",
-    label: "S7-04 · Audited mutations",
-    note: "Record-preserving operations: void requires a reason; guest correction requires name, phone and reason. Focus/validation are part of the system.",
-    body: `<div class="light-page operator"><div class="identity-bar"><b>陳小明</b><small>管理員</small>${icon("info")}</div><div class="backline">${icon("back")} 返回名單</div><h2>修正出席記錄</h2><div class="mutation-card"><span class="status-pill status-pill--danger">作廢一筆簽到</span><p>作廢後會保留記錄，但不再計入出席進度。</p><label>作廢原因<input placeholder="請輸入原因" /></label><button class="danger wide">作廢簽到</button></div><div class="mutation-card"><span class="status-pill">修正訪客資料</span><label>姓名<input value="黃小姐" /></label><label>電話<input value="9123 4567" /></label><label>原因<input placeholder="請輸入原因" /></label><button class="primary wide">儲存更正</button></div></div>`,
-  },
-  {
-    id: "s7-settings",
-    track: "S7 · Operator",
-    label: "S7-05 · Read-only settings",
-    note: "Policy reference, intentionally read-only: enabled methods and window values, no toggles or edit affordances.",
-    body: `<div class="light-page operator"><div class="identity-bar"><b>陳小明</b><small>管理員</small>${icon("info")}</div><div class="backline">${icon("back")} 返回設定</div><h2>簽到設定</h2><div class="section-label">簽到方式</div><div class="settings"><div><b>會員二維碼</b><small>掃描會員帳戶頁面的二維碼</small><em>已啟用</em></div><div><b>聚會代碼</b><small>輸入場地顯示的六位數代碼</small><em>已啟用</em></div><div><b>代為簽到</b><small>同工於出席名單代簽</small><em>已啟用</em></div></div><div class="section-label">開放時段</div><div class="settings"><div><b>聚會開始前</b><small>開放簽到的提前時數</small><em>30 分鐘</em></div><div><b>聚會結束後</b><small>結束後仍可簽到多久</small><em>15 分鐘</em></div></div></div>`,
-  },
 ];
 
 const ALL_SCREENS = [...S3, ...S7];
