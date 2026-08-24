@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -42,29 +42,26 @@ const EVENT: AttendanceEvent = {
   availability: "Active",
 };
 
-/** Resolve an entry to a chooser with the single event auto-selected. */
-async function resolveSingleEvent(user: UserEvent) {
-  await user.type(screen.getByLabelText(COPY.attendance.inputLabel), "ATT1234");
-  await user.click(
-    screen.getByRole("button", { name: COPY.attendance.resolve })
+/** Fill the single guest form without triggering its one submit action. */
+async function fillGuestForm(user: UserEvent, code = "ATT1234") {
+  await user.type(screen.getByLabelText(COPY.attendance.guestCode), code);
+  await user.type(screen.getByLabelText(COPY.attendance.guestName), "E2E訪客");
+  await user.type(
+    screen.getByLabelText(
+      new RegExp(`^${COPY.attendance.guestPhoneLabel}`, "u")
+    ),
+    "91234567"
   );
-  await screen.findByLabelText(COPY.attendance.guestName);
 }
 
-// The phone label also wraps the hint span (客名 by value), so match by
-// The phone label also wraps the hint span, so its full label text is
-// 電話例如：… — match the label by 電話 prefix instead of the whole text.
+// The phone label includes the hint span, so match its label prefix.
 function phoneField(): HTMLInputElement {
   return screen.getByLabelText(
-    new RegExp(`^${COPY.attendance.guestPhone}`, "u")
+    new RegExp(`^${COPY.attendance.guestPhoneLabel}`, "u")
   );
 }
 
-function FailedBarcodeDetector() {
-  return {
-    detect: () => Promise.reject(new Error("detector unavailable")),
-  };
-}
+// Guest check-in deliberately has no camera affordance or decoder setup.
 
 describe(AttendancePanel, () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -78,33 +75,34 @@ describe(AttendancePanel, () => {
   afterAll(() => server.close());
 
   describe("AttendancePanel guest flow", () => {
-    test("guest name input is required and capped at 80 characters", async () => {
-      server.use(
-        http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          })
-        )
-      );
-      const user = userEvent.setup();
+    test("renders one light form with the three guest fields", () => {
       render(<AttendancePanel />);
-      await resolveSingleEvent(user);
 
-      const nameInput = screen.getByLabelText(COPY.attendance.guestName);
-      expect(nameInput).toHaveAttribute("maxLength", "80");
-      expect(nameInput).toHaveAttribute("required");
+      expect(screen.getByLabelText(COPY.attendance.guestCode)).toBeVisible();
+      expect(screen.getByLabelText(COPY.attendance.guestName)).toHaveAttribute(
+        "maxLength",
+        "80"
+      );
+      expect(phoneField()).toHaveAttribute("inputMode", "tel");
+      expect(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      ).toBeVisible();
+      expect(
+        screen.getByRole("link", { name: COPY.attendance.guestBack })
+      ).toHaveAttribute("href", "/");
     });
 
-    test("empty guest submit is blocked by native form validation (no request)", async () => {
+    test("missing guest fields are announced and focus the first missing field", async () => {
+      let resolveCalls = 0;
       let guestPosts = 0;
       server.use(
-        http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
+        http.get("/api/v1/attendance/resolve", () => {
+          resolveCalls += 1;
+          return HttpResponse.json({
             requestId: "rid-1",
             data: { events: [EVENT] },
-          })
-        ),
+          });
+        }),
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
           return HttpResponse.json({
@@ -115,18 +113,55 @@ describe(AttendancePanel, () => {
       );
       const user = userEvent.setup();
       render(<AttendancePanel />);
-      await resolveSingleEvent(user);
 
       await user.click(
         screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
-      // Native constraint validation must abort the submit before any RPC.
-      await waitFor(() => expect(guestPosts).toBe(0));
-      const phoneInput = phoneField();
-      expect(phoneInput.validity.valueMissing).toBeTruthy();
+
+      await expect(
+        screen.findByText(COPY.attendance.guestValidation)
+      ).resolves.toBeVisible();
+      expect(screen.getByLabelText(COPY.attendance.guestCode)).toHaveFocus();
+      expect(resolveCalls).toBe(0);
+      expect(guestPosts).toBe(0);
     });
 
-    test("invalid phone surfaces the server VALIDATION detail with error tone", async () => {
+    test("one open event chains resolve to a real completion card", async () => {
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-1",
+            data: { events: [EVENT] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", () =>
+          HttpResponse.json({
+            requestId: "rid-2",
+            data: { outcome: "success", attendance_id: "a1" },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      await expect(
+        screen.findByRole("heading", {
+          name: COPY.attendance.guestResultTitle,
+        })
+      ).resolves.toBeVisible();
+      expect(
+        screen.getByText(COPY.attendance.guestResultLead("晚上"))
+      ).toBeVisible();
+      expect(
+        screen.getByRole("link", { name: COPY.attendance.guestDone })
+      ).toHaveAttribute("href", "/");
+    });
+
+    test("invalid phone stays inline, focuses the phone field, and does not complete", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
@@ -149,8 +184,10 @@ describe(AttendancePanel, () => {
       );
       const user = userEvent.setup();
       render(<AttendancePanel />);
-      await resolveSingleEvent(user);
-
+      await user.type(
+        screen.getByLabelText(COPY.attendance.guestCode),
+        "ATT1234"
+      );
       await user.type(
         screen.getByLabelText(COPY.attendance.guestName),
         "E2E訪客"
@@ -162,9 +199,36 @@ describe(AttendancePanel, () => {
 
       const output = await screen.findByText("請輸入有效電話號碼。");
       expect(output.closest("output")).toHaveAttribute("data-tone", "error");
+      expect(phoneField()).toHaveFocus();
     });
 
-    test("guest duplicate is a neutral info notice, not an error", async () => {
+    test("offline guest submit uses B-02 recovery copy without a result", async () => {
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-1",
+            data: { events: [EVENT] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", () => HttpResponse.error())
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const output = await screen.findByText(COPY.attendance.offlineResolve);
+      expect(output.closest("output")).toHaveAttribute("data-tone", "error");
+      expect(
+        screen.queryByRole("heading", {
+          name: COPY.attendance.guestResultTitle,
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    test("duplicate is a neutral result without an attendance identifier", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
@@ -175,32 +239,31 @@ describe(AttendancePanel, () => {
         http.post("/api/v1/attendance/guest", () =>
           HttpResponse.json({
             requestId: "rid-2",
-            data: { outcome: "duplicate", attendance_id: "a1" },
+            data: { outcome: "duplicate", attendance_id: "private-id" },
           })
         )
       );
       const user = userEvent.setup();
       render(<AttendancePanel />);
-      await resolveSingleEvent(user);
-
-      await user.type(
-        screen.getByLabelText(COPY.attendance.guestName),
-        "E2E訪客"
-      );
-      await user.type(phoneField(), "91234567");
+      await fillGuestForm(user);
       await user.click(
         screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
-      const output = await screen.findByText(COPY.attendance.guestDuplicate);
-      expect(output.closest("output")).toHaveAttribute("data-tone", "info");
+
+      await expect(
+        screen.findByText(COPY.attendance.guestDuplicate)
+      ).resolves.toBeVisible();
+      expect(screen.getByTestId("guest-result-icon-duplicate")).toBeVisible();
+      expect(screen.queryByText("private-id")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    test("clicking member login link preserves typed code as a guest credential", async () => {
+    test("member login handoff preserves the typed guest code", async () => {
       clearGuestCredential();
       const user = userEvent.setup();
       render(<AttendancePanel />);
       await user.type(
-        screen.getByLabelText(COPY.attendance.inputLabel),
+        screen.getByLabelText(COPY.attendance.guestCode),
         "ATT1234"
       );
       await user.click(
@@ -213,189 +276,188 @@ describe(AttendancePanel, () => {
       clearGuestCredential();
     });
 
-    test("resolving multiple events presents chooser and allows selection", async () => {
+    test("multiple open events require selection before the guest write", async () => {
       const event2: AttendanceEvent = {
         ...EVENT,
         event_id: "evt-2",
         name: "主日聚會",
         manual_check_in_code: "ATT5678",
       };
+      let capturedEventId: string | undefined;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
             requestId: "rid-multi",
             data: { events: [EVENT, event2] },
           })
-        )
+        ),
+        http.post("/api/v1/attendance/guest", async ({ request }) => {
+          capturedEventId = ((await request.json()) as { event_id: string })
+            .event_id;
+          return HttpResponse.json({
+            requestId: "rid-guest",
+            data: { outcome: "success", attendance_id: "a1" },
+          });
+        })
       );
       const user = userEvent.setup();
       render(<AttendancePanel />);
-      await user.type(
-        screen.getByLabelText(COPY.attendance.inputLabel),
-        "PROG-TOKEN"
-      );
+      await fillGuestForm(user, "PROG-TOKEN");
       await user.click(
-        screen.getByRole("button", { name: COPY.attendance.resolve })
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
 
       await expect(
-        screen.findByRole("heading", { name: COPY.attendance.chooseEvent })
-      ).resolves.toBeVisible();
-      expect(screen.getByText("週六聚會")).toBeVisible();
-      expect(screen.getByText("主日聚會")).toBeVisible();
-
+        screen.findByRole("heading", {
+          name: COPY.attendance.chooseEvent,
+        })
+      ).resolves.toHaveFocus();
+      expect(screen.getByLabelText(COPY.attendance.guestName)).toHaveValue(
+        "E2E訪客"
+      );
       await user.click(screen.getByRole("button", { name: /主日聚會/u }));
+
       await expect(
-        screen.findByLabelText(COPY.attendance.guestName)
+        screen.findByRole("heading", {
+          name: COPY.attendance.guestResultTitle,
+        })
       ).resolves.toBeVisible();
+      expect(capturedEventId).toBe("evt-2");
     });
 
-    test("resolving with no events reports the empty event notice", async () => {
+    test("deep-linked multi-event selection submits without a second confirm", async () => {
+      const event2: AttendanceEvent = {
+        ...EVENT,
+        event_id: "evt-deep-2",
+        name: "主日聚會",
+        manual_check_in_code: "ATT-DEEP-2",
+      };
+      let capturedEventId: string | undefined;
+      const previousUrl = new URL(window.location.href);
+      window.history.replaceState(
+        null,
+        "",
+        "/guest-check-in?program_token=PROG-DEEP"
+      );
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-deep",
+            data: { events: [EVENT, event2] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", async ({ request }) => {
+          capturedEventId = ((await request.json()) as { event_id: string })
+            .event_id;
+          return HttpResponse.json({
+            requestId: "rid-deep-guest",
+            data: { outcome: "success", attendance_id: "a1" },
+          });
+        })
+      );
+      const user = userEvent.setup();
+      try {
+        render(<AttendancePanel />);
+        await expect(
+          screen.findByRole("heading", { name: COPY.attendance.chooseEvent })
+        ).resolves.toBeVisible();
+        await user.type(
+          screen.getByLabelText(COPY.attendance.guestName),
+          "深鏈訪客"
+        );
+        await user.type(phoneField(), "91234567");
+        await user.click(screen.getByRole("button", { name: /主日聚會/u }));
+        await expect(
+          screen.findByRole("heading", {
+            name: COPY.attendance.guestResultTitle,
+          })
+        ).resolves.toBeVisible();
+        expect(capturedEventId).toBe("evt-deep-2");
+      } finally {
+        window.history.replaceState(
+          null,
+          "",
+          `${previousUrl.pathname}${previousUrl.search}${previousUrl.hash}`
+        );
+      }
+    });
+
+    test("zero open events show an actionable error without a guest write", async () => {
+      let guestPosts = 0;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
             requestId: "rid-empty",
             data: { events: [] },
           })
-        )
-      );
-      const user = userEvent.setup();
-      render(<AttendancePanel />);
-      await user.type(
-        screen.getByLabelText(COPY.attendance.inputLabel),
-        "PROG-EMPTY"
-      );
-      await user.click(
-        screen.getByRole("button", { name: COPY.attendance.resolve })
-      );
-
-      await expect(
-        screen.findByText(COPY.attendance.invalidEntry)
-      ).resolves.toBeVisible();
-    });
-  });
-
-  describe("AttendancePanel camera feedback", () => {
-    test("turns a detector failure into recoverable camera feedback", async () => {
-      const stream = {
-        getTracks: () => [{ stop: vi.fn<() => void>() }],
-      } as unknown as MediaStream;
-      const originalDetector = (
-        window as Window & { BarcodeDetector?: unknown }
-      ).BarcodeDetector;
-      Object.defineProperty(window, "BarcodeDetector", {
-        configurable: true,
-        value: FailedBarcodeDetector,
-      });
-      Object.defineProperty(navigator, "mediaDevices", {
-        configurable: true,
-        value: {
-          getUserMedia: vi
-            .fn<() => Promise<MediaStream>>()
-            .mockResolvedValue(stream),
-        },
-      });
-      vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-
-      const user = userEvent.setup();
-      render(<AttendancePanel />);
-      await user.click(
-        screen.getByRole("button", { name: COPY.attendance.startScan })
-      );
-
-      await expect(
-        screen.findByText(COPY.attendance.cameraUnavailable)
-      ).resolves.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: COPY.attendance.startScan })
-      ).toBeInTheDocument();
-
-      if (originalDetector === undefined) {
-        Reflect.deleteProperty(window, "BarcodeDetector");
-      } else {
-        Object.defineProperty(window, "BarcodeDetector", {
-          configurable: true,
-          value: originalDetector,
-        });
-      }
-    });
-
-    test("guest camera scan detects Program QR, resolves single event, and submits with guest_qr_scan method", async () => {
-      let capturedMethod: string | undefined;
-      let capturedToken: string | undefined;
-      server.use(
-        http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-qr",
-            data: { events: [EVENT] },
-          })
         ),
-        http.post("/api/v1/attendance/guest", async ({ request }) => {
-          const body = (await request.json()) as {
-            method: string;
-            program_token?: string;
-          };
-          capturedMethod = body.method;
-          capturedToken = body.program_token;
+        http.post("/api/v1/attendance/guest", () => {
+          guestPosts += 1;
           return HttpResponse.json({
             requestId: "rid-guest",
-            data: { outcome: "success", attendance_id: "att-qr-1" },
+            data: { outcome: "success", attendance_id: "a1" },
           });
         })
       );
-
-      const stop = vi.fn<() => void>();
-      const stream = {
-        getTracks: () => [{ stop }],
-      } as unknown as MediaStream;
-      class FakeDetector {
-        detected = [
-          {
-            rawValue:
-              "https://efcc.example/scanner?program_token=ATTENDANCE-PROGRAM-TOKEN",
-          },
-        ];
-
-        detect() {
-          return Promise.resolve(this.detected);
-        }
-      }
-      Object.defineProperty(window, "BarcodeDetector", {
-        configurable: true,
-        value: FakeDetector,
-      });
-      Object.defineProperty(navigator, "mediaDevices", {
-        configurable: true,
-        value: {
-          getUserMedia: vi
-            .fn<() => Promise<MediaStream>>()
-            .mockResolvedValue(stream),
-        },
-      });
-      vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-
       const user = userEvent.setup();
       render(<AttendancePanel />);
-      await user.click(
-        screen.getByRole("button", { name: COPY.attendance.startScan })
-      );
-
-      await screen.findByLabelText(COPY.attendance.guestName);
-      await user.type(
-        screen.getByLabelText(COPY.attendance.guestName),
-        "相機訪客"
-      );
-      await user.type(phoneField(), "98765432");
+      await fillGuestForm(user, "PROG-EMPTY");
       await user.click(
         screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
 
-      await waitFor(() => {
-        expect(screen.getByText(COPY.attendance.success)).toBeVisible();
+      const output = await screen.findByText(COPY.attendance.invalidEntryCode);
+      expect(output.closest("output")).toHaveAttribute("data-tone", "error");
+      expect(guestPosts).toBe(0);
+    });
+
+    test("offline resolve uses the actionable retry copy without a guest write", async () => {
+      let guestPosts = 0;
+      server.use(
+        http.get("/api/v1/attendance/resolve", () => HttpResponse.error()),
+        http.post("/api/v1/attendance/guest", () => {
+          guestPosts += 1;
+          return HttpResponse.json({
+            requestId: "rid-guest",
+            data: { outcome: "success", attendance_id: "a1" },
+          });
+        })
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "PROG-OFFLINE");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const output = await screen.findByText(COPY.attendance.offlineResolve);
+      expect(output.closest("output")).toHaveAttribute("data-tone", "error");
+      expect(guestPosts).toBe(0);
+    });
+  });
+
+  describe("AttendancePanel camera boundary", () => {
+    test("guest check-in renders no camera or permission trigger", () => {
+      const getUserMedia = vi.fn<() => Promise<MediaStream>>();
+      const originalMediaDevices = navigator.mediaDevices;
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia },
       });
-      expect(capturedMethod).toBe("guest_qr_scan");
-      expect(capturedToken).toBe("ATTENDANCE-PROGRAM-TOKEN");
-      expect(stop).toHaveBeenCalledWith();
+      try {
+        render(<AttendancePanel />);
+        expect(
+          screen.queryByRole("button", {
+            name: COPY.attendance.startScan,
+          })
+        ).not.toBeInTheDocument();
+        expect(getUserMedia).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(navigator, "mediaDevices", {
+          configurable: true,
+          value: originalMediaDevices,
+        });
+      }
     });
   });
 

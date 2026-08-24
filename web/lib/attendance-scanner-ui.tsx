@@ -243,19 +243,23 @@ export const ScannerChooser = ({
   </section>
 );
 
-const CheckinConfirmationIcon = ({
+export const CheckinConfirmationIcon = ({
   kind,
+  className,
+  testId = "attendance-result-icon",
 }: {
   kind: "success" | "duplicate";
+  className?: string;
+  testId?: string;
 }) => (
   <svg
     className={`${styles.checkinResultIcon} ${
       kind === "success"
         ? styles.checkinResultIconSuccess
         : styles.checkinResultIconDuplicate
-    }`}
+    }${className ? ` ${className}` : ""}`}
     viewBox="0 0 48 48"
-    data-testid={`attendance-result-icon-${kind}`}
+    data-testid={`${testId}-${kind}`}
     aria-hidden="true"
     focusable="false"
   >
@@ -605,11 +609,13 @@ export const ScannerEventPicker = ({
   selectedId,
   onSelect,
   headingRef,
+  disabled = false,
 }: {
   events: readonly AttendanceEvent[];
   selectedId: string | null;
   onSelect: (event: AttendanceEvent) => void;
   headingRef?: RefObject<HTMLHeadingElement | null>;
+  disabled?: boolean;
 }) => (
   <div className={styles.group} aria-labelledby="choose-event-title">
     <h2
@@ -624,6 +630,7 @@ export const ScannerEventPicker = ({
       {events.map((event) => (
         <li key={event.event_id}>
           <button
+            disabled={disabled}
             className={styles.eventButton}
             type="button"
             aria-pressed={selectedId === event.event_id}

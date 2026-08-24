@@ -59,6 +59,11 @@ function hkDayPeriod(hour24: number): "早上" | "下午" | "晚上" {
   return "晚上";
 }
 
+/** HK day period for an ISO timestamp, using the shared wall-clock cutoffs. */
+export function hkDayPeriodFromIso(iso: string): "早上" | "下午" | "晚上" {
+  return hkDayPeriod(hkWallParts(iso).hour24);
+}
+
 /** Short HK date: 8月20日（三）. */
 export function hkShortDateLabel(iso: string): string {
   const { weekday, month, day } = hkWallParts(iso);

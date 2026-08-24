@@ -61,6 +61,7 @@ export function useQrCamera(input: {
   onUnavailable: () => void;
   onDenied?: () => void;
   onUnsupported?: () => void;
+  enabled?: boolean;
   phoneOnly?: boolean;
   /**
    * Self check-in can show a useful fallback before a user clicks. This only
@@ -86,6 +87,9 @@ export function useQrCamera(input: {
   const [cameraReady, setCameraReady] = useState(false);
 
   const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(() => {
+    if (input.enabled === false) {
+      return false;
+    }
     if (typeof window === "undefined") {
       return null;
     }
@@ -197,10 +201,14 @@ export function useQrCamera(input: {
   }, [cameraAvailable, input.phoneOnly]);
 
   useEffect(() => {
-    if (reportUnavailableOnMountRef.current && cameraAvailable === false) {
+    if (
+      input.enabled !== false &&
+      reportUnavailableOnMountRef.current &&
+      cameraAvailable === false
+    ) {
       reportUnsupported();
     }
-  }, [cameraAvailable]);
+  }, [cameraAvailable, input.enabled]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -227,6 +235,9 @@ export function useQrCamera(input: {
   }
 
   async function startCamera() {
+    if (input.enabled === false) {
+      return;
+    }
     const generation = generationRef.current + 1;
     setCameraReady(false);
     generationRef.current = generation;
