@@ -768,8 +768,12 @@ The only seam that catches it is E2E, using the suite's established `addInitScri
 
 ---
 
-## Implementation tickets
+## Planned implementation slices (not yet opened)
 
+These are planning boundaries only. No child issues are opened by this session. When authorized,
+each slice should stack linearly on the previous branch and reviewed slices must never be force-updated.
+| Slice | Title | Blocked by | Output |
+| --- | --- | --- | --- |
 | S3-01 | Camera-first prototype + shared-component fork | — | `.scratch/s3-prototype/` → `web/` camera/fallback visuals; `ScannerStatusOutput` fork per D6 |
 | S3-02 | QR decode fallback + self-hosted wasm + camera ADR | — (parallel with S3-01) | `barcode-detector/ponyfill`, auto-open probe, denied/unsupported split, same-origin wasm, ADR superseding 0015 |
 | S3-03 | Wire the camera-first member flow and three methods | S3-01, S3-02 | live dark camera + persistent nav, stop-to-fallback, manual code, Member QR, chooser/confirm/result/outcome, desktop manual-only boundary |
