@@ -1497,15 +1497,18 @@ export class DepartmentWorkspace {
     }
     const accounts = [...accountsByUser.values()];
     const heldRoles: Record<string, true> = {};
+    // Assignment indicators describe each fixed role independently. A Staff
+    // account with a Department Manager grant has the effective account role
+    // department-manager, but still holds the global Staff role.
     for (const row of rows) {
       if (row.role === ROLE.ADMIN) {
         heldRoles["admin"] = true;
-      } else if (row.department_id !== null) {
-        // Staff accounts with an active department grant are projected as
-        // department-manager, not as both roles.
-        heldRoles["department-manager"] = true;
-      } else if (row.role === ROLE.STAFF) {
+      }
+      if (row.role === ROLE.STAFF) {
         heldRoles["staff"] = true;
+      }
+      if (row.department_id !== null) {
+        heldRoles["department-manager"] = true;
       }
     }
     const permissionsCopy = COPY.permissions;
