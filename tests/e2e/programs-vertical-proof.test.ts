@@ -68,6 +68,7 @@ const COPY = {
   scannerTitle: "掃描簽到",
   selfMode: "本人簽到",
   assistedMode: "協助簽到",
+  operatorMode: "代為簽到",
   assistedContext: "目前聚會",
   inputLabel: "課程 QR 代碼或聚會手動代碼",
   resolve: "查找聚會",
@@ -697,9 +698,9 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
       await page.goto("/scanner");
       // Admin sees Assisted tab
       await expect(
-        page.getByRole("tab", { name: COPY.assistedMode })
+        page.getByRole("tab", { name: COPY.operatorMode })
       ).toBeVisible();
-      await page.getByRole("tab", { name: COPY.assistedMode }).click();
+      await page.getByRole("tab", { name: COPY.operatorMode }).click();
 
       // Pinned bottom context selector
       const contextSelect = page.getByLabel(COPY.assistedContext);
