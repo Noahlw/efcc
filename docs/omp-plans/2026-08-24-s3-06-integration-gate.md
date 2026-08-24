@@ -30,3 +30,15 @@
 ## Scope boundary
 
 This record adds verification evidence only. It must not modify production runtime, Worker/API handlers, migrations/schema, authorization contracts, Google Sheets, Cloudflare state, or external acceptance data.
+
+## Execution record
+
+- Camera matrix: **29 passed, 6 intentionally skipped** across 320, 375, 390, 414, 799, 800 and 1440 width projects. The skipped cases are desktop-only camera permission/unsupported branches.
+- Self outcomes: **20 passed** across phone 375x667 and desktop 1280x720, including confirmation, duplicate privacy, ambiguous escape, outcomes, retry and enrollment denial.
+- Guest completion: **18 passed** across phone 375x667 and desktop 1280x720, including exact-one, active-unenrolled, ambiguous, invalid/offline, duplicate and handoff paths.
+- Operator boundary: **4 passed, 2 failed**. The failures are the pre-existing S7 `/events` operator-surface tests: `sectionsForRole` omits `events` for Admin/Staff, so `GuardedSection` renders the existing forbidden view. The same 10 operator failures reproduce on the lower `d1989b8` baseline; no S3-06 runtime change was made.
+- Responsive gate: **92 passed, 1 skipped** on a supervised static server at `127.0.0.1:4199`; the repository's default 4173 listener was left untouched.
+- Repository gates: **38 prototype, 455 Worker/unit, 537 component tests passed**; typechecks and build passed. The default `pnpm verify` responsive step hit the occupied 4173 port, then the equivalent 4199 run passed.
+- Real iPhone smoke: **not executed**. No physical iPhone/LAN operator session was available; this remains an explicit manual prerequisite and is not represented as passed.
+
+**NOT READY.** The reachable local evidence is recorded above, but the S3 integration gate cannot be called READY while the baseline-parity operator failures and the required real-iPhone smoke remain unresolved.
