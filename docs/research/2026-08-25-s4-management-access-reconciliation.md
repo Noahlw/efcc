@@ -119,3 +119,11 @@ This future decision effort will resolve pastoral Church Member ownership, Accou
 ## Next phase
 
 Preserve the alternatives on a `prototype/s4-management-access` branch. Record the selected variant and reasons, then return to this planning branch to write `docs/specs/369-s4-management-access.md`, create the new spec issue, and draft blocker-aware implementation tickets. No production S4 code begins before that specification is approved.
+
+## Selected prototype result
+
+The owner selected Account Directory B (Operational Ledger), Registration Approvals A (Queue + Detail), and Permission Policy C (Change-set Review). The comparison prototype is preserved at `ecafb4d9`; the selected composite and complete state inventory are preserved at `653a531` on `prototype/s4-management-access`.
+
+The selected composite passed 20 states across 320px, 390px, 800px, and 1440px: 80/80 renders with no horizontal overflow, undersized interactive target, shell-breakpoint failure, or browser console error. Targeted Ultracite, TypeScript, production build (18 static routes), and `git diff --check` passed. The approved testing seams are local Worker/D1 Playwright, Worker/domain integration, deterministic component behavior, and direct disposable-D1 evidence.
+
+`docs/specs/369-s4-management-access.md` is the resulting buildable specification. The prototype source remains on its throwaway branch and is not merged into production.
