@@ -17,9 +17,10 @@
 | #454 S4-05 atomic Permission Policy write | `600c8387` | integrated |
 | #455 S4-06 integration/readiness | `c18cb0c` | integrated conditionally |
 
-The post-review repair commits `c45bdff2`, `a134f4f8`, and `c18cb0c` close the
-bounded Account Directory, role-gate, policy-summary, idempotency-audit,
-responsive-layout, filter-only, and direct-detail recovery findings.
+The post-review repair commits `c45bdff2`, `a134f4f8`, `c18cb0c`, and
+`04fcde4` close the bounded Account Directory, role-gate, policy-summary,
+idempotency-audit, responsive-layout, filter-only, direct-detail recovery,
+and retry-focus findings.
 
 ## Deterministic gate results
 
