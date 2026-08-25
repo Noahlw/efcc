@@ -9,7 +9,8 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "./s4-prototype.module.css";
 
 type Pack = "directory" | "approvals" | "permissions";
-type Variant = "a" | "b" | "c";
+type Variant = "final" | "a" | "b" | "c";
+type ComparisonVariant = Exclude<Variant, "final">;
 type Role = "admin" | "staff" | "member";
 
 interface Account {
@@ -243,6 +244,7 @@ const PACK_LABELS: Record<Pack, string> = {
 };
 
 const VARIANT_LABELS: Record<Variant, string> = {
+  final: "Final · B / A / C",
   a: "A · 任務導向",
   b: "B · 操作台帳",
   c: "C · 聚焦流程",
@@ -255,8 +257,14 @@ function isPack(value: string | null): value is Pack {
 }
 
 function isVariant(value: string | null): value is Variant {
-  return value === "a" || value === "b" || value === "c";
+  return value === "final" || value === "a" || value === "b" || value === "c";
 }
+
+const SELECTED_VARIANTS: Record<Pack, ComparisonVariant> = {
+  directory: "b",
+  approvals: "a",
+  permissions: "c",
+};
 
 function roleLabel(role: Role) {
   if (role === "admin") {
@@ -458,6 +466,28 @@ function DirectoryPack({
   const selected =
     ACCOUNTS.find((account) => account.id === selectedId) ?? ACCOUNTS[0];
 
+  if (scenario === "loading") {
+    return (
+      <FlowState
+        body="正在載入獲授權的帳戶資料。"
+        busy
+        symbol="…"
+        title="正在載入帳戶名錄"
+      />
+    );
+  }
+
+  if (scenario === "error") {
+    return (
+      <FlowState
+        action="重試載入"
+        body="未能取得帳戶資料。你的搜尋條件不會被清除。"
+        symbol="!"
+        title="暫時無法載入帳戶名錄"
+      />
+    );
+  }
+
   if (scenario === "forbidden") {
     return (
       <section className={styles.centredState} role="alert">
@@ -619,6 +649,39 @@ function DirectoryPack({
   );
 }
 
+function FlowState({
+  action,
+  body,
+  busy = false,
+  symbol,
+  title,
+}: {
+  action?: string;
+  body: string;
+  busy?: boolean;
+  symbol: string;
+  title: string;
+}) {
+  return (
+    <section
+      aria-busy={busy || undefined}
+      aria-live="polite"
+      className={styles.centredState}
+    >
+      <span className={styles.stateIcon} aria-hidden="true">
+        {symbol}
+      </span>
+      <h1>{title}</h1>
+      <p>{body}</p>
+      {action ? (
+        <button className={styles.primaryButton} type="button">
+          {action}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 function EmptyDirectory() {
   return (
     <div className={styles.emptyState}>
@@ -721,6 +784,61 @@ function ApprovalsPack({
     REQUESTS.find((request) => request.id === selectedId) ?? REQUESTS[0];
   const onResolve = (action: "approve" | "reject") => setDialog(action);
   const queue = REQUESTS.filter((request) => request.status === "Pending");
+
+  if (scenario === "loading") {
+    return (
+      <FlowState
+        body="正在讀取最新申請佇列。"
+        busy
+        symbol="…"
+        title="正在載入註冊申請"
+      />
+    );
+  }
+
+  if (scenario === "busy") {
+    return (
+      <FlowState
+        body="系統正在建立帳戶；請勿關閉此畫面或重複提交。"
+        busy
+        symbol="↻"
+        title="正在核准王美玲的申請"
+      />
+    );
+  }
+
+  if (scenario === "success") {
+    return (
+      <FlowState
+        action="返回申請佇列"
+        body="王美玲的帳戶已生效，申請詳情已轉為唯讀。"
+        symbol="✓"
+        title="帳戶已建立"
+      />
+    );
+  }
+
+  if (scenario === "error") {
+    return (
+      <FlowState
+        action="重試決定"
+        body="伺服器沒有完成這次審批；申請仍然保持待處理。"
+        symbol="!"
+        title="未能完成審批"
+      />
+    );
+  }
+
+  if (scenario === "offline") {
+    return (
+      <FlowState
+        action="返回申請詳情"
+        body="未連線，因此系統沒有提交或排程自動重試。重新連線後再確認。"
+        symbol="⌁"
+        title="審批尚未提交"
+      />
+    );
+  }
 
   const list = (
     <div className={styles.approvalList}>
@@ -972,6 +1090,61 @@ function PermissionsPack({
   };
   const groups = [...new Set(draft.map((capability) => capability.group))];
 
+  if (scenario === "loading") {
+    return (
+      <FlowState
+        body="正在讀取政策版本及角色能力。"
+        busy
+        symbol="…"
+        title="正在載入權限政策"
+      />
+    );
+  }
+
+  if (scenario === "forbidden") {
+    return (
+      <FlowState
+        action="返回管理工作"
+        body="你的帳戶沒有查看權限政策的能力。"
+        symbol="!"
+        title="未獲授權查看權限政策"
+      />
+    );
+  }
+
+  if (scenario === "busy") {
+    return (
+      <FlowState
+        body="正在以政策版本 18 提交一個原子變更集。"
+        busy
+        symbol="↻"
+        title="正在儲存權限政策"
+      />
+    );
+  }
+
+  if (scenario === "success") {
+    return (
+      <FlowState
+        action="返回權限政策"
+        body="政策版本 19 已生效，所有管理畫面會使用最新權限。"
+        symbol="✓"
+        title="權限政策已儲存"
+      />
+    );
+  }
+
+  if (scenario === "error") {
+    return (
+      <FlowState
+        action="返回變更草稿"
+        body="系統沒有套用任何部分變更；你的草稿仍保留在此裝置。"
+        symbol="!"
+        title="未能儲存權限政策"
+      />
+    );
+  }
+
   if (scenario === "conflict") {
     return (
       <section className={styles.centredState} role="alert">
@@ -1189,9 +1362,26 @@ function PrototypeSwitcher({
 }) {
   const router = useRouter();
   const scenarios: Record<Pack, string[]> = {
-    directory: ["default", "empty", "forbidden"],
-    approvals: ["pending", "resolved", "conflict"],
-    permissions: ["default", "conflict"],
+    directory: ["default", "loading", "empty", "error", "forbidden"],
+    approvals: [
+      "pending",
+      "loading",
+      "busy",
+      "success",
+      "resolved",
+      "conflict",
+      "error",
+      "offline",
+    ],
+    permissions: [
+      "default",
+      "loading",
+      "busy",
+      "success",
+      "conflict",
+      "error",
+      "forbidden",
+    ],
   };
   const update = (
     nextPack: Pack,
@@ -1201,7 +1391,7 @@ function PrototypeSwitcher({
     router.replace(
       `/management?prototype=s4&pack=${nextPack}&variant=${nextVariant}&scenario=${nextScenario}`
     );
-  const variants: Variant[] = ["a", "b", "c"];
+  const variants: Variant[] = ["final", "a", "b", "c"];
   const move = (direction: -1 | 1) => {
     const index = variants.indexOf(variant);
     const next =
@@ -1274,23 +1464,29 @@ export function S4Prototype() {
   const packParam = searchParams.get("pack");
   const variantParam = searchParams.get("variant");
   const pack: Pack = isPack(packParam) ? packParam : "directory";
-  const variant: Variant = isVariant(variantParam) ? variantParam : "a";
+  const variant: Variant = isVariant(variantParam) ? variantParam : "final";
+  const renderedVariant =
+    variant === "final" ? SELECTED_VARIANTS[pack] : variant;
   const scenario = searchParams.get("scenario") ?? "default";
 
   let content: React.ReactNode;
   if (pack === "approvals") {
-    content = <ApprovalsPack scenario={scenario} variant={variant} />;
+    content = <ApprovalsPack scenario={scenario} variant={renderedVariant} />;
   } else if (pack === "permissions") {
-    content = <PermissionsPack scenario={scenario} variant={variant} />;
+    content = <PermissionsPack scenario={scenario} variant={renderedVariant} />;
   } else {
-    content = <DirectoryPack scenario={scenario} variant={variant} />;
+    content = <DirectoryPack scenario={scenario} variant={renderedVariant} />;
   }
 
   return (
     <PrototypeShell pack={pack}>
       <div className={styles.prototypeNote}>
-        <span>PROTOTYPE</span>
-        <p>三個方向用作決定 S4 final UI；資料只存在記憶體。</p>
+        <span>{variant === "final" ? "SELECTED" : "PROTOTYPE"}</span>
+        <p>
+          {variant === "final"
+            ? "已選定 B / A / C 組合；資料只存在記憶體。"
+            : "比較方向用作決定 S4 final UI；資料只存在記憶體。"}
+        </p>
       </div>
       {content}
       <PrototypeSwitcher pack={pack} scenario={scenario} variant={variant} />

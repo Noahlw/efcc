@@ -11,14 +11,15 @@ pnpm --dir web dev --hostname 127.0.0.1 --port 3004
 Open:
 
 ```text
-http://127.0.0.1:3004/management?prototype=s4&pack=directory&variant=a&scenario=default
+http://127.0.0.1:3004/management?prototype=s4&pack=directory&variant=final&scenario=default
 ```
 
 The floating development-only switcher provides:
 
 - packs: `directory`, `approvals`, `permissions`
-- variants: `a`, `b`, `c`
-- pack-specific empty, forbidden, resolved, and conflict scenarios
+- selected composite: `final` = Directory B, Approvals A, Permissions C
+- comparison variants: `a`, `b`, `c`
+- pack-specific loading, empty, forbidden, pending, busy, success, resolved, conflict, error, and offline scenarios
 - left/right arrow-key variant switching when a text field is not focused
 
 All data and mutations stay in memory. The prototype bypass is unavailable in production builds.
