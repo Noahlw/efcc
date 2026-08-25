@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 import { AppShell } from "@/lib/app-shell";
 import { ApprovalDetail } from "@/lib/approval-detail";
@@ -13,6 +14,7 @@ import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
 import { MemberDirectoryPanel } from "./member-directory-panel";
 import { PermissionsPanel } from "./permissions-panel";
+import { S4Prototype } from "./s4-prototype";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
 
@@ -56,13 +58,33 @@ const ManagementModule = () => {
   }
 };
 
+const ProductionManagementPage = () => (
+  <AppShell>
+    <GuardedSection sectionKey="management">
+      <ManagementModule />
+    </GuardedSection>
+  </AppShell>
+);
+
+const DevelopmentManagementPage = () => {
+  const searchParams = useSearchParams();
+
+  if (searchParams.get("prototype") === "s4") {
+    return <S4Prototype />;
+  }
+
+  return <ProductionManagementPage />;
+};
+
 const ManagementPage = () => {
+  if (process.env.NODE_ENV === "production") {
+    return <ProductionManagementPage />;
+  }
+
   return (
-    <AppShell>
-      <GuardedSection sectionKey="management">
-        <ManagementModule />
-      </GuardedSection>
-    </AppShell>
+    <Suspense fallback={<ProductionManagementPage />}>
+      <DevelopmentManagementPage />
+    </Suspense>
   );
 };
 
