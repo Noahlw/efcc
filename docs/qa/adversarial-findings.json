@@ -1,0 +1,51 @@
+[
+  {
+    "id": "F-01",
+    "title": "Camera viewfinder stays in frozen live state when track is ended by OS/hardware",
+    "surface": "/scanner",
+    "state": "scan-live",
+    "viewport": "375x844",
+    "steps": [
+      "1. Open /scanner with camera active ('scan-live')",
+      "2. Simulate video track termination (OS permission revoke / stream interruption)",
+      "3. Observe scanner surface"
+    ],
+    "expected": "useQrCamera listens to track 'ended' event and transitions to fallback state",
+    "actual": "Surface remains locked in 'scan-live' with a frozen video frame and no error message",
+    "severity": "Major",
+    "screenshotPath": "docs/qa/screenshots/hunt-camera-track-ended-freeze.png",
+    "evidence": {
+      "selector": "[data-camera-state=\"live\"]",
+      "metrics": {
+        "cameraState": "live",
+        "isFallback": 0
+      }
+    },
+    "remediation": "Add track.addEventListener('ended', stopCamera) inside useQrCamera stream setup."
+  },
+  {
+    "id": "F-02",
+    "title": "Network error on confirmation screen hides '重試簽到' button",
+    "surface": "/scanner",
+    "state": "scan-confirmation",
+    "viewport": "375x844",
+    "steps": [
+      "1. Land on confirmation screen for valid event",
+      "2. Click 確認簽到 while network is interrupted (network abort/failure)",
+      "3. Observe error state and available retry affordances"
+    ],
+    "expected": "Error explains network issue AND '重試簽到' secondary button appears with focus (F-11)",
+    "actual": "Error message displays '未能提交簽到。請重新連線後再次確認；系統不會自動重試。' but '重試簽到' button is not rendered (setRetryAvailable(!offline) hides it)",
+    "severity": "Major",
+    "screenshotPath": "docs/qa/screenshots/hunt-offline-confirmation-state.png",
+    "evidence": {
+      "selector": "section[class*=\"confirmation\"]",
+      "metrics": {
+        "errorMsg": "未能提交簽到。請重新連線後再次確認；系統不會自動重試。",
+        "hasRetryBtn": 0,
+        "confirmBtnDisabled": false
+      }
+    },
+    "remediation": "Ensure retryAvailable is true on retryable network errors so users have a clear retry button."
+  }
+]
