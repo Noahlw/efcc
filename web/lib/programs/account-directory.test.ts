@@ -176,6 +176,19 @@ describe("S4-02: Account Directory contract", () => {
     );
   });
 
+  test("filters the Account Directory without requiring a search term", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/programs/accounts?role=Staff", staffAccess),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = (await response.json()) as AccountBody;
+    assert.deepStrictEqual(
+      body.data.accounts.map((account) => account.userId),
+      ["AD002"]
+    );
+  });
+
   test("Member is forbidden from the church-wide Account Directory", async () => {
     const response = await worker.fetch(
       request("/api/v1/programs/accounts?q=Directory", memberAccess),

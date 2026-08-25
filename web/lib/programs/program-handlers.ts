@@ -787,9 +787,6 @@ export async function handleSearchManagementMembers(
   }
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
-  if (query.length < 2) {
-    return validation(requestId, "Search requires at least two characters.");
-  }
   const rawLimit = url.searchParams.get("limit");
   const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
   const limit = Number.isFinite(parsedLimit)
@@ -824,9 +821,6 @@ export async function handleSearchAccountDirectory(
   }
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
-  if (query.length < 2) {
-    return validation(requestId, "Search requires at least two characters.");
-  }
   const rawLimit = url.searchParams.get("limit");
   const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
   const limit = Number.isFinite(parsedLimit)
@@ -837,6 +831,17 @@ export async function handleSearchAccountDirectory(
   const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
   const roles = ["Admin", "Staff", "Member"] as const;
   const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
+  if (
+    query.length < 2 &&
+    rawRole === null &&
+    rawStatus === null &&
+    rawDepartment === undefined
+  ) {
+    return validation(
+      requestId,
+      "Search requires at least two characters or a filter."
+    );
+  }
   if (rawRole !== null && !roles.includes(rawRole as (typeof roles)[number])) {
     return validation(requestId, "Unknown account role filter.");
   }

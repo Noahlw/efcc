@@ -63,11 +63,30 @@ function statusClass(status: AccountDirectoryMember["status"]): string {
   return status.toLowerCase();
 }
 
+function safeReturnHref(value: string | null, fallback: string): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return fallback;
+  }
+  try {
+    const candidate = new URL(value, "https://efcc.internal");
+    if (
+      candidate.pathname !== "/management" &&
+      !candidate.pathname.startsWith("/management/")
+    ) {
+      return fallback;
+    }
+    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 // oxlint-disable-next-line eslint/complexity -- This component owns the complete read-only directory state machine.
 export const AccountDirectoryPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const detailRef = useRef<HTMLElement>(null);
+  const detailStateRef = useRef<HTMLElement>(null);
   const errorFocusPending = useRef(false);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState<AccountDirectoryMember["role"] | "">(
@@ -85,11 +104,15 @@ export const AccountDirectoryPanel = () => {
     kind: "idle",
     data: null,
   });
+  const [detailRetryToken, setDetailRetryToken] = useState(0);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
+    const hasFilters = Boolean(
+      role || status || department.trim()
+    );
     let current = true;
-    if (normalizedQuery.length < MIN_QUERY_LENGTH) {
+    if (normalizedQuery.length < MIN_QUERY_LENGTH && !hasFilters) {
       setState({ kind: "idle", data: null });
       return () => {
         current = false;
@@ -171,6 +194,16 @@ export const AccountDirectoryPanel = () => {
         if (!current) {
           return;
         }
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return;
+        }
         const forbidden =
           error instanceof RpcError && error.problem.code === "FORBIDDEN";
         setDetailState({
@@ -182,7 +215,7 @@ export const AccountDirectoryPanel = () => {
     return () => {
       current = false;
     };
-  }, [selectedId]);
+  }, [detailRetryToken, router, selectedId]);
 
   const selected = detailState.kind === "ready" ? detailState.account : null;
 
@@ -191,6 +224,16 @@ export const AccountDirectoryPanel = () => {
       detailRef.current?.focus();
     }
   }, [selected]);
+
+  useEffect(() => {
+    if (
+      !selectedId ||
+      (detailState.kind !== "loading" && detailState.kind !== "error")
+    ) {
+      return;
+    }
+    detailStateRef.current?.focus();
+  }, [detailState.kind, selectedId]);
 
   const updateQuery = (value: string) => {
     setQuery(value);
@@ -224,8 +267,10 @@ export const AccountDirectoryPanel = () => {
   if (department.trim()) {
     returnParams.set("department", department.trim());
   }
-  const returnHref =
-    searchParams.get("return") ?? `/management?${returnParams}`;
+  const returnHref = safeReturnHref(
+    searchParams.get("return"),
+    `/management?${returnParams}`
+  );
 
   const handleSelect = (account: AccountDirectoryMember) => {
     const params = new URLSearchParams({
@@ -255,7 +300,8 @@ export const AccountDirectoryPanel = () => {
     state.data.accounts.length === 0;
   const hasResults = isReady && state.data.accounts.length > 0;
   const showWorkspace = Boolean(selectedId) || hasResults;
-  const detailOnly = Boolean(selectedId) && !hasResults;
+  const detailSelected = Boolean(selectedId);
+  const detailOnly = detailSelected && !hasResults;
 
   return (
     <section
@@ -382,7 +428,7 @@ export const AccountDirectoryPanel = () => {
 
       {showWorkspace && (
         <div
-          className={`${styles.workspace} ${detailOnly ? styles.detailOnly : ""}`}
+          className={`${styles.workspace} ${detailSelected ? styles.detailSelected : ""} ${detailOnly ? styles.detailOnly : ""}`}
         >
           {hasResults && (
             <section
@@ -446,16 +492,37 @@ export const AccountDirectoryPanel = () => {
 
           {detailState.kind === "loading" ? (
             <output
+              ref={(node) => {
+                detailStateRef.current = node;
+              }}
               aria-busy="true"
               className={styles.detailState}
+              id="account-directory-detail-state"
               aria-live="polite"
+              tabIndex={-1}
             >
               {COPY_ACCOUNT.loading}
             </output>
           ) : detailState.kind === "error" ? (
-            <section className={styles.detailError} role="alert">
+            <section
+              ref={(node) => {
+                detailStateRef.current = node;
+              }}
+              aria-live="assertive"
+              className={styles.detailError}
+              id="account-directory-detail-state"
+              role="alert"
+              tabIndex={-1}
+            >
               <strong>{detailState.message}</strong>
               <p>請返回名錄，再重新搜尋此帳戶。</p>
+              <button
+                className={styles.retry}
+                onClick={() => setDetailRetryToken((token) => token + 1)}
+                type="button"
+              >
+                {COPY_ACCOUNT.retry}
+              </button>
             </section>
           ) : selected ? (
             <article

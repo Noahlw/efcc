@@ -32,7 +32,7 @@ idempotency-audit, and responsive-layout corrections.
 
 ## Full Worker suite
 
-`pnpm --dir web test`: **471/472 tests passed** across 30 passing files.
+`pnpm --dir web test`: **472/473 tests passed** across 30 passing files.
 
 The remaining failure is not S4 behavior: the existing EVT-02.1 recurring preview assertion expects a `CANCEL` skip reason but receives `null` (`web/lib/programs/programs.test.ts:3308`).
 

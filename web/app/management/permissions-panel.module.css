@@ -555,7 +555,7 @@ button.policyCell[aria-pressed="true"] {
   }
 }
 
-@media (max-width: 799px) {
+@media (max-width: 899px) {
   .policyLayout {
     grid-template-columns: 1fr;
   }
@@ -564,7 +564,9 @@ button.policyCell[aria-pressed="true"] {
     grid-template-columns: 1fr;
   }
 
-  .reviewPanel { position: static; }
+  .reviewPanel {
+    position: static;
+  }
 }
 
 @media (min-width: 800px) {

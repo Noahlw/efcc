@@ -317,4 +317,51 @@ describe("S4-05: Permission Policy atomic write", () => {
       .first<{ outcome: string }>();
     assert.strictEqual(audit?.outcome, "DENIED");
   });
+
+  test("concurrent same-revision writers resolve with one commit and one conflict", async () => {
+    const before = await readPolicy(adminAccess);
+    const body = {
+      baseRevision: before.data.policy.revision,
+      changes: [
+        {
+          role: "staff",
+          capability: "registration.approval.manage",
+          value: false,
+        },
+      ],
+    };
+    const responses = await Promise.all(
+      ["s405-race-a", "s405-race-b"].map((idempotencyKey) =>
+        worker.fetch(
+          request(adminAccess, {
+            method: "POST",
+            body,
+            idempotencyKey,
+          }),
+          testEnv()
+        )
+      )
+    );
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [200, 409]
+    );
+    const after = await readPolicy(adminAccess);
+    assert.strictEqual(
+      after.data.policy.revision,
+      before.data.policy.revision + 1
+    );
+    const audits = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+          WHERE action = 'PERMISSION_POLICY_UPDATE'
+            AND correlation_id IN ('s405-race-a', 's405-race-b')
+          ORDER BY inserted_at ASC`
+      )
+      .all<{ outcome: string }>();
+    assert.deepStrictEqual(
+      (audits.results ?? []).map(({ outcome }) => outcome).sort(),
+      ["CONFLICT", "SUCCESS"]
+    );
+  });
 });

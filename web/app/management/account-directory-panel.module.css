@@ -351,6 +351,12 @@
   }
 }
 
+@media (max-width: 799px) {
+  .workspace.detailSelected .resultsColumn {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page *,
   .page *::before,
