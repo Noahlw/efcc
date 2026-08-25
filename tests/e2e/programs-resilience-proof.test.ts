@@ -91,7 +91,7 @@ const COPY = {
   // COPY.attendance.guestPhone
   guestPhone: "電話",
   // COPY.attendance.guestSubmit
-  guestSubmit: "送出訪客簽到",
+  guestSubmit: "確認簽到",
   // COPY.programs.settingsBasics
   settingsBasics: "基本資料",
   // COPY.programs.programDescription
@@ -281,6 +281,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Request Program ${fresh("REQ")}`,
+        description: "Resilience request acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -300,6 +301,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Scanner Program ${fresh("SCN")}`,
+        description: "Resilience scanner acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -455,16 +457,13 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
   test("T3 viewport change mid-flow preserves partially entered Guest Check-In data", async ({
     page,
   }) => {
-    // Public route — no auth needed. Resolve the Event first (the guest fields
-    // only render once an event is selected), then fill WITHOUT submitting.
+    // Public route — the guest form is visible before resolution so a
+    // viewport change preserves every field in the one-step flow.
     await page.goto("/guest-check-in");
-    await page.locator("#attendance-code").fill(fixtures.manualCode);
-    await page.getByRole("button", { name: COPY.resolve }).click();
-
-    // The guest fields only render once an event is resolved; identify them by
-    // their COPY labels (姓名/電話) — unambiguous single controls.
+    const codeInput = page.locator("#attendance-code");
+    await codeInput.fill(fixtures.manualCode);
     const nameInput = page.getByLabel(COPY.guestName);
-    const phoneInput = page.getByLabel(COPY.guestPhone);
+    const phoneInput = page.locator("#guest-phone");
     await expect(nameInput).toBeVisible();
     await expect(phoneInput).toBeVisible();
 

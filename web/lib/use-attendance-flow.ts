@@ -40,7 +40,7 @@ export interface AttendanceFlow {
   cameraUnsupported: boolean;
   cameraAvailable: boolean | null;
   showStatus: (message: string, tone?: StatusTone) => void;
-  resolve: (value: string, fromQr?: boolean) => Promise<void>;
+  resolve: (value: string, fromQr?: boolean) => Promise<AttendanceEvent[]>;
   resetToScan: () => void;
   videoRef: RefObject<HTMLVideoElement | null>;
   cameraOpen: boolean;
@@ -61,6 +61,9 @@ export function useAttendanceFlow(
     cameraFirst?: boolean;
     phoneOnly?: boolean;
     reportCameraUnavailable?: boolean;
+    cameraEnabled?: boolean;
+    invalidEntryMessage?: string;
+    offlineResolveMessage?: string;
   } = {}
 ): AttendanceFlow {
   const [inputValue, setInputValue] = useState("");
@@ -129,7 +132,7 @@ export function useAttendanceFlow(
     if (!entry.value && !requestedEventId) {
       if (fromCamera && options.cameraFirst === true) {
         showCameraDecodeFailure();
-        return;
+        return [];
       }
       const message = COPY.attendance.inputLabel;
       setFromQr(false);
@@ -140,7 +143,7 @@ export function useAttendanceFlow(
       showStatus(message);
       announce(message);
       inputRef.current?.focus();
-      return;
+      return [];
     }
     const resolvedFromQr = isFromQr || entry.fromQr;
     setInputValue(entry.value);
@@ -178,12 +181,14 @@ export function useAttendanceFlow(
         setSelectedState(null);
         if (fromCamera && options.cameraFirst === true) {
           showCameraDecodeFailure();
-          return;
+          return [];
         }
         setView("scan");
-        const message = options.cameraFirst
-          ? COPY.attendance.invalidEntryCode
-          : COPY.attendance.invalidEntry;
+        const message =
+          options.invalidEntryMessage ??
+          (options.cameraFirst
+            ? COPY.attendance.invalidEntryCode
+            : COPY.attendance.invalidEntry);
         showStatus(message, "error");
         announce(message);
       } else if (!result.enrolled) {
@@ -217,6 +222,7 @@ export function useAttendanceFlow(
         showStatus("");
         announce(COPY.attendance.outcomeWindowTitle);
       }
+      return resolvedEvents;
     } catch (error) {
       const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
       const networkFailure =
@@ -226,14 +232,16 @@ export function useAttendanceFlow(
         error.problem.code === "UNAVAILABLE";
       if (fromCamera && options.cameraFirst === true && !networkFailure) {
         showCameraDecodeFailure();
-        return;
+        return [];
       }
       const noEligibleEvents =
         error instanceof RpcError &&
         error.problem.code === "CHECK_IN_NOT_FOUND" &&
         resolvedFromQr;
       let message: string;
-      if (networkFailure && options.cameraFirst && fromCamera) {
+      if (networkFailure && options.offlineResolveMessage) {
+        message = options.offlineResolveMessage;
+      } else if (networkFailure && options.cameraFirst && fromCamera) {
         message = COPY.attendance.offlineResolve;
       } else if (isOffline && options.cameraFirst) {
         message = COPY.attendance.offlineResolve;
@@ -255,6 +263,7 @@ export function useAttendanceFlow(
       setView("scan");
       showStatus(message, noEligibleEvents ? "info" : "error");
       announce(message);
+      return [];
     } finally {
       setBusy(false);
     }
@@ -308,6 +317,7 @@ export function useAttendanceFlow(
       announce(message);
       inputRef.current?.focus();
     },
+    enabled: options.cameraEnabled !== false,
     phoneOnly: options.phoneOnly,
     reportUnavailableOnMount: options.reportCameraUnavailable,
   });
