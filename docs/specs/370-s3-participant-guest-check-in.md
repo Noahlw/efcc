@@ -577,9 +577,8 @@ scan-context --[不是這個聚會, n=1]--> scan-opening [nothing written]
 scan-context --[確認簽到 → 201 success]--> checkin-result(success)
 scan-context --[確認簽到 → 200 duplicate]--> checkin-result(duplicate)
 scan-context --[確認簽到 → recoverable error]--> scan-context [inline error + focused 重試簽到]
-scan-context --[確認簽到 → 403 forbidden]--> scan-context [inline server detail + focused 重試簽到; nothing written]
 
-scan-outcome(kind ∈ {window-not-open, cancelled, not-enrolled})
+scan-outcome(kind ∈ {window-not-open, cancelled, not-enrolled, forbidden})
 scan-outcome --[返回掃描]--> scan-opening
 scan-outcome --[查看課程詳情, not-enrolled only]--> /programs?programId=<resolved>
 
