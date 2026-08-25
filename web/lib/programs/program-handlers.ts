@@ -787,6 +787,9 @@ export async function handleSearchManagementMembers(
   }
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
   const rawLimit = url.searchParams.get("limit");
   const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
   const limit = Number.isFinite(parsedLimit)
