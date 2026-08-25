@@ -216,6 +216,17 @@ The initial global policy is:
 - Busy/status/error messages use appropriate semantic output/live regions without duplicated announcements.
 - Color is never the sole signal for status, locked policy, error, or success.
 
+### 13. Implementation-ticket UI quality protocol
+
+- Every ticket that changes an S4 screen cites ADR-0038, this specification, and the selected prototype evidence at `prototype/s4-management-access` commit `653a531` before implementation begins.
+- The selected B/A/C structure is the presentation baseline, not a ceiling on craft. Production may improve hierarchy, spacing, typography, long-copy handling, focus treatment, feedback, and responsive composition when the improvement preserves the frozen behavior and Civic Minimal system.
+- Each UI ticket invokes the `impeccable` skill for project design context and one bounded production-quality pass. The pass inspects Accessibility, Responsive Design, Theming, Implementation Integrity, and interaction polish; it does not introduce a new palette, speculative feature, or unrelated redesign.
+- The implementation sequence is: reproduce the selected prototype structure with real data and real mutations; inspect phone and desktop together; apply one contained polish batch; run at most one confirmation pass; then stop.
+- Any deliberate prototype-to-production delta is recorded in the ticket or acceptance trace with the selected prototype state, production observation, reason, and behavioral proof. Silent divergence is not allowed.
+- Phone and desktop are one acceptance unit in every UI slice. A ticket is incomplete if either the 320/390 phone layouts or the 800/1440 desktop layouts are missing, deferred, overflowing, inaccessible, or visually unreviewed.
+- Each UI ticket captures fresh evidence for its own loading, empty, error, forbidden, pending, success, conflict, offline, or read-only states as applicable. Screenshots demonstrate presentation; DOM, response, and D1 evidence demonstrate behavior.
+- Prototype-only fake data, query routers, state switchers, and in-memory mutation controls remain excluded from production even when used as visual references.
+
 ## Frozen Contracts
 
 - **S4-F01:** Every Active Account retains the Church Member participant baseline regardless of global Role.
@@ -240,6 +251,8 @@ The initial global policy is:
 - **S4-F20:** The 800px shell breakpoint, 44px targets, focus/live-region semantics, dock clearance, and no-horizontal-overflow rule are mandatory.
 - **S4-F21:** Prototype code, demo state, fake data, and switchers never enter production implementation.
 - **S4-F22:** Screenshots prove presentation only; authorization, persistence, conflict, idempotency, and audit require response/D1 evidence.
+- **S4-F23:** Every S4 UI implementation ticket uses the selected prototype as its presentation baseline and runs one bounded `impeccable` production-quality pass.
+- **S4-F24:** Phone and desktop are inseparable acceptance targets for every S4 UI slice; neither viewport class may be deferred to a later ticket.
 
 ## Testing Decisions
 
