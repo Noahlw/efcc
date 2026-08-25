@@ -140,8 +140,14 @@ describe(stableNavigationSections, () => {
 
 describe(sectionsForRole, () => {
   const memberKeys = ["home", "programs", "scanner", "notices", "profile"];
-  const staffKeys = ["home", "programs", "scanner", "management", "profile"];
-
+  const staffKeys = [
+    "home",
+    "programs",
+    "scanner",
+    "management",
+    "profile",
+    "events",
+  ];
   test("Admin receives authorized sections with management", () => {
     expect(sectionsForRole("Admin").map((s) => s.key)).toStrictEqual(staffKeys);
   });
@@ -178,9 +184,9 @@ describe(sectionsForRole, () => {
   });
 
   test("Member with an active management grant receives management instead of notices", () => {
-    expect(
-      sectionsForRole("Member", true).map((s) => s.key)
-    ).toStrictEqual(staffKeys);
+    expect(sectionsForRole("Member", true).map((s) => s.key)).toStrictEqual(
+      staffKeys
+    );
   });
 
   test("Member without a management grant receives notices (default false)", () => {
@@ -190,8 +196,8 @@ describe(sectionsForRole, () => {
   });
 
   test("hasManagementGrant is a no-op for roles that already include management", () => {
-    expect(
-      sectionsForRole("Staff", true).map((s) => s.key)
-    ).toStrictEqual(staffKeys);
+    expect(sectionsForRole("Staff", true).map((s) => s.key)).toStrictEqual(
+      staffKeys
+    );
   });
 });
