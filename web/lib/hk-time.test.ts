@@ -6,6 +6,7 @@ import {
   hkShortDateLabel,
   hkShortTimeLabel,
   hkShortTimeRange,
+  hkTime24Label,
 } from "@/lib/hk-time";
 
 describe("hk short date/time labels", () => {
@@ -26,6 +27,11 @@ describe("hk short date/time labels", () => {
     expect(
       hkShortTimeRange("2026-08-20T11:30:00.000Z", "2026-08-20T13:00:00.000Z")
     ).toBe("晚上 7:30–9:00");
+  });
+
+  test("formats an HK wall-clock time as a zero-padded 24-hour label", () => {
+    expect(hkTime24Label("2026-08-13T10:30:00.000Z")).toBe("18:30");
+    expect(hkTime24Label("2026-08-13T13:45:00.000Z")).toBe("21:45");
   });
 
   test("keeps both prefixes when the range crosses 下午 into 晚上", () => {

@@ -49,6 +49,19 @@ function hkWallParts(iso: string): {
   };
 }
 
+/** HK wall-clock time in a zero-padded 24-hour form: 18:30. */
+export function hkTime24Label(iso: string | null): string | null {
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const { hour24, minute } = hkWallParts(iso);
+  return `${String(hour24).padStart(2, "0")}:${minute}`;
+}
+
 function hkDayPeriod(hour24: number): "早上" | "下午" | "晚上" {
   if (hour24 < 12) {
     return "早上";

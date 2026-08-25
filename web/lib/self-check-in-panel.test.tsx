@@ -69,7 +69,7 @@ function installCamera() {
     configurable: true,
     value: {
       getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
-        getTracks: () => [{ stop: vi.fn() }],
+        getTracks: () => [{ stop: vi.fn(), addEventListener: vi.fn() }],
       } as unknown as MediaStream),
     },
   });
@@ -156,6 +156,49 @@ describe(SelfCheckInPanel, () => {
     ).toBeInTheDocument();
   });
 
+  test("denied camera permission renders the denied alert with retry, not unsupported", async () => {
+    // Guards the full wiring: hook NotAllowedError classification → flow
+    // callback → fallback render. A regression back to the unsupported
+    // mapping (no 重試相機 recovery) fails here.
+    const cameraStream = {
+      getTracks: () => [{ stop: vi.fn(), addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockRejectedValueOnce(new DOMException("denied", "NotAllowedError"))
+      .mockResolvedValueOnce(cameraStream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia,
+      },
+    });
+    render(<SelfCheckInPanel />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(COPY.attendance.cameraDeniedTitle);
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.cameraRetry })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.attendance.cameraUnsupportedTitle)
+    ).toBeNull();
+    expect(
+      screen.getAllByRole("heading", {
+        name: COPY.attendance.fallbackTitle,
+      })
+    ).toHaveLength(1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: COPY.attendance.cameraRetry })
+    );
+    const stage = await screen.findByTestId("scanner-camera-stage");
+    await waitFor(() =>
+      expect(stage).toHaveAttribute("data-camera-state", "live")
+    );
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
   test("decoded value with network failure reaches offline fallback", async () => {
     detectedValue = "not-a-valid-check-in-code";
     server.use(
@@ -180,6 +223,7 @@ describe(SelfCheckInPanel, () => {
 
   test("event deep link resolves and pre-selects the requested event", async () => {
     const resolveRequest: { url: URL | null } = { url: null };
+    const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia);
     server.use(
       http.get("/api/v1/attendance/resolve", ({ request }) => {
         resolveRequest.url = new URL(request.url);
@@ -199,8 +243,43 @@ describe(SelfCheckInPanel, () => {
       expect(
         screen.getByRole("heading", { name: "週六聚會" })
       ).toBeInTheDocument();
+      expect(getUserMedia).not.toHaveBeenCalled();
     } finally {
       window.history.replaceState({}, "", "/scanner");
+    }
+  });
+
+  test("program-token and manual-code deep links resolve without opening camera", async () => {
+    const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia);
+    const previousUrl = new URL(window.location.href);
+    server.use(
+      http.get("/api/v1/attendance/resolve", () =>
+        HttpResponse.json({
+          requestId: "rid-resolve-deep-link",
+          data: { events: [EVENT], latest: null, enrolled: true },
+        })
+      )
+    );
+
+    try {
+      for (const query of [
+        "/scanner?program_token=prog-1",
+        "/scanner?manual_code=123456",
+      ]) {
+        window.history.pushState({}, "", query);
+        render(<SelfCheckInPanel />);
+        await screen.findByRole("heading", {
+          name: COPY.attendance.confirmTitle,
+        });
+        expect(getUserMedia).not.toHaveBeenCalled();
+        cleanup();
+      }
+    } finally {
+      window.history.replaceState(
+        {},
+        "",
+        `${previousUrl.pathname}${previousUrl.search}${previousUrl.hash}`
+      );
     }
   });
 
@@ -409,10 +488,13 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.continue })
     );
 
-    const candidates = await screen.findAllByRole("button", {
+    const candidates = await screen.findAllByRole("radio", {
       name: /週六聚會|週日崇拜/u,
     });
     await user.click(candidates[0]);
+    await user.click(
+      screen.getAllByRole("button", { name: COPY.attendance.continue })[0]
+    );
     await screen.findByRole("heading", {
       name: COPY.attendance.confirmTitle,
     });
@@ -422,12 +504,12 @@ describe(SelfCheckInPanel, () => {
     );
 
     // Multi-event resolve: escape returns to the chooser for re-resolution.
-    const chooserHeading = await screen.findByRole("heading", {
-      name: COPY.attendance.chooseMeeting,
-    });
-    expect(chooserHeading).toHaveFocus();
+    const chooserLegend = await screen.findByText(
+      COPY.attendance.chooseMeeting
+    );
+    await waitFor(() => expect(chooserLegend).toHaveFocus());
     expect(
-      screen.getAllByRole("button", { name: /週六聚會|週日崇拜/u })
+      screen.getAllByRole("radio", { name: /週六聚會|週日崇拜/u })
     ).toHaveLength(2);
     expect(selfCalls).toBe(0);
   });
@@ -446,10 +528,10 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.continue })
     );
 
-    const chooserHeading = await screen.findByRole("heading", {
-      name: COPY.attendance.chooseMeeting,
-    });
-    expect(chooserHeading).toHaveFocus();
+    const chooserLegend = await screen.findByText(
+      COPY.attendance.chooseMeeting
+    );
+    await waitFor(() => expect(chooserLegend).toHaveFocus());
     expect(
       screen.getByText(COPY.attendance.recognizedMultiple)
     ).toBeInTheDocument();
@@ -457,10 +539,14 @@ describe(SelfCheckInPanel, () => {
       screen.getByText(COPY.attendance.chooseMeetingHint)
     ).toBeInTheDocument();
 
-    const candidateButtons = screen.getAllByRole("button", {
+    const candidateRadios = screen.getAllByRole("radio", {
       name: /週六聚會|週日崇拜/u,
     });
-    expect(candidateButtons).toHaveLength(2);
+    expect(candidateRadios).toHaveLength(2);
+    // GOV.UK radios: no preselection until the member picks one.
+    for (const radio of candidateRadios) {
+      expect(radio).not.toBeChecked();
+    }
 
     const rescanButton = screen.getByRole("button", {
       name: COPY.attendance.rescan,
@@ -482,10 +568,13 @@ describe(SelfCheckInPanel, () => {
       screen.getByRole("button", { name: COPY.attendance.continue })
     );
 
-    const secondChooserButtons = await screen.findAllByRole("button", {
+    const secondChooserRadios = await screen.findAllByRole("radio", {
       name: /週六聚會|週日崇拜/u,
     });
-    await user.click(secondChooserButtons[1]);
+    await user.click(secondChooserRadios[1]);
+    await user.click(
+      screen.getAllByRole("button", { name: COPY.attendance.continue })[0]
+    );
 
     // Candidate selection lands on the confirmation screen with that
     // event's identity (EVENT_TWO is in 副堂).
@@ -506,7 +595,7 @@ describe(SelfCheckInPanel, () => {
         latest: {
           status: "Active",
           availability: "Active",
-          check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
+          check_in_window_opens_at: "2026-08-13T09:00:00.000Z",
           starts_at: "2026-08-13T11:00:00.000Z",
           program_id: "prog-1",
           program_name: "週六團契",
@@ -535,10 +624,16 @@ describe(SelfCheckInPanel, () => {
     expect(
       screen.getByTestId("attendance-outcome-icon-window-not-open")
     ).toBeInTheDocument();
-    expect(screen.getByText("6:30 PM")).toBeInTheDocument();
-    expect(
-      screen.getByText(new RegExp(COPY.attendance.outcomeWindowBodyPrefix))
-    ).toBeInTheDocument();
+    expect(screen.getByText("17:00")).toBeInTheDocument();
+    const outcomeBody = screen
+      .getByText(new RegExp(COPY.attendance.outcomeWindowBodyPrefix))
+      .closest("p");
+    expect(outcomeBody).toHaveTextContent(
+      COPY.attendance.outcomeWindowBodySuffixWithoutOffset
+    );
+    expect(outcomeBody).not.toHaveTextContent(
+      COPY.attendance.outcomeWindowBodySuffix
+    );
 
     const backButton = screen.getByRole("button", {
       name: COPY.attendance.backToScan,
@@ -756,6 +851,96 @@ describe(SelfCheckInPanel, () => {
     ).toBeInTheDocument();
   });
 
+  test("manual, confirmation, and retry controls expose busy state while pending", async () => {
+    let releaseResolve!: (response: Response) => void;
+    let releaseFirstSubmit!: (response: Response) => void;
+    let releaseRetry!: (response: Response) => void;
+    let submitAttempts = 0;
+    const pendingResolve = new Promise<Response>((resolve) => {
+      releaseResolve = resolve;
+    });
+    const pendingFirstSubmit = new Promise<Response>((resolve) => {
+      releaseFirstSubmit = resolve;
+    });
+    const pendingRetry = new Promise<Response>((resolve) => {
+      releaseRetry = resolve;
+    });
+    server.use(
+      http.get("/api/v1/attendance/resolve", () => pendingResolve),
+      http.post("/api/v1/attendance/self", () => {
+        submitAttempts += 1;
+        return submitAttempts === 1 ? pendingFirstSubmit : pendingRetry;
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    await openManualEntry();
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualCodeLabel)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.continue })
+    );
+
+    const manualSubmit = await screen.findByRole("button", {
+      name: COPY.attendance.resolving,
+    });
+    expect(manualSubmit).toBeDisabled();
+    expect(manualSubmit).toHaveAttribute("aria-busy", "true");
+
+    releaseResolve(
+      HttpResponse.json({
+        requestId: "rid-pending-resolve",
+        data: { events: [EVENT], latest: null, enrolled: true },
+      })
+    );
+    await screen.findByRole("heading", {
+      name: COPY.attendance.confirmTitle,
+    });
+
+    const confirmSubmit = screen.getByRole("button", {
+      name: COPY.attendance.confirmSubmit,
+    });
+    await user.click(confirmSubmit);
+    await waitFor(() => expect(confirmSubmit).toBeDisabled());
+    expect(confirmSubmit).toHaveAttribute("aria-busy", "true");
+
+    releaseFirstSubmit(
+      HttpResponse.json(
+        {
+          status: 503,
+          code: "UNAVAILABLE",
+          title: "Unavailable",
+          detail: "暫時無法提交。",
+        },
+        { status: 503 }
+      )
+    );
+    const retryButton = await screen.findByRole("button", {
+      name: COPY.attendance.retry,
+    });
+    await user.click(retryButton);
+    await waitFor(() => expect(retryButton).toBeDisabled());
+    expect(retryButton).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.confirmSubmit })
+    ).toBeNull();
+
+    releaseRetry(
+      HttpResponse.json({
+        requestId: "rid-pending-retry",
+        data: { outcome: "success", attendance_id: "att-pending" },
+      })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.attendance.successTitle })
+    ).resolves.toBeInTheDocument();
+    expect(submitAttempts).toBe(2);
+  });
+
   test("server submit failure shows inline error and retry re-attempts the same event", async () => {
     let attempts = 0;
     const requestBodies: Record<string, unknown>[] = [];
@@ -895,17 +1080,18 @@ describe(SelfCheckInPanel, () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(COPY.attendance.offlineSubmit);
-    // No retry affordance offline; the confirmation screen stays intact and
-    // unchanged (same identity, same actions).
-    expect(
-      screen.queryByRole("button", { name: COPY.attendance.retry })
-    ).toBeNull();
+    // F-11 inverted no more: even an offline failure keeps the dedicated
+    // 重試簽到 control in the DOM and focuses it for immediate re-attempt.
+    const retryButton = screen.getByRole("button", {
+      name: COPY.attendance.retry,
+    });
+    expect(retryButton).toHaveFocus();
     expect(
       screen.getByRole("heading", { name: COPY.attendance.confirmTitle })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: COPY.attendance.confirmSubmit })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: COPY.attendance.confirmSubmit })
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: COPY.attendance.notThisEvent })
     ).toBeInTheDocument();
@@ -922,7 +1108,7 @@ describe(SelfCheckInPanel, () => {
       })
     );
     await user.click(
-      screen.getByRole("button", { name: COPY.attendance.confirmSubmit })
+      screen.getByRole("button", { name: COPY.attendance.retry })
     );
     await expect(
       screen.findByRole("heading", { name: COPY.attendance.successTitle })

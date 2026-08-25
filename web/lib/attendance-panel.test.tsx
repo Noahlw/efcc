@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -90,6 +90,46 @@ describe(AttendancePanel, () => {
       expect(
         screen.getByRole("link", { name: COPY.attendance.guestBack })
       ).toHaveAttribute("href", "/");
+    });
+
+    test("shows busy copy while resolving the guest entry", async () => {
+      let releaseResolve!: (response: Response) => void;
+      const pendingResolve = new Promise<Response>((resolve) => {
+        releaseResolve = resolve;
+      });
+      server.use(
+        http.get("/api/v1/attendance/resolve", () => pendingResolve),
+        http.post("/api/v1/attendance/guest", () =>
+          HttpResponse.json({
+            requestId: "rid-busy-guest",
+            data: { outcome: "success", attendance_id: "a-busy" },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const submitButton = await screen.findByRole("button", {
+        name: COPY.attendance.guestSubmitting,
+      });
+      expect(submitButton).toBeDisabled();
+      expect(submitButton).toHaveAttribute("aria-busy", "true");
+
+      releaseResolve(
+        HttpResponse.json({
+          requestId: "rid-busy",
+          data: { events: [EVENT] },
+        })
+      );
+      const resultHeading = await screen.findByRole("heading", {
+        name: COPY.attendance.guestResultTitle,
+      });
+      expect(resultHeading).toBeVisible();
+      expect(resultHeading).toHaveFocus();
     });
 
     test("missing guest fields are announced and focus the first missing field", async () => {
@@ -307,15 +347,17 @@ describe(AttendancePanel, () => {
         screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
 
-      await expect(
-        screen.findByRole("heading", {
-          name: COPY.attendance.chooseEvent,
-        })
-      ).resolves.toHaveFocus();
+      const pickerLegend = await screen.findByText(
+        COPY.attendance.chooseEvent
+      );
+      await waitFor(() => expect(pickerLegend).toHaveFocus());
       expect(screen.getByLabelText(COPY.attendance.guestName)).toHaveValue(
         "E2E訪客"
       );
-      await user.click(screen.getByRole("button", { name: /主日聚會/u }));
+      await user.click(screen.getByRole("radio", { name: /主日聚會/u }));
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      );
 
       await expect(
         screen.findByRole("heading", {
@@ -358,15 +400,19 @@ describe(AttendancePanel, () => {
       const user = userEvent.setup();
       try {
         render(<AttendancePanel />);
-        await expect(
-          screen.findByRole("heading", { name: COPY.attendance.chooseEvent })
-        ).resolves.toBeVisible();
+        const pickerLegend = await screen.findByText(
+          COPY.attendance.chooseEvent
+        );
+        await expect(pickerLegend).toBeVisible();
         await user.type(
           screen.getByLabelText(COPY.attendance.guestName),
           "深鏈訪客"
         );
         await user.type(phoneField(), "91234567");
-        await user.click(screen.getByRole("button", { name: /主日聚會/u }));
+        await user.click(screen.getByRole("radio", { name: /主日聚會/u }));
+        await user.click(
+          screen.getByRole("button", { name: COPY.attendance.continue })
+        );
         await expect(
           screen.findByRole("heading", {
             name: COPY.attendance.guestResultTitle,
@@ -479,6 +525,17 @@ describe(AttendancePanel, () => {
         "utf-8"
       );
       expect(css).not.toMatch(/font-size: (?:0\.[89]rem|0\.95rem|0\.78rem)/u);
+    });
+
+    test("window outcome uses the declared pending token", () => {
+      const css = readFileSync(
+        path.resolve(process.cwd(), "lib/attendance-panel.module.css"),
+        "utf-8"
+      );
+      const windowOutcomeBlock =
+        css.match(/\.outcomeIconWindow \{[^}]*\}/u)?.[0] ?? "";
+      expect(css).not.toContain("var(--warning");
+      expect(windowOutcomeBlock).toContain("stroke: var(--pending);");
     });
   });
 });

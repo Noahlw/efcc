@@ -72,6 +72,7 @@ export const COPY = {
     noEvents: "目前沒有可簽到的聚會，請稍後再試或輸入聚會手動代碼。",
     transportAmbiguous: "未能確認簽到是否完成，請重試以確認狀態。",
     retry: "重試簽到",
+    eventTime: "時間",
     eventLocation: "地點",
     guestTitle: "訪客簽到",
     guestBack: "返回",

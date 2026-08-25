@@ -156,7 +156,7 @@ export const SelfCheckInPanel = ({
     } else if (flow.view === "outcome") {
       outcomeHeadingRef.current?.focus();
     } else if (flow.selected) {
-      confirmationHeadingRef.current?.focus();
+      confirmationHeadingRef.current?.focus({ preventScroll: true });
     } else if ((!isPhone || manualOpen || hasDeepLink) && !flow.busy) {
       inputRef.current?.focus();
     } else if (
@@ -218,6 +218,10 @@ export const SelfCheckInPanel = ({
     setConfirmationError("");
     setRetryAvailable(false);
     setShowChooser(false);
+    const shellContent = document.getElementById("shell-content");
+    if (shellContent) {
+      shellContent.scrollTop = 0;
+    }
     flow.setSelected(event);
     setManualOpen(false);
     if (event) {
@@ -227,19 +231,18 @@ export const SelfCheckInPanel = ({
     }
   };
 
-  async function submit() {
+  async function submit(isRetry = false) {
     const { selected } = flow;
     if (!selected || submitting) {
       return;
     }
-    setRetryAvailable(false);
-    setConfirmationError("");
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      const message = COPY.attendance.offlineSubmit;
-      setConfirmationError(message);
-      announce(message);
-      return;
+    if (!isRetry) {
+      setRetryAvailable(false);
     }
+    setConfirmationError("");
+    // No offline pre-check here (F-03/F-11): an offline submit flows into
+    // the same recoverable-failure path below, which shows the offline copy
+    // AND keeps the dedicated 重試簽到 control visible and focused.
     setSubmitting(true);
     flow.stopCamera();
     try {
@@ -273,7 +276,7 @@ export const SelfCheckInPanel = ({
         : hasSpecificCopy && error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.attendance.submitFailure;
-      setRetryAvailable(!offline);
+      setRetryAvailable(true);
       setConfirmationError(message);
       announce(message);
     } finally {
@@ -308,6 +311,14 @@ export const SelfCheckInPanel = ({
     setScanStopped(true);
     setManualOpen(false);
     cameraAnnouncementRef.current = null;
+    // The stop tap scrolls the shell's inner scroller (#shell-content,
+    // overflow:auto) toward the stage bottom; reset it — plus the window
+    // fallback for the guest surface — so the card lands at the top
+    // (was scroller scrollTop=3 → card y=-3 at 320×568).
+    requestAnimationFrame(() => {
+      document.getElementById("shell-content")?.scrollTo(0, 0);
+      window.scrollTo(0, 0);
+    });
     announce(COPY.attendance.fallbackLead);
   };
 
@@ -336,7 +347,13 @@ export const SelfCheckInPanel = ({
     backToScan();
   };
 
-  const manualForm = (
+  // The manual form composes with or without its own heading: standalone
+  // (deep link / manual entry) owns the page header, while the desktop
+  // surface already renders one — composing both produced two h1s and the
+  // same hint sentence three times. With a heading, the h1 doubles as the
+  // input's accessible name and the per-field label/hint duplicates are
+  // omitted so screen readers hear the title once.
+  const manualForm = (withHeading: boolean) => (
     <form
       noValidate
       className={styles.form}
@@ -346,14 +363,27 @@ export const SelfCheckInPanel = ({
         handleResolve();
       }}
     >
-      <h1 ref={scanHeadingRef} className={styles.title} tabIndex={-1}>
-        {COPY.attendance.manualCodeLabel}
-      </h1>
-      <p className={styles.lead}>{COPY.attendance.manualCodeHint}</p>
+      {withHeading && (
+        <>
+          <h1
+            ref={scanHeadingRef}
+            id="attendance-code-label"
+            className={styles.title}
+            tabIndex={-1}
+          >
+            {COPY.attendance.manualCodeLabel}
+          </h1>
+          <p id="manual-entry-hint" className={styles.lead}>
+            {COPY.attendance.manualCodeHint}
+          </p>
+        </>
+      )}
       <label className={styles.field} htmlFor="attendance-code">
-        <span className={styles.fieldLabel}>
-          {COPY.attendance.manualCodeLabel}
-        </span>
+        {!withHeading && (
+          <span className={styles.fieldLabel}>
+            {COPY.attendance.manualCodeLabel}
+          </span>
+        )}
         <input
           ref={inputRef}
           id="attendance-code"
@@ -365,11 +395,14 @@ export const SelfCheckInPanel = ({
           inputMode="numeric"
           pattern="[0-9]{6}"
           maxLength={6}
+          aria-labelledby={withHeading ? "attendance-code-label" : undefined}
           aria-describedby="manual-entry-hint"
         />
-        <span id="manual-entry-hint" className={styles.fieldHint}>
-          {COPY.attendance.manualCodeHint}
-        </span>
+        {!withHeading && (
+          <span id="manual-entry-hint" className={styles.fieldHint}>
+            {COPY.attendance.manualCodeHint}
+          </span>
+        )}
       </label>
       <button
         className={styles.button}
@@ -380,13 +413,15 @@ export const SelfCheckInPanel = ({
         {flow.busy ? COPY.attendance.resolving : COPY.attendance.continue}
       </button>
       <ScannerStatusOutput message={flow.status} tone={flow.tone} />
-      <button
-        className={styles.buttonSecondary}
-        type="button"
-        onClick={backToScan}
-      >
-        {COPY.attendance.backToScan}
-      </button>
+      {isPhone && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          onClick={backToScan}
+        >
+          {COPY.attendance.backToScan}
+        </button>
+      )}
     </form>
   );
 
@@ -428,7 +463,7 @@ export const SelfCheckInPanel = ({
           retryRef={retryRef}
           onRescan={backToScan}
           onSubmit={() => void submit()}
-          onRetry={() => void submit()}
+          onRetry={() => void submit(true)}
           onNotThisEvent={handleNotThisEvent}
         />
       </div>
@@ -464,15 +499,14 @@ export const SelfCheckInPanel = ({
           >
             {title}
           </h1>
-          <p className={styles.lead}>{COPY.attendance.manualCodeHint}</p>
-          {manualForm}
+          {manualForm(false)}
         </section>
       </div>
     );
   }
 
   if (!deepLinkChecked || hasDeepLink || manualOpen) {
-    return <div className={styles.page}>{manualForm}</div>;
+    return <div className={styles.page}>{manualForm(true)}</div>;
   }
 
   if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
@@ -512,14 +546,8 @@ export const SelfCheckInPanel = ({
           )}
           <section
             className={styles.methodSection}
-            aria-labelledby="fallback-methods-list-title"
+            aria-labelledby="fallback-methods-title"
           >
-            <h2
-              id="fallback-methods-list-title"
-              className={styles.sectionTitle}
-            >
-              {COPY.attendance.fallbackTitle}
-            </h2>
             <div className={styles.methodGrid}>
               <button
                 className={styles.methodCard}
@@ -535,7 +563,12 @@ export const SelfCheckInPanel = ({
               </a>
             </div>
           </section>
-          <ScannerStatusOutput message={flow.status} tone={flow.tone} />
+          {/* Dedicated denied/unsupported alerts above already own these
+              messages; the status output still carries resolve/offline
+              failures that land on this fallback view. */}
+          {!flow.cameraPermissionDenied && !flow.cameraUnsupported && (
+            <ScannerStatusOutput message={flow.status} tone={flow.tone} />
+          )}
         </section>
       </div>
     );
