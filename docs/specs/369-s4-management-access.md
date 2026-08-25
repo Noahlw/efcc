@@ -330,3 +330,15 @@ For privileged terminal outcomes, assert:
 - Implementation tickets must be narrow, vertical, demoable slices and declare their blocking edges.
 - Each implementation ticket writes an acceptance trace before code and records its exact lower-layer SHA and isolated D1 verification state.
 - The final S4 integration ticket is verification-only. It must not silently absorb backend, schema, or UI repairs from incomplete slices.
+
+## Published Issue Map
+
+- [#450 — S4-01: Additive Roles and 13-Capability Foundation](https://github.com/Noahlw/efcc/issues/450) — no blockers
+- [#451 — S4-02: Account Directory and Management Entry](https://github.com/Noahlw/efcc/issues/451) — blocked by #450
+- [#452 — S4-03: Capability-backed Registration Approvals](https://github.com/Noahlw/efcc/issues/452) — blocked by #450
+- [#453 — S4-04: Permission Policy Read Projection](https://github.com/Noahlw/efcc/issues/453) — blocked by #450
+- [#454 — S4-05: Atomic Permission Policy Mutation](https://github.com/Noahlw/efcc/issues/454) — blocked by #453
+- [#455 — S4-06: End-to-end Integration and Readiness](https://github.com/Noahlw/efcc/issues/455) — blocked by #451, #452, and #454
+- [#456 — Wayfinder: Church Person, Membership, Account, and Account Lifecycle](https://github.com/Noahlw/efcc/issues/456) — independent and nonblocking
+
+All seven are native sub-issues of spec [#449](https://github.com/Noahlw/efcc/issues/449). Implementation starts at the current frontier, #450. The Wayfinder decision work may run independently but does not change or block the frozen S4 read-only Account Directory contract.
