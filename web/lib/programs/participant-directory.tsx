@@ -213,7 +213,21 @@ export const ParticipantDirectory = ({
     if (state.kind !== "ready") {
       return null;
     }
-    return state.catalog.flatMap((entry) => entry.programs);
+    const flat = state.catalog.flatMap((entry) => entry.programs);
+    // ponytail: stable sort surfaces enrollable programs (Listed + MemberRequest)
+    // first — F-C02. Preserves original display_order within each rank;
+    // no API contract change, seed display_order (-10 vs 900) is primary.
+    return flat.toSorted((a, b) => {
+      const aRank =
+        a.discoverability === "Listed" && a.enrollment_mode === "MemberRequest"
+          ? 0
+          : 1;
+      const bRank =
+        b.discoverability === "Listed" && b.enrollment_mode === "MemberRequest"
+          ? 0
+          : 1;
+      return aRank - bRank;
+    });
   }, [state]);
 
   const filtered = useMemo(() => {
@@ -265,35 +279,109 @@ export const ParticipantDirectory = ({
         ))}
 
       {state.kind === "loading" && (
-        <section
-          id="programs-catalog-state"
-          tabIndex={-1}
-          className={styles.boundaryState}
-          role="status"
-          aria-busy="true"
-          aria-label={COPY.programs.catalogLoading}
-        >
-          <span className={styles.directorySrOnly}>
-            {COPY.programs.catalogLoading}
-          </span>
-          <div className={styles.directorySkeletonList} aria-hidden="true">
-            {SKELETON_ROWS.map((row) => (
-              <div
-                key={row}
-                className={`${styles.directorySkeletonCard} ${
-                  row === SKELETON_ROWS.length - 1
-                    ? styles.directorySkeletonCardLast
-                    : ""
-                }`}
-              >
-                <span className={styles.directorySkeletonBar} />
-                <span
-                  className={`${styles.directorySkeletonBar} ${styles.directorySkeletonBarShort}`}
+        <>
+          <div className={styles.directorySearch}>
+            <div className={styles.directorySearchRow}>
+              <div className={styles.directorySearchInputWrap}>
+                <svg
+                  aria-hidden="true"
+                  className={styles.directorySearchIcon}
+                  focusable="false"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    cx="11"
+                    cy="11"
+                    fill="none"
+                    r="7"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="m20 20-4-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+                <input
+                  id="programs-catalog-search"
+                  aria-label={COPY.programs.catalogSearchLabel}
+                  placeholder={COPY.programs.catalogSearchLabel}
+                  className={styles.input}
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                  aria-busy="true"
                 />
               </div>
-            ))}
+              {searching && (
+                <button
+                  className={styles.clearButton}
+                  type="button"
+                  onClick={() => setQuery("")}
+                >
+                  {COPY.programs.catalogClearSearch}
+                </button>
+              )}
+            </div>
           </div>
-        </section>
+
+          <div
+            className={styles.directoryFilters}
+            role="group"
+            aria-label={COPY.programs.filterGroupLabel}
+          >
+            <div className={styles.directoryFilterGroup}>
+              {FILTERS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  className={styles.filterChip}
+                  type="button"
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <section
+            id="programs-catalog-state"
+            tabIndex={-1}
+            className={styles.boundaryState}
+            role="status"
+            aria-busy="true"
+            aria-label={COPY.programs.catalogLoading}
+          >
+            <span className={styles.directorySrOnly}>
+              {COPY.programs.catalogLoading}
+            </span>
+            <div className={styles.directorySkeletonList} aria-hidden="true">
+              {SKELETON_ROWS.map((row) => (
+                <div
+                  key={row}
+                  className={`${styles.directorySkeletonCard} ${
+                    row === SKELETON_ROWS.length - 1
+                      ? styles.directorySkeletonCardLast
+                      : ""
+                  }`}
+                >
+                  <span className={styles.directorySkeletonBar} />
+                  <span
+                    className={`${styles.directorySkeletonBar} ${styles.directorySkeletonBarShort}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
       )}
 
       {state.kind === "error" && (
