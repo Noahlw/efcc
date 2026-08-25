@@ -1149,6 +1149,36 @@ describe("AUTH-06: registrations approve/reject", () => {
     };
     assert.strictEqual(body.data.accountStatus, "active");
   });
+
+  test("registration approval follows the capability policy, not the role label", async () => {
+    const staffAccess = await accessCookieFor("eve", "eve-secret");
+    await testDb()
+      .prepare(
+        "DELETE FROM role_capabilities WHERE role = 'Staff' AND capability = 'registration.approval.manage'"
+      )
+      .run();
+    try {
+      const res = await worker.fetch(
+        authRequest("/api/v1/auth/registrations", {
+          method: "GET",
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${staffAccess}`,
+          },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 403);
+      const body = await problemOf(res);
+      assert.strictEqual(body.code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare(
+          "INSERT OR IGNORE INTO role_capabilities (role, capability, granted_by, granted_at) VALUES ('Staff', 'registration.approval.manage', NULL, '2026-08-25T00:00:00.000Z')"
+        )
+        .run();
+    }
+  });
 });
 
 describe("087-02 (#319): registration detail read + required rejection note", () => {
