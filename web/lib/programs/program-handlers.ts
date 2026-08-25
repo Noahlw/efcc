@@ -666,6 +666,63 @@ export async function handleSearchManagementMembers(
   }
 }
 
+/** GET /api/v1/programs/accounts?q=... — Account Directory search. */
+export async function handleSearchAccountDirectory(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim() ?? "";
+  if (query.length < 2) {
+    return validation(requestId, "Search requires at least two characters.");
+  }
+  const rawLimit = url.searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 20;
+  const rawRole = url.searchParams.get("role");
+  const rawStatus = url.searchParams.get("status");
+  const roles = ["Admin", "Staff", "Member"] as const;
+  const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
+  if (rawRole !== null && !roles.includes(rawRole as (typeof roles)[number])) {
+    return validation(requestId, "Unknown account role filter.");
+  }
+  if (
+    rawStatus !== null &&
+    !statuses.includes(rawStatus as (typeof statuses)[number])
+  ) {
+    return validation(requestId, "Unknown account status filter.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const directory = await workspace.searchAccountDirectory(
+      ctxFrom(auth.account),
+      query,
+      limit,
+      {
+        role: rawRole === null ? undefined : (rawRole as (typeof roles)[number]),
+        status:
+          rawStatus === null
+            ? undefined
+            : (rawStatus as (typeof statuses)[number]),
+      }
+    );
+    return jsonResponse(200, directory, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
 /** GET /api/v1/programs/attention — fresh, scoped operator attention state. */
 export async function handleGetManagementAttention(
   request: Request,

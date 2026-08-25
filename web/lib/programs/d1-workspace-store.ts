@@ -40,6 +40,8 @@ import type {
   ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
+  AccountDirectorySearchFilters,
+  AccountDirectorySummary,
   MemberOptionRow,
   ManagementMemberSearchRow,
   ScheduleExceptionInput,
@@ -426,6 +428,117 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .all<ManagementMemberSearchRow>()
       .then((result) => result.results ?? []);
+  }
+
+  searchAccountDirectory(
+    query: string,
+    limit: number,
+    filters: AccountDirectorySearchFilters = {}
+  ): Promise<ManagementMemberSearchRow[]> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const filterParts = [
+      "accounts.account_status IN ('Pending', 'Active', 'Suspended', 'Deactivated')",
+    ];
+    const filterValues: string[] = [];
+    if (filters.status !== undefined) {
+      filterParts.push("accounts.account_status = ?");
+      filterValues.push(filters.status);
+    }
+    if (filters.role !== undefined) {
+      filterParts.push("accounts.role = ?");
+      filterValues.push(filters.role);
+    }
+    return this.db
+      .prepare(
+        `WITH matched_accounts AS (
+           SELECT accounts.user_id
+             FROM accounts
+            WHERE ${filterParts.join(" AND ")}
+              AND (
+                accounts.name LIKE ? ESCAPE '\\'
+                OR accounts.username LIKE ? ESCAPE '\\'
+                OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+              )
+            ORDER BY accounts.name ASC, accounts.username ASC
+            LIMIT ?
+         )
+         SELECT DISTINCT
+                accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM matched_accounts
+           JOIN accounts ON accounts.user_id = matched_accounts.user_id
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          ORDER BY accounts.name ASC,
+                   accounts.username ASC,
+                   departments.display_order ASC,
+                   departments.name ASC`
+      )
+      .bind(
+        ...filterValues,
+        pattern,
+        pattern,
+        pattern,
+        normalizedLimit
+      )
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
+  }
+
+  countAccountDirectory(
+    query: string,
+    filters: AccountDirectorySearchFilters = {}
+  ): Promise<AccountDirectorySummary> {
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const filterParts = [
+      "accounts.account_status IN ('Pending', 'Active', 'Suspended', 'Deactivated')",
+    ];
+    const filterValues: string[] = [];
+    if (filters.status !== undefined) {
+      filterParts.push("accounts.account_status = ?");
+      filterValues.push(filters.status);
+    }
+    if (filters.role !== undefined) {
+      filterParts.push("accounts.role = ?");
+      filterValues.push(filters.role);
+    }
+    return this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN accounts.account_status = 'Active' THEN 1 ELSE 0 END) AS active,
+           SUM(CASE WHEN accounts.role IN ('Admin', 'Staff') THEN 1 ELSE 0 END) AS elevated,
+           SUM(CASE WHEN accounts.account_status = 'Pending' THEN 1 ELSE 0 END) AS pending
+         FROM accounts
+        WHERE ${filterParts.join(" AND ")}
+          AND (
+            accounts.name LIKE ? ESCAPE '\\'
+            OR accounts.username LIKE ? ESCAPE '\\'
+            OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+          )`
+      )
+      .bind(...filterValues, pattern, pattern, pattern)
+      .first<AccountDirectorySummary>()
+      .then((row) => ({
+        total: Number(row?.total ?? 0),
+        active: Number(row?.active ?? 0),
+        elevated: Number(row?.elevated ?? 0),
+        pending: Number(row?.pending ?? 0),
+      }));
   }
 
   private static programUpdateParts(update: ProgramUpdate): {

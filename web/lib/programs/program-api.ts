@@ -487,8 +487,24 @@ export interface MemberDirectoryMember {
   name: string;
   phone: string | null;
   role: MemberDirectoryRole;
-  status: "Active";
+  status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: MemberDirectoryDepartment[];
+}
+
+export interface AccountDirectoryMember extends MemberDirectoryMember {
+  username: string | null;
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  summary: AccountDirectorySummary;
 }
 
 export interface GenerateResult {
@@ -1076,6 +1092,28 @@ export function searchManagementMembers(
     params.set("limit", String(options.limit));
   }
   return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts?q=...&role=...&status=... — Account Directory. */
+export function searchAccountDirectory(
+  query: string,
+  options?: {
+    limit?: number;
+    role?: AccountDirectoryMember["role"];
+    status?: AccountDirectoryMember["status"];
+  }
+): Promise<AccountDirectoryView> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options?.role !== undefined) {
+    params.set("role", options.role);
+  }
+  if (options?.status !== undefined) {
+    params.set("status", options.status);
+  }
+  return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */

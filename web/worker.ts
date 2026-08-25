@@ -314,6 +314,7 @@ export default {
         handleGetAccountPermissions,
         handleListManagementDirectory,
         handleSearchManagementMembers,
+        handleSearchAccountDirectory,
         handleGetManagementAttention,
         handleGetManagementNotifications,
         handleMarkManagementNotificationsRead,
@@ -381,6 +382,12 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/accounts" &&
+        request.method === "GET"
+      ) {
+        return handleSearchAccountDirectory(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/members" &&

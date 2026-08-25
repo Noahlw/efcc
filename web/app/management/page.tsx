@@ -8,6 +8,7 @@ import { ApprovalQueue } from "@/lib/approval-queue";
 import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
 
+import { AccountDirectoryPanel } from "./account-directory-panel";
 import { CheckinSettings } from "./checkin-settings";
 import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
@@ -21,6 +22,9 @@ const ManagementModule = () => {
   const module = searchParams.get("module");
 
   switch (module) {
+    case "accounts": {
+      return <AccountDirectoryPanel />;
+    }
     case "approvals": {
       const requestId = searchParams.get("request");
       return requestId ? (

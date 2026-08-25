@@ -142,6 +142,18 @@ export interface ManagementMemberSearchRow {
   department_name: string | null;
 }
 
+export interface AccountDirectorySearchFilters {
+  role?: "Admin" | "Staff" | "Member";
+  status?: "Pending" | "Active" | "Suspended" | "Deactivated";
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -576,6 +588,15 @@ export interface WorkspaceStore {
     limit: number,
     departmentIds?: readonly string[]
   ) => Promise<ManagementMemberSearchRow[]>;
+  searchAccountDirectory: (
+    query: string,
+    limit: number,
+    filters?: AccountDirectorySearchFilters
+  ) => Promise<ManagementMemberSearchRow[]>;
+  countAccountDirectory: (
+    query: string,
+    filters?: AccountDirectorySearchFilters
+  ) => Promise<AccountDirectorySummary>;
 
   setDepartmentModule: (
     departmentId: string,

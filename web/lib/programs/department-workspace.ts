@@ -103,6 +103,8 @@ import type {
   ParticipantNoticeKind,
   ParticipantNoticeRow,
   ProgramUpdate,
+  AccountDirectorySearchFilters,
+  AccountDirectorySummary,
   ScheduleExceptionRow,
   ScheduleRuleRow,
   WorkspaceStore,
@@ -355,6 +357,15 @@ export interface ManagementMemberView {
   departments: Array<{ id: string; name: string }>;
 }
 
+export interface AccountDirectoryMember extends ManagementMemberView {
+  username: string | null;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  summary: AccountDirectorySummary;
+}
+
 // ---------------------------------------------------------------------------
 // Management Hub directory (087-01 #310). Row/group copy comes from the
 // centralized COPY.management block (web/lib/copy.ts) — the worker projects
@@ -378,6 +389,12 @@ export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
     key: "members-and-permissions",
     label: HUB_COPY.groupMemberPermissions,
     rows: [
+      {
+        key: "accounts",
+        label: HUB_COPY.accountsRow,
+        description: HUB_COPY.accountsRowHint,
+        href: "/management?module=accounts",
+      },
       {
         key: "approvals",
         label: HUB_COPY.approvalsRow,
@@ -1597,8 +1614,16 @@ export class DepartmentWorkspace {
       CAPABILITY.HOME_PUBLISH,
       null
     );
+    const canReadAccountDirectory = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_DIRECTORY_READ,
+      null
+    );
 
     const granted = new Set<string>();
+    if (canReadAccountDirectory) {
+      granted.add("accounts");
+    }
     if (isAdminOrStaff) {
       granted.add("approvals");
       granted.add("permissions");
@@ -3830,6 +3855,46 @@ export class DepartmentWorkspace {
       }
     }
     return [...members.values()];
+  }
+
+  async searchAccountDirectory(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number,
+    filters: AccountDirectorySearchFilters = {}
+  ): Promise<AccountDirectoryView> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const [rows, summary] = await Promise.all([
+      this.store.searchAccountDirectory(query, limit, filters),
+      this.store.countAccountDirectory(query, filters),
+    ]);
+    const accounts = new Map<string, AccountDirectoryMember>();
+    for (const row of rows) {
+      let account = accounts.get(row.user_id);
+      if (!account) {
+        account = {
+          userId: row.user_id,
+          name: row.name,
+          username: row.username,
+          phone: row.phone,
+          role: row.role,
+          status: row.account_status,
+          departments: [],
+        };
+        accounts.set(row.user_id, account);
+      }
+      if (
+        row.department_id !== null &&
+        row.department_name !== null &&
+        !account.departments.some(({ id }) => id === row.department_id)
+      ) {
+        account.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    return { accounts: [...accounts.values()], summary };
   }
 
   getEnrollment(
