@@ -128,9 +128,40 @@ export interface AccountPermissionRole {
   assignmentState: "assigned" | "assignable";
 }
 
+export type PermissionPolicyRoleKey = "admin" | "staff" | "member";
+
+export interface AccountPermissionPolicyCell {
+  value: boolean;
+  applicable: boolean;
+  editable: boolean;
+  locked: boolean;
+  lockReason: string | null;
+}
+
+export interface AccountPermissionPolicyCapability {
+  key: string;
+  label: string;
+  description: string;
+  group: string;
+  roles: Record<PermissionPolicyRoleKey, AccountPermissionPolicyCell>;
+}
+
+export interface AccountPermissionPolicyActor {
+  role: "Admin" | "Staff" | "Member";
+  canRead: boolean;
+  canEdit: boolean;
+}
+
+export interface AccountPermissionPolicy {
+  revision: number;
+  actor: AccountPermissionPolicyActor;
+  capabilities: AccountPermissionPolicyCapability[];
+}
+
 export interface AccountPermissionsView {
   accounts: AccountPermissionAccount[];
   roles: AccountPermissionRole[];
+  policy: AccountPermissionPolicy;
 }
 
 export interface ManagementCockpitNextEvent {

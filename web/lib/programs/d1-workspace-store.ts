@@ -2146,6 +2146,22 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       .then((result) => result.results);
   }
 
+  listRoleCapabilities(): Promise<{ role: string; capability: string }[]> {
+    return this.db
+      .prepare(
+        "SELECT role, capability FROM role_capabilities ORDER BY role, capability"
+      )
+      .all<{ role: string; capability: string }>()
+      .then((result) => result.results);
+  }
+
+  async getPermissionPolicyRevision(): Promise<number> {
+    const row = await this.db
+      .prepare("SELECT revision FROM permission_policy_state WHERE id = 1")
+      .first<{ revision: number }>();
+    return row?.revision ?? 1;
+  }
+
   findProgramLeader(
     programId: string,
     userId: string

@@ -8,9 +8,11 @@ import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   getAccountPermissions,
+  type AccountPermissionPolicyCapability,
   type AccountPermissionRole,
   type AccountPermissionRoleKey,
   type AccountPermissionsView,
+  type PermissionPolicyRoleKey,
 } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
@@ -41,6 +43,18 @@ const ROLE_COPY: Record<
     label: COPY.permissions.roleStaff,
     scope: COPY.permissions.roleStaffScope,
   },
+};
+
+const POLICY_ROLE_ORDER: PermissionPolicyRoleKey[] = [
+  "admin",
+  "staff",
+  "member",
+];
+
+const POLICY_ROLE_COPY: Record<PermissionPolicyRoleKey, string> = {
+  admin: COPY.permissions.roleAdmin,
+  staff: COPY.permissions.roleStaff,
+  member: COPY.permissions.policyRoleMember,
 };
 
 type PermissionsState =
@@ -84,6 +98,130 @@ function departmentContext(
   return (
     definitions.find((role) => role.key === account.role)?.scope ??
     ROLE_COPY[account.role].scope
+  );
+}
+
+function policyGroups(
+  capabilities: readonly AccountPermissionPolicyCapability[]
+): string[] {
+  return [...new Set(capabilities.map((capability) => capability.group))];
+}
+
+function PolicyCell({
+  capability,
+  role,
+}: {
+  capability: AccountPermissionPolicyCapability;
+  role: PermissionPolicyRoleKey;
+}) {
+  const cell = capability.roles[role];
+  const state = cell.locked
+    ? `${COPY.permissions.policyLocked}：${cell.lockReason ?? "此政策格不能修改。"}`
+    : cell.editable
+      ? COPY.permissions.policyEditable
+      : COPY.permissions.policyReadOnly;
+
+  return (
+    <div
+      aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
+      className={`${styles.policyCell} ${cell.locked ? styles.lockedCell : ""}`}
+      data-editable={cell.editable ? "true" : "false"}
+      data-locked={cell.locked ? "true" : "false"}
+      role="group"
+    >
+      <strong>{POLICY_ROLE_COPY[role]}</strong>
+      <span>
+        {cell.value
+          ? COPY.permissions.policyEnabled
+          : COPY.permissions.policyDisabled}
+      </span>
+      <small>{state}</small>
+    </div>
+  );
+}
+
+function PolicyCapabilityRow({
+  capability,
+}: {
+  capability: AccountPermissionPolicyCapability;
+}) {
+  return (
+    <article className={styles.policyRow}>
+      <div className={styles.policyCopy}>
+        <strong>{capability.label}</strong>
+        <small>{capability.description}</small>
+        <code>{capability.key}</code>
+      </div>
+      <div className={styles.policyCells}>
+        {POLICY_ROLE_ORDER.map((role) => (
+          <PolicyCell capability={capability} key={role} role={role} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function PermissionPolicy({ data }: { data: AccountPermissionsView }) {
+  const groups = policyGroups(data.policy.capabilities);
+  return (
+    <section
+      aria-labelledby="permissions-policy-title"
+      className={styles.policySection}
+    >
+      <header className={styles.policyHeader}>
+        <div>
+          <h2 id="permissions-policy-title" className={styles.sectionTitle}>
+            {COPY.permissions.policyTitle}
+          </h2>
+          <p className={styles.policyLead}>{COPY.permissions.policyLead}</p>
+        </div>
+        <span className={styles.revision}>
+          {COPY.permissions.policySynced} {data.policy.revision}。
+        </span>
+      </header>
+
+      <div className={styles.policyLayout}>
+        <div className={styles.groupStack}>
+          {groups.map((group) => {
+            const capabilities = data.policy.capabilities.filter(
+              (capability) => capability.group === group
+            );
+            return (
+              <details className={styles.policyGroup} key={group} open>
+                <summary>
+                  <strong>{group}</strong>
+                  <span>{capabilities.length} 項</span>
+                </summary>
+                <div className={styles.policyGroupBody}>
+                  {capabilities.map((capability) => (
+                    <PolicyCapabilityRow
+                      capability={capability}
+                      key={capability.key}
+                    />
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+
+        <aside
+          aria-label={COPY.permissions.policySummary}
+          className={styles.reviewPanel}
+          role="region"
+        >
+          <h2>{COPY.permissions.policySummary}</h2>
+          <p>
+            {data.policy.actor.canEdit
+              ? COPY.permissions.policyAdminEditable
+              : COPY.permissions.policyStaffReadOnly}
+          </p>
+          <p className={styles.reviewNotice}>
+            {COPY.permissions.policyReadOnlyNotice}
+          </p>
+        </aside>
+      </div>
+    </section>
   );
 }
 
@@ -250,6 +388,8 @@ export function PermissionsPanel() {
               })}
             </ul>
           </section>
+
+          <PermissionPolicy data={readyData} />
         </>
       )}
     </section>

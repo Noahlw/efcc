@@ -13,14 +13,21 @@ import {
   hasDepartmentManagementScope,
   MODULE_KEY,
   MODULE_KEYS,
+  PERMISSION_POLICY_DEFINITIONS,
+  ROLE_CAPABILITY_DEFAULTS,
 } from "./capabilities";
 import type {
   Capability,
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
-import type { ProgramEvent } from "./program-api";
-
+import type {
+  AccountPermissionPolicy,
+  AccountPermissionPolicyCapability,
+  AccountPermissionPolicyCell,
+  ProgramEvent,
+  PermissionPolicyRoleKey,
+} from "./program-api";
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -341,6 +348,97 @@ export interface AccountPermissionRole {
 export interface AccountPermissionsView {
   accounts: AccountPermissionAccount[];
   roles: AccountPermissionRole[];
+  policy: AccountPermissionPolicy;
+}
+
+const PERMISSION_POLICY_ROLES: readonly PermissionPolicyRoleKey[] = [
+  "admin",
+  "staff",
+  "member",
+];
+
+const GLOBAL_ROLE_FOR_POLICY_ROLE: Record<PermissionPolicyRoleKey, "Admin" | "Staff" | "Member"> = {
+  admin: "Admin",
+  staff: "Staff",
+  member: "Member",
+};
+
+function policyCellLockReason(
+  capability: Capability,
+  role: PermissionPolicyRoleKey
+): string | null {
+  if (capability === CAPABILITY.PROGRAM_ENROLL) {
+    return "會友基礎必須保留。";
+  }
+  if (role === "member") {
+    return "會友角色不能設定管理權限。";
+  }
+  if (
+    capability === CAPABILITY.HOME_PUBLISH &&
+    role !== "admin"
+  ) {
+    return "只限管理員使用。";
+  }
+  if (capability === CAPABILITY.ACCOUNT_PERMISSIONS_WRITE) {
+    return "權限政策修改受系統安全規則保護。";
+  }
+  if (
+    capability === CAPABILITY.ACCOUNT_PERMISSIONS_READ &&
+    role === "admin"
+  ) {
+    return "管理員必須保留查看權限。";
+  }
+  return null;
+}
+
+function buildPolicyCell(
+  capability: Capability,
+  role: PermissionPolicyRoleKey,
+  values: ReadonlySet<string>,
+  actorCanEdit: boolean
+): AccountPermissionPolicyCell {
+  const globalRole = GLOBAL_ROLE_FOR_POLICY_ROLE[role];
+  const value = values.has(`${globalRole}:${capability}`);
+  const applicable = ROLE_CAPABILITY_DEFAULTS[globalRole].includes(capability);
+  const lockReason = policyCellLockReason(capability, role);
+  return {
+    value,
+    applicable,
+    editable: actorCanEdit && lockReason === null,
+    locked: lockReason !== null,
+    lockReason,
+  };
+}
+
+function buildPermissionPolicy(
+  revision: number,
+  actorRole: "Admin" | "Staff" | "Member",
+  roleCapabilities: readonly { role: string; capability: string }[]
+): AccountPermissionPolicy {
+  const values = new Set(
+    roleCapabilities.map((row) => `${row.role}:${row.capability}`)
+  );
+  const canEdit = actorRole === ROLE.ADMIN;
+  const capabilities: AccountPermissionPolicyCapability[] =
+    PERMISSION_POLICY_DEFINITIONS.map((definition) => ({
+      ...definition,
+      roles: Object.fromEntries(
+        PERMISSION_POLICY_ROLES.map((role) => [
+          role,
+          buildPolicyCell(definition.key, role, values, canEdit),
+        ])
+      ) as Record<PermissionPolicyRoleKey, AccountPermissionPolicyCell>,
+    }));
+
+  return {
+    revision,
+    actor: {
+      role: actorRole,
+      canRead: true,
+      canEdit,
+    },
+    capabilities,
+  };
 }
 
 /**
@@ -1486,7 +1584,11 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext
   ): Promise<AccountPermissionsView> {
     await this.ensure(ctx, CAPABILITY.ACCOUNT_PERMISSIONS_READ);
-    const rows = await this.store.listElevatedAccounts();
+    const [rows, roleCapabilities, revision] = await Promise.all([
+      this.store.listElevatedAccounts(),
+      this.store.listRoleCapabilities(),
+      this.store.getPermissionPolicyRevision(),
+    ]);
 
     const accountsByUser = new Map<string, AccountPermissionAccount>();
     for (const row of rows) {
@@ -1551,7 +1653,15 @@ export class DepartmentWorkspace {
         assignmentState: heldRoles["staff"] ? "assigned" : "assignable",
       },
     ];
-    return { accounts, roles };
+    return {
+      accounts,
+      roles,
+      policy: buildPermissionPolicy(
+        revision,
+        ctx.actorRole as "Admin" | "Staff" | "Member",
+        roleCapabilities
+      ),
+    };
   }
 
   /**

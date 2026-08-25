@@ -832,6 +832,10 @@ export interface WorkspaceStore {
     input: DepartmentManagerRevokeInput
   ) => Promise<DepartmentManagerRow | null>;
   listElevatedAccounts: () => Promise<ElevatedAccountRow[]>;
+  listRoleCapabilities: () => Promise<
+    { role: string; capability: string }[]
+  >;
+  getPermissionPolicyRevision: () => Promise<number>;
 
   findProgramLeader: (
     programId: string,

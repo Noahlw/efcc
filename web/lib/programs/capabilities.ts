@@ -51,6 +51,102 @@ export type GlobalRole = "Admin" | "Staff" | "Member";
 
 export const GLOBAL_ROLES = ["Admin", "Staff", "Member"] as const satisfies readonly GlobalRole[];
 
+export type PermissionPolicyGroup = "會友基礎" | "部門" | "課程" | "帳戶與系統";
+
+/**
+ * The read-side catalog for the global Permission Policy. The labels and
+ * descriptions are product copy, while role values remain authoritative D1
+ * data. Keeping the catalog beside the capability vocabulary prevents the
+ * Worker and browser from inventing different group or copy orderings.
+ */
+export interface PermissionPolicyDefinition {
+  key: Capability;
+  label: string;
+  description: string;
+  group: PermissionPolicyGroup;
+}
+
+export const PERMISSION_POLICY_DEFINITIONS: readonly PermissionPolicyDefinition[] = [
+  {
+    key: CAPABILITY.PROGRAM_ENROLL,
+    label: "提交課程報名",
+    description: "以會友身份提交自己的課程報名",
+    group: "會友基礎",
+  },
+  {
+    key: CAPABILITY.DEPARTMENT_MANAGE,
+    label: "部門管理",
+    description: "編輯部門資料及日常運作",
+    group: "部門",
+  },
+  {
+    key: CAPABILITY.DEPARTMENT_PUBLISH,
+    label: "部門發佈",
+    description: "將部門發佈為使用中",
+    group: "部門",
+  },
+  {
+    key: CAPABILITY.DEPARTMENT_MODULE_CONFIGURE,
+    label: "部門模組設定",
+    description: "啟用或停用部門模組",
+    group: "部門",
+  },
+  {
+    key: CAPABILITY.DEPARTMENT_MANAGER_ASSIGN,
+    label: "部門管理者指派",
+    description: "指派或撤銷部門管理者",
+    group: "部門",
+  },
+  {
+    key: CAPABILITY.PROGRAM_MANAGE,
+    label: "課程管理",
+    description: "建立及編輯課程與聚會",
+    group: "課程",
+  },
+  {
+    key: CAPABILITY.PROGRAM_PUBLISH,
+    label: "課程發佈",
+    description: "將課程列入會友目錄",
+    group: "課程",
+  },
+  {
+    key: CAPABILITY.PROGRAM_LEADER_ASSIGN,
+    label: "事工負責人指派",
+    description: "指派或撤銷課程負責人",
+    group: "課程",
+  },
+  {
+    key: CAPABILITY.ACCOUNT_PERMISSIONS_READ,
+    label: "查看權限政策",
+    description: "查看帳戶與角色政策",
+    group: "帳戶與系統",
+  },
+  {
+    key: CAPABILITY.ACCOUNT_DIRECTORY_READ,
+    label: "查看帳戶名錄",
+    description: "搜尋全教會登入帳戶",
+    group: "帳戶與系統",
+  },
+  {
+    key: CAPABILITY.REGISTRATION_APPROVAL_MANAGE,
+    label: "註冊審批",
+    description: "核准或拒絕帳戶申請",
+    group: "帳戶與系統",
+  },
+  {
+    key: CAPABILITY.HOME_PUBLISH,
+    label: "首頁內容發佈",
+    description: "發佈全教會首頁內容",
+    group: "帳戶與系統",
+  },
+  {
+    key: CAPABILITY.ACCOUNT_PERMISSIONS_WRITE,
+    label: "修改權限政策",
+    description: "改變全系統角色權限",
+    group: "帳戶與系統",
+  },
+] as const;
+
 /**
  * S4's additive default policy. Every role retains the participant baseline;
  * Staff receives normal operational authority, while Admin-only powers change
