@@ -18,6 +18,9 @@ const DEPARTMENT = {
   code: "E2E_DEMO_MINISTRY",
   name: "E2E_DEMO_示範事工",
   description: "本機示範資料；不可用於生產環境。",
+  // ponytail: low display_order (-10) surfaces E2E_DEMO first (F-C02)
+  // device-proof fixtures use 900 so they sort last
+  display_order: -10,
 } as const;
 
 const PROGRAMS = [
@@ -287,6 +290,7 @@ async function seedDemo(): Promise<void> {
         name: DEPARTMENT.name,
         description: DEPARTMENT.description,
         lifecycle: "Active",
+        display_order: DEPARTMENT.display_order,
       }
     );
   } else {
@@ -296,7 +300,6 @@ async function seedDemo(): Promise<void> {
       await request("POST", "/api/v1/programs/departments", {
         ...DEPARTMENT,
         lifecycle: "Active",
-        display_order: 90,
       })
     );
     department = createdDepartment;

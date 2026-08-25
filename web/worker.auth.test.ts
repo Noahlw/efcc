@@ -544,7 +544,7 @@ describe("AUTH-06: login", () => {
     };
     assert.deepStrictEqual(
       adminBody.data.sections.map((s) => s.key),
-      ["home", "programs", "scanner", "management", "profile"]
+      ["home", "programs", "scanner", "management", "profile", "events"]
     );
     assert.deepStrictEqual(
       adminBody.data.navigation.map((s) => s.key),
@@ -1170,14 +1170,19 @@ describe("087-02 (#319): registration detail read + required rejection note", ()
     const adminAccess = await accessCookieFor("alice", "alice-secret");
 
     // Empty body and whitespace-only note both fail closed.
-    for (const [index, body] of [undefined, { decisionNote: "   " }].entries()) {
+    for (const [index, body] of [
+      undefined,
+      { decisionNote: "   " },
+    ].entries()) {
       const res = await worker.fetch(
         authRequest(`/api/v1/auth/registrations/${requestId}/reject`, {
           headers: {
             Origin: HOST,
             Cookie: `efcc_access=${adminAccess}`,
             "Idempotency-Key": `idem-reject-note-1-${index}`,
-            ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+            ...(body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
           },
           ...(body === undefined ? {} : { body }),
         }),
@@ -1349,10 +1354,13 @@ describe("087-02 (#319): registration detail read + required rejection note", ()
     assert.strictEqual((await problemOf(anonymous)).code, "AUTH_REQUIRED");
 
     const missing = await worker.fetch(
-      authRequest("/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000", {
-        method: "GET",
-        headers: { Origin: HOST, Cookie: `efcc_access=${staffAccess}` },
-      }),
+      authRequest(
+        "/api/v1/auth/registrations/00000000-0000-0000-0000-000000000000",
+        {
+          method: "GET",
+          headers: { Origin: HOST, Cookie: `efcc_access=${staffAccess}` },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(missing.status, 404);

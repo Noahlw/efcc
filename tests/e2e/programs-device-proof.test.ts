@@ -177,6 +177,9 @@ test.beforeAll(async ({ playwright }) => {
         code: fresh("DEPT_DEVICE_PROOF"),
         name: fresh("Device Proof Department"),
         lifecycle: "Active",
+        // ponytail: high display_order keeps device-proof fixtures after
+        // E2E_DEMO_示範事工 (display_order -10) — fixes F-C02 catalog bury
+        display_order: 900,
       }
     );
     expect(departmentResponse.status).toBe(201);
@@ -212,6 +215,8 @@ test.beforeAll(async ({ playwright }) => {
         lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "ManagerOnly",
+        // ponytail: keep at tail of catalog (F-C02)
+        display_order: 900,
       }
     );
     expect(programResponse.status).toBe(201);
@@ -337,6 +342,9 @@ test("camera permission denial is recoverable and unsupported has no retry", asy
   });
   const page = await context.newPage();
   try {
+    if (testInfo.project.name === "s3-phone-320x844") {
+      await page.setViewportSize({ width: 320, height: 568 });
+    }
     await page.addInitScript(() => {
       Object.defineProperty(window, "BarcodeDetector", {
         configurable: true,
@@ -365,6 +373,35 @@ test("camera permission denial is recoverable and unsupported has no retry", asy
     await expect(
       page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
     ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.fallbackMemberQr) })
+    ).toBeVisible();
+    if (testInfo.project.name === "s3-phone-320x844") {
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const manual = [...document.querySelectorAll("button")].find(
+                (control) => control.textContent?.trim().startsWith("輸入代碼")
+              );
+              const memberQr = [...document.querySelectorAll("a")].find(
+                (control) =>
+                  control.textContent?.trim().startsWith("出示會員 QR")
+              );
+              const dock = document.querySelector(".nav-phone");
+              if (!manual || !memberQr || !dock) {
+                return false;
+              }
+              const dockTop = dock.getBoundingClientRect().top - 8;
+              return (
+                manual.getBoundingClientRect().bottom <= dockTop &&
+                memberQr.getBoundingClientRect().bottom <= dockTop
+              );
+            }),
+          { message: "denied fallback controls must clear the phone dock" }
+        )
+        .toBe(true);
+    }
   } finally {
     await context.close();
   }

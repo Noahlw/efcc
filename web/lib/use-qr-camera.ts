@@ -265,6 +265,21 @@ export function useQrCamera(input: {
         }
         return;
       }
+      // F-04: external termination (device reclaimed, permission revoked
+      // mid-stream) fires track "ended"; without this listener the live
+      // view freezes on a static frame. Manual track.stop() never fires it,
+      // so the handler only ever runs for genuine external loss; stale
+      // tracks from a superseded generation are ignored.
+      const handleTrackEnded = () => {
+        if (!mountedRef.current || generationRef.current !== generation) {
+          return;
+        }
+        stopCamera();
+        reportUnavailable();
+      };
+      for (const track of stream.getTracks()) {
+        track.addEventListener("ended", handleTrackEnded);
+      }
       streamRef.current = stream;
       setCameraOpen(true);
     } catch (error: unknown) {

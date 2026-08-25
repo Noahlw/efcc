@@ -48,10 +48,10 @@ const SealMark = ({ size = 28 }: { size?: number }) => (
 const GuestCheckInPage = () => (
   <div className={styles.page}>
     <header className={styles.header}>
-      <div className={styles.brand} aria-label={LANDING.homeLabel}>
+      <a className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
         <SealMark />
         <span>{LANDING.brandFull}</span>
-      </div>
+      </a>
     </header>
     <main>
       <AttendancePanel />

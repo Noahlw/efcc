@@ -276,6 +276,65 @@
   font-weight: 700;
 }
 
+/* The public Guest Check-In entry is a real control, not decorative note
+   copy: it stays visible at every width as a full-width secondary action. */
+.guestEntry {
+  margin: 0.4rem 0 0;
+}
+
+.guestEntry a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.guestEntry a:hover {
+  background: var(--paper);
+  border-color: var(--ink);
+}
+
+.guestEntry a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Self-service registration is a real member entry, not decorative note
+   copy: a 44px centered text link, visible at every width. */
+.registerEntry {
+  margin: 0.2rem 0 0;
+}
+
+.registerEntry a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: 8px;
+}
+
+.registerEntry a:hover {
+  color: var(--accent);
+}
+
+.registerEntry a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* ---- Restoring state --------------------------------------------------- */
 
 .restoring {
@@ -381,6 +440,11 @@
   .cardLead,
   .loginNote {
     display: none;
+  }
+
+  .guestEntry,
+  .registerEntry {
+    display: block;
   }
 }
 

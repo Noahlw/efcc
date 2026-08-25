@@ -17,6 +17,7 @@ import {
 } from "@/lib/hk-time";
 import { getHome } from "@/lib/home-api";
 import {
+  getManagementAccess,
   getParticipantProgramDetail,
   listParticipantCatalog,
 } from "@/lib/programs/program-api";
@@ -348,6 +349,13 @@ export function HomeView({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // ponytail: warm participant catalog + access for /programs (F-C01)
+  // fire-and-forget so /programs first paint hits cache within 30s
+  useEffect(() => {
+    void listParticipantCatalog().catch(() => {});
+    void getManagementAccess().catch(() => {});
   }, []);
 
   useEffect(() => {

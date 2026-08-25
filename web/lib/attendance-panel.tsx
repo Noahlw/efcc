@@ -152,6 +152,9 @@ export const AttendancePanel = () => {
     flow.showStatus(message, "error");
     announce(message);
     firstMissing.focus();
+    // ponytail: the error <output> now renders directly above the fields it
+    // names, so validation feedback is visible at 320×568 with zero
+    // scrolling — the old scrollIntoView rAF jumped the window 76px.
     return false;
   };
 
@@ -235,14 +238,16 @@ export const AttendancePanel = () => {
 
   if (result) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} data-surface="guest-check-in">
         <GuestCheckinResult result={result} headingRef={resultHeadingRef} />
       </div>
     );
   }
 
+  const submitBusy = flow.busy || submitting;
+
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-surface="guest-check-in">
       <section className={styles.card} aria-labelledby="attendance-title">
         <a className={styles.back} href="/">
           {COPY.attendance.guestBack}
@@ -251,6 +256,12 @@ export const AttendancePanel = () => {
           {COPY.attendance.guestTitle}
         </h1>
         <p className={styles.lead}>{COPY.attendance.guestLead}</p>
+        {/* Status renders only while a message exists (quiet spacer removed):
+            resolve/validation errors land between the lead and the fields
+            they name — inside the initial viewport on short phones (F-05). */}
+        {flow.status && (
+          <ScannerStatusOutput message={flow.status} tone={flow.tone} />
+        )}
         <form
           className={styles.form}
           noValidate
@@ -275,6 +286,8 @@ export const AttendancePanel = () => {
               }}
               placeholder={COPY.attendance.guestCodePlaceholder}
               autoComplete="off"
+              inputMode="numeric"
+              spellCheck={false}
               required
               aria-invalid={Boolean(validationError) && !flow.input.trim()}
             />
@@ -294,6 +307,7 @@ export const AttendancePanel = () => {
               }}
               autoComplete="name"
               maxLength={80}
+              spellCheck={false}
               required
               aria-invalid={Boolean(validationError) && !name.trim()}
             />
@@ -311,6 +325,7 @@ export const AttendancePanel = () => {
                 clearFormStatus();
                 setPhone(event.target.value);
               }}
+              type="tel"
               autoComplete="tel"
               inputMode="tel"
               required
@@ -324,10 +339,10 @@ export const AttendancePanel = () => {
           <button
             className={styles.button}
             type="submit"
-            disabled={flow.busy || submitting || awaitingSelection}
-            aria-busy={flow.busy || submitting}
+            disabled={submitBusy || awaitingSelection}
+            aria-busy={submitBusy}
           >
-            {submitting
+            {submitBusy
               ? COPY.attendance.guestSubmitting
               : COPY.attendance.guestSubmit}
           </button>
@@ -335,16 +350,14 @@ export const AttendancePanel = () => {
         {flow.events.length > 1 && (
           <ScannerEventPicker
             events={flow.events}
-            selectedId={flow.selected?.event_id ?? null}
             headingRef={chooserHeadingRef}
             disabled={submitting}
             onSelect={selectEvent}
           />
         )}
-        <ScannerStatusOutput message={flow.status} tone={flow.tone} />
         <div className={styles.group}>
           <a
-            className={styles.back}
+            className={styles.guestMemberLink}
             href="/"
             onClick={() => {
               const entry = entryFromValue(flow.input);

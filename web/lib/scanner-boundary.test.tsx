@@ -76,7 +76,7 @@ describe("Scanner mode boundary", () => {
       configurable: true,
       value: {
         getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn<() => void>() }],
+          getTracks: () => [{ stop: vi.fn<() => void>(), addEventListener: vi.fn() }],
         } as unknown as MediaStream),
       },
     });

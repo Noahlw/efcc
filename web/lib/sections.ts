@@ -4,17 +4,14 @@ import { COPY } from "@/lib/copy";
 /**
  * Stable authenticated navigation destinations (Issue #241/#242).
  *
- * Navigation is a server-shaped presentation projection, not section
- * authorization. Events remains a stable destination for every role; most
- * Member accounts receive no Events authorization in `sections[]` by
- * default, except a Member holding an active Program Leader or Department
- * Manager grant (`sectionsForRole`'s `hasManagementGrant` parameter, #215
- * ATT-03).
+ * Stable navigation is a five-slot presentation projection. Events remains an
+ * authorized destination for Staff/Admin and for Members with an active
+ * management grant, even though it is not one of those five dock slots.
  */
 const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
   Member: ["home", "programs", "scanner", "notices", "profile"],
-  Staff: ["home", "programs", "scanner", "management", "profile"],
-  Admin: ["home", "programs", "scanner", "management", "profile"],
+  Staff: ["home", "programs", "scanner", "management", "profile", "events"],
+  Admin: ["home", "programs", "scanner", "management", "profile", "events"],
 };
 
 function materializeSections(keys: Section["key"][]): Section[] {
@@ -58,6 +55,7 @@ export function sectionsForRole(
     } else {
       next.push("management");
     }
+    next.push("events");
     return materializeSections(next);
   }
   return materializeSections(keys);
@@ -125,9 +123,11 @@ export function defaultSections(): Section[] {
 export function firstSection(sections: Section[]): string {
   // The stable shell presents Home first, but Profile remains the deterministic
   // login/recovery destination for every non-empty projection.
-  return sections.find((section) => section.key === "profile")?.key ??
+  return (
+    sections.find((section) => section.key === "profile")?.key ??
     sections[0]?.key ??
-    "profile";
+    "profile"
+  );
 }
 
 export function isPermitted(sections: Section[], key: string): boolean {
