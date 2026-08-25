@@ -6,6 +6,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
@@ -60,30 +61,61 @@ function eventsHandler(events: AttendanceEvent[]) {
   );
 }
 
+function fakeBarcodeDetector(this: { detect: () => Promise<never[]> }) {
+  this.detect = () => Promise.resolve([]);
+}
+
 describe("Scanner mode boundary", () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  beforeEach(() => {
+    Object.defineProperty(window, "BarcodeDetector", {
+      configurable: true,
+      value: fakeBarcodeDetector,
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn<() => void>(), addEventListener: vi.fn() }],
+        } as unknown as MediaStream),
+      },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  });
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     server.resetHandlers();
+    Reflect.deleteProperty(window, "BarcodeDetector");
+    Reflect.deleteProperty(navigator, "mediaDevices");
     window.history.replaceState(null, "", "/scanner");
   });
 
   afterAll(() => server.close());
 
-  test("shows the accessible Self/Assisted switch only for eligible access", async () => {
+  test("shows the accessible Self/Operator switch only for eligible access", async () => {
     server.use(eventsHandler([EVENT]));
     const user = userEvent.setup();
     render(<ScannerBoundary />);
 
-    const assistedTab = await screen.findByRole("tab", {
-      name: COPY.attendance.assistedMode,
+    const operatorTab = await screen.findByRole("tab", {
+      name: COPY.attendance.operatorMode,
     });
-    expect(
-      screen.getByRole("tab", { name: COPY.attendance.selfMode })
-    ).toHaveAttribute("aria-selected", "true");
-    await user.click(assistedTab);
-    expect(assistedTab).toHaveAttribute("aria-selected", "true");
+    const selfTab = screen.getByRole("tab", { name: COPY.attendance.selfMode });
+    expect(selfTab).toHaveAttribute("aria-selected", "true");
+    await user.click(operatorTab);
+    expect(operatorTab).toHaveAttribute("aria-selected", "true");
+    expect(window.location.search).toBe("?mode=assisted");
     await screen.findByLabelText(COPY.attendance.assistedContext);
+
+    await user.click(selfTab);
+    expect(selfTab).toHaveAttribute("aria-selected", "true");
+    expect(window.location.search).toBe("?mode=self");
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(COPY.attendance.assistedContext)
+      ).not.toBeInTheDocument()
+    );
   });
 
   test("keeps Assisted mode hidden when the server returns no eligible Events", async () => {
@@ -92,10 +124,10 @@ describe("Scanner mode boundary", () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole("tab", { name: COPY.attendance.assistedMode })
+        screen.queryByRole("tab", { name: COPY.attendance.operatorMode })
       ).not.toBeInTheDocument()
     );
-    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
+    await screen.findByText(COPY.attendance.cameraLiveHint);
   });
 
   test("keeps Self usable and exposes a retry when the Assisted access probe fails", async () => {
@@ -107,7 +139,7 @@ describe("Scanner mode boundary", () => {
     const user = userEvent.setup();
     render(<ScannerBoundary />);
 
-    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
+    await screen.findByText(COPY.attendance.cameraLiveHint);
     const alert = await screen.findByText(COPY.error.unavailable);
     expect(alert).toBeVisible();
     const retry = screen.getByRole("button", {

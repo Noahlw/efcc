@@ -1497,6 +1497,9 @@ export class DepartmentWorkspace {
     }
     const accounts = [...accountsByUser.values()];
     const heldRoles: Record<string, true> = {};
+    // Assignment indicators describe each fixed role independently. A Staff
+    // account with a Department Manager grant has the effective account role
+    // department-manager, but still holds the global Staff role.
     for (const row of rows) {
       if (row.role === ROLE.ADMIN) {
         heldRoles["admin"] = true;

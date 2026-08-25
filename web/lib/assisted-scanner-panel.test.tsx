@@ -247,7 +247,9 @@ describe("Assisted Scanner panel", () => {
     const pendingDetection = Promise.withResolvers<{ rawValue: string }[]>();
     detectorResult = pendingDetection.promise;
     const stop = vi.fn<() => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     Object.defineProperty(window, "BarcodeDetector", {
       configurable: true,
       value: fakeBarcodeDetector,
@@ -293,7 +295,9 @@ describe("Assisted Scanner panel", () => {
       )
     );
     const stop = vi.fn<() => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     Object.defineProperty(window, "BarcodeDetector", {
       configurable: true,
       value: fakeBarcodeDetector,

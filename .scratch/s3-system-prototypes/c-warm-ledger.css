@@ -1,0 +1,23 @@
+/* Candidate C — Warm Operational Ledger
+ * Shared system with stronger grouping and context: identity bars, ledger-like
+ * row divisions, visible provenance and a quieter camera task. */
+:root { --radius-sm: 10px; --radius-md: 12px; --accent-tint: #f6ecea; }
+.system-thesis { border-left-color: var(--pending); background: #fbfaf6; }
+.light-page, .desktop-page { padding: 22px; background: #f7f7f4; }
+.light-page h2, .desktop-page h2 { font-weight: 700; letter-spacing: -.015em; }
+.light-page > .backline { margin-bottom: 4px; }
+.method-stack { gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.method-stack button { min-height: 76px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--raised); }
+.method-stack button:last-child { border-bottom: 0; }
+.method-stack button:hover { background: #fbfaf6; }
+.method-stack button > .icon:first-child { border-radius: 10px; background: #f3eee8; color: var(--pending); }
+.form-card, .event-card, .mutation-card { border-radius: 12px; box-shadow: 0 5px 16px rgb(23 26 29 / 6%); }
+.primary, .secondary, .danger { min-height: 50px; border-radius: 10px; }
+.camera-stage, .operator-camera { background: #222728; }
+.camera-frame { width: 68%; }
+.camera-frame i { width: 26px; height: 26px; border-width: 3px; border-color: #8dc1cb; }
+.camera-stop { border-radius: 10px; background: rgb(0 0 0 / 42%); }
+.mock-dock { border-radius: 18px; box-shadow: 0 5px 20px rgb(23 26 29 / 20%); }
+.identity-bar { padding: 12px 0 15px; }
+.stat-grid b { border-radius: 12px; background: #fbfaf6; }
+.settings, .roster { border-radius: 12px; }

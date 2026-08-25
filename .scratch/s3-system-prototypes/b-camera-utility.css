@@ -1,0 +1,20 @@
+/* Candidate B — Camera-first Utility
+ * Shared system, stronger task mode: camera owns more visual weight, controls
+ * get larger, and operator data becomes denser without changing semantics. */
+:root { --radius-sm: 6px; --radius-md: 9px; --accent-tint: #f5e9e8; }
+.system-thesis { border-left-width: 5px; border-left-color: var(--accent); }
+.light-page, .desktop-page { padding: 18px; }
+.light-page h2, .desktop-page h2 { font-size: clamp(1.75rem, 6vw, 2.2rem); font-weight: 800; letter-spacing: -.035em; }
+.light-page .lead, .desktop-page .lead { max-width: 32ch; }
+.primary, .secondary, .danger { min-height: 54px; border-radius: 6px; }
+.method-stack { gap: 7px; }
+.method-stack button { min-height: 76px; padding: 14px; border-radius: 8px; }
+.method-stack button > .icon:first-child { width: 42px; height: 42px; }
+.method-stack small { font-size: .78rem; }
+.camera-stage, .operator-camera { background: radial-gradient(120% 80% at 50% 25%, #33403f 0%, #131a1b 58%, #050708 100%); }
+.camera-frame { width: 76%; }
+.camera-frame i { width: 32px; height: 32px; border-width: 4px; border-color: #fff; }
+.camera-stop { min-height: 54px; border-radius: 6px; background: rgb(0 0 0 / 64%); }
+.mock-dock { height: 64px; border-radius: 20px; }
+.stat-grid strong { font-size: 1.55rem; }
+.roster > div { min-height: 64px; }

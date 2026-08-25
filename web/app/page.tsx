@@ -88,9 +88,9 @@ const LoginPage = () => {
   // (account updated) vs neutral instructions (legacy-PIN upgrade gate).
   // Session expiry is its own dedicated screen (SESSION_EXPIRED), not a
   // flash notice on this form. All keep role="alert" for announcement.
-  const [noticeKind, setNoticeKind] = useState<
-    "error" | "info" | "success"
-  >("info");
+  const [noticeKind, setNoticeKind] = useState<"error" | "info" | "success">(
+    "info"
+  );
   const mountRef = useRef(true);
 
   useEffect(
@@ -519,11 +519,11 @@ const LoginPage = () => {
                       ? COPY.login.upgradeSubmit
                       : COPY.login.submit}
                 </button>
-                <p className={styles.loginNote}>
-                  {LANDING.loginAfterNote}{" "}
+                <p className={styles.loginNote}>{LANDING.loginAfterNote}</p>
+                <p className={styles.registerEntry}>
                   <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
                 </p>
-                <p className={styles.loginNote}>
+                <p className={styles.guestEntry}>
                   <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
                 </p>
               </form>

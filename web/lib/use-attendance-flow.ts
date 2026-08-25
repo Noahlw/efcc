@@ -15,12 +15,13 @@ import { announce } from "@/lib/live-region";
 import { resolveAttendance } from "@/lib/programs/program-api";
 import { parseScannerIntent } from "@/lib/scanner-intent";
 import { useQrCamera } from "@/lib/use-qr-camera";
+
 export type StatusTone = "info" | "success" | "error";
 export type AttendanceView = "scan" | "chooser" | "outcome";
-export type AttendanceOutcome = {
+export interface AttendanceOutcome {
   kind: "window-not-open" | "cancelled" | "not-enrolled";
   latest: AttendanceResolveLatest;
-};
+}
 
 export interface AttendanceFlow {
   input: string;
@@ -35,14 +36,18 @@ export interface AttendanceFlow {
   view: AttendanceView;
   outcome: AttendanceOutcome | null;
   cameraUnavailable: boolean;
-  cameraAvailable: boolean;
+  cameraPermissionDenied: boolean;
+  cameraUnsupported: boolean;
+  cameraAvailable: boolean | null;
   showStatus: (message: string, tone?: StatusTone) => void;
-  resolve: (value: string, fromQr?: boolean) => Promise<void>;
+  resolve: (value: string, fromQr?: boolean) => Promise<AttendanceEvent[]>;
   resetToScan: () => void;
   videoRef: RefObject<HTMLVideoElement | null>;
   cameraOpen: boolean;
+  cameraReady: boolean;
   startCamera: () => void;
   stopCamera: () => void;
+  retryCamera: () => void;
 }
 
 /**
@@ -52,7 +57,14 @@ export interface AttendanceFlow {
  */
 export function useAttendanceFlow(
   inputRef: RefObject<HTMLInputElement | null>,
-  options: { reportCameraUnavailable?: boolean } = {}
+  options: {
+    cameraFirst?: boolean;
+    phoneOnly?: boolean;
+    reportCameraUnavailable?: boolean;
+    cameraEnabled?: boolean;
+    invalidEntryMessage?: string;
+    offlineResolveMessage?: string;
+  } = {}
 ): AttendanceFlow {
   const [inputValue, setInputValue] = useState("");
   const [fromQr, setFromQr] = useState(false);
@@ -64,10 +76,20 @@ export function useAttendanceFlow(
   const [view, setView] = useState<AttendanceView>("scan");
   const [outcome, setOutcome] = useState<AttendanceOutcome | null>(null);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
-
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
+  const [cameraUnsupported, setCameraUnsupported] = useState(false);
   const showStatus = (message: string, nextTone: StatusTone = "info") => {
     setStatus(message);
     setTone(nextTone);
+  };
+  const showCameraDecodeFailure = () => {
+    setCameraUnavailable(true);
+    setCameraPermissionDenied(false);
+    setCameraUnsupported(true);
+    const message = COPY.attendance.cameraUnsupportedBody;
+    showStatus(message, "error");
+    announce(message);
+    inputRef.current?.focus();
   };
 
   const setInput = (value: string) => {
@@ -95,16 +117,23 @@ export function useAttendanceFlow(
     setOutcome(null);
     setView("scan");
     setCameraUnavailable(false);
+    setCameraPermissionDenied(false);
+    setCameraUnsupported(false);
     setStatus("");
     setTone("info");
   };
   async function resolve(
     value: string,
     isFromQr = false,
-    requestedEventId: string | null = null
+    requestedEventId: string | null = null,
+    fromCamera = false
   ) {
     const entry = entryFromValue(value);
     if (!entry.value && !requestedEventId) {
+      if (fromCamera && options.cameraFirst === true) {
+        showCameraDecodeFailure();
+        return [];
+      }
       const message = COPY.attendance.inputLabel;
       setFromQr(false);
       setEvents([]);
@@ -114,13 +143,15 @@ export function useAttendanceFlow(
       showStatus(message);
       announce(message);
       inputRef.current?.focus();
-      return;
+      return [];
     }
     const resolvedFromQr = isFromQr || entry.fromQr;
     setInputValue(entry.value);
     setFromQr(resolvedFromQr);
     setBusy(true);
     setCameraUnavailable(false);
+    setCameraPermissionDenied(false);
+    setCameraUnsupported(false);
     setOutcome(null);
     setView("scan");
     showStatus(COPY.attendance.resolving);
@@ -148,8 +179,16 @@ export function useAttendanceFlow(
         announce(message);
       } else if (!result.latest) {
         setSelectedState(null);
+        if (fromCamera && options.cameraFirst === true) {
+          showCameraDecodeFailure();
+          return [];
+        }
         setView("scan");
-        const message = COPY.attendance.invalidEntry;
+        const message =
+          options.invalidEntryMessage ??
+          (options.cameraFirst
+            ? COPY.attendance.invalidEntryCode
+            : COPY.attendance.invalidEntry);
         showStatus(message, "error");
         announce(message);
       } else if (!result.enrolled) {
@@ -183,45 +222,112 @@ export function useAttendanceFlow(
         showStatus("");
         announce(COPY.attendance.outcomeWindowTitle);
       }
+      return resolvedEvents;
     } catch (error) {
+      const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+      const networkFailure =
+        isOffline ||
+        !(error instanceof RpcError) ||
+        error.problem.code === "NETWORK_ERROR" ||
+        error.problem.code === "UNAVAILABLE";
+      if (fromCamera && options.cameraFirst === true && !networkFailure) {
+        showCameraDecodeFailure();
+        return [];
+      }
       const noEligibleEvents =
         error instanceof RpcError &&
         error.problem.code === "CHECK_IN_NOT_FOUND" &&
         resolvedFromQr;
-      const message = noEligibleEvents
-        ? COPY.attendance.noEvents
-        : error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
+      let message: string;
+      if (networkFailure && options.offlineResolveMessage) {
+        message = options.offlineResolveMessage;
+      } else if (networkFailure && options.cameraFirst && fromCamera) {
+        message = COPY.attendance.offlineResolve;
+      } else if (isOffline && options.cameraFirst) {
+        message = COPY.attendance.offlineResolve;
+      } else if (noEligibleEvents) {
+        message = COPY.attendance.noEvents;
+      } else if (error instanceof RpcError) {
+        message = errorCopyFor(error.problem.code, error.problem.detail);
+      } else {
+        message = COPY.error.networkError;
+      }
+      if (fromCamera && options.cameraFirst && networkFailure) {
+        setCameraUnavailable(true);
+        setCameraPermissionDenied(false);
+        setCameraUnsupported(false);
+      }
       setEvents([]);
       setSelectedState(null);
       setOutcome(null);
       setView("scan");
       showStatus(message, noEligibleEvents ? "info" : "error");
       announce(message);
+      return [];
     } finally {
       setBusy(false);
     }
   }
 
-  const { videoRef, cameraOpen, cameraAvailable, startCamera, stopCamera } =
-    useQrCamera({
-      onDetect: (value) => {
-        const entry = entryFromValue(value);
-        setInputValue(entry.value);
-        setFromQr(entry.fromQr);
-        stopCamera();
-        void resolve(entry.value, entry.fromQr);
-      },
-      onUnavailable: () => {
-        setCameraUnavailable(true);
-        const message = COPY.attendance.cameraUnavailable;
-        showStatus(message, "error");
-        announce(message);
-        inputRef.current?.focus();
-      },
-      reportUnavailableOnMount: options.reportCameraUnavailable,
-    });
+  const {
+    videoRef,
+    cameraOpen,
+    cameraReady,
+    cameraAvailable,
+    startCamera,
+    stopCamera,
+  } = useQrCamera({
+    onDetect: (value) => {
+      const entry = entryFromValue(value);
+      setInputValue(entry.value);
+      setFromQr(entry.fromQr);
+      stopCamera();
+      void resolve(entry.value, entry.fromQr, null, true);
+    },
+    onDenied: () => {
+      setCameraUnavailable(true);
+      setCameraPermissionDenied(options.cameraFirst === true);
+      setCameraUnsupported(options.cameraFirst !== true);
+      const message = options.cameraFirst
+        ? COPY.attendance.cameraDeniedBody
+        : COPY.attendance.cameraUnavailable;
+      showStatus(message, "error");
+      announce(message);
+      inputRef.current?.focus();
+    },
+    onUnsupported: () => {
+      setCameraUnavailable(true);
+      setCameraPermissionDenied(false);
+      setCameraUnsupported(options.cameraFirst === true);
+      const message = options.cameraFirst
+        ? COPY.attendance.cameraUnsupportedBody
+        : COPY.attendance.cameraUnavailable;
+      showStatus(message, "error");
+      announce(message);
+      inputRef.current?.focus();
+    },
+    onUnavailable: () => {
+      setCameraUnavailable(true);
+      setCameraPermissionDenied(false);
+      setCameraUnsupported(options.cameraFirst === true);
+      const message = options.cameraFirst
+        ? COPY.attendance.cameraUnsupportedBody
+        : COPY.attendance.cameraUnavailable;
+      showStatus(message, "error");
+      announce(message);
+      inputRef.current?.focus();
+    },
+    enabled: options.cameraEnabled !== false,
+    phoneOnly: options.phoneOnly,
+    reportUnavailableOnMount: options.reportCameraUnavailable,
+  });
+  const retryCamera = () => {
+    setCameraUnavailable(false);
+    setCameraPermissionDenied(false);
+    setCameraUnsupported(false);
+    setStatus("");
+    startCamera();
+  };
 
   useEffect(() => {
     const intent = parseScannerIntent(window.location.search);
@@ -255,13 +361,17 @@ export function useAttendanceFlow(
     view,
     outcome,
     cameraUnavailable,
+    cameraPermissionDenied,
+    cameraUnsupported,
     cameraAvailable,
     showStatus,
     resolve,
     resetToScan,
     videoRef,
     cameraOpen,
+    cameraReady,
     startCamera,
     stopCamera,
+    retryCamera,
   };
 }

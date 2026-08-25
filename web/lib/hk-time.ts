@@ -49,6 +49,19 @@ function hkWallParts(iso: string): {
   };
 }
 
+/** HK wall-clock time in a zero-padded 24-hour form: 18:30. */
+export function hkTime24Label(iso: string | null): string | null {
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const { hour24, minute } = hkWallParts(iso);
+  return `${String(hour24).padStart(2, "0")}:${minute}`;
+}
+
 function hkDayPeriod(hour24: number): "早上" | "下午" | "晚上" {
   if (hour24 < 12) {
     return "早上";
@@ -57,6 +70,11 @@ function hkDayPeriod(hour24: number): "早上" | "下午" | "晚上" {
     return "下午";
   }
   return "晚上";
+}
+
+/** HK day period for an ISO timestamp, using the shared wall-clock cutoffs. */
+export function hkDayPeriodFromIso(iso: string): "早上" | "下午" | "晚上" {
+  return hkDayPeriod(hkWallParts(iso).hour24);
 }
 
 /** Short HK date: 8月20日（三）. */

@@ -822,9 +822,25 @@ export function markManagementNotificationsRead(
   });
 }
 
+let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
+const ACCESS_TTL_MS = 30_000;
+
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
-  return programsFetch("/api/v1/programs/access", "GET");
+  if (accessCache && Date.now() - accessCache.at < ACCESS_TTL_MS) {
+    return Promise.resolve(accessCache.data);
+  }
+  return programsFetch<ProgramsManagementAccess>(
+    "/api/v1/programs/access",
+    "GET"
+  ).then((data) => {
+    accessCache = { data, at: Date.now() };
+    return data;
+  });
+}
+
+export function clearAccessCache(): void {
+  accessCache = null;
 }
 
 /**
@@ -853,11 +869,44 @@ export function getAccountPermissions(): Promise<AccountPermissionsView> {
   );
 }
 
+// ponytail: in-memory catalog cache for F-C01 warming — no contract change,
+// just avoids refetching within 30s and lets /home prefetch prime /programs.
+let catalogCache: { catalog: ParticipantCatalogEntry[]; at: number } | null =
+  null;
+const CATALOG_TTL_MS = 30_000;
+
+export function primeCatalogCache(catalog: ParticipantCatalogEntry[]): void {
+  catalogCache = { catalog, at: Date.now() };
+}
+
+export function getCachedCatalog(): ParticipantCatalogEntry[] | null {
+  if (!catalogCache) return null;
+  if (Date.now() - catalogCache.at > CATALOG_TTL_MS) {
+    catalogCache = null;
+    return null;
+  }
+  return catalogCache.catalog;
+}
+
+export function clearCatalogCache(): void {
+  catalogCache = null;
+}
+
 /** GET /api/v1/programs/catalog — narrow participant directory projection. */
 export function listParticipantCatalog(): Promise<{
   catalog: ParticipantCatalogEntry[];
 }> {
-  return programsFetch("/api/v1/programs/catalog", "GET");
+  const cached = getCachedCatalog();
+  if (cached) {
+    return Promise.resolve({ catalog: cached });
+  }
+  return programsFetch<{ catalog: ParticipantCatalogEntry[] }>(
+    "/api/v1/programs/catalog",
+    "GET"
+  ).then((data) => {
+    primeCatalogCache(data.catalog);
+    return data;
+  });
 }
 /** GET /api/v1/programs/:id/participant-detail — narrow participant detail. */
 export function getParticipantProgramDetail(

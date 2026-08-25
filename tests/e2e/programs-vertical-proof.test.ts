@@ -68,17 +68,22 @@ const COPY = {
   scannerTitle: "掃描簽到",
   selfMode: "本人簽到",
   assistedMode: "協助簽到",
+  operatorMode: "代為簽到",
   assistedContext: "目前聚會",
   inputLabel: "課程 QR 代碼或聚會手動代碼",
   resolve: "查找聚會",
   chooseEvent: "選擇聚會",
+  guestCode: "聚會代碼",
   guestName: "姓名",
   guestPhone: "電話",
-  guestSubmit: "送出訪客簽到",
+  guestSubmit: "確認簽到",
+  guestResultTitle: "訪客簽到完成",
+  guestDone: "完成",
   memberSubmit: "確認簽到",
   success: "簽到成功。",
   memberDuplicate: "你已完成此聚會簽到。",
   guestDuplicate: "此電話已簽到。如需協助，請聯絡聚會負責人。",
+  duplicateTitle: "已完成簽到",
   enrollmentRequired: "報名狀態不符合簽到條件。",
   memberSearch: "搜尋已報名成員",
   search: "搜尋",
@@ -258,6 +263,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Manager-Only Program ${fresh("MGR")}`,
+        description: "Vertical open attendance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -276,6 +282,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Request Program ${fresh("REQ")}`,
+        description: "Vertical request attendance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -314,6 +321,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Lifecycle Program ${fresh("LIFE")}`,
+        description: "Vertical lifecycle acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -697,9 +705,9 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
       await page.goto("/scanner");
       // Admin sees Assisted tab
       await expect(
-        page.getByRole("tab", { name: COPY.assistedMode })
+        page.getByRole("tab", { name: COPY.operatorMode })
       ).toBeVisible();
-      await page.getByRole("tab", { name: COPY.assistedMode }).click();
+      await page.getByRole("tab", { name: COPY.operatorMode }).click();
 
       // Pinned bottom context selector
       const contextSelect = page.getByLabel(COPY.assistedContext);
@@ -726,23 +734,34 @@ test.describe("Tier 4: Scanner, Attendance, Guest Flow & Roster/Audit (Prompt 4 
     await page.goto("/guest-check-in");
     await expect(page.getByText("中國基督教播道會顯恩堂")).toBeVisible();
 
-    // Resolve event
+    const name = "Automated Guest";
+    const phone = "9888 7777";
     await page.locator("#attendance-code").fill(fixtures.manualCode);
-    await page.getByRole("button", { name: COPY.resolve }).click();
-
-    // Guest submission
-    await page.locator("#guest-name").fill("Automated Guest");
-    await page.locator("#guest-phone").fill("9888 7777");
+    await page.locator("#guest-name").fill(name);
+    await page.locator("#guest-phone").fill(phone);
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
-    await expect(statusText(page, COPY.success)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.guestResultTitle })
+    ).toBeVisible();
 
-    // Duplicate check-in notice without leaking identity
-    await page.locator("#guest-name").fill("Automated Guest");
+    // Duplicate check-in notice without leaking identity.
+    await page.goto("/guest-check-in");
+    await page.locator("#attendance-code").fill(fixtures.manualCode);
+    await page.locator("#guest-name").fill(name);
     await page.locator("#guest-phone").fill("+852 9888-7777");
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
-    await expect(statusText(page, COPY.guestDuplicate)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.duplicateTitle })
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("section[aria-labelledby='guest-result-title']")
+        .getByText(COPY.guestDuplicate)
+    ).toBeVisible();
 
-    // Login handoff preserves context
+    // Login handoff preserves context.
+    await page.goto("/guest-check-in");
+    await page.locator("#attendance-code").fill(fixtures.manualCode);
     await page.getByRole("link", { name: COPY.loginForMember }).click();
     await expect(page).toHaveURL("/");
     await page.locator('input[autocomplete="username"]').fill(MEMBER_USER);

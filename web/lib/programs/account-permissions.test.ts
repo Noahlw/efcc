@@ -260,9 +260,9 @@ describe("087-03: Account Permissions matrix", () => {
     assert.deepStrictEqual(body.data, adminView.body.data);
   });
 
-  test("a role with no holder projects as 可指派 (assignable)", async () => {
-    // Demote the only plain Staff account so the 同工 role has no holder;
-    // the projection must reflect the change immediately.
+  test("role assignment states count each role holder independently", async () => {
+    // Demote the only plain Staff account. The Staff Manager still holds the
+    // Staff role as well as the Department Manager role.
     await testDb()
       .prepare("UPDATE accounts SET role = 'Member' WHERE user_id = 'A002'")
       .run();
@@ -273,7 +273,7 @@ describe("087-03: Account Permissions matrix", () => {
       );
       assert.ok(!byUser.has("A002"));
       const staffRole = body.data.roles.find((role) => role.key === "staff");
-      assert.strictEqual(staffRole?.assignmentState, "assignable");
+      assert.strictEqual(staffRole?.assignmentState, "assigned");
       const adminRole = body.data.roles.find((role) => role.key === "admin");
       assert.strictEqual(adminRole?.assignmentState, "assigned");
       const dmRole = body.data.roles.find(
@@ -283,6 +283,31 @@ describe("087-03: Account Permissions matrix", () => {
     } finally {
       await testDb()
         .prepare("UPDATE accounts SET role = 'Staff' WHERE user_id = 'A002'")
+        .run();
+    }
+  });
+
+  test("unheld fixed role reports assignable independently", async () => {
+    await testDb()
+      .prepare(
+        "UPDATE department_managers SET revoked_at = 1 WHERE user_id = 'A003' AND department_id = ?"
+      )
+      .bind(departmentId)
+      .run();
+    try {
+      const { body } = await fetchPermissions(adminAccess);
+      const staffRole = body.data.roles.find((role) => role.key === "staff");
+      const dmRole = body.data.roles.find(
+        (role) => role.key === "department-manager"
+      );
+      assert.strictEqual(staffRole?.assignmentState, "assigned");
+      assert.strictEqual(dmRole?.assignmentState, "assignable");
+    } finally {
+      await testDb()
+        .prepare(
+          "UPDATE department_managers SET revoked_at = NULL WHERE user_id = 'A003' AND department_id = ?"
+        )
+        .bind(departmentId)
         .run();
     }
   });

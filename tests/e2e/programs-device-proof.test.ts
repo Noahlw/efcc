@@ -27,6 +27,10 @@ const AUTH_HINT_KEY = "efcc_auth_active";
 
 const COPY = {
   camera: "使用相機掃描 QR",
+  cameraLiveHint: "將二維碼放入框內掃描",
+  stopScan: "停止掃描",
+  fallbackManual: "輸入代碼",
+  fallbackMemberQr: "出示會員 QR",
   eventAvailabilityDeactivate: "暫停聚會",
   eventAvailabilityConfirmBody:
     "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
@@ -173,6 +177,9 @@ test.beforeAll(async ({ playwright }) => {
         code: fresh("DEPT_DEVICE_PROOF"),
         name: fresh("Device Proof Department"),
         lifecycle: "Active",
+        // ponytail: high display_order keeps device-proof fixtures after
+        // E2E_DEMO_示範事工 (display_order -10) — fixes F-C02 catalog bury
+        display_order: 900,
       }
     );
     expect(departmentResponse.status).toBe(201);
@@ -203,11 +210,13 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: fresh("DEVICE_PROOF_PROGRAM"),
-        category: "測試",
+        description: "S3 camera acceptance fixture",
         behavior_type: "Recurring",
         lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "ManagerOnly",
+        // ponytail: keep at tail of catalog (F-C02)
+        display_order: 900,
       }
     );
     expect(programResponse.status).toBe(201);
@@ -242,9 +251,9 @@ test.beforeAll(async ({ playwright }) => {
   }
 });
 
-test("granted camera permission binds a live playing stream to the Self Check-In video element", async ({
+test("Scanner is camera-first on phone and manual-only on desktop", async ({
   browser,
-}) => {
+}, testInfo) => {
   const context = await browser.newContext({
     baseURL: TARGET_URL,
     permissions: ["camera"],
@@ -254,9 +263,29 @@ test("granted camera permission binds a live playing stream to the Self Check-In
 
   try {
     await page.goto("/scanner");
-    const cameraButton = page.getByRole("button", { name: COPY.camera });
-    await expect(cameraButton).toBeVisible();
-    await cameraButton.click();
+    if (testInfo.project.name.startsWith("s3-desktop-")) {
+      await expect(
+        page.locator("[data-scanner-state='desktop-manual']")
+      ).toBeVisible();
+      await expect(page.locator("video")).toHaveCount(0);
+      await expect(page.locator("[data-camera-state]")).toHaveCount(0);
+      await expect(
+        page.getByRole("textbox", { name: "六位數代碼" })
+      ).toBeVisible();
+      return;
+    }
+
+    const stage = page.locator("[data-camera-state]");
+    await expect(stage).toHaveAttribute("data-camera-state", "live");
+    await expect(
+      stage.getByText(COPY.cameraLiveHint, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.stopScan })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
+    ).toHaveCount(0);
 
     const video = page.locator("video");
     await expect(video).toBeVisible();
@@ -280,16 +309,165 @@ test("granted camera permission binds a live playing stream to the Self Check-In
       )
       .toBe(true);
 
-    const videoState = await video.evaluate((element: HTMLVideoElement) => ({
-      readyState: element.readyState,
-      videoWidth: element.videoWidth,
-      videoHeight: element.videoHeight,
-      paused: element.paused,
-    }));
-    expect(videoState.readyState).toBeGreaterThanOrEqual(2);
-    expect(videoState.videoWidth).toBeGreaterThan(0);
-    expect(videoState.videoHeight).toBeGreaterThan(0);
-    expect(videoState.paused).toBe(false);
+    await page.getByRole("button", { name: COPY.stopScan }).click();
+    await expect(
+      page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
+    ).toBeVisible();
+    const memberQrLink = page.getByRole("link", {
+      name: new RegExp(COPY.fallbackMemberQr),
+    });
+    await expect(memberQrLink).toHaveAttribute("href", "/profile?from=scanner");
+    await memberQrLink.click();
+    await expect(page).toHaveURL(/\/profile\?from=scanner$/u);
+    await expect(page.getByRole("link", { name: "返回掃描" })).toHaveAttribute(
+      "href",
+      "/scanner"
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test("camera permission denial is recoverable and unsupported has no retry", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    !testInfo.project.name.startsWith("s3-phone-"),
+    "Camera-first entry is phone-only."
+  );
+  const context = await browser.newContext({
+    baseURL: TARGET_URL,
+    permissions: ["camera"],
+    storageState: memberStorageState,
+  });
+  const page = await context.newPage();
+  try {
+    if (testInfo.project.name === "s3-phone-320x844") {
+      await page.setViewportSize({ width: 320, height: 568 });
+    }
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "BarcodeDetector", {
+        configurable: true,
+        value: class {
+          // eslint-disable-next-line class-methods-use-this
+          detect() {
+            return Promise.resolve([]);
+          }
+        },
+      });
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: () =>
+            Promise.reject(new DOMException("denied", "NotAllowedError")),
+        },
+      });
+    });
+    await page.goto("/scanner");
+    await expect(
+      page.locator("main [role='alert']").filter({
+        hasText: "相機權限未開啟。請在瀏覽器設定允許相機，再按「重試相機」。",
+      })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "重試相機" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(COPY.fallbackMemberQr) })
+    ).toBeVisible();
+    if (testInfo.project.name === "s3-phone-320x844") {
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const manual = [...document.querySelectorAll("button")].find(
+                (control) => control.textContent?.trim().startsWith("輸入代碼")
+              );
+              const memberQr = [...document.querySelectorAll("a")].find(
+                (control) =>
+                  control.textContent?.trim().startsWith("出示會員 QR")
+              );
+              const dock = document.querySelector(".nav-phone");
+              if (!manual || !memberQr || !dock) {
+                return false;
+              }
+              const dockTop = dock.getBoundingClientRect().top - 8;
+              return (
+                manual.getBoundingClientRect().bottom <= dockTop &&
+                memberQr.getBoundingClientRect().bottom <= dockTop
+              );
+            }),
+          { message: "denied fallback controls must clear the phone dock" }
+        )
+        .toBe(true);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test("unsupported camera reaches fallback without a retry promise", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    !testInfo.project.name.startsWith("s3-phone-"),
+    "Camera-first entry is phone-only."
+  );
+  const context = await browser.newContext({
+    baseURL: TARGET_URL,
+    permissions: ["camera"],
+    storageState: memberStorageState,
+  });
+  const page = await context.newPage();
+  try {
+    await page.addInitScript(() => {
+      delete (window as { BarcodeDetector?: unknown }).BarcodeDetector;
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: undefined,
+      });
+    });
+    await page.goto("/scanner");
+    await expect(
+      page.locator("main [role='alert']").filter({ hasText: "相機掃描不可用" })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "重試相機" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: new RegExp(COPY.fallbackManual) })
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test("detector-absent probe terminates without a third-party wasm request", async ({
+  browser,
+}, testInfo) => {
+  test.skip(
+    !testInfo.project.name.startsWith("s3-phone-"),
+    "Camera-first entry is phone-only."
+  );
+  const context = await browser.newContext({
+    baseURL: TARGET_URL,
+    permissions: ["camera"],
+    storageState: memberStorageState,
+  });
+  const page = await context.newPage();
+  const thirdPartyRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("jsdelivr")) {
+      thirdPartyRequests.push(request.url());
+    }
+  });
+  try {
+    await page.addInitScript(() => {
+      delete (window as { BarcodeDetector?: unknown }).BarcodeDetector;
+    });
+    await page.goto("/scanner");
+    const terminalState = page.locator("[data-camera-state='live']");
+    await expect(terminalState).toBeVisible({ timeout: 15_000 });
+    expect(thirdPartyRequests).toEqual([]);
   } finally {
     await context.close();
   }

@@ -1171,6 +1171,17 @@ describe("Shell", () => {
       expect(qrSquare).not.toContain("min(");
     });
 
+    test("shows a validated Scanner return link for the Member QR fallback", async () => {
+      window.history.pushState({}, "", "/profile?from=scanner");
+      try {
+        renderRestoredProfile();
+        await screen.findAllByRole("button", { name: COPY.logout.submit });
+        await expect(screen.findByRole("link", { name: COPY.attendance.backToScan })).resolves.toHaveAttribute("href", "/scanner");
+      } finally {
+        window.history.replaceState({}, "", "/profile");
+      }
+    });
+
     test("renders the phone and status info grid with their values", async () => {
       renderRestoredProfile();
       await screen.findAllByRole("button", { name: COPY.logout.submit });

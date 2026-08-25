@@ -1,10 +1,10 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState } from "react";
+import type { Ref, RefObject } from "react";
 
 import type {
   AttendanceEvent,
-  AttendanceEventSummary,
   AttendanceResolveLatest,
 } from "@/lib/attendance";
 import {
@@ -12,7 +12,7 @@ import {
   attendanceEventName,
 } from "@/lib/attendance-display";
 import { COPY } from "@/lib/copy";
-import { hkWallLabel } from "@/lib/hk-time";
+import { hkTime24Label, hkWallLabel } from "@/lib/hk-time";
 
 import styles from "./attendance-panel.module.css";
 
@@ -78,7 +78,7 @@ export const ScannerCamera = ({
   onClose,
 }: {
   cameraOpen: boolean;
-  cameraAvailable?: boolean;
+  cameraAvailable?: boolean | null;
   videoRef: RefObject<HTMLVideoElement | null>;
   onStart: () => void;
   onClose: () => void;
@@ -95,15 +95,9 @@ export const ScannerCamera = ({
         />
       )}
       <span className={`${styles.cameraCorner} ${styles.cameraCornerTop}`} />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerRight}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerBottom}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerLeft}`}
-      />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerRight}`} />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerBottom}`} />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerLeft}`} />
       {!cameraOpen && <CameraIcon />}
     </div>
     {!cameraOpen && (
@@ -128,12 +122,149 @@ export const ScannerCamera = ({
   </div>
 );
 
+export const CameraFirstScanner = ({
+  cameraOpen,
+  opening,
+  videoRef,
+  onStop,
+}: {
+  cameraOpen: boolean;
+  opening: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onStop: () => void;
+}) => (
+  <div
+    className={`${styles.cameraStage} ${
+      opening ? styles.cameraStageOpening : ""
+    }`}
+    data-camera-state={opening ? "opening" : "live"}
+    data-testid="scanner-camera-stage"
+  >
+    {opening ? (
+      <output className={styles.cameraState} aria-live="polite">
+        {COPY.attendance.cameraOpening}
+      </output>
+    ) : (
+      <p className={styles.cameraHint}>{COPY.attendance.cameraLiveHint}</p>
+    )}
+    <figure
+      className={styles.cameraFrameLive}
+      aria-label={COPY.attendance.camera}
+    >
+      {cameraOpen && (
+        <video
+          ref={videoRef}
+          className={styles.video}
+          muted
+          playsInline
+          aria-label={COPY.attendance.camera}
+        />
+      )}
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveTopLeft}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveTopRight}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveBottomLeft}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveBottomRight}`}
+      />
+    </figure>
+    <button
+      className={styles.cameraStop}
+      type="button"
+      disabled={opening}
+      aria-busy={opening}
+      onClick={onStop}
+    >
+      {COPY.attendance.stopScan}
+    </button>
+  </div>
+);
+
 export const ScannerUnavailableNotice = () => (
   <div className={styles.cameraUnavailable} role="alert">
     <strong>{COPY.attendance.cameraUnavailableTitle}</strong>
     <p>{COPY.attendance.cameraUnavailableHint}</p>
   </div>
 );
+
+const ScannerEventChoiceGroup = ({
+  events,
+  onSelect,
+  headingRef,
+  disabled = false,
+  legendId,
+  legendClassName,
+  legend,
+  lead,
+  radioName,
+  headingTabIndex,
+}: {
+  events: readonly AttendanceEvent[];
+  onSelect: (event: AttendanceEvent) => void;
+  headingRef?: RefObject<HTMLElement | null>;
+  disabled?: boolean;
+  legendId: string;
+  legendClassName: string;
+  legend: string;
+  lead?: string;
+  radioName: string;
+  headingTabIndex?: -1;
+}) => {
+  const [checkedId, setCheckedId] = useState<string | null>(null);
+  const checked = events.find((event) => event.event_id === checkedId) ?? null;
+
+  return (
+    <fieldset className={styles.fieldset}>
+      <legend
+        id={legendId}
+        ref={headingRef as Ref<HTMLLegendElement>}
+        tabIndex={headingTabIndex}
+        className={`${styles.legend} ${legendClassName}`}
+      >
+        {legend}
+      </legend>
+      {lead && <p className={styles.lead}>{lead}</p>}
+      <div className={styles.radioRows}>
+        {events.map((event) => (
+          <label key={event.event_id} className={styles.radioRow}>
+            <input
+              className={styles.radioInput}
+              type="radio"
+              name={radioName}
+              value={event.event_id}
+              disabled={disabled}
+              checked={checkedId === event.event_id}
+              onChange={() => setCheckedId(event.event_id)}
+            />
+            <span className={styles.radioText}>
+              <strong>{attendanceEventName(event)}</strong>
+              <span className={styles.eventMeta}>
+                {attendanceEventMeta(event)}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <button
+        className={styles.button}
+        type="button"
+        disabled={disabled || !checked}
+        onClick={() => {
+          if (checked) {
+            onSelect(checked);
+          }
+        }}
+      >
+        {COPY.attendance.continue}
+      </button>
+    </fieldset>
+  );
+};
 
 export const ScannerChooser = ({
   events,
@@ -142,66 +273,55 @@ export const ScannerChooser = ({
   onSelect,
 }: {
   events: readonly AttendanceEvent[];
-  headingRef: RefObject<HTMLHeadingElement | null>;
+  headingRef?: RefObject<HTMLElement | null>;
   onBack: () => void;
   onSelect: (event: AttendanceEvent) => void;
-}) => (
-  <section className={styles.chooser} aria-labelledby="scanner-chooser-title">
-    <header className={styles.chooserHeader}>
-      <span className={styles.chooserTitle}>
-        {COPY.attendance.chooseEvent}
-      </span>
-      <button className={styles.back} type="button" onClick={onBack}>
-        {COPY.attendance.rescan}
-      </button>
-    </header>
-    <span className={styles.chooserTag}>
-      {COPY.attendance.recognizedMultiple}
-    </span>
-    <h1
-      id="scanner-chooser-title"
-      ref={headingRef}
-      className={styles.title}
-      tabIndex={-1}
-    >
-      {COPY.attendance.chooseMeeting}
-    </h1>
-    <p className={styles.lead}>{COPY.attendance.chooseMeetingHint}</p>
-    <ul className={styles.events}>
-      {events.map((event) => (
-        <li key={event.event_id}>
-          <button
-            className={styles.eventButton}
-            type="button"
-            onClick={() => onSelect(event)}
-          >
-            <span className={styles.eventCopy}>
-              <strong>{attendanceEventName(event)}</strong>
-              <span className={styles.eventMeta}>
-                {attendanceEventMeta(event)}
-              </span>
-            </span>
-            <ChevronIcon />
-          </button>
-        </li>
-      ))}
-    </ul>
-  </section>
-);
+}) => {
+  // GOV.UK radios pattern (owner-approved DOM-contract amendment): native
+  // radios in a fieldset/legend pair, no preselection, labels left of the
+  // control; an explicit 繼續 commits so arrow-key traversal can never
+  // trigger a submission by itself (F-13 explicit selection step).
+  return (
+    <section className={styles.chooser} aria-labelledby="scanner-chooser-title">
+      <header className={styles.chooserHeader}>
+        <span className={styles.chooserTitle}>{COPY.attendance.chooseEvent}</span>
+        <button className={styles.back} type="button" onClick={onBack}>
+          {COPY.attendance.rescan}
+        </button>
+      </header>
+      <span className={styles.chooserTag}>{COPY.attendance.recognizedMultiple}</span>
+      <ScannerEventChoiceGroup
+        events={events}
+        onSelect={onSelect}
+        headingRef={headingRef}
+        legendId="scanner-chooser-title"
+        legendClassName={styles.title}
+        legend={COPY.attendance.chooseMeeting}
+        lead={COPY.attendance.chooseMeetingHint}
+        radioName="scanner-event"
+        headingTabIndex={-1}
+      />
+    </section>
+  );
+};
 
-const CheckinConfirmationIcon = ({
+export const CheckinConfirmationIcon = ({
   kind,
+  className,
+  testId = "attendance-result-icon",
 }: {
   kind: "success" | "duplicate";
+  className?: string;
+  testId?: string;
 }) => (
   <svg
     className={`${styles.checkinResultIcon} ${
       kind === "success"
         ? styles.checkinResultIconSuccess
         : styles.checkinResultIconDuplicate
-    }`}
+    }${className ? ` ${className}` : ""}`}
     viewBox="0 0 48 48"
-    data-testid={`attendance-result-icon-${kind}`}
+    data-testid={`${testId}-${kind}`}
     aria-hidden="true"
     focusable="false"
   >
@@ -276,9 +396,7 @@ export const ScannerConfirmation = ({
     >
       {COPY.attendance.rescan}
     </button>
-    <span className={styles.confirmTag}>
-      {COPY.attendance.recognizedBadge}
-    </span>
+    <span className={styles.confirmTag}>{COPY.attendance.recognizedBadge}</span>
     <h1
       id="attendance-confirm-title"
       ref={headingRef}
@@ -293,47 +411,59 @@ export const ScannerConfirmation = ({
       aria-labelledby="attendance-confirm-event-title"
     >
       <span className={styles.confirmProgram}>{event.program_name}</span>
-      <h2 id="attendance-confirm-event-title" className={styles.confirmEventTitle}>
+      <h2
+        id="attendance-confirm-event-title"
+        className={styles.confirmEventTitle}
+      >
         {attendanceEventName(event)}
       </h2>
       <div className={styles.confirmDetails}>
         <div className={styles.confirmDetail}>
           <EventDetailIcon kind="time" />
           <span>
+            <span className={styles.confirmDetailLabel}>
+              {COPY.attendance.eventTime}
+            </span>
             {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
           </span>
         </div>
         <div className={styles.confirmDetail}>
           <EventDetailIcon kind="location" />
-          <span>{event.location?.trim() || COPY.attendance.eventLocation}</span>
+          <span>
+            <span className={styles.confirmDetailLabel}>
+              {COPY.attendance.eventLocation}
+            </span>
+            {event.location?.trim() || COPY.attendance.eventLocation}
+          </span>
         </div>
       </div>
     </article>
     <div className={styles.confirmActions}>
-      <button
-        className={styles.button}
-        type="button"
-        disabled={busy}
-        aria-busy={busy}
-        onClick={onSubmit}
-      >
-        {COPY.attendance.confirmSubmit}
-      </button>
       {error && (
         <p className={styles.confirmError} role="alert">
           {error}
         </p>
       )}
-      {retryAvailable && (
+      {retryAvailable ? (
         <button
           ref={retryRef}
-          className={styles.buttonSecondary}
+          className={styles.button}
           type="button"
           disabled={busy}
           aria-busy={busy}
           onClick={onRetry}
         >
           {COPY.attendance.retry}
+        </button>
+      ) : (
+        <button
+          className={styles.button}
+          type="button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={onSubmit}
+        >
+          {COPY.attendance.confirmSubmit}
         </button>
       )}
       <button
@@ -401,7 +531,6 @@ export const ScannerCheckinResult = ({
   </section>
 );
 
-
 const OutcomeIcon = ({
   kind,
 }: {
@@ -435,22 +564,6 @@ const OutcomeIcon = ({
   </svg>
 );
 
-function formatOpeningTime(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Hong_Kong",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
-
 function opensThirtyMinutesBefore(
   opensAt: string | null,
   startsAt: string | null
@@ -480,7 +593,7 @@ export const ScannerOutcome = ({
   headingRef?: RefObject<HTMLHeadingElement | null>;
   onBack: () => void;
 }) => {
-  const openingTime = formatOpeningTime(latest.check_in_window_opens_at);
+  const openingTime = hkTime24Label(latest.check_in_window_opens_at);
   const hasThirtyMinuteWindow = opensThirtyMinutesBefore(
     latest.check_in_window_opens_at,
     latest.starts_at
@@ -490,9 +603,7 @@ export const ScannerOutcome = ({
       className={`${styles.card} ${styles.outcome}`}
       aria-labelledby="scanner-outcome-title"
     >
-      <p className={styles.outcomeHeader}>
-        {COPY.attendance.outcomeHeader}
-      </p>
+      <p className={styles.outcomeHeader}>{COPY.attendance.outcomeHeader}</p>
       <OutcomeIcon kind={kind} />
       <h1
         id="scanner-outcome-title"
@@ -550,40 +661,28 @@ export const ScannerOutcome = ({
  */
 export const ScannerEventPicker = ({
   events,
-  selectedId,
   onSelect,
   headingRef,
+  disabled = false,
 }: {
   events: readonly AttendanceEvent[];
-  selectedId: string | null;
   onSelect: (event: AttendanceEvent) => void;
-  headingRef?: RefObject<HTMLHeadingElement | null>;
-}) => (
-  <div className={styles.group} aria-labelledby="choose-event-title">
-    <h2
-      id="choose-event-title"
-      ref={headingRef}
-      className={styles.sectionTitle}
-      tabIndex={headingRef ? -1 : undefined}
-    >
-      {COPY.attendance.chooseEvent}
-    </h2>
-    <ul className={styles.events}>
-      {events.map((event) => (
-        <li key={event.event_id}>
-          <button
-            className={styles.eventButton}
-            type="button"
-            aria-pressed={selectedId === event.event_id}
-            onClick={() => onSelect(event)}
-          >
-            <strong>{attendanceEventName(event)}</strong>
-            <span className={styles.eventMeta}>
-              {attendanceEventMeta(event)}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  </div>
-);
+  headingRef?: RefObject<HTMLElement | null>;
+  disabled?: boolean;
+}) => {
+  return (
+    <div className={styles.group} aria-labelledby="choose-event-title">
+      <ScannerEventChoiceGroup
+        events={events}
+        onSelect={onSelect}
+        headingRef={headingRef}
+        disabled={disabled}
+        legendId="choose-event-title"
+        legendClassName={styles.sectionTitle}
+        legend={COPY.attendance.chooseEvent}
+        radioName="choose-event"
+        headingTabIndex={headingRef ? -1 : undefined}
+      />
+    </div>
+  );
+};

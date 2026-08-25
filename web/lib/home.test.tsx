@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-import-in-mock, import/consistent-type-specifier-style, eslint/require-unicode-regexp */
+import { clearAccessCache, clearCatalogCache } from "@/lib/programs/program-api";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -166,6 +166,8 @@ afterEach(() => {
   replaceMock.mockClear();
   sessionMocks.hasAuthHintMock.mockReset();
   sessionMocks.restoreBootstrapMock.mockReset();
+  clearCatalogCache();
+  clearAccessCache();
 });
 
 afterAll(() => server.close());

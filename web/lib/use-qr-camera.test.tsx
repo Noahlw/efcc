@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -26,11 +26,23 @@ function installDetector(): void {
 const CameraProbe = ({
   onDetect,
   onUnavailable,
+  onDenied,
+  onUnsupported,
+  reportUnavailableOnMount,
 }: {
   onDetect: (value: string) => void;
   onUnavailable: () => void;
+  onDenied?: () => void;
+  onUnsupported?: () => void;
+  reportUnavailableOnMount?: boolean;
 }) => {
-  const camera = useQrCamera({ onDetect, onUnavailable });
+  const camera = useQrCamera({
+    onDetect,
+    onUnavailable,
+    onDenied,
+    onUnsupported,
+    reportUnavailableOnMount,
+  });
   const handleStart = () => {
     void camera.startCamera();
   };
@@ -63,30 +75,96 @@ describe("useQrCamera lifecycle", () => {
     Reflect.deleteProperty(navigator, "mediaDevices");
   });
 
-  test("reports a denied permission without keeping a camera stream", async () => {
+  test("reports denied permission separately without keeping a camera stream", async () => {
     const onUnavailable = vi.fn<() => void>();
+    const onDenied = vi.fn<() => void>();
     const getUserMedia = vi
       .fn<() => Promise<MediaStream>>()
-      .mockRejectedValue(new Error("denied"));
+      .mockRejectedValue(new DOMException("denied", "NotAllowedError"));
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
     });
     const user = userEvent.setup();
-    render(<CameraProbe onDetect={() => {}} onUnavailable={onUnavailable} />);
+    render(
+      <CameraProbe
+        onDetect={() => {}}
+        onUnavailable={onUnavailable}
+        onDenied={onDenied}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "start" }));
     expect(getUserMedia).toHaveBeenCalledWith({
       video: { facingMode: "environment" },
     });
-    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(onDenied).toHaveBeenCalledOnce();
+    expect(onUnavailable).not.toHaveBeenCalled();
     expect(screen.queryByTestId("camera-video")).toBeNull();
+  });
+
+  test("falls back when the OS ends the video track mid-session", async () => {
+    let fireEnded: (() => void) | null = null;
+    const stop = vi.fn<() => void>();
+    const track = {
+      stop,
+      addEventListener: vi.fn((type: string, handler: () => void) => {
+        if (type === "ended") {
+          fireEnded = handler;
+        }
+      }),
+    } as unknown as MediaStreamTrack;
+    const stream = { getTracks: () => [track] } as unknown as MediaStream;
+    detectorDetection = Promise.resolve([]);
+    installDetector();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi
+          .fn<() => Promise<MediaStream>>()
+          .mockResolvedValue(stream),
+      },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const onUnavailable = vi.fn<() => void>();
+    const user = userEvent.setup();
+    render(<CameraProbe onDetect={() => {}} onUnavailable={onUnavailable} />);
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    await expect(
+      screen.findByTestId("camera-video")
+    ).resolves.toBeInTheDocument();
+
+    // F-04: OS reclaims the camera mid-session — the ended event must tear
+    // down the frozen live view and surface the unavailable fallback.
+    await act(async () => {
+      fireEnded?.();
+    });
+    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId("camera-video")).toBeNull();
+  });
+
+  test("settles unavailable capability without an indefinite probe", async () => {
+    const onUnsupported = vi.fn<() => void>();
+    render(
+      <CameraProbe
+        onDetect={() => {}}
+        onUnavailable={() => {}}
+        onUnsupported={onUnsupported}
+        reportUnavailableOnMount
+      />
+    );
+
+    await vi.waitFor(() => expect(onUnsupported).toHaveBeenCalledOnce());
   });
 
   test("stops every track when the camera surface unmounts", async () => {
     const stop = vi.fn<() => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     detectorDetection = Promise.resolve([]);
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
@@ -114,7 +192,9 @@ describe("useQrCamera lifecycle", () => {
   test("stops a stream that resolves after explicit camera cleanup", async () => {
     const pending = Promise.withResolvers<MediaStream>();
     const stop = vi.fn<() => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -134,7 +214,9 @@ describe("useQrCamera lifecycle", () => {
 
   test("opens after StrictMode effect replay", async () => {
     const stop = vi.fn<() => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     const pendingDetection = Promise.withResolvers<DetectedCode[]>();
     detectorDetection = pendingDetection.promise;
     installDetector();
@@ -165,7 +247,9 @@ describe("useQrCamera lifecycle", () => {
   test("decodes one detector value and releases the stream before reporting it", async () => {
     const stop = vi.fn<() => void>();
     const onDetect = vi.fn<(value: string) => void>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     detectorDetection = Promise.resolve([
       { rawValue: "https://efcc.example/?program_token=QR" },
     ]);
@@ -195,7 +279,9 @@ describe("useQrCamera lifecycle", () => {
     const stop = vi.fn<() => void>();
     const onDetect = vi.fn<(value: string) => void>();
     const pending = Promise.withResolvers<DetectedCode[]>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     detectorDetection = pending.promise;
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
@@ -227,7 +313,9 @@ describe("useQrCamera lifecycle", () => {
     const stop = vi.fn<() => void>();
     const onDetect = vi.fn<(value: string) => void>();
     const pending = Promise.withResolvers<DetectedCode[]>();
-    const stream = { getTracks: () => [{ stop }] } as unknown as MediaStream;
+    const stream = {
+      getTracks: () => [{ stop, addEventListener: vi.fn() }],
+    } as unknown as MediaStream;
     detectorDetection = pending.promise;
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
