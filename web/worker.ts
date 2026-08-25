@@ -312,6 +312,7 @@ export default {
         handleListManagementAccess,
         handleGetManagementHub,
         handleGetAccountPermissions,
+        handleUpdateAccountPermissions,
         handleListManagementDirectory,
         handleSearchManagementMembers,
         handleSearchAccountDirectory,
@@ -376,6 +377,12 @@ export default {
         request.method === "GET"
       ) {
         return handleGetAccountPermissions(request, programEnv);
+      }
+      if (
+        url.pathname === "/api/v1/programs/account-permissions" &&
+        request.method === "POST"
+      ) {
+        return handleUpdateAccountPermissions(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&

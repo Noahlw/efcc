@@ -164,6 +164,25 @@ export interface AccountPermissionsView {
   policy: AccountPermissionPolicy;
 }
 
+export interface PermissionPolicyChange {
+  role: PermissionPolicyRoleKey;
+  capability: string;
+  value: boolean;
+}
+
+export interface AccountPermissionsMutation {
+  baseRevision: number;
+  changes: PermissionPolicyChange[];
+}
+
+export interface AccountPermissionsMutationView extends AccountPermissionsView {
+  mutation: {
+    outcome: "SUCCESS" | "DUPLICATE";
+    idempotent: boolean;
+    revision: number;
+  };
+}
+
 export interface ManagementCockpitNextEvent {
   event_id: string;
   program_id: string;
@@ -913,6 +932,19 @@ export function getAccountPermissions(): Promise<AccountPermissionsView> {
     {
       cache: "no-store",
     }
+  );
+}
+
+/** POST /api/v1/programs/account-permissions — staged atomic policy change. */
+export function updateAccountPermissions(
+  input: AccountPermissionsMutation,
+  idempotencyKey?: string
+): Promise<AccountPermissionsMutationView> {
+  return programsFetch(
+    "/api/v1/programs/account-permissions",
+    "POST",
+    input,
+    { idempotencyKey }
   );
 }
 

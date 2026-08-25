@@ -62,6 +62,9 @@ import {
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   ProgramLeaderConflictError,
+  PermissionPolicyIdempotencyConflictError,
+  PermissionPolicyRevisionConflictError,
+  PermissionPolicySafetyViolationError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
@@ -112,6 +115,8 @@ import type {
   ProgramUpdate,
   AccountDirectorySearchFilters,
   AccountDirectorySummary,
+  PermissionPolicyMutationInput,
+  PermissionPolicyMutationResult,
   ScheduleExceptionRow,
   ScheduleRuleRow,
   WorkspaceStore,
@@ -439,6 +444,114 @@ function buildPermissionPolicy(
     },
     capabilities,
   };
+}
+
+export interface PermissionPolicyChange {
+  role: PermissionPolicyRoleKey;
+  capability: Capability;
+  value: boolean;
+}
+
+export interface PermissionPolicyMutationView {
+  outcome: "SUCCESS" | "DUPLICATE";
+  idempotent: boolean;
+  revision: number;
+}
+
+export type AccountPermissionsMutationView = AccountPermissionsView & {
+  mutation: PermissionPolicyMutationView;
+};
+
+export interface PermissionPolicyMutationCommand {
+  baseRevision: number;
+  changes: readonly PermissionPolicyChange[];
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+const POLICY_ROLE_ORDER: readonly PermissionPolicyRoleKey[] = [
+  "admin",
+  "staff",
+  "member",
+];
+
+function policyValues(
+  roleCapabilities: readonly { role: string; capability: string }[]
+): Map<string, boolean> {
+  const values = new Map<string, boolean>();
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+      values.set(`${role}:${definition.key}`, false);
+    }
+  }
+  for (const row of roleCapabilities) {
+    if (values.has(`${row.role}:${row.capability}`)) {
+      values.set(`${row.role}:${row.capability}`, true);
+    }
+  }
+  return values;
+}
+
+function policySnapshot(
+  revision: number,
+  values: ReadonlyMap<string, boolean>
+): { revision: number; values: Record<string, boolean> } {
+  const result: Record<string, boolean> = {};
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+      result[`${role}:${definition.key}`] =
+        values.get(`${role}:${definition.key}`) === true;
+    }
+  }
+  return { revision, values: result };
+}
+
+function validatePermissionPolicy(
+  values: ReadonlyMap<string, boolean>
+): void {
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    if (values.get(`${role}:${CAPABILITY.PROGRAM_ENROLL}`) !== true) {
+      throw new PermissionPolicySafetyViolationError(
+        "會友基礎必須在所有角色保留。"
+      );
+    }
+  }
+
+  for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+    if (
+      definition.key !== CAPABILITY.PROGRAM_ENROLL &&
+      values.get(`Member:${definition.key}`) === true
+    ) {
+      throw new PermissionPolicySafetyViolationError(
+        "會友角色不能設定管理權限。"
+      );
+    }
+  }
+
+  for (const capability of [
+    CAPABILITY.HOME_PUBLISH,
+    CAPABILITY.ACCOUNT_PERMISSIONS_WRITE,
+  ] as const) {
+    if (
+      values.get(`Staff:${capability}`) === true ||
+      values.get(`Member:${capability}`) === true
+    ) {
+      throw new PermissionPolicySafetyViolationError(
+        "首頁發佈及權限政策修改只限管理員使用。"
+      );
+    }
+  }
+
+  if (values.get(`Admin:${CAPABILITY.ACCOUNT_PERMISSIONS_READ}`) !== true) {
+    throw new PermissionPolicySafetyViolationError(
+      "管理員必須保留查看權限。"
+    );
+  }
+  if (values.get(`Admin:${CAPABILITY.ACCOUNT_PERMISSIONS_WRITE}`) !== true) {
+    throw new PermissionPolicySafetyViolationError(
+      "管理員必須保留權限政策修改權。"
+    );
+  }
 }
 
 /**
@@ -1661,6 +1774,201 @@ export class DepartmentWorkspace {
         ctx.actorRole as "Admin" | "Staff" | "Member",
         roleCapabilities
       ),
+    };
+  }
+
+  /**
+   * POST /api/v1/programs/account-permissions — Admin-only staged policy save.
+   * The browser submits only the changed cells; the domain resolves the
+   * complete resulting matrix and the D1 store commits it as one batch.
+   */
+  async updateAccountPermissions(
+    ctx: AuthorizationContext,
+    command: PermissionPolicyMutationCommand,
+    correlationId: string
+  ): Promise<AccountPermissionsMutationView> {
+    const canWrite = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_PERMISSIONS_WRITE,
+      null
+    );
+    if (!canWrite) {
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "DENIED",
+        null,
+        { baseRevision: command.baseRevision, changes: command.changes },
+        correlationId
+      );
+      throw new AuthorizationDeniedError(
+        CAPABILITY.ACCOUNT_PERMISSIONS_WRITE
+      );
+    }
+
+    const existing = await this.store.findPermissionPolicyMutation(
+      command.idempotencyKey
+    );
+    if (existing) {
+      if (existing.request_fingerprint !== command.requestFingerprint) {
+        throw new PermissionPolicyIdempotencyConflictError();
+      }
+      if (existing.outcome === "CONFLICT") {
+        throw new PermissionPolicyRevisionConflictError(
+          existing.resulting_revision ?? command.baseRevision,
+          true
+        );
+      }
+      if (existing.outcome === "SUCCESS") {
+        const view = await this.getAccountPermissions(ctx);
+        await this.audit(
+          ctx,
+          "PERMISSION_POLICY_UPDATE",
+          "permission_policy",
+          "global",
+          "DUPLICATE",
+          null,
+          { revision: existing.resulting_revision ?? view.policy.revision },
+          correlationId
+        );
+        return {
+          ...view,
+          mutation: {
+            outcome: "DUPLICATE",
+            idempotent: true,
+            revision: existing.resulting_revision ?? view.policy.revision,
+          },
+        };
+      }
+    }
+
+    if (command.changes.length === 0) {
+      throw new PermissionPolicySafetyViolationError(
+        "至少要有一項政策變更。"
+      );
+    }
+
+    const duplicateChanges = new Set<string>();
+    for (const change of command.changes) {
+      const key = `${change.role}:${change.capability}`;
+      if (
+        !POLICY_ROLE_ORDER.includes(change.role) ||
+        !PERMISSION_POLICY_DEFINITIONS.some(
+          (definition) => definition.key === change.capability
+        ) ||
+        duplicateChanges.has(key)
+      ) {
+        throw new PermissionPolicySafetyViolationError(
+          "政策變更包含無效或重複的角色能力。"
+        );
+      }
+      duplicateChanges.add(key);
+    }
+
+    const [roleCapabilities, revision] = await Promise.all([
+      this.store.listRoleCapabilities(),
+      this.store.getPermissionPolicyRevision(),
+    ]);
+    const current = policyValues(roleCapabilities);
+    const next = new Map(current);
+    for (const change of command.changes) {
+      next.set(
+        `${GLOBAL_ROLE_FOR_POLICY_ROLE[change.role]}:${change.capability}`,
+        change.value
+      );
+    }
+    validatePermissionPolicy(next);
+
+    const desired = POLICY_ROLE_ORDER.flatMap((role) =>
+      PERMISSION_POLICY_DEFINITIONS.map((definition) => ({
+        role: GLOBAL_ROLE_FOR_POLICY_ROLE[role],
+        capability: definition.key,
+        value:
+          next.get(
+            `${GLOBAL_ROLE_FOR_POLICY_ROLE[role]}:${definition.key}`
+          ) === true,
+      }))
+    );
+    const input: PermissionPolicyMutationInput = {
+      idempotency_key: command.idempotencyKey,
+      request_fingerprint: command.requestFingerprint,
+      actor_user_id: ctx.actorUserId,
+      base_revision: command.baseRevision,
+      desired,
+      audit: this.buildAuditRow(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "SUCCESS",
+        policySnapshot(revision, current),
+        {
+          ...policySnapshot(command.baseRevision + 1, next),
+          changes: command.changes,
+        },
+        correlationId
+      ),
+    };
+
+    let result: PermissionPolicyMutationResult;
+    try {
+      result = await this.store.applyPermissionPolicyMutation(input);
+    } catch (error) {
+      if (
+        error instanceof PermissionPolicyIdempotencyConflictError ||
+        error instanceof PermissionPolicyRevisionConflictError
+      ) {
+        throw error;
+      }
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "FAILED",
+        policySnapshot(revision, current),
+        { baseRevision: command.baseRevision, changes: command.changes },
+        correlationId
+      );
+      throw error;
+    }
+    if (result.outcome === "CONFLICT") {
+      throw new PermissionPolicyRevisionConflictError(
+        result.resulting_revision,
+        false
+      );
+    }
+
+    const view = await this.getAccountPermissions(ctx);
+    if (!result.created) {
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "DUPLICATE",
+        null,
+        { revision: result.resulting_revision },
+        correlationId
+      );
+      return {
+        ...view,
+        mutation: {
+          outcome: "DUPLICATE",
+          idempotent: true,
+          revision: result.resulting_revision,
+        },
+      };
+    }
+    return {
+      ...view,
+      mutation: {
+        outcome: "SUCCESS",
+        idempotent: false,
+        revision: view.policy.revision,
+      },
     };
   }
 

@@ -364,6 +364,13 @@
   line-height: 1.3;
 }
 
+button.policyCell {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .policyCell strong {
   font-size: 0.78rem;
 }
@@ -383,6 +390,22 @@
 .policyCell[data-editable="true"] {
   border-color: var(--line-strong, #aeb8bc);
   background: var(--surface-raised, #ffffff);
+}
+
+button.policyCell[data-editable="true"]:hover {
+  border-color: var(--accent, #9c302c);
+  background: #fffaf9;
+}
+
+button.policyCell:focus-visible,
+.saveButton:focus-visible,
+.reloadButton:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+button.policyCell[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px rgba(46, 107, 55, 0.28);
 }
 
 .lockedCell {
@@ -421,8 +444,53 @@
   font-size: 0.88rem;
 }
 
+.saveButton,
+.reloadButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-sm, 8px);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.saveButton {
+  border: 1px solid var(--accent, #9c302c);
+  color: #ffffff;
+  background: var(--accent, #9c302c);
+}
+
+.saveButton:hover {
+  background: var(--accent-deep, #76231f);
+}
+
+.saveButton:disabled {
+  border-color: var(--line, #d6dcde);
+  color: var(--ink-muted, #59636a);
+  background: var(--line, #d6dcde);
+  cursor: wait;
+}
+
+.reloadButton {
+  border: 1px solid var(--line-strong, #aeb8bc);
+  color: var(--ink, #171a1d);
+  background: var(--surface-raised, #ffffff);
+}
+
+.reloadButton:hover {
+  border-color: var(--ink, #171a1d);
+  background: var(--surface, #f4f5f3);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .retry {
+  .retry,
+  .policyCell,
+  .saveButton,
+  .reloadButton {
     transition: none;
   }
 }

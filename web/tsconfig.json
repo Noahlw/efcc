@@ -49,6 +49,7 @@
     "lib/programs/programs-250.test.ts",
     "lib/programs/hub-directory.test.ts",
     "lib/programs/account-permissions.test.ts",
+    "lib/programs/account-permissions-write.test.ts",
     "lib/programs/member-directory.test.ts",
     "lib/programs/account-directory.test.ts",
     "lib/programs/notices-worker.test.ts",

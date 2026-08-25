@@ -431,4 +431,89 @@ describe("PermissionsPanel", () => {
     expect(screen.queryByRole("button", { name: "檢視並儲存" }))
       .not.toBeInTheDocument();
   });
+
+  test("stages an editable cell and submits one atomic change set", async () => {
+    let posts = 0;
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse()),
+      http.post("/api/v1/programs/account-permissions", async ({ request }) => {
+        posts += 1;
+        const body = (await request.json()) as {
+          baseRevision: number;
+          changes: Array<{
+            role: string;
+            capability: string;
+            value: boolean;
+          }>;
+        };
+        expect(body.baseRevision).toBe(18);
+        expect(body.changes).toEqual([
+          {
+            role: "admin",
+            capability: "department.manage",
+            value: false,
+          },
+        ]);
+        return HttpResponse.json({
+          requestId: "rid-permissions-save",
+          data: {
+            ...VIEW,
+            policy: { ...POLICY, revision: 19 },
+            mutation: { outcome: "SUCCESS", idempotent: false, revision: 19 },
+          },
+        });
+      })
+    );
+    render(<PermissionsPanel />);
+
+    await screen.findByRole("heading", { name: "權限政策" });
+    const toggle = screen.getByRole("button", {
+      name: "部門管理 · 管理員",
+    });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText(PERMISSIONS.policyDirty)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: PERMISSIONS.policySave })
+    );
+    expect(posts).toBe(1);
+    expect(
+      await screen.findByText(PERMISSIONS.policySaved)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`${PERMISSIONS.policySynced} 19。`)
+    ).toBeInTheDocument();
+  });
+
+  test("preserves the draft when Save conflicts", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse()),
+      http.post("/api/v1/programs/account-permissions", () =>
+        problemResponse(409, "POLICY_REVISION_CONFLICT", "政策已有更新。")
+      )
+    );
+    render(<PermissionsPanel />);
+
+    await screen.findByRole("heading", { name: "權限政策" });
+    const toggle = screen.getByRole("button", {
+      name: "部門管理 · 管理員",
+    });
+    await userEvent.click(toggle);
+    await userEvent.click(
+      screen.getByRole("button", { name: PERMISSIONS.policySave })
+    );
+
+    expect(
+      await screen.findByText(PERMISSIONS.policyConflict)
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(PERMISSIONS.policyConflictHint).length
+    ).toBeGreaterThan(0);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: PERMISSIONS.policyReload })
+    ).toBeInTheDocument();
+  });
 });

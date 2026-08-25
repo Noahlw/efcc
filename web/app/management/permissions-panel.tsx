@@ -1,17 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   getAccountPermissions,
+  updateAccountPermissions,
   type AccountPermissionPolicyCapability,
   type AccountPermissionRole,
   type AccountPermissionRoleKey,
   type AccountPermissionsView,
+  type PermissionPolicyChange,
   type PermissionPolicyRoleKey,
 } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
@@ -66,6 +68,39 @@ type PermissionsState =
       message: string;
     };
 
+type PolicyDraft = Record<string, boolean>;
+type PolicySaveState = "idle" | "saving" | "success" | "error" | "conflict";
+
+function draftKey(role: PermissionPolicyRoleKey, capability: string): string {
+  return `${role}:${capability}`;
+}
+
+function policyDraftFromData(data: AccountPermissionsView): PolicyDraft {
+  const draft: PolicyDraft = {};
+  for (const capability of data.policy.capabilities) {
+    for (const role of POLICY_ROLE_ORDER) {
+      draft[draftKey(role, capability.key)] = capability.roles[role].value;
+    }
+  }
+  return draft;
+}
+
+function policyChanges(
+  data: AccountPermissionsView,
+  draft: PolicyDraft
+): PermissionPolicyChange[] {
+  const changes: PermissionPolicyChange[] = [];
+  for (const capability of data.policy.capabilities) {
+    for (const role of POLICY_ROLE_ORDER) {
+      const value = draft[draftKey(role, capability.key)];
+      if (value !== capability.roles[role].value) {
+        changes.push({ role, capability: capability.key, value });
+      }
+    }
+  }
+  return changes;
+}
+
 function roleDefinitions(data: AccountPermissionsView): AccountPermissionRole[] {
   return ROLE_ORDER.map((key) => {
     const serverRole = data.roles.find((role) => role.key === key);
@@ -110,40 +145,72 @@ function policyGroups(
 function PolicyCell({
   capability,
   role,
+  value,
+  dirty,
+  onToggle,
 }: {
   capability: AccountPermissionPolicyCapability;
   role: PermissionPolicyRoleKey;
+  value: boolean;
+  dirty: boolean;
+  onToggle?: () => void;
 }) {
   const cell = capability.roles[role];
   const state = cell.locked
     ? `${COPY.permissions.policyLocked}：${cell.lockReason ?? "此政策格不能修改。"}`
-    : cell.editable
+    : dirty
+      ? `${COPY.permissions.policyPending} · ${COPY.permissions.policyEditable}`
+      : cell.editable
       ? COPY.permissions.policyEditable
       : COPY.permissions.policyReadOnly;
+
+  const content = (
+    <>
+      <strong>{POLICY_ROLE_COPY[role]}</strong>
+      <span>
+        {value ? COPY.permissions.policyEnabled : COPY.permissions.policyDisabled}
+      </span>
+      <small>{state}</small>
+    </>
+  );
+  const className = `${styles.policyCell} ${cell.locked ? styles.lockedCell : ""}`;
+  if (cell.editable && onToggle) {
+    return (
+      <button
+        aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
+        aria-pressed={value}
+        className={className}
+        data-editable="true"
+        data-locked="false"
+        onClick={onToggle}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
     <div
       aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
-      className={`${styles.policyCell} ${cell.locked ? styles.lockedCell : ""}`}
+      className={className}
       data-editable={cell.editable ? "true" : "false"}
       data-locked={cell.locked ? "true" : "false"}
       role="group"
     >
-      <strong>{POLICY_ROLE_COPY[role]}</strong>
-      <span>
-        {cell.value
-          ? COPY.permissions.policyEnabled
-          : COPY.permissions.policyDisabled}
-      </span>
-      <small>{state}</small>
+      {content}
     </div>
   );
 }
 
 function PolicyCapabilityRow({
   capability,
+  draft,
+  onToggle,
 }: {
   capability: AccountPermissionPolicyCapability;
+  draft: PolicyDraft;
+  onToggle: (role: PermissionPolicyRoleKey, capability: string) => void;
 }) {
   return (
     <article className={styles.policyRow}>
@@ -153,16 +220,49 @@ function PolicyCapabilityRow({
         <code>{capability.key}</code>
       </div>
       <div className={styles.policyCells}>
-        {POLICY_ROLE_ORDER.map((role) => (
-          <PolicyCell capability={capability} key={role} role={role} />
-        ))}
+        {POLICY_ROLE_ORDER.map((role) => {
+          const key = draftKey(role, capability.key);
+          return (
+            <PolicyCell
+              capability={capability}
+              dirty={draft[key] !== capability.roles[role].value}
+              key={role}
+              onToggle={
+                capability.roles[role].editable
+                  ? () => onToggle(role, capability.key)
+                  : undefined
+              }
+              role={role}
+              value={draft[key] ?? capability.roles[role].value}
+            />
+          );
+        })}
       </div>
     </article>
   );
 }
 
-function PermissionPolicy({ data }: { data: AccountPermissionsView }) {
+function PermissionPolicy({
+  data,
+  draft,
+  saveState,
+  dirty,
+  onToggle,
+  onSave,
+  onReload,
+  conflictRevision,
+}: {
+  data: AccountPermissionsView;
+  draft: PolicyDraft;
+  saveState: PolicySaveState;
+  dirty: boolean;
+  onToggle: (role: PermissionPolicyRoleKey, capability: string) => void;
+  onSave: () => void;
+  onReload: () => void;
+  conflictRevision: number | null;
+}) {
   const groups = policyGroups(data.policy.capabilities);
+  const canEdit = data.policy.actor.canEdit;
   return (
     <section
       aria-labelledby="permissions-policy-title"
@@ -176,7 +276,7 @@ function PermissionPolicy({ data }: { data: AccountPermissionsView }) {
           <p className={styles.policyLead}>{COPY.permissions.policyLead}</p>
         </div>
         <span className={styles.revision}>
-          {COPY.permissions.policySynced} {data.policy.revision}。
+          {`${COPY.permissions.policySynced} ${data.policy.revision}。`}
         </span>
       </header>
 
@@ -197,6 +297,8 @@ function PermissionPolicy({ data }: { data: AccountPermissionsView }) {
                     <PolicyCapabilityRow
                       capability={capability}
                       key={capability.key}
+                      draft={draft}
+                      onToggle={onToggle}
                     />
                   ))}
                 </div>
@@ -210,15 +312,56 @@ function PermissionPolicy({ data }: { data: AccountPermissionsView }) {
           className={styles.reviewPanel}
           role="region"
         >
-          <h2>{COPY.permissions.policySummary}</h2>
+          <h2>
+            {saveState === "success"
+              ? COPY.permissions.policySaved
+              : saveState === "error"
+                ? COPY.permissions.policySaveError
+                : saveState === "conflict"
+                  ? COPY.permissions.policyConflict
+                  : dirty
+                    ? COPY.permissions.policyDirty
+                    : COPY.permissions.policySyncedTitle}
+          </h2>
           <p>
-            {data.policy.actor.canEdit
-              ? COPY.permissions.policyAdminEditable
-              : COPY.permissions.policyStaffReadOnly}
+            {!canEdit
+              ? COPY.permissions.policyStaffReadOnly
+              : saveState === "success"
+                ? COPY.permissions.policySavedHint
+                : saveState === "error"
+                  ? COPY.permissions.policySaveErrorHint
+                  : saveState === "conflict"
+                    ? COPY.permissions.policyConflictHint
+                    : dirty
+                      ? COPY.permissions.policyDirtyHint
+                      : COPY.permissions.policyAdminEditable}
           </p>
           <p className={styles.reviewNotice}>
-            {COPY.permissions.policyReadOnlyNotice}
+            {saveState === "conflict" && conflictRevision !== null
+              ? `${COPY.permissions.policyConflictRevision} ${conflictRevision}。${COPY.permissions.policyReloadHint}`
+              : COPY.permissions.policyReadOnlyNotice}
           </p>
+          {canEdit && dirty && (
+            <button
+              className={styles.saveButton}
+              disabled={saveState === "saving"}
+              onClick={onSave}
+              type="button"
+            >
+              {saveState === "saving"
+                ? COPY.permissions.policySaving
+                : COPY.permissions.policySave}
+            </button>
+          )}
+          {canEdit && saveState === "conflict" && (
+            <button
+              className={styles.reloadButton}
+              onClick={onReload}
+              type="button"
+            >
+              {COPY.permissions.policyReload}
+            </button>
+          )}
         </aside>
       </div>
     </section>
@@ -258,12 +401,120 @@ export function PermissionsPanel() {
     focusTarget: "#permissions-panel-state",
   }, [router]);
 
+  const [displayData, setDisplayData] = useState<AccountPermissionsView | null>(
+    null
+  );
+  const [draft, setDraft] = useState<PolicyDraft | null>(null);
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
+  const [saveState, setSaveState] = useState<PolicySaveState>("idle");
+  const [conflictRevision, setConflictRevision] = useState<number | null>(null);
+  const preserveDraftOnReload = useRef(false);
+
+  const fetchedData = state.kind === "ready" ? state.data : null;
+  const readyData = displayData ?? fetchedData;
+
+  useEffect(() => {
+    if (state.kind !== "ready" || displayData !== null) {
+      return;
+    }
+    const nextData = state.data;
+    setDraft((current) => {
+      if (current === null) {
+        setDraftRevision(nextData.policy.revision);
+        return policyDraftFromData(nextData);
+      }
+      const dirty = policyChanges(nextData, current).length > 0;
+      if (preserveDraftOnReload.current) {
+        preserveDraftOnReload.current = false;
+        setDraftRevision(nextData.policy.revision);
+        return current;
+      }
+      if (!dirty && draftRevision !== nextData.policy.revision) {
+        setDraftRevision(nextData.policy.revision);
+        return policyDraftFromData(nextData);
+      }
+      return current;
+    });
+  }, [displayData, draftRevision, state]);
+
+  const handleToggle = (
+    role: PermissionPolicyRoleKey,
+    capability: string
+  ) => {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const key = draftKey(role, capability);
+      return { ...current, [key]: !current[key] };
+    });
+    setSaveState("idle");
+    setConflictRevision(null);
+  };
+
+  const handleSave = async () => {
+    if (!readyData || !draft || !readyData.policy.actor.canEdit) {
+      return;
+    }
+    const changes = policyChanges(readyData, draft);
+    if (changes.length === 0) {
+      return;
+    }
+    setSaveState("saving");
+    setConflictRevision(null);
+    announce(COPY.permissions.policySaving);
+    try {
+      const result = await updateAccountPermissions(
+        {
+          baseRevision: draftRevision ?? readyData.policy.revision,
+          changes,
+        },
+        crypto.randomUUID()
+      );
+      setDisplayData(result);
+      setDraft(policyDraftFromData(result));
+      setDraftRevision(result.policy.revision);
+      setSaveState("success");
+      announce(COPY.permissions.policySaved);
+    } catch (error) {
+      if (
+        error instanceof RpcError &&
+        error.problem.code === "POLICY_REVISION_CONFLICT"
+      ) {
+        const extension = error.problem as typeof error.problem & {
+          currentRevision?: unknown;
+        };
+        setConflictRevision(
+          typeof extension.currentRevision === "number"
+            ? extension.currentRevision
+            : null
+        );
+        setSaveState("conflict");
+        announce(COPY.permissions.policyConflict);
+        return;
+      }
+      setSaveState("error");
+      announce(COPY.permissions.policySaveError);
+    }
+  };
+
+  const handleReload = () => {
+    preserveDraftOnReload.current = true;
+    setDisplayData(null);
+    setSaveState("idle");
+    setConflictRevision(null);
+    retry();
+  };
+
   useEffect(() => {
     void loadPermissions();
   }, [loadPermissions]);
 
-  const readyData = state.kind === "ready" ? state.data : null;
   const definitions = readyData ? roleDefinitions(readyData) : [];
+  const dirty =
+    readyData !== null && draft !== null
+      ? policyChanges(readyData, draft).length > 0
+      : false;
 
   return (
     <section
@@ -317,7 +568,7 @@ export function PermissionsPanel() {
         </section>
       )}
 
-      {readyData && (
+      {readyData && draft && (
         <>
           <section
             className={styles.section}
@@ -389,7 +640,16 @@ export function PermissionsPanel() {
             </ul>
           </section>
 
-          <PermissionPolicy data={readyData} />
+          <PermissionPolicy
+            conflictRevision={conflictRevision}
+            data={readyData}
+            draft={draft}
+            dirty={dirty}
+            onReload={handleReload}
+            onSave={() => void handleSave()}
+            onToggle={handleToggle}
+            saveState={saveState}
+          />
         </>
       )}
     </section>

@@ -550,6 +550,38 @@ export type AuditOutcome =
   | "DENIED"
   | "FAILED";
 
+export type PermissionPolicyGlobalRole = "Admin" | "Staff" | "Member";
+
+export interface PermissionPolicyDesiredValue {
+  role: PermissionPolicyGlobalRole;
+  capability: string;
+  value: boolean;
+}
+
+export interface PermissionPolicyMutationInput {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  base_revision: number;
+  desired: readonly PermissionPolicyDesiredValue[];
+  audit: AuditInput;
+}
+
+export interface PermissionPolicyMutationRecord {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  base_revision: number;
+  outcome: "PENDING" | "SUCCESS" | "CONFLICT";
+  resulting_revision: number | null;
+}
+
+export interface PermissionPolicyMutationResult {
+  outcome: "SUCCESS" | "CONFLICT";
+  resulting_revision: number;
+  created: boolean;
+}
+
 export interface WorkspaceStore {
   createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
   listDepartments: () => Promise<DepartmentRow[]>;
@@ -836,6 +868,12 @@ export interface WorkspaceStore {
     { role: string; capability: string }[]
   >;
   getPermissionPolicyRevision: () => Promise<number>;
+  findPermissionPolicyMutation: (
+    idempotencyKey: string
+  ) => Promise<PermissionPolicyMutationRecord | null>;
+  applyPermissionPolicyMutation: (
+    input: PermissionPolicyMutationInput
+  ) => Promise<PermissionPolicyMutationResult>;
 
   findProgramLeader: (
     programId: string,

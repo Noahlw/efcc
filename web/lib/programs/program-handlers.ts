@@ -26,6 +26,8 @@ import type {
   UpdateEventCommand,
   DepartmentView,
   UpdateScheduleRuleCommand,
+  PermissionPolicyChange,
+  PermissionPolicyMutationCommand,
 } from "./department-workspace";
 import { isIsoInstant } from "./iso-instant";
 import {
@@ -55,6 +57,9 @@ import {
   SelfDelegationError,
   SelfDepartmentManagerError,
   ProgramLeaderConflictError,
+  PermissionPolicyIdempotencyConflictError,
+  PermissionPolicyRevisionConflictError,
+  PermissionPolicySafetyViolationError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
@@ -242,6 +247,37 @@ function mapWorkspaceError(
   }
   if (error instanceof StaleEnrollmentRequestError) {
     return problem(409, "STALE", "Stale request", error.message, requestId);
+  }
+  if (error instanceof PermissionPolicyRevisionConflictError) {
+    return problem(
+      409,
+      "POLICY_REVISION_CONFLICT",
+      "Conflict",
+      error.message,
+      requestId,
+      {
+        currentRevision: error.currentRevision,
+        idempotent: error.idempotent,
+      }
+    );
+  }
+  if (error instanceof PermissionPolicyIdempotencyConflictError) {
+    return problem(
+      409,
+      "IDEMPOTENCY_CONFLICT",
+      "Conflict",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof PermissionPolicySafetyViolationError) {
+    return problem(
+      422,
+      "POLICY_SAFETY_VIOLATION",
+      "Validation failed",
+      error.message,
+      requestId
+    );
   }
   if (
     error instanceof InvalidProgramLifecycleError ||
@@ -440,6 +476,71 @@ async function parseJson<T>(request: Request): Promise<T | null> {
   }
 }
 
+function parsePermissionPolicyCommand(
+  body: unknown,
+  idempotencyKey: string
+): PermissionPolicyMutationCommand | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const record = body as Record<string, unknown>;
+  const rawRevision = record.baseRevision ?? record.revision;
+  if (
+    typeof rawRevision !== "number" ||
+    !Number.isInteger(rawRevision) ||
+    rawRevision < 1
+  ) {
+    return null;
+  }
+  if (!Array.isArray(record.changes) || record.changes.length === 0) {
+    return null;
+  }
+  if (record.changes.length > 39) {
+    return null;
+  }
+  const changes: PermissionPolicyChange[] = [];
+  for (const rawChange of record.changes) {
+    if (typeof rawChange !== "object" || rawChange === null) {
+      return null;
+    }
+    const change = rawChange as Record<string, unknown>;
+    const rawRole = change.role;
+    const role =
+      rawRole === "admin" || rawRole === "Admin"
+        ? "admin"
+        : rawRole === "staff" || rawRole === "Staff"
+          ? "staff"
+          : rawRole === "member" || rawRole === "Member"
+            ? "member"
+            : null;
+    const capability =
+      typeof change.capability === "string" ? change.capability.trim() : "";
+    const value = change.value ?? change.enabled;
+    if (role === null || !capability || typeof value !== "boolean") {
+      return null;
+    }
+    changes.push({
+      role,
+      capability: capability as PermissionPolicyChange["capability"],
+      value,
+    });
+  }
+  const canonicalChanges = [...changes].sort((left, right) =>
+    `${left.role}:${left.capability}:${left.value ? 1 : 0}`.localeCompare(
+      `${right.role}:${right.capability}:${right.value ? 1 : 0}`
+    )
+  );
+  return {
+    baseRevision: rawRevision,
+    changes,
+    idempotencyKey,
+    requestFingerprint: JSON.stringify({
+      baseRevision: rawRevision,
+      changes: canonicalChanges,
+    }),
+  };
+}
+
 /** POST /api/v1/programs/departments */
 export async function handleCreateDepartment(
   request: Request,
@@ -593,6 +694,51 @@ export async function handleGetAccountPermissions(
       ctxFrom(auth.account)
     );
     return jsonResponse(200, permissions, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/account-permissions — Admin-only atomic write. */
+export async function handleUpdateAccountPermissions(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const rawKey = request.headers.get("Idempotency-Key");
+  const idempotencyKey = rawKey?.trim() ?? "";
+  if (!idempotencyKey || idempotencyKey.length > 200) {
+    return validation(
+      requestId,
+      "Idempotency-Key header is required for Permission Policy changes."
+    );
+  }
+  const body = await parseJson<unknown>(request);
+  const command = parsePermissionPolicyCommand(body, idempotencyKey);
+  if (!command) {
+    return validation(
+      requestId,
+      "baseRevision and at least one valid Permission Policy change are required."
+    );
+  }
+
+  const { workspace } = await getModule(env);
+  try {
+    const result = await workspace.updateAccountPermissions(
+      ctxFrom(auth.account),
+      command,
+      idempotencyKey
+    );
+    return jsonResponse(200, result, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
