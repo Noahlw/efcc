@@ -15,24 +15,25 @@
 | #452 S4-03 capability-backed Registration Approval | `151d3f6` | integrated |
 | #453 S4-04 Permission Policy read | `aab7ea53` | integrated |
 | #454 S4-05 atomic Permission Policy write | `600c8387` | integrated |
+| #455 S4-06 integration/readiness | `c18cb0c` | integrated conditionally |
 
-The post-review repair batch is intentionally kept separate until the final
-review confirms the bounded Account Directory, role-gate, policy-summary,
-idempotency-audit, and responsive-layout corrections.
+The post-review repair commits `c45bdff2`, `a134f4f8`, and `c18cb0c` close the
+bounded Account Directory, role-gate, policy-summary, idempotency-audit,
+responsive-layout, filter-only, and direct-detail recovery findings.
 
 ## Deterministic gate results
 
 - Web typecheck: PASS
-- Component suite: PASS — 47 files / 551 tests
-- Focused S4 Worker evidence: PASS — 69 tests across 5 files
-- Focused S4 component evidence: PASS — 14 tests
+- Component suite: PASS — 47 files / 554 tests
+- Focused S4 Worker evidence: PASS — 71 tests across 5 files
+- Focused S4 component evidence: PASS — 27 tests across 3 files
 - Production build: PASS — 18 static routes
-- Final Impeccable detector: PASS — zero findings on Account Directory and Permission Policy targets
+- Final Impeccable detector: PASS — zero findings on Account Directory, Hub, and Permission Policy targets
 - `git diff --check`: PASS on the repair working tree
 
 ## Full Worker suite
 
-`pnpm --dir web test`: **472/473 tests passed** across 30 passing files.
+`pnpm --dir web test`: **474/475 tests passed** across 30 passing files.
 
 The remaining failure is not S4 behavior: the existing EVT-02.1 recurring preview assertion expects a `CANCEL` skip reason but receives `null` (`web/lib/programs/programs.test.ts:3308`).
 

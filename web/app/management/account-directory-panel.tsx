@@ -105,12 +105,10 @@ export const AccountDirectoryPanel = () => {
     data: null,
   });
   const [detailRetryToken, setDetailRetryToken] = useState(0);
+  const hasFilters = Boolean(role || status || department.trim());
 
   useEffect(() => {
     const normalizedQuery = query.trim();
-    const hasFilters = Boolean(
-      role || status || department.trim()
-    );
     let current = true;
     if (normalizedQuery.length < MIN_QUERY_LENGTH && !hasFilters) {
       setState({ kind: "idle", data: null });
@@ -296,7 +294,7 @@ export const AccountDirectoryPanel = () => {
   const isReady = state.kind === "ready";
   const showEmpty =
     isReady &&
-    query.trim().length >= MIN_QUERY_LENGTH &&
+    (query.trim().length >= MIN_QUERY_LENGTH || hasFilters) &&
     state.data.accounts.length === 0;
   const hasResults = isReady && state.data.accounts.length > 0;
   const showWorkspace = Boolean(selectedId) || hasResults;

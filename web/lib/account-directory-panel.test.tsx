@@ -131,6 +131,20 @@ describe(AccountDirectoryPanel, () => {
     expect(requestedUrl).toContain("department=");
   });
 
+  test("announces a no-match state for a filter-only search", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response([]))
+    );
+    render(<AccountDirectoryPanel />);
+
+    await user.selectOptions(
+      screen.getByLabelText(ACCOUNTS.roleLabel),
+      "Staff"
+    );
+    expect(await screen.findByText(ACCOUNTS.noResults)).toBeTruthy();
+  });
+
   test("loads a bookmarked Account Detail without a prior list search", async () => {
     mocks.searchParams = new URLSearchParams(
       "module=accounts&account=AD-001"
