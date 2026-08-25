@@ -353,4 +353,41 @@ describe("087-03: Account Permissions matrix", () => {
     assert.strictEqual(body.status, 403);
     assert.strictEqual(body.requestId, response.headers.get("X-Request-Id"));
   });
+
+  test("S4 seeds the additive 13-capability role policy", async () => {
+    const rows = await testDb()
+      .prepare(
+        "SELECT role, capability FROM role_capabilities ORDER BY role, capability"
+      )
+      .all<{ role: string; capability: string }>();
+    const actual = rows.results.map((row) => `${row.role}:${row.capability}`);
+    const expected = [
+      "Admin:account.directory.read",
+      "Admin:account.permissions.read",
+      "Admin:account.permissions.write",
+      "Admin:department.manage",
+      "Admin:department.manager.assign",
+      "Admin:department.module.configure",
+      "Admin:department.publish",
+      "Admin:home.publish",
+      "Admin:program.enroll",
+      "Admin:program.leader.assign",
+      "Admin:program.manage",
+      "Admin:program.publish",
+      "Admin:registration.approval.manage",
+      "Staff:account.directory.read",
+      "Staff:account.permissions.read",
+      "Staff:department.manage",
+      "Staff:department.manager.assign",
+      "Staff:department.module.configure",
+      "Staff:department.publish",
+      "Staff:program.enroll",
+      "Staff:program.leader.assign",
+      "Staff:program.manage",
+      "Staff:program.publish",
+      "Staff:registration.approval.manage",
+      "Member:program.enroll",
+    ];
+    assert.deepStrictEqual([...actual].sort(), [...expected].sort());
+  });
 });

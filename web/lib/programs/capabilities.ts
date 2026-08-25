@@ -30,17 +30,44 @@ export const CAPABILITY = {
   PROGRAM_PUBLISH: PROGRAM_CAPABILITY.PUBLISH,
   PROGRAM_ENROLL: PROGRAM_CAPABILITY.ENROLL,
   PROGRAM_LEADER_ASSIGN: PROGRAM_CAPABILITY.LEADER_ASSIGN,
-  // Home Content CMS publish power (087-05). Role-policy seeded for Admin in
-  // migration 0010 (`role_capabilities`); not scope-expandable via
-  // department/program grants (Home is church-wide, not department-scoped).
-  HOME_PUBLISH: "home.publish",
   // Account Permissions matrix read (087-03 #320). Role-policy seeded for
   // Admin + Staff in migration 0013; Department Manager is an effective
   // scoped profile with no role row, so DM-only actors are denied server-side.
   ACCOUNT_PERMISSIONS_READ: "account.permissions.read",
+  // S4 Account Directory read and Registration Approval decision powers are
+  // global identity-management capabilities, not Department/Program grants.
+  ACCOUNT_DIRECTORY_READ: "account.directory.read",
+  REGISTRATION_APPROVAL_MANAGE: "registration.approval.manage",
+  // Only Admin may change the global authorization policy.
+  ACCOUNT_PERMISSIONS_WRITE: "account.permissions.write",
+  // Home Content CMS publish power (087-05). Home is church-wide, not
+  // department-scoped, so this remains an Admin-only capability.
+  HOME_PUBLISH: "home.publish",
 } as const;
 
 export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];
+
+export type GlobalRole = "Admin" | "Staff" | "Member";
+
+export const GLOBAL_ROLES = ["Admin", "Staff", "Member"] as const satisfies readonly GlobalRole[];
+
+/**
+ * S4's additive default policy. Every role retains the participant baseline;
+ * Staff receives normal operational authority, while Admin-only powers change
+ * church-wide content or the authorization system itself.
+ */
+export const ROLE_CAPABILITY_DEFAULTS: Record<
+  GlobalRole,
+  readonly Capability[]
+> = {
+  Admin: Object.values(CAPABILITY),
+  Staff: Object.values(CAPABILITY).filter(
+    (capability) =>
+      capability !== CAPABILITY.ACCOUNT_PERMISSIONS_WRITE &&
+      capability !== CAPABILITY.HOME_PUBLISH
+  ),
+  Member: [CAPABILITY.PROGRAM_ENROLL],
+};
 
 /**
  * Department-level capability flags as served to the client and used by the
