@@ -1813,6 +1813,20 @@ export class DepartmentWorkspace {
     );
     if (existing) {
       if (existing.request_fingerprint !== command.requestFingerprint) {
+        await this.audit(
+          ctx,
+          "PERMISSION_POLICY_UPDATE",
+          "permission_policy",
+          "global",
+          "CONFLICT",
+          null,
+          {
+            baseRevision: command.baseRevision,
+            changes: command.changes,
+            idempotencyKey: command.idempotencyKey,
+          },
+          correlationId
+        );
         throw new PermissionPolicyIdempotencyConflictError();
       }
       if (existing.outcome === "CONFLICT") {
@@ -1990,11 +2004,6 @@ export class DepartmentWorkspace {
     const hasDepartmentManageScope = departmentScopes.some(
       (department) => department.capabilities.manage
     );
-    // Registration approvals and account permissions are Admin/Staff role
-    // surfaces (spec 087 US 4/9); Members never see them, grant or not.
-    const isAdminOrStaff =
-      ctx.actorRole === ROLE.ADMIN || ctx.actorRole === ROLE.STAFF;
-
     // Attendance row: effective program.manage scope over a program whose
     // department runs the attendance module (086-04 gate family, same effective
     // scope the manageable-events chooser resolves for the actor).
@@ -2037,15 +2046,26 @@ export class DepartmentWorkspace {
       CAPABILITY.ACCOUNT_DIRECTORY_READ,
       null
     );
+    const canManageRegistrationApprovals = await this.authorizer.can(
+      ctx,
+      CAPABILITY.REGISTRATION_APPROVAL_MANAGE,
+      null
+    );
+    const canReadPermissionPolicy = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_PERMISSIONS_READ,
+      null
+    );
 
     const granted = new Set<string>();
     if (canReadAccountDirectory) {
       granted.add("accounts");
     }
-    if (isAdminOrStaff) {
+    if (canManageRegistrationApprovals) {
       granted.add("approvals");
+    }
+    if (canReadPermissionPolicy) {
       granted.add("permissions");
-      granted.add("members");
     }
     if (hasDepartmentManageScope) {
       granted.add("departments");
@@ -4313,6 +4333,31 @@ export class DepartmentWorkspace {
       }
     }
     return { accounts: [...accounts.values()], summary };
+  }
+
+  async getAccountDirectoryDetail(
+    ctx: AuthorizationContext,
+    userId: string
+  ): Promise<AccountDirectoryMember> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const rows = await this.store.getAccountDirectoryAccount(userId);
+    const first = rows[0];
+    if (!first) {
+      throw new WorkspaceNotFoundError("account", userId);
+    }
+    return {
+      userId: first.user_id,
+      name: first.name,
+      username: first.username,
+      phone: first.phone,
+      role: first.role,
+      status: first.account_status,
+      departments: rows.flatMap((row) =>
+        row.department_id !== null && row.department_name !== null
+          ? [{ id: row.department_id, name: row.department_name }]
+          : []
+      ),
+    };
   }
 
   getEnrollment(

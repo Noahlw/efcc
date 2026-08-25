@@ -132,6 +132,32 @@ describe("S4-02: Account Directory contract", () => {
       body.data.accounts.some((account) => account.status === "Pending")
     );
     assert.strictEqual(body.data.accounts[0]?.username, "ad-admin");
+
+    const detail = await worker.fetch(
+      request("/api/v1/programs/accounts/AD004", adminAccess),
+      testEnv()
+    );
+    assert.strictEqual(detail.status, 200);
+    const detailBody = (await detail.json()) as {
+      data: {
+        userId: string;
+        name: string;
+        username: string;
+        phone: string | null;
+        role: string;
+        status: string;
+        departments: { id: string; name: string }[];
+      };
+    };
+    assert.deepStrictEqual(detailBody.data, {
+      userId: "AD004",
+      name: "Directory Pending",
+      username: "ad-pending",
+      phone: null,
+      role: "Member",
+      status: "Pending",
+      departments: [],
+    });
   });
 
   test("Staff can filter the Account Directory by role and status", async () => {

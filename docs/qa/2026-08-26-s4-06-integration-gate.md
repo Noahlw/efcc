@@ -1,9 +1,9 @@
 # S4-06 Management Access Integration Gate
 
-**Date:** 2026-08-26  
-**Base:** `origin/main` `83fafdb8`  
-**Coordinator branch:** `feat/s4-management-access`  
-**Prototype authority:** `prototype/s4-management-access` `653a5318`  
+**Date:** 2026-08-26
+**Base:** `origin/main` `83fafdb8`
+**Coordinator branch:** `feat/s4-management-access`
+**Prototype authority:** `prototype/s4-management-access` `653a5318`
 **Spec:** [#449](https://github.com/Noahlw/efcc/issues/449)
 
 ## Implemented commits
@@ -16,24 +16,27 @@
 | #453 S4-04 Permission Policy read | `aab7ea53` | integrated |
 | #454 S4-05 atomic Permission Policy write | `600c8387` | integrated |
 
+The post-review repair batch is intentionally kept separate until the final
+review confirms the bounded Account Directory, role-gate, policy-summary,
+idempotency-audit, and responsive-layout corrections.
+
 ## Deterministic gate results
 
 - Web typecheck: PASS
 - Component suite: PASS — 47 files / 551 tests
-- Focused S4 Worker evidence: PASS — 63 tests
-- Focused S4 component evidence: PASS — 13 tests
+- Focused S4 Worker evidence: PASS — 69 tests across 5 files
+- Focused S4 component evidence: PASS — 14 tests
 - Production build: PASS — 18 static routes
-- Final Impeccable detector: PASS — no findings on Account Directory, Approval, or Permission Policy surfaces
-- `git diff --check`: PASS before this report commit
+- Final Impeccable detector: PASS — zero findings on Account Directory and Permission Policy targets
+- `git diff --check`: PASS on the repair working tree
 
 ## Full Worker suite
 
-`pnpm --dir web test`: **470/472 tests passed** across 30 passing files.
+`pnpm --dir web test`: **471/472 tests passed** across 30 passing files.
 
-The two failures are not S4 behavior:
+The remaining failure is not S4 behavior: the existing EVT-02.1 recurring preview assertion expects a `CANCEL` skip reason but receives `null` (`web/lib/programs/programs.test.ts:3308`).
 
-1. Existing EVT-02.1 recurring preview assertion expects a `CANCEL` skip reason but receives `null` (`web/lib/programs/programs.test.ts:3308`).
-2. The old Admin-without-`program.enroll` assertion was contradicted by approved S4-F01. It was updated to assert the new Admin participant baseline and now passes.
+The old Admin-without-`program.enroll` assertion was contradicted by approved S4-F01. It was updated to assert the new Admin participant baseline and now passes.
 
 The remaining EVT-02.1 failure predates S4 and is outside #450–#455 scope; it must not be silently changed in this gate.
 
@@ -74,7 +77,7 @@ The selected prototype proved 80/80 states across 320px, 390px, 800px, and 1440p
 
 - P0: none found.
 - P1: none found in focused S4 seams.
-- P2: one inherited EVT-02.1 preview failure; outside S4 scope and requires its owning ticket.
+- P2: one inherited EVT-02.1 preview failure; outside S4 scope and requires its owning ticket. No S4 P2 remains in the bounded repair scope.
 - P3: none recorded after the bounded Impeccable pass.
 
 ## Verdict

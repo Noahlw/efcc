@@ -834,6 +834,7 @@ export async function handleSearchAccountDirectory(
     : 20;
   const rawRole = url.searchParams.get("role");
   const rawStatus = url.searchParams.get("status");
+  const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
   const roles = ["Admin", "Staff", "Member"] as const;
   const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
   if (rawRole !== null && !roles.includes(rawRole as (typeof roles)[number])) {
@@ -845,6 +846,9 @@ export async function handleSearchAccountDirectory(
   ) {
     return validation(requestId, "Unknown account status filter.");
   }
+  if (rawDepartment !== undefined && rawDepartment.length > 80) {
+    return validation(requestId, "Department filter is too long.");
+  }
   const { workspace } = await getModule(env);
   try {
     const directory = await workspace.searchAccountDirectory(
@@ -852,6 +856,7 @@ export async function handleSearchAccountDirectory(
       query,
       limit,
       {
+        department: rawDepartment,
         role: rawRole === null ? undefined : (rawRole as (typeof roles)[number]),
         status:
           rawStatus === null
@@ -861,6 +866,36 @@ export async function handleSearchAccountDirectory(
     );
     return jsonResponse(200, directory, requestId);
   } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/accounts/:id — Account Directory detail. */
+export async function handleGetAccountDirectoryDetail(
+  request: Request,
+  env: ProgramEnv,
+  accountId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const account = await workspace.getAccountDirectoryDetail(
+      ctxFrom(auth.account),
+      accountId
+    );
+    return jsonResponse(200, account, requestId);
+  } catch (error) {
+    if (error instanceof WorkspaceNotFoundError) {
+      return problem(404, "NOT_FOUND", "Not found", "Account not found.", requestId);
+    }
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
       return mapped;

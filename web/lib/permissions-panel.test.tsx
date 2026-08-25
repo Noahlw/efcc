@@ -474,6 +474,10 @@ describe("PermissionsPanel", () => {
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText(PERMISSIONS.policyDirty)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: PERMISSIONS.policyChangesTitle })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/管理員 · ✓ → 停用/u)).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: PERMISSIONS.policySave })

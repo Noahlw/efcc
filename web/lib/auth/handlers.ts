@@ -299,6 +299,15 @@ async function requireCapability(
   if (resolved instanceof Response) {
     return resolved;
   }
+  if (resolved.account.account_status !== "Active") {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Account is not active.",
+      requestId
+    );
+  }
   const granted = await env.DB.prepare(
     "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ? LIMIT 1"
   )

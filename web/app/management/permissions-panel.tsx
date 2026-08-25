@@ -263,6 +263,7 @@ function PermissionPolicy({
 }) {
   const groups = policyGroups(data.policy.capabilities);
   const canEdit = data.policy.actor.canEdit;
+  const changes = policyChanges(data, draft);
   return (
     <section
       aria-labelledby="permissions-policy-title"
@@ -341,6 +342,27 @@ function PermissionPolicy({
               ? `${COPY.permissions.policyConflictRevision} ${conflictRevision}。${COPY.permissions.policyReloadHint}`
               : COPY.permissions.policyReadOnlyNotice}
           </p>
+          <div className={styles.changeSummary}>
+            <h3>{COPY.permissions.policyChangesTitle}</h3>
+            {changes.length > 0 ? (
+              <ul>
+                {changes.map((change) => {
+                  const capability = data.policy.capabilities.find(
+                    (item) => item.key === change.capability
+                  );
+                  const previous = capability?.roles[change.role].value ?? false;
+                  return (
+                    <li key={`${change.role}:${change.capability}`}>
+                      <strong>{capability?.label ?? change.capability}</strong>
+                      <span>
+                        {POLICY_ROLE_COPY[change.role]} · {previous ? "✓" : "—"} → {change.value ? COPY.permissions.policyChangeEnabled : COPY.permissions.policyChangeDisabled}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
           {canEdit && dirty && (
             <button
               className={styles.saveButton}

@@ -1179,6 +1179,32 @@ describe("AUTH-06: registrations approve/reject", () => {
         .run();
     }
   });
+
+  test("suspended Staff cannot use registration approval capability", async () => {
+    const staffAccess = await accessCookieFor("eve", "eve-secret");
+    await testDb()
+      .prepare("UPDATE accounts SET account_status = 'Suspended' WHERE user_id = 'U005'")
+      .run();
+    try {
+      const res = await worker.fetch(
+        authRequest("/api/v1/auth/registrations", {
+          method: "GET",
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${staffAccess}`,
+          },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 403);
+      const body = await problemOf(res);
+      assert.strictEqual(body.code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare("UPDATE accounts SET account_status = 'Active' WHERE user_id = 'U005'")
+        .run();
+    }
+  });
 });
 
 describe("087-02 (#319): registration detail read + required rejection note", () => {

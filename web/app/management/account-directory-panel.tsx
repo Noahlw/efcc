@@ -6,7 +6,10 @@ import { useEffect, useRef, useState } from "react";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { searchAccountDirectory } from "@/lib/programs/program-api";
+import {
+  getAccountDirectoryDetail,
+  searchAccountDirectory,
+} from "@/lib/programs/program-api";
 import type {
   AccountDirectoryMember,
   AccountDirectoryView,
@@ -26,6 +29,12 @@ type DirectoryState =
   | { kind: "loading"; data: null }
   | { kind: "ready"; data: AccountDirectoryView }
   | { kind: "error"; message: string; data: null };
+
+type DetailState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; account: AccountDirectoryMember }
+  | { kind: "error"; message: string };
 
 function roleLabel(role: AccountDirectoryMember["role"]): string {
   if (role === "Admin") {
@@ -54,6 +63,7 @@ function statusClass(status: AccountDirectoryMember["status"]): string {
   return status.toLowerCase();
 }
 
+// oxlint-disable-next-line eslint/complexity -- This component owns the complete read-only directory state machine.
 export const AccountDirectoryPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,6 +76,9 @@ export const AccountDirectoryPanel = () => {
   const [status, setStatus] = useState<AccountDirectoryMember["status"] | "">(
     (searchParams.get("status") as AccountDirectoryMember["status"] | null) ??
       ""
+  );
+  const [department, setDepartment] = useState(
+    searchParams.get("department") ?? ""
   );
   const [retryToken, setRetryToken] = useState(0);
   const [state, setState] = useState<DirectoryState>({
@@ -88,6 +101,7 @@ export const AccountDirectoryPanel = () => {
     void (async () => {
       try {
         const data = await searchAccountDirectory(normalizedQuery, {
+          department: department || undefined,
           limit: SEARCH_LIMIT,
           role: role || undefined,
           status: status || undefined,
@@ -125,7 +139,7 @@ export const AccountDirectoryPanel = () => {
     return () => {
       current = false;
     };
-  }, [query, retryToken, role, router, status]);
+  }, [department, query, retryToken, role, router, status]);
 
   useEffect(() => {
     if (state.kind !== "error" || !errorFocusPending.current) {
@@ -136,11 +150,41 @@ export const AccountDirectoryPanel = () => {
   }, [state.kind]);
 
   const selectedId = searchParams.get("account");
-  const selected =
-    state.kind === "ready"
-      ? (state.data.accounts.find((account) => account.userId === selectedId) ??
-        null)
-      : null;
+  const [detailState, setDetailState] = useState<DetailState>({ kind: "idle" });
+
+  useEffect(() => {
+    let current = true;
+    if (!selectedId) {
+      setDetailState({ kind: "idle" });
+      return () => {
+        current = false;
+      };
+    }
+    setDetailState({ kind: "loading" });
+    void (async () => {
+      try {
+        const account = await getAccountDirectoryDetail(selectedId);
+        if (current) {
+          setDetailState({ kind: "ready", account });
+        }
+      } catch (error: unknown) {
+        if (!current) {
+          return;
+        }
+        const forbidden =
+          error instanceof RpcError && error.problem.code === "FORBIDDEN";
+        setDetailState({
+          kind: "error",
+          message: forbidden ? COPY_ACCOUNT.forbidden : "找不到此帳戶。",
+        });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [selectedId]);
+
+  const selected = detailState.kind === "ready" ? detailState.account : null;
 
   useEffect(() => {
     if (selected) {
@@ -163,6 +207,26 @@ export const AccountDirectoryPanel = () => {
     setStatus(nextStatus);
   };
 
+  const updateDepartment = (value: string) => {
+    setDepartment(value);
+  };
+
+  const returnParams = new URLSearchParams({ module: "accounts" });
+  if (query.trim()) {
+    returnParams.set("q", query.trim());
+  }
+  if (role) {
+    returnParams.set("role", role);
+  }
+  if (status) {
+    returnParams.set("status", status);
+  }
+  if (department.trim()) {
+    returnParams.set("department", department.trim());
+  }
+  const returnHref =
+    searchParams.get("return") ?? `/management?${returnParams}`;
+
   const handleSelect = (account: AccountDirectoryMember) => {
     const params = new URLSearchParams({
       module: "accounts",
@@ -174,8 +238,12 @@ export const AccountDirectoryPanel = () => {
     if (status) {
       params.set("status", status);
     }
+    if (department.trim()) {
+      params.set("department", department.trim());
+    }
     params.set("account", account.userId);
-    router.replace(`/management?${params.toString()}`);
+    params.set("return", returnHref);
+    router.push(`/management?${params.toString()}`);
     announce(account.name);
   };
 
@@ -185,6 +253,9 @@ export const AccountDirectoryPanel = () => {
     isReady &&
     query.trim().length >= MIN_QUERY_LENGTH &&
     state.data.accounts.length === 0;
+  const hasResults = isReady && state.data.accounts.length > 0;
+  const showWorkspace = Boolean(selectedId) || hasResults;
+  const detailOnly = Boolean(selectedId) && !hasResults;
 
   return (
     <section
@@ -193,7 +264,7 @@ export const AccountDirectoryPanel = () => {
       className={styles.page}
     >
       <header className={styles.header}>
-        <SettingsBackLink href="/management" label={COPY_ACCOUNT.back} />
+        <SettingsBackLink href={returnHref} label={COPY_ACCOUNT.back} />
         <h1 className={styles.title} id="account-directory-title" tabIndex={-1}>
           {COPY_ACCOUNT.title}
         </h1>
@@ -253,6 +324,19 @@ export const AccountDirectoryPanel = () => {
             <option value="Deactivated">{COPY_ACCOUNT.deactivated}</option>
           </select>
         </label>
+        <label className={styles.field} htmlFor="account-directory-department">
+          <span className={styles.fieldLabel}>
+            {COPY_ACCOUNT.departmentLabel}
+          </span>
+          <input
+            className={styles.input}
+            id="account-directory-department"
+            onChange={(event) => updateDepartment(event.target.value)}
+            placeholder={COPY_ACCOUNT.departmentPlaceholder}
+            type="search"
+            value={department}
+          />
+        </label>
       </div>
 
       {isLoading && (
@@ -296,67 +380,84 @@ export const AccountDirectoryPanel = () => {
         </output>
       )}
 
-      {isReady && state.data.accounts.length > 0 && (
-        <div className={styles.workspace}>
-          <section
-            aria-labelledby="account-directory-results-title"
-            className={styles.resultsColumn}
-          >
-            <div className={styles.metrics}>
-              <div>
-                <strong>{state.data.summary.total}</strong>
-                <span>{COPY_ACCOUNT.total}</span>
-              </div>
-              <div>
-                <strong>{state.data.summary.active}</strong>
-                <span>{COPY_ACCOUNT.activeCount}</span>
-              </div>
-              <div>
-                <strong>{state.data.summary.elevated}</strong>
-                <span>{COPY_ACCOUNT.elevated}</span>
-              </div>
-              <div>
-                <strong>{state.data.summary.pending}</strong>
-                <span>{COPY_ACCOUNT.pendingCount}</span>
-              </div>
-            </div>
-            <h2
-              className={styles.resultsTitle}
-              id="account-directory-results-title"
+      {showWorkspace && (
+        <div
+          className={`${styles.workspace} ${detailOnly ? styles.detailOnly : ""}`}
+        >
+          {hasResults && (
+            <section
+              aria-labelledby="account-directory-results-title"
+              className={styles.resultsColumn}
             >
-              {COPY_ACCOUNT.resultsTitle}
-            </h2>
-            <ul className={styles.results}>
-              {state.data.accounts.map((account) => (
-                <li key={account.userId}>
-                  <button
-                    aria-pressed={selected?.userId === account.userId}
-                    className={styles.resultButton}
-                    onClick={() => handleSelect(account)}
-                    type="button"
-                  >
-                    <span className={styles.avatar} aria-hidden="true">
-                      {account.name.slice(0, 1)}
-                    </span>
-                    <span className={styles.resultCopy}>
-                      <strong>{account.name}</strong>
-                      <small>
-                        {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
-                        {roleLabel(account.role)}
-                      </small>
-                    </span>
-                    <span
-                      className={`${styles.status} ${styles[statusClass(account.status)]}`}
+              <div className={styles.metrics}>
+                <div>
+                  <strong>{state.data.summary.total}</strong>
+                  <span>{COPY_ACCOUNT.total}</span>
+                </div>
+                <div>
+                  <strong>{state.data.summary.active}</strong>
+                  <span>{COPY_ACCOUNT.activeCount}</span>
+                </div>
+                <div>
+                  <strong>{state.data.summary.elevated}</strong>
+                  <span>{COPY_ACCOUNT.elevated}</span>
+                </div>
+                <div>
+                  <strong>{state.data.summary.pending}</strong>
+                  <span>{COPY_ACCOUNT.pendingCount}</span>
+                </div>
+              </div>
+              <h2
+                className={styles.resultsTitle}
+                id="account-directory-results-title"
+              >
+                {COPY_ACCOUNT.resultsTitle}
+              </h2>
+              <ul className={styles.results}>
+                {state.data.accounts.map((account) => (
+                  <li key={account.userId}>
+                    <button
+                      aria-pressed={selected?.userId === account.userId}
+                      className={styles.resultButton}
+                      onClick={() => handleSelect(account)}
+                      type="button"
                     >
-                      {statusLabel(account.status)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+                      <span className={styles.avatar} aria-hidden="true">
+                        {account.name.slice(0, 1)}
+                      </span>
+                      <span className={styles.resultCopy}>
+                        <strong>{account.name}</strong>
+                        <small>
+                          {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
+                          {roleLabel(account.role)}
+                        </small>
+                      </span>
+                      <span
+                        className={`${styles.status} ${styles[statusClass(account.status)]}`}
+                      >
+                        {statusLabel(account.status)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-          {selected ? (
+          {detailState.kind === "loading" ? (
+            <output
+              aria-busy="true"
+              className={styles.detailState}
+              aria-live="polite"
+            >
+              {COPY_ACCOUNT.loading}
+            </output>
+          ) : detailState.kind === "error" ? (
+            <section className={styles.detailError} role="alert">
+              <strong>{detailState.message}</strong>
+              <p>請返回名錄，再重新搜尋此帳戶。</p>
+            </section>
+          ) : selected ? (
             <article
               aria-labelledby="account-directory-detail-title"
               className={styles.detail}
@@ -391,7 +492,7 @@ export const AccountDirectoryPanel = () => {
                   <dd>
                     {selected.departments.length > 0
                       ? selected.departments
-                          .map((department) => department.name)
+                          .map((departmentRow) => departmentRow.name)
                           .join("、")
                       : COPY_ACCOUNT.noDepartments}
                   </dd>

@@ -557,6 +557,8 @@ export interface AccountDirectoryView {
   summary: AccountDirectorySummary;
 }
 
+export type AccountDirectoryDetail = AccountDirectoryMember;
+
 export interface GenerateResult {
   run_id: string;
   plan_id: string;
@@ -1161,6 +1163,7 @@ export function searchManagementMembers(
 export function searchAccountDirectory(
   query: string,
   options?: {
+    department?: string;
     limit?: number;
     role?: AccountDirectoryMember["role"];
     status?: AccountDirectoryMember["status"];
@@ -1170,6 +1173,9 @@ export function searchAccountDirectory(
   if (options?.limit !== undefined) {
     params.set("limit", String(options.limit));
   }
+  if (options?.department !== undefined) {
+    params.set("department", options.department);
+  }
   if (options?.role !== undefined) {
     params.set("role", options.role);
   }
@@ -1177,6 +1183,16 @@ export function searchAccountDirectory(
     params.set("status", options.status);
   }
   return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts/:id — authorized Account Detail. */
+export function getAccountDirectoryDetail(
+  userId: string
+): Promise<AccountDirectoryDetail> {
+  return programsFetch(
+    `/api/v1/programs/accounts/${encodeURIComponent(userId)}`,
+    "GET"
+  );
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */

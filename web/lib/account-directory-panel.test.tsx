@@ -18,6 +18,7 @@ import { AccountDirectoryPanel } from "@/app/management/account-directory-panel"
 import { COPY } from "./copy";
 
 const mocks = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
   router: {
     back: vi.fn<() => void>(),
     forward: vi.fn<() => void>(),
@@ -31,7 +32,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.router,
   useSearchParams: () =>
-    new URLSearchParams() as unknown as ReadonlyURLSearchParams,
+    mocks.searchParams as unknown as ReadonlyURLSearchParams,
 }));
 
 const server = setupServer();
@@ -83,6 +84,7 @@ describe(AccountDirectoryPanel, () => {
   afterEach(() => {
     cleanup();
     server.resetHandlers();
+    mocks.searchParams = new URLSearchParams();
     vi.clearAllMocks();
   });
 
@@ -98,7 +100,7 @@ describe(AccountDirectoryPanel, () => {
     expect(within(row).getByText(/同工/u)).toBeTruthy();
     expect(screen.getByText(String(ROWS.length))).toBeTruthy();
     await user.click(row);
-    expect(mocks.router.replace).toHaveBeenCalledWith(
+    expect(mocks.router.push).toHaveBeenCalledWith(
       expect.stringContaining("account=AD-001")
     );
   });
@@ -123,8 +125,30 @@ describe(AccountDirectoryPanel, () => {
       screen.getByLabelText(ACCOUNTS.statusLabel),
       "Active"
     );
+    await user.type(screen.getByLabelText(ACCOUNTS.departmentLabel), "培育部");
     expect(requestedUrl).toContain("role=Staff");
     expect(requestedUrl).toContain("status=Active");
+    expect(requestedUrl).toContain("department=");
+  });
+
+  test("loads a bookmarked Account Detail without a prior list search", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=AD-001"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(
+      await screen.findByRole("heading", { name: ROWS[0].name })
+    ).toBeTruthy();
+    expect(screen.getByText(ACCOUNTS.detailReadOnly)).toBeTruthy();
   });
 
   test("renders recoverable error and retry", async () => {

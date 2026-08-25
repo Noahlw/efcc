@@ -143,6 +143,7 @@ export interface ManagementMemberSearchRow {
 }
 
 export interface AccountDirectorySearchFilters {
+  department?: string;
   role?: "Admin" | "Staff" | "Member";
   status?: "Pending" | "Active" | "Suspended" | "Deactivated";
 }
@@ -624,6 +625,9 @@ export interface WorkspaceStore {
     query: string,
     limit: number,
     filters?: AccountDirectorySearchFilters
+  ) => Promise<ManagementMemberSearchRow[]>;
+  getAccountDirectoryAccount: (
+    userId: string
   ) => Promise<ManagementMemberSearchRow[]>;
   countAccountDirectory: (
     query: string,

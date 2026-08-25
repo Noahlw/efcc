@@ -242,6 +242,16 @@ describe("S4-05: Permission Policy atomic write", () => {
     assert.strictEqual(problem.code, "IDEMPOTENCY_CONFLICT");
     const after = await readPolicy(adminAccess);
     assert.deepStrictEqual(after.data.policy, before.data.policy);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+          WHERE action = 'PERMISSION_POLICY_UPDATE'
+            AND correlation_id = 's405-atomic-success-1'
+            AND outcome = 'CONFLICT'
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .first<{ outcome: string }>();
+    assert.strictEqual(audit?.outcome, "CONFLICT");
   });
 
   test("server rejects safety invariant changes without partial writes", async () => {

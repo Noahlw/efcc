@@ -316,6 +316,7 @@ export default {
         handleListManagementDirectory,
         handleSearchManagementMembers,
         handleSearchAccountDirectory,
+        handleGetAccountDirectoryDetail,
         handleGetManagementAttention,
         handleGetManagementNotifications,
         handleMarkManagementNotificationsRead,
@@ -389,6 +390,13 @@ export default {
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname.startsWith("/api/v1/programs/accounts/") &&
+        request.method === "GET"
+      ) {
+        const accountId = url.pathname.slice("/api/v1/programs/accounts/".length);
+        return handleGetAccountDirectoryDetail(request, programEnv, accountId);
       }
       if (
         url.pathname === "/api/v1/programs/accounts" &&

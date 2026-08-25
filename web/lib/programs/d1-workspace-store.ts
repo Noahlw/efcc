@@ -454,6 +454,26 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       filterParts.push("accounts.role = ?");
       filterValues.push(filters.role);
     }
+    if (filters.department !== undefined) {
+      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM enrollments directory_enrollments
+             JOIN programs directory_programs
+               ON directory_programs.program_id = directory_enrollments.program_id
+             JOIN departments directory_departments
+               ON directory_departments.department_id = directory_programs.department_id
+            WHERE directory_enrollments.member_user_id = accounts.user_id
+              AND directory_enrollments.status = 'Active'
+              AND (
+                directory_departments.name LIKE ? ESCAPE '\\'
+                OR directory_departments.department_id LIKE ? ESCAPE '\\'
+              )
+         )`
+      );
+      filterValues.push(`%${escapedDepartment}%`, `%${escapedDepartment}%`);
+    }
     return this.db
       .prepare(
         `WITH matched_accounts AS (
@@ -520,6 +540,26 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       filterParts.push("accounts.role = ?");
       filterValues.push(filters.role);
     }
+    if (filters.department !== undefined) {
+      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM enrollments directory_enrollments
+             JOIN programs directory_programs
+               ON directory_programs.program_id = directory_enrollments.program_id
+             JOIN departments directory_departments
+               ON directory_departments.department_id = directory_programs.department_id
+            WHERE directory_enrollments.member_user_id = accounts.user_id
+              AND directory_enrollments.status = 'Active'
+              AND (
+                directory_departments.name LIKE ? ESCAPE '\\'
+                OR directory_departments.department_id LIKE ? ESCAPE '\\'
+              )
+         )`
+      );
+      filterValues.push(`%${escapedDepartment}%`, `%${escapedDepartment}%`);
+    }
     return this.db
       .prepare(
         `SELECT
@@ -543,6 +583,35 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         elevated: Number(row?.elevated ?? 0),
         pending: Number(row?.pending ?? 0),
       }));
+  }
+
+  getAccountDirectoryAccount(
+    userId: string
+  ): Promise<ManagementMemberSearchRow[]> {
+    return this.db
+      .prepare(
+        `SELECT accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM accounts
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          WHERE accounts.user_id = ?
+          ORDER BY departments.display_order ASC, departments.name ASC`
+      )
+      .bind(userId)
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
   }
 
   private static programUpdateParts(update: ProgramUpdate): {
