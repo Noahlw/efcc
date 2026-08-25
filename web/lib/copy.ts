@@ -50,6 +50,7 @@ export const COPY = {
     modeLabel: "簽到模式",
     selfMode: "本人簽到",
     assistedMode: "協助簽到",
+    operatorMode: "代為簽到",
     assistedHint: "為已報名成員簽到；請先選擇開放中的聚會。",
     assistedContext: "目前聚會",
     assistedContextHint: "只顯示你獲授權且正在開放簽到的聚會。",

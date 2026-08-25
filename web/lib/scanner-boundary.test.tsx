@@ -93,20 +93,29 @@ describe("Scanner mode boundary", () => {
 
   afterAll(() => server.close());
 
-  test("shows the accessible Self/Assisted switch only for eligible access", async () => {
+  test("shows the accessible Self/Operator switch only for eligible access", async () => {
     server.use(eventsHandler([EVENT]));
     const user = userEvent.setup();
     render(<ScannerBoundary />);
 
-    const assistedTab = await screen.findByRole("tab", {
-      name: COPY.attendance.assistedMode,
+    const operatorTab = await screen.findByRole("tab", {
+      name: COPY.attendance.operatorMode,
     });
-    expect(
-      screen.getByRole("tab", { name: COPY.attendance.selfMode })
-    ).toHaveAttribute("aria-selected", "true");
-    await user.click(assistedTab);
-    expect(assistedTab).toHaveAttribute("aria-selected", "true");
+    const selfTab = screen.getByRole("tab", { name: COPY.attendance.selfMode });
+    expect(selfTab).toHaveAttribute("aria-selected", "true");
+    await user.click(operatorTab);
+    expect(operatorTab).toHaveAttribute("aria-selected", "true");
+    expect(window.location.search).toBe("?mode=assisted");
     await screen.findByLabelText(COPY.attendance.assistedContext);
+
+    await user.click(selfTab);
+    expect(selfTab).toHaveAttribute("aria-selected", "true");
+    expect(window.location.search).toBe("?mode=self");
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(COPY.attendance.assistedContext)
+      ).not.toBeInTheDocument()
+    );
   });
 
   test("keeps Assisted mode hidden when the server returns no eligible Events", async () => {
@@ -115,7 +124,7 @@ describe("Scanner mode boundary", () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole("tab", { name: COPY.attendance.assistedMode })
+        screen.queryByRole("tab", { name: COPY.attendance.operatorMode })
       ).not.toBeInTheDocument()
     );
     await screen.findByText(COPY.attendance.cameraLiveHint);

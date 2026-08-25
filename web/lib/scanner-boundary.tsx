@@ -193,7 +193,7 @@ export const ScannerBoundary = () => {
     setSearch(currentSearch);
     announce(
       mode === "assisted"
-        ? COPY.attendance.assistedMode
+        ? COPY.attendance.operatorMode
         : COPY.attendance.selfMode
     );
   }
@@ -265,7 +265,7 @@ export const ScannerBoundary = () => {
             data-scanner-mode="assisted"
             onClick={() => navigate("assisted")}
           >
-            {COPY.attendance.assistedMode}
+            {COPY.attendance.operatorMode}
           </button>
         </div>
       )}

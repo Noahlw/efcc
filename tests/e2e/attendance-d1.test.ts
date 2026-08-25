@@ -86,6 +86,7 @@ const COPY = {
   scannerTitle: "掃描簽到",
   assistedOpen: "開協助簽到",
   assistedMode: "協助簽到",
+  operatorMode: "代為簽到",
   assistedContext: "目前聚會",
   assistedContextStale: "此聚會已不再開放或你沒有權限，請重新選擇。",
   inputLabel: "課程 QR 代碼或聚會手動代碼",
@@ -1223,7 +1224,7 @@ test.describe("ATT-04 QR attendance proof", () => {
         )}`
       );
       await expect(
-        page.getByRole("tab", { name: COPY.assistedMode })
+        page.getByRole("tab", { name: COPY.operatorMode })
       ).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("tab", { name: "本人簽到" })).toHaveAttribute(
         "aria-selected",
@@ -1292,7 +1293,7 @@ test.describe("ATT-04 QR attendance proof", () => {
         )}`
       );
       await expect(
-        page.getByRole("tab", { name: COPY.assistedMode })
+        page.getByRole("tab", { name: COPY.operatorMode })
       ).toHaveAttribute("aria-selected", "true");
       await expect(page.locator("main").getByRole("alert")).toContainText(
         COPY.assistedContextStale
