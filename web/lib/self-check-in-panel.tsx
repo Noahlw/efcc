@@ -529,7 +529,7 @@ export const SelfCheckInPanel = ({
                 <strong>{COPY.attendance.manualMethodTitle}</strong>
                 <span>{COPY.attendance.manualMethodHint}</span>
               </button>
-              <a className={styles.methodCard} href="/profile">
+              <a className={styles.methodCard} href="/profile?from=scanner">
                 <strong>{COPY.attendance.memberQrTitle}</strong>
                 <span>{COPY.attendance.memberQrHint}</span>
               </a>
