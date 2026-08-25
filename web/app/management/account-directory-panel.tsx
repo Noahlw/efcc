@@ -152,6 +152,7 @@ export const AccountDirectoryPanel = () => {
           error instanceof RpcError && error.problem.code === "FORBIDDEN"
             ? COPY_ACCOUNT.forbidden
             : COPY_ACCOUNT.loadError;
+        errorFocusPending.current = true;
         setState({ kind: "error", message, data: null });
         announce(message);
       }
@@ -163,12 +164,24 @@ export const AccountDirectoryPanel = () => {
   }, [department, query, retryToken, role, router, status]);
 
   useEffect(() => {
-    if (state.kind !== "error" || !errorFocusPending.current) {
+    if (!errorFocusPending.current) {
       return;
     }
-    document.querySelector<HTMLElement>("#account-directory-state")?.focus();
-    errorFocusPending.current = false;
-  }, [state.kind]);
+    if (state.kind === "loading" || state.kind === "error") {
+      document.querySelector<HTMLElement>("#account-directory-state")?.focus();
+      if (state.kind === "error") {
+        errorFocusPending.current = false;
+      }
+      return;
+    }
+    if (state.kind === "ready") {
+      const target = state.data.accounts.length
+        ? "#account-directory-results-title"
+        : "#account-directory-state";
+      document.querySelector<HTMLElement>(target)?.focus();
+      errorFocusPending.current = false;
+    }
+  }, [state]);
 
   const selectedId = searchParams.get("account");
   const [detailState, setDetailState] = useState<DetailState>({ kind: "idle" });
@@ -418,7 +431,12 @@ export const AccountDirectoryPanel = () => {
       )}
 
       {showEmpty && (
-        <output aria-live="polite" className={styles.empty}>
+        <output
+          aria-live="polite"
+          className={styles.empty}
+          id="account-directory-state"
+          tabIndex={-1}
+        >
           <strong>{COPY_ACCOUNT.noResults}</strong>
           <span>{COPY_ACCOUNT.emptyHint}</span>
         </output>
@@ -454,6 +472,7 @@ export const AccountDirectoryPanel = () => {
               <h2
                 className={styles.resultsTitle}
                 id="account-directory-results-title"
+                tabIndex={-1}
               >
                 {COPY_ACCOUNT.resultsTitle}
               </h2>

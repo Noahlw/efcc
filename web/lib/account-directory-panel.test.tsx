@@ -184,5 +184,8 @@ describe(AccountDirectoryPanel, () => {
     await expect(
       screen.findByRole("button", { name: /陳大文/u })
     ).resolves.toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: ACCOUNTS.resultsTitle })
+    );
   });
 });
