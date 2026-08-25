@@ -6,6 +6,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   test,
@@ -60,11 +61,33 @@ function eventsHandler(events: AttendanceEvent[]) {
   );
 }
 
+function fakeBarcodeDetector(this: { detect: () => Promise<never[]> }) {
+  this.detect = () => Promise.resolve([]);
+}
+
 describe("Scanner mode boundary", () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  beforeEach(() => {
+    Object.defineProperty(window, "BarcodeDetector", {
+      configurable: true,
+      value: fakeBarcodeDetector,
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn<() => void>() }],
+        } as unknown as MediaStream),
+      },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  });
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     server.resetHandlers();
+    Reflect.deleteProperty(window, "BarcodeDetector");
+    Reflect.deleteProperty(navigator, "mediaDevices");
     window.history.replaceState(null, "", "/scanner");
   });
 
@@ -95,7 +118,7 @@ describe("Scanner mode boundary", () => {
         screen.queryByRole("tab", { name: COPY.attendance.assistedMode })
       ).not.toBeInTheDocument()
     );
-    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
+    await screen.findByText(COPY.attendance.cameraLiveHint);
   });
 
   test("keeps Self usable and exposes a retry when the Assisted access probe fails", async () => {
@@ -107,7 +130,7 @@ describe("Scanner mode boundary", () => {
     const user = userEvent.setup();
     render(<ScannerBoundary />);
 
-    expect(screen.getByText(COPY.attendance.scanLead)).toBeVisible();
+    await screen.findByText(COPY.attendance.cameraLiveHint);
     const alert = await screen.findByText(COPY.error.unavailable);
     expect(alert).toBeVisible();
     const retry = screen.getByRole("button", {

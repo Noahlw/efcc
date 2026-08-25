@@ -64,6 +64,16 @@ export default defineConfig({
   ],
   use: {
     baseURL: targetUrl,
+    // Camera-first S3 tests use Chromium's deterministic fake stream; the
+    // required real-iPhone smoke remains a separate manual gate.
+    permissions: ["camera"],
+    launchOptions: {
+      args: [
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+        "--enable-blink-features=ShapeDetection",
+      ],
+    },
     // UI traces would capture credential request bodies.
     trace: "off",
   },

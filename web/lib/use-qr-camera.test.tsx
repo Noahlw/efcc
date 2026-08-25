@@ -26,11 +26,23 @@ function installDetector(): void {
 const CameraProbe = ({
   onDetect,
   onUnavailable,
+  onDenied,
+  onUnsupported,
+  reportUnavailableOnMount,
 }: {
   onDetect: (value: string) => void;
   onUnavailable: () => void;
+  onDenied?: () => void;
+  onUnsupported?: () => void;
+  reportUnavailableOnMount?: boolean;
 }) => {
-  const camera = useQrCamera({ onDetect, onUnavailable });
+  const camera = useQrCamera({
+    onDetect,
+    onUnavailable,
+    onDenied,
+    onUnsupported,
+    reportUnavailableOnMount,
+  });
   const handleStart = () => {
     void camera.startCamera();
   };
@@ -63,25 +75,47 @@ describe("useQrCamera lifecycle", () => {
     Reflect.deleteProperty(navigator, "mediaDevices");
   });
 
-  test("reports a denied permission without keeping a camera stream", async () => {
+  test("reports denied permission separately without keeping a camera stream", async () => {
     const onUnavailable = vi.fn<() => void>();
+    const onDenied = vi.fn<() => void>();
     const getUserMedia = vi
       .fn<() => Promise<MediaStream>>()
-      .mockRejectedValue(new Error("denied"));
+      .mockRejectedValue(new DOMException("denied", "NotAllowedError"));
     installDetector();
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
     });
     const user = userEvent.setup();
-    render(<CameraProbe onDetect={() => {}} onUnavailable={onUnavailable} />);
+    render(
+      <CameraProbe
+        onDetect={() => {}}
+        onUnavailable={onUnavailable}
+        onDenied={onDenied}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "start" }));
     expect(getUserMedia).toHaveBeenCalledWith({
       video: { facingMode: "environment" },
     });
-    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(onDenied).toHaveBeenCalledOnce();
+    expect(onUnavailable).not.toHaveBeenCalled();
     expect(screen.queryByTestId("camera-video")).toBeNull();
+  });
+
+  test("settles unavailable capability without an indefinite probe", async () => {
+    const onUnsupported = vi.fn<() => void>();
+    render(
+      <CameraProbe
+        onDetect={() => {}}
+        onUnavailable={() => {}}
+        onUnsupported={onUnsupported}
+        reportUnavailableOnMount
+      />
+    );
+
+    await vi.waitFor(() => expect(onUnsupported).toHaveBeenCalledOnce());
   });
 
   test("stops every track when the camera surface unmounts", async () => {

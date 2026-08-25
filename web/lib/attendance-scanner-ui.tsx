@@ -4,7 +4,6 @@ import type { RefObject } from "react";
 
 import type {
   AttendanceEvent,
-  AttendanceEventSummary,
   AttendanceResolveLatest,
 } from "@/lib/attendance";
 import {
@@ -78,7 +77,7 @@ export const ScannerCamera = ({
   onClose,
 }: {
   cameraOpen: boolean;
-  cameraAvailable?: boolean;
+  cameraAvailable?: boolean | null;
   videoRef: RefObject<HTMLVideoElement | null>;
   onStart: () => void;
   onClose: () => void;
@@ -95,15 +94,9 @@ export const ScannerCamera = ({
         />
       )}
       <span className={`${styles.cameraCorner} ${styles.cameraCornerTop}`} />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerRight}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerBottom}`}
-      />
-      <span
-        className={`${styles.cameraCorner} ${styles.cameraCornerLeft}`}
-      />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerRight}`} />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerBottom}`} />
+      <span className={`${styles.cameraCorner} ${styles.cameraCornerLeft}`} />
       {!cameraOpen && <CameraIcon />}
     </div>
     {!cameraOpen && (
@@ -128,6 +121,69 @@ export const ScannerCamera = ({
   </div>
 );
 
+export const CameraFirstScanner = ({
+  cameraOpen,
+  opening,
+  videoRef,
+  onStop,
+}: {
+  cameraOpen: boolean;
+  opening: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onStop: () => void;
+}) => (
+  <div
+    className={`${styles.cameraStage} ${
+      opening ? styles.cameraStageOpening : ""
+    }`}
+    data-camera-state={opening ? "opening" : "live"}
+    data-testid="scanner-camera-stage"
+  >
+    {opening ? (
+      <output className={styles.cameraState} aria-live="polite">
+        {COPY.attendance.cameraOpening}
+      </output>
+    ) : (
+      <p className={styles.cameraHint}>{COPY.attendance.cameraLiveHint}</p>
+    )}
+    <figure
+      className={styles.cameraFrameLive}
+      aria-label={COPY.attendance.camera}
+    >
+      {cameraOpen && (
+        <video
+          ref={videoRef}
+          className={styles.video}
+          muted
+          playsInline
+          aria-label={COPY.attendance.camera}
+        />
+      )}
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveTopLeft}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveTopRight}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveBottomLeft}`}
+      />
+      <span
+        className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveBottomRight}`}
+      />
+    </figure>
+    <button
+      className={styles.cameraStop}
+      type="button"
+      disabled={opening}
+      aria-busy={opening}
+      onClick={onStop}
+    >
+      {COPY.attendance.stopScan}
+    </button>
+  </div>
+);
+
 export const ScannerUnavailableNotice = () => (
   <div className={styles.cameraUnavailable} role="alert">
     <strong>{COPY.attendance.cameraUnavailableTitle}</strong>
@@ -148,9 +204,7 @@ export const ScannerChooser = ({
 }) => (
   <section className={styles.chooser} aria-labelledby="scanner-chooser-title">
     <header className={styles.chooserHeader}>
-      <span className={styles.chooserTitle}>
-        {COPY.attendance.chooseEvent}
-      </span>
+      <span className={styles.chooserTitle}>{COPY.attendance.chooseEvent}</span>
       <button className={styles.back} type="button" onClick={onBack}>
         {COPY.attendance.rescan}
       </button>
@@ -276,9 +330,7 @@ export const ScannerConfirmation = ({
     >
       {COPY.attendance.rescan}
     </button>
-    <span className={styles.confirmTag}>
-      {COPY.attendance.recognizedBadge}
-    </span>
+    <span className={styles.confirmTag}>{COPY.attendance.recognizedBadge}</span>
     <h1
       id="attendance-confirm-title"
       ref={headingRef}
@@ -293,7 +345,10 @@ export const ScannerConfirmation = ({
       aria-labelledby="attendance-confirm-event-title"
     >
       <span className={styles.confirmProgram}>{event.program_name}</span>
-      <h2 id="attendance-confirm-event-title" className={styles.confirmEventTitle}>
+      <h2
+        id="attendance-confirm-event-title"
+        className={styles.confirmEventTitle}
+      >
         {attendanceEventName(event)}
       </h2>
       <div className={styles.confirmDetails}>
@@ -401,7 +456,6 @@ export const ScannerCheckinResult = ({
   </section>
 );
 
-
 const OutcomeIcon = ({
   kind,
 }: {
@@ -490,9 +544,7 @@ export const ScannerOutcome = ({
       className={`${styles.card} ${styles.outcome}`}
       aria-labelledby="scanner-outcome-title"
     >
-      <p className={styles.outcomeHeader}>
-        {COPY.attendance.outcomeHeader}
-      </p>
+      <p className={styles.outcomeHeader}>{COPY.attendance.outcomeHeader}</p>
       <OutcomeIcon kind={kind} />
       <h1
         id="scanner-outcome-title"

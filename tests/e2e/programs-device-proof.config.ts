@@ -27,8 +27,32 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "desktop-1280x720",
-      use: { viewport: { width: 1280, height: 720 } },
+      name: "s3-phone-320x844",
+      use: { viewport: { width: 320, height: 844 } },
+    },
+    {
+      name: "s3-phone-375x844",
+      use: { viewport: { width: 375, height: 844 } },
+    },
+    {
+      name: "s3-phone-390x844",
+      use: { viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: "s3-phone-414x844",
+      use: { viewport: { width: 414, height: 844 } },
+    },
+    {
+      name: "s3-phone-799x900",
+      use: { viewport: { width: 799, height: 900 } },
+    },
+    {
+      name: "s3-desktop-800x900",
+      use: { viewport: { width: 800, height: 900 } },
+    },
+    {
+      name: "s3-desktop-1440x900",
+      use: { viewport: { width: 1440, height: 900 } },
     },
   ],
 });
