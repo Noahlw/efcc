@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -33,19 +40,20 @@ import type {
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
-import { rememberDeepLink } from "@/lib/session";
 import {
   HK_UTC_OFFSET_MINUTES,
   formatScheduleRuleLabel,
   hkWallDateTimeLabel,
 } from "@/lib/programs/recurrence";
-import { ProgramSettings } from "./program-settings";
+import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail, hkWallInputToIso } from "./event-detail";
 import { MemberPicker } from "./member-picker";
+import { ProgramSettings } from "./program-settings";
 import type { ProgramsTask } from "./programs-intent";
 import { LeadersPanel } from "./programs-leaders-panel";
 import { useAsyncResource } from "./use-async-resource";
+
 import styles from "@/app/programs/programs.module.css";
 
 export interface ProgramWorkspaceProps {
@@ -257,13 +265,13 @@ const CourseFacts = ({
       aria-labelledby="programs-workspace-facts-title"
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <button
+        <Button
           type="button"
           className={styles.programDetailBack}
           onClick={onBack}
         >
           {COPY.programs.backToOverview}
-        </button>
+        </Button>
         <h4
           id="programs-workspace-facts-title"
           className={styles.workspaceHeading}
@@ -289,7 +297,9 @@ const CourseFacts = ({
         </div>
         <div>
           <dt>{COPY.programs.factsPurpose}</dt>
-          <dd>{program.description ?? COPY.programs.programDescriptionEmpty}</dd>
+          <dd>
+            {program.description ?? COPY.programs.programDescriptionEmpty}
+          </dd>
         </div>
         <div>
           <dt>{COPY.programs.factsLifecycle}</dt>
@@ -309,13 +319,13 @@ const CourseFacts = ({
         </div>
       </dl>
       {program.capabilities.manage && (
-        <button
+        <Button
           type="button"
           className={styles.secondaryButton}
           onClick={onEdit}
         >
           {COPY.programs.editTitle}
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -388,14 +398,14 @@ const CourseEdit = ({
       aria-labelledby="programs-workspace-course-edit-title"
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <button
+        <Button
           type="button"
           className={styles.programDetailBack}
           onClick={onBack}
           aria-label={COPY.programs.backToOverview}
         >
           {COPY.programs.backToOverview}
-        </button>
+        </Button>
         <h4
           id="programs-workspace-course-edit-title"
           className={styles.workspaceHeading}
@@ -406,16 +416,20 @@ const CourseEdit = ({
         </h4>
       </div>
       {formError !== null && (
-        <p className={styles.panelError} id="programs-workspace-course-edit-error" role="alert">
+        <Alert
+          className={styles.panelError}
+          id="programs-workspace-course-edit-error"
+          variant="destructive"
+        >
           {formError}
-        </p>
+        </Alert>
       )}
       <form className={styles.form} onSubmit={submit} noValidate>
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor="programs-course-name">
             {COPY.programs.editNameLabel}
           </label>
-          <input
+          <Input
             id="programs-course-name"
             className={styles.input}
             value={name}
@@ -431,10 +445,13 @@ const CourseEdit = ({
           />
         </div>
         <div className={styles.field}>
-          <label className={styles.fieldLabel} htmlFor="programs-course-purpose">
+          <label
+            className={styles.fieldLabel}
+            htmlFor="programs-course-purpose"
+          >
             {COPY.programs.editPurposeLabel}
           </label>
-          <textarea
+          <Textarea
             id="programs-course-purpose"
             className={styles.textarea}
             value={purpose}
@@ -451,15 +468,14 @@ const CourseEdit = ({
           />
         </div>
         <div className={styles.workspaceActions}>
-          <button className={styles.button} type="submit" disabled={busy}>
+          <Button className={styles.button} type="submit" disabled={busy}>
             {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
-          </button>
+          </Button>
         </div>
       </form>
     </section>
   );
 };
-
 
 const WorkspaceNavigation = ({
   programId,
@@ -525,7 +541,6 @@ const WorkspaceOverview = ({
   onOpenFacts: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
-
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;
   const fallbackNearestEvent = useMemo(
@@ -569,7 +584,6 @@ const WorkspaceOverview = ({
       : summary.pendingRequests.status === "ready"
         ? summary.pendingRequests.value
         : 0;
-
 
   return (
     <>
@@ -631,7 +645,7 @@ const WorkspaceOverview = ({
                 </div>
               )}
             </div>
-            <button
+            <Button
               className={styles.button}
               type="button"
               style={{ width: "100%" }}
@@ -640,7 +654,7 @@ const WorkspaceOverview = ({
               }}
             >
               {COPY.programs.cockpitManageRoster}
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -677,7 +691,7 @@ const WorkspaceOverview = ({
             gap: "10px",
           }}
         >
-          <button
+          <Button
             type="button"
             className={styles.directoryCard}
             style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
@@ -695,8 +709,8 @@ const WorkspaceOverview = ({
                 String(eventsCount)
               )}
             </span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className={styles.directoryCard}
             style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
@@ -710,19 +724,17 @@ const WorkspaceOverview = ({
               style={{ marginTop: "8px" }}
             >
               {pendingCount > 0 ? (
-                <span
-                  style={{ color: "var(--accent, #8a5b16)", fontWeight: 700 }}
-                >
+                <Badge variant="secondary">
                   {COPY.programs.cockpitPendingLabel.replace(
                     "{count}",
                     String(pendingCount)
                   )}
-                </span>
+                </Badge>
               ) : (
                 <span>{COPY.programs.cockpitNoPending}</span>
               )}
             </span>
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -757,7 +769,7 @@ const WorkspaceOverview = ({
             background: "var(--surface)",
           }}
         >
-          <button
+          <Button
             type="button"
             className={styles.workspaceTaskRow}
             style={{
@@ -776,13 +788,17 @@ const WorkspaceOverview = ({
               </span>
               <span
                 className={styles.programDetailMuted}
-                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+                style={{
+                  fontSize: "0.8125rem",
+                  marginTop: "2px",
+                  display: "block",
+                }}
               >
                 {COPY.programs.cockpitCourseFactsHint}
               </span>
             </div>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className={styles.workspaceTaskRow}
             style={{
@@ -802,13 +818,17 @@ const WorkspaceOverview = ({
               </span>
               <span
                 className={styles.programDetailMuted}
-                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+                style={{
+                  fontSize: "0.8125rem",
+                  marginTop: "2px",
+                  display: "block",
+                }}
               >
                 {COPY.programs.workspaceTaskSettingsLead}
               </span>
             </div>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className={styles.workspaceTaskRow}
             style={{
@@ -828,12 +848,16 @@ const WorkspaceOverview = ({
               </span>
               <span
                 className={styles.programDetailMuted}
-                style={{ fontSize: "0.8125rem", marginTop: "2px", display: "block" }}
+                style={{
+                  fontSize: "0.8125rem",
+                  marginTop: "2px",
+                  display: "block",
+                }}
               >
                 {COPY.programs.notificationsLead}
               </span>
             </div>
-          </button>
+          </Button>
         </div>
       </section>
     </>
@@ -911,7 +935,11 @@ const RecurringSchedulePanel = ({
     const form = new FormData(formEvent.currentTarget);
     const raw = form.get("horizon_days");
     const horizonDays = Number(raw);
-    if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 365) {
+    if (
+      !Number.isInteger(horizonDays) ||
+      horizonDays < 1 ||
+      horizonDays > 365
+    ) {
       setPreview({ kind: "idle" });
       setGenerateError(COPY.programs.previewError);
       announce(COPY.programs.previewError);
@@ -933,7 +961,10 @@ const RecurringSchedulePanel = ({
       }
       setPreview({ kind: "ready", plan });
       announce(
-        COPY.programs.previewed.replace("{count}", String(plan.occurrences.length))
+        COPY.programs.previewed.replace(
+          "{count}",
+          String(plan.occurrences.length)
+        )
       );
     } catch (error) {
       if (!mounted.current) {
@@ -1003,10 +1034,7 @@ const RecurringSchedulePanel = ({
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
-      if (
-        error instanceof RpcError &&
-        error.problem.code === "STALE_PLAN"
-      ) {
+      if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
         // The schedule changed under the plan; require a fresh preview
         // before generation can run again.
         setPreview({ kind: "error", message, stale: true });
@@ -1037,9 +1065,9 @@ const RecurringSchedulePanel = ({
       </h5>
       <p className={styles.programDetailMuted}>{COPY.programs.previewLead}</p>
       {rulesError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {rulesError}
-        </output>
+        </Alert>
       )}
       {noRules ? (
         <p className={styles.programDetailMuted}>
@@ -1049,7 +1077,7 @@ const RecurringSchedulePanel = ({
         <form className={styles.ruleForm} onSubmit={submitPreview}>
           <label className={styles.ruleField}>
             <span>{COPY.programs.previewHorizon}</span>
-            <input
+            <Input
               type="number"
               name="horizon_days"
               min={1}
@@ -1059,22 +1087,27 @@ const RecurringSchedulePanel = ({
               aria-label={COPY.programs.previewHorizon}
             />
           </label>
-          <button
+          <Button
             type="submit"
             className={styles.button}
             disabled={previewBusy || generateBusy}
           >
-            {previewBusy ? COPY.programs.previewing : COPY.programs.previewEvents}
-          </button>
+            {previewBusy
+              ? COPY.programs.previewing
+              : COPY.programs.previewEvents}
+          </Button>
         </form>
       )}
       {preview.kind === "loading" && (
-        <output aria-busy="true">{COPY.programs.previewing}</output>
+        <>
+          <output aria-busy="true">{COPY.programs.previewing}</output>
+          <Skeleton className="h-8 w-full" aria-hidden="true" />
+        </>
       )}
       {preview.kind === "error" && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {preview.message}
-        </output>
+        </Alert>
       )}
       {preview.kind === "empty" && (
         <p className={styles.programDetailMuted} aria-live="polite">
@@ -1136,19 +1169,21 @@ const RecurringSchedulePanel = ({
             })}
           </ul>
           <div className={styles.formActions}>
-            <button
+            <Button
               type="button"
               className={styles.button}
               onClick={() => void submitGenerate()}
               disabled={generateBusy || previewBusy}
             >
-              {generateBusy ? COPY.programs.generating : COPY.programs.generateEvents}
-            </button>
+              {generateBusy
+                ? COPY.programs.generating
+                : COPY.programs.generateEvents}
+            </Button>
             {generateResult !== null &&
               (generatePartial ? (
-                <output className={styles.panelError} role="alert">
+                <Alert className={styles.panelError} variant="destructive">
                   {generateResult}
-                </output>
+                </Alert>
               ) : (
                 <output className={styles.panelNotice} aria-live="polite">
                   {generateResult}
@@ -1156,9 +1191,9 @@ const RecurringSchedulePanel = ({
               ))}
           </div>
           {generateError !== null && (
-            <output className={styles.panelError} role="alert">
+            <Alert className={styles.panelError} variant="destructive">
               {generateError}
-            </output>
+            </Alert>
           )}
         </>
       )}
@@ -1285,33 +1320,35 @@ const EventsTask = ({
         {COPY.programs.workspaceTaskEvents}
       </h4>
       {eventAttention && eventAttention.inactive_event_count > 0 && (
-        <span
+        <Badge
           className={`${styles.badge} ${styles.badgeActive}`}
+          variant="default"
           aria-label={COPY.programs.attentionEventCount.replace(
             "{count}",
             String(eventAttention.inactive_event_count)
           )}
         >
           {eventAttention.inactive_event_count}
-        </span>
+        </Badge>
       )}
       {eventAttention && eventAttention.cancelled_event_count > 0 && (
-        <span
+        <Badge
           className={styles.badge}
+          variant="outline"
           aria-label={COPY.programs.attentionCancelledCount.replace(
             "{count}",
             String(eventAttention.cancelled_event_count)
           )}
         >
           {eventAttention.cancelled_event_count}
-        </span>
+        </Badge>
       )}
       <p className={styles.programDetailMuted}>
         {COPY.programs.repeatInformational}
       </p>
       {canManage && (
         <>
-          <button
+          <Button
             type="button"
             className={styles.button}
             onClick={() => {
@@ -1320,7 +1357,7 @@ const EventsTask = ({
             }}
           >
             {COPY.programs.createMeeting}
-          </button>
+          </Button>
           {createOpen && (
             <form
               className={`${styles.ruleForm} ${styles.eventCreateForm}`}
@@ -1336,13 +1373,13 @@ const EventsTask = ({
                 {COPY.programs.createMeeting}
               </h5>
               {createError !== null && (
-                <output className={styles.panelError} role="alert">
+                <Alert className={styles.panelError} variant="destructive">
                   {createError}
-                </output>
+                </Alert>
               )}
               <label className={styles.ruleField}>
                 <span>{COPY.programs.eventDate}</span>
-                <input
+                <Input
                   type="date"
                   name="event_date"
                   aria-label={COPY.programs.eventDate}
@@ -1351,7 +1388,7 @@ const EventsTask = ({
               </label>
               <label className={styles.ruleField}>
                 <span>{COPY.programs.eventTime}</span>
-                <input
+                <Input
                   type="time"
                   name="event_time"
                   aria-label={COPY.programs.eventTime}
@@ -1360,7 +1397,7 @@ const EventsTask = ({
               </label>
               <label className={styles.ruleField}>
                 <span>{COPY.programs.eventName}</span>
-                <input
+                <Input
                   type="text"
                   name="name"
                   placeholder={COPY.programs.eventNamePlaceholder}
@@ -1400,7 +1437,7 @@ const EventsTask = ({
                 {COPY.programs.repeatFormInformational}
               </p>
               <div className={styles.formActions}>
-                <button
+                <Button
                   type="submit"
                   className={styles.button}
                   disabled={createBusy}
@@ -1408,8 +1445,8 @@ const EventsTask = ({
                   {createBusy
                     ? COPY.programs.submitting
                     : COPY.programs.createMeeting}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className={styles.secondaryButton}
                   disabled={createBusy}
@@ -1419,7 +1456,7 @@ const EventsTask = ({
                   }}
                 >
                   {COPY.programs.eventCreateCancel}
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -1434,21 +1471,20 @@ const EventsTask = ({
         />
       )}
       {state.kind === "loading" && (
-        <output aria-busy="true">
-          {COPY.programs.workspaceTaskEventsLoading}
-        </output>
+        <>
+          <output aria-busy="true">
+            {COPY.programs.workspaceTaskEventsLoading}
+          </output>
+          <Skeleton className="h-8 w-full" aria-hidden="true" />
+        </>
       )}
       {state.kind === "error" && (
-        <div className={styles.boundaryError} role="alert">
+        <Alert className={styles.boundaryError} variant="destructive">
           <p>{state.message}</p>
-          <button
-            className={styles.retry}
-            type="button"
-            onClick={retry}
-          >
+          <Button className={styles.retry} type="button" onClick={retry}>
             {COPY.programs.workspaceTaskEventsRetry}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {state.kind === "ready" && state.events.length === 0 && (
         <p className={styles.programDetailMuted}>
@@ -1490,18 +1526,18 @@ const EventsTask = ({
                 </span>
                 {event.availability !== undefined &&
                   event.availability !== "Active" && (
-                    <span className={styles.eventCancelled}>
+                    <Badge className={styles.eventCancelled} variant="outline">
                       {COPY.programs.eventUnavailable}
-                    </span>
+                    </Badge>
                   )}
                 {onOpenEvent && (
-                  <button
+                  <Button
                     type="button"
                     className={styles.secondaryButton}
                     onClick={() => onOpenEvent(event.event_id)}
                   >
                     {COPY.programs.eventDetailOpen}
-                  </button>
+                  </Button>
                 )}
               </li>
             );
@@ -1622,9 +1658,10 @@ const ParticipantsTask = ({
   // Most recent successful snapshot: a failed refresh after a successful
   // mutation keeps the queue rendered from the last-known data instead of
   // ejecting the operator into the full-panel error state.
-  const lastReadyRef = useRef<Extract<ParticipantsState, { kind: "ready" }> | null>(
-    null
-  );
+  const lastReadyRef = useRef<Extract<
+    ParticipantsState,
+    { kind: "ready" }
+  > | null>(null);
 
   useEffect(() => {
     void run();
@@ -1775,7 +1812,10 @@ const ParticipantsTask = ({
       );
     }
     return (
-      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.requests}>
+      <ul
+        className={styles.workspaceTaskList}
+        aria-label={COPY.programs.requests}
+      >
         {queue.pending.map((request) => {
           const member =
             request.member_name ??
@@ -1796,7 +1836,7 @@ const ParticipantsTask = ({
                     <span className={styles.fieldLabel}>
                       {COPY.programs.decisionNote}
                     </span>
-                    <input
+                    <Input
                       className={styles.input}
                       type="text"
                       value={notes[request.request_id] ?? ""}
@@ -1810,28 +1850,28 @@ const ParticipantsTask = ({
                       disabled={busyRequestId !== null}
                     />
                   </label>
-                  <button
+                  <Button
                     type="button"
                     className={styles.successOutline}
                     onClick={() => void handleDecision(request, "Approved")}
                     disabled={busyRequestId !== null}
                   >
                     {COPY.programs.approve}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     className={styles.dangerOutline}
                     onClick={() => void handleDecision(request, "Rejected")}
                     disabled={busyRequestId !== null}
                   >
                     {COPY.programs.reject}
-                  </button>
+                  </Button>
                 </>
               )}
               {actionErrors[request.request_id] && (
-                <output className={styles.panelError} role="alert">
+                <Alert className={styles.panelError} variant="destructive">
                   {actionErrors[request.request_id]}
-                </output>
+                </Alert>
               )}
             </li>
           );
@@ -1854,13 +1894,17 @@ const ParticipantsTask = ({
         aria-label={COPY.programs.workspaceActiveParticipants}
       >
         {queue.active.map((enrollment) => {
-          const request = state.kind === "ready"
-            ? state.requests.find(
-                ({ request_id }) => request_id === enrollment.request_id
-              )
-            : undefined;
+          const request =
+            state.kind === "ready"
+              ? state.requests.find(
+                  ({ request_id }) => request_id === enrollment.request_id
+                )
+              : undefined;
           return (
-            <li key={enrollment.enrollment_id} className={styles.workspaceTaskRow}>
+            <li
+              key={enrollment.enrollment_id}
+              className={styles.workspaceTaskRow}
+            >
               <strong>
                 {enrollment.member_name ??
                   enrollment.member_username ??
@@ -1885,9 +1929,15 @@ const ParticipantsTask = ({
       );
     }
     return (
-      <ul className={styles.workspaceTaskList} aria-label={COPY.programs.enrollmentHistory}>
+      <ul
+        className={styles.workspaceTaskList}
+        aria-label={COPY.programs.enrollmentHistory}
+      >
         {queue.historyRequests.map((request) => (
-          <li key={`request-${request.request_id}`} className={styles.workspaceTaskRow}>
+          <li
+            key={`request-${request.request_id}`}
+            className={styles.workspaceTaskRow}
+          >
             <strong>
               {request.member_name ??
                 request.member_username ??
@@ -1895,7 +1945,9 @@ const ParticipantsTask = ({
             </strong>
             <span>{requestStatusLabel(request.status)}</span>
             {request.decision_note && <span>{request.decision_note}</span>}
-            <span>{formatEventTime(request.decided_at ?? request.submitted_at)}</span>
+            <span>
+              {formatEventTime(request.decided_at ?? request.submitted_at)}
+            </span>
           </li>
         ))}
         {queue.historyEnrollments.map((enrollment) => (
@@ -1909,7 +1961,11 @@ const ParticipantsTask = ({
                 enrollment.member_user_id}
             </strong>
             <span>{COPY.programs.enrollmentCancelled}</span>
-            <span>{formatEventTime(enrollment.cancelled_at ?? enrollment.enrolled_at)}</span>
+            <span>
+              {formatEventTime(
+                enrollment.cancelled_at ?? enrollment.enrolled_at
+              )}
+            </span>
           </li>
         ))}
       </ul>
@@ -1951,29 +2007,34 @@ const ParticipantsTask = ({
             placeholder={COPY.programs.memberIdPlaceholder}
             excludeEnrolled
           />
-          <button
+          <Button
             type="submit"
             className={styles.actionButton}
             disabled={assistedBusy || busyRequestId !== null}
           >
-            {assistedBusy ? COPY.programs.submitting : COPY.programs.assistedEnroll}
-          </button>
+            {assistedBusy
+              ? COPY.programs.submitting
+              : COPY.programs.assistedEnroll}
+          </Button>
           {assistedError !== null && (
-            <output className={styles.panelError} role="alert">
+            <Alert className={styles.panelError} variant="destructive">
               {assistedError}
-            </output>
+            </Alert>
           )}
         </form>
       )}
       {state.kind === "loading" && (
-        <output aria-busy="true">
-          {COPY.programs.workspaceTaskParticipantsLoading}
-        </output>
+        <>
+          <output aria-busy="true">
+            {COPY.programs.workspaceTaskParticipantsLoading}
+          </output>
+          <Skeleton className="h-8 w-full" aria-hidden="true" />
+        </>
       )}
       {state.kind === "error" && lastReadyRef.current === null && (
-        <div className={styles.boundaryError} role="alert">
+        <Alert className={styles.boundaryError} variant="destructive">
           <p>{state.message}</p>
-          <button
+          <Button
             className={styles.retry}
             type="button"
             onClick={() => {
@@ -1982,53 +2043,66 @@ const ParticipantsTask = ({
             }}
           >
             {COPY.programs.workspaceTaskParticipantsRetry}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {queue !== null && (
         <>
           <div className={styles.workspaceActions}>
-            <div role="tablist" aria-label={COPY.programs.workspaceTaskParticipants}>
-              {(
-                [
+            <Tabs
+              value={tab}
+              onValueChange={(value) => setTab(value as ParticipantTab)}
+            >
+              <TabsList
+                className={styles.taskButton}
+                variant="line"
+                aria-label={COPY.programs.workspaceTaskParticipants}
+              >
+                {(
                   [
-                    "pending",
-                    COPY.programs.tabsPending,
-                    pendingAttentionCount ?? queue.counts.pending,
-                  ],
-                  ["active", COPY.programs.tabsActive, queue.counts.active],
-                  ["history", COPY.programs.tabsHistory, queue.counts.history],
-                ] as const
-              ).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  id={`participants-${value}-tab`}
-                  aria-selected={tab === value}
-                  aria-controls={`participants-${value}-panel`}
-                  className={styles.taskButton}
-                  onClick={() => setTab(value)}
-                >
-                  {label} ({count})
-                </button>
-              ))}
-            </div>
-            <button
+                    [
+                      "pending",
+                      COPY.programs.tabsPending,
+                      pendingAttentionCount ?? queue.counts.pending,
+                    ],
+                    ["active", COPY.programs.tabsActive, queue.counts.active],
+                    [
+                      "history",
+                      COPY.programs.tabsHistory,
+                      queue.counts.history,
+                    ],
+                  ] as const
+                ).map(([value, label, count]) => (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    id={`participants-${value}-tab`}
+                    aria-controls={`participants-${value}-panel`}
+                    className={styles.taskButton}
+                  >
+                    {label} ({count})
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <Button
               type="button"
               className={styles.secondaryButton}
               onClick={() => {
                 setActionErrors({});
                 setNotice(null);
-                setRefreshSuccess(COPY.programs.workspaceParticipantsRefreshSuccess);
+                setRefreshSuccess(
+                  COPY.programs.workspaceParticipantsRefreshSuccess
+                );
                 setRefreshingAction("refresh");
                 void run();
               }}
             >
               {COPY.programs.workspaceParticipantsRefresh}
-            </button>
+            </Button>
           </div>
-          {queue.counts.pending + queue.counts.active + queue.counts.history === 0 && (
+          {queue.counts.pending + queue.counts.active + queue.counts.history ===
+            0 && (
             <p className={styles.programDetailMuted}>
               {COPY.programs.workspaceTaskParticipantsEmpty}
             </p>
@@ -2181,7 +2255,11 @@ export const ProgramWorkspace = ({
     setCourseNotice(null);
     setWorkspaceNotice(created ? COPY.programs.programCreatedNotice : null);
   }, [programId]);
-  const { state, run: loadWorkspace, retry } = useAsyncResource<
+  const {
+    state,
+    run: loadWorkspace,
+    retry,
+  } = useAsyncResource<
     {
       program: Program;
       department: Department | null;
@@ -2336,17 +2414,18 @@ export const ProgramWorkspace = ({
         aria-busy="true"
       >
         {COPY.programs.workspaceLoading}
+        <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
       </output>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <section
+      <Alert
         id="programs-workspace-state"
         tabIndex={-1}
         className={styles.boundaryError}
-        role="alert"
+        variant="destructive"
       >
         <h3 className={styles.boundaryTitle}>
           {state.failure === "forbidden"
@@ -2357,18 +2436,18 @@ export const ProgramWorkspace = ({
         </h3>
         <p>{state.message}</p>
         <div className={styles.workspaceActions}>
-          <button className={styles.retry} type="button" onClick={retry}>
+          <Button className={styles.retry} type="button" onClick={retry}>
             {COPY.programs.workspaceRetry}
-          </button>
-          <button
+          </Button>
+          <Button
             className={styles.secondaryButton}
             type="button"
             onClick={onBack}
           >
             {COPY.programs.workspaceBack}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Alert>
     );
   }
   const workspaceProgram = courseProgramOverride ?? state.program;
@@ -2378,13 +2457,13 @@ export const ProgramWorkspace = ({
       className={styles.managementWorkspace}
       aria-labelledby="programs-workspace-title"
     >
-      <button
+      <Button
         className={styles.programDetailBack}
         type="button"
         onClick={onBack}
       >
         {COPY.programs.workspaceBack}
-      </button>
+      </Button>
       <header className={styles.workspaceHeader}>
         <div
           style={{
@@ -2400,13 +2479,13 @@ export const ProgramWorkspace = ({
           {task === undefined &&
             courseView === "overview" &&
             workspaceProgram.capabilities.manage && (
-              <button
+              <Button
                 className={styles.button}
                 type="button"
                 onClick={openCourseEdit}
               >
                 {COPY.programs.cockpitEditProgram}
-              </button>
+              </Button>
             )}
         </div>
         <div
@@ -2417,16 +2496,19 @@ export const ProgramWorkspace = ({
             marginTop: "4px",
           }}
         >
-          <span className={styles.directoryStatus}>
+          <Badge className={styles.directoryStatus} variant="outline">
             {state.department
               ? `${state.department.name} · ${state.department.code}`
               : COPY.programs.workspaceDepartment}
-          </span>
-          <span
+          </Badge>
+          <Badge
             className={`${styles.directoryStatus} ${styles[`directoryStatus${workspaceProgram.lifecycle}`]}`}
+            variant={
+              workspaceProgram.lifecycle === "Active" ? "default" : "outline"
+            }
           >
             {lifecycleLabel(workspaceProgram.lifecycle)}
-          </span>
+          </Badge>
         </div>
       </header>
 

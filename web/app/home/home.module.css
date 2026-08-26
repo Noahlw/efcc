@@ -230,26 +230,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 11px 18px;
-  border: none;
-  border-radius: 999px;
-  background: var(--accent, #9c302c);
-  color: #ffffff;
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 750;
-  text-align: center;
-  text-decoration: none;
-  box-shadow: 0 3px 8px color-mix(in srgb, var(--accent) 25%, transparent);
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
-.primaryAction:hover {
-  background: var(--accent-deep, #76231f);
-}
 .primaryAction:focus-visible,
 .listCard:focus-visible,
 .sectionLink:focus-visible,
@@ -305,10 +287,6 @@
 .sectionLink {
   display: inline-flex;
   align-items: center;
-  color: var(--accent, #9c302c);
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .sectionLink:hover {
@@ -322,23 +300,6 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  padding: 1rem 1.125rem;
-  border: none;
-  border-radius: 1.125rem;
-  background: var(--surface-raised, #ffffff);
-  color: var(--ink, #171a1d);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 6%, transparent);
-  transition:
-    background-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.listCard:hover {
-  background: var(--surface, #f4f5f3);
 }
 
 .cardTitle,
@@ -459,12 +420,5 @@
   .eventCard,
   .venueCard {
     padding: 20px 16px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .primaryAction,
-  .listCard {
-    transition: none;
   }
 }

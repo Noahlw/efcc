@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -96,14 +98,14 @@ const EnrollmentAction = ({
           {COPY.programs.enrollmentActiveHint}
         </p>
         <div className={styles.actionBarCard}>
-          <button
+          <Button
             type="button"
             className={styles.dangerButton}
             disabled={busy}
             onClick={() => onBeginConfirm("cancel")}
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -116,14 +118,14 @@ const EnrollmentAction = ({
           {COPY.programs.requestPendingHint}
         </p>
         <div className={styles.actionBarCard}>
-          <button
+          <Button
             type="button"
             className={styles.actionButton}
             disabled={busy}
             onClick={() => onBeginConfirm("withdraw")}
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -144,14 +146,14 @@ const EnrollmentAction = ({
             {COPY.programs.requestRejectedHint}
           </p>
           <div className={styles.actionBarCard}>
-            <button
+            <Button
               type="button"
               className={styles.button}
               disabled={busy}
               onClick={onRequest}
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-            </button>
+            </Button>
           </div>
         </>
       );
@@ -164,14 +166,14 @@ const EnrollmentAction = ({
             {COPY.programs.requestWithdrawnHint}
           </p>
           <div className={styles.actionBarCard}>
-            <button
+            <Button
               type="button"
               className={styles.button}
               disabled={busy}
               onClick={onRequest}
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-            </button>
+            </Button>
           </div>
         </>
       );
@@ -188,14 +190,14 @@ const EnrollmentAction = ({
           {COPY.programs.enrollmentCancelledHint}
         </p>
         <div className={styles.actionBarCard}>
-          <button
+          <Button
             type="button"
             className={styles.button}
             disabled={busy}
             onClick={onRequest}
           >
             {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -209,14 +211,14 @@ const EnrollmentAction = ({
   }
   return (
     <div className={styles.actionBarCard}>
-      <button
+      <Button
         type="button"
         className={styles.button}
         disabled={busy}
         onClick={onRequest}
       >
         {busy ? COPY.programs.submitting : COPY.programs.enroll}
-      </button>
+      </Button>
     </div>
   );
 };
@@ -445,14 +447,11 @@ export const ParticipantEnrollment = ({
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {actionError !== null && (
-        <output
-          ref={errorRef}
-          className={styles.panelError}
-          role="alert"
-          tabIndex={-1}
-        >
-          {actionError}
-        </output>
+        <Alert className={styles.panelError} variant="destructive">
+          <output ref={errorRef} tabIndex={-1}>
+            {actionError}
+          </output>
+        </Alert>
       )}
       <h3 id="program-enrollment-title" className={styles.panelHeading}>
         {COPY.programs.enrollment}
@@ -494,21 +493,21 @@ export const ParticipantEnrollment = ({
             <h4 id="participant-confirm-title">{confirmationTitle}</h4>
             <p id="participant-confirm-body">{confirmationBody}</p>
             <div className={styles.participantConfirmActions}>
-              <button
+              <Button
                 className={styles.secondaryButton}
                 type="button"
                 data-confirm-dismiss
                 onClick={closeConfirm}
               >
                 {COPY.programs.cancelRevoke}
-              </button>
-              <button
+              </Button>
+              <Button
                 className={styles.dangerButton}
                 type="button"
                 onClick={acceptConfirmation}
               >
                 {confirmationAccept}
-              </button>
+              </Button>
             </div>
           </div>
         </dialog>

@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -132,9 +135,9 @@ export const LeadersPanel = ({
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
 
       <h3 id={headingId} className={styles.panelHeading}>
@@ -149,9 +152,9 @@ export const LeadersPanel = ({
             label={COPY.programs.leaderUserId}
             placeholder={COPY.programs.leaderUserIdPlaceholder}
           />
-          <button type="submit" disabled={busy} className={styles.actionButton}>
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.assignLeader}
-          </button>
+          </Button>
         </form>
       )}
 
@@ -169,39 +172,39 @@ export const LeadersPanel = ({
                 {leader.user_name ?? leader.user_id}
                 {leader.username ? ` (${leader.username})` : ""}
               </span>
-              <span className={styles.eventSource}>
+              <Badge className={styles.eventSource} variant="outline">
                 {hkWallDateTimeLabel(leader.granted_at)}
-              </span>
+              </Badge>
               {canManage &&
                 (confirmingUserId === leader.user_id ? (
                   <div className={styles.confirmRow}>
                     <span>{COPY.programs.confirmRevokeLeader}</span>
-                    <button
+                    <Button
                       type="button"
                       disabled={busy}
                       className={styles.dangerButton}
                       onClick={() => confirmRevoke(leader.user_id)}
                     >
                       {COPY.programs.confirmRevoke}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       disabled={busy}
                       className={styles.toggle}
                       onClick={() => setConfirmingUserId(null)}
                     >
                       {COPY.programs.cancelRevoke}
-                    </button>
+                    </Button>
                   </div>
                 ) : (
-                  <button
+                  <Button
                     type="button"
                     disabled={busy}
                     className={styles.actionButton}
                     onClick={() => handleRevoke(leader.user_id)}
                   >
                     {COPY.programs.revokeLeader}
-                  </button>
+                  </Button>
                 ))}
             </li>
           ))

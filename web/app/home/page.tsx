@@ -4,6 +4,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AnnouncementDetail, Icon } from "@/lib/announcement-detail";
 import type { AnnouncementData } from "@/lib/announcement-detail";
 import { RpcError } from "@/lib/api";
@@ -254,46 +259,46 @@ function HomeLoadingSkeleton() {
         </output>
         <div aria-hidden="true">
           <div className={styles.skeletonIntro}>
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonDate}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonHeading}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonText}`}
             />
           </div>
           <div className={styles.skeletonEventCard}>
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonBadge}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonTitle}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonAction}`}
             />
           </div>
           <div className={styles.skeletonSection}>
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
             />
           </div>
           <div className={styles.skeletonSection}>
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
             />
-            <span
+            <Skeleton
               className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
             />
           </div>
@@ -430,16 +435,20 @@ export function HomeView({
   if (!hasInitialData && loadState === "error") {
     return (
       <div className={styles.page}>
-        <section className={styles.emptyCard} data-testid="home-error-state">
-          <p role="alert">{COPY.home.loadError}</p>
-          <button
+        <Alert
+          className={styles.emptyCard}
+          data-testid="home-error-state"
+          variant="destructive"
+        >
+          <p>{COPY.home.loadError}</p>
+          <Button
             className={styles.primaryAction}
             type="button"
             onClick={() => setReloadKey((current) => current + 1)}
           >
             {COPY.home.retry}
-          </button>
-        </section>
+          </Button>
+        </Alert>
       </div>
     );
   }
@@ -481,10 +490,10 @@ export function HomeView({
       </div>
 
       {event ? (
-        <article className={styles.eventCard} data-testid="next-event-card">
-          <span className={styles.enrolledBadge}>
+        <Card className={styles.eventCard} data-testid="next-event-card">
+          <Badge className={styles.enrolledBadge}>
             {COPY.home.enrolledBadge}
-          </span>
+          </Badge>
           {programTitle && (
             <p className={styles.programTitle}>{programTitle}</p>
           )}
@@ -498,18 +507,18 @@ export function HomeView({
               )}
             </div>
           )}
-          <Link href={eventHref} className={styles.primaryAction}>
-            {COPY.home.viewEvent}
-          </Link>
-        </article>
+          <Button asChild className={styles.primaryAction}>
+            <Link href={eventHref}>{COPY.home.viewEvent}</Link>
+          </Button>
+        </Card>
       ) : (
-        <section className={styles.emptyCard} data-testid="home-empty-state">
+        <Card className={styles.emptyCard} data-testid="home-empty-state">
           <h2>{COPY.home.emptyTitle}</h2>
           <p>{COPY.home.emptySubtitle}</p>
-          <Link href="/programs" className={styles.primaryAction}>
-            {COPY.home.explorePrograms}
-          </Link>
-        </section>
+          <Button asChild className={styles.primaryAction}>
+            <Link href="/programs">{COPY.home.explorePrograms}</Link>
+          </Button>
+        </Card>
       )}
 
       {announcement && (
@@ -519,12 +528,13 @@ export function HomeView({
         >
           <div className={styles.sectionHeading}>
             <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
-            <Link href="/messages" className={styles.sectionLink}>
-              {COPY.home.viewAllMessages}
-            </Link>
+            <Button asChild className={styles.sectionLink} variant="link">
+              <Link href="/messages">{COPY.home.viewAllMessages}</Link>
+            </Button>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className={styles.listCard}
             data-testid="announcement-card"
             onClick={openAnnouncement}
@@ -536,7 +546,7 @@ export function HomeView({
               </span>
             </span>
             <Icon name="chevron" className={styles.chevron} />
-          </button>
+          </Button>
         </section>
       )}
 
@@ -544,24 +554,22 @@ export function HomeView({
         <section className={styles.section} aria-labelledby="explore-heading">
           <div className={styles.sectionHeading}>
             <h2 id="explore-heading">{COPY.home.explore}</h2>
-            <Link href="/programs" className={styles.sectionLink}>
-              {COPY.home.allPrograms}
-            </Link>
+            <Button asChild className={styles.sectionLink} variant="link">
+              <Link href="/programs">{COPY.home.allPrograms}</Link>
+            </Button>
           </div>
-          <Link
-            href={exploreProgramHref}
-            className={styles.listCard}
-            data-testid="explore-card"
-          >
-            <span>
-              <span className={styles.cardTitle}>{program.name}</span>
-              {program.description && (
-                <span className={styles.cardDescription}>
-                  {program.description}
-                </span>
-              )}
-            </span>
-            <Icon name="chevron" className={styles.chevron} />
+          <Link href={exploreProgramHref} data-testid="explore-card">
+            <Card className={styles.listCard}>
+              <span>
+                <span className={styles.cardTitle}>{program.name}</span>
+                {program.description && (
+                  <span className={styles.cardDescription}>
+                    {program.description}
+                  </span>
+                )}
+              </span>
+              <Icon name="chevron" className={styles.chevron} />
+            </Card>
           </Link>
         </section>
       )}

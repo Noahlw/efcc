@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -116,7 +121,7 @@ const ProgramForm = ({
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programName}
-        <input
+        <Input
           name="name"
           className={styles.input}
           defaultValue={initial?.name ?? ""}
@@ -128,7 +133,7 @@ const ProgramForm = ({
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programDescription}
-        <textarea
+        <Textarea
           name="description"
           className={styles.textarea}
           defaultValue={initial?.description ?? ""}
@@ -139,7 +144,7 @@ const ProgramForm = ({
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programCategory}
-        <input
+        <Input
           name="category"
           className={styles.input}
           defaultValue={initial?.category ?? ""}
@@ -210,7 +215,7 @@ const ProgramForm = ({
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programDisplayOrder}
-        <input
+        <Input
           name="display_order"
           className={styles.input}
           type="number"
@@ -220,9 +225,9 @@ const ProgramForm = ({
         />
       </label>
     </div>
-    <button className={styles.button} type="submit" disabled={busy}>
+    <Button className={styles.button} type="submit" disabled={busy}>
       {busy ? COPY.programs.submitting : submitLabel}
-    </button>
+    </Button>
   </form>
 );
 
@@ -309,7 +314,6 @@ const ProgramsManager = () => {
     },
     [expanded, loadDepartment, modules, programs]
   );
-
 
   const handleCreateProgram = async (
     departmentId: string,
@@ -439,6 +443,7 @@ const ProgramsManager = () => {
         </h1>
         <div className={styles.stateCenter}>
           <p aria-live="polite">{COPY.nav.loading}</p>
+          <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
         </div>
       </section>
     );
@@ -451,14 +456,16 @@ const ProgramsManager = () => {
           {COPY.programs.pageTitle}
         </h1>
         <div className={styles.stateCenter}>
-          <p role="alert">{view.message}</p>
-          <button
+          <Alert className={styles.error} variant="destructive">
+            {view.message}
+          </Alert>
+          <Button
             className={styles.retry}
             type="button"
             onClick={() => void load()}
           >
             {COPY.error.retry}
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -477,9 +484,9 @@ const ProgramsManager = () => {
         </output>
       )}
       {actionError !== null && (
-        <p className={styles.error} role="alert">
+        <Alert className={styles.error} variant="destructive">
           {actionError}
-        </p>
+        </Alert>
       )}
 
       <h2 className={styles.sectionLabel}>{COPY.programs.departments}</h2>
@@ -511,24 +518,29 @@ const ProgramsManager = () => {
                     <p className={styles.deptCode}>{department.code}</p>
                   </div>
                   <div className={styles.deptActions}>
-                    <span
+                    <Badge
                       className={`${styles.badge} ${department.lifecycle === "Active" ? styles.badgeActive : ""}`}
+                      variant={
+                        department.lifecycle === "Active"
+                          ? "default"
+                          : "outline"
+                      }
                     >
                       {DEPARTMENT_LIFECYCLE_LABEL[department.lifecycle]}
-                    </span>
+                    </Badge>
                     {department.capabilities.publish &&
                       department.lifecycle !== "Active" &&
                       department.lifecycle !== "Archived" && (
-                        <button
+                        <Button
                           className={styles.toggle}
                           type="button"
                           disabled={busy}
                           onClick={() => void handlePublish(department)}
                         >
                           {COPY.programs.lifecycleActive}
-                        </button>
+                        </Button>
                       )}
-                    <button
+                    <Button
                       className={styles.toggle}
                       type="button"
                       aria-expanded={isOpen}
@@ -537,7 +549,7 @@ const ProgramsManager = () => {
                       }
                     >
                       {isOpen ? COPY.programs.collapse : COPY.programs.expand}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -559,7 +571,7 @@ const ProgramsManager = () => {
                               <span className={styles.moduleName}>
                                 {MODULE_LABEL[module.module_key]}
                               </span>
-                              <button
+                              <Button
                                 className={`${styles.toggle} ${module.enabled === 1 ? styles.toggleOn : ""}`}
                                 type="button"
                                 disabled={busy}
@@ -574,7 +586,7 @@ const ProgramsManager = () => {
                                 {module.enabled === 1
                                   ? COPY.programs.disable
                                   : COPY.programs.enable}
-                              </button>
+                              </Button>
                             </div>
                           ))
                         )}
@@ -631,7 +643,7 @@ const ProgramsManager = () => {
                                     </span>
                                   </div>
                                 </div>
-                                <button
+                                <Button
                                   className={styles.toggle}
                                   type="button"
                                   aria-expanded={detailOpen}
@@ -654,7 +666,7 @@ const ProgramsManager = () => {
                                   {detailOpen
                                     ? COPY.programs.collapse
                                     : COPY.programs.programDetails}
-                                </button>
+                                </Button>
                               </div>
                               {detailOpen && (
                                 <div className={styles.programDetail}>
@@ -691,7 +703,7 @@ const ProgramsManager = () => {
                                       },
                                     ].map(({ task, label, enabled }) =>
                                       enabled ? (
-                                        <button
+                                        <Button
                                           key={task}
                                           type="button"
                                           className={styles.taskButton}
@@ -704,7 +716,7 @@ const ProgramsManager = () => {
                                           }
                                         >
                                           {label}
-                                        </button>
+                                        </Button>
                                       ) : null
                                     )}
                                   </nav>
@@ -800,7 +812,6 @@ const ProgramsManager = () => {
           })}
         </ul>
       )}
-
     </section>
   );
 };

@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
 import type {
   ManagementNotificationItem,
@@ -54,16 +58,19 @@ const NotificationList = ({
 }: Pick<ProgramsNotificationsProps, "state" | "onMarkRead">) => {
   if (state.kind === "loading") {
     return (
-      <output className={styles.notificationState} aria-busy="true">
-        {COPY.programs.notificationsLoading}
-      </output>
+      <>
+        <output className={styles.notificationState} aria-busy="true">
+          {COPY.programs.notificationsLoading}
+        </output>
+        <Skeleton className={styles.notificationState} aria-hidden="true" />
+      </>
     );
   }
   if (state.kind === "error") {
     return (
-      <div className={styles.notificationState} role="alert">
+      <Alert className={styles.notificationState} variant="destructive">
         {state.message}
-      </div>
+      </Alert>
     );
   }
   if (state.notifications.items.length === 0) {
@@ -102,9 +109,12 @@ const NotificationList = ({
               <span className={styles.notificationItemTopline}>
                 <strong>{title}</strong>
                 {!item.read && (
-                  <span className={styles.notificationUnreadLabel}>
+                  <Badge
+                    className={styles.notificationUnreadLabel}
+                    variant="destructive"
+                  >
                     {COPY.programs.notificationsUnread}
-                  </span>
+                  </Badge>
                 )}
               </span>
               <span>
@@ -248,16 +258,19 @@ export const ProgramsNotifications = ({
             </p>
           </div>
           {unreadCount > 0 && (
-            <span className={`${styles.badge} ${styles.badgeActive}`}>
+            <Badge
+              className={`${styles.badge} ${styles.badgeActive}`}
+              variant="default"
+            >
               {unreadCount}
-            </span>
+            </Badge>
           )}
         </header>
         <NotificationList state={effectiveState} onMarkRead={markRead} />
         {effectiveState.kind === "error" && (
-          <button className={styles.retry} type="button" onClick={onRetry}>
+          <Button className={styles.retry} type="button" onClick={onRetry}>
             {COPY.programs.notificationsRetry}
-          </button>
+          </Button>
         )}
       </section>
     );
@@ -268,15 +281,15 @@ export const ProgramsNotifications = ({
       className={styles.notificationControl}
       aria-label={COPY.programs.notificationBellLabel}
     >
-      <button
-        ref={triggerRef}
+      <Button
         className={styles.notificationTrigger}
         type="button"
         aria-expanded={open}
         aria-controls="programs-notification-panel"
         aria-haspopup="dialog"
         aria-label={COPY.programs.notificationBellTitle}
-        onClick={() => {
+        onClick={(event) => {
+          triggerRef.current = event.currentTarget;
           setOpen((current) => {
             const nextOpen = !current;
             if (nextOpen) {
@@ -295,17 +308,18 @@ export const ProgramsNotifications = ({
           <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
         </svg>
         {unreadCount > 0 && (
-          <span
+          <Badge
             className={`${styles.badge} ${styles.badgeActive} ${styles.notificationBadge}`}
+            variant="default"
             aria-label={COPY.programs.notificationsCount.replace(
               "{count}",
               String(unreadCount)
             )}
           >
             {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
+          </Badge>
         )}
-      </button>
+      </Button>
       {open && (
         <dialog
           open
@@ -317,23 +331,23 @@ export const ProgramsNotifications = ({
         >
           <div className={styles.notificationPopoverHeader}>
             <strong>{COPY.programs.notificationsTitle}</strong>
-            {unreadCount > 0 && <span>{unreadCount}</span>}
+            {unreadCount > 0 && <Badge variant="default">{unreadCount}</Badge>}
           </div>
           <NotificationList state={effectiveState} onMarkRead={markRead} />
           {effectiveState.kind === "error" && (
-            <button className={styles.retry} type="button" onClick={onRetry}>
+            <Button className={styles.retry} type="button" onClick={onRetry}>
               {COPY.programs.notificationsRetry}
-            </button>
+            </Button>
           )}
           {effectiveState.kind === "ready" &&
             effectiveState.notifications.has_more && (
-              <button
+              <Button
                 className={styles.notificationViewAll}
                 type="button"
                 onClick={onViewAll}
               >
                 {COPY.programs.notificationsViewAll}
-              </button>
+              </Button>
             )}
         </dialog>
       )}

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
@@ -12,20 +13,23 @@ import styles from "./programs.module.css";
  * management mode; directory, detail, enrollment, and workspace surfaces stay
  * outside this entry slice.
  */
-export default function ProgramsPage() {
-  return (
+const ProgramsPage = () => 
+  (
     <AppShell>
       <div className={styles.page}>
         <Suspense
           fallback={
-            <div className={styles.boundaryState} role="status" aria-busy="true">
+            <output className={styles.boundaryState} aria-busy="true">
               {COPY.programs.accessLoading}
-            </div>
+              <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
+            </output>
           }
         >
           <ProgramsBoundary />
         </Suspense>
       </div>
     </AppShell>
-  );
-}
+  )
+;
+
+export default ProgramsPage;

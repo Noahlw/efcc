@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AnnouncementDetail } from "@/lib/announcement-detail";
 import { COPY } from "@/lib/copy";
 import { hkMonthDayLabel } from "@/lib/hk-time";
@@ -110,6 +115,7 @@ export const MessagesPanel = () => {
         <output className={styles.state} aria-busy="true">
           {COPY.home.messagesLoading}
         </output>
+        <Skeleton className={styles.state} aria-hidden="true" />
       </div>
     );
   }
@@ -121,16 +127,16 @@ export const MessagesPanel = () => {
           <h1 className={styles.pageTitle}>{COPY.home.churchNews}</h1>
           <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
         </header>
-        <p className={styles.error} role="alert">
-          {COPY.home.messagesLoadError}
-        </p>
-        <button
+        <Alert className={styles.error} variant="destructive">
+          <p>{COPY.home.messagesLoadError}</p>
+        </Alert>
+        <Button
           className={styles.retry}
           type="button"
           onClick={() => void load()}
         >
           {COPY.home.messagesRetry}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -146,12 +152,12 @@ export const MessagesPanel = () => {
           <h1 className={styles.pageTitle}>{COPY.home.churchNews}</h1>
           <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
         </header>
-        <p className={styles.error} role="alert">
-          {COPY.home.messagesNotFound}
-        </p>
-        <button className={styles.retry} type="button" onClick={navigateToList}>
+        <Alert className={styles.error} variant="destructive">
+          <p>{COPY.home.messagesNotFound}</p>
+        </Alert>
+        <Button className={styles.retry} type="button" onClick={navigateToList}>
           {COPY.home.messagesBack}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -163,10 +169,10 @@ export const MessagesPanel = () => {
         <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
       </header>
       {state.announcements.length === 0 ? (
-        <div className={styles.empty}>
+        <Card className={styles.empty}>
           <h2 className={styles.emptyTitle}>{COPY.home.messagesEmpty}</h2>
           <p className={styles.emptyHint}>{COPY.home.messagesEmptyHint}</p>
-        </div>
+        </Card>
       ) : (
         <ul
           className={styles.messageFeed}
@@ -174,27 +180,26 @@ export const MessagesPanel = () => {
         >
           {state.announcements.map((row) => (
             <li key={row.contentId} className={styles.messageCardItem}>
-              <Link
-                className={styles.messageCard}
-                href={buildMessagesHref(row.contentId, "messages")}
-              >
-                {/* ponytail: category pill returns when home_content ships a
-                    category column -- the STRICT schema has none today. */}
-                <div className={styles.messageCardTop}>
-                  {row.publishedAt && (
-                    <span className={styles.messageDate}>
-                      {hkMonthDayLabel(row.publishedAt)}
-                    </span>
-                  )}
-                </div>
-                <h2 className={styles.messageCardTitle}>{row.title}</h2>
-                <p className={styles.messageCardDesc}>{row.summary}</p>
-                <div className={styles.messageCardFoot}>
-                  <span>{COPY.home.churchName}</span>
-                  <strong className={styles.messageActionLink}>
-                    {COPY.home.messageReadMore}
-                  </strong>
-                </div>
+              <Link href={buildMessagesHref(row.contentId, "messages")}>
+                <Card className={styles.messageCard}>
+                  {/* ponytail: category pill returns when home_content ships a
+                      category column -- the STRICT schema has none today. */}
+                  <div className={styles.messageCardTop}>
+                    {row.publishedAt && (
+                      <Badge className={styles.messageDate} variant="outline">
+                        {hkMonthDayLabel(row.publishedAt)}
+                      </Badge>
+                    )}
+                  </div>
+                  <h2 className={styles.messageCardTitle}>{row.title}</h2>
+                  <p className={styles.messageCardDesc}>{row.summary}</p>
+                  <div className={styles.messageCardFoot}>
+                    <span>{COPY.home.churchName}</span>
+                    <strong className={styles.messageActionLink}>
+                      {COPY.home.messageReadMore}
+                    </strong>
+                  </div>
+                </Card>
               </Link>
             </li>
           ))}
