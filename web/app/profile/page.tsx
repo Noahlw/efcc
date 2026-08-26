@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
@@ -90,8 +91,9 @@ const ProfileContent = () => {
         <p>{COPY.profile.subtitle}</p>
       </div>
 
-      <article
+      <Card
         className={`${styles.qrCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
+        role="article"
         aria-labelledby="profile-qr-title"
       >
         <Badge
@@ -123,10 +125,11 @@ const ProfileContent = () => {
             {statusText}
           </Badge>
         </p>
-      </article>
+      </Card>
 
-      <section
+      <Card
         className={`${styles.detailsCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
+        role="region"
         aria-labelledby="profile-details-title"
       >
         <details className={styles.details}>
@@ -155,7 +158,7 @@ const ProfileContent = () => {
             </div>
           </dl>
         </details>
-      </section>
+      </Card>
 
       <section
         className={styles.actions}

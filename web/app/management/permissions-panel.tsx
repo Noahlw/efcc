@@ -4,18 +4,28 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import type {
+  AccountPermissionPolicyCapability,
+  AccountPermissionRole,
+  AccountPermissionRoleKey,
+  AccountPermissionsView,
+  PermissionPolicyChange,
+  PermissionPolicyRoleKey,
+} from "@/lib/programs/program-api";
 import {
   getAccountPermissions,
   updateAccountPermissions,
-  type AccountPermissionPolicyCapability,
-  type AccountPermissionRole,
-  type AccountPermissionRoleKey,
-  type AccountPermissionsView,
-  type PermissionPolicyChange,
-  type PermissionPolicyRoleKey,
 } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
@@ -63,8 +73,6 @@ const POLICY_ROLE_COPY: Record<PermissionPolicyRoleKey, string> = {
 
 const BASELINE_LABEL = "會友基礎";
 const BASELINE_SUMMARY = "適用於所有生效帳戶 · 系統固定";
-const BASELINE_NOTICE =
-  "所有管理員、同工及會友都保留一般會友能力；這項系統政策不能編輯或指派。";
 const ROLE_LIST_ARIA_LABEL = COPY.permissions.rolesSection;
 const ROLE_DETAIL_BACK_LABEL = "返回角色列表";
 const ROLE_DETAIL_TITLE_SUFFIX = "角色詳情";
@@ -142,7 +150,9 @@ function policyChanges(
   return changes;
 }
 
-function roleDefinitions(data: AccountPermissionsView): AccountPermissionRole[] {
+function roleDefinitions(
+  data: AccountPermissionsView
+): AccountPermissionRole[] {
   return ROLE_ORDER.map((key) => {
     const serverRole = data.roles.find((role) => role.key === key);
     if (serverRole) {
@@ -175,7 +185,9 @@ function accountsForGlobalRole(
   data: AccountPermissionsView,
   role: PermissionPolicyRoleKey
 ): AccountPermissionsView["accounts"] {
-  return data.accounts.filter((account) => globalRoleForAccount(account) === role);
+  return data.accounts.filter(
+    (account) => globalRoleForAccount(account) === role
+  );
 }
 
 function policyCapabilityMatches(
@@ -200,19 +212,17 @@ function capabilityCountForRole(
   data: AccountPermissionsView,
   role: PermissionPolicyRoleKey
 ): { total: number; editable: number } {
-  return data.policy.capabilities.reduce(
-    (counts, capability) => {
-      const cell = capability.roles[role];
-      if (cell.applicable || cell.value) {
-        counts.total += 1;
-      }
-      if (cell.editable && !cell.locked) {
-        counts.editable += 1;
-      }
-      return counts;
-    },
-    { total: 0, editable: 0 }
-  );
+  const counts = { total: 0, editable: 0 };
+  for (const capability of data.policy.capabilities) {
+    const cell = capability.roles[role];
+    if (cell.applicable || cell.value) {
+      counts.total += 1;
+    }
+    if (cell.editable && !cell.locked) {
+      counts.editable += 1;
+    }
+  }
+  return counts;
 }
 
 const POLICY_CHANGE_CONSEQUENCES: Record<string, string> = {
@@ -228,7 +238,6 @@ const POLICY_CHANGE_CONSEQUENCES: Record<string, string> = {
 function policyChangeConsequence(capability: string): string | null {
   return POLICY_CHANGE_CONSEQUENCES[capability] ?? null;
 }
-
 
 function departmentContext(
   account: AccountPermissionsView["accounts"][number],
@@ -253,7 +262,7 @@ function policyGroups(
   return [...new Set(capabilities.map((capability) => capability.group))];
 }
 
-function PolicyCell({
+const PolicyCell = ({
   capability,
   role,
   value,
@@ -265,7 +274,7 @@ function PolicyCell({
   value: boolean;
   dirty: boolean;
   onToggle?: () => void;
-}) {
+}) => {
   const cell = capability.roles[role];
   const editable = cell.editable && !cell.locked;
   const state = cell.locked
@@ -273,38 +282,47 @@ function PolicyCell({
     : dirty
       ? `${COPY.permissions.policyPending} · ${COPY.permissions.policyEditable}`
       : cell.editable
-      ? COPY.permissions.policyEditable
-      : COPY.permissions.policyReadOnly;
+        ? COPY.permissions.policyEditable
+        : COPY.permissions.policyReadOnly;
+  const label = `${capability.label} · ${POLICY_ROLE_COPY[role]}`;
 
   const content = (
-    <>
+    <span className={styles.policyCellCopy}>
       <strong>{POLICY_ROLE_COPY[role]}</strong>
       <span>
-        {value ? COPY.permissions.policyEnabled : COPY.permissions.policyDisabled}
+        {value
+          ? COPY.permissions.policyEnabled
+          : COPY.permissions.policyDisabled}
       </span>
       <small>{state}</small>
-    </>
+    </span>
   );
   const className = `${styles.policyCell} ${cell.locked ? styles.lockedCell : ""}`;
   if (editable && onToggle) {
     return (
-      <button
-        aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
-        aria-pressed={value}
+      <div
+        aria-label={label}
         className={className}
         data-editable="true"
         data-locked="false"
-        onClick={onToggle}
-        type="button"
+        role="group"
       >
+        <Switch
+          aria-label={label}
+          aria-pressed={value}
+          checked={value}
+          className={styles.policySwitch}
+          onCheckedChange={onToggle}
+          role="button"
+        />
         {content}
-      </button>
+      </div>
     );
   }
 
   return (
     <div
-      aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
+      aria-label={label}
       className={className}
       data-editable={editable ? "true" : "false"}
       data-locked={cell.locked ? "true" : "false"}
@@ -313,9 +331,9 @@ function PolicyCell({
       {content}
     </div>
   );
-}
+};
 
-function PolicyCapabilityRow({
+const PolicyCapabilityRow = ({
   capability,
   draft,
   role,
@@ -325,7 +343,7 @@ function PolicyCapabilityRow({
   draft: PolicyDraft;
   role: PermissionPolicyRoleKey;
   onToggle: (role: PermissionPolicyRoleKey, capability: string) => void;
-}) {
+}) => {
   const key = draftKey(role, capability.key);
   return (
     <article className={styles.policyRow}>
@@ -349,9 +367,9 @@ function PolicyCapabilityRow({
       </div>
     </article>
   );
-}
+};
 
-function PermissionPolicy({
+const PermissionPolicy = ({
   data,
   draft,
   headingRef,
@@ -373,16 +391,16 @@ function PermissionPolicy({
   onSave: () => void;
   onReload: () => void;
   conflictRevision: number | null;
-}) {
+}) => {
   const groups = useMemo(
     () => policyGroups(data.policy.capabilities),
     [data.policy.capabilities]
   );
-  const canEdit = data.policy.actor.canEdit;
+  const {canEdit} = data.policy.actor;
   const changes = policyChanges(data, draft);
   const [query, setQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    () => new Set(groups.includes(BASELINE_LABEL) ? [BASELINE_LABEL] : groups.slice(0, 1))
+    () => new Set(groups)
   );
   const [reviewOpen, setReviewOpen] = useState(dirty);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -438,10 +456,12 @@ function PermissionPolicy({
         </span>
       </header>
 
-      <div className={styles.policyToolbar} role="search">
+      <search className={styles.policyToolbar}>
         <label className={styles.searchField}>
-          <span className={styles.visuallyHidden}>{PERMISSION_SEARCH_LABEL}</span>
-          <input
+          <span className={styles.visuallyHidden}>
+            {PERMISSION_SEARCH_LABEL}
+          </span>
+          <Input
             aria-label={PERMISSION_SEARCH_LABEL}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={PERMISSION_SEARCH_PLACEHOLDER}
@@ -450,65 +470,57 @@ function PermissionPolicy({
           />
         </label>
         <span className={styles.policyRoleHint}>{roleCopy.label}</span>
-      </div>
+      </search>
 
       <div className={styles.policyLayout}>
         <div className={styles.groupStack}>
-          {groups.map((group) => {
-            const capabilities = data.policy.capabilities.filter(
-              (capability) =>
-                capability.group === group &&
-                policyCapabilityMatches(capability, normalizedQuery)
-            );
-            const totalCapabilities = data.policy.capabilities.filter(
-              (capability) => capability.group === group
-            ).length;
-            if (capabilities.length === 0) {
-              return null;
-            }
-            const matching = normalizedQuery.length > 0;
-            return (
-              <details
-                className={styles.policyGroup}
-                key={group}
-                open={matching || expandedGroups.has(group)}
-                onToggle={(event) => {
-                  const open = event.currentTarget.open;
-                  setExpandedGroups((current) => {
-                    const next = new Set(current);
-                    if (open) {
-                      next.add(group);
-                    } else {
-                      next.delete(group);
-                    }
-                    return next;
-                  });
-                }}
-              >
-                <summary>
-                  <strong>{group}</strong>
-                  <span>{totalCapabilities} 項</span>
-                </summary>
-                <div className={styles.policyGroupBody}>
-                  {capabilities.map((capability) => (
-                    <PolicyCapabilityRow
-                      capability={capability}
-                      key={capability.key}
-                      draft={draft}
-                      onToggle={onToggle}
-                      role={role}
-                    />
-                  ))}
-                </div>
-              </details>
-            );
-          })}
+          <Accordion
+            aria-label="權限分組"
+            onValueChange={(values) => setExpandedGroups(new Set(values))}
+            type="multiple"
+            value={[...expandedGroups]}
+          >
+            {groups.map((group) => {
+              const capabilities = data.policy.capabilities.filter(
+                (capability) =>
+                  capability.group === group &&
+                  policyCapabilityMatches(capability, normalizedQuery)
+              );
+              const totalCapabilities = data.policy.capabilities.filter(
+                (capability) => capability.group === group
+              ).length;
+              if (capabilities.length === 0) {
+                return null;
+              }
+              return (
+                <AccordionItem
+                  className={styles.policyGroup}
+                  key={group}
+                  value={group}
+                >
+                  <AccordionTrigger className={styles.policyGroupTrigger}>
+                    <strong>{group}</strong>
+                    <span>{totalCapabilities} 項</span>
+                  </AccordionTrigger>
+                  <AccordionContent className={styles.policyGroupBody}>
+                    {capabilities.map((capability) => (
+                      <PolicyCapabilityRow
+                        capability={capability}
+                        key={capability.key}
+                        draft={draft}
+                        onToggle={onToggle}
+                        role={role}
+                      />
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
           {normalizedQuery &&
             !data.policy.capabilities.some((capability) =>
               policyCapabilityMatches(capability, normalizedQuery)
-            ) && (
-              <p className={styles.emptySearch}>找不到符合的權限。</p>
-            )}
+            ) && <p className={styles.emptySearch}>找不到符合的權限。</p>}
         </div>
 
         <aside
@@ -572,13 +584,20 @@ function PermissionPolicy({
                   const capability = data.policy.capabilities.find(
                     (item) => item.key === change.capability
                   );
-                  const previous = capability?.roles[change.role].value ?? false;
-                  const consequence = policyChangeConsequence(change.capability);
+                  const previous =
+                    capability?.roles[change.role].value ?? false;
+                  const consequence = policyChangeConsequence(
+                    change.capability
+                  );
                   return (
                     <li key={`${change.role}:${change.capability}`}>
                       <strong>{capability?.label ?? change.capability}</strong>
                       <span>
-                        {POLICY_ROLE_COPY[change.role]} · {previous ? "✓" : "—"} → {change.value ? COPY.permissions.policyChangeEnabled : COPY.permissions.policyChangeDisabled}
+                        {POLICY_ROLE_COPY[change.role]} · {previous ? "✓" : "—"}{" "}
+                        →{" "}
+                        {change.value
+                          ? COPY.permissions.policyChangeEnabled
+                          : COPY.permissions.policyChangeDisabled}
                       </span>
                       {consequence && (
                         <small className={styles.changeConsequence}>
@@ -617,24 +636,24 @@ function PermissionPolicy({
       </div>
     </section>
   );
-}
+};
 
-function InternalBackButton({
+const InternalBackButton = ({
   label,
   onClick,
 }: {
   label: string;
   onClick: () => void;
-}) {
+}) => {
   return (
     <button className={styles.backButton} onClick={onClick} type="button">
       <BackIcon />
       <span>{label}</span>
     </button>
   );
-}
+};
 
-function ChevronIcon() {
+const ChevronIcon = () => {
   return (
     <svg
       aria-hidden="true"
@@ -645,26 +664,18 @@ function ChevronIcon() {
       <path d="m8 5 7 7-7 7" />
     </svg>
   );
-}
+};
 
-function MemberBaseline() {
+const MemberBaseline = () => {
   return (
-    <article
-      aria-label={BASELINE_LABEL}
-      className={styles.baseline}
-      data-system-owned="true"
-    >
-      <div className={styles.baselineCopy}>
-        <strong>{BASELINE_LABEL}</strong>
-        <span>{BASELINE_SUMMARY}</span>
-      </div>
-      <span className={styles.lockedBadge}>{COPY.permissions.policyLocked}</span>
-      <p>{BASELINE_NOTICE}</p>
-    </article>
+    <p className={styles.baselineNote} data-system-owned="true" role="note">
+      <strong>{BASELINE_LABEL}</strong>
+      <span>{BASELINE_SUMMARY}</span>
+    </p>
   );
-}
+};
 
-function RoleList({
+const RoleList = ({
   data,
   headingRef,
   onSelect,
@@ -672,9 +683,12 @@ function RoleList({
   data: AccountPermissionsView;
   headingRef: HeadingRef;
   onSelect: (role: PermissionPolicyRoleKey) => void;
-}) {
+}) => {
   return (
-    <section aria-labelledby="permissions-roles-title" className={styles.section}>
+    <section
+      aria-labelledby="permissions-roles-title"
+      className={styles.section}
+    >
       <header className={styles.listHeader}>
         <div>
           <h2
@@ -705,9 +719,6 @@ function RoleList({
                 onClick={() => onSelect(role)}
                 type="button"
               >
-                <span className={styles.roleMark} aria-hidden="true">
-                  {roleCopy.label.slice(0, 1)}
-                </span>
                 <span className={styles.roleCopy}>
                   <span className={styles.roleName}>{roleCopy.label}</span>
                   <span className={styles.roleScope}>{roleCopy.scope}</span>
@@ -724,9 +735,9 @@ function RoleList({
       <MemberBaseline />
     </section>
   );
-}
+};
 
-function RoleDetail({
+const RoleDetail = ({
   data,
   headingRef,
   onBack,
@@ -740,17 +751,17 @@ function RoleDetail({
   onOpenAccounts: () => void;
   onOpenPermissions: () => void;
   role: PermissionPolicyRoleKey;
-}) {
+}) => {
   const roleCopy = GLOBAL_ROLE_COPY[role];
   const assignedCount = accountsForGlobalRole(data, role).length;
   const counts = capabilityCountForRole(data, role);
   return (
-    <section aria-labelledby="permissions-role-detail-title" className={styles.section}>
+    <section
+      aria-labelledby="permissions-role-detail-title"
+      className={styles.section}
+    >
       <InternalBackButton label={ROLE_DETAIL_BACK_LABEL} onClick={onBack} />
       <div className={styles.roleDetailHeader}>
-        <span className={styles.detailRoleMark} aria-hidden="true">
-          {roleCopy.label.slice(0, 1)}
-        </span>
         <div>
           <h2
             className={styles.detailTitle}
@@ -818,9 +829,9 @@ function RoleDetail({
       </aside>
     </section>
   );
-}
+};
 
-function AssignedAccounts({
+const AssignedAccounts = ({
   data,
   definitions,
   headingRef,
@@ -832,12 +843,18 @@ function AssignedAccounts({
   headingRef: HeadingRef;
   onBack: () => void;
   role: PermissionPolicyRoleKey;
-}) {
+}) => {
   const roleCopy = GLOBAL_ROLE_COPY[role];
   const accounts = accountsForGlobalRole(data, role);
   return (
-    <section aria-labelledby="permissions-assigned-title" className={styles.section}>
-      <InternalBackButton label={ROLE_PERMISSIONS_BACK_LABEL} onClick={onBack} />
+    <section
+      aria-labelledby="permissions-assigned-title"
+      className={styles.section}
+    >
+      <InternalBackButton
+        label={ROLE_PERMISSIONS_BACK_LABEL}
+        onClick={onBack}
+      />
       <header className={styles.detailHeader}>
         <div>
           <h2
@@ -852,7 +869,9 @@ function AssignedAccounts({
         </div>
         <span className={styles.revision}>{`${accounts.length} 個帳戶`}</span>
       </header>
-      {role === "member" && <p className={styles.baselineHint}>{MEMBER_ACCOUNTS_COPY}</p>}
+      {role === "member" && (
+        <p className={styles.baselineHint}>{MEMBER_ACCOUNTS_COPY}</p>
+      )}
       {accounts.length > 0 ? (
         <div className={styles.tableWrap}>
           <table
@@ -872,8 +891,8 @@ function AssignedAccounts({
             <tbody>
               {accounts.map((account) => {
                 const accountRole =
-                  definitions.find((item) => item.key === account.role)?.label ??
-                  ROLE_COPY[account.role].label;
+                  definitions.find((item) => item.key === account.role)
+                    ?.label ?? ROLE_COPY[account.role].label;
                 const department = departmentContext(account, definitions);
                 return (
                   <tr key={account.userId}>
@@ -891,10 +910,13 @@ function AssignedAccounts({
       )}
     </section>
   );
-}
+};
 
 function isPolicyRole(value: string | null): value is PermissionPolicyRoleKey {
-  return value !== null && POLICY_ROLE_ORDER.includes(value as PermissionPolicyRoleKey);
+  return (
+    value !== null &&
+    POLICY_ROLE_ORDER.includes(value as PermissionPolicyRoleKey)
+  );
 }
 
 function initialPermissionNavigation(searchParams: URLSearchParams): {
@@ -914,7 +936,7 @@ function initialPermissionNavigation(searchParams: URLSearchParams): {
   return { role, screen };
 }
 
-export function PermissionsPanel() {
+export const PermissionsPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnHref = safeManagementReturnHref(
@@ -924,36 +946,42 @@ export function PermissionsPanel() {
   const returnLabel = returnHref.includes("module=settings")
     ? COPY.permissions.backToSettings
     : "返回管理工作";
-  const { state, run: loadPermissions, retry } = useAsyncResource<
-    AccountPermissionsView,
-    PermissionsState
-  >(() => getAccountPermissions(), {
-    toLoading: () => ({ kind: "loading" }),
-    toReady: (data) => ({ kind: "ready", data }),
-    onError: (error) => {
-      const code = error instanceof RpcError ? error.problem.code : undefined;
-      if (code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        router.replace("/");
-        return null;
-      }
+  const {
+    state,
+    run: loadPermissions,
+    retry,
+  } = useAsyncResource<AccountPermissionsView, PermissionsState>(
+    () => getAccountPermissions(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (data) => ({ kind: "ready", data }),
+      onError: (error) => {
+        const code = error instanceof RpcError ? error.problem.code : undefined;
+        if (code === "AUTH_REQUIRED") {
+          announce("");
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return null;
+        }
 
-      const forbidden = code === "FORBIDDEN";
-      const message = forbidden
-        ? COPY.permissions.forbidden
-        : COPY.permissions.loadError;
-      announce(message);
-      return {
-        kind: "error",
-        failure: forbidden ? "forbidden" : "recoverable",
-        message,
-      };
+        const forbidden = code === "FORBIDDEN";
+        const message = forbidden
+          ? COPY.permissions.forbidden
+          : COPY.permissions.loadError;
+        announce(message);
+        return {
+          kind: "error",
+          failure: forbidden ? "forbidden" : "recoverable",
+          message,
+        };
+      },
+      announceLoading: COPY.permissions.loading,
+      focusTarget: "#permissions-panel-state",
     },
-    announceLoading: COPY.permissions.loading,
-    focusTarget: "#permissions-panel-state",
-  }, [router]);
+    [router]
+  );
 
   const [displayData, setDisplayData] = useState<AccountPermissionsView | null>(
     null
@@ -963,11 +991,11 @@ export function PermissionsPanel() {
   const [saveState, setSaveState] = useState<PolicySaveState>("idle");
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
   const preserveDraftOnReload = useRef(false);
-  const [activeRole, setActiveRole] = useState<PermissionPolicyRoleKey>(() =>
-    initialPermissionNavigation(searchParams).role
+  const [activeRole, setActiveRole] = useState<PermissionPolicyRoleKey>(
+    () => initialPermissionNavigation(searchParams).role
   );
-  const [screen, setScreen] = useState<PermissionScreen>(() =>
-    initialPermissionNavigation(searchParams).screen
+  const [screen, setScreen] = useState<PermissionScreen>(
+    () => initialPermissionNavigation(searchParams).screen
   );
   const viewHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const loadingStateRef = useRef<HTMLOutputElement | null>(null);
@@ -1000,10 +1028,7 @@ export function PermissionsPanel() {
     });
   }, [displayData, draftRevision, state]);
 
-  const handleToggle = (
-    role: PermissionPolicyRoleKey,
-    capability: string
-  ) => {
+  const handleToggle = (role: PermissionPolicyRoleKey, capability: string) => {
     setDraft((current) => {
       if (!current) {
         return current;
@@ -1073,6 +1098,12 @@ export function PermissionsPanel() {
     void loadPermissions();
   }, [loadPermissions]);
 
+  useEffect(() => {
+    if (state.kind === "ready") {
+      announce("");
+    }
+  }, [state.kind]);
+
   const definitions = readyData ? roleDefinitions(readyData) : [];
   const dirty =
     readyData !== null && draft !== null
@@ -1094,7 +1125,11 @@ export function PermissionsPanel() {
 
   const goBack = () => {
     setScreen((current) =>
-      current === "roles" ? "roles" : current === "role-detail" ? "roles" : "role-detail"
+      current === "roles"
+        ? "roles"
+        : current === "role-detail"
+          ? "roles"
+          : "role-detail"
     );
   };
 
@@ -1119,10 +1154,9 @@ export function PermissionsPanel() {
       aria-busy={state.kind === "loading"}
     >
       <header className={styles.header}>
-        <SettingsBackLink
-          href={returnHref}
-          label={returnLabel}
-        />
+        {(screen === "roles" || readyData === null) && (
+          <SettingsBackLink href={returnHref} label={returnLabel} />
+        )}
         <h1 id="permissions-title" className={styles.title}>
           {COPY.permissions.permissionsTitle}
         </h1>
@@ -1218,4 +1252,4 @@ export function PermissionsPanel() {
       )}
     </section>
   );
-}
+};

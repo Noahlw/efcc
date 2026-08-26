@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authLogin, authMe, authUpgrade, RpcError } from "@/lib/api";
@@ -324,8 +325,9 @@ const LoginPage = () => {
   if (view.kind === "SESSION_EXPIRED") {
     return (
       <main className={styles.sessionExpired}>
-        <article
+        <Card
           className={`${styles.sessionExpiredCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+          role="article"
         >
           <h1 className={styles.sessionExpiredTitle}>
             {COPY.sessionExpired.title}
@@ -340,7 +342,7 @@ const LoginPage = () => {
           >
             {COPY.sessionExpired.reLogin}
           </Button>
-        </article>
+        </Card>
       </main>
     );
   }
@@ -364,9 +366,10 @@ const LoginPage = () => {
       <main className={styles.main}>
         <div className={styles.bodyCenter}>
           <div className={styles.splitLogin}>
-            <section
+            <Card
               id="login"
               className={`${styles.formCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+              role="region"
               aria-labelledby="login-title"
             >
               <div className={styles.cardHead}>
@@ -524,7 +527,7 @@ const LoginPage = () => {
                   {view.error}
                 </Alert>
               )}
-            </section>
+            </Card>
 
             <div className={styles.loginCopy}>
               <h1>{LANDING.brandFull}</h1>
