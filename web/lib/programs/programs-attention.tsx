@@ -57,7 +57,10 @@ export const ProgramsAttention = ({
 
   useEffect(() => {
     if (open) {
-      document.querySelector("#programs-attention-panel")?.focus();
+      const panel = document.querySelector<HTMLElement>(
+        "#programs-attention-panel"
+      );
+      panel?.focus();
       return;
     }
     if (returnFocusPending.current) {
@@ -107,6 +110,7 @@ export const ProgramsAttention = ({
         <section
           id="programs-attention-panel"
           className={styles.attentionPopover}
+          role="dialog"
           aria-label={COPY.programs.attentionTitle}
           tabIndex={-1}
         >

@@ -139,6 +139,8 @@ export default defineConfig({
         "src/frontend/src/views/MemberRegistrationView.tsx",
         "src/frontend/src/views/ProgramCatalogView.tsx",
         "src/frontend/src/views/ProgramEnrollmentView.tsx",
+        "web/lib/programs/programs-attention.tsx",
+        "web/lib/programs/event-detail.tsx",
       ],
       rules: {
         // div/p with role="alert" or role="status" for error messages
