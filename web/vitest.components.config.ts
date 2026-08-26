@@ -25,6 +25,8 @@ export default defineProject({
       "lib/messages-intent.test.ts",
       "lib/messages-panel.test.tsx",
       "lib/management-hub.test.tsx",
+      "lib/management-action-framework.test.tsx",
+      "lib/management-route-redirects.test.tsx",
       "lib/settings-hub.test.tsx",
       "lib/permissions-panel.test.tsx",
       "lib/member-directory-panel.test.tsx",

@@ -1731,17 +1731,16 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
-    test("permissions page renders the S10 permissionsHeading title", async () => {
+    test("legacy permissions page redirects to canonical Role Policy", async () => {
       withAuthRestore(ADMIN_USER, defaultSections());
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", {
-            name: COPY.sections.permissionsHeading,
-          })
-        ).toBeInTheDocument();
+        expect(replaceMock).toHaveBeenCalledWith(
+          "/management?module=permissions"
+        );
       });
+      expect(screen.getByText("正在前往帳戶與權限…")).toBeInTheDocument();
     });
   });
 

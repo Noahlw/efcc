@@ -34,11 +34,15 @@ const mocks = vi.hoisted(() => {
     replace: vi.fn<() => void>(),
     prefetch: vi.fn<() => void>(),
   };
-  return { router };
+  return { router, returnValue: null as string | null };
 });
 
-vi.mock(import("next/navigation"), () => ({
+vi.mock("next/navigation", () => ({
   useRouter: () => mocks.router,
+  useSearchParams: () =>
+    new URLSearchParams(
+      mocks.returnValue ? { return: mocks.returnValue } : undefined
+    ),
 }));
 
 const server = setupServer();
@@ -279,7 +283,7 @@ describe("PermissionsPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("shows the explanatory lead, title, and settings back link", async () => {
+  test("shows the explanatory lead, title, and Management back link", async () => {
     server.use(
       http.get("/api/v1/programs/account-permissions", () => viewResponse())
     );
@@ -294,9 +298,9 @@ describe("PermissionsPanel", () => {
     expect(screen.getByText(PERMISSIONS.permissionsLead)).toBeInTheDocument();
 
     const back = screen.getByRole("link", {
-      name: PERMISSIONS.backToSettings,
+      name: "返回管理工作",
     });
-    expect(back).toHaveAttribute("href", "/management?module=settings");
+    expect(back).toHaveAttribute("href", "/management");
   });
 
   test("shows the loading state while the projection is in flight", async () => {

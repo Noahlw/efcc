@@ -16,6 +16,7 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
+import { safeManagementReturnHref } from "./management-action-framework";
 import { SettingsBackLink } from "./settings-ui";
 
 import styles from "./account-directory-panel.module.css";
@@ -61,24 +62,6 @@ function statusLabel(status: AccountDirectoryMember["status"]): string {
 
 function statusClass(status: AccountDirectoryMember["status"]): string {
   return status.toLowerCase();
-}
-
-function safeReturnHref(value: string | null, fallback: string): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return fallback;
-  }
-  try {
-    const candidate = new URL(value, "https://efcc.internal");
-    if (
-      candidate.pathname !== "/management" &&
-      !candidate.pathname.startsWith("/management/")
-    ) {
-      return fallback;
-    }
-    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
-  } catch {
-    return fallback;
-  }
 }
 
 // oxlint-disable-next-line eslint/complexity -- This component owns the complete read-only directory state machine.
@@ -278,7 +261,7 @@ export const AccountDirectoryPanel = () => {
   if (department.trim()) {
     returnParams.set("department", department.trim());
   }
-  const returnHref = safeReturnHref(
+  const returnHref = safeManagementReturnHref(
     searchParams.get("return"),
     `/management?${returnParams}`
   );
