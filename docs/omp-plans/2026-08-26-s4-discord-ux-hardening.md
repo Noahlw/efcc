@@ -50,8 +50,8 @@ Cloudflare Worker, D1, Vitest/Testing Library, Playwright, `rtk gh`, and
 
 Create:
 
-- `docs/specs/457-s4-discord-ux-hardening-amendment.md` — frozen hardening
-  contracts; renumber immediately before publication if issue numbering drifts.
+- `docs/specs/460-s4-discord-ux-hardening-amendment.md` — frozen hardening
+  contracts published as issue #460.
 - `docs/adr/0040-discord-derived-s4-management-interaction-authority.md` — UX
   authority and fixed Member Baseline.
 - `docs/adr/0041-atomic-registration-batch-approval.md` — batch transaction,
@@ -171,7 +171,8 @@ explicit selected IDs
 
 ## Failure Modes & Gaps
 
-- Issue number `457` is provisional until publication-time verification.
+- Issue #460 and implementation sub-issues #461–#467 are the published
+  hardening chain; S4.1 Wayfinder #468 is parented to #456.
 - The accepted D1 batch limit requires a measured probe; do not freeze 100 merely
   because it was the planning estimate.
 - The current single registration endpoints only presence-check idempotency and
@@ -539,8 +540,8 @@ bounded defect on its owning branch.
 
 - [ ] **Step 1: Publish the amendment and implementation tickets**
 
-  Re-check issue numbering, use `rtk gh` under `Noahlw`, create dependency edges,
-  and add the custom-role ticket as an S4.1/Wayfinder child of #456.
+  Verify issue #460 with native sub-issues #461–#467 under `Noahlw`, and verify
+  custom-role Wayfinder #468 remains a native child of #456.
 
 - [ ] **Step 2: Submit the production stack**
 

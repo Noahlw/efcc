@@ -1,13 +1,12 @@
 # S4 UX Hardening Amendment — Discord-Derived Management Workflows
 
-**Status:** Proposed; owner decisions frozen, not yet published to GitHub
+**Status:** Approved for implementation; published as GitHub issue #460
 
 **Parent:** GitHub issue #449 and implementation branch
 `feat/s4-management-access` at `6b93a4c5`
 
-**Publication note:** `457` is the next verified issue number as of 2026-08-26.
-Re-check immediately before publication and rename this file if another issue
-claims that number first.
+**Publication record:** GitHub issue #460, with implementation sub-issues
+#461–#467.
 
 ## Authority
 
