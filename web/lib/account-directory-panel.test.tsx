@@ -85,6 +85,7 @@ describe(AccountDirectoryPanel, () => {
     cleanup();
     server.resetHandlers();
     mocks.searchParams = new URLSearchParams();
+    window.history.replaceState({}, "", "/");
     vi.clearAllMocks();
   });
 
@@ -100,9 +101,7 @@ describe(AccountDirectoryPanel, () => {
     expect(within(row).getByText(/同工/u)).toBeTruthy();
     expect(screen.getByText(String(ROWS.length))).toBeTruthy();
     await user.click(row);
-    expect(mocks.router.push).toHaveBeenCalledWith(
-      expect.stringContaining("account=AD-001")
-    );
+    expect(window.location.search).toContain("account=AD-001");
   });
 
   test("forwards role and status filters to the Account Directory seam", async () => {

@@ -299,7 +299,9 @@ export const AccountDirectoryPanel = () => {
     }
     params.set("account", account.userId);
     params.set("return", returnHref);
-    router.push(`/management?${params.toString()}`);
+    // Native history keeps this same-path query transition routable in the
+    // static Worker build and is integrated with App Router search params.
+    window.history.pushState(null, "", `/management?${params.toString()}`);
     announce(account.name);
   };
 
