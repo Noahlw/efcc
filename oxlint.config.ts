@@ -5,14 +5,7 @@ import vitest from "ultracite/oxlint/vitest";
 
 export default defineConfig({
   extends: [core, react, vitest],
-  ignorePatterns: [
-    ...(core.ignorePatterns || []),
-    ".scratch/**",
-    "docs/**",
-    "index.html",
-    "程式碼.js",
-    "prototype/scanner/vendor/**",
-  ],
+  ignorePatterns: [...(core.ignorePatterns || []), "web/components/ui/**"],
   rules: {
     // Scoped via overrides below where possible; only truly global suppressions here
     "no-nested-ternary": "off",
