@@ -62,6 +62,7 @@ role assignment/reordering, and other Discord-only affordances remain S4.1
 | `pnpm exec tsc --noEmit -p tests/e2e/tsconfig.json` | PASS |
 | `pnpm exec ultracite check` (new S4 E2E files) | PASS — formatting/rules clean |
 | `git diff --check` | PASS |
+| Impeccable detector on S4 permissions/approval surfaces | PASS — `[]` |
 | `tests/e2e/s4-management-hardening.config.ts` local D1 gate | PASS — 80 cases, 28 executed/pass, 52 intentional width/scope skips; `.last-run.json` = `passed` |
 | Screenshot matrix | 46 fresh frames across required widths and material management states under `docs/qa/screenshots/s4-hardening/` |
 
