@@ -28,6 +28,7 @@ export default defineProject({
       "lib/settings-hub.test.tsx",
       "lib/permissions-panel.test.tsx",
       "lib/member-directory-panel.test.tsx",
+      "lib/account-directory-panel.test.tsx",
       "app/management/home-cms-editor.test.tsx",
       "lib/qr-code.test.tsx",
       "lib/programs/programs-events-panel.test.tsx",

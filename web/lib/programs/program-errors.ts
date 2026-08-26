@@ -9,6 +9,35 @@
 import type { ProgramLifecycle } from "./workspace-store";
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class PermissionPolicyRevisionConflictError extends Error {
+  readonly currentRevision: number;
+  readonly idempotent: boolean;
+
+  constructor(currentRevision: number, idempotent = false) {
+    super("Permission Policy has changed; reload the latest policy before saving.");
+    this.name = "PermissionPolicyRevisionConflictError";
+    this.currentRevision = currentRevision;
+    this.idempotent = idempotent;
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class PermissionPolicySafetyViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermissionPolicySafetyViolationError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class PermissionPolicyIdempotencyConflictError extends Error {
+  constructor() {
+    super("This Idempotency-Key was already used for a different policy change.");
+    this.name = "PermissionPolicyIdempotencyConflictError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateDepartmentCodeError extends Error {
   constructor(code: string) {
     super(`A department with code '${code}' already exists.`);

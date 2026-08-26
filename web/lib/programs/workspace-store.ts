@@ -142,6 +142,19 @@ export interface ManagementMemberSearchRow {
   department_name: string | null;
 }
 
+export interface AccountDirectorySearchFilters {
+  department?: string;
+  role?: "Admin" | "Staff" | "Member";
+  status?: "Pending" | "Active" | "Suspended" | "Deactivated";
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
 export type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
 export type EventSource = "SCHEDULE" | "MANUAL";
@@ -538,6 +551,38 @@ export type AuditOutcome =
   | "DENIED"
   | "FAILED";
 
+export type PermissionPolicyGlobalRole = "Admin" | "Staff" | "Member";
+
+export interface PermissionPolicyDesiredValue {
+  role: PermissionPolicyGlobalRole;
+  capability: string;
+  value: boolean;
+}
+
+export interface PermissionPolicyMutationInput {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  base_revision: number;
+  desired: readonly PermissionPolicyDesiredValue[];
+  audit: AuditInput;
+}
+
+export interface PermissionPolicyMutationRecord {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  base_revision: number;
+  outcome: "PENDING" | "SUCCESS" | "CONFLICT";
+  resulting_revision: number | null;
+}
+
+export interface PermissionPolicyMutationResult {
+  outcome: "SUCCESS" | "CONFLICT";
+  resulting_revision: number;
+  created: boolean;
+}
+
 export interface WorkspaceStore {
   createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
   listDepartments: () => Promise<DepartmentRow[]>;
@@ -576,6 +621,18 @@ export interface WorkspaceStore {
     limit: number,
     departmentIds?: readonly string[]
   ) => Promise<ManagementMemberSearchRow[]>;
+  searchAccountDirectory: (
+    query: string,
+    limit: number,
+    filters?: AccountDirectorySearchFilters
+  ) => Promise<ManagementMemberSearchRow[]>;
+  getAccountDirectoryAccount: (
+    userId: string
+  ) => Promise<ManagementMemberSearchRow[]>;
+  countAccountDirectory: (
+    query: string,
+    filters?: AccountDirectorySearchFilters
+  ) => Promise<AccountDirectorySummary>;
 
   setDepartmentModule: (
     departmentId: string,
@@ -811,6 +868,16 @@ export interface WorkspaceStore {
     input: DepartmentManagerRevokeInput
   ) => Promise<DepartmentManagerRow | null>;
   listElevatedAccounts: () => Promise<ElevatedAccountRow[]>;
+  listRoleCapabilities: () => Promise<
+    { role: string; capability: string }[]
+  >;
+  getPermissionPolicyRevision: () => Promise<number>;
+  findPermissionPolicyMutation: (
+    idempotencyKey: string
+  ) => Promise<PermissionPolicyMutationRecord | null>;
+  applyPermissionPolicyMutation: (
+    input: PermissionPolicyMutationInput
+  ) => Promise<PermissionPolicyMutationResult>;
 
   findProgramLeader: (
     programId: string,

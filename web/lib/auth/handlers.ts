@@ -43,6 +43,7 @@ import {
   setAuthCookieHeaders,
 } from "./cookies";
 import { verifyCredential, hashCredential } from "./credentials";
+import { CAPABILITY } from "../programs/capabilities";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
 import {
   approveRegistration,
@@ -281,6 +282,43 @@ async function requireAdminOrStaff(
       "FORBIDDEN",
       "Forbidden",
       "Admin or Staff role required.",
+      requestId
+    );
+  }
+  return { caller: resolved.account };
+}
+
+/** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
+async function requireCapability(
+  request: Request,
+  env: AuthEnv,
+  requestId: string,
+  capability: string
+): Promise<{ caller: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.account_status !== "Active") {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Account is not active.",
+      requestId
+    );
+  }
+  const granted = await env.DB.prepare(
+    "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ? LIMIT 1"
+  )
+    .bind(resolved.account.role, capability)
+    .first();
+  if (!granted) {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Registration approval capability required.",
       requestId
     );
   }
@@ -1085,7 +1123,12 @@ export async function handleApprove(
       requestId
     );
   }
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
@@ -1138,7 +1181,12 @@ export async function handleReject(
       requestId
     );
   }
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
@@ -1200,7 +1248,12 @@ export async function handleListRegistrations(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
@@ -1235,7 +1288,12 @@ export async function handleRegistrationDetail(
   registrationId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }

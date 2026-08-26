@@ -358,7 +358,7 @@ const COPY = {
   // 087-03 Account Permissions matrix (mirrors COPY.permissions).
   permissionsTitle: "帳戶與權限",
   permissionsLead:
-    "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
+    "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
   accountsSection: "管理員帳戶",
   rolesSection: "角色定義",
   accountName: "姓名",

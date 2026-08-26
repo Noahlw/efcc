@@ -40,6 +40,8 @@ import type {
   ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
+  AccountDirectorySearchFilters,
+  AccountDirectorySummary,
   MemberOptionRow,
   ManagementMemberSearchRow,
   ScheduleExceptionInput,
@@ -48,7 +50,11 @@ import type {
   ScheduleRuleRow,
   ScheduleRuleUpdate,
   WorkspaceStore,
+  PermissionPolicyMutationInput,
+  PermissionPolicyMutationRecord,
+  PermissionPolicyMutationResult,
 } from "./workspace-store";
+import { PermissionPolicyIdempotencyConflictError } from "./program-errors";
 
 function chunk<T>(items: readonly T[], size = 50): T[][] {
   const chunks: T[][] = [];
@@ -424,6 +430,186 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
             ]
           : [pattern, pattern, pattern, normalizedLimit])
       )
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
+  }
+
+  searchAccountDirectory(
+    query: string,
+    limit: number,
+    filters: AccountDirectorySearchFilters = {}
+  ): Promise<ManagementMemberSearchRow[]> {
+    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const filterParts = [
+      "accounts.account_status IN ('Pending', 'Active', 'Suspended', 'Deactivated')",
+    ];
+    const filterValues: string[] = [];
+    if (filters.status !== undefined) {
+      filterParts.push("accounts.account_status = ?");
+      filterValues.push(filters.status);
+    }
+    if (filters.role !== undefined) {
+      filterParts.push("accounts.role = ?");
+      filterValues.push(filters.role);
+    }
+    if (filters.department !== undefined) {
+      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM enrollments directory_enrollments
+             JOIN programs directory_programs
+               ON directory_programs.program_id = directory_enrollments.program_id
+             JOIN departments directory_departments
+               ON directory_departments.department_id = directory_programs.department_id
+            WHERE directory_enrollments.member_user_id = accounts.user_id
+              AND directory_enrollments.status = 'Active'
+              AND (
+                directory_departments.name LIKE ? ESCAPE '\\'
+                OR directory_departments.department_id LIKE ? ESCAPE '\\'
+              )
+         )`
+      );
+      filterValues.push(`%${escapedDepartment}%`, `%${escapedDepartment}%`);
+    }
+    return this.db
+      .prepare(
+        `WITH matched_accounts AS (
+           SELECT accounts.user_id
+             FROM accounts
+            WHERE ${filterParts.join(" AND ")}
+              AND (
+                accounts.name LIKE ? ESCAPE '\\'
+                OR accounts.username LIKE ? ESCAPE '\\'
+                OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+              )
+            ORDER BY accounts.name ASC, accounts.username ASC
+            LIMIT ?
+         )
+         SELECT DISTINCT
+                accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM matched_accounts
+           JOIN accounts ON accounts.user_id = matched_accounts.user_id
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          ORDER BY accounts.name ASC,
+                   accounts.username ASC,
+                   departments.display_order ASC,
+                   departments.name ASC`
+      )
+      .bind(
+        ...filterValues,
+        pattern,
+        pattern,
+        pattern,
+        normalizedLimit
+      )
+      .all<ManagementMemberSearchRow>()
+      .then((result) => result.results ?? []);
+  }
+
+  countAccountDirectory(
+    query: string,
+    filters: AccountDirectorySearchFilters = {}
+  ): Promise<AccountDirectorySummary> {
+    const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
+    const pattern = `%${escaped}%`;
+    const filterParts = [
+      "accounts.account_status IN ('Pending', 'Active', 'Suspended', 'Deactivated')",
+    ];
+    const filterValues: string[] = [];
+    if (filters.status !== undefined) {
+      filterParts.push("accounts.account_status = ?");
+      filterValues.push(filters.status);
+    }
+    if (filters.role !== undefined) {
+      filterParts.push("accounts.role = ?");
+      filterValues.push(filters.role);
+    }
+    if (filters.department !== undefined) {
+      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM enrollments directory_enrollments
+             JOIN programs directory_programs
+               ON directory_programs.program_id = directory_enrollments.program_id
+             JOIN departments directory_departments
+               ON directory_departments.department_id = directory_programs.department_id
+            WHERE directory_enrollments.member_user_id = accounts.user_id
+              AND directory_enrollments.status = 'Active'
+              AND (
+                directory_departments.name LIKE ? ESCAPE '\\'
+                OR directory_departments.department_id LIKE ? ESCAPE '\\'
+              )
+         )`
+      );
+      filterValues.push(`%${escapedDepartment}%`, `%${escapedDepartment}%`);
+    }
+    return this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN accounts.account_status = 'Active' THEN 1 ELSE 0 END) AS active,
+           SUM(CASE WHEN accounts.role IN ('Admin', 'Staff') THEN 1 ELSE 0 END) AS elevated,
+           SUM(CASE WHEN accounts.account_status = 'Pending' THEN 1 ELSE 0 END) AS pending
+         FROM accounts
+        WHERE ${filterParts.join(" AND ")}
+          AND (
+            accounts.name LIKE ? ESCAPE '\\'
+            OR accounts.username LIKE ? ESCAPE '\\'
+            OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
+          )`
+      )
+      .bind(...filterValues, pattern, pattern, pattern)
+      .first<AccountDirectorySummary>()
+      .then((row) => ({
+        total: Number(row?.total ?? 0),
+        active: Number(row?.active ?? 0),
+        elevated: Number(row?.elevated ?? 0),
+        pending: Number(row?.pending ?? 0),
+      }));
+  }
+
+  getAccountDirectoryAccount(
+    userId: string
+  ): Promise<ManagementMemberSearchRow[]> {
+    return this.db
+      .prepare(
+        `SELECT accounts.user_id,
+                accounts.name,
+                accounts.username,
+                accounts.phone,
+                accounts.role,
+                accounts.account_status,
+                departments.department_id,
+                departments.name AS department_name
+           FROM accounts
+           LEFT JOIN enrollments
+             ON enrollments.member_user_id = accounts.user_id
+            AND enrollments.status = 'Active'
+           LEFT JOIN programs
+             ON programs.program_id = enrollments.program_id
+           LEFT JOIN departments
+             ON departments.department_id = programs.department_id
+          WHERE accounts.user_id = ?
+          ORDER BY departments.display_order ASC, departments.name ASC`
+      )
+      .bind(userId)
       .all<ManagementMemberSearchRow>()
       .then((result) => result.results ?? []);
   }
@@ -2031,6 +2217,238 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       )
       .all<ElevatedAccountRow>()
       .then((result) => result.results);
+  }
+
+  listRoleCapabilities(): Promise<{ role: string; capability: string }[]> {
+    return this.db
+      .prepare(
+        "SELECT role, capability FROM role_capabilities ORDER BY role, capability"
+      )
+      .all<{ role: string; capability: string }>()
+      .then((result) => result.results);
+  }
+
+  async getPermissionPolicyRevision(): Promise<number> {
+    const row = await this.db
+      .prepare("SELECT revision FROM permission_policy_state WHERE id = 1")
+      .first<{ revision: number }>();
+    return row?.revision ?? 1;
+  }
+
+  findPermissionPolicyMutation(
+    idempotencyKey: string
+  ): Promise<PermissionPolicyMutationRecord | null> {
+    return this.db
+      .prepare(
+        `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                base_revision, outcome, resulting_revision
+           FROM permission_policy_mutations
+          WHERE idempotency_key = ?`
+      )
+      .bind(idempotencyKey)
+      .first<PermissionPolicyMutationRecord>();
+  }
+
+  /**
+   * Apply the complete policy projection as one D1 batch.
+   *
+   * The PENDING ledger row is inserted first and every subsequent statement
+   * is gated on that exact key/fingerprint plus the expected singleton
+   * revision. D1 rolls the whole batch back if any statement fails, so role
+   * rows, revision, ledger, and audit cannot partially commit.
+   */
+  async applyPermissionPolicyMutation(
+    input: PermissionPolicyMutationInput
+  ): Promise<PermissionPolicyMutationResult> {
+    const capabilities = [
+      ...new Set(input.desired.map((change) => change.capability)),
+    ];
+    const capabilityPlaceholders = capabilities.map(() => "?").join(", ");
+    const gate = `EXISTS (
+      SELECT 1 FROM permission_policy_mutations m
+       WHERE m.idempotency_key = ?
+         AND m.request_fingerprint = ?
+         AND m.outcome = 'PENDING'
+    ) AND EXISTS (
+      SELECT 1 FROM permission_policy_state s
+       WHERE s.id = 1 AND s.revision = ?
+    )`;
+    const now = new Date().toISOString();
+    const mutationInsert = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO permission_policy_mutations
+           (idempotency_key, request_fingerprint, actor_user_id,
+            base_revision, outcome, resulting_revision, created_at)
+         VALUES (?, ?, ?, ?, 'PENDING', NULL, ?)`
+      )
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id,
+        input.base_revision,
+        now
+      );
+
+    const statements: D1PreparedStatement[] = [mutationInsert];
+    if (capabilities.length > 0) {
+      statements.push(
+        this.db
+          .prepare(
+            `DELETE FROM role_capabilities
+              WHERE role IN ('Admin', 'Staff', 'Member')
+                AND capability IN (${capabilityPlaceholders})
+                AND ${gate}`
+          )
+          .bind(...capabilities, input.idempotency_key, input.request_fingerprint, input.base_revision)
+      );
+    }
+
+    for (const change of input.desired) {
+      if (!change.value) {
+        continue;
+      }
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO role_capabilities
+               (role, capability, granted_by, granted_at)
+             SELECT ?, ?, ?, ?
+              WHERE ${gate}`
+          )
+          .bind(
+            change.role,
+            change.capability,
+            input.actor_user_id,
+            now,
+            input.idempotency_key,
+            input.request_fingerprint,
+            input.base_revision
+          )
+      );
+    }
+
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE permission_policy_state
+              SET revision = revision + 1, updated_at = ?
+            WHERE id = 1 AND revision = ?
+              AND EXISTS (
+                SELECT 1 FROM permission_policy_mutations m
+                 WHERE m.idempotency_key = ?
+                   AND m.request_fingerprint = ?
+                   AND m.outcome = 'PENDING'
+              )`
+        )
+        .bind(
+          now,
+          input.base_revision,
+          input.idempotency_key,
+          input.request_fingerprint
+        )
+    );
+
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE permission_policy_mutations
+              SET applied = 1
+            WHERE idempotency_key = ?
+              AND request_fingerprint = ?
+              AND outcome = 'PENDING'
+              AND changes() > 0`
+        )
+        .bind(input.idempotency_key, input.request_fingerprint)
+    );
+
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE permission_policy_mutations
+              SET outcome = CASE
+                    WHEN applied = 1 THEN 'SUCCESS'
+                    ELSE 'CONFLICT'
+                  END,
+                  resulting_revision = (
+                    SELECT revision FROM permission_policy_state WHERE id = 1
+                  ),
+                  completed_at = ?
+            WHERE idempotency_key = ?
+              AND request_fingerprint = ?
+              AND outcome = 'PENDING'`
+        )
+        .bind(
+          now,
+          input.idempotency_key,
+          input.request_fingerprint
+        )
+    );
+
+    // Only the first terminal attempt writes the terminal audit row. Replays
+    // are recorded by the domain adapter as DUPLICATE without touching policy.
+    statements.push(
+      this.db
+        .prepare(
+          `INSERT INTO audit_events
+             (audit_id, inserted_at, actor_user_id, action, entity_type,
+              entity_id, old_value_json, new_value_json, reason, outcome,
+              correlation_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  CASE WHEN m.outcome = 'SUCCESS' THEN 'SUCCESS' ELSE 'CONFLICT' END,
+                  ?
+             FROM permission_policy_mutations m
+            WHERE m.idempotency_key = ?
+              AND m.request_fingerprint = ?
+              AND m.outcome IN ('SUCCESS', 'CONFLICT')
+              AND m.audit_written = 0`
+        )
+        .bind(
+          input.audit.audit_id,
+          input.audit.inserted_at,
+          input.audit.actor_user_id,
+          input.audit.action,
+          input.audit.entity_type,
+          input.audit.entity_id,
+          input.audit.old_value_json,
+          input.audit.new_value_json,
+          input.audit.reason,
+          input.audit.correlation_id,
+          input.idempotency_key,
+          input.request_fingerprint
+        )
+    );
+
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE permission_policy_mutations
+              SET audit_written = 1
+            WHERE idempotency_key = ?
+              AND request_fingerprint = ?
+              AND outcome IN ('SUCCESS', 'CONFLICT')
+              AND audit_written = 0`
+        )
+        .bind(input.idempotency_key, input.request_fingerprint)
+    );
+
+    const results = await this.db.batch(statements);
+    const record = await this.findPermissionPolicyMutation(
+      input.idempotency_key
+    );
+    if (!record || record.request_fingerprint !== input.request_fingerprint) {
+      throw new PermissionPolicyIdempotencyConflictError();
+    }
+    if (
+      record.outcome !== "SUCCESS" &&
+      record.outcome !== "CONFLICT"
+    ) {
+      throw new Error("Permission Policy mutation did not reach a terminal state.");
+    }
+    return {
+      outcome: record.outcome,
+      resulting_revision: record.resulting_revision ?? input.base_revision,
+      created: (results[0]?.meta?.changes ?? 0) > 0,
+    };
   }
 
   findProgramLeader(

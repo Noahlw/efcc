@@ -20,6 +20,7 @@ import { PermissionsPanel } from "@/app/management/permissions-panel";
 import { COPY } from "./copy";
 import type {
   AccountPermissionAccount,
+  AccountPermissionPolicy,
   AccountPermissionRole,
   AccountPermissionsView,
 } from "./programs/program-api";
@@ -86,7 +87,87 @@ const ROLES: AccountPermissionRole[] = [
   },
 ];
 
-const VIEW: AccountPermissionsView = { accounts: ACCOUNTS, roles: ROLES };
+const cell = (
+  value: boolean,
+  overrides: Partial<AccountPermissionPolicy["capabilities"][number]["roles"]["admin"]> = {}
+) => ({
+  value,
+  applicable: value,
+  editable: false,
+  locked: !value,
+  lockReason: value ? null : "會友角色不能設定管理權限。",
+  ...overrides,
+});
+
+const POLICY: AccountPermissionPolicy = {
+  revision: 18,
+  actor: { role: "Admin", canRead: true, canEdit: true },
+  capabilities: [
+    {
+      key: "program.enroll",
+      label: "提交課程報名",
+      description: "以會友身份提交自己的課程報名",
+      group: "會友基礎",
+      roles: {
+        admin: cell(true, {
+          applicable: true,
+          locked: true,
+          lockReason: "會友基礎必須保留。",
+        }),
+        staff: cell(true, {
+          applicable: true,
+          locked: true,
+          lockReason: "會友基礎必須保留。",
+        }),
+        member: cell(true, {
+          applicable: true,
+          locked: true,
+          lockReason: "會友基礎必須保留。",
+        }),
+      },
+    },
+    {
+      key: "department.manage",
+      label: "部門管理",
+      description: "編輯部門資料及日常運作",
+      group: "部門",
+      roles: {
+        admin: cell(true, { editable: true, locked: false, lockReason: null }),
+        staff: cell(true, { editable: true, locked: false, lockReason: null }),
+        member: cell(false),
+      },
+    },
+    {
+      key: "account.permissions.write",
+      label: "修改權限政策",
+      description: "改變全系統角色權限",
+      group: "帳戶與系統",
+      roles: {
+        admin: cell(true, {
+          applicable: true,
+          locked: true,
+          lockReason: "權限政策修改受系統安全規則保護。",
+        }),
+        staff: cell(false, {
+          applicable: false,
+          locked: true,
+          lockReason: "只限管理員使用。",
+        }),
+        member: cell(false, {
+          applicable: false,
+          locked: true,
+          lockReason: "會友角色不能設定管理權限。",
+        }),
+      },
+    },
+  ],
+};
+
+const VIEW: AccountPermissionsView = {
+  accounts: ACCOUNTS,
+  roles: ROLES,
+  policy: POLICY,
+};
 
 function viewResponse() {
   return HttpResponse.json({ requestId: "rid-permissions", data: VIEW });
@@ -292,5 +373,151 @@ describe("PermissionsPanel", () => {
     expect(
       screen.queryByRole("table", { name: PERMISSIONS.accountsSection })
     ).not.toBeInTheDocument();
+  });
+
+  test("renders grouped policy cells and the Admin change-set review summary", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () =>
+        viewResponse()
+      )
+    );
+    render(<PermissionsPanel />);
+
+    expect(
+      await screen.findByRole("heading", { name: "權限政策" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("目前顯示政策版本 18。"))
+      .toBeInTheDocument();
+    expect(screen.getByText("會友基礎")).toBeInTheDocument();
+    expect(screen.getAllByText("部門").length).toBeGreaterThan(0);
+    expect(screen.getByText("帳戶與系統")).toBeInTheDocument();
+    expect(screen.getAllByText("固定：會友基礎必須保留。").length)
+      .toBeGreaterThan(0);
+    expect(
+      screen.getByText("固定：權限政策修改受系統安全規則保護。")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "變更摘要" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("管理員可編輯未鎖定的政策格。"))
+      .toBeInTheDocument();
+  });
+
+  test("renders Staff as read-only without editable controls", async () => {
+    const staffView: AccountPermissionsView = {
+      ...VIEW,
+      policy: {
+        ...POLICY,
+        actor: { role: "Staff", canRead: true, canEdit: false },
+        capabilities: POLICY.capabilities.map((capability) => ({
+          ...capability,
+          roles: Object.fromEntries(
+            Object.entries(capability.roles).map(([role, value]) => [
+              role,
+              { ...value, editable: false },
+            ])
+          ) as typeof capability.roles,
+        })),
+      },
+    };
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () =>
+        HttpResponse.json({ requestId: "rid-permissions", data: staffView })
+      )
+    );
+    render(<PermissionsPanel />);
+
+    expect(await screen.findByText("同工只可查看，不能修改權限政策。"))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "檢視並儲存" }))
+      .not.toBeInTheDocument();
+  });
+
+  test("stages an editable cell and submits one atomic change set", async () => {
+    let posts = 0;
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse()),
+      http.post("/api/v1/programs/account-permissions", async ({ request }) => {
+        posts += 1;
+        const body = (await request.json()) as {
+          baseRevision: number;
+          changes: Array<{
+            role: string;
+            capability: string;
+            value: boolean;
+          }>;
+        };
+        expect(body.baseRevision).toBe(18);
+        expect(body.changes).toEqual([
+          {
+            role: "admin",
+            capability: "department.manage",
+            value: false,
+          },
+        ]);
+        return HttpResponse.json({
+          requestId: "rid-permissions-save",
+          data: {
+            ...VIEW,
+            policy: { ...POLICY, revision: 19 },
+            mutation: { outcome: "SUCCESS", idempotent: false, revision: 19 },
+          },
+        });
+      })
+    );
+    render(<PermissionsPanel />);
+
+    await screen.findByRole("heading", { name: "權限政策" });
+    const toggle = screen.getByRole("button", {
+      name: "部門管理 · 管理員",
+    });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText(PERMISSIONS.policyDirty)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: PERMISSIONS.policyChangesTitle })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/管理員 · ✓ → 停用/u)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: PERMISSIONS.policySave })
+    );
+    expect(posts).toBe(1);
+    expect(
+      await screen.findByText(PERMISSIONS.policySaved)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`${PERMISSIONS.policySynced} 19。`)
+    ).toBeInTheDocument();
+  });
+
+  test("preserves the draft when Save conflicts", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse()),
+      http.post("/api/v1/programs/account-permissions", () =>
+        problemResponse(409, "POLICY_REVISION_CONFLICT", "政策已有更新。")
+      )
+    );
+    render(<PermissionsPanel />);
+
+    await screen.findByRole("heading", { name: "權限政策" });
+    const toggle = screen.getByRole("button", {
+      name: "部門管理 · 管理員",
+    });
+    await userEvent.click(toggle);
+    await userEvent.click(
+      screen.getByRole("button", { name: PERMISSIONS.policySave })
+    );
+
+    expect(
+      await screen.findByText(PERMISSIONS.policyConflict)
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(PERMISSIONS.policyConflictHint).length
+    ).toBeGreaterThan(0);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: PERMISSIONS.policyReload })
+    ).toBeInTheDocument();
   });
 });
