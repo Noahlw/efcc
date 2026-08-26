@@ -1,30 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 
-import { AppShell } from "@/lib/app-shell";
-import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
-import { useApp } from "@/lib/app-context";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   ACCOUNT_SETTINGS_COPY,
   accountSettingsErrorCopy,
 } from "@/lib/account-settings-copy";
+import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
+import { useApp } from "@/lib/app-context";
+import { AppShell } from "@/lib/app-shell";
 
 import styles from "./settings.module.css";
 
-function BackIcon() {
-  return (
+const BackIcon = () => 
+  (
     <svg
       aria-hidden="true"
       className={styles.backIcon}
       viewBox="0 0 20 20"
       focusable="false"
     >
-      <path d="m12.5 4-5 6 5 6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="m12.5 4-5 6 5 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
     </svg>
-  );
-}
+  )
+;
 
 function errorMessage(error: unknown, field: "username" | "password") {
   if (error instanceof RpcError) {
@@ -37,7 +47,7 @@ function errorMessage(error: unknown, field: "username" | "password") {
   return ACCOUNT_SETTINGS_COPY.offlineError;
 }
 
-function AccountSettingsContent() {
+const AccountSettingsContent = () => {
   const { signOut } = useApp();
   const [newUsername, setNewUsername] = useState("");
   const [usernameError, setUsernameError] = useState("");
@@ -51,7 +61,7 @@ function AccountSettingsContent() {
 
   async function submitUsername(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (usernameSubmitting) return;
+    if (usernameSubmitting) {return;}
 
     setUsernameError("");
     setUsernameSuccess(false);
@@ -79,7 +89,7 @@ function AccountSettingsContent() {
 
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (passwordSubmitting) return;
+    if (passwordSubmitting) {return;}
 
     setPasswordError("");
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -116,21 +126,36 @@ function AccountSettingsContent() {
       </header>
 
       <div className={styles.intro}>
-        <Link href="/profile" className={styles.back}>
-          <BackIcon />
-          <span>{ACCOUNT_SETTINGS_COPY.backToProfile}</span>
-        </Link>
+        <Button
+          asChild
+          variant="ghost"
+          className={`${styles.back} min-h-11 rounded-[8px] px-2 text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`}
+        >
+          <Link href="/profile">
+            <BackIcon />
+            <span>{ACCOUNT_SETTINGS_COPY.backToProfile}</span>
+          </Link>
+        </Button>
         <h1>{ACCOUNT_SETTINGS_COPY.sectionTitle}</h1>
         <p>{ACCOUNT_SETTINGS_COPY.sectionLead}</p>
       </div>
 
-      <section className={styles.section} aria-labelledby="change-username-title">
-        <h2 id="change-username-title">{ACCOUNT_SETTINGS_COPY.usernameTitle}</h2>
-        <div className={styles.card}>
+      <section
+        className={styles.section}
+        aria-labelledby="change-username-title"
+      >
+        <h2 id="change-username-title">
+          {ACCOUNT_SETTINGS_COPY.usernameTitle}
+        </h2>
+        <Card
+          className={`${styles.card} overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
+        >
           <form onSubmit={submitUsername} noValidate>
             <div className={styles.field}>
-              <label htmlFor="new-username">{ACCOUNT_SETTINGS_COPY.usernameLabel}</label>
-              <input
+              <label htmlFor="new-username">
+                {ACCOUNT_SETTINGS_COPY.usernameLabel}
+              </label>
+              <Input
                 id="new-username"
                 name="new-username"
                 type="text"
@@ -144,38 +169,57 @@ function AccountSettingsContent() {
                 disabled={usernameSubmitting}
                 aria-invalid={Boolean(usernameError)}
                 aria-describedby="new-username-error"
+                className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
               />
             </div>
-            <p
+            <Alert
               id="new-username-error"
-              role="alert"
-              className={usernameError ? styles.error : styles.errorPlaceholder}
+              variant={usernameError ? "destructive" : "default"}
+              className={
+                usernameError
+                  ? `${styles.error} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`
+                  : styles.errorPlaceholder
+              }
             >
               {usernameError}
-            </p>
+            </Alert>
             {usernameSuccess && (
-              <p className={styles.success} role="status">
+              <output
+                className={`${styles.success} border border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]`}
+              >
                 {ACCOUNT_SETTINGS_COPY.usernameSuccess}
-              </p>
+              </output>
             )}
-            <button type="submit" className={styles.submit} disabled={usernameSubmitting}>
+            <Button
+              type="submit"
+              variant="outline"
+              className="min-h-12 w-full rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 text-base font-semibold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+              disabled={usernameSubmitting}
+            >
               {usernameSubmitting
                 ? ACCOUNT_SETTINGS_COPY.usernameSubmitting
                 : ACCOUNT_SETTINGS_COPY.usernameSubmit}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
       </section>
 
-      <section className={styles.section} aria-labelledby="change-password-title">
-        <h2 id="change-password-title">{ACCOUNT_SETTINGS_COPY.passwordTitle}</h2>
-        <div className={styles.card}>
+      <section
+        className={styles.section}
+        aria-labelledby="change-password-title"
+      >
+        <h2 id="change-password-title">
+          {ACCOUNT_SETTINGS_COPY.passwordTitle}
+        </h2>
+        <Card
+          className={`${styles.card} overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
+        >
           <form onSubmit={submitPassword} noValidate>
             <div className={styles.field}>
               <label htmlFor="current-password">
                 {ACCOUNT_SETTINGS_COPY.currentPasswordLabel}
               </label>
-              <input
+              <Input
                 id="current-password"
                 name="current-password"
                 type="password"
@@ -188,13 +232,14 @@ function AccountSettingsContent() {
                 disabled={passwordSubmitting}
                 aria-invalid={Boolean(passwordError)}
                 aria-describedby="password-error"
+                className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
               />
             </div>
             <div className={styles.field}>
               <label htmlFor="new-password">
                 {ACCOUNT_SETTINGS_COPY.newPasswordLabel}
               </label>
-              <input
+              <Input
                 id="new-password"
                 name="new-password"
                 type="password"
@@ -208,6 +253,7 @@ function AccountSettingsContent() {
                 disabled={passwordSubmitting}
                 aria-invalid={Boolean(passwordError)}
                 aria-describedby="new-password-hint password-error"
+                className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
               />
               <span id="new-password-hint" className={styles.help}>
                 {ACCOUNT_SETTINGS_COPY.passwordHint}
@@ -217,7 +263,7 @@ function AccountSettingsContent() {
               <label htmlFor="confirm-password">
                 {ACCOUNT_SETTINGS_COPY.confirmPasswordLabel}
               </label>
-              <input
+              <Input
                 id="confirm-password"
                 name="confirm-password"
                 type="password"
@@ -230,32 +276,45 @@ function AccountSettingsContent() {
                 disabled={passwordSubmitting}
                 aria-invalid={Boolean(passwordError)}
                 aria-describedby="password-error"
+                className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
               />
             </div>
-            <p
+            <Alert
               id="password-error"
-              role="alert"
-              className={passwordError ? styles.error : styles.errorPlaceholder}
+              variant={passwordError ? "destructive" : "default"}
+              className={
+                passwordError
+                  ? `${styles.error} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`
+                  : styles.errorPlaceholder
+              }
             >
               {passwordError}
+            </Alert>
+            <p className={styles.notice}>
+              {ACCOUNT_SETTINGS_COPY.passwordNotice}
             </p>
-            <p className={styles.notice}>{ACCOUNT_SETTINGS_COPY.passwordNotice}</p>
-            <button type="submit" className={styles.submitPrimary} disabled={passwordSubmitting}>
+            <Button
+              type="submit"
+              className="min-h-12 w-full rounded-[8px] bg-[var(--accent)] px-4 text-base font-semibold text-white hover:bg-[var(--accent-deep)]"
+              disabled={passwordSubmitting}
+            >
               {passwordSubmitting
                 ? ACCOUNT_SETTINGS_COPY.passwordSubmitting
                 : ACCOUNT_SETTINGS_COPY.passwordSubmit}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
       </section>
     </div>
   );
-}
+};
 
-export default function SettingsPage() {
-  return (
+const SettingsPage = () => 
+  (
     <AppShell>
       <AccountSettingsContent />
     </AppShell>
-  );
-}
+  )
+;
+
+export default SettingsPage;

@@ -3,8 +3,8 @@
 import Link from "next/link";
 
 import { LANDING } from "@/lib/copy";
-import { RegistrationForm } from "@/lib/registration-form";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
+import { RegistrationForm } from "@/lib/registration-form";
 
 import styles from "../auth.module.css";
 
@@ -12,8 +12,8 @@ import styles from "../auth.module.css";
  * Self-service registration page (AUTH-05 #163). Public surface — no session
  * required. The parent landing page (CF0-08) links here once integrated.
  */
-export default function RegisterPage() {
-  return (
+const RegisterPage = () => 
+  (
     <main className={styles.page}>
       <a className={styles.skipLink} href="#register">
         {LANDING.skipToRegister}
@@ -25,7 +25,7 @@ export default function RegisterPage() {
       </header>
       <div className={styles.body}>
         <section
-          className={styles.card}
+          className={`${styles.card} gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-3 shadow-none ring-0`}
           id="register"
           tabIndex={-1}
           aria-labelledby="register-title"
@@ -38,5 +38,7 @@ export default function RegisterPage() {
         </section>
       </div>
     </main>
-  );
-}
+  )
+;
+
+export default RegisterPage;

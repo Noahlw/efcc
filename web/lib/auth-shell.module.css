@@ -120,38 +120,14 @@
 
 .bell {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 50%;
-  color: var(--ink, #171a1d);
-  background: transparent;
-  cursor: pointer;
-}
-
-.bell:hover {
-  color: var(--accent, #9c302c);
-  background: var(--surface, #f4f5f3);
 }
 
 .bellBadge {
   position: absolute;
   top: -0.2rem;
   right: -0.2rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   min-width: 1.15rem;
   height: 1.15rem;
-  padding: 0 0.2rem;
-  border-radius: var(--radius-pill, 999px);
-  color: var(--surface-raised, #ffffff);
-  background: var(--accent, #9c302c);
-  font-size: 0.67rem;
-  font-weight: 800;
   line-height: 1;
 }
 
@@ -180,87 +156,10 @@
   color: var(--ink, #171a1d);
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--line, #d6dcde);
-  border-top-color: var(--accent, #9c302c);
-  border-radius: 50%;
-  animation: spin 800ms linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    /* Reduced motion: no spin; rely on the live-region announcement. */
-    animation: none;
-    transform: rotate(0deg);
-  }
-}
-
 .alert {
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-  padding: 0.85rem 1rem;
-  border: 1px solid rgba(185, 28, 28, 0.3);
-  border-radius: 8px;
-  background: rgba(185, 28, 28, 0.1);
-  color: #b91c1c;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-.btnPrimary {
-  min-height: 44px;
-  padding: 0 1.5rem;
-  border: 1px solid var(--accent, #9c302c);
-  border-radius: 8px;
-  background: var(--accent, #9c302c);
-  color: #ffffff;
-  font-size: 1rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.btnPrimary:hover {
-  background: var(--accent-deep, #76231f);
-  border-color: var(--accent-deep, #76231f);
-}
-
-.btnPrimary:focus-visible {
-  outline: 2px solid var(--focus, #176a87);
-  outline-offset: 2px;
-}
-
-.btnSecondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 1.5rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink, #171a1d);
-  font-size: 0.95rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.btnSecondary:hover {
-  border-color: var(--ink, #171a1d);
-  background: var(--surface, #f4f5f3);
-}
-
-.btnSecondary:focus-visible {
-  outline: 2px solid var(--focus, #176a87);
-  outline-offset: 2px;
 }
 
 /* Empty state (S12): centered, readable, announced. */

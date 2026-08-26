@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
@@ -12,24 +14,22 @@ import { isPermitted } from "@/lib/sections";
 
 import styles from "./profile.module.css";
 
-function ChevronIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className={styles.chevron}
-      viewBox="0 0 20 20"
-      focusable="false"
-    >
-      <path
-        d="m7 4 5 6-5 6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-function ProfileContent() {
+const ChevronIcon = () => (
+  <svg
+    aria-hidden="true"
+    className={styles.chevron}
+    viewBox="0 0 20 20"
+    focusable="false"
+  >
+    <path
+      d="m7 4 5 6-5 6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    />
+  </svg>
+);
+const ProfileContent = () => {
   const { bootstrap, signOut } = useApp();
   const [returnToScanner, setReturnToScanner] = useState(false);
   const { profile } = bootstrap;
@@ -46,9 +46,13 @@ function ProfileContent() {
           <span>{COPY.sections.profile}</span>
         </header>
         {returnToScanner && (
-          <Link href="/scanner" className={styles.backLink}>
-            {COPY.attendance.backToScan}
-          </Link>
+          <Button
+            asChild
+            variant="link"
+            className={`${styles.backLink} min-h-11 rounded-[8px] px-0 text-[var(--accent-deep)] font-bold hover:text-[var(--accent)]`}
+          >
+            <Link href="/scanner">{COPY.attendance.backToScan}</Link>
+          </Button>
         )}
         <div className={styles.intro}>
           <h1>{COPY.profile.title}</h1>
@@ -61,7 +65,7 @@ function ProfileContent() {
 
   const displayName = profile.name || profile.username;
   const hasQrCode = Boolean(profile.qrCodeString);
-  const isActive = /^(active|enabled|有效|已啟用)$/i.test(
+  const isActive = /^(?:active|enabled|有效|已啟用)$/iu.test(
     profile.status.trim()
   );
   const statusText = isActive ? COPY.profile.statusValid : profile.status;
@@ -73,17 +77,29 @@ function ProfileContent() {
       </div>
 
       {returnToScanner && (
-        <Link href="/scanner" className={styles.backLink}>
-          {COPY.attendance.backToScan}
-        </Link>
+        <Button
+          asChild
+          variant="link"
+          className={`${styles.backLink} min-h-11 rounded-[8px] px-0 text-[var(--accent-deep)] font-bold hover:text-[var(--accent)]`}
+        >
+          <Link href="/scanner">{COPY.attendance.backToScan}</Link>
+        </Button>
       )}
       <div className={styles.intro}>
         <h1>{COPY.profile.title}</h1>
         <p>{COPY.profile.subtitle}</p>
       </div>
 
-      <article className={styles.qrCard} aria-labelledby="profile-qr-title">
-        <span className={styles.badge}>{COPY.profile.qrBadge}</span>
+      <article
+        className={`${styles.qrCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
+        aria-labelledby="profile-qr-title"
+      >
+        <Badge
+          variant="outline"
+          className="min-h-7 rounded-full border-[var(--line)] bg-[var(--surface-raised)] px-2.5 text-[var(--ink-muted)]"
+        >
+          {COPY.profile.qrBadge}
+        </Badge>
         {hasQrCode ? (
           <QrCode
             value={profile.qrCodeString}
@@ -100,12 +116,17 @@ function ProfileContent() {
         )}
         <h2 id="profile-qr-title">{displayName}</h2>
         <p className={styles.statusText}>
-          <span className={styles.statusBadge}>{statusText}</span>
+          <Badge
+            variant="outline"
+            className="min-h-7 rounded-full border-[var(--success-border)] bg-[var(--success-surface)] px-2.5 text-[var(--success)]"
+          >
+            {statusText}
+          </Badge>
         </p>
       </article>
 
       <section
-        className={styles.detailsCard}
+        className={`${styles.detailsCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] shadow-none ring-0`}
         aria-labelledby="profile-details-title"
       >
         <details className={styles.details}>
@@ -142,47 +163,61 @@ function ProfileContent() {
       >
         <h2 id="profile-settings-title">{COPY.profile.settingsTitle}</h2>
         <div className={styles.actionList}>
-          <Link href="/profile/settings" className={styles.actionRow}>
-            <span>
-              <span className={styles.actionTitle}>
-                {COPY.profile.accountSettings}
-              </span>
-              <span className={styles.actionDescription}>
-                {COPY.profile.accountSettingsHint}
-              </span>
-            </span>
-            <ChevronIcon />
-          </Link>
-          {isPermitted(bootstrap.sections, "management") ? (
-            <Link
-              href="/management?module=settings"
-              className={styles.actionRow}
-            >
+          <Button
+            asChild
+            variant="outline"
+            className={`${styles.actionRow} whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`}
+          >
+            <Link href="/profile/settings">
               <span>
                 <span className={styles.actionTitle}>
-                  {COPY.profile.settingsEntry}
+                  {COPY.profile.accountSettings}
                 </span>
                 <span className={styles.actionDescription}>
-                  {COPY.profile.settingsEntryHint}
+                  {COPY.profile.accountSettingsHint}
                 </span>
               </span>
               <ChevronIcon />
             </Link>
+          </Button>
+          {isPermitted(bootstrap.sections, "management") ? (
+            <Button
+              asChild
+              variant="outline"
+              className={`${styles.actionRow} whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`}
+            >
+              <Link href="/management?module=settings">
+                <span>
+                  <span className={styles.actionTitle}>
+                    {COPY.profile.settingsEntry}
+                  </span>
+                  <span className={styles.actionDescription}>
+                    {COPY.profile.settingsEntryHint}
+                  </span>
+                </span>
+                <ChevronIcon />
+              </Link>
+            </Button>
           ) : null}
-          <button type="button" className={styles.actionRow} onClick={signOut}>
+          <Button
+            type="button"
+            variant="outline"
+            className={`${styles.actionRow} whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`}
+            onClick={signOut}
+          >
             <span className={styles.logoutTitle}>{COPY.profile.logout}</span>
             <ChevronIcon />
-          </button>
+          </Button>
         </div>
       </section>
     </div>
   );
-}
+};
 
-export default function ProfilePage() {
-  return (
-    <AppShell>
-      <ProfileContent />
-    </AppShell>
-  );
-}
+const ProfilePage = () => (
+  <AppShell>
+    <ProfileContent />
+  </AppShell>
+);
+
+export default ProfilePage;
