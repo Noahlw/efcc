@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
@@ -20,7 +21,7 @@ import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
 import { safeManagementReturnHref } from "./management-action-framework";
-import { SettingsBackLink } from "./settings-ui";
+import { BackIcon, SettingsBackLink } from "./settings-ui";
 
 import styles from "./permissions-panel.module.css";
 
@@ -58,6 +59,45 @@ const POLICY_ROLE_COPY: Record<PermissionPolicyRoleKey, string> = {
   admin: COPY.permissions.roleAdmin,
   staff: COPY.permissions.roleStaff,
   member: COPY.permissions.policyRoleMember,
+};
+
+const BASELINE_LABEL = "會友基礎";
+const BASELINE_SUMMARY = "適用於所有生效帳戶 · 系統固定";
+const BASELINE_NOTICE =
+  "所有管理員、同工及會友都保留一般會友能力；這項系統政策不能編輯或指派。";
+const ROLE_LIST_ARIA_LABEL = COPY.permissions.rolesSection;
+const ROLE_DETAIL_BACK_LABEL = "返回角色列表";
+const ROLE_DETAIL_TITLE_SUFFIX = "角色詳情";
+const ROLE_PERMISSIONS_LABEL = "權限";
+const ROLE_ACCOUNTS_LABEL = "已指派帳戶";
+const ROLE_PERMISSIONS_BACK_LABEL = "返回角色詳情";
+const ASSIGNED_ACCOUNTS_COPY =
+  "已指派帳戶只供查看；角色指派仍由既有帳戶流程處理。";
+const MEMBER_ACCOUNTS_COPY =
+  "會友帳戶不會在此管理清單中列出；會友基礎會套用到所有生效帳戶。";
+const PERMISSION_SEARCH_LABEL = "搜尋權限";
+const PERMISSION_SEARCH_PLACEHOLDER = "搜尋名稱、說明或權限代號";
+
+type PermissionScreen = "roles" | "role-detail" | "permissions" | "accounts";
+
+type HeadingRef = RefObject<HTMLHeadingElement | null>;
+
+const GLOBAL_ROLE_COPY: Record<
+  PermissionPolicyRoleKey,
+  { label: string; scope: string }
+> = {
+  admin: {
+    label: COPY.permissions.roleAdmin,
+    scope: COPY.permissions.roleAdminScope,
+  },
+  staff: {
+    label: COPY.permissions.roleStaff,
+    scope: COPY.permissions.roleStaffScope,
+  },
+  member: {
+    label: COPY.permissions.policyRoleMember,
+    scope: "所有生效帳戶都保留會友基礎能力",
+  },
 };
 
 type PermissionsState =
@@ -119,6 +159,76 @@ function roleDefinitions(data: AccountPermissionsView): AccountPermissionRole[] 
   });
 }
 
+function globalRoleForAccount(
+  account: AccountPermissionsView["accounts"][number]
+): PermissionPolicyRoleKey | null {
+  if (account.role === "admin") {
+    return "admin";
+  }
+  if (account.role === "staff" || account.role === "department-manager") {
+    return "staff";
+  }
+  return null;
+}
+
+function accountsForGlobalRole(
+  data: AccountPermissionsView,
+  role: PermissionPolicyRoleKey
+): AccountPermissionsView["accounts"] {
+  return data.accounts.filter((account) => globalRoleForAccount(account) === role);
+}
+
+function policyCapabilityMatches(
+  capability: AccountPermissionPolicyCapability,
+  query: string
+): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystack = [
+    capability.group,
+    capability.label,
+    capability.description,
+    capability.key,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+  return haystack.includes(query);
+}
+
+function capabilityCountForRole(
+  data: AccountPermissionsView,
+  role: PermissionPolicyRoleKey
+): { total: number; editable: number } {
+  return data.policy.capabilities.reduce(
+    (counts, capability) => {
+      const cell = capability.roles[role];
+      if (cell.applicable || cell.value) {
+        counts.total += 1;
+      }
+      if (cell.editable && !cell.locked) {
+        counts.editable += 1;
+      }
+      return counts;
+    },
+    { total: 0, editable: 0 }
+  );
+}
+
+const POLICY_CHANGE_CONSEQUENCES: Record<string, string> = {
+  "account.permissions.write":
+    "高風險：會改變全系統角色權限，可能影響其他管理員及同工。",
+  "home.publish": "高風險：會影響全教會首頁公開內容。",
+  "registration.approval.manage": "高風險：會影響帳戶註冊審批結果。",
+  "department.publish": "會改變部門在會友目錄的公開狀態。",
+  "program.publish": "會改變課程在會友目錄的公開狀態。",
+  "department.manager.assign": "會改變部門管理者及其工作範圍。",
+};
+
+function policyChangeConsequence(capability: string): string | null {
+  return POLICY_CHANGE_CONSEQUENCES[capability] ?? null;
+}
+
 
 function departmentContext(
   account: AccountPermissionsView["accounts"][number],
@@ -157,6 +267,7 @@ function PolicyCell({
   onToggle?: () => void;
 }) {
   const cell = capability.roles[role];
+  const editable = cell.editable && !cell.locked;
   const state = cell.locked
     ? `${COPY.permissions.policyLocked}：${cell.lockReason ?? "此政策格不能修改。"}`
     : dirty
@@ -175,7 +286,7 @@ function PolicyCell({
     </>
   );
   const className = `${styles.policyCell} ${cell.locked ? styles.lockedCell : ""}`;
-  if (cell.editable && onToggle) {
+  if (editable && onToggle) {
     return (
       <button
         aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
@@ -195,7 +306,7 @@ function PolicyCell({
     <div
       aria-label={`${capability.label} · ${POLICY_ROLE_COPY[role]}`}
       className={className}
-      data-editable={cell.editable ? "true" : "false"}
+      data-editable={editable ? "true" : "false"}
       data-locked={cell.locked ? "true" : "false"}
       role="group"
     >
@@ -207,12 +318,15 @@ function PolicyCell({
 function PolicyCapabilityRow({
   capability,
   draft,
+  role,
   onToggle,
 }: {
   capability: AccountPermissionPolicyCapability;
   draft: PolicyDraft;
+  role: PermissionPolicyRoleKey;
   onToggle: (role: PermissionPolicyRoleKey, capability: string) => void;
 }) {
+  const key = draftKey(role, capability.key);
   return (
     <article className={styles.policyRow}>
       <div className={styles.policyCopy}>
@@ -221,23 +335,17 @@ function PolicyCapabilityRow({
         <code>{capability.key}</code>
       </div>
       <div className={styles.policyCells}>
-        {POLICY_ROLE_ORDER.map((role) => {
-          const key = draftKey(role, capability.key);
-          return (
-            <PolicyCell
-              capability={capability}
-              dirty={draft[key] !== capability.roles[role].value}
-              key={role}
-              onToggle={
-                capability.roles[role].editable
-                  ? () => onToggle(role, capability.key)
-                  : undefined
-              }
-              role={role}
-              value={draft[key] ?? capability.roles[role].value}
-            />
-          );
-        })}
+        <PolicyCell
+          capability={capability}
+          dirty={draft[key] !== capability.roles[role].value}
+          onToggle={
+            capability.roles[role].editable
+              ? () => onToggle(role, capability.key)
+              : undefined
+          }
+          role={role}
+          value={draft[key] ?? capability.roles[role].value}
+        />
       </div>
     </article>
   );
@@ -246,6 +354,8 @@ function PolicyCapabilityRow({
 function PermissionPolicy({
   data,
   draft,
+  headingRef,
+  role,
   saveState,
   dirty,
   onToggle,
@@ -255,6 +365,8 @@ function PermissionPolicy({
 }: {
   data: AccountPermissionsView;
   draft: PolicyDraft;
+  headingRef: HeadingRef;
+  role: PermissionPolicyRoleKey;
   saveState: PolicySaveState;
   dirty: boolean;
   onToggle: (role: PermissionPolicyRoleKey, capability: string) => void;
@@ -262,18 +374,62 @@ function PermissionPolicy({
   onReload: () => void;
   conflictRevision: number | null;
 }) {
-  const groups = policyGroups(data.policy.capabilities);
+  const groups = useMemo(
+    () => policyGroups(data.policy.capabilities),
+    [data.policy.capabilities]
+  );
   const canEdit = data.policy.actor.canEdit;
   const changes = policyChanges(data, draft);
+  const [query, setQuery] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(groups.includes(BASELINE_LABEL) ? [BASELINE_LABEL] : groups.slice(0, 1))
+  );
+  const [reviewOpen, setReviewOpen] = useState(dirty);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+
+  useEffect(() => {
+    if (!dirty) {
+      return;
+    }
+    setReviewOpen(true);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      return;
+    }
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      for (const group of groups) {
+        const matches = data.policy.capabilities.some(
+          (capability) =>
+            capability.group === group &&
+            policyCapabilityMatches(capability, normalizedQuery)
+        );
+        if (matches) {
+          next.add(group);
+        }
+      }
+      return next;
+    });
+  }, [data.policy.capabilities, groups, normalizedQuery]);
+
+  const roleCopy = GLOBAL_ROLE_COPY[role];
+
   return (
     <section
-      aria-labelledby="permissions-policy-title"
+      aria-labelledby="permissions-policy-heading"
       className={styles.policySection}
     >
       <header className={styles.policyHeader}>
         <div>
-          <h2 id="permissions-policy-title" className={styles.sectionTitle}>
-            {COPY.permissions.policyTitle}
+          <h2
+            id="permissions-policy-heading"
+            className={styles.sectionTitle}
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {`${COPY.permissions.policyTitle} · ${roleCopy.label}`}
           </h2>
           <p className={styles.policyLead}>{COPY.permissions.policyLead}</p>
         </div>
@@ -282,17 +438,56 @@ function PermissionPolicy({
         </span>
       </header>
 
+      <div className={styles.policyToolbar} role="search">
+        <label className={styles.searchField}>
+          <span className={styles.visuallyHidden}>{PERMISSION_SEARCH_LABEL}</span>
+          <input
+            aria-label={PERMISSION_SEARCH_LABEL}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={PERMISSION_SEARCH_PLACEHOLDER}
+            type="search"
+            value={query}
+          />
+        </label>
+        <span className={styles.policyRoleHint}>{roleCopy.label}</span>
+      </div>
+
       <div className={styles.policyLayout}>
         <div className={styles.groupStack}>
           {groups.map((group) => {
             const capabilities = data.policy.capabilities.filter(
-              (capability) => capability.group === group
+              (capability) =>
+                capability.group === group &&
+                policyCapabilityMatches(capability, normalizedQuery)
             );
+            const totalCapabilities = data.policy.capabilities.filter(
+              (capability) => capability.group === group
+            ).length;
+            if (capabilities.length === 0) {
+              return null;
+            }
+            const matching = normalizedQuery.length > 0;
             return (
-              <details className={styles.policyGroup} key={group} open>
+              <details
+                className={styles.policyGroup}
+                key={group}
+                open={matching || expandedGroups.has(group)}
+                onToggle={(event) => {
+                  const open = event.currentTarget.open;
+                  setExpandedGroups((current) => {
+                    const next = new Set(current);
+                    if (open) {
+                      next.add(group);
+                    } else {
+                      next.delete(group);
+                    }
+                    return next;
+                  });
+                }}
+              >
                 <summary>
                   <strong>{group}</strong>
-                  <span>{capabilities.length} 項</span>
+                  <span>{totalCapabilities} 項</span>
                 </summary>
                 <div className={styles.policyGroupBody}>
                   {capabilities.map((capability) => (
@@ -301,30 +496,45 @@ function PermissionPolicy({
                       key={capability.key}
                       draft={draft}
                       onToggle={onToggle}
+                      role={role}
                     />
                   ))}
                 </div>
               </details>
             );
           })}
+          {normalizedQuery &&
+            !data.policy.capabilities.some((capability) =>
+              policyCapabilityMatches(capability, normalizedQuery)
+            ) && (
+              <p className={styles.emptySearch}>找不到符合的權限。</p>
+            )}
         </div>
 
         <aside
           aria-label={COPY.permissions.policySummary}
+          aria-busy={saveState === "saving"}
           className={styles.reviewPanel}
           role="region"
         >
-          <h2>
-            {saveState === "success"
-              ? COPY.permissions.policySaved
-              : saveState === "error"
-                ? COPY.permissions.policySaveError
-                : saveState === "conflict"
-                  ? COPY.permissions.policyConflict
-                  : dirty
-                    ? COPY.permissions.policyDirty
-                    : COPY.permissions.policySyncedTitle}
-          </h2>
+          <div className={styles.reviewHeader}>
+            <h2>
+              {saveState === "success"
+                ? COPY.permissions.policySaved
+                : saveState === "error"
+                  ? COPY.permissions.policySaveError
+                  : saveState === "conflict"
+                    ? COPY.permissions.policyConflict
+                    : dirty
+                      ? COPY.permissions.policyDirty
+                      : COPY.permissions.policySyncedTitle}
+            </h2>
+            {dirty && (
+              <span className={styles.changeCount}>
+                {`${changes.length} 項未儲存`}
+              </span>
+            )}
+          </div>
           <p>
             {!canEdit
               ? COPY.permissions.policyStaffReadOnly
@@ -344,30 +554,48 @@ function PermissionPolicy({
               : COPY.permissions.policyReadOnlyNotice}
           </p>
           <div className={styles.changeSummary}>
-            <h3>{COPY.permissions.policyChangesTitle}</h3>
-            {changes.length > 0 ? (
+            <div className={styles.changeSummaryHeading}>
+              <h3>{COPY.permissions.policyChangesTitle}</h3>
+              {dirty && (
+                <button
+                  className={styles.reviewButton}
+                  onClick={() => setReviewOpen((current) => !current)}
+                  type="button"
+                >
+                  {reviewOpen ? "隱藏變更" : "檢視變更"}
+                </button>
+              )}
+            </div>
+            {reviewOpen && changes.length > 0 ? (
               <ul>
                 {changes.map((change) => {
                   const capability = data.policy.capabilities.find(
                     (item) => item.key === change.capability
                   );
                   const previous = capability?.roles[change.role].value ?? false;
+                  const consequence = policyChangeConsequence(change.capability);
                   return (
                     <li key={`${change.role}:${change.capability}`}>
                       <strong>{capability?.label ?? change.capability}</strong>
                       <span>
                         {POLICY_ROLE_COPY[change.role]} · {previous ? "✓" : "—"} → {change.value ? COPY.permissions.policyChangeEnabled : COPY.permissions.policyChangeDisabled}
                       </span>
+                      {consequence && (
+                        <small className={styles.changeConsequence}>
+                          {consequence}
+                        </small>
+                      )}
                     </li>
                   );
                 })}
               </ul>
             ) : null}
           </div>
-          {canEdit && dirty && (
+          {canEdit && dirty && reviewOpen && (
             <button
               className={styles.saveButton}
               disabled={saveState === "saving"}
+              aria-busy={saveState === "saving"}
               onClick={onSave}
               type="button"
             >
@@ -389,6 +617,301 @@ function PermissionPolicy({
       </div>
     </section>
   );
+}
+
+function InternalBackButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className={styles.backButton} onClick={onClick} type="button">
+      <BackIcon />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.chevron}
+      focusable="false"
+      viewBox="0 0 20 20"
+    >
+      <path d="m8 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function MemberBaseline() {
+  return (
+    <article
+      aria-label={BASELINE_LABEL}
+      className={styles.baseline}
+      data-system-owned="true"
+    >
+      <div className={styles.baselineCopy}>
+        <strong>{BASELINE_LABEL}</strong>
+        <span>{BASELINE_SUMMARY}</span>
+      </div>
+      <span className={styles.lockedBadge}>{COPY.permissions.policyLocked}</span>
+      <p>{BASELINE_NOTICE}</p>
+    </article>
+  );
+}
+
+function RoleList({
+  data,
+  headingRef,
+  onSelect,
+}: {
+  data: AccountPermissionsView;
+  headingRef: HeadingRef;
+  onSelect: (role: PermissionPolicyRoleKey) => void;
+}) {
+  return (
+    <section aria-labelledby="permissions-roles-title" className={styles.section}>
+      <header className={styles.listHeader}>
+        <div>
+          <h2
+            className={styles.sectionTitle}
+            id="permissions-roles-title"
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {COPY.permissions.rolesSection}
+          </h2>
+          <p className={styles.sectionLead}>
+            固定全域角色按權限範圍分開管理；部門管理者是同工的 scoped profile。
+          </p>
+        </div>
+        <span className={styles.roleCount}>3 個全域角色</span>
+      </header>
+      <ul aria-label={ROLE_LIST_ARIA_LABEL} className={styles.roleList}>
+        {POLICY_ROLE_ORDER.map((role) => {
+          const roleCopy = GLOBAL_ROLE_COPY[role];
+          const assignedCount = accountsForGlobalRole(data, role).length;
+          const counts = capabilityCountForRole(data, role);
+          return (
+            <li className={styles.roleRow} key={role}>
+              <button
+                aria-label={`${roleCopy.label} · ${ROLE_DETAIL_TITLE_SUFFIX}`}
+                className={styles.roleLink}
+                data-role={role}
+                onClick={() => onSelect(role)}
+                type="button"
+              >
+                <span className={styles.roleMark} aria-hidden="true">
+                  {roleCopy.label.slice(0, 1)}
+                </span>
+                <span className={styles.roleCopy}>
+                  <span className={styles.roleName}>{roleCopy.label}</span>
+                  <span className={styles.roleScope}>{roleCopy.scope}</span>
+                  <span className={styles.roleMeta}>
+                    {`${assignedCount} 個已指派帳戶 · ${counts.total} 項能力`}
+                  </span>
+                </span>
+                <ChevronIcon />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <MemberBaseline />
+    </section>
+  );
+}
+
+function RoleDetail({
+  data,
+  headingRef,
+  onBack,
+  onOpenAccounts,
+  onOpenPermissions,
+  role,
+}: {
+  data: AccountPermissionsView;
+  headingRef: HeadingRef;
+  onBack: () => void;
+  onOpenAccounts: () => void;
+  onOpenPermissions: () => void;
+  role: PermissionPolicyRoleKey;
+}) {
+  const roleCopy = GLOBAL_ROLE_COPY[role];
+  const assignedCount = accountsForGlobalRole(data, role).length;
+  const counts = capabilityCountForRole(data, role);
+  return (
+    <section aria-labelledby="permissions-role-detail-title" className={styles.section}>
+      <InternalBackButton label={ROLE_DETAIL_BACK_LABEL} onClick={onBack} />
+      <div className={styles.roleDetailHeader}>
+        <span className={styles.detailRoleMark} aria-hidden="true">
+          {roleCopy.label.slice(0, 1)}
+        </span>
+        <div>
+          <h2
+            className={styles.detailTitle}
+            id="permissions-role-detail-title"
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {`${roleCopy.label} · ${ROLE_DETAIL_TITLE_SUFFIX}`}
+          </h2>
+          <p className={styles.detailLead}>{roleCopy.scope}</p>
+        </div>
+      </div>
+
+      <dl className={styles.roleFacts}>
+        <div>
+          <dt>全域角色</dt>
+          <dd>{roleCopy.label}</dd>
+        </div>
+        <div>
+          <dt>已指派帳戶</dt>
+          <dd>{assignedCount}</dd>
+        </div>
+        <div>
+          <dt>適用能力</dt>
+          <dd>{counts.total}</dd>
+        </div>
+      </dl>
+
+      <div className={styles.detailActions}>
+        <button
+          aria-label={`${roleCopy.label} · ${ROLE_PERMISSIONS_LABEL}`}
+          className={styles.detailAction}
+          onClick={onOpenPermissions}
+          type="button"
+        >
+          <span>
+            <strong>{ROLE_PERMISSIONS_LABEL}</strong>
+            <small>查看及核對這個角色的能力</small>
+          </span>
+          <ChevronIcon />
+        </button>
+        <button
+          aria-label={`${roleCopy.label} · ${ROLE_ACCOUNTS_LABEL}`}
+          className={styles.detailAction}
+          onClick={onOpenAccounts}
+          type="button"
+        >
+          <span>
+            <strong>{ROLE_ACCOUNTS_LABEL}</strong>
+            <small>只供查看，不在此變更角色</small>
+          </span>
+          <ChevronIcon />
+        </button>
+      </div>
+
+      <aside className={styles.safetyNotice} aria-label="安全限制">
+        <strong>安全限制</strong>
+        <p>
+          {role === "member"
+            ? "會友角色不能修改管理權限；一般會友能力由系統固定保留。"
+            : role === "staff"
+              ? "同工可按獲授權部門協助工作；全域角色仍由系統政策及伺服器核准。"
+              : "管理員的政策修改仍受 CAS 版本及至少一名管理員政策編輯者規則保護。"}
+        </p>
+      </aside>
+    </section>
+  );
+}
+
+function AssignedAccounts({
+  data,
+  definitions,
+  headingRef,
+  onBack,
+  role,
+}: {
+  data: AccountPermissionsView;
+  definitions: readonly AccountPermissionRole[];
+  headingRef: HeadingRef;
+  onBack: () => void;
+  role: PermissionPolicyRoleKey;
+}) {
+  const roleCopy = GLOBAL_ROLE_COPY[role];
+  const accounts = accountsForGlobalRole(data, role);
+  return (
+    <section aria-labelledby="permissions-assigned-title" className={styles.section}>
+      <InternalBackButton label={ROLE_PERMISSIONS_BACK_LABEL} onClick={onBack} />
+      <header className={styles.detailHeader}>
+        <div>
+          <h2
+            className={styles.detailTitle}
+            id="permissions-assigned-title"
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {`${ROLE_ACCOUNTS_LABEL} · ${roleCopy.label}`}
+          </h2>
+          <p className={styles.detailLead}>{ASSIGNED_ACCOUNTS_COPY}</p>
+        </div>
+        <span className={styles.revision}>{`${accounts.length} 個帳戶`}</span>
+      </header>
+      {role === "member" && <p className={styles.baselineHint}>{MEMBER_ACCOUNTS_COPY}</p>}
+      {accounts.length > 0 ? (
+        <div className={styles.tableWrap}>
+          <table
+            aria-label={`${roleCopy.label} · ${ROLE_ACCOUNTS_LABEL}`}
+            className={styles.table}
+          >
+            <caption className={styles.visuallyHidden}>
+              {`${roleCopy.label} · ${ROLE_ACCOUNTS_LABEL}`}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">{COPY.permissions.accountName}</th>
+                <th scope="col">{COPY.permissions.accountRole}</th>
+                <th scope="col">{COPY.permissions.accountDepartment}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => {
+                const accountRole =
+                  definitions.find((item) => item.key === account.role)?.label ??
+                  ROLE_COPY[account.role].label;
+                const department = departmentContext(account, definitions);
+                return (
+                  <tr key={account.userId}>
+                    <th scope="row">{account.name}</th>
+                    <td>{accountRole}</td>
+                    <td>{department}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className={styles.emptyState}>目前沒有可顯示的已指派帳戶。</p>
+      )}
+    </section>
+  );
+}
+
+function isPolicyRole(value: string | null): value is PermissionPolicyRoleKey {
+  return value !== null && POLICY_ROLE_ORDER.includes(value as PermissionPolicyRoleKey);
+}
+
+function initialPermissionNavigation(searchParams: URLSearchParams): {
+  role: PermissionPolicyRoleKey;
+  screen: PermissionScreen;
+} {
+  const role = isPolicyRole(searchParams.get("role"))
+    ? (searchParams.get("role") as PermissionPolicyRoleKey)
+    : "admin";
+  const requestedScreen = searchParams.get("view");
+  const screen: PermissionScreen =
+    requestedScreen === "permissions" || requestedScreen === "accounts"
+      ? requestedScreen
+      : requestedScreen === "detail"
+        ? "role-detail"
+        : "roles";
+  return { role, screen };
 }
 
 export function PermissionsPanel() {
@@ -440,6 +963,15 @@ export function PermissionsPanel() {
   const [saveState, setSaveState] = useState<PolicySaveState>("idle");
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
   const preserveDraftOnReload = useRef(false);
+  const [activeRole, setActiveRole] = useState<PermissionPolicyRoleKey>(() =>
+    initialPermissionNavigation(searchParams).role
+  );
+  const [screen, setScreen] = useState<PermissionScreen>(() =>
+    initialPermissionNavigation(searchParams).screen
+  );
+  const viewHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const loadingStateRef = useRef<HTMLOutputElement | null>(null);
+  const errorStateRef = useRef<HTMLElement | null>(null);
 
   const fetchedData = state.kind === "ready" ? state.data : null;
   const readyData = displayData ?? fetchedData;
@@ -547,6 +1079,39 @@ export function PermissionsPanel() {
       ? policyChanges(readyData, draft).length > 0
       : false;
 
+  const selectRole = (role: PermissionPolicyRoleKey) => {
+    setActiveRole(role);
+    setScreen("role-detail");
+  };
+
+  const goToPolicy = () => {
+    setScreen("permissions");
+  };
+
+  const goToAssignedAccounts = () => {
+    setScreen("accounts");
+  };
+
+  const goBack = () => {
+    setScreen((current) =>
+      current === "roles" ? "roles" : current === "role-detail" ? "roles" : "role-detail"
+    );
+  };
+
+  useEffect(() => {
+    if (readyData) {
+      viewHeadingRef.current?.focus();
+    }
+  }, [readyData, screen]);
+
+  useEffect(() => {
+    if (state.kind === "loading") {
+      loadingStateRef.current?.focus();
+    } else if (state.kind === "error") {
+      errorStateRef.current?.focus();
+    }
+  }, [state]);
+
   return (
     <section
       className={styles.page}
@@ -570,6 +1135,7 @@ export function PermissionsPanel() {
           tabIndex={-1}
           className={styles.state}
           aria-busy="true"
+          ref={loadingStateRef}
         >
           {COPY.permissions.loading}
         </output>
@@ -581,6 +1147,7 @@ export function PermissionsPanel() {
           tabIndex={-1}
           className={styles.error}
           role="alert"
+          ref={errorStateRef}
         >
           <h2 className={styles.stateTitle}>
             {state.failure === "forbidden"
@@ -601,86 +1168,52 @@ export function PermissionsPanel() {
 
       {readyData && draft && (
         <>
-          <section
-            className={styles.section}
-            aria-labelledby="permissions-accounts-title"
-          >
-            <h2 id="permissions-accounts-title" className={styles.sectionTitle}>
-              {COPY.permissions.accountsSection}
-            </h2>
-            <div className={styles.tableWrap}>
-              <table
-                className={styles.table}
-                aria-label={COPY.permissions.accountsSection}
-              >
-                <caption className={styles.visuallyHidden}>
-                  {COPY.permissions.accountsSection}
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{COPY.permissions.accountName}</th>
-                    <th scope="col">{COPY.permissions.accountRole}</th>
-                    <th scope="col">{COPY.permissions.accountDepartment}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {readyData.accounts.map((account) => {
-                    const accountRole =
-                      definitions.find((role) => role.key === account.role)?.label ??
-                      ROLE_COPY[account.role].label;
-                    const department = departmentContext(account, definitions);
-                    return (
-                      <tr key={account.userId}>
-                        <th scope="row">{account.name}</th>
-                        <td>{accountRole}</td>
-                        <td>{department}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section
-            className={styles.section}
-            aria-labelledby="permissions-roles-title"
-          >
-            <h2 id="permissions-roles-title" className={styles.sectionTitle}>
-              {COPY.permissions.rolesSection}
-            </h2>
-            <ul className={styles.roleList}>
-              {definitions.map((role) => {
-                const assigned = role.assignmentState === "assigned";
-                return (
-                  <li className={styles.roleRow} key={role.key}>
-                    <span className={styles.roleCopy}>
-                      <span className={styles.roleName}>{role.label}</span>
-                      <span className={styles.roleScope}>{role.scope}</span>
-                    </span>
-                    <span
-                      className={`${styles.status} ${assigned ? styles.statusAssigned : ""}`}
-                    >
-                      {assigned
-                        ? COPY.permissions.stateAssigned
-                        : COPY.permissions.stateAssignable}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-
-          <PermissionPolicy
-            conflictRevision={conflictRevision}
-            data={readyData}
-            draft={draft}
-            dirty={dirty}
-            onReload={handleReload}
-            onSave={() => void handleSave()}
-            onToggle={handleToggle}
-            saveState={saveState}
-          />
+          {screen === "roles" && (
+            <RoleList
+              data={readyData}
+              headingRef={viewHeadingRef}
+              onSelect={selectRole}
+            />
+          )}
+          {screen === "role-detail" && (
+            <RoleDetail
+              data={readyData}
+              headingRef={viewHeadingRef}
+              onBack={goBack}
+              onOpenAccounts={goToAssignedAccounts}
+              onOpenPermissions={goToPolicy}
+              role={activeRole}
+            />
+          )}
+          {screen === "permissions" && (
+            <>
+              <InternalBackButton
+                label={ROLE_PERMISSIONS_BACK_LABEL}
+                onClick={goBack}
+              />
+              <PermissionPolicy
+                conflictRevision={conflictRevision}
+                data={readyData}
+                draft={draft}
+                dirty={dirty}
+                headingRef={viewHeadingRef}
+                onReload={handleReload}
+                onSave={() => void handleSave()}
+                onToggle={handleToggle}
+                role={activeRole}
+                saveState={saveState}
+              />
+            </>
+          )}
+          {screen === "accounts" && (
+            <AssignedAccounts
+              data={readyData}
+              definitions={definitions}
+              headingRef={viewHeadingRef}
+              onBack={goBack}
+              role={activeRole}
+            />
+          )}
         </>
       )}
     </section>

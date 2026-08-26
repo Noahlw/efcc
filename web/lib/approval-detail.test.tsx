@@ -5,7 +5,7 @@
 // required-note 拒絕, read-only outcome after a decision, back-nav to the
 // approvals list, and the guarded/error states.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
@@ -117,6 +117,13 @@ describe("ApprovalDetail", () => {
       await screen.findByRole("button", { name: COPY.approvals.approve })
     );
 
+    expect(approveCalls).toHaveLength(0);
+    expect(
+      screen.getByRole("dialog", { name: "確認核准申請" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Dave Ng.*Active Account/u)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+
     // The decision posts with an Idempotency-Key and the detail reloads to
     // the read-only Approved outcome (atomic: one round-trip, then locked).
     expect(
@@ -157,6 +164,12 @@ describe("ApprovalDetail", () => {
       await screen.findByRole("button", { name: COPY.approvals.reject })
     );
 
+    expect(screen.getByRole("dialog", { name: "確認拒絕申請" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "確認拒絕" })
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "確認拒絕" }));
+
     // Client-side gate: the required-note error is announced inline and no
     // POST leaves the browser (the server also 422s, but this must not fire).
     expect(
@@ -196,11 +209,14 @@ describe("ApprovalDetail", () => {
     const user = userEvent.setup();
     render(<ApprovalDetail requestId="req-1" />);
 
+    await user.click(
+      await screen.findByRole("button", { name: COPY.approvals.reject })
+    );
     await user.type(
       await screen.findByLabelText(COPY.approvals.decisionNote),
       "資料不完整"
     );
-    await user.click(screen.getByRole("button", { name: COPY.approvals.reject }));
+    await user.click(screen.getByRole("button", { name: "確認拒絕" }));
 
     expect(
       await screen.findByText(COPY.approvals.statusRejected)
@@ -230,6 +246,22 @@ describe("ApprovalDetail", () => {
     // The canonical hub sub-route: same module URL, no request param, so the
     // list remounts with its own loaded state (browser back preserves it).
     expect(back).toHaveAttribute("href", "/management?module=approvals");
+  });
+
+  test("exposes a busy root, live result, and focused detail heading", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(PENDING))
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    const heading = await screen.findByRole("heading", {
+      name: COPY.approvals.approvalDetailTitle,
+    });
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(
+      screen.getByRole("region", { name: COPY.approvals.approvalDetailTitle })
+    ).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
