@@ -470,8 +470,7 @@ export async function approveRegistrationsBatch(
     return JSON.parse(existing.response_json) as RegistrationBatchApprovalResult;
   }
 
-  const placeholders = ids.map(() => "(?)").join(", ");
-  const requestedValues = ids.map(() => "?");
+  const idPlaceholders = ids.map(() => "?").join(", ");
   const response: RegistrationBatchApprovalResult = {
     accountStatus: "active",
     approvedCount: ids.length,
@@ -480,12 +479,11 @@ export async function approveRegistrationsBatch(
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `WITH requested(request_id) AS (VALUES ${placeholders}),
-              candidate AS (
+        `WITH candidate AS (
                 SELECT COUNT(*) AS valid_count
                   FROM registration_requests
                  WHERE account_status = 'Pending'
-                   AND request_id IN (${requestedValues.join(", ")})
+                   AND request_id IN (${idPlaceholders})
               )
          INSERT INTO registration_batch_idempotency (
            actor_user_id, endpoint, idempotency_key, request_hash,
@@ -498,7 +496,6 @@ export async function approveRegistrationsBatch(
       )
       .bind(
         ...ids,
-        ...ids,
         options.reviewerId,
         options.idempotencyKey,
         options.requestHash,
@@ -509,49 +506,57 @@ export async function approveRegistrationsBatch(
       ),
   ];
 
-  for (const id of ids) {
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO accounts (
-             user_id, name, username, username_normalized,
-             credential_hash, credential_kind, credential_version,
-             account_status, role, phone, created_at, updated_at
-           )
-           SELECT user_id, name, username, username_normalized,
-                  credential_hash, credential_kind, 1, 'Active', role,
-                  phone, ?, ?
-             FROM registration_requests
-            WHERE request_id = ? AND account_status = 'Pending'`
-        )
-        .bind(now, now, id),
-      db
-        .prepare(
-          `UPDATE registration_requests
-              SET account_status = 'Active', reviewed_by = ?, reviewed_at = ?,
-                  review_decision = 'Approved'
-            WHERE request_id = ? AND account_status = 'Pending'`
-        )
-        .bind(options.reviewerId, now, id),
-      db
-        .prepare(
-          `INSERT INTO audit_events (
-             audit_id, inserted_at, actor_user_id, action, entity_type,
-             entity_id, old_value_json, new_value_json, outcome, correlation_id
-           ) VALUES (?, ?, ?, 'REGISTRATION_BATCH_APPROVE', 'registration', ?,
-             ?, ?, 'SUCCESS', ?)`
-        )
-        .bind(
-          crypto.randomUUID(),
-          new Date(now).toISOString(),
-          options.reviewerId,
-          id,
-          JSON.stringify({ accountStatus: "Pending" }),
-          JSON.stringify({ accountStatus: "Active" }),
-          options.idempotencyKey
-        )
-    );
-  }
+  // Keep the D1 batch under its statement limit even for the contract's
+  // maximum 100 selected requests: one bulk account insert, one bulk audit
+  // insert, and one compare-and-set update instead of three statements per
+  // request. The guard above makes these predicates stable for the batch.
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO accounts (
+           user_id, name, username, username_normalized,
+           credential_hash, credential_kind, credential_version,
+           account_status, role, phone, created_at, updated_at
+         )
+         SELECT user_id, name, username, username_normalized,
+                credential_hash, credential_kind, 1, 'Active', role,
+                phone, ?, ?
+           FROM registration_requests
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(now, now, ...ids),
+    db
+      .prepare(
+        `INSERT INTO audit_events (
+           audit_id, inserted_at, actor_user_id, action, entity_type,
+           entity_id, old_value_json, new_value_json, outcome, correlation_id
+         )
+         SELECT lower(hex(randomblob(16))), ?, ?,
+                'REGISTRATION_BATCH_APPROVE', 'registration', request_id,
+                ?, ?, 'SUCCESS', ?
+           FROM registration_requests
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(
+        new Date(now).toISOString(),
+        options.reviewerId,
+        JSON.stringify({ accountStatus: "Pending" }),
+        JSON.stringify({ accountStatus: "Active" }),
+        options.idempotencyKey,
+        ...ids
+      ),
+    db
+      .prepare(
+        `UPDATE registration_requests
+            SET account_status = 'Active', reviewed_by = ?, reviewed_at = ?,
+                review_decision = 'Approved'
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(options.reviewerId, now, ...ids)
+  );
 
   try {
     await db.batch(statements);
