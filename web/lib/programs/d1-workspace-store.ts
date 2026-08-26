@@ -437,9 +437,11 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
   searchAccountDirectory(
     query: string,
     limit: number,
-    filters: AccountDirectorySearchFilters = {}
+    filters: AccountDirectorySearchFilters = {},
+    offset = 0
   ): Promise<ManagementMemberSearchRow[]> {
-    const normalizedLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+    const normalizedLimit = Math.min(51, Math.max(1, Math.floor(limit)));
+    const normalizedOffset = Math.max(0, Math.floor(offset));
     const escaped = query.replaceAll(/[\\%_]/gu, "\\$&");
     const pattern = `%${escaped}%`;
     const filterParts = [
@@ -486,7 +488,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
                 OR COALESCE(accounts.phone, '') LIKE ? ESCAPE '\\'
               )
             ORDER BY accounts.name ASC, accounts.username ASC
-            LIMIT ?
+            LIMIT ? OFFSET ?
          )
          SELECT DISTINCT
                 accounts.user_id,
@@ -516,7 +518,8 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         pattern,
         pattern,
         pattern,
-        normalizedLimit
+        normalizedLimit,
+        normalizedOffset
       )
       .all<ManagementMemberSearchRow>()
       .then((result) => result.results ?? []);

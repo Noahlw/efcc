@@ -31,8 +31,23 @@
 
 .controls {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.75rem;
+  align-items: end;
   margin-top: 1.25rem;
+}
+.filterButton {
+  min-height: 48px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+.desktopFilters {
+  display: none;
 }
 .field {
   display: grid;
@@ -62,6 +77,32 @@
 .detail:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
+}
+.filterButton:focus-visible,
+.sheetActions button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+.sheetFilters {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.sheetActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.sheetActions button {
+  min-height: 44px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
 }
 
 .state,
@@ -98,6 +139,30 @@
   font: inherit;
   font-weight: 800;
 }
+
+.loadMore {
+  display: block;
+  min-height: 44px;
+  margin: 0.75rem auto 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.loadMore:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.loadMore:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
 .empty {
   border: 1px dashed var(--line-strong);
   background: var(--surface-raised);
@@ -118,27 +183,24 @@
   min-width: 0;
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
   margin-bottom: 1rem;
 }
 .metrics div {
-  display: grid;
-  gap: 0.2rem;
+  display: flex;
+  gap: 0.25rem;
   min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-raised);
+  align-items: baseline;
 }
 .metrics strong {
-  font-size: 1.35rem;
+  font-size: 0.82rem;
 }
 .metrics span {
   overflow-wrap: anywhere;
   color: var(--ink-muted);
-  font-size: 0.7rem;
+  font-size: 0.76rem;
 }
 .resultsTitle {
   margin: 0 0 0.55rem;
@@ -328,8 +390,16 @@
     padding: 2rem clamp(1.5rem, 4vw, 3rem) 8rem;
   }
   .controls {
-    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, 0.45fr));
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 1.35fr);
     align-items: end;
+  }
+  .filterButton {
+    display: none;
+  }
+  .desktopFilters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
+    gap: 0.75rem;
   }
   .workspace {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -337,9 +407,6 @@
   }
   .detailOnly {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .metrics {
-    grid-template-columns: repeat(4, 1fr);
   }
   .detail {
     position: sticky;

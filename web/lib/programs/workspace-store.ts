@@ -624,7 +624,8 @@ export interface WorkspaceStore {
   searchAccountDirectory: (
     query: string,
     limit: number,
-    filters?: AccountDirectorySearchFilters
+    filters?: AccountDirectorySearchFilters,
+    offset?: number
   ) => Promise<ManagementMemberSearchRow[]>;
   getAccountDirectoryAccount: (
     userId: string
