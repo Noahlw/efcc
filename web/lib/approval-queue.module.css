@@ -1,50 +1,9 @@
-/* Staff/Admin registration approval queue (AUTH-05 #163) — Variant A civic
-   minimal. Scoped to the queue surface; tokens with literal fallbacks so it
-   renders before/after globals.css token merge. */
-.pageBody {
-  padding-top: clamp(1.5rem, 4vh, 2.5rem);
-}
-
-.pageCard {
-  max-width: 920px;
-}
-
-.queueHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.titleGroup {
-  min-width: 0;
-}
-
 .title {
   margin: 0 0 0.375rem;
   font-size: 1.5rem;
   font-weight: 900;
   letter-spacing: -0.02em;
   color: var(--ink, #171a1d);
-}
-
-.count {
-  display: inline-block;
-  margin-top: 0.25rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--line, #d6dcde);
-  color: var(--ink, #171a1d);
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.lead {
-  margin: 0;
-  font-size: 0.9375rem;
-  color: var(--ink-muted, #59636a);
 }
 
 .refresh {
@@ -64,12 +23,8 @@
 .refresh:hover {
   background: var(--surface, #f4f5f3);
 }
-
 .refresh:focus-visible,
-.approve:focus-visible,
-.reject:focus-visible,
-.back:focus-visible,
-.rejectNote textarea:focus-visible {
+.back:focus-visible {
   outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
 }
@@ -82,7 +37,6 @@
   outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
 }
-
 
 /* Restrained cinnabar notices (network error / decision result). */
 .notice {
@@ -136,129 +90,16 @@
 .loading,
 .empty {
   color: var(--ink-muted, #59636a);
-}
-
-/* Phone overflow is intentional ONLY for the table, never the page. */
-.tableWrap {
+} /* Phone overflow is intentional ONLY for the table {
   overflow-x: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: var(--radius-md, 12px);
-}
-
-.th {
-  text-align: left;
-  padding: 0.75rem 0.875rem;
-  border-bottom: 1px solid var(--line, #d6dcde);
-  font-size: 0.875rem;
-  color: var(--ink-muted, #59636a);
-}
-
-.td {
-  padding: 0.875rem;
-  border-bottom: 1px solid var(--line, #d6dcde);
-  font-size: 0.9375rem;
-  vertical-align: top;
-}
-
-/* Action cluster: row on desktop, stacked on phone. */
-.actions {
+}/* Action cluster: row on desktop {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.rejectNote {
-  display: grid;
-  flex-basis: 100%;
-  gap: 0.4rem;
-  max-width: 28rem;
-}
-
-.rejectNote label {
-  color: var(--ink-muted, #59636a);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.rejectNote textarea {
-  min-height: 5rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: var(--radius-sm, 8px);
-  background: var(--surface-raised, #ffffff);
-  color: var(--ink, #171a1d);
-  font: inherit;
-  line-height: 1.5;
-  resize: vertical;
-}
-
-.rejectNote textarea[aria-invalid="true"] {
-  border-color: var(--error, #b3261e);
-}
-
-.rejectNoteError {
-  margin: 0;
-  color: var(--error, #b3261e);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
 
 
 @media (max-width: 799.98px) {
-  .actions {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.approve {
-  min-height: 44px;
-  padding: 0 1rem;
-  border: none;
-  border-radius: var(--radius-sm, 8px);
-  background: var(--success, #2e6b37);
-  color: #fff;
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.approve:hover:not(:disabled) {
-  background: #245d2b;
-}
-
-.approve:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.reject {
-  min-height: 44px;
-  padding: 0 1rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: var(--radius-sm, 8px);
-  background: transparent;
-  color: var(--ink, #171a1d);
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.reject:hover:not(:disabled) {
-  border-color: var(--ink, #171a1d);
-  background: var(--surface, #f4f5f3);
-}
-
-.reject:disabled {
-  cursor: default;
-  opacity: 0.6;
 }
 
 .backWrap {
@@ -276,6 +117,7 @@
 }
 
 /* S4 approval queue: dense identity rows with explicit selection. */
+
 .page {
   max-width: 1180px;
   margin: 0 auto;
@@ -287,11 +129,6 @@
   outline-offset: 3px;
 }
 
-.queueHeader {
-  align-items: flex-start;
-  margin-bottom: 1.25rem;
-}
-
 .title {
   margin: 0;
   color: var(--ink, #171a1d);
@@ -299,13 +136,6 @@
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.12;
-}
-
-.lead {
-  max-width: 65ch;
-  margin: 0.35rem 0 0;
-  color: var(--ink-muted, #59636a);
-  line-height: 1.55;
 }
 
 .refresh {
@@ -698,12 +528,6 @@
   font-size: 1.2rem;
 }
 
-.moreNames {
-  color: var(--ink-muted, #59636a);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
 .confirmDialog {
   width: min(32rem, calc(100% - 2rem));
   margin: auto;
@@ -765,10 +589,6 @@
 @media (max-width: 599.98px) {
   .page {
     padding-inline: 1rem;
-  }
-
-  .queueHeader {
-    flex-direction: column;
   }
 
   .refresh {

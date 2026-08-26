@@ -387,23 +387,15 @@
   grid-template-columns: 1fr;
   gap: 0.75rem;
 }
-
-.methodCard,
-.methodCardNote {
+.methodCard {
   display: grid;
   align-content: start;
   gap: 0.35rem;
 }
-
-.methodCard span,
-.methodCardNote span {
+.methodCard span {
   color: var(--ink-muted);
   font-size: 0.875rem;
   line-height: 1.5;
-}
-
-.methodCardNote {
-  border-style: dashed;
 }
 
 .confirmation {
@@ -894,11 +886,8 @@
   color: var(--ink-muted);
   background: var(--surface);
   border: 1px solid var(--line);
-}
-
-/* Inline guest-correction form: recessed panel to separate it from the
-   row it edits, so the edit scope is visually unambiguous. */
-.correctionPanel {
+} /* Inline guest-correction form: recessed panel to separate it from the
+   row it edits {
   display: grid;
   gap: 0.75rem;
   margin-top: 0.5rem;
@@ -911,6 +900,7 @@
 /* Status output: a quiet spacer until a message lands; tone variants
    (set via data-tone only while text exists) box the message so
    success/error read at a glance — and to screen readers via aria-live. */
+
 .status {
   min-height: 1.5rem;
   color: var(--ink-muted);

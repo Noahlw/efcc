@@ -39,7 +39,7 @@
   padding: 11px 16px;
   border: 1px solid #c1ad95;
   border-radius: 9px;
-  color: #171a1d;
+  color: var(--ink);
   background: #f3eee8;
   box-shadow: 0 10px 30px rgba(23, 26, 29, 0.09);
   font-size: 0.86rem;

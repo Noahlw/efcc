@@ -172,29 +172,6 @@
   white-space: nowrap;
 }
 
-.messageLink {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.875rem;
-  min-height: 72px;
-  padding: 1rem;
-  color: inherit;
-  text-align: left;
-  text-decoration: none;
-}
-
-.messageLink:hover {
-  background: var(--surface, #f4f5f3);
-}
-
-.messageChevron {
-  width: 20px;
-  height: 20px;
-  color: var(--ink-muted, #59636a);
-  flex: 0 0 auto;
-}
-
 .empty {
   padding: 2.125rem 1.375rem;
   border: 1px solid var(--line, #d6dcde);
@@ -266,12 +243,6 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0.5rem;
-}
-
-.messageCategoryTag {
-  font-size: 0.75rem;
-  font-weight: 750;
-  color: var(--accent, #9c302c);
 }
 
 .messageDate {
