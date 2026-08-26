@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ManagementPageHeader,
@@ -17,7 +11,6 @@ import {
 } from "@/app/management/management-action-framework";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-
 import {
   approveRegistrationsBatch,
   fetchRegistrations,
@@ -148,7 +141,7 @@ function approvalErrorMessage(error: unknown): string {
 }
 
 // oxlint-disable-next-line eslint/complexity -- this component owns the queue, selection, and confirmation state machine.
-export function ApprovalQueue() {
+export const ApprovalQueue = () => {
   const searchParams = useSearchParams();
   const returnHref = safeManagementReturnHref(
     searchParams.get("return"),
@@ -189,10 +182,7 @@ export function ApprovalQueue() {
     announce(QUEUE_COPY.loading);
     try {
       const registrations = await fetchRegistrations(status);
-      if (
-        !mounted.current ||
-        sequence !== requestSequence.current
-      ) {
+      if (!mounted.current || sequence !== requestSequence.current) {
         return null;
       }
       if (status === "Pending") {
@@ -205,10 +195,7 @@ export function ApprovalQueue() {
       setState({ kind: "ready", registrations, status });
       return registrations;
     } catch (error) {
-      if (
-        !mounted.current ||
-        sequence !== requestSequence.current
-      ) {
+      if (!mounted.current || sequence !== requestSequence.current) {
         return null;
       }
       if (
@@ -417,7 +404,9 @@ export function ApprovalQueue() {
           registrations.map((registration) => registration.requestId)
         );
         setStaleIds(
-          new Set(attemptedIds.filter((requestId) => !currentIds.has(requestId)))
+          new Set(
+            attemptedIds.filter((requestId) => !currentIds.has(requestId))
+          )
         );
         if (activeStatus === "Pending") {
           setState({ kind: "ready", registrations, status: "Pending" });
@@ -589,9 +578,7 @@ export function ApprovalQueue() {
           role="status"
           aria-live="polite"
           className={`${styles.notice} ${
-            noticeKind === "success"
-              ? styles.noticeSuccess
-              : styles.noticeError
+            noticeKind === "success" ? styles.noticeSuccess : styles.noticeError
           }`}
         >
           {notice}
@@ -611,12 +598,7 @@ export function ApprovalQueue() {
       )}
 
       {state.kind === "error" && (
-        <p
-          role="alert"
-          className={styles.error}
-          tabIndex={-1}
-          ref={stateRef}
-        >
+        <p role="alert" className={styles.error} tabIndex={-1} ref={stateRef}>
           {state.message}
         </p>
       )}
@@ -667,7 +649,10 @@ export function ApprovalQueue() {
 
           {activeStatus === "Pending" && registrations.length > 0 && (
             <div className={styles.selectAllRow}>
-              <label className={styles.checkboxLabel} htmlFor="approval-select-all">
+              <label
+                className={styles.checkboxLabel}
+                htmlFor="approval-select-all"
+              >
                 <input
                   ref={selectAllRef}
                   id="approval-select-all"
@@ -761,10 +746,13 @@ export function ApprovalQueue() {
                         </Link>
                         <span className={styles.username}>{item.username}</span>
                         <span className={styles.meta}>
-                          {item.phone ?? "—"} · {approvalRoleLabel(item.role)} · {formatSubmittedAt(item.submittedAt)}
+                          {item.phone ?? "—"} · {approvalRoleLabel(item.role)} ·{" "}
+                          {formatSubmittedAt(item.submittedAt)}
                         </span>
                       </div>
-                      <span className={`${styles.status} ${approvalStatusClass(item)}`}>
+                      <span
+                        className={`${styles.status} ${approvalStatusClass(item)}`}
+                      >
                         {itemStatus}
                       </span>
                     </li>
@@ -843,12 +831,6 @@ export function ApprovalQueue() {
         </ManagementStickyActionBar>
       )}
 
-      <div className={styles.backWrap}>
-        <Link href="/" className={styles.back}>
-          {QUEUE_COPY.backToHome}
-        </Link>
-      </div>
-
       {confirmOpen && (
         <dialog
           ref={dialogRef}
@@ -894,4 +876,4 @@ export function ApprovalQueue() {
       )}
     </section>
   );
-}
+};

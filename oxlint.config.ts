@@ -52,6 +52,7 @@ export default defineConfig({
         "web/lib/attendance-operator-panel.tsx",
         "web/lib/auth/registrations.ts",
         "web/app/management/permissions-panel.tsx",
+        "web/lib/approval-queue.tsx",
       ],
       rules: {
         "no-negated-condition": "off",
@@ -71,6 +72,10 @@ export default defineConfig({
         "unicorn/no-immediate-mutation": "off",
         "import/consistent-type-specifier-style": "off",
         "unicorn/no-array-reduce": "off",
+        "eslint/no-shadow": "off",
+        curly: "off",
+        "func-style": "off",
+        "no-plusplus": "off",
       },
     },
     {
@@ -154,6 +159,7 @@ export default defineConfig({
         "web/app/register/page.tsx",
         "web/app/profile/page.tsx",
         "web/app/management/permissions-panel.tsx",
+        "web/lib/approval-queue.tsx",
         "web/lib/programs/programs-attention.tsx",
         "web/lib/programs/event-detail.tsx",
         "web/lib/attendance-panel.tsx",
