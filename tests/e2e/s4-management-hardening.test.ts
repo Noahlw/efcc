@@ -1,4 +1,5 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals -- this is a Playwright suite. */
+/* oxlint-disable promise/avoid-new -- deferred gates intentionally hold API requests for loading evidence. */
 /**
  * S4-12 / issue #467 — authenticated local-D1 evidence gate.
  *
@@ -79,6 +80,14 @@ function escaped(value: string): string {
 
 function uniqueSuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolvePromise = () => {};
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
 }
 
 function slug(value: string): string {
@@ -534,12 +543,14 @@ test.describe("S4 Management hardening integration gate", () => {
       0
     );
 
+    await captureEvidence(page, testInfo, "role-list-baseline");
     const staffRole = page.getByRole("button", { name: /^同工/u });
     expect(await staffRole.count()).toBeGreaterThan(0);
     await staffRole.click();
     await expect(page.getByRole("heading", { name: /同工/u })).toBeVisible();
     await expect(page.getByText(/角色詳情|固定角色/u).first()).toBeVisible();
 
+    await captureEvidence(page, testInfo, "role-detail");
     await clickNamed(page, /權限/u);
     await expect(
       page.getByRole("heading", { name: /權限/u, level: 2 })
@@ -547,6 +558,7 @@ test.describe("S4 Management hardening integration gate", () => {
     const permissionSearch = await searchInput(page, "搜尋權限");
     await permissionSearch.fill("account.directory.read");
     await expect(page.getByText("查看帳戶名錄", { exact: true })).toBeVisible();
+    await captureEvidence(page, testInfo, "role-permissions-search");
     await clickNamed(page, /返回角色詳情/u);
 
     await clickNamed(page, /已指派帳戶/u);
@@ -614,6 +626,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await secondSelection.click();
     await expectSelected(secondSelection);
     await expect(page.getByText("已選 2 位", { exact: true })).toBeVisible();
+    await captureEvidence(page, testInfo, "approval-selection-tray");
 
     await approvalSearch.fill(first.name);
     await openApprovalDetail(page, first.name);
@@ -629,6 +642,34 @@ test.describe("S4 Management hardening integration gate", () => {
     await tray.getByRole("button", { name: "檢視所選", exact: true }).click();
     const selectedList = tray.getByRole("list", { name: "所選申請" });
     await expect(selectedList).toBeVisible();
+    await captureEvidence(page, testInfo, "approval-selection-review");
+    await tray.getByRole("button", { name: "核准所選", exact: true }).click();
+    await expect(
+      page.getByRole("dialog", { name: "確認核准所選申請" })
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "approval-confirmation");
+    await page.getByRole("button", { name: "取消", exact: true }).click();
+
+    await page.route("**/api/v1/auth/registrations/approve-batch", (route) =>
+      route.fulfill({
+        body: JSON.stringify({
+          code: "CONFLICT",
+          detail: "stale",
+          status: 409,
+        }),
+        contentType: "application/problem+json",
+        status: 409,
+      })
+    );
+    await tray.getByRole("button", { name: "核准所選", exact: true }).click();
+    await page.getByRole("button", { name: "確認核准", exact: true }).click();
+    await expect(
+      page
+        .getByRole("region", { name: APPROVALS_TITLE })
+        .getByText("部分申請已變更，請檢視所選項目後再試。", { exact: true })
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "approval-conflict");
+    await page.unroute("**/api/v1/auth/registrations/approve-batch");
     await expect(
       selectedList.getByText(first.name, { exact: true })
     ).toBeVisible();
@@ -668,6 +709,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("button", { name: /核准|批准|拒絕/u })
     ).toHaveCount(0);
+    await captureEvidence(page, testInfo, "approval-processed-detail");
 
     await page.goto("/management");
     await page.goto("/management?module=approvals");
@@ -676,6 +718,92 @@ test.describe("S4 Management hardening integration gate", () => {
     ).toHaveAttribute("aria-selected", "true");
     await expect(page.locator('[aria-label="審批選取集"]')).toHaveCount(0);
     await captureEvidence(page, testInfo, "approval-selection-lifecycle");
+  });
+
+  test("captures explicit loading, empty, error, and forbidden management states", async ({
+    page,
+  }, testInfo) => {
+    onlyProjects(testInfo, ["phone-390"]);
+    await loginAsAdmin(page);
+
+    const loadingGate = deferred();
+    await page.route("**/api/v1/auth/registrations", async (route) => {
+      if (route.request().method() === "GET") {
+        await loadingGate.promise;
+      }
+      await route.continue();
+    });
+    await page.goto("/management?module=approvals");
+    await expect(
+      page
+        .locator("section[aria-labelledby='approval-queue-title']")
+        .getByRole("status")
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "approvals-loading");
+    loadingGate.resolve();
+    await expect(page.getByRole("tab", { name: /待審批/u })).toBeVisible();
+    await page.unroute("**/api/v1/auth/registrations");
+
+    const permissionLoadingGate = deferred();
+    await page.route(
+      "**/api/v1/programs/account-permissions",
+      async (route) => {
+        await permissionLoadingGate.promise;
+        await route.continue();
+      }
+    );
+    await page.goto("/management?module=permissions");
+    await expect(
+      page
+        .locator("section[aria-labelledby='permissions-title']")
+        .getByText("載入中…", {
+          exact: true,
+        })
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "permissions-loading");
+    permissionLoadingGate.resolve();
+    await expect(page.getByRole("list", { name: "角色定義" })).toBeVisible();
+    await page.unroute("**/api/v1/programs/account-permissions");
+
+    await page.route("**/api/v1/programs/account-permissions", (route) =>
+      route.fulfill({
+        body: JSON.stringify({
+          code: "UNAVAILABLE",
+          detail: "系統暫時無法使用，請稍後再試。",
+          status: 500,
+        }),
+        contentType: "application/problem+json",
+        status: 500,
+      })
+    );
+    await page.goto("/management?module=permissions");
+    await expect(page.getByRole("alert")).toBeVisible();
+    await captureEvidence(page, testInfo, "permissions-error");
+    await page.unroute("**/api/v1/programs/account-permissions");
+
+    await page.route("**/api/v1/auth/registrations", (route) =>
+      route.fulfill({
+        body: JSON.stringify({
+          code: "FORBIDDEN",
+          detail: "您沒有權限執行此操作。",
+          status: 403,
+        }),
+        contentType: "application/problem+json",
+        status: 403,
+      })
+    );
+    await page.goto("/management?module=approvals");
+    await expect(page.getByRole("alert")).toBeVisible();
+    await captureEvidence(page, testInfo, "approvals-forbidden");
+    await page.unroute("**/api/v1/auth/registrations");
+
+    await page.goto("/management?module=approvals");
+    const approvalSearch = await searchInput(page, "搜尋申請人或登入名稱");
+    await approvalSearch.fill("不存在的申請");
+    await expect(
+      page.getByText("找不到符合的申請。", { exact: true })
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "approvals-empty-filter");
   });
 
   test("management landmarks expose busy state, focus seams, no overflow, and 44px controls", async ({
