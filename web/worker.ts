@@ -177,6 +177,7 @@ export default {
             handleMe,
             handleAdminUnlock,
             handleApprove,
+            handleApproveBatch,
             handleReject,
             handleListRegistrations,
             handleRegistrationDetail,
@@ -233,6 +234,12 @@ export default {
             request.method === "GET"
           ) {
             return handleListRegistrations(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/registrations/approve-batch" &&
+            request.method === "POST"
+          ) {
+            return handleApproveBatch(request, authEnv);
           }
           const registrationDetail = url.pathname.match(
             /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)$/u
