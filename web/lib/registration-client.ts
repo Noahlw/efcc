@@ -25,6 +25,15 @@ export interface PendingRegistration {
   submittedAt: number;
   accountStatus: string;
   role: string;
+  decision: "Approved" | "Rejected" | null;
+  decisionNote: string | null;
+}
+
+export type RegistrationQueueStatus = "Pending" | "Processed";
+
+export interface RegistrationBatchApprovalResult {
+  accountStatus: "active";
+  approvedCount: number;
 }
 
 export type Decision = "approve" | "reject";
@@ -50,7 +59,10 @@ export interface RegistrationDetail {
 /** Row shape returned by GET /api/v1/auth/registrations. */
 export interface RegistrationQueueResponse {
   requestId: string;
-  data: { registrations: PendingRegistration[] };
+  data: {
+    registrations: PendingRegistration[];
+    status: RegistrationQueueStatus;
+  };
 }
 
 /** Client-side mirror of the Worker's RFC 9457 Problem Details body. */
@@ -113,16 +125,45 @@ export async function submitRegistration(
  * Requires an Admin/Staff session (403 otherwise). Returns safe metadata
  * only; never credential material.
  */
-export async function fetchPendingRegistrations(): Promise<
-  PendingRegistration[]
-> {
-  const res = await fetch("/api/v1/auth/registrations", {
+export async function fetchRegistrations(
+  status: RegistrationQueueStatus = "Pending"
+): Promise<PendingRegistration[]> {
+  const query = status === "Pending" ? "" : "?status=Processed";
+  const res = await fetch(`/api/v1/auth/registrations${query}`, {
     method: "GET",
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw await parseError(res);
   const body = (await res.json()) as RegistrationQueueResponse;
   return body.data?.registrations ?? [];
+}
+
+export async function fetchPendingRegistrations(): Promise<
+  PendingRegistration[]
+> {
+  return fetchRegistrations("Pending");
+}
+
+/** POST /api/v1/auth/registrations/approve-batch — atomic selected approval. */
+export async function approveRegistrationsBatch(
+  requestIds: readonly string[]
+): Promise<RegistrationBatchApprovalResult> {
+  const res = await fetch("/api/v1/auth/registrations/approve-batch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey(),
+    },
+    body: JSON.stringify({ requestIds }),
+  });
+  if (!res.ok) throw await parseError(res);
+  const body = (await res.json()) as {
+    data?: RegistrationBatchApprovalResult;
+  };
+  if (!body.data) {
+    throw new RegistrationApiError(500, "INVALID_RESPONSE", "Invalid batch response.");
+  }
+  return body.data;
 }
 
 /**
