@@ -574,6 +574,7 @@ export interface AccountDirectoryMember extends ManagementMemberView {
 
 export interface AccountDirectoryView {
   accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
   summary: AccountDirectorySummary;
 }
 
@@ -4299,11 +4300,12 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     query: string,
     limit: number,
-    filters: AccountDirectorySearchFilters = {}
+    filters: AccountDirectorySearchFilters = {},
+    offset = 0
   ): Promise<AccountDirectoryView> {
     await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
     const [rows, summary] = await Promise.all([
-      this.store.searchAccountDirectory(query, limit, filters),
+      this.store.searchAccountDirectory(query, limit + 1, filters, offset),
       this.store.countAccountDirectory(query, filters),
     ]);
     const accounts = new Map<string, AccountDirectoryMember>();
@@ -4332,7 +4334,13 @@ export class DepartmentWorkspace {
         });
       }
     }
-    return { accounts: [...accounts.values()], summary };
+    const page = [...accounts.values()];
+    const hasNextPage = page.length > limit;
+    return {
+      accounts: page.slice(0, limit),
+      nextCursor: hasNextPage ? String(offset + limit) : null,
+      summary,
+    };
   }
 
   async getAccountDirectoryDetail(

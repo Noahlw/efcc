@@ -554,6 +554,7 @@ export interface AccountDirectorySummary {
 
 export interface AccountDirectoryView {
   accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
   summary: AccountDirectorySummary;
 }
 
@@ -1163,6 +1164,7 @@ export function searchManagementMembers(
 export function searchAccountDirectory(
   query: string,
   options?: {
+    cursor?: string;
     department?: string;
     limit?: number;
     role?: AccountDirectoryMember["role"];
@@ -1172,6 +1174,9 @@ export function searchAccountDirectory(
   const params = new URLSearchParams({ q: query });
   if (options?.limit !== undefined) {
     params.set("limit", String(options.limit));
+  }
+  if (options?.cursor !== undefined) {
+    params.set("cursor", options.cursor);
   }
   if (options?.department !== undefined) {
     params.set("department", options.department);

@@ -16,13 +16,15 @@ import type {
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
 
-import { safeManagementReturnHref } from "./management-action-framework";
+import {
+  ManagementFilterSheet,
+  safeManagementReturnHref,
+} from "./management-action-framework";
 import { SettingsBackLink } from "./settings-ui";
 
 import styles from "./account-directory-panel.module.css";
 
 const SEARCH_LIMIT = 50;
-const MIN_QUERY_LENGTH = 2;
 const COPY_ACCOUNT = COPY.accountDirectory;
 
 type DirectoryState =
@@ -64,6 +66,10 @@ function statusClass(status: AccountDirectoryMember["status"]): string {
   return status.toLowerCase();
 }
 
+function initials(name: string): string {
+  return [...name.replaceAll(/\s+/gu, "")].slice(-2).join("");
+}
+
 // oxlint-disable-next-line eslint/complexity -- This component owns the complete read-only directory state machine.
 export const AccountDirectoryPanel = () => {
   const router = useRouter();
@@ -82,24 +88,17 @@ export const AccountDirectoryPanel = () => {
   const [department, setDepartment] = useState(
     searchParams.get("department") ?? ""
   );
+  const [filterOpen, setFilterOpen] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [state, setState] = useState<DirectoryState>({
     kind: "idle",
     data: null,
   });
   const [detailRetryToken, setDetailRetryToken] = useState(0);
-  const hasFilters = Boolean(role || status || department.trim());
-
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   useEffect(() => {
     const normalizedQuery = query.trim();
     let current = true;
-    if (normalizedQuery.length < MIN_QUERY_LENGTH && !hasFilters) {
-      setState({ kind: "idle", data: null });
-      return () => {
-        current = false;
-      };
-    }
-
     setState({ kind: "loading", data: null });
     announce(COPY_ACCOUNT.loading);
     void (async () => {
@@ -231,7 +230,7 @@ export const AccountDirectoryPanel = () => {
 
   const updateQuery = (value: string) => {
     setQuery(value);
-    if (value.trim().length < MIN_QUERY_LENGTH) {
+    if (!value.trim()) {
       router.replace("/management?module=accounts");
     }
   };
@@ -246,6 +245,40 @@ export const AccountDirectoryPanel = () => {
 
   const updateDepartment = (value: string) => {
     setDepartment(value);
+  };
+
+  const loadMore = async () => {
+    if (state.kind !== "ready" || !state.data.nextCursor || isLoadingMore) {
+      return;
+    }
+    setIsLoadingMore(true);
+    try {
+      const next = await searchAccountDirectory(query.trim(), {
+        cursor: state.data.nextCursor,
+        department: department || undefined,
+        limit: SEARCH_LIMIT,
+        role: role || undefined,
+        status: status || undefined,
+      });
+      const accounts = new Map(
+        state.data.accounts.map((account) => [account.userId, account])
+      );
+      for (const account of next.accounts) {
+        accounts.set(account.userId, account);
+      }
+      setState({
+        kind: "ready",
+        data: {
+          accounts: [...accounts.values()],
+          nextCursor: next.nextCursor,
+          summary: next.summary,
+        },
+      });
+    } catch {
+      announce(COPY_ACCOUNT.loadError);
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   const returnParams = new URLSearchParams({ module: "accounts" });
@@ -291,13 +324,14 @@ export const AccountDirectoryPanel = () => {
   const isLoading = state.kind === "loading";
   const isReady = state.kind === "ready";
   const showEmpty =
-    isReady &&
-    (query.trim().length >= MIN_QUERY_LENGTH || hasFilters) &&
-    state.data.accounts.length === 0;
+    isReady && state.data.accounts.length === 0;
   const hasResults = isReady && state.data.accounts.length > 0;
   const showWorkspace = Boolean(selectedId) || hasResults;
   const detailSelected = Boolean(selectedId);
   const detailOnly = detailSelected && !hasResults;
+  const activeFilterCount = [role, status, department.trim()].filter(
+    Boolean
+  ).length;
 
   return (
     <section
@@ -327,7 +361,15 @@ export const AccountDirectoryPanel = () => {
             value={query}
           />
         </label>
-        <label className={styles.field} htmlFor="account-directory-role">
+        <button
+          className={styles.filterButton}
+          onClick={() => setFilterOpen(true)}
+          type="button"
+        >
+          篩選{activeFilterCount ? ` ${activeFilterCount}` : ""}
+        </button>
+        <div className={styles.desktopFilters}>
+          <label className={styles.field} htmlFor="account-directory-role">
           <span className={styles.fieldLabel}>{COPY_ACCOUNT.roleLabel}</span>
           <select
             className={styles.select}
@@ -345,8 +387,8 @@ export const AccountDirectoryPanel = () => {
             <option value="Staff">{COPY_ACCOUNT.staff}</option>
             <option value="Member">{COPY_ACCOUNT.member}</option>
           </select>
-        </label>
-        <label className={styles.field} htmlFor="account-directory-status">
+          </label>
+          <label className={styles.field} htmlFor="account-directory-status">
           <span className={styles.fieldLabel}>{COPY_ACCOUNT.statusLabel}</span>
           <select
             className={styles.select}
@@ -365,8 +407,8 @@ export const AccountDirectoryPanel = () => {
             <option value="Suspended">{COPY_ACCOUNT.suspended}</option>
             <option value="Deactivated">{COPY_ACCOUNT.deactivated}</option>
           </select>
-        </label>
-        <label className={styles.field} htmlFor="account-directory-department">
+          </label>
+          <label className={styles.field} htmlFor="account-directory-department">
           <span className={styles.fieldLabel}>
             {COPY_ACCOUNT.departmentLabel}
           </span>
@@ -378,8 +420,86 @@ export const AccountDirectoryPanel = () => {
             type="search"
             value={department}
           />
-        </label>
+          </label>
+        </div>
       </div>
+
+      {filterOpen && (
+        <ManagementFilterSheet
+          label="篩選帳戶"
+          onClose={() => setFilterOpen(false)}
+        >
+          <h2>篩選帳戶</h2>
+          <div className={styles.sheetFilters}>
+            <label className={styles.field} htmlFor="account-sheet-role">
+              <span className={styles.fieldLabel}>{COPY_ACCOUNT.roleLabel}</span>
+              <select
+                className={styles.select}
+                id="account-sheet-role"
+                onChange={(event) =>
+                  updateFilter(
+                    event.target.value as AccountDirectoryMember["role"] | "",
+                    status
+                  )
+                }
+                value={role}
+              >
+                <option value="">{COPY_ACCOUNT.allRoles}</option>
+                <option value="Admin">{COPY_ACCOUNT.admin}</option>
+                <option value="Staff">{COPY_ACCOUNT.staff}</option>
+                <option value="Member">{COPY_ACCOUNT.member}</option>
+              </select>
+            </label>
+            <label className={styles.field} htmlFor="account-sheet-status">
+              <span className={styles.fieldLabel}>{COPY_ACCOUNT.statusLabel}</span>
+              <select
+                className={styles.select}
+                id="account-sheet-status"
+                onChange={(event) =>
+                  updateFilter(
+                    role,
+                    event.target.value as AccountDirectoryMember["status"] | ""
+                  )
+                }
+                value={status}
+              >
+                <option value="">{COPY_ACCOUNT.allStatuses}</option>
+                <option value="Active">{COPY_ACCOUNT.active}</option>
+                <option value="Pending">{COPY_ACCOUNT.pending}</option>
+                <option value="Suspended">{COPY_ACCOUNT.suspended}</option>
+                <option value="Deactivated">{COPY_ACCOUNT.deactivated}</option>
+              </select>
+            </label>
+            <label className={styles.field} htmlFor="account-sheet-department">
+              <span className={styles.fieldLabel}>
+                {COPY_ACCOUNT.departmentLabel}
+              </span>
+              <input
+                className={styles.input}
+                id="account-sheet-department"
+                onChange={(event) => updateDepartment(event.target.value)}
+                placeholder={COPY_ACCOUNT.departmentPlaceholder}
+                type="search"
+                value={department}
+              />
+            </label>
+          </div>
+          <div className={styles.sheetActions}>
+            <button
+              onClick={() => {
+                updateFilter("", "");
+                updateDepartment("");
+              }}
+              type="button"
+            >
+              清除
+            </button>
+            <button onClick={() => setFilterOpen(false)} type="button">
+              套用篩選
+            </button>
+          </div>
+        </ManagementFilterSheet>
+      )}
 
       {isLoading && (
         <output
@@ -471,7 +591,7 @@ export const AccountDirectoryPanel = () => {
                       type="button"
                     >
                       <span className={styles.avatar} aria-hidden="true">
-                        {account.name.slice(0, 1)}
+                        {initials(account.name)}
                       </span>
                       <span className={styles.resultCopy}>
                         <strong>{account.name}</strong>
@@ -489,6 +609,16 @@ export const AccountDirectoryPanel = () => {
                   </li>
                 ))}
               </ul>
+              {state.data.nextCursor && (
+                <button
+                  className={styles.loadMore}
+                  disabled={isLoadingMore}
+                  onClick={() => void loadMore()}
+                  type="button"
+                >
+                  {isLoadingMore ? "正在載入更多帳戶…" : "載入更多帳戶"}
+                </button>
+              )}
             </section>
           )}
 

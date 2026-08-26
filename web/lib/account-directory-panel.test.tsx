@@ -69,11 +69,12 @@ const ROWS: AccountRow[] = [
   },
 ] as const;
 
-function response(accounts: AccountRow[] = ROWS) {
+function response(accounts: AccountRow[] = ROWS, nextCursor: string | null = null) {
   return HttpResponse.json({
     requestId: "rid-account-directory",
     data: {
       accounts,
+      nextCursor,
       summary: { total: accounts.length, active: 1, elevated: 1, pending: 1 },
     },
   });
@@ -102,6 +103,52 @@ describe(AccountDirectoryPanel, () => {
     expect(screen.getByText(String(ROWS.length))).toBeTruthy();
     await user.click(row);
     expect(window.location.search).toContain("account=AD-001");
+  });
+
+  test("opens with a populated Account page before search", async () => {
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        requestedUrl = request.url;
+        return response();
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(await screen.findByRole("button", { name: /陳大文/u })).toBeTruthy();
+    expect(new URL(requestedUrl).searchParams.get("q")).toBe("");
+  });
+
+  test("appends the next bounded page without replacing existing rows", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        return cursor === "1"
+          ? response(ROWS.slice(1), null)
+          : response(ROWS.slice(0, 1), "1");
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(await screen.findByRole("button", { name: /陳大文/u })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "載入更多帳戶" }));
+    expect(await screen.findByRole("button", { name: /王大文/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /陳大文/u })).toBeTruthy();
+  });
+
+  test("uses one compact phone filter sheet with an active count", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/programs/accounts", () => response()));
+    render(<AccountDirectoryPanel />);
+    await screen.findByRole("button", { name: /陳大文/u });
+
+    await user.click(screen.getByRole("button", { name: "篩選" }));
+    const sheet = screen.getByRole("dialog", { name: "篩選帳戶" });
+    await user.selectOptions(within(sheet).getByLabelText(ACCOUNTS.roleLabel), "Staff");
+    await user.click(within(sheet).getByRole("button", { name: "套用篩選" }));
+
+    expect(screen.getByRole("button", { name: "篩選 1" })).toBeTruthy();
   });
 
   test("forwards role and status filters to the Account Directory seam", async () => {
@@ -149,6 +196,7 @@ describe(AccountDirectoryPanel, () => {
       "module=accounts&account=AD-001"
     );
     server.use(
+      http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () =>
         HttpResponse.json({
           requestId: "rid-account-detail",
@@ -177,7 +225,6 @@ describe(AccountDirectoryPanel, () => {
       })
     );
     render(<AccountDirectoryPanel />);
-    await user.type(screen.getByLabelText(ACCOUNTS.searchLabel), "陳大");
     await expect(screen.findByText(ACCOUNTS.loadError)).resolves.toBeTruthy();
     await user.click(screen.getByRole("button", { name: ACCOUNTS.retry }));
     await expect(

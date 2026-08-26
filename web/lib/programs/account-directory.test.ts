@@ -69,6 +69,7 @@ interface AccountBody {
   requestId: string;
   data: {
     accounts: AccountRow[];
+    nextCursor: string | null;
     summary: {
       total: number;
       active: number;
@@ -114,6 +115,44 @@ describe("S4-02: Account Directory contract", () => {
     adminAccess = await login("ad-admin", "ad-admin-secret");
     staffAccess = await login("ad-staff", "ad-staff-secret");
     memberAccess = await login("ad-member", "ad-member-secret");
+  });
+
+  test("opens with a bounded default page and deterministic cursor", async () => {
+    const firstResponse = await worker.fetch(
+      request("/api/v1/programs/accounts?limit=2", adminAccess),
+      testEnv()
+    );
+    assert.strictEqual(firstResponse.status, 200);
+    const first = (await firstResponse.json()) as AccountBody;
+    assert.deepStrictEqual(
+      first.data.accounts.map((account) => account.userId),
+      ["AD001", "AD003"]
+    );
+    assert.strictEqual(first.data.nextCursor, "2");
+    assert.strictEqual(first.data.summary.total, 4);
+
+    const secondResponse = await worker.fetch(
+      request(
+        `/api/v1/programs/accounts?limit=2&cursor=${first.data.nextCursor}`,
+        adminAccess
+      ),
+      testEnv()
+    );
+    assert.strictEqual(secondResponse.status, 200);
+    const second = (await secondResponse.json()) as AccountBody;
+    assert.deepStrictEqual(
+      second.data.accounts.map((account) => account.userId),
+      ["AD004", "AD002"]
+    );
+    assert.strictEqual(second.data.nextCursor, null);
+  });
+
+  test("rejects malformed Account Directory cursors", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/programs/accounts?cursor=not-a-cursor", adminAccess),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
   });
 
   test("Admin sees active and pending Accounts with real summary counts", async () => {
