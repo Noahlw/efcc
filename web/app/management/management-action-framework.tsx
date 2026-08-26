@@ -34,12 +34,14 @@ export const ManagementPageHeader = ({
   backHref,
   backLabel,
   lead,
+  titleId,
   title,
 }: {
   action?: ReactNode;
   backHref: string;
   backLabel: string;
   lead: string;
+  titleId?: string;
   title: string;
 }) => (
   <header className={styles.header}>
@@ -49,7 +51,7 @@ export const ManagementPageHeader = ({
     </Link>
     <div className={styles.titleRow}>
       <div>
-        <h1>{title}</h1>
+        <h1 id={titleId}>{title}</h1>
         <p>{lead}</p>
       </div>
       {action && <div className={styles.headerAction}>{action}</div>}

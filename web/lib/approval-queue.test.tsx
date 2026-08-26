@@ -2,14 +2,28 @@
 // MSW intercepts the Worker queue endpoints (the same seam used by
 // lib/app.test.tsx). Fixtures carry no credential material.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import { ApprovalQueue } from "./approval-queue";
 import { COPY } from "./copy";
 import { QUEUE_COPY } from "./registration-copy";
+
+vi.mock(import("next/navigation"), () => ({
+  useSearchParams: () =>
+    new URLSearchParams() as unknown as ReadonlyURLSearchParams,
+}));
 
 const server = setupServer();
 
@@ -22,6 +36,8 @@ const PENDING_ONE = [
     submittedAt: 1_700_000_000_000,
     accountStatus: "Pending",
     role: "Member",
+    decision: null,
+    decisionNote: null,
   },
 ];
 
@@ -33,7 +49,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("ApprovalQueue", () => {
-  test("lists Pending registrations", async () => {
+  test("lists Pending registrations with explicit selection controls", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json({
@@ -46,9 +62,18 @@ describe("ApprovalQueue", () => {
     expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: `${QUEUE_COPY.approve} Member` })
+      screen.getByRole("tab", { name: /待審批/u })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: QUEUE_COPY.reject })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "選取 Dave Ng" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: `${COPY.approvals.openDetail} Dave Ng` })
+    ).toHaveAttribute(
+      "href",
+      "/management?module=approvals&request=req-1"
+    );
+    expect(
+      screen.queryByRole("button", { name: QUEUE_COPY.approve })
+    ).not.toBeInTheDocument();
   });
 
   test("shows an empty state when there are no pending requests", async () => {
@@ -71,6 +96,8 @@ describe("ApprovalQueue", () => {
         submittedAt: 1_700_000_000_000,
         accountStatus: "Pending",
         role: "Member",
+        decision: null,
+        decisionNote: null,
       },
       {
         requestId: "req-late",
@@ -80,6 +107,8 @@ describe("ApprovalQueue", () => {
         submittedAt: 1_700_000_100_000,
         accountStatus: "Pending",
         role: "Member",
+        decision: null,
+        decisionNote: null,
       },
     ];
     server.use(
@@ -113,15 +142,15 @@ describe("ApprovalQueue", () => {
       "href",
       "/management?module=approvals&request=req-late"
     );
-    // Inline approve/reject stays for quick same-screen review (Spec 087
-    // US 8): both Member rows keep their quick-action buttons.
-    expect(
-      screen.getAllByRole("button", { name: "批准 Member" })
-    ).toHaveLength(2);
+    // Queue rows only locate/select work; mutations happen on Detail after
+    // applicant-summary confirmation.
+    expect(screen.getAllByRole("checkbox", { name: /選取/u })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /批准 Member/u })).toBeNull();
   });
 
-  test("approve posts with an Idempotency-Key and reloads the list", async () => {
+  test("bulk approve waits for one explicit confirmation, then reloads the list", async () => {
     let approved = false;
+    let batchCalls = 0;
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json({
@@ -131,78 +160,168 @@ describe("ApprovalQueue", () => {
           },
         })
       ),
-      http.post("/api/v1/auth/registrations/req-1/approve", ({ request }) => {
+      http.post("/api/v1/auth/registrations/approve-batch", async ({ request }) => {
+        batchCalls += 1;
         approved = true;
         expect(request.headers.get("idempotency-key")).toBeTruthy();
+        expect(await request.json()).toEqual({ requestIds: ["req-1"] });
         return HttpResponse.json({
           requestId: "rid-4",
-          data: { accountStatus: "active" },
+          data: { accountStatus: "active", approvedCount: 1 },
         });
       })
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-    await user.click(
-      await screen.findByRole("button", { name: `${QUEUE_COPY.approve} Member` })
-    );
-    // After the approve round-trip the queue reloads and the row is gone.
+    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    const bulkButton = await screen.findByRole("button", { name: "核准所選" });
+    await user.click(bulkButton);
+    expect(batchCalls).toBe(0);
+    expect(screen.getByRole("dialog", { name: "確認核准所選申請" })).toBeInTheDocument();
+    expect(screen.getAllByText("Dave Ng").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
     expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+    expect(batchCalls).toBe(1);
   });
 
-  test("inline reject reveals a note field; empty note gates locally, filled note posts atomically", async () => {
-    let rejected = false;
-    const rejectCalls: { decisionNote?: string; idempotency: string | null }[] =
-      [];
+  test("selection persists across search/filter and supports review removal and clear", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json({
-          requestId: "rid-rejectq",
-          data: { registrations: rejected ? [] : PENDING_ONE },
+          requestId: "rid-selection",
+          data: {
+            registrations: [
+              ...PENDING_ONE,
+              {
+                ...PENDING_ONE[0],
+                requestId: "req-2",
+                username: "anna",
+                name: "Anna Poon",
+              },
+            ],
+          },
         })
-      ),
-      http.post("/api/v1/auth/registrations/req-1/reject", async ({ request }) => {
-        rejected = true;
-        const body = (await request.json()) as { decisionNote?: string };
-        rejectCalls.push({
-          decisionNote: body.decisionNote,
-          idempotency: request.headers.get("idempotency-key"),
-        });
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    expect(screen.getByText("已選 1 位")).toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox", { name: "搜尋申請" }), "Anna");
+    expect(screen.queryByText("Dave Ng")).not.toBeInTheDocument();
+    expect(screen.getByText("已選 1 位")).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "篩選角色" }), "Staff");
+    expect(screen.getByText("已選 1 位")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "檢視所選" }));
+    expect(screen.getByRole("button", { name: "移除 Dave Ng" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "移除 Dave Ng" }));
+    expect(screen.queryByText("已選 1 位")).not.toBeInTheDocument();
+  });
+
+  test("processed tab is read-only and does not render selection or mutation controls", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations", ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
         return HttpResponse.json({
-          requestId: "rid-rejectq-2",
-          data: { accountStatus: "rejected" },
+          requestId: "rid-processed",
+          data: {
+            status: status === "Processed" ? "Processed" : "Pending",
+            registrations:
+              status === "Processed"
+                ? [
+                    {
+                      ...PENDING_ONE[0],
+                      accountStatus: "Rejected",
+                      decision: "Rejected",
+                      decisionNote: "資料不完整",
+                    },
+                  ]
+                : PENDING_ONE,
+          },
         });
       })
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-
-    // First click reveals the row's required-note field and suspends approve
-    // for that row (quick-review flow stays inline — Spec 087 US 8).
-    await user.click(
-      await screen.findByRole("button", { name: QUEUE_COPY.reject })
-    );
-    const noteInput = await screen.findByLabelText(COPY.approvals.decisionNote);
-    expect(noteInput).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: `${QUEUE_COPY.approve} Member` })
-    ).toBeDisabled();
-
-    // Empty note: the local gate announces the required error and nothing
-    // posts (the server also 422s, but the row must not leave the queue).
-    await user.click(screen.getByRole("button", { name: QUEUE_COPY.reject }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      COPY.approvals.rejectionNoteRequired
-    );
-    expect(rejectCalls).toHaveLength(0);
-
-    // Filled note: the reject posts the decision note with an Idempotency-Key
-    // and the queue reloads without the row.
-    await user.type(noteInput, "資料不完整");
-    await user.click(screen.getByRole("button", { name: QUEUE_COPY.reject }));
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
-    expect(rejectCalls[0]?.decisionNote).toBe("資料不完整");
-    expect(rejectCalls[0]?.idempotency).toBeTruthy();
+    await user.click(await screen.findByRole("tab", { name: /已處理/u }));
+    expect(await screen.findByText(COPY.approvals.statusRejected)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /選取/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "核准所選" })).not.toBeInTheDocument();
   });
+
+  test("hides the pending selection actions while viewing Processed", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations", ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        return HttpResponse.json({
+          requestId: "rid-processed-actions",
+          data: {
+            status: status === "Processed" ? "Processed" : "Pending",
+            registrations: status === "Processed" ? [] : PENDING_ONE,
+          },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(screen.getByRole("tab", { name: /已處理/u }));
+    expect(await screen.findByText("目前沒有已處理的申請。"))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "核准所選" })).not.toBeInTheDocument();
+  });
+
+  test("stale batch conflict preserves the selection and identifies stale rows", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-conflict",
+          data: { registrations: PENDING_ONE },
+        })
+      ),
+      http.post("/api/v1/auth/registrations/approve-batch", () =>
+        HttpResponse.json(
+          {
+            requestId: "rid-conflict-post",
+            code: "CONFLICT",
+            detail: "stale",
+          },
+          { status: 409 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(screen.getByRole("button", { name: "核准所選" }));
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+    await waitFor(() => expect(screen.getByText("已選 1 位")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "檢視所選" }));
+    expect(screen.getByRole("button", { name: "移除 Dave Ng" })).toBeInTheDocument();
+  });
+
+  test("exposes busy, live-region, and result-heading focus targets", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return HttpResponse.json({
+          requestId: "rid-a11y",
+          data: { registrations: PENDING_ONE },
+        });
+      })
+    );
+    render(<ApprovalQueue />);
+    const root = screen.getByRole("region", { name: /註冊審批/u });
+    expect(root).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    const heading = await screen.findByRole("heading", {
+      name: COPY.approvals.statusPending,
+      level: 2,
+    });
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    expect(heading).toHaveFocus();
+  });
+
 
   test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
     server.use(

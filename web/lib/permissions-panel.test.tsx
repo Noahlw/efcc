@@ -1,10 +1,8 @@
-// 087-03 (#320) — component tests for the Account Permissions real matrix
-// (Spec 087 US 9-12). MSW intercepts GET /api/v1/programs/account-permissions
-// at the same seam as lib/approval-detail.test.tsx; fixtures carry no
-// credential material. Covers: every elevated account with name/role/
-// department context, exactly three role definitions with scope + assignment
-// state, the explanatory lead + settings back link, and the loading / error /
-// server-shaped forbidden states (retry re-fetches).
+// S4.10 (#465) — component tests for the role-first Account & Permissions
+// surface. MSW intercepts GET /api/v1/programs/account-permissions at the
+// same seam as lib/approval-detail.test.tsx; fixtures carry no credential
+// material. The assigned-account assertions retain the legacy safe account
+// matrix semantics while navigation and policy editing follow the S4 contract.
 import userEvent from "@testing-library/user-event";
 import {
   cleanup,
@@ -177,6 +175,20 @@ function viewResponse() {
   return HttpResponse.json({ requestId: "rid-permissions", data: VIEW });
 }
 
+async function openRoleDetail(role: string) {
+  await screen.findByRole("list", { name: PERMISSIONS.rolesSection });
+  await userEvent.click(
+    screen.getByRole("button", { name: `${role} · 角色詳情` })
+  );
+}
+
+async function openRoleSubview(role: string, subview: "權限" | "已指派帳戶") {
+  await openRoleDetail(role);
+  await userEvent.click(
+    screen.getByRole("button", { name: `${role} · ${subview}` })
+  );
+}
+
 function problemResponse(status: number, code: string, detail: string) {
   return HttpResponse.json(
     { type: "about:blank", title: detail, status, detail, code },
@@ -192,14 +204,101 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("PermissionsPanel", () => {
+  test("opens on fixed global roles with a separate non-editable Member Baseline", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse())
+    );
+    render(<PermissionsPanel />);
+
+    const list = await screen.findByRole("list", { name: "角色定義" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(list).getByText(PERMISSIONS.roleAdmin)).toBeInTheDocument();
+    expect(within(list).getByText(PERMISSIONS.roleStaff)).toBeInTheDocument();
+    expect(within(list).getByText(PERMISSIONS.policyRoleMember)).toBeInTheDocument();
+    expect(screen.getByText("會友基礎")).toBeInTheDocument();
+    expect(
+      screen.getByText("適用於所有生效帳戶 · 系統固定")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /會友基礎/u })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /刪除|重新排序|指派/u })
+    ).not.toBeInTheDocument();
+  });
+
+  test("drills from a role to Permissions and returns through the shared Back actions", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse())
+    );
+    render(<PermissionsPanel />);
+
+    await screen.findByRole("list", { name: "角色定義" });
+    await userEvent.click(
+      screen.getByRole("button", { name: /管理員.*角色詳情/u })
+    );
+    expect(
+      await screen.findByRole("heading", { name: /管理員/u, level: 2 })
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /管理員.*權限/u })
+    );
+    expect(
+      await screen.findByRole("heading", { name: /權限政策.*管理員/u })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜尋權限" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "返回角色詳情" }));
+    expect(
+      await screen.findByRole("heading", { name: /管理員/u, level: 2 })
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "返回角色列表" }));
+    expect(
+      await screen.findByRole("list", { name: "角色定義" })
+    ).toBeInTheDocument();
+  });
+
+  test("keeps Assigned Accounts read-only and maps the scoped Department Manager under Staff", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse())
+    );
+    render(<PermissionsPanel />);
+
+    await openRoleSubview(PERMISSIONS.roleStaff, "已指派帳戶");
+    const table = await screen.findByRole("table", {
+      name: /已指派帳戶/u,
+    });
+    expect(within(table).getByText("黃家豪")).toBeInTheDocument();
+    expect(within(table).getByText("李秀蘭")).toBeInTheDocument();
+    expect(within(table).getByText("崇拜部")).toBeInTheDocument();
+    expect(within(table).getByText(PERMISSIONS.roleDepartmentManager)).toBeInTheDocument();
+    expect(
+      within(table).queryByRole("button", { name: /指派|移除|變更/u })
+    ).not.toBeInTheDocument();
+  });
+
+  test("filters grouped permissions and reveals the matching group", async () => {
+    server.use(
+      http.get("/api/v1/programs/account-permissions", () => viewResponse())
+    );
+    render(<PermissionsPanel />);
+
+    await openRoleSubview(PERMISSIONS.roleAdmin, "權限");
+    const search = screen.getByRole("searchbox", { name: "搜尋權限" });
+    await userEvent.type(search, "部門");
+    expect(screen.getByText("部門")).toBeInTheDocument();
+    expect(screen.getByText("部門管理")).toBeInTheDocument();
+    expect(screen.queryByText("提交課程報名")).not.toBeInTheDocument();
+  });
+
   test("renders every elevated account with name, role, and department context", async () => {
     server.use(
       http.get("/api/v1/programs/account-permissions", () => viewResponse())
     );
     render(<PermissionsPanel />);
 
+    await openRoleSubview(PERMISSIONS.roleAdmin, "已指派帳戶");
     const table = await screen.findByRole("table", {
-      name: PERMISSIONS.accountsSection,
+      name: /已指派帳戶/u,
     });
 
     // Accessible column headers make the matrix readable.
@@ -213,73 +312,51 @@ describe("PermissionsPanel", () => {
       ).toBeInTheDocument();
     }
 
-    // Every elevated account appears with its own row.
-    for (const account of ACCOUNTS) {
-      expect(
-        within(table).getByRole("rowheader", { name: account.name })
-      ).toBeInTheDocument();
-    }
+    // The selected global role shows its safely-projected account rows.
+    expect(
+      within(table).getByRole("rowheader", { name: ACCOUNTS[0].name })
+    ).toBeInTheDocument();
 
     // Role labels render from the server projection, not a client branch.
     expect(within(table).getByText(PERMISSIONS.roleAdmin)).toBeInTheDocument();
-    expect(
-      within(table).getByText(PERMISSIONS.roleDepartmentManager)
-    ).toBeInTheDocument();
-    expect(within(table).getByText(PERMISSIONS.roleStaff)).toBeInTheDocument();
+    expect(within(table).getByText(PERMISSIONS.roleAdmin)).toBeInTheDocument();
 
-    // Department context: granted departments verbatim; role scope when none.
+    // Department context remains verbatim for the selected account.
     expect(within(table).getByText("培育部")).toBeInTheDocument();
-    expect(within(table).getByText("崇拜部")).toBeInTheDocument();
-    expect(within(table).getByText(PERMISSIONS.roleStaffScope)).toBeInTheDocument();
   });
 
-  test("renders exactly three role definitions with scope and assignment states", async () => {
+  test("renders exactly three fixed global roles without a scoped profile row", async () => {
     server.use(
       http.get("/api/v1/programs/account-permissions", () => viewResponse())
     );
     render(<PermissionsPanel />);
 
-    expect(
-      await screen.findByRole("heading", { name: PERMISSIONS.rolesSection })
-    ).toBeInTheDocument();
-
-    const list = screen.getByRole("list");
+    const list = await screen.findByRole("list", {
+      name: PERMISSIONS.rolesSection,
+    });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(3);
 
-    // 管理員 · 全部範圍 · 已設 (an admin account holds the role).
     const adminItem = items[0];
     expect(within(adminItem).getByText(PERMISSIONS.roleAdmin)).toBeInTheDocument();
     expect(
       within(adminItem).getByText(PERMISSIONS.roleAdminScope)
     ).toBeInTheDocument();
-    expect(
-      within(adminItem).getByText(PERMISSIONS.stateAssigned)
-    ).toBeInTheDocument();
 
-    // 部門管理者 · 所屬部門課程、聚會及出席 · 已設 (DM grant holds the role).
     const managerItem = items[1];
     expect(
-      within(managerItem).getByText(PERMISSIONS.roleDepartmentManager)
+      within(managerItem).getByText(PERMISSIONS.roleStaff)
     ).toBeInTheDocument();
     expect(
-      within(managerItem).getByText(PERMISSIONS.roleDepartmentManagerScope)
-    ).toBeInTheDocument();
-    expect(
-      within(managerItem).getByText(PERMISSIONS.stateAssigned)
+      within(managerItem).getByText(PERMISSIONS.roleStaffScope)
     ).toBeInTheDocument();
 
-    // 同工 · 部門範圍內協助工作 · 可指派 (no staff account in the projection).
-    const staffItem = items[2];
-    expect(within(staffItem).getByText(PERMISSIONS.roleStaff)).toBeInTheDocument();
+    const memberItem = items[2];
     expect(
-      within(staffItem).getByText(PERMISSIONS.roleStaffScope)
+      within(memberItem).getByText(PERMISSIONS.policyRoleMember)
     ).toBeInTheDocument();
     expect(
-      within(staffItem).getByText(PERMISSIONS.stateAssignable)
-    ).toBeInTheDocument();
-    expect(
-      within(staffItem).queryByText(PERMISSIONS.stateAssigned)
+      within(list).queryByText(PERMISSIONS.roleDepartmentManager)
     ).not.toBeInTheDocument();
   });
 
@@ -321,12 +398,12 @@ describe("PermissionsPanel", () => {
     // The panel root also carries aria-busy while loading.
     expect(loading.closest('[aria-busy="true"]')).not.toBeNull();
     expect(
-      screen.queryByRole("table", { name: PERMISSIONS.accountsSection })
+      screen.queryByRole("list", { name: PERMISSIONS.rolesSection })
     ).not.toBeInTheDocument();
 
     release(null);
     expect(
-      await screen.findByRole("table", { name: PERMISSIONS.accountsSection })
+      await screen.findByRole("list", { name: PERMISSIONS.rolesSection })
     ).toBeInTheDocument();
   });
 
@@ -352,7 +429,7 @@ describe("PermissionsPanel", () => {
     );
 
     expect(
-      await screen.findByRole("table", { name: PERMISSIONS.accountsSection })
+      await screen.findByRole("list", { name: PERMISSIONS.rolesSection })
     ).toBeInTheDocument();
     expect(calls).toBe(2);
   });
@@ -375,7 +452,7 @@ describe("PermissionsPanel", () => {
 
     // Never a client-side projection for a denied actor.
     expect(
-      screen.queryByRole("table", { name: PERMISSIONS.accountsSection })
+      screen.queryByRole("list", { name: PERMISSIONS.rolesSection })
     ).not.toBeInTheDocument();
   });
 
@@ -387,8 +464,9 @@ describe("PermissionsPanel", () => {
     );
     render(<PermissionsPanel />);
 
+    await openRoleSubview(PERMISSIONS.roleAdmin, "權限");
     expect(
-      await screen.findByRole("heading", { name: "權限政策" })
+      await screen.findByRole("heading", { name: /權限政策.*管理員/u })
     ).toBeInTheDocument();
     expect(screen.getByText("目前顯示政策版本 18。"))
       .toBeInTheDocument();
@@ -430,7 +508,8 @@ describe("PermissionsPanel", () => {
     );
     render(<PermissionsPanel />);
 
-    expect(await screen.findByText("同工只可查看，不能修改權限政策。"))
+    await openRoleSubview(PERMISSIONS.roleStaff, "權限");
+    expect(await screen.findByText(PERMISSIONS.policyStaffReadOnly))
       .toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "檢視並儲存" }))
       .not.toBeInTheDocument();
@@ -470,7 +549,7 @@ describe("PermissionsPanel", () => {
     );
     render(<PermissionsPanel />);
 
-    await screen.findByRole("heading", { name: "權限政策" });
+    await openRoleSubview(PERMISSIONS.roleAdmin, "權限");
     const toggle = screen.getByRole("button", {
       name: "部門管理 · 管理員",
     });
@@ -504,7 +583,7 @@ describe("PermissionsPanel", () => {
     );
     render(<PermissionsPanel />);
 
-    await screen.findByRole("heading", { name: "權限政策" });
+    await openRoleSubview(PERMISSIONS.roleAdmin, "權限");
     const toggle = screen.getByRole("button", {
       name: "部門管理 · 管理員",
     });

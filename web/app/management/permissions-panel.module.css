@@ -1,6 +1,7 @@
 .page {
   width: 100%;
   max-width: 1180px;
+  min-width: 0;
   margin: 0 auto;
   padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 4vw, 2.75rem)
     calc(6rem + env(safe-area-inset-bottom, 0px));
@@ -15,41 +16,360 @@
 .title {
   margin: 0;
   color: var(--ink, #171a1d);
-  font-size: clamp(1.5rem, 5.5vw, 1.9rem);
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.25;
 }
 
-.lead {
+.lead,
+.sectionLead,
+.policyLead,
+.detailLead {
   max-width: 65ch;
-  margin: 0.75rem 0 0;
   color: var(--ink-muted, #59636a);
   line-height: 1.6;
 }
 
+.lead {
+  margin: 0.75rem 0 0;
+}
+
 .section {
+  min-width: 0;
   margin-top: 1.625rem;
 }
 
-.sectionTitle {
-  margin: 0 0 0.5625rem;
+.sectionTitle,
+.detailTitle {
+  margin: 0;
   color: var(--ink, #171a1d);
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.sectionTitle {
   font-size: 1.1rem;
+}
+
+.detailTitle {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.sectionTitle:focus-visible,
+.detailTitle:focus-visible,
+.policySection h2:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 3px;
+}
+
+.listHeader,
+.policyHeader,
+.detailHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.sectionLead,
+.detailLead,
+.policyLead {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+}
+
+.roleCount,
+.revision,
+.lockedBadge,
+.changeCount {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 999px;
+  color: var(--ink-muted, #59636a);
+  background: var(--surface-raised, #ffffff);
+  font-size: 0.75rem;
   font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.roleList,
+.detailActions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 12px;
+  background: var(--surface-raised, #ffffff);
+}
+
+.roleList {
+  overflow: hidden;
+}
+
+.roleRow + .roleRow,
+.detailAction + .detailAction {
+  border-top: 1px solid var(--line, #d6dcde);
+}
+
+.roleLink,
+.detailAction {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border: 0;
+  color: var(--ink, #171a1d);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.roleLink:hover,
+.detailAction:hover {
+  background: #f7f7f7;
+}
+
+.roleLink:focus-visible,
+.detailAction:focus-visible,
+.backButton:focus-visible,
+.reviewButton:focus-visible,
+.policyCell:focus-visible,
+.saveButton:focus-visible,
+.reloadButton:focus-visible,
+.retry:focus-visible,
+.searchField input:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: 2px;
+}
+
+.roleMark,
+.detailRoleMark {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  color: var(--accent, #9c302c);
+  background: var(--surface, #f4f5f3);
+  font-weight: 800;
+}
+
+.roleMark {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.detailRoleMark {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  font-size: 1.2rem;
+}
+
+.roleCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.roleName {
+  display: block;
+  font-weight: 750;
   line-height: 1.35;
 }
 
-.tableWrap,
-.roleList {
+.roleScope,
+.roleMeta {
+  display: block;
+  color: var(--ink-muted, #59636a);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.roleScope {
+  font-size: 0.84rem;
+}
+
+.roleMeta {
+  font-size: 0.75rem;
+}
+
+.chevron {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--ink-muted, #59636a);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.baseline {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.35rem 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--line-strong, #aeb8bc);
+  border-radius: 12px;
+  color: var(--ink, #171a1d);
+  background: var(--surface-raised, #ffffff);
+}
+
+.baselineCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.baselineCopy strong {
+  font-weight: 800;
+}
+
+.baselineCopy span,
+.baseline p,
+.baselineHint {
+  color: var(--ink-muted, #59636a);
+  line-height: 1.5;
+}
+
+.baselineCopy span {
+  font-size: 0.86rem;
+}
+
+.baseline p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.84rem;
+}
+
+.lockedBadge {
+  border-color: var(--line-strong, #aeb8bc);
+  color: var(--ink-muted, #59636a);
+  background: var(--surface, #f4f5f3);
+}
+
+.roleDetailHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.roleFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 12px;
+  background: var(--surface-raised, #ffffff);
+}
+
+.roleFacts > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+}
+
+.roleFacts > div + div {
+  border-left: 1px solid var(--line, #d6dcde);
+}
+
+.roleFacts dt {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.roleFacts dd {
+  margin: 0;
+  color: var(--ink, #171a1d);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.detailActions {
   overflow: hidden;
+  margin-top: 1rem;
+}
+
+.detailAction {
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) 20px;
+}
+
+.detailAction span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.detailAction strong {
+  font-weight: 750;
+}
+
+.detailAction small {
+  color: var(--ink-muted, #59636a);
+  line-height: 1.45;
+}
+
+.safetyNotice,
+.baselineHint,
+.emptyState,
+.emptySearch {
+  padding: 0.9rem 1rem;
   border: 1px solid var(--line, #d6dcde);
   border-radius: 10px;
+  color: var(--ink-muted, #59636a);
   background: var(--surface-raised, #ffffff);
+  line-height: 1.55;
+}
+
+.safetyNotice {
+  margin-top: 1rem;
+  border-color: var(--pending-border, #c1ad95);
+  background: var(--pending-surface, #f3eee8);
+}
+
+.safetyNotice strong {
+  color: var(--ink, #171a1d);
+}
+
+.safetyNotice p {
+  margin: 0.35rem 0 0;
+}
+
+.baselineHint,
+.emptyState,
+.emptySearch {
+  margin: 0.75rem 0 0;
 }
 
 .tableWrap {
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line, #d6dcde);
+  border-radius: 12px;
+  background: var(--surface-raised, #ffffff);
 }
 
 .table {
@@ -57,6 +377,7 @@
   border-collapse: collapse;
   color: var(--ink, #171a1d);
   text-align: left;
+  table-layout: fixed;
 }
 
 .table th,
@@ -64,6 +385,7 @@
   padding: 0.875rem 1rem;
   vertical-align: middle;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .table thead {
@@ -73,8 +395,7 @@
 }
 
 .table thead th {
-  font-weight: 650;
-  white-space: nowrap;
+  font-weight: 700;
 }
 
 .table tbody tr + tr {
@@ -82,73 +403,32 @@
 }
 
 .table tbody th {
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .table tbody td {
   color: var(--ink-muted, #59636a);
 }
 
-.roleList {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.roleRow {
-  display: grid;
-  min-height: 64px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.875rem;
-  padding: 0.875rem 1rem;
-}
-
-.roleRow + .roleRow {
-  border-top: 1px solid var(--line, #d6dcde);
-}
-
-.roleCopy {
-  display: block;
-  min-width: 0;
-}
-
-.roleName {
-  display: block;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.roleScope {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--ink-muted, #59636a);
-  font-size: 0.84rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.status {
+.backButton {
   display: inline-flex;
-  width: fit-content;
-  min-height: 26px;
-  flex: 0 0 auto;
+  min-height: 44px;
   align-items: center;
-  padding: 0.1875rem 0.5625rem;
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: 999px;
+  gap: 0.3rem;
+  margin: -0.25rem 0 0 -0.5rem;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 8px;
   color: var(--ink-muted, #59636a);
-  background: var(--surface-raised, #ffffff);
-  font-size: 0.72rem;
-  font-weight: 550;
-  line-height: 1.2;
-  white-space: nowrap;
+  background: transparent;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
 }
 
-.statusAssigned {
-  border-color: #9cb49d;
-  color: #2e6b37;
-  background: #e9f0ea;
+.backButton:hover {
+  color: var(--ink, #171a1d);
+  background: #f7f7f7;
 }
 
 .state,
@@ -156,19 +436,19 @@
   max-width: 60ch;
   margin-top: 1.625rem;
   padding: 1rem;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 8px;
 }
 
 .state {
   border: 1px solid var(--line, #d6dcde);
-  background: var(--surface-raised, #ffffff);
   color: var(--ink-muted, #59636a);
+  background: var(--surface-raised, #ffffff);
 }
 
 .error {
   border: 1px solid var(--error-border, #e5b4b0);
-  background: var(--error-surface, #fbeeed);
   color: var(--ink, #171a1d);
+  background: var(--error-surface, #fbeeed);
 }
 
 .stateTitle {
@@ -191,12 +471,11 @@
   margin-top: 1rem;
   padding: 0.5625rem 1.125rem;
   border: 1px solid var(--accent, #9c302c);
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 8px;
   color: var(--accent, #9c302c);
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 700;
   background: transparent;
+  font: inherit;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -205,63 +484,65 @@
   background: var(--accent, #9c302c);
 }
 
-.retry:focus-visible {
-  outline: 3px solid var(--focus, #1d6f8a);
-  outline-offset: 2px;
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .policySection {
-  margin-top: 2.5rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--line, #d6dcde);
+  min-width: 0;
+  margin-top: 1.625rem;
 }
 
 .policyHeader {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
+  align-items: start;
   margin-bottom: 1rem;
 }
 
-.policyLead {
-  max-width: 65ch;
-  margin: 0.35rem 0 0;
-  color: var(--ink-muted, #59636a);
-  line-height: 1.55;
+.policyToolbar {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line, #d6dcde);
+  background: var(--surface, #f4f5f3);
 }
 
-.revision {
+.searchField {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.searchField input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: 8px;
+  color: var(--ink, #171a1d);
+  background: var(--surface-raised, #ffffff);
+  font: inherit;
+}
+
+.policyRoleHint {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 44px;
   align-items: center;
-  flex: 0 0 auto;
-  padding: 0.35rem 0.65rem;
+  padding: 0 0.75rem;
   border: 1px solid var(--line, #d6dcde);
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--ink-muted, #59636a);
   background: var(--surface-raised, #ffffff);
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .policyLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);
-  align-items: start;
+  min-width: 0;
   gap: 1rem;
 }
 
@@ -295,6 +576,11 @@
   color: var(--accent, #9c302c);
 }
 
+.policyGroup summary:focus-visible {
+  outline: 3px solid var(--focus, #176a87);
+  outline-offset: -3px;
+}
+
 .policyGroup summary span {
   color: var(--ink-muted, #59636a);
   font-size: 0.78rem;
@@ -309,7 +595,7 @@
 .policyRow {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(12rem, 1fr) minmax(23rem, 1.45fr);
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 15rem);
   gap: 1rem;
   padding: 1rem;
 }
@@ -346,8 +632,6 @@
 .policyCells {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
 }
 
 .policyCell {
@@ -397,15 +681,8 @@ button.policyCell[data-editable="true"]:hover {
   background: #fffaf9;
 }
 
-button.policyCell:focus-visible,
-.saveButton:focus-visible,
-.reloadButton:focus-visible {
-  outline: 3px solid var(--focus, #176a87);
-  outline-offset: 2px;
-}
-
 button.policyCell[aria-pressed="true"] {
-  box-shadow: inset 0 0 0 2px rgba(46, 107, 55, 0.28);
+  box-shadow: inset 0 0 0 2px rgb(46 107 55 / 28%);
 }
 
 .lockedCell {
@@ -415,14 +692,24 @@ button.policyCell[aria-pressed="true"] {
 
 .reviewPanel {
   position: sticky;
-  top: 1rem;
+  bottom: calc(5.1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 2;
   display: grid;
   gap: 0.65rem;
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--line-strong, #aeb8bc);
   border-radius: 12px;
-  background: var(--surface-raised, #ffffff);
+  background: rgb(255 255 255 / 98%);
+  box-shadow: 0 10px 30px rgb(30 38 42 / 12%);
+}
+
+.reviewHeader,
+.changeSummaryHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .reviewPanel h2 {
@@ -474,8 +761,40 @@ button.policyCell[aria-pressed="true"] {
   background: var(--surface, #f4f5f3);
 }
 
-.changeSummary li strong { font-size: 0.76rem; }
-.changeSummary li span { color: var(--ink-muted, #59636a); font-size: 0.7rem; }
+.changeSummary li strong {
+  font-size: 0.76rem;
+}
+
+.changeSummary li span {
+  color: var(--ink-muted, #59636a);
+  font-size: 0.7rem;
+}
+
+.changeConsequence {
+  color: var(--accent-deep, #76231f);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.reviewButton {
+  min-height: 44px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line-strong, #aeb8bc);
+  border-radius: 8px;
+  color: var(--ink, #171a1d);
+  background: var(--surface-raised, #ffffff);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reviewButton:hover {
+  border-color: var(--ink, #171a1d);
+  background: var(--surface, #f4f5f3);
+}
 
 .saveButton,
 .reloadButton {
@@ -485,7 +804,7 @@ button.policyCell[aria-pressed="true"] {
   justify-content: center;
   width: 100%;
   padding: 0.65rem 0.9rem;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 8px;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -519,23 +838,51 @@ button.policyCell[aria-pressed="true"] {
   background: var(--surface, #f4f5f3);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .retry,
-  .policyCell,
-  .saveButton,
-  .reloadButton {
-    transition: none;
-  }
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 599px) {
   .page {
     padding-inline: 1rem;
   }
 
-  .policyHeader {
+  .listHeader,
+  .policyHeader,
+  .detailHeader {
     align-items: start;
     flex-direction: column;
+  }
+
+  .roleCount,
+  .revision {
+    align-self: start;
+  }
+
+  .roleFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .roleFacts > div + div {
+    border-top: 1px solid var(--line, #d6dcde);
+    border-left: 0;
+  }
+
+  .policyToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .policyRoleHint {
+    justify-content: center;
   }
 
   .policyRow {
@@ -546,31 +893,86 @@ button.policyCell[aria-pressed="true"] {
     grid-template-columns: 1fr;
   }
 
-  .policyCell {
-    min-height: 58px;
+  .reviewPanel {
+    position: sticky;
   }
 
-  .reviewPanel {
-    position: static;
+  .table {
+    display: block;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .table tbody,
+  .table tr,
+  .table th,
+  .table td {
+    display: block;
+  }
+
+  .table tbody tr {
+    padding: 0.65rem 1rem;
+  }
+
+  .table tbody tr + tr {
+    border-top: 1px solid var(--line, #d6dcde);
+  }
+
+  .table th,
+  .table td {
+    padding: 0.15rem 0;
   }
 }
 
-@media (max-width: 899px) {
-  .policyLayout {
-    grid-template-columns: 1fr;
+@media (min-width: 600px) and (max-width: 799px) {
+  .page {
+    padding-inline: 1.25rem;
   }
 
   .policyRow {
-    grid-template-columns: 1fr;
-  }
-
-  .reviewPanel {
-    position: static;
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 15rem);
   }
 }
 
 @media (min-width: 800px) {
   .page {
     padding-bottom: 3rem;
+  }
+
+  .reviewPanel {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .policyLayout {
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
+    align-items: start;
+  }
+
+  .reviewPanel {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roleLink,
+  .detailAction,
+  .backButton,
+  .reviewButton,
+  .policyCell,
+  .saveButton,
+  .reloadButton,
+  .retry {
+    transition: none;
   }
 }
