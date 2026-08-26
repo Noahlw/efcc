@@ -4,6 +4,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { RpcError } from "@/lib/api";
 import { AssistedScannerPanel } from "@/lib/assisted-scanner-panel";
 import type { AttendanceEventSummary } from "@/lib/attendance";
@@ -16,6 +19,9 @@ import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 
 import styles from "./attendance-panel.module.css";
+
+const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const modeTabControl = `${styles.modeButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2.5 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] aria-selected:border-[var(--accent)] aria-selected:bg-[var(--surface)] aria-selected:text-[var(--accent-deep)]`;
 
 type EventState =
   | { kind: "loading" }
@@ -34,8 +40,9 @@ const ScannerState = ({
   onAction?: () => void;
   tone: "info" | "error";
 }) => (
-  <section
+  <Card
     className={styles.card}
+    role="region"
     aria-labelledby="scanner-state-title"
     tabIndex={-1}
   >
@@ -46,16 +53,17 @@ const ScannerState = ({
       {message}
     </output>
     {actionLabel && onAction && (
-      <button
-        className={styles.buttonSecondary}
+      <Button
+        variant="outline"
+        className={secondaryControl}
         type="button"
         ref={actionRef}
         onClick={onAction}
       >
         {actionLabel}
-      </button>
+      </Button>
     )}
-  </section>
+  </Card>
 );
 const AssistedAccessState = ({
   actionRef,
@@ -243,9 +251,10 @@ export const ScannerBoundary = () => {
           role="tablist"
           aria-label={COPY.attendance.modeLabel}
         >
-          <button
+          <Button
+            variant="outline"
+            className={modeTabControl}
             id="scanner-self-tab"
-            className={styles.modeButton}
             type="button"
             role="tab"
             aria-selected={intent.mode === "self"}
@@ -254,10 +263,11 @@ export const ScannerBoundary = () => {
             onClick={() => navigate("self")}
           >
             {COPY.attendance.selfMode}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            className={modeTabControl}
             id="scanner-assisted-tab"
-            className={styles.modeButton}
             type="button"
             role="tab"
             aria-selected={intent.mode === "assisted"}
@@ -266,33 +276,43 @@ export const ScannerBoundary = () => {
             onClick={() => navigate("assisted")}
           >
             {COPY.attendance.operatorMode}
-          </button>
+          </Button>
         </div>
       )}
       {!assistedRequested && eventsState.kind === "error" && (
-        <div className={styles.status} data-tone="error" role="alert">
+        <Alert
+          variant="destructive"
+          className={styles.status}
+          data-tone="error"
+        >
           <span>{eventsState.message}</span>
-          <button
-            className={styles.buttonSecondary}
+          <Button
+            variant="outline"
+            className={secondaryControl}
             type="button"
             ref={retryRef}
             onClick={retryEvents}
           >
             {COPY.attendance.assistedRetry}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {malformed && (
-        <div className={styles.status} data-tone="error" role="alert">
+        <Alert
+          variant="destructive"
+          className={styles.status}
+          data-tone="error"
+        >
           {COPY.attendance.assistedContextStale}
-          <button
-            className={styles.buttonSecondary}
+          <Button
+            variant="outline"
+            className={secondaryControl}
             type="button"
             onClick={recoverToSelf}
           >
             {COPY.attendance.assistedBackToSelf}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       <div
         id="scanner-mode-panel"

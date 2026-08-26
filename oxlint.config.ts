@@ -48,6 +48,8 @@ export default defineConfig({
         "web/lib/programs/programs-manager.tsx",
         "web/lib/programs/management-directory.tsx",
         "web/lib/programs/department-settings-panel.tsx",
+        "web/lib/self-check-in-panel.tsx",
+        "web/lib/attendance-operator-panel.tsx",
       ],
       rules: {
         "no-negated-condition": "off",
@@ -61,12 +63,15 @@ export default defineConfig({
         "react-hooks/exhaustive-deps": "off",
         "unicorn/prefer-query-selector": "off",
         "react/jsx-no-useless-fragment": "off",
+        "oxc/branches-sharing-code": "off",
+        "arrow-body-style": "off",
       },
     },
     {
       files: [
         "src/frontend/src/views/AttendanceScannerView.tsx",
         "src/frontend/src/components/CreateEventForm.tsx",
+        "web/lib/attendance-scanner-ui.tsx",
       ],
       rules: {
         "jsx-a11y/label-has-associated-control": "off",
@@ -141,9 +146,16 @@ export default defineConfig({
         "src/frontend/src/views/ProgramEnrollmentView.tsx",
         "web/lib/programs/programs-attention.tsx",
         "web/lib/programs/event-detail.tsx",
+        "web/lib/attendance-panel.tsx",
+        "web/lib/attendance-operator-panel.tsx",
+        "web/lib/assisted-scanner-panel.tsx",
+        "web/lib/self-check-in-panel.tsx",
+        "web/lib/scanner-boundary.tsx",
+        "web/lib/attendance-scanner-ui.tsx",
       ],
       rules: {
-        // div/p with role="alert" or role="status" for error messages
+        // Test-facing ARIA roles (status/dialog/region) preserved on these
+        // surfaces; prefer-tag-over-role is intentionally suppressed.
         "jsx-a11y/prefer-tag-over-role": "off",
       },
     },

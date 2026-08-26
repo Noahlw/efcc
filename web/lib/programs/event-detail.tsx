@@ -486,6 +486,7 @@ export const EventDetail = ({
             <Badge
               className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
               variant="default"
+              role="status"
               aria-label={COPY.programs.checkInAvailable}
             >
               {COPY.programs.checkInAvailable}
