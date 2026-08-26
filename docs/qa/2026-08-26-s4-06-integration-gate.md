@@ -34,13 +34,14 @@ retry-focus, and static-runtime navigation findings.
 
 ## Full Worker suite
 
-`pnpm --dir web test`: **474/475 tests passed** across 30 passing files.
+`pnpm --dir web test`: **475/475 tests passed** across 31 passing files.
 
-The remaining failure is not S4 behavior: the existing EVT-02.1 recurring preview assertion expects a `CANCEL` skip reason but receives `null` (`web/lib/programs/programs.test.ts:3308`).
+The EVT-02.1 recurring-preview assertion was corrected to select the weekly
+rule's CANCEL row when the test date also matches the monthly rule. This was a
+test-selection collision only; production recurrence behavior was unchanged.
 
-The old Admin-without-`program.enroll` assertion was contradicted by approved S4-F01. It was updated to assert the new Admin participant baseline and now passes.
-
-The remaining EVT-02.1 failure predates S4 and is outside #450–#455 scope; it must not be silently changed in this gate.
+The old Admin-without-`program.enroll` assertion was contradicted by approved
+S4-F01. It now asserts the new Admin participant baseline and passes.
 
 ## Frozen contract ledger
 
@@ -87,7 +88,7 @@ The selected prototype proved 80/80 states across 320px, 390px, 800px, and 1440p
 
 - P0: none found.
 - P1: none found in focused S4 seams.
-- P2: one inherited EVT-02.1 preview failure; outside S4 scope and requires its owning ticket. No S4 P2 remains in the bounded repair scope.
+- P2: none in the S4 implementation scope. The inherited EVT-02.1 test-selection collision is fixed with no production-code change.
 - P3: none recorded after the bounded Impeccable pass.
 
 ## Verdict

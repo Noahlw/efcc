@@ -3304,7 +3304,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       weeklyDates.includes(cancelDate),
       "cancelled date stays visible as a skip row"
     );
-    const cancelled = plan.occurrences.find((o) => o.occurs_on === cancelDate);
+    const cancelled = plan.occurrences.find(
+      (o) => o.rule_id === weekly.rule_id && o.occurs_on === cancelDate
+    );
     assert.strictEqual(cancelled?.skip_reason, "CANCEL");
     assert.ok(
       cancelled?.exception_id,
