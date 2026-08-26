@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { RpcError } from "@/lib/api";
@@ -19,6 +19,7 @@ import {
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
+import { safeManagementReturnHref } from "./management-action-framework";
 import { SettingsBackLink } from "./settings-ui";
 
 import styles from "./permissions-panel.module.css";
@@ -392,6 +393,14 @@ function PermissionPolicy({
 
 export function PermissionsPanel() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnHref = safeManagementReturnHref(
+    searchParams.get("return"),
+    "/management"
+  );
+  const returnLabel = returnHref.includes("module=settings")
+    ? COPY.permissions.backToSettings
+    : "返回管理工作";
   const { state, run: loadPermissions, retry } = useAsyncResource<
     AccountPermissionsView,
     PermissionsState
@@ -546,8 +555,8 @@ export function PermissionsPanel() {
     >
       <header className={styles.header}>
         <SettingsBackLink
-          href="/management?module=settings"
-          label={COPY.permissions.backToSettings}
+          href={returnHref}
+          label={returnLabel}
         />
         <h1 id="permissions-title" className={styles.title}>
           {COPY.permissions.permissionsTitle}

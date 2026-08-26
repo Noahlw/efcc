@@ -97,7 +97,7 @@ describe(SettingsHub, () => {
     });
     expect(permissionsRow).toHaveAttribute(
       "href",
-      "/management?module=permissions"
+      "/management?module=permissions&return=%2Fmanagement%3Fmodule%3Dsettings"
     );
   });
 
