@@ -62,6 +62,7 @@ export default defineProject({
       "lib/shell/shell-tokens.test.tsx",
       "lib/shell/shell-breakpoint.test.tsx",
       "lib/shell/authenticated-shell.test.tsx",
+      "lib/attention-panel.test.tsx",
       "lib/notices-panel.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],

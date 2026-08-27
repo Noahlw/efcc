@@ -439,14 +439,28 @@ input:focus-visible {
 }
 
 /* Attention dialog (Spec 089-S1) on the local shadcn/Radix Dialog primitive
-   (TK-03). Positioning and the modal overlay are the Radix Dialog contract:
-   the fixed backdrop/panel live in Tailwind's layered utilities, which
-   override these presentation classes. This block styles the dialog surface
-   only; it must never set position/z-index (that would fight the primitive
-   and push the panel off-screen). */
+   (TK-03). The class owns the shell token surface AND the top-right corner
+   layout — top/right/left, width, max-width, padding, gap, and translate
+   are all declared here so the component only ships the `attention-panel`
+   class (no off-token Tailwind literals). The class is unlayered (it lives
+   after the Tailwind utilities layer), so it beats the shadcn/Radix
+   `top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl
+   p-4` utility defaults without `!important`. `position: fixed` and the
+   modal overlay z-index stay on the primitive utilities (TK-03). */
 .attention-panel {
-  width: var(--width-overlay);
+  top: var(--space-4);
+  right: var(--space-4);
+  left: auto;
+  width: auto;
+  max-width: calc(100vw - var(--space-4) * 2);
   max-height: calc(100dvh - var(--space-4) * 2);
+  padding: 0;
+  gap: 0;
+  /* Reset the Radix DialogContent's `top-1/2 left-1/2 -translate-x-1/2
+     -translate-y-1/2` centring so the panel anchors to the top-right
+     corner of the viewport (TK-03). `translate: none` clears the
+     Tailwind-managed --tw-translate-* variables atomically. */
+  translate: none;
   overflow-y: auto;
   border: var(--border-control);
   border-radius: var(--radius-md);

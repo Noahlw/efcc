@@ -37,6 +37,12 @@ type AttentionTab = "pending" | "notices";
  * `role="dialog"`, labelled by the title, focus moves into the panel on open
  * and back to the bell trigger on close, and Escape closes. The tab list
  * keeps explicit `role="tab"`/`aria-selected` semantics (TK-02 variant).
+ *
+ * Layout: this component ships ONLY the `attention-panel` class. Position,
+ * width, max-width, padding, and radius are declared in `app/globals.css`
+ * on the same class (using Civic Minimal tokens) so the shadcn/Radix
+ * primitive's `top-1/2 left-1/2` utility defaults are overridden without
+ * off-token `!important` literals (TK-01).
  */
 export const AttentionPanel = ({
   open,
@@ -79,7 +85,7 @@ export const AttentionPanel = ({
       <DialogContent
         showCloseButton={false}
         onCloseAutoFocus={onCloseAutoFocus}
-        className="attention-panel !top-4 !left-auto !right-4 !w-auto !max-w-[calc(100vw-2rem)] !translate-x-0 !translate-y-0 !gap-0 !rounded-xl !p-0"
+        className="attention-panel"
       >
         <header className="attention-panel__header">
           <DialogTitle className="attention-panel__title">

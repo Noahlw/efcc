@@ -30,13 +30,16 @@ describe(AttentionPanel, () => {
 
   test("renders empty state for pending tab by default", () => {
     render(<AttentionPanel open onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
     expect(
-      screen.getByRole("heading", {
+      within(dialog).getByRole("heading", {
         name: COPY.attention.pendingEmptyTitle,
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.attention.pendingEmptyHint)
+      within(dialog).getByText(COPY.attention.pendingEmptyHint)
     ).toBeInTheDocument();
   });
 
@@ -50,13 +53,16 @@ describe(AttentionPanel, () => {
     await user.click(noticesTab);
 
     expect(noticesTab).toHaveAttribute("aria-selected", "true");
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
     expect(
-      screen.getByRole("heading", {
+      within(dialog).getByRole("heading", {
         name: COPY.attention.noticesEmptyTitle,
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.attention.noticesEmptyHint)
+      within(dialog).getByText(COPY.attention.noticesEmptyHint)
     ).toBeInTheDocument();
   });
 
@@ -125,12 +131,15 @@ describe(AttentionPanel, () => {
     };
 
     render(<AttentionPanel open onClose={() => {}} data={customData} />);
-    expect(screen.getByText("1 項註冊待審批")).toBeInTheDocument();
-    expect(screen.getByText("請前往審批隊列")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
+    expect(within(dialog).getByText("1 項註冊待審批")).toBeInTheDocument();
+    expect(within(dialog).getByText("請前往審批隊列")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("tab", { name: COPY.attention.noticesTab })
     );
-    expect(screen.getByText("主日學即將開課")).toBeInTheDocument();
+    expect(within(dialog).getByText("主日學即將開課")).toBeInTheDocument();
   });
 });

@@ -142,6 +142,9 @@ test("shell critical anchors render at the pinned width with no overflow or obst
         const rect = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         return {
+          tag: element.tagName,
+          cls: element.className?.toString?.() ?? "",
+          role: element.getAttribute("role"),
           display: style.display,
           visibility: style.visibility,
           height: rect.height,
@@ -176,8 +179,7 @@ test("shell critical anchors render at the pinned width with no overflow or obst
         ? getComputedStyle(mainEl).overflowY === "auto"
         : false,
       mainPaddingBottom: mainEl ? getComputedStyle(mainEl).paddingBottom : null,
-      undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44)
-        .length,
+      undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
     };
   });
 
@@ -221,8 +223,13 @@ test("shell critical anchors render at the pinned width with no overflow or obst
   // Main outlet is the scroll container.
   expect(geometry.mainScrollable).toBe(true);
 
-  // No visible control is below the 44px target.
-  expect(geometry.undersized).toBe(0);
+  // No visible control is below the 44px target. Log the offenders to
+  // make the failure mode readable when an unrelated page is slow to
+  // hydrate (the home error state retries the same small control set).
+  expect(
+    geometry.undersized.length,
+    `undersized controls: ${JSON.stringify(geometry.undersized)}`
+  ).toBe(0);
 });
 
 test("799px shows the phone shell; 800px shows the desktop shell", async ({
@@ -286,6 +293,43 @@ test("attention dialog is a fixed overlay fully inside the viewport", async ({
   expect(geometry.top).toBeGreaterThanOrEqual(0);
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+
+  // P1 regression: focus must land inside the dialog after open and return
+  // to the bell trigger after close. The Radix Dialog primitive handles
+  // open; the bell restore is the onCloseAutoFocus seam wired by
+  // ShellHeader (TK-03). The bell's accessible name is
+  // `bellLabel(count)`, not the dialog title — `bellLabel(0)` is the
+  // stable name on the empty /home route.
+  const activeOnOpen = await page.evaluate(() => {
+    const el = document.activeElement;
+    return {
+      inDialog: el instanceof HTMLElement && !!el.closest("[role=dialog]"),
+    };
+  });
+  expect(activeOnOpen.inDialog, "focus must move into the dialog on open").toBe(
+    true
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  const bellName = COPY.attention.bellLabel(0);
+  const activeOnClose = await page.evaluate((name) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement)) {
+      return { isBell: false, isInDialog: false };
+    }
+    const label =
+      el.getAttribute("aria-label") ?? el.getAttribute("aria-labelledby") ?? "";
+    return {
+      isBell: label === name,
+      isInDialog: !!el.closest("[role=dialog]"),
+    };
+  }, bellName);
+  expect(
+    activeOnClose.isBell,
+    `focus must return to the bell trigger on close (got ${JSON.stringify(activeOnClose)}, name "${bellName}")`
+  ).toBe(true);
 });
 
 test("focus order at the pinned width: skip link, primary nav, main, then chrome tail", async ({
