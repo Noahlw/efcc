@@ -13,14 +13,21 @@ import {
   hasDepartmentManagementScope,
   MODULE_KEY,
   MODULE_KEYS,
+  PERMISSION_POLICY_DEFINITIONS,
+  ROLE_CAPABILITY_DEFAULTS,
 } from "./capabilities";
 import type {
   Capability,
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
-import type { ProgramEvent } from "./program-api";
-
+import type {
+  AccountPermissionPolicy,
+  AccountPermissionPolicyCapability,
+  AccountPermissionPolicyCell,
+  ProgramEvent,
+  PermissionPolicyRoleKey,
+} from "./program-api";
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -55,6 +62,9 @@ import {
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   ProgramLeaderConflictError,
+  PermissionPolicyIdempotencyConflictError,
+  PermissionPolicyRevisionConflictError,
+  PermissionPolicySafetyViolationError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
   SelfDelegationError,
@@ -103,6 +113,10 @@ import type {
   ParticipantNoticeKind,
   ParticipantNoticeRow,
   ProgramUpdate,
+  AccountDirectorySearchFilters,
+  AccountDirectorySummary,
+  PermissionPolicyMutationInput,
+  PermissionPolicyMutationResult,
   ScheduleExceptionRow,
   ScheduleRuleRow,
   WorkspaceStore,
@@ -339,6 +353,205 @@ export interface AccountPermissionRole {
 export interface AccountPermissionsView {
   accounts: AccountPermissionAccount[];
   roles: AccountPermissionRole[];
+  policy: AccountPermissionPolicy;
+}
+
+const PERMISSION_POLICY_ROLES: readonly PermissionPolicyRoleKey[] = [
+  "admin",
+  "staff",
+  "member",
+];
+
+const GLOBAL_ROLE_FOR_POLICY_ROLE: Record<PermissionPolicyRoleKey, "Admin" | "Staff" | "Member"> = {
+  admin: "Admin",
+  staff: "Staff",
+  member: "Member",
+};
+
+function policyCellLockReason(
+  capability: Capability,
+  role: PermissionPolicyRoleKey
+): string | null {
+  if (capability === CAPABILITY.PROGRAM_ENROLL) {
+    return "會友基礎必須保留。";
+  }
+  if (role === "member") {
+    return "會友角色不能設定管理權限。";
+  }
+  if (
+    capability === CAPABILITY.HOME_PUBLISH &&
+    role !== "admin"
+  ) {
+    return "只限管理員使用。";
+  }
+  if (capability === CAPABILITY.ACCOUNT_PERMISSIONS_WRITE) {
+    return "權限政策修改受系統安全規則保護。";
+  }
+  if (
+    capability === CAPABILITY.ACCOUNT_PERMISSIONS_READ &&
+    role === "admin"
+  ) {
+    return "管理員必須保留查看權限。";
+  }
+  return null;
+}
+
+function buildPolicyCell(
+  capability: Capability,
+  role: PermissionPolicyRoleKey,
+  values: ReadonlySet<string>,
+  actorCanEdit: boolean
+): AccountPermissionPolicyCell {
+  const globalRole = GLOBAL_ROLE_FOR_POLICY_ROLE[role];
+  const value = values.has(`${globalRole}:${capability}`);
+  const applicable = ROLE_CAPABILITY_DEFAULTS[globalRole].includes(capability);
+  const lockReason = policyCellLockReason(capability, role);
+  return {
+    value,
+    applicable,
+    editable: actorCanEdit && lockReason === null,
+    locked: lockReason !== null,
+    lockReason,
+  };
+}
+
+function buildPermissionPolicy(
+  revision: number,
+  actorRole: "Admin" | "Staff" | "Member",
+  roleCapabilities: readonly { role: string; capability: string }[]
+): AccountPermissionPolicy {
+  const values = new Set(
+    roleCapabilities.map((row) => `${row.role}:${row.capability}`)
+  );
+  const canEdit = actorRole === ROLE.ADMIN;
+  const capabilities: AccountPermissionPolicyCapability[] =
+    PERMISSION_POLICY_DEFINITIONS.map((definition) => ({
+      ...definition,
+      roles: Object.fromEntries(
+        PERMISSION_POLICY_ROLES.map((role) => [
+          role,
+          buildPolicyCell(definition.key, role, values, canEdit),
+        ])
+      ) as Record<PermissionPolicyRoleKey, AccountPermissionPolicyCell>,
+    }));
+
+  return {
+    revision,
+    actor: {
+      role: actorRole,
+      canRead: true,
+      canEdit,
+    },
+    capabilities,
+  };
+}
+
+export interface PermissionPolicyChange {
+  role: PermissionPolicyRoleKey;
+  capability: Capability;
+  value: boolean;
+}
+
+export interface PermissionPolicyMutationView {
+  outcome: "SUCCESS" | "DUPLICATE";
+  idempotent: boolean;
+  revision: number;
+}
+
+export type AccountPermissionsMutationView = AccountPermissionsView & {
+  mutation: PermissionPolicyMutationView;
+};
+
+export interface PermissionPolicyMutationCommand {
+  baseRevision: number;
+  changes: readonly PermissionPolicyChange[];
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+const POLICY_ROLE_ORDER: readonly PermissionPolicyRoleKey[] = [
+  "admin",
+  "staff",
+  "member",
+];
+
+function policyValues(
+  roleCapabilities: readonly { role: string; capability: string }[]
+): Map<string, boolean> {
+  const values = new Map<string, boolean>();
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+      values.set(`${role}:${definition.key}`, false);
+    }
+  }
+  for (const row of roleCapabilities) {
+    if (values.has(`${row.role}:${row.capability}`)) {
+      values.set(`${row.role}:${row.capability}`, true);
+    }
+  }
+  return values;
+}
+
+function policySnapshot(
+  revision: number,
+  values: ReadonlyMap<string, boolean>
+): { revision: number; values: Record<string, boolean> } {
+  const result: Record<string, boolean> = {};
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+      result[`${role}:${definition.key}`] =
+        values.get(`${role}:${definition.key}`) === true;
+    }
+  }
+  return { revision, values: result };
+}
+
+function validatePermissionPolicy(
+  values: ReadonlyMap<string, boolean>
+): void {
+  for (const role of ["Admin", "Staff", "Member"] as const) {
+    if (values.get(`${role}:${CAPABILITY.PROGRAM_ENROLL}`) !== true) {
+      throw new PermissionPolicySafetyViolationError(
+        "會友基礎必須在所有角色保留。"
+      );
+    }
+  }
+
+  for (const definition of PERMISSION_POLICY_DEFINITIONS) {
+    if (
+      definition.key !== CAPABILITY.PROGRAM_ENROLL &&
+      values.get(`Member:${definition.key}`) === true
+    ) {
+      throw new PermissionPolicySafetyViolationError(
+        "會友角色不能設定管理權限。"
+      );
+    }
+  }
+
+  for (const capability of [
+    CAPABILITY.HOME_PUBLISH,
+    CAPABILITY.ACCOUNT_PERMISSIONS_WRITE,
+  ] as const) {
+    if (
+      values.get(`Staff:${capability}`) === true ||
+      values.get(`Member:${capability}`) === true
+    ) {
+      throw new PermissionPolicySafetyViolationError(
+        "首頁發佈及權限政策修改只限管理員使用。"
+      );
+    }
+  }
+
+  if (values.get(`Admin:${CAPABILITY.ACCOUNT_PERMISSIONS_READ}`) !== true) {
+    throw new PermissionPolicySafetyViolationError(
+      "管理員必須保留查看權限。"
+    );
+  }
+  if (values.get(`Admin:${CAPABILITY.ACCOUNT_PERMISSIONS_WRITE}`) !== true) {
+    throw new PermissionPolicySafetyViolationError(
+      "管理員必須保留權限政策修改權。"
+    );
+  }
 }
 
 /**
@@ -353,6 +566,16 @@ export interface ManagementMemberView {
   role: string;
   status: string;
   departments: Array<{ id: string; name: string }>;
+}
+
+export interface AccountDirectoryMember extends ManagementMemberView {
+  username: string | null;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
+  summary: AccountDirectorySummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +601,12 @@ export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
     key: "members-and-permissions",
     label: HUB_COPY.groupMemberPermissions,
     rows: [
+      {
+        key: "accounts",
+        label: HUB_COPY.accountsRow,
+        description: HUB_COPY.accountsRowHint,
+        href: "/management?module=accounts",
+      },
       {
         key: "approvals",
         label: HUB_COPY.approvalsRow,
@@ -1469,7 +1698,11 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext
   ): Promise<AccountPermissionsView> {
     await this.ensure(ctx, CAPABILITY.ACCOUNT_PERMISSIONS_READ);
-    const rows = await this.store.listElevatedAccounts();
+    const [rows, roleCapabilities, revision] = await Promise.all([
+      this.store.listElevatedAccounts(),
+      this.store.listRoleCapabilities(),
+      this.store.getPermissionPolicyRevision(),
+    ]);
 
     const accountsByUser = new Map<string, AccountPermissionAccount>();
     for (const row of rows) {
@@ -1534,7 +1767,224 @@ export class DepartmentWorkspace {
         assignmentState: heldRoles["staff"] ? "assigned" : "assignable",
       },
     ];
-    return { accounts, roles };
+    return {
+      accounts,
+      roles,
+      policy: buildPermissionPolicy(
+        revision,
+        ctx.actorRole as "Admin" | "Staff" | "Member",
+        roleCapabilities
+      ),
+    };
+  }
+
+  /**
+   * POST /api/v1/programs/account-permissions — Admin-only staged policy save.
+   * The browser submits only the changed cells; the domain resolves the
+   * complete resulting matrix and the D1 store commits it as one batch.
+   */
+  async updateAccountPermissions(
+    ctx: AuthorizationContext,
+    command: PermissionPolicyMutationCommand,
+    correlationId: string
+  ): Promise<AccountPermissionsMutationView> {
+    const canWrite = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_PERMISSIONS_WRITE,
+      null
+    );
+    if (!canWrite) {
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "DENIED",
+        null,
+        { baseRevision: command.baseRevision, changes: command.changes },
+        correlationId
+      );
+      throw new AuthorizationDeniedError(
+        CAPABILITY.ACCOUNT_PERMISSIONS_WRITE
+      );
+    }
+
+    const existing = await this.store.findPermissionPolicyMutation(
+      command.idempotencyKey
+    );
+    if (existing) {
+      if (existing.request_fingerprint !== command.requestFingerprint) {
+        await this.audit(
+          ctx,
+          "PERMISSION_POLICY_UPDATE",
+          "permission_policy",
+          "global",
+          "CONFLICT",
+          null,
+          {
+            baseRevision: command.baseRevision,
+            changes: command.changes,
+            idempotencyKey: command.idempotencyKey,
+          },
+          correlationId
+        );
+        throw new PermissionPolicyIdempotencyConflictError();
+      }
+      if (existing.outcome === "CONFLICT") {
+        throw new PermissionPolicyRevisionConflictError(
+          existing.resulting_revision ?? command.baseRevision,
+          true
+        );
+      }
+      if (existing.outcome === "SUCCESS") {
+        const view = await this.getAccountPermissions(ctx);
+        await this.audit(
+          ctx,
+          "PERMISSION_POLICY_UPDATE",
+          "permission_policy",
+          "global",
+          "DUPLICATE",
+          null,
+          { revision: existing.resulting_revision ?? view.policy.revision },
+          correlationId
+        );
+        return {
+          ...view,
+          mutation: {
+            outcome: "DUPLICATE",
+            idempotent: true,
+            revision: existing.resulting_revision ?? view.policy.revision,
+          },
+        };
+      }
+    }
+
+    if (command.changes.length === 0) {
+      throw new PermissionPolicySafetyViolationError(
+        "至少要有一項政策變更。"
+      );
+    }
+
+    const duplicateChanges = new Set<string>();
+    for (const change of command.changes) {
+      const key = `${change.role}:${change.capability}`;
+      if (
+        !POLICY_ROLE_ORDER.includes(change.role) ||
+        !PERMISSION_POLICY_DEFINITIONS.some(
+          (definition) => definition.key === change.capability
+        ) ||
+        duplicateChanges.has(key)
+      ) {
+        throw new PermissionPolicySafetyViolationError(
+          "政策變更包含無效或重複的角色能力。"
+        );
+      }
+      duplicateChanges.add(key);
+    }
+
+    const [roleCapabilities, revision] = await Promise.all([
+      this.store.listRoleCapabilities(),
+      this.store.getPermissionPolicyRevision(),
+    ]);
+    const current = policyValues(roleCapabilities);
+    const next = new Map(current);
+    for (const change of command.changes) {
+      next.set(
+        `${GLOBAL_ROLE_FOR_POLICY_ROLE[change.role]}:${change.capability}`,
+        change.value
+      );
+    }
+    validatePermissionPolicy(next);
+
+    const desired = POLICY_ROLE_ORDER.flatMap((role) =>
+      PERMISSION_POLICY_DEFINITIONS.map((definition) => ({
+        role: GLOBAL_ROLE_FOR_POLICY_ROLE[role],
+        capability: definition.key,
+        value:
+          next.get(
+            `${GLOBAL_ROLE_FOR_POLICY_ROLE[role]}:${definition.key}`
+          ) === true,
+      }))
+    );
+    const input: PermissionPolicyMutationInput = {
+      idempotency_key: command.idempotencyKey,
+      request_fingerprint: command.requestFingerprint,
+      actor_user_id: ctx.actorUserId,
+      base_revision: command.baseRevision,
+      desired,
+      audit: this.buildAuditRow(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "SUCCESS",
+        policySnapshot(revision, current),
+        {
+          ...policySnapshot(command.baseRevision + 1, next),
+          changes: command.changes,
+        },
+        correlationId
+      ),
+    };
+
+    let result: PermissionPolicyMutationResult;
+    try {
+      result = await this.store.applyPermissionPolicyMutation(input);
+    } catch (error) {
+      if (
+        error instanceof PermissionPolicyIdempotencyConflictError ||
+        error instanceof PermissionPolicyRevisionConflictError
+      ) {
+        throw error;
+      }
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "FAILED",
+        policySnapshot(revision, current),
+        { baseRevision: command.baseRevision, changes: command.changes },
+        correlationId
+      );
+      throw error;
+    }
+    if (result.outcome === "CONFLICT") {
+      throw new PermissionPolicyRevisionConflictError(
+        result.resulting_revision,
+        false
+      );
+    }
+
+    const view = await this.getAccountPermissions(ctx);
+    if (!result.created) {
+      await this.audit(
+        ctx,
+        "PERMISSION_POLICY_UPDATE",
+        "permission_policy",
+        "global",
+        "DUPLICATE",
+        null,
+        { revision: result.resulting_revision },
+        correlationId
+      );
+      return {
+        ...view,
+        mutation: {
+          outcome: "DUPLICATE",
+          idempotent: true,
+          revision: result.resulting_revision,
+        },
+      };
+    }
+    return {
+      ...view,
+      mutation: {
+        outcome: "SUCCESS",
+        idempotent: false,
+        revision: view.policy.revision,
+      },
+    };
   }
 
   /**
@@ -1555,11 +2005,6 @@ export class DepartmentWorkspace {
     const hasDepartmentManageScope = departmentScopes.some(
       (department) => department.capabilities.manage
     );
-    // Registration approvals and account permissions are Admin/Staff role
-    // surfaces (spec 087 US 4/9); Members never see them, grant or not.
-    const isAdminOrStaff =
-      ctx.actorRole === ROLE.ADMIN || ctx.actorRole === ROLE.STAFF;
-
     // Attendance row: effective program.manage scope over a program whose
     // department runs the attendance module (086-04 gate family, same effective
     // scope the manageable-events chooser resolves for the actor).
@@ -1597,12 +2042,31 @@ export class DepartmentWorkspace {
       CAPABILITY.HOME_PUBLISH,
       null
     );
+    const canReadAccountDirectory = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_DIRECTORY_READ,
+      null
+    );
+    const canManageRegistrationApprovals = await this.authorizer.can(
+      ctx,
+      CAPABILITY.REGISTRATION_APPROVAL_MANAGE,
+      null
+    );
+    const canReadPermissionPolicy = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_PERMISSIONS_READ,
+      null
+    );
 
     const granted = new Set<string>();
-    if (isAdminOrStaff) {
+    if (canReadAccountDirectory) {
+      granted.add("accounts");
+    }
+    if (canManageRegistrationApprovals) {
       granted.add("approvals");
+    }
+    if (canReadPermissionPolicy) {
       granted.add("permissions");
-      granted.add("members");
     }
     if (hasDepartmentManageScope) {
       granted.add("departments");
@@ -3830,6 +4294,78 @@ export class DepartmentWorkspace {
       }
     }
     return [...members.values()];
+  }
+
+  async searchAccountDirectory(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number,
+    filters: AccountDirectorySearchFilters = {},
+    offset = 0
+  ): Promise<AccountDirectoryView> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const [rows, summary] = await Promise.all([
+      this.store.searchAccountDirectory(query, limit + 1, filters, offset),
+      this.store.countAccountDirectory(query, filters),
+    ]);
+    const accounts = new Map<string, AccountDirectoryMember>();
+    for (const row of rows) {
+      let account = accounts.get(row.user_id);
+      if (!account) {
+        account = {
+          userId: row.user_id,
+          name: row.name,
+          username: row.username,
+          phone: row.phone,
+          role: row.role,
+          status: row.account_status,
+          departments: [],
+        };
+        accounts.set(row.user_id, account);
+      }
+      if (
+        row.department_id !== null &&
+        row.department_name !== null &&
+        !account.departments.some(({ id }) => id === row.department_id)
+      ) {
+        account.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+    }
+    const page = [...accounts.values()];
+    const hasNextPage = page.length > limit;
+    return {
+      accounts: page.slice(0, limit),
+      nextCursor: hasNextPage ? String(offset + limit) : null,
+      summary,
+    };
+  }
+
+  async getAccountDirectoryDetail(
+    ctx: AuthorizationContext,
+    userId: string
+  ): Promise<AccountDirectoryMember> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const rows = await this.store.getAccountDirectoryAccount(userId);
+    const first = rows[0];
+    if (!first) {
+      throw new WorkspaceNotFoundError("account", userId);
+    }
+    return {
+      userId: first.user_id,
+      name: first.name,
+      username: first.username,
+      phone: first.phone,
+      role: first.role,
+      status: first.account_status,
+      departments: rows.flatMap((row) =>
+        row.department_id !== null && row.department_name !== null
+          ? [{ id: row.department_id, name: row.department_name }]
+          : []
+      ),
+    };
   }
 
   getEnrollment(

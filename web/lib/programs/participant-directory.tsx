@@ -4,6 +4,12 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -308,7 +314,7 @@ export const ParticipantDirectory = ({
                     strokeWidth="1.8"
                   />
                 </svg>
-                <input
+                <Input
                   id="programs-catalog-search"
                   aria-label={COPY.programs.catalogSearchLabel}
                   placeholder={COPY.programs.catalogSearchLabel}
@@ -321,13 +327,13 @@ export const ParticipantDirectory = ({
                 />
               </div>
               {searching && (
-                <button
+                <Button
                   className={styles.clearButton}
                   type="button"
                   onClick={() => setQuery("")}
                 >
                   {COPY.programs.catalogClearSearch}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -339,15 +345,16 @@ export const ParticipantDirectory = ({
           >
             <div className={styles.directoryFilterGroup}>
               {FILTERS.map(({ value, label }) => (
-                <button
+                <Button
                   key={value}
                   className={styles.filterChip}
+                  variant={filter === value ? "default" : "outline"}
                   type="button"
                   aria-pressed={filter === value}
                   onClick={() => setFilter(value)}
                 >
                   {label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -373,8 +380,8 @@ export const ParticipantDirectory = ({
                       : ""
                   }`}
                 >
-                  <span className={styles.directorySkeletonBar} />
-                  <span
+                  <Skeleton className={styles.directorySkeletonBar} />
+                  <Skeleton
                     className={`${styles.directorySkeletonBar} ${styles.directorySkeletonBarShort}`}
                   />
                 </div>
@@ -385,11 +392,11 @@ export const ParticipantDirectory = ({
       )}
 
       {state.kind === "error" && (
-        <section
+        <Alert
           id="programs-catalog-state"
           tabIndex={-1}
           className={styles.boundaryError}
-          role="alert"
+          variant="destructive"
         >
           <h2 className={styles.boundaryTitle}>
             {state.failure === "forbidden"
@@ -401,7 +408,7 @@ export const ParticipantDirectory = ({
               ? COPY.programs.catalogForbiddenHint
               : COPY.programs.catalogLoadErrorHint}
           </p>
-          <button
+          <Button
             className={styles.retry}
             type="button"
             onClick={state.failure === "forbidden" ? onHome : retryCatalog}
@@ -409,8 +416,8 @@ export const ParticipantDirectory = ({
             {state.failure === "forbidden"
               ? COPY.nav.backToHome
               : COPY.programs.catalogRetry}
-          </button>
-        </section>
+          </Button>
+        </Alert>
       )}
 
       {programs && (
@@ -443,7 +450,7 @@ export const ParticipantDirectory = ({
                     strokeWidth="1.8"
                   />
                 </svg>
-                <input
+                <Input
                   id="programs-catalog-search"
                   aria-label={COPY.programs.catalogSearchLabel}
                   placeholder={COPY.programs.catalogSearchLabel}
@@ -455,13 +462,13 @@ export const ParticipantDirectory = ({
                 />
               </div>
               {searching && (
-                <button
+                <Button
                   className={styles.clearButton}
                   type="button"
                   onClick={() => setQuery("")}
                 >
                   {COPY.programs.catalogClearSearch}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -473,21 +480,22 @@ export const ParticipantDirectory = ({
           >
             <div className={styles.directoryFilterGroup}>
               {FILTERS.map(({ value, label }) => (
-                <button
+                <Button
                   key={value}
                   className={styles.filterChip}
+                  variant={filter === value ? "default" : "outline"}
                   type="button"
                   aria-pressed={filter === value}
                   onClick={() => setFilter(value)}
                 >
                   {label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
           {filtered.length === 0 && (
-            <section
+            <Card
               id="programs-catalog-state"
               className={`${styles.boundaryState} ${styles.directoryEmpty}`}
             >
@@ -501,7 +509,7 @@ export const ParticipantDirectory = ({
                   ? COPY.programs.catalogNoProgramsHint
                   : COPY.programs.catalogEmptyHint}
               </p>
-              <button
+              <Button
                 className={styles.retry}
                 type="button"
                 onClick={() => {
@@ -510,8 +518,8 @@ export const ParticipantDirectory = ({
                 }}
               >
                 {COPY.programs.catalogClearFilters}
-              </button>
-            </section>
+              </Button>
+            </Card>
           )}
 
           {filtered.length > 0 && (
@@ -524,7 +532,7 @@ export const ParticipantDirectory = ({
                 const secondaryCopy = catalogSecondaryCopy(program);
                 return (
                   <li key={program.program_id} className={styles.directoryItem}>
-                    <button
+                    <Button
                       className={`${styles.directoryCard} ${styles.participantDirectoryCard}`}
                       aria-label={`${tag.label} · ${program.name}${
                         secondaryCopy ? ` · ${secondaryCopy}` : ""
@@ -534,15 +542,24 @@ export const ParticipantDirectory = ({
                     >
                       <span className={styles.directoryCardBody}>
                         <span className={styles.directoryCardTopRow}>
-                          <span
+                          <Badge
                             className={`${styles.directoryStatus} ${
                               styles[
                                 `directoryStatus${tag.kind[0].toUpperCase()}${tag.kind.slice(1)}`
                               ]
                             }`}
+                            variant={
+                              tag.kind === "danger"
+                                ? "destructive"
+                                : tag.kind === "neutral"
+                                  ? "outline"
+                                  : tag.kind === "pending"
+                                    ? "secondary"
+                                    : "default"
+                            }
                           >
                             {tag.label}
-                          </span>
+                          </Badge>
                           {program.category && (
                             <span className={styles.directoryCategory}>
                               {program.category}
@@ -583,7 +600,7 @@ export const ParticipantDirectory = ({
                       >
                         <path d="m9 6 6 6-6 6" />
                       </svg>
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
@@ -595,16 +612,16 @@ export const ParticipantDirectory = ({
       {canManage && (
         <div className={styles.managementEntry}>
           <div>
-            <h3>{COPY.programs.managementMode}</h3>
+            <h2>{COPY.programs.managementMode}</h2>
             <p>{COPY.programs.managementLead}</p>
           </div>
-          <button
+          <Button
             className={styles.button}
             type="button"
             onClick={onManagement}
           >
             {COPY.programs.enterManagement}
-          </button>
+          </Button>
         </div>
       )}
     </>

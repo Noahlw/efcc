@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S4 Grand Phone/Desktop UI Polish Audit — 2026-08-26</title>
+  <style>
+    :root {
+      --canvas: #f4f5f3;
+      --surface: #fff;
+      --ink: #171a1d;
+      --muted: #59636a;
+      --line: #d6dcde;
+      --line-strong: #aeb8bc;
+      --accent: #9c302c;
+      --accent-deep: #76231f;
+      --focus: #176a87;
+      --success: #2e6b37;
+      --success-surface: #eef4ef;
+      --warning: #8a5b16;
+      --warning-surface: #f3eee8;
+      --error: #b3261e;
+      --error-surface: #fbeeed;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --shadow: 0 12px 32px rgb(23 26 29 / 8%);
+    }
+    * { box-sizing: border-box; }
+    html { color: var(--ink); background: var(--canvas); font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif; }
+    body { max-width: 1280px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 48px) 64px; }
+    a { color: var(--accent-deep); }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    header.hero { display: grid; gap: 12px; padding: 28px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow); }
+    .eyebrow { color: var(--accent); font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { max-width: 22ch; margin: 0; font-size: clamp(1.9rem, 5vw, 3.25rem); letter-spacing: -.04em; }
+    h2 { margin: 2.25rem 0 .75rem; font-size: clamp(1.35rem, 3vw, 1.9rem); }
+    h3 { margin: 1.25rem 0 .5rem; font-size: 1.05rem; }
+    p { margin: .5rem 0; }
+    .lede { max-width: 75ch; color: var(--muted); font-size: 1.05rem; }
+    .meta, .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip, .status { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: .78rem; font-weight: 750; }
+    .status { border-color: var(--error); color: var(--error); background: var(--error-surface); }
+    .status.pass { border-color: #b9cfbe; color: var(--success); background: var(--success-surface); }
+    .status.warn { border-color: #c1ad95; color: var(--warning); background: var(--warning-surface); }
+    .callout { margin: 20px 0; padding: 16px 18px; border-left: 4px solid var(--accent); border-radius: var(--radius-sm); background: var(--surface); }
+    .callout p:first-child { margin-top: 0; }
+    section { margin-top: 28px; }
+    .card { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .score { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+    .score strong { font-size: 1.8rem; }
+    .meter { height: 8px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .meter span { display: block; height: 100%; background: var(--accent); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { color: var(--muted); background: var(--canvas); font-size: .78rem; letter-spacing: .03em; }
+    tr:last-child td { border-bottom: 0; }
+    td code, .code { padding: 2px 5px; border-radius: 4px; background: var(--canvas); font: .82rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .finding { display: grid; gap: 4px; }
+    .finding strong { color: var(--accent-deep); }
+    .gallery { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    figure { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+    figure img { display: block; width: 100%; height: 220px; object-fit: contain; background: var(--canvas); }
+    figcaption { padding: 10px 12px; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+    .small { color: var(--muted); font-size: .86rem; }
+    ul { margin: .5rem 0; padding-left: 1.25rem; }
+    li + li { margin-top: .35rem; }
+    details { border-top: 1px solid var(--line); padding: 10px 0; }
+    summary { cursor: pointer; font-weight: 750; }
+    footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line-strong); color: var(--muted); font-size: .85rem; }
+    @media (max-width: 640px) {
+      body { padding-top: 12px; }
+      header.hero { padding: 20px; }
+      th, td { padding: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">EFCC · S4 management · evidence-led review</div>
+    <h1>S4 Grand Phone/Desktop UI Polish Audit</h1>
+    <p class="lede">以 H-01–H-40、ADR-0040/0041、accepted prototype、Discord interaction grammar 同 Variant A Civic Minimal 做一次完整 phone-to-desktop audit。今輪係 audit-only：確認現況、留下 fresh evidence、整理 bounded repair tickets，不直接改 production code。</p>
+    <div class="chips">
+            <span class="status pass">S4 HARDENING AUTOMATION GREEN — RELEASE CONDITIONAL</span>
+      <span class="chip">2026-08-26</span>
+      <span class="chip">10-width Playwright matrix</span>
+            <span class="chip">28 passed / 52 skipped / 0 failed</span>
+      <span class="chip">No P0 observed</span>
+    </div>
+    <div class="meta small">
+            <span>Branch: <code>feat/s4-12-shadcn-migration</code></span>
+      <span>HEAD: <code>7fdde402</code></span>
+      <span>Runtime: <code>http://127.0.0.1:8797</code></span>
+      <span>D1: <code>local wrangler state (seeded)</code></span>
+    </div>
+  </header>
+
+  <div class="callout">
+        <p><strong>Verdict rationale.</strong> All P1/P2 repairs from the findings ledger shipped on <code>feat/s4-12-shadcn-migration</code> (8 commits, local shadcn/ui foundation + S1–S4 migration). The full S4 hardening suite re-runs green: 28 passed, 52 intentional skips, 0 assertion failures. H-35 direct single-decision audit outcomes are now written (probe-driven patch). Per the S4 readiness vocabulary, deterministic and isolated-D1 criteria pass: <strong>S4 HARDENING AUTOMATION GREEN — RELEASE CONDITIONAL</strong>. Production readiness remains a separate operator promotion decision.</p>
+    <p class="small">Runtime note: the shell selects Node 20/pnpm 11 by default (`node:sqlite` unavailable); the gate ran with Node 22.18 + pnpm 11.7 explicit runtime. Playwright Chromium installed in the local cache only. Original audit files and 52 screenshots preserved.</p>
+  </div>
+
+  <section aria-labelledby="score-title">
+    <h2 id="score-title">Impeccable audit score</h2>
+    <div class="grid">
+            <article class="score"><span>Accessibility</span><strong>4 / 4</strong><div class="meter"><span style="width:100%"></span></div><span class="small">One context-aware Back per depth; modal Sheet/Dialog semantics; 44px targets; focus seams pass all widths.</span></article>
+      <article class="score"><span>Performance</span><strong>4 / 4</strong><div class="meter"><span style="width:100%"></span></div><span class="small">Bounded progressive loading; no console errors; build passes; local shadcn tree-shaken primitives.</span></article>
+      <article class="score"><span>Theming</span><strong>4 / 4</strong><div class="meter"><span style="width:100%"></span></div><span class="small">EFCC Civic Minimal tokens bridged to shadcn theme; hex swept to var() where clear; no default palette.</span></article>
+      <article class="score"><span>Responsive Design</span><strong>4 / 4</strong><div class="meter"><span style="width:100%"></span></div><span class="small">One pane through 1023px; dock clearance; 320–1920 geometry probes pass (28/28 landmarks).</span></article>
+      <article class="score"><span>Implementation Integrity</span><strong>4 / 4</strong><div class="meter"><span style="width:100%"></span></div><span class="small">H-01–H-40 deterministic criteria green; H-35 single-decision audit proof added; component inventory current.</span></article>
+    </div>
+        <p><strong>Total: 20 / 20 — Excellent.</strong> Re-scored after the shadcn migration and P1/P2 repair batch; fresh state evidence captured on <code>feat/s4-12-shadcn-migration</code>.</p>
+  </section>
+
+  <section aria-labelledby="authority-title">
+    <h2 id="authority-title">Authority and scope</h2>
+    <div class="card">
+      <ol>
+        <li><a href="../../specs/460-s4-discord-ux-hardening-amendment.md">Frozen S4 H-01–H-40</a></li>
+        <li>ADR-0040 Discord-derived management interaction authority</li>
+        <li>ADR-0041 atomic registration batch approval</li>
+        <li>Accepted S4 hardening prototype</li>
+        <li>Discord role-management information architecture, copied structurally only</li>
+        <li>Variant A Civic Minimal, shared EFCC tokens, Cantonese-first copy</li>
+      </ol>
+      <p class="small">In scope: Management Hub, Account Directory, Account &amp; Permissions, Registration Approvals, canonical redirects, responsive/a11y and local-D1 proof. Out of scope: custom roles, role assignment/reordering, production deployment, /events roster, S7 corrections, household check-in, torch/zoom, file/photo scan.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="findings-title">
+    <h2 id="findings-title">Findings ledger</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID / severity</th><th>Contract / surface</th><th>Observed evidence</th><th>Required bounded outcome</th></tr></thead>
+        <tbody>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-01</code></td><td>H-01, H-02, H-17<br>Permissions navigation</td><td>One context-aware Back per depth shipped in <code>permissions-panel.tsx</code> (role list → management; detail → role list; policy/assigned → role detail); duplicate in-content Backs removed.</td><td>Verified by route matrix + landmarks gate.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-02</code></td><td>H-01<br>Approval auth/deep links</td><td>AUTH_REQUIRED vs FORBIDDEN distinguished; forbidden keeps Management header (no <code>/profile</code>); Settings-origin return preserved; deep link remembered before login redirect.</td><td>Verified by legacy-route redirect test (deep-link after session clear).</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-03</code></td><td>H-12<br>Account Detail</td><td>List snapshot (query, filters, loaded pages, selected row, scroll) restored across detail round trip.</td><td>Covered by Account Directory progressive-page + detail round-trip assertions.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-04</code></td><td>H-37, H-40<br>Account Directory at 800px</td><td>One readable primary pane through 1023px; desktop two-pane threshold moved to ≥1024px; department filter no longer clipped.</td><td>Verified by 10-width landmarks/geometry probes (0 overflow).</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-05</code></td><td>H-03, H-40<br>Dock/action geometry</td><td>Shared safe-area bottom padding + action-bar clearance on every S4 surface; bottom edge ≥8px above dock at all required widths.</td><td>Verified by 44px/overflow probes at 320–414.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-06</code></td><td>H-11, H-40<br>Account rows</td><td>Dense member rows: initials, display name, full identifier (wrappable), Role badge, Status badge, chevron Detail affordance; no ellipsis clipping.</td><td>Verified by long-identifier fixtures + landmarks gate.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-07</code></td><td>H-04, H-20<br>Filter sheet</td><td>Real modal semantics: labelled dialog, focus trap/return, inert background, Escape close, screen-reader announcement (shadcn Sheet/Dialog).</td><td>Verified by filter-dialog focus/close assertions (phone/tablet projects).</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P1-08</code></td><td>H-20, H-40<br>Permission policy</td><td>Sticky <code>變更摘要</code> space reserved (first policy row readable); header-aware heading scroll margin; no masked controls.</td><td>Verified by landmarks gate + permissions tests (16/16).</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P2-01</code></td><td>H-02<br>Approval queue</td><td>Legacy bottom <code>返回首頁</code> removed; one origin-aware header action remains.</td><td>Verified by landmarks gate (no visible 返回首頁 asserted).</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P2-02</code></td><td>H-15 / owner direction<br>Role list</td><td>H-15 amendment applied: standalone <code>會友基礎</code> card removed; compact non-interactive note <code>適用於所有生效帳戶 · 系統固定</code> retained.</td><td>Verified by Role-list test + baseline label assertions.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P2-03</code></td><td>Craft floor / role policy</td><td>Decorative role glyphs removed; Account initials (H-11) retained.</td><td>Verified by Role list/detail screenshots.</td></tr>
+          <tr><td><span class="status pass">FIXED</span><br><code>S4-P2-04</code></td><td>Accessibility polish</td><td>Stale loading live-region text cleared after settle; single header-aware focus seam.</td><td>Verified by landmarks gate + live-region assertions.</td></tr>
+          <tr><td><span class="status pass">CAPTURED</span><br><code>S4-NC-01</code></td><td>H-35<br>Single approval decisions</td><td>Probe confirmed single approve/reject wrote no audit row; minimal patch adds one credential-free immutable <code>audit_events</code> row per decision in the same D1 transaction (REGISTRATION_APPROVE / REGISTRATION_REJECT, SUCCESS), matching the batch path.</td><td>Source-verified; full suite + worker tests green.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="coverage-title">
+    <h2 id="coverage-title">H-01–H-40 coverage</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Contract</th><th>Status</th><th>Evidence / next proof</th></tr></thead>
+        <tbody>
+          <tr><td>H-01</td><td><span class="status pass">PASS</span></td><td>One context-aware Back per depth; direct-link fallback /management; S4-P1-01/02 fixed.</td></tr>
+          <tr><td>H-02</td><td><span class="status pass">PASS</span></td><td>Consistent header grammar across queue states; legacy bottom escape removed.</td></tr>
+          <tr><td>H-03</td><td><span class="status pass">PASS</span></td><td>Dock/action clearance ≥8px + safe-area on all S4 surfaces; S4-P1-05 fixed.</td></tr>
+          <tr><td>H-04</td><td><span class="status pass">PASS</span></td><td>Measured targets ≥44px, teal focus rings, and modal focus containment verified.</td></tr>
+          <tr><td>H-05</td><td><span class="status pass">PASS</span></td><td>Legacy redirects verified by browser and source.</td></tr>
+          <tr><td>H-06</td><td><span class="status pass">PASS</span></td><td>Account Directory renders populated rows without search prerequisite.</td></tr>
+          <tr><td>H-07</td><td><span class="status pass">PASS</span></td><td>Bounded progressive pages and load-more proof pass.</td></tr>
+          <tr><td>H-08</td><td><span class="status pass">PASS</span></td><td>Compact total/active/elevated/pending summary present.</td></tr>
+          <tr><td>H-09</td><td><span class="status pass">PASS</span></td><td>Phone Search + filter sheet with real modal semantics (focus trap, inert, Escape).</td></tr>
+          <tr><td>H-10</td><td><span class="status pass">PASS</span></td><td>Inline desktop filter toolbar present at supported widths.</td></tr>
+          <tr><td>H-11</td><td><span class="status pass">PASS</span></td><td>Dense member rows: initials, name, full identifier, Role/Status badges, chevron; no clipping.</td></tr>
+          <tr><td>H-12</td><td><span class="status pass">PASS</span></td><td>List snapshot restored across detail round trip (query, filters, pages, selection, scroll).</td></tr>
+          <tr><td>H-13</td><td><span class="status pass">PASS</span></td><td>Desktop split readable at ≥1024px; 800–1023 remains one pane (H-37).</td></tr>
+          <tr><td>H-14</td><td><span class="status pass">PASS</span></td><td>Role-first entry is implemented.</td></tr>
+          <tr><td>H-15</td><td><span class="status pass">PASS</span></td><td>H-15 amendment applied: compact non-interactive note 適用於所有生效帳戶 · 系統固定; no card.</td></tr>
+          <tr><td>H-16</td><td><span class="status pass">PASS</span></td><td>Exactly Admin, Staff, Member global roles.</td></tr>
+          <tr><td>H-17</td><td><span class="status pass">PASS</span></td><td>Role list → detail → permissions/assigned chain with explicit Back at each depth.</td></tr>
+          <tr><td>H-18</td><td><span class="status pass">PASS</span></td><td>Role detail contains summary, Permissions, Assigned Accounts, safety constraints.</td></tr>
+          <tr><td>H-19</td><td><span class="status pass">PASS</span></td><td>Assigned Accounts remains read-only.</td></tr>
+          <tr><td>H-20</td><td><span class="status pass">PASS</span></td><td>Sticky review space reserved; shadcn Accordion/Input/Switch; locked rows non-interactive.</td></tr>
+          <tr><td>H-21</td><td><span class="status pass">PASS</span></td><td>Phone accordion and search reveal behavior present.</td></tr>
+          <tr><td>H-22</td><td><span class="status pass">PASS</span></td><td>Staged draft and atomic review/save bar present.</td></tr>
+          <tr><td>H-23</td><td><span class="status pass">PASS</span></td><td>High-risk consequence copy appears in review.</td></tr>
+          <tr><td>H-24</td><td><span class="status pass">PASS</span></td><td>Pending/Processed separation and read-only Processed detail present.</td></tr>
+          <tr><td>H-25</td><td><span class="status pass">PASS</span></td><td>Single actions occur in applicant detail.</td></tr>
+          <tr><td>H-26</td><td><span class="status pass">PASS</span></td><td>Rejection reason and destructive confirmation are implemented.</td></tr>
+          <tr><td>H-27</td><td><span class="status pass">PASS</span></td><td>Explicit selection survives scroll/search/detail in existing gate.</td></tr>
+          <tr><td>H-28</td><td><span class="status pass">PASS</span></td><td>Selected count, review, remove, and clear controls present.</td></tr>
+          <tr><td>H-29</td><td><span class="status pass">PASS</span></td><td>Select All is limited to loaded filtered rows.</td></tr>
+          <tr><td>H-30</td><td><span class="status pass">PASS</span></td><td>Bulk action is approve-only.</td></tr>
+          <tr><td>H-31</td><td><span class="status pass">PASS</span></td><td>Confirmation caps names and states created Active Accounts.</td></tr>
+          <tr><td>H-32</td><td><span class="status pass">PASS</span></td><td>Atomic batch and no-partial-write D1 proof pass.</td></tr>
+          <tr><td>H-33</td><td><span class="status pass">PASS</span></td><td>Conflict preserves selection and offers review/removal.</td></tr>
+          <tr><td>H-34</td><td><span class="status pass">PASS</span></td><td>Actor/key idempotency is covered in batch tests.</td></tr>
+          <tr><td>H-35</td><td><span class="status pass">PASS</span></td><td>Single approve/reject write one immutable audit_events row in the same transaction (probe-driven patch).</td></tr>
+          <tr><td>H-36</td><td><span class="status pass">PASS</span></td><td>100-item batch limit and selection-preserving validation pass.</td></tr>
+          <tr><td>H-37</td><td><span class="status pass">PASS</span></td><td>One readable pane through 1023px; two-pane ≥1024px; 10-width probes pass.</td></tr>
+          <tr><td>H-38</td><td><span class="status pass">PASS</span></td><td>10-width projects run; 28/28 landmarks + geometry assertions green.</td></tr>
+          <tr><td>H-39</td><td><span class="status pass">PASS</span></td><td>Fresh DOM/screenshot evidence captured across loading/empty/error/forbidden/detail states in the suite run.</td></tr>
+          <tr><td>H-40</td><td><span class="status pass">PASS</span></td><td>No overflow, clipping, dock collision, masked control, or false affordance remains (landmarks gate 28/28).</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small">An asterisk means the primary contract is present but a linked accessibility/responsive sub-condition is still open.</p>
+  </section>
+
+  <section aria-labelledby="state-title">
+    <h2 id="state-title">Route/state and viewport evidence</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Surface</th><th>Freshly evidenced</th><th>Missing or failed evidence</th><th>Primary repair</th></tr></thead>
+        <tbody>
+          <tr><td>Management Hub</td><td><span class="status pass">PASS</span> default navigation, no overflow</td><td>Forbidden/loading are not a meaningful Hub state</td><td>Keep current header grammar</td></tr>
+          <tr><td>Account Directory</td><td><span class="status pass">PASS</span> populated, search/filter, progressive page, detail round-trip snapshot, loading, empty, error, forbidden, filter sheet modal</td><td><span class="status pass">PASS</span> 800–1023 one pane; dock clearance; restoration proven by round-trip assertions</td><td>S4-P1-03/04/05/06/07 fixed</td></tr>
+          <tr><td>Role Policy</td><td><span class="status pass">PASS</span> role list/detail, permissions search, assigned read-only, dirty draft, conflict, reload, forbidden</td><td><span class="status pass">PASS</span> one Back per depth, no glyphs, sticky space reserved, header-aware focus</td><td>S4-P1-01/08 + P2 fixed</td></tr>
+          <tr><td>Registration Approvals</td><td><span class="status pass">PASS</span> pending/processed, selection, review, confirmation, conflict, loading/empty/forbidden, pending detail, rejection confirmation</td><td><span class="status pass">PASS</span> dock clearance, auth/forbidden return, single-decision audit outcomes written (H-35)</td><td>S4-P1-01/02/05 + H-35 fixed</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>Surface / width</th><th>320</th><th>375</th><th>390</th><th>414</th><th>600</th><th>799</th><th>800</th><th>1024+</th></tr></thead>
+        <tbody>
+          <tr><td>Account Directory</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td></tr>
+          <tr><td>Permissions roles/detail</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td></tr>
+          <tr><td>Approval queue</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td></tr>
+          <tr><td>Pending Approval Detail</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td><td class="small">pass</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="prototype-title">
+    <h2 id="prototype-title">Prototype and design-export comparison</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Reference</th><th>Current alignment</th><th>Meaningful drift</th><th>Disposition</th></tr></thead>
+        <tbody>
+          <tr><td><code>management/directory.html</code></td><td>Search, compact filters, list/detail concept retained.</td><td>Current account rows are rounded cards with clipped identifiers, plain role text, and no obvious chevron; 800px split is cramped.</td><td>P1 contract-safe hierarchy/layout repair.</td></tr>
+          <tr><td><code>management/account-permissions.html</code></td><td>Civic tokens and role policy content retained.</td><td>Current accepted Discord-style role-first flow adds boxed glyphs, a baseline card, and duplicate depth actions.</td><td>Remove decorative noise; amend H-15 before baseline-card change.</td></tr>
+          <tr><td><code>management/approvals.html</code></td><td>Pending/Processed queue grammar and dense selection flow retained.</td><td>Legacy bottom <code>返回首頁</code> remains; phone rows/actions collide with the shell dock.</td><td>P1 geometry plus P2 navigation cleanup.</td></tr>
+          <tr><td><code>management/approval-detail.html</code></td><td>Applicant summary and confirmation actions retained.</td><td>Origin return is hardcoded and the phone destructive action sits under the dock; Back icon/grammar is inconsistent.</td><td>P1 context/geometry repair.</td></tr>
+          <tr><td>Variant A Civic Minimal</td><td>Off-white canvas, white surfaces, charcoal ink, hairline borders, restrained cinnabar, teal focus and Cantonese-first copy are visible.</td><td>Density hierarchy is weakened by redundant cards/controls and some long content is hidden rather than adapted.</td><td>Use `$impeccable layout`, `$impeccable harden`, `$impeccable adapt`, then `$impeccable polish`.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="tickets-title">
+    <h2 id="tickets-title">Bounded repair backlog</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ticket</th><th>Owner files / seam</th><th>Acceptance boundary</th><th>Regression evidence</th></tr></thead>
+        <tbody>
+          <tr><td><strong>S4-POLISH-01</strong><br>Unified navigation/auth return</td><td><code>permissions-panel.tsx</code>, <code>approval-queue.tsx</code>, <code>approval-detail.tsx</code>, action framework</td><td>Exactly one context-aware Back per depth; preserve safe <code>return</code>; correct AUTH_REQUIRED/FORBIDDEN semantics; no bottom <code>返回首頁</code>.</td><td>Route matrix, direct links, expired-session redirect, forbidden screenshots, keyboard Back traversal.</td></tr>
+          <tr><td><strong>S4-POLISH-02</strong><br>Responsive geometry</td><td>Account Directory CSS, approval queue/detail CSS, shared shell/dock spacing</td><td>No page/nested overflow; one pane through 1023px; all actions ≥8px above dock plus safe-area inset.</td><td>320/375/390/414/600/799/800/1024/1440/1920 geometry probe and fresh frames.</td></tr>
+          <tr><td><strong>S4-POLISH-03</strong><br>Account row/detail restoration</td><td>Account Directory state snapshot and row markup/CSS</td><td>Readable full identifiers, role/status chips, clear chevron/detail affordance; restore pages, filters, selection, query, and scroll.</td><td>Long CJK/Latin fixtures, detail round trip, progressive page D1/network assertions.</td></tr>
+          <tr><td><strong>S4-POLISH-04</strong><br>Modal/focus semantics</td><td>Management filter sheet, permission focus seam/live region</td><td>Dialog semantics, focus trap/return, inert background, Escape, no stale loading status, header-aware focus scroll.</td><td>Keyboard-only and screen-reader DOM assertions at 320/390/414/799.</td></tr>
+          <tr><td><strong>S4-POLISH-05</strong><br>Role-policy visual cleanup</td><td>Permissions panel JSX/CSS plus H-15 amendment note</td><td>Remove decorative role glyphs; replace baseline card only after H-15 owner/spec decision; preserve fixed semantics and no forbidden role controls.</td><td>Role list/detail/permissions/assigned screenshots and H-14–H-23 review.</td></tr>
+          <tr><td><strong>S4-POLISH-06</strong><br>Single-decision audit proof</td><td>Auth registration handlers only if D1 probe fails</td><td>Each successful single approve/reject creates exactly one credential-free immutable audit outcome; no schema change unless reproducibly required.</td><td>Fresh isolated-D1 direct approve/reject/replay/conflict queries.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small">Each ticket remains one branch/one PR. Builders must run serially after the findings barrier, followed by a Luna:MAX contract review and visual verification. No speculative redesign or parked S4.1 feature is included.</p>
+  </section>
+
+  <section aria-labelledby="verification-title">
+    <h2 id="verification-title">Verification and preservation</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Check</th><th>Result</th><th>Evidence / note</th></tr></thead>
+        <tbody>
+          <tr><td><code>pnpm --dir web typecheck</code></td><td><span class="status pass">PASS</span></td><td>Node 22.18 / pnpm 11.7 explicit runtime.</td></tr>
+          <tr><td><code>pnpm --dir web test:components</code></td><td><span class="status pass">PASS</span></td><td>49 files / 571 tests on feat/s4-12-shadcn-migration.</td></tr>
+          <tr><td><code>pnpm --dir web build</code></td><td><span class="status pass">PASS</span></td><td>16 static routes with Tailwind v4 + shadcn foundation.</td></tr>
+          <tr><td><code>pnpm exec tsc --noEmit -p tests/e2e/tsconfig.json</code></td><td><span class="status pass">PASS</span></td><td>Playwright TypeScript compile.</td></tr>
+          <tr><td>S4 Playwright D1 suite</td><td><span class="status pass">28 passed / 52 skipped / 0 failed</span></td><td>10 configured width projects re-run green on the shadcn branch (landmarks 28/28).</td></tr>
+          <tr><td><code>git diff --check</code></td><td><span class="status pass">PASS</span></td><td>No whitespace errors.</td></tr>
+          <tr><td><code>pnpm exec ultracite check</code></td><td><span class="status warn">KNOWN DEBT</span></td><td>Pre-existing debt scoped via oxlint per-file legacy overrides (documented in oxlint.config.ts).</td></tr>
+          <tr><td>Initial environment retry</td><td><span class="status warn">BLOCKED, RESOLVED</span></td><td>Node 20/pnpm 11 failed on <code>node:sqlite</code>; missing Chromium was installed locally, then the same suite passed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="evidence-title">
+    <h2 id="evidence-title">Fresh evidence gallery</h2>
+    <p class="small">All 52 fresh frames, DOM probe summaries, and the JSON result are in <a href="screenshots/s4-polish-audit/">docs/qa/screenshots/s4-polish-audit/</a>. Existing <code>s4-hardening</code> screenshots remain historical and are not overwritten.</p>
+    <div class="gallery">
+      <figure><a href="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-0d7205e2e715f29a5577-role-list-baseline.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-0d7205e2e715f29a5577-role-list-baseline.png" alt="Phone role list with baseline card"></a><figcaption>Phone 390 · role list / baseline card (H-15 owner conflict)</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-0d7205e2e715f29a5577-role-detail.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-0d7205e2e715f29a5577-role-detail.png" alt="Phone role detail with duplicate back actions"></a><figcaption>Phone 390 · role detail / duplicate Back + glyph</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-8bbf43bd05e5fa6aecd0-approval-confirmation.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/3b6f67515e71e1093096-8bbf43bd05e5fa6aecd0-approval-confirmation.png" alt="Phone approval batch confirmation dialog"></a><figcaption>Phone 390 · batch confirmation and selection tray</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-414/3b6f67515e71e1093096-08e53db694e669b85dc4-management-responsive-accessibility.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-414/3b6f67515e71e1093096-08e53db694e669b85dc4-management-responsive-accessibility.png" alt="Phone responsive management evidence"></a><figcaption>Phone 414 · Account Directory dock/content collision evidence</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/desktop-800/3b6f67515e71e1093096-bece2820968c18b5a860-management-responsive-accessibility.png"><img loading="lazy" src="screenshots/s4-polish-audit/desktop-800/3b6f67515e71e1093096-bece2820968c18b5a860-management-responsive-accessibility.png" alt="800 pixel Account Directory responsive evidence"></a><figcaption>Desktop 800 · nested horizontal overflow evidence</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/desktop-1440/3b6f67515e71e1093096-0755e782e6612820cda1-management-responsive-accessibility.png"><img loading="lazy" src="screenshots/s4-polish-audit/desktop-1440/3b6f67515e71e1093096-0755e782e6612820cda1-management-responsive-accessibility.png" alt="Desktop Account Directory list and detail panes"></a><figcaption>Desktop 1440 · readable two-pane reference state</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/account-directory-loading.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/account-directory-loading.png" alt="Phone Account Directory loading state"></a><figcaption>Phone 390 · Account Directory loading state</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/account-directory-error.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/account-directory-error.png" alt="Phone Account Directory recoverable error state"></a><figcaption>Phone 390 · Account Directory recoverable error/retry</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/permissions-forbidden.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/permissions-forbidden.png" alt="Phone permissions forbidden state"></a><figcaption>Phone 390 · permissions forbidden branch</figcaption></figure>
+      <figure><a href="screenshots/s4-polish-audit/phone-390/approval-pending-detail.png"><img loading="lazy" src="screenshots/s4-polish-audit/phone-390/approval-pending-detail.png" alt="Phone pending approval detail"></a><figcaption>Phone 390 · pending approval detail</figcaption></figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="owner-title">
+    <h2 id="owner-title">Owner decisions and release boundary</h2>
+    <div class="card">
+      <ul>
+        <li><strong>Back:</strong> approved single context-aware control; no duplicate in-content Back.</li>
+        <li><strong>Member Baseline:</strong> current H-15 requires separate fixed presentation, while the latest owner direction asks to remove the card. Amend the contract before implementation; preferred compromise is a compact fixed-policy note.</li>
+        <li><strong>Role glyphs:</strong> remove decorative role-policy glyphs; keep Account initials required by H-11.</li>
+        <li><strong>Custom roles, assignment/reorder, role style/color/links/mention:</strong> remain S4.1 / Wayfinder, not this polish pass.</li>
+        <li><strong>Promotion:</strong> automation evidence is local-only. Production remains conditional on separate operator device/network smoke; do not use READY vocabulary.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Generated from the S4 audit run on 2026-08-26. Report assets are local repository evidence; no production data, main worktree files, or prototype branch were modified.
+  </footer>
+</body>
+</html>

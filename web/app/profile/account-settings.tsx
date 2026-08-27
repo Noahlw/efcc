@@ -1,21 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
-import {
-  authChangePassword,
-  authChangeUsername,
-  RpcError,
-} from "@/lib/api";
-import { useApp } from "@/lib/app-context";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   ACCOUNT_SETTINGS_COPY,
   accountSettingsErrorCopy,
 } from "@/lib/account-settings-copy";
+import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
+import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { clearAuthHint } from "@/lib/session";
-import { ForbiddenView } from "@/lib/forbidden-view";
 
 import styles from "./account-settings.module.css";
 
@@ -50,9 +49,8 @@ type PasswordState =
  * Ui02Profile — the orchestrator integrates this component there). Reads the
  * current username from the shell's AppProvider bootstrap.
  */
-export function AccountSettings() {
+export const AccountSettings = () => {
   const router = useRouter();
-  const { bootstrap } = useApp();
 
   const [username, setUsername] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameState>({
@@ -67,22 +65,6 @@ export function AccountSettings() {
   const [forbidden, setForbidden] = useState(false);
   const usernameFormRef = useRef<HTMLFormElement>(null);
   const passwordFormRef = useRef<HTMLFormElement>(null);
-  const usernameRetryRef = useRef<HTMLButtonElement>(null);
-  const passwordRetryRef = useRef<HTMLButtonElement>(null);
-
-  // Focus handoff (matrix S14): when a network failure renders the recovery
-  // block, keyboard / screen-reader users land directly on the retry control.
-  useEffect(() => {
-    if (usernameState.kind === "error" && usernameState.retryable) {
-      usernameRetryRef.current?.focus();
-    }
-  }, [usernameState]);
-
-  useEffect(() => {
-    if (passwordState.kind === "error" && passwordState.retryable) {
-      passwordRetryRef.current?.focus();
-    }
-  }, [passwordState]);
 
   const completeChange = (result: { sessionRevoked: boolean }) => {
     if (!result.sessionRevoked) {
@@ -151,7 +133,7 @@ export function AccountSettings() {
     });
   };
 
-  const submitUsername = (e: React.FormEvent<HTMLFormElement>) => {
+  const submitUsername = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (usernameState.kind === "submitting" || outcome) {
       return;
@@ -166,22 +148,21 @@ export function AccountSettings() {
       return;
     }
     setUsernameState({ kind: "submitting" });
-    void authChangeUsername(trimmed)
-      .then((result) => {
-        if (!result.sessionRevoked) {
-          // Value-idempotent no-op: the session stays live, no sign-out.
-          announce(ACCOUNT_SETTINGS_COPY.usernameUnchanged);
-          setUsernameState({ kind: "unchanged" });
-          return;
-        }
-        completeChange(result);
-      })
-      .catch((err: unknown) => {
-        handleSubmitError(err, "username", setUsernameState);
-      });
+    try {
+      const result = await authChangeUsername(trimmed);
+      if (!result.sessionRevoked) {
+        // Value-idempotent no-op: the session stays live, no sign-out.
+        announce(ACCOUNT_SETTINGS_COPY.usernameUnchanged);
+        setUsernameState({ kind: "unchanged" });
+        return;
+      }
+      completeChange(result);
+    } catch (error: unknown) {
+      handleSubmitError(error, "username", setUsernameState);
+    }
   };
 
-  const submitPassword = (e: React.FormEvent<HTMLFormElement>) => {
+  const submitPassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (passwordState.kind === "submitting" || outcome) {
       return;
@@ -203,27 +184,29 @@ export function AccountSettings() {
       return;
     }
     setPasswordState({ kind: "submitting" });
-    void authChangePassword(currentPassword, newPassword)
-      .then((result) => {
-        completeChange(result);
-      })
-      .catch((err: unknown) => {
-        handleSubmitError(err, "password", setPasswordState);
-      });
+    try {
+      const result = await authChangePassword(currentPassword, newPassword);
+      completeChange(result);
+    } catch (error: unknown) {
+      handleSubmitError(error, "password", setPasswordState);
+    }
   };
 
   if (outcome) {
     return (
       <section
-        className={styles.success}
-        role="status"
+        className={`${styles.success} gap-0 overflow-visible border border-[var(--success-border)] bg-[var(--surface-raised)] p-6 text-center shadow-none ring-0`}
         aria-labelledby="account-settings-success-title"
       >
         <h2 id="account-settings-success-title" className={styles.successTitle}>
           {ACCOUNT_SETTINGS_COPY.updated}
         </h2>
-        <p className={styles.successDetail}>{ACCOUNT_SETTINGS_COPY.updatedDetail}</p>
-        <p className={styles.successStatus}>{ACCOUNT_SETTINGS_COPY.redirecting}</p>
+        <p className={styles.successDetail}>
+          {ACCOUNT_SETTINGS_COPY.updatedDetail}
+        </p>
+        <p className={styles.successStatus}>
+          {ACCOUNT_SETTINGS_COPY.redirecting}
+        </p>
       </section>
     );
   }
@@ -231,12 +214,12 @@ export function AccountSettings() {
   if (forbidden) {
     // S13 (review P1): the batch/resolver surfaced a 403 — Active-status
     // gate. Render the shared forbidden block; no form survives.
-    return <ForbiddenView safeHref="/profile"></ForbiddenView>;
+    return <ForbiddenView safeHref="/profile" />;
   }
 
   return (
-    <section
-      className={styles.section}
+    <Card
+      className={`${styles.section} overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-6 shadow-none ring-0 max-[799px]:p-4`}
       aria-labelledby="account-settings-title"
     >
       <h2 id="account-settings-title" className={styles.sectionTitle}>
@@ -261,10 +244,10 @@ export function AccountSettings() {
           >
             {ACCOUNT_SETTINGS_COPY.usernameLabel}
           </label>
-          <input
+          <Input
             id="account-settings-username"
             name="username"
-            className={styles.input}
+            className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             autoComplete="username"
             required
             aria-invalid={usernameState.kind === "error" ? true : undefined}
@@ -282,36 +265,42 @@ export function AccountSettings() {
           </p>
         </div>
         {usernameState.kind === "error" && (
-          <div role="alert" className={styles.errorBlock}>
+          <Alert
+            variant="destructive"
+            className={`${styles.errorBlock} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
+          >
             <p id="account-settings-username-error" className={styles.error}>
               {usernameState.message}
             </p>
             {usernameState.retryable && (
-              <button
+              <Button
                 type="button"
-                className={styles.retry}
-                ref={usernameRetryRef}
+                variant="outline"
+                className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 text-base text-[var(--accent-deep)] hover:border-[var(--accent-deep)] hover:bg-[var(--surface)]"
+                autoFocus
                 onClick={() => usernameFormRef.current?.requestSubmit()}
               >
                 {ACCOUNT_SETTINGS_COPY.retry}
-              </button>
+              </Button>
             )}
-          </div>
+          </Alert>
         )}
         {usernameState.kind === "unchanged" && (
-          <p role="status" className={styles.notice}>
+          <output
+            className={`${styles.notice} border border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--ink)]`}
+          >
             {ACCOUNT_SETTINGS_COPY.usernameUnchanged}
-          </p>
+          </output>
         )}
-        <button
+        <Button
           type="submit"
-          className={styles.submit}
+          className="min-h-12 rounded-[8px] bg-[var(--accent)] text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
           disabled={usernameState.kind === "submitting"}
         >
           {usernameState.kind === "submitting"
             ? ACCOUNT_SETTINGS_COPY.usernameSubmitting
             : ACCOUNT_SETTINGS_COPY.usernameSubmit}
-        </button>
+        </Button>
       </form>
 
       <form
@@ -331,11 +320,11 @@ export function AccountSettings() {
           >
             {ACCOUNT_SETTINGS_COPY.currentPasswordLabel}
           </label>
-          <input
+          <Input
             id="account-settings-current-password"
             name="currentPassword"
             type="password"
-            className={styles.input}
+            className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             autoComplete="current-password"
             required
             aria-invalid={passwordState.kind === "error" ? true : undefined}
@@ -356,11 +345,11 @@ export function AccountSettings() {
           >
             {ACCOUNT_SETTINGS_COPY.newPasswordLabel}
           </label>
-          <input
+          <Input
             id="account-settings-new-password"
             name="newPassword"
             type="password"
-            className={styles.input}
+            className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             autoComplete="new-password"
             required
             minLength={8}
@@ -379,34 +368,38 @@ export function AccountSettings() {
           </p>
         </div>
         {passwordState.kind === "error" && (
-          <div role="alert" className={styles.errorBlock}>
+          <Alert
+            variant="destructive"
+            className={`${styles.errorBlock} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
+          >
             <p id="account-settings-password-error" className={styles.error}>
               {passwordState.message}
             </p>
             {passwordState.retryable && (
-              <button
+              <Button
                 type="button"
-                className={styles.retry}
-                ref={passwordRetryRef}
+                variant="outline"
+                className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 text-base text-[var(--accent-deep)] hover:border-[var(--accent-deep)] hover:bg-[var(--surface)]"
+                autoFocus
                 onClick={() => passwordFormRef.current?.requestSubmit()}
               >
                 {ACCOUNT_SETTINGS_COPY.retry}
-              </button>
+              </Button>
             )}
-          </div>
+          </Alert>
         )}
-        <button
+        <Button
           type="submit"
-          className={styles.submit}
+          className="min-h-12 rounded-[8px] bg-[var(--accent)] text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
           disabled={passwordState.kind === "submitting"}
         >
           {passwordState.kind === "submitting"
             ? ACCOUNT_SETTINGS_COPY.passwordSubmitting
             : ACCOUNT_SETTINGS_COPY.passwordSubmit}
-        </button>
+        </Button>
       </form>
-    </section>
+    </Card>
   );
-}
+};
 
 export { ACCOUNT_UPDATED_KEY };

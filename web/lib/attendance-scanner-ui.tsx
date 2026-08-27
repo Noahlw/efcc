@@ -3,6 +3,10 @@
 import { useState } from "react";
 import type { Ref, RefObject } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type {
   AttendanceEvent,
   AttendanceResolveLatest,
@@ -15,6 +19,11 @@ import { COPY } from "@/lib/copy";
 import { hkTime24Label, hkWallLabel } from "@/lib/hk-time";
 
 import styles from "./attendance-panel.module.css";
+
+const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
+const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const backControl = `${styles.back} min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]`;
+const cameraStopControl = `${styles.cameraStop} min-h-12 rounded-[var(--radius-sm)] border border-white/40 bg-black/50 px-4 font-semibold text-white hover:bg-black/70 hover:text-white focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
 
 export type StatusTone = "info" | "success" | "error";
 
@@ -50,17 +59,6 @@ const CameraIcon = () => (
   >
     <path d="M13 17h4l3-4h8l3 4h4a4 4 0 0 1 4 4v13a4 4 0 0 1-4 4H13a4 4 0 0 1-4-4V21a4 4 0 0 1 4-4Z" />
     <circle cx="24" cy="27" r="7" />
-  </svg>
-);
-
-const ChevronIcon = () => (
-  <svg
-    className={styles.chevron}
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d="m9 5 7 7-7 7" />
   </svg>
 );
 
@@ -101,23 +99,24 @@ export const ScannerCamera = ({
       {!cameraOpen && <CameraIcon />}
     </div>
     {!cameraOpen && (
-      <button
-        className={styles.button}
+      <Button
+        className={primaryControl}
         type="button"
         data-camera-available={cameraAvailable}
         onClick={onStart}
       >
         {COPY.attendance.startScan}
-      </button>
+      </Button>
     )}
     {cameraOpen && (
-      <button
-        className={styles.buttonSecondary}
+      <Button
+        variant="outline"
+        className={secondaryControl}
         type="button"
         onClick={onClose}
       >
         {COPY.attendance.cameraClose}
-      </button>
+      </Button>
     )}
   </div>
 );
@@ -173,23 +172,24 @@ export const CameraFirstScanner = ({
         className={`${styles.cameraCornerLive} ${styles.cameraCornerLiveBottomRight}`}
       />
     </figure>
-    <button
-      className={styles.cameraStop}
+    <Button
+      variant="ghost"
+      className={cameraStopControl}
       type="button"
       disabled={opening}
       aria-busy={opening}
       onClick={onStop}
     >
       {COPY.attendance.stopScan}
-    </button>
+    </Button>
   </div>
 );
 
 export const ScannerUnavailableNotice = () => (
-  <div className={styles.cameraUnavailable} role="alert">
+  <Alert variant="destructive" className={styles.cameraUnavailable}>
     <strong>{COPY.attendance.cameraUnavailableTitle}</strong>
     <p>{COPY.attendance.cameraUnavailableHint}</p>
-  </div>
+  </Alert>
 );
 
 const ScannerEventChoiceGroup = ({
@@ -250,8 +250,8 @@ const ScannerEventChoiceGroup = ({
           </label>
         ))}
       </div>
-      <button
-        className={styles.button}
+      <Button
+        className={primaryControl}
         type="button"
         disabled={disabled || !checked}
         onClick={() => {
@@ -261,7 +261,7 @@ const ScannerEventChoiceGroup = ({
         }}
       >
         {COPY.attendance.continue}
-      </button>
+      </Button>
     </fieldset>
   );
 };
@@ -276,20 +276,33 @@ export const ScannerChooser = ({
   headingRef?: RefObject<HTMLElement | null>;
   onBack: () => void;
   onSelect: (event: AttendanceEvent) => void;
-}) => {
+}) => 
   // GOV.UK radios pattern (owner-approved DOM-contract amendment): native
   // radios in a fieldset/legend pair, no preselection, labels left of the
   // control; an explicit 繼續 commits so arrow-key traversal can never
   // trigger a submission by itself (F-13 explicit selection step).
-  return (
-    <section className={styles.chooser} aria-labelledby="scanner-chooser-title">
+  (
+    <Card
+      className={styles.chooser}
+      role="region"
+      aria-labelledby="scanner-chooser-title"
+    >
       <header className={styles.chooserHeader}>
-        <span className={styles.chooserTitle}>{COPY.attendance.chooseEvent}</span>
-        <button className={styles.back} type="button" onClick={onBack}>
+        <span className={styles.chooserTitle}>
+          {COPY.attendance.chooseEvent}
+        </span>
+        <Button
+          variant="link"
+          className={backControl}
+          type="button"
+          onClick={onBack}
+        >
           {COPY.attendance.rescan}
-        </button>
+        </Button>
       </header>
-      <span className={styles.chooserTag}>{COPY.attendance.recognizedMultiple}</span>
+      <Badge variant="outline" className={styles.chooserTag}>
+        {COPY.attendance.recognizedMultiple}
+      </Badge>
       <ScannerEventChoiceGroup
         events={events}
         onSelect={onSelect}
@@ -301,9 +314,9 @@ export const ScannerChooser = ({
         radioName="scanner-event"
         headingTabIndex={-1}
       />
-    </section>
-  );
-};
+    </Card>
+  )
+;
 
 export const CheckinConfirmationIcon = ({
   kind,
@@ -381,22 +394,26 @@ export const ScannerConfirmation = ({
   onRetry: () => void;
   onNotThisEvent: () => void;
 }) => (
-  <section
+  <Card
     className={styles.confirmation}
+    role="region"
     aria-labelledby="attendance-confirm-title"
   >
     <header className={styles.confirmHeader}>
       <span>{COPY.attendance.confirmHeader}</span>
     </header>
-    <button
-      className={styles.back}
+    <Button
+      variant="link"
+      className={backControl}
       type="button"
       disabled={busy}
       onClick={onRescan}
     >
       {COPY.attendance.rescan}
-    </button>
-    <span className={styles.confirmTag}>{COPY.attendance.recognizedBadge}</span>
+    </Button>
+    <Badge variant="outline" className={styles.confirmTag}>
+      {COPY.attendance.recognizedBadge}
+    </Badge>
     <h1
       id="attendance-confirm-title"
       ref={headingRef}
@@ -445,37 +462,38 @@ export const ScannerConfirmation = ({
         </p>
       )}
       {retryAvailable ? (
-        <button
+        <Button
           ref={retryRef}
-          className={styles.button}
+          className={primaryControl}
           type="button"
           disabled={busy}
           aria-busy={busy}
           onClick={onRetry}
         >
           {COPY.attendance.retry}
-        </button>
+        </Button>
       ) : (
-        <button
-          className={styles.button}
+        <Button
+          className={primaryControl}
           type="button"
           disabled={busy}
           aria-busy={busy}
           onClick={onSubmit}
         >
           {COPY.attendance.confirmSubmit}
-        </button>
+        </Button>
       )}
-      <button
-        className={styles.buttonSecondary}
+      <Button
+        variant="outline"
+        className={secondaryControl}
         type="button"
         disabled={busy}
         onClick={onNotThisEvent}
       >
         {COPY.attendance.notThisEvent}
-      </button>
+      </Button>
     </div>
-  </section>
+  </Card>
 );
 
 export const ScannerCheckinResult = ({
@@ -489,8 +507,9 @@ export const ScannerCheckinResult = ({
   headingRef: RefObject<HTMLHeadingElement | null>;
   onScanAgain: () => void;
 }) => (
-  <section
+  <Card
     className={`${styles.card} ${styles.checkinResult}`}
+    role="region"
     aria-labelledby="attendance-result-title"
   >
     <header className={styles.resultHeader}>
@@ -517,18 +536,19 @@ export const ScannerCheckinResult = ({
       <p className={styles.resultCopy}>{COPY.attendance.duplicateBody}</p>
     )}
     <div className={styles.resultActions}>
-      <a className={styles.button} href="/">
-        {COPY.attendance.backHome}
-      </a>
-      <button
-        className={styles.buttonSecondary}
+      <Button asChild className={primaryControl}>
+        <a href="/">{COPY.attendance.backHome}</a>
+      </Button>
+      <Button
+        variant="outline"
+        className={secondaryControl}
         type="button"
         onClick={onScanAgain}
       >
         {COPY.attendance.scanAgain}
-      </button>
+      </Button>
     </div>
-  </section>
+  </Card>
 );
 
 const OutcomeIcon = ({
@@ -599,8 +619,9 @@ export const ScannerOutcome = ({
     latest.starts_at
   );
   return (
-    <section
+    <Card
       className={`${styles.card} ${styles.outcome}`}
+      role="region"
       aria-labelledby="scanner-outcome-title"
     >
       <p className={styles.outcomeHeader}>{COPY.attendance.outcomeHeader}</p>
@@ -638,19 +659,20 @@ export const ScannerOutcome = ({
       )}
       <div className={styles.outcomeActions}>
         {kind === "not-enrolled" && (
-          <a className={styles.button} href={programHref}>
-            {COPY.attendance.viewProgramDetail}
-          </a>
+          <Button asChild className={primaryControl}>
+            <a href={programHref}>{COPY.attendance.viewProgramDetail}</a>
+          </Button>
         )}
-        <button
-          className={styles.buttonSecondary}
+        <Button
+          variant="outline"
+          className={secondaryControl}
           type="button"
           onClick={onBack}
         >
           {COPY.attendance.backToScan}
-        </button>
+        </Button>
       </div>
-    </section>
+    </Card>
   );
 };
 
@@ -669,8 +691,8 @@ export const ScannerEventPicker = ({
   onSelect: (event: AttendanceEvent) => void;
   headingRef?: RefObject<HTMLElement | null>;
   disabled?: boolean;
-}) => {
-  return (
+}) => 
+  (
     <div className={styles.group} aria-labelledby="choose-event-title">
       <ScannerEventChoiceGroup
         events={events}
@@ -684,5 +706,5 @@ export const ScannerEventPicker = ({
         headingTabIndex={headingRef ? -1 : undefined}
       />
     </div>
-  );
-};
+  )
+;

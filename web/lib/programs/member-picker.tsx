@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchMemberOptions } from "@/lib/programs/program-api";
@@ -113,7 +115,7 @@ export const MemberPicker = ({
     <div className={styles.picker}>
       <label className={styles.field}>
         <span className={styles.fieldLabel}>{label}</span>
-        <input
+        <Input
           className={styles.input}
           type="search"
           value={query}
@@ -143,18 +145,18 @@ export const MemberPicker = ({
                 : COPY.programs.memberSearchHint}
       </p>
       {searchError && (
-        <button
+        <Button
           type="button"
           className={styles.retry}
           onClick={() => setRetryToken((value) => value + 1)}
         >
           {COPY.programs.memberSearchRetry}
-        </button>
+        </Button>
       )}
       {selected !== null && (
         <div className={styles.selectedMember}>
           <span>{`${selected.name} (${selected.username})`}</span>
-          <button
+          <Button
             type="button"
             className={styles.clearSelection}
             onClick={() => {
@@ -163,7 +165,7 @@ export const MemberPicker = ({
             }}
           >
             {COPY.programs.clearMember}
-          </button>
+          </Button>
         </div>
       )}
       {options.length > 0 && (
@@ -180,7 +182,7 @@ export const MemberPicker = ({
               role="option"
               aria-selected={activeIndex === index}
             >
-              <button
+              <Button
                 type="button"
                 className={styles.memberOption}
                 onClick={() => {
@@ -189,7 +191,7 @@ export const MemberPicker = ({
               >
                 <strong>{member.name}</strong>
                 <span>{member.username}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

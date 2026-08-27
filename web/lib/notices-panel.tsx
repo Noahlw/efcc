@@ -3,6 +3,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
 import { hkNoticeListLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -161,6 +166,7 @@ export function NoticesPanel() {
         <output className={styles.state} aria-busy="true">
           {COPY.notices.noticesLoading}
         </output>
+        <Skeleton className={styles.state} aria-hidden="true" />
       </section>
     );
   }
@@ -173,16 +179,16 @@ export function NoticesPanel() {
         aria-label={COPY.notices.noticesListLabel}
         tabIndex={-1}
       >
-        <p className={styles.error} role="alert">
-          {COPY.notices.noticesLoadError}
-        </p>
-        <button
+        <Alert className={styles.error} variant="destructive">
+          <p>{COPY.notices.noticesLoadError}</p>
+        </Alert>
+        <Button
           className={styles.retry}
           type="button"
           onClick={() => void load()}
         >
           {COPY.notices.noticesRetry}
-        </button>
+        </Button>
       </section>
     );
   }
@@ -196,17 +202,17 @@ export function NoticesPanel() {
       tabIndex={-1}
     >
       {markError !== null && (
-        <p className={styles.error} role="alert">
-          {markError}
-        </p>
+        <Alert className={styles.error} variant="destructive">
+          <p>{markError}</p>
+        </Alert>
       )}
       <div className={styles.toolbar}>
         {unreadCount > 0 && (
-          <span className={styles.unreadCount}>
+          <Badge className={styles.unreadCount} variant="outline">
             {unreadCount} {COPY.notices.noticesUnread}
-          </span>
+          </Badge>
         )}
-        <button
+        <Button
           className={styles.markAll}
           type="button"
           onClick={() => void markAllRead()}
@@ -214,19 +220,24 @@ export function NoticesPanel() {
           aria-busy={marking}
         >
           {COPY.notices.noticesMarkAllRead}
-        </button>
+        </Button>
       </div>
       {notices.length === 0 ? (
-        <div className={styles.empty}>
+        <Card size="empty" className={styles.empty}>
           <h2 className={styles.emptyTitle}>{COPY.notices.noticesEmpty}</h2>
           <p className={styles.emptyHint}>{COPY.notices.noticesEmptyHint}</p>
-        </div>
+        </Card>
       ) : (
-        <ul className={styles.list} aria-label={COPY.notices.noticesListLabel}>
-          {notices.map((notice) => (
-            <NoticeRow key={notice.notice_id} notice={notice} />
-          ))}
-        </ul>
+        <Card className="border-0 bg-transparent p-0 shadow-none">
+          <ul
+            className={styles.list}
+            aria-label={COPY.notices.noticesListLabel}
+          >
+            {notices.map((notice) => (
+              <NoticeRow key={notice.notice_id} notice={notice} />
+            ))}
+          </ul>
+        </Card>
       )}
     </section>
   );

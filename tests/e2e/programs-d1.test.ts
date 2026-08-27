@@ -358,7 +358,7 @@ const COPY = {
   // 087-03 Account Permissions matrix (mirrors COPY.permissions).
   permissionsTitle: "帳戶與權限",
   permissionsLead:
-    "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
+    "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
   accountsSection: "管理員帳戶",
   rolesSection: "角色定義",
   accountName: "姓名",
@@ -1013,6 +1013,59 @@ test.describe("PUI-02 participant Programs directory", () => {
     await expect(
       page.getByRole("button", { name: /E2E_DEMO_社區關懷/u })
     ).toBeVisible();
+  });
+
+  test("management directory cards keep multiline content inside their inset", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+
+    const card = page.getByRole("button", { name: /E2E_DEMO_成人查經/u });
+    await expect(card).toBeVisible();
+    const geometry = await card.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const children = [...element.children].map((child) => {
+        const childRect = child.getBoundingClientRect();
+        return {
+          top: childRect.top,
+          bottom: childRect.bottom,
+          left: childRect.left,
+          right: childRect.right,
+        };
+      });
+      return {
+        height: rect.height,
+        padding: [
+          style.paddingTop,
+          style.paddingRight,
+          style.paddingBottom,
+          style.paddingLeft,
+        ],
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        contentInside: children.every(
+          (child) =>
+            child.top >= rect.top &&
+            child.bottom <= rect.bottom &&
+            child.left >= rect.left &&
+            child.right <= rect.right
+        ),
+      };
+    });
+
+    expect(geometry).toMatchObject({
+      padding: ["14px", "16px", "14px", "16px"],
+      alignItems: "stretch",
+      justifyContent: "flex-start",
+    });
+    expect(geometry.height).toBeGreaterThan(44);
+    expect(geometry.contentInside).toBe(true);
   });
 
   test("filter pills allow filtering by viewer relationship", async ({

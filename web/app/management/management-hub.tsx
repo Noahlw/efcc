@@ -156,7 +156,7 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
         : visibleGroups.length;
 
   return (
-    <>
+    <div className={styles.groupGrid}>
       {visibleGroups.map((group, index) => (
         <Fragment key={group.key}>
           {entryCard && index === entryIndex && (
@@ -165,10 +165,10 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
           <HubGroup group={group} />
         </Fragment>
       ))}
-      {entryCard && entryIndex === visibleGroups.length && visibleGroups.length > 0 && (
+      {entryCard && entryIndex === visibleGroups.length && (
         <EntryCard entryCard={entryCard} />
       )}
-    </>
+    </div>
   );
 }
 
@@ -252,12 +252,15 @@ export function ManagementHub() {
         </section>
       )}
 
-      {state.kind === "ready" && state.groups.some((group) => group.rows.length > 0) ? (
+      {state.kind === "ready" &&
+      (state.groups.some((group) => group.rows.length > 0) ||
+        Boolean(state.entryCard)) ? (
         <DirectoryContent groups={state.groups} entryCard={state.entryCard} />
       ) : null}
 
       {state.kind === "ready" &&
-        state.groups.every((group) => group.rows.length === 0) && (
+        state.groups.every((group) => group.rows.length === 0) &&
+        !state.entryCard && (
           <section
             id="management-hub-state"
             tabIndex={-1}
@@ -274,4 +277,3 @@ export function ManagementHub() {
     </section>
   );
 }
-

@@ -3304,7 +3304,9 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       weeklyDates.includes(cancelDate),
       "cancelled date stays visible as a skip row"
     );
-    const cancelled = plan.occurrences.find((o) => o.occurs_on === cancelDate);
+    const cancelled = plan.occurrences.find(
+      (o) => o.rule_id === weekly.rule_id && o.occurs_on === cancelDate
+    );
     assert.strictEqual(cancelled?.skip_reason, "CANCEL");
     assert.ok(
       cancelled?.exception_id,
@@ -5948,7 +5950,7 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(unknown.status, 404);
   });
 
-  test("REQ-2 an Admin actor without program.enroll is denied 403", async () => {
+  test("REQ-2 an Admin actor retains the program.enroll participant baseline", async () => {
     const res = await worker.fetch(
       programsRequest(
         `/api/v1/programs/${requestProgramId}/enrollment-requests`,
@@ -5964,7 +5966,12 @@ describe("PRG-03: enrollment requests", () => {
       ),
       testEnv()
     );
-    assert.strictEqual(res.status, 403);
+    assert.strictEqual(res.status, 201);
+    const body = (await res.json()) as {
+      data: { request: { status: string; member_user_id: string } };
+    };
+    assert.strictEqual(body.data.request.status, "Pending");
+    assert.strictEqual(body.data.request.member_user_id, "U001");
   });
 
   test("child enrollment routes reject a mismatched parent program", async () => {

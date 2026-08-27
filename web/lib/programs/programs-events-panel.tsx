@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { buildCheckInSheet } from "@/lib/check-in-sheet";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -459,18 +463,18 @@ export const EventsPanel = ({
         </output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
       {loadError && (
-        <button
+        <Button
           type="button"
           className={styles.retry}
           onClick={() => void load()}
         >
           {COPY.error.retry}
-        </button>
+        </Button>
       )}
 
       {canManage && (
@@ -484,13 +488,13 @@ export const EventsPanel = ({
             {COPY.programs.createMeeting}
           </h5>
           {manualError !== null && (
-            <output className={styles.panelError} role="alert">
+            <Alert className={styles.panelError} variant="destructive">
               {manualError}
-            </output>
+            </Alert>
           )}
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventDate}</span>
-            <input
+            <Input
               type="date"
               name="event_date"
               aria-label={COPY.programs.eventDate}
@@ -499,7 +503,7 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventTime}</span>
-            <input
+            <Input
               type="time"
               name="event_time"
               aria-label={COPY.programs.eventTime}
@@ -508,7 +512,7 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventName}</span>
-            <input
+            <Input
               type="text"
               name="name"
               placeholder={COPY.programs.eventNamePlaceholder}
@@ -543,13 +547,9 @@ export const EventsPanel = ({
           <p className={styles.programDetailMuted}>
             {COPY.programs.repeatFormInformational}
           </p>
-          <button
-            type="submit"
-            disabled={busy}
-            className={styles.actionButton}
-          >
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.createMeeting}
-          </button>
+          </Button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
       )}
@@ -615,7 +615,7 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.monthDayLabel}</span>
-            <input
+            <Input
               type="number"
               name="month_day"
               min={1}
@@ -625,7 +625,7 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.startTime}</span>
-            <input
+            <Input
               type="time"
               name="start_time"
               required
@@ -634,20 +634,16 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.endTime}</span>
-            <input
+            <Input
               type="time"
               name="end_time"
               required
               aria-label={COPY.programs.endTime}
             />
           </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className={styles.actionButton}
-          >
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.addRule}
-          </button>
+          </Button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
       )}
@@ -681,38 +677,39 @@ export const EventsPanel = ({
                 </strong>
                 <span className={styles.eventDate}>{wall.date}</span>
                 <span className={styles.eventDate}>{wall.time}</span>
-                <span className={styles.eventSource}>
+                <Badge className={styles.eventSource} variant="outline">
                   {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-                </span>
-                <span className={styles.eventSource}>
+                </Badge>
+                <Badge className={styles.eventSource} variant="outline">
                   {COPY.programs.repeatLabel.replace(
                     "{tag}",
                     eventRecurrenceTag(event, rule)
                   )}
-                </span>
-                <span className={styles.eventSource}>
+                </Badge>
+                <Badge className={styles.eventSource} variant="outline">
                   {event.source === "SCHEDULE"
                     ? COPY.programs.eventScheduleSource
                     : COPY.programs.eventManualSource}
-                </span>
-                <span
+                </Badge>
+                <Badge
                   className={
                     event.status === "Cancelled"
                       ? styles.eventCancelled
                       : styles.eventActive
                   }
+                  variant={event.status === "Cancelled" ? "outline" : "default"}
                 >
                   {STATUS_LABEL[event.status]}
-                </span>
+                </Badge>
                 {event.exception !== null && event.exception !== undefined && (
-                  <span className={styles.exceptionBadge}>
+                  <Badge className={styles.exceptionBadge} variant="secondary">
                     {event.exception.action === "RESCHEDULE"
                       ? COPY.programs.eventRescheduledBadge.replace(
                           "{time}",
                           event.exception.new_start_time ?? ""
                         )
                       : COPY.programs.eventCancelledBadge}
-                  </span>
+                  </Badge>
                 )}
                 {canManage &&
                   event.status === "Active" &&
@@ -725,43 +722,43 @@ export const EventsPanel = ({
                           ref={rescheduleFormRef}
                           onSubmit={submitReschedule(rule, wall.date)}
                         >
-                          <input
+                          <Input
                             type="time"
                             name="new_start_time"
                             required
                             aria-label={COPY.programs.rescheduleStart}
                           />
-                          <input
+                          <Input
                             type="time"
                             name="new_end_time"
                             required
                             aria-label={COPY.programs.rescheduleEnd}
                           />
-                          <button
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.actionButton}
                           >
                             {COPY.programs.confirmReschedule}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
                             disabled={busy}
                             className={styles.secondaryButton}
                             onClick={() => setReschedulingEventId(null)}
                           >
                             {COPY.programs.cancelRevoke}
-                          </button>
+                          </Button>
                         </form>
                       ) : (
-                        <button
+                        <Button
                           type="button"
                           disabled={busy}
                           className={styles.secondaryButton}
                           onClick={() => setReschedulingEventId(event.event_id)}
                         >
                           {COPY.programs.rescheduleEvent}
-                        </button>
+                        </Button>
                       )}
                       <form
                         className={styles.cancelForm}
@@ -778,42 +775,42 @@ export const EventsPanel = ({
                             ref={confirmOccurrenceRef}
                           >
                             <span>{COPY.programs.cancelOccurrenceConfirm}</span>
-                            <button
+                            <Button
                               type="submit"
                               disabled={busy}
                               className={styles.dangerButton}
                             >
                               {COPY.programs.confirmCancelOccurrence}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
                               disabled={busy}
                               className={styles.secondaryButton}
                               onClick={() => setConfirmingCancelId(null)}
                             >
                               {COPY.programs.keepOccurrence}
-                            </button>
+                            </Button>
                           </div>
                         ) : (
-                          <button
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.secondaryButton}
                           >
                             {COPY.programs.cancelOccurrence}
-                          </button>
+                          </Button>
                         )}
                       </form>
                     </div>
                   ) : (
-                    <button
+                    <Button
                       type="button"
                       disabled={busy}
                       className={styles.successOutline}
                       onClick={() => removeException(exception)}
                     >
                       {COPY.programs.restoreOccurrence}
-                    </button>
+                    </Button>
                   ))}
                 {event.status === "Cancelled" &&
                   event.cancel_reason !== null && (
@@ -825,13 +822,13 @@ export const EventsPanel = ({
                     </span>
                   )}
                 {canManage && (
-                  <button
+                  <Button
                     type="button"
                     className={styles.secondaryButton}
                     onClick={() => onOpenEvent?.(event.event_id)}
                   >
                     {COPY.programs.eventDetailOpen}
-                  </button>
+                  </Button>
                 )}
                 {canManage && event.status === "Active" && (
                   <>
@@ -840,20 +837,20 @@ export const EventsPanel = ({
                       noValidate
                       onSubmit={submitCancel(event.event_id)}
                     >
-                      <input
+                      <Input
                         type="text"
                         name="cancel_reason"
                         placeholder={COPY.programs.cancelReasonPlaceholder}
                         aria-label={COPY.programs.cancelReason}
                       />
                       {confirmingEventId !== event.event_id && (
-                        <button
+                        <Button
                           type="submit"
                           disabled={busy}
                           className={styles.dangerOutline}
                         >
                           {COPY.programs.cancelEvent}
-                        </button>
+                        </Button>
                       )}
                       {confirmingEventId === event.event_id && (
                         <div
@@ -864,34 +861,32 @@ export const EventsPanel = ({
                           <strong>
                             {COPY.programs.cancelMeetingConfirmTitle}
                           </strong>
-                          <span>
-                            {COPY.programs.cancelMeetingConfirmBody}
-                          </span>
-                          <button
+                          <span>{COPY.programs.cancelMeetingConfirmBody}</span>
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.dangerButton}
                           >
                             {COPY.programs.confirmCancel}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
                             disabled={busy}
                             className={styles.secondaryButton}
                             onClick={() => setConfirmingEventId(null)}
                           >
                             {COPY.programs.keepMeeting}
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </form>
-                    <button
+                    <Button
                       type="button"
                       className={styles.actionButton}
                       onClick={() => printSheet(event)}
                     >
                       {COPY.attendance.printSheet}
-                    </button>
+                    </Button>
                     <a
                       className={styles.actionButton}
                       href={

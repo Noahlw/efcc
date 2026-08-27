@@ -4,6 +4,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
@@ -247,13 +252,14 @@ const ParticipantSchedule = ({
                     {COPY.programs.eventActive}
                   </span>
                   {selfCheckInAvailable && (
-                    <span
+                    <Badge
                       className={`${styles.directoryStatus} ${styles.directoryStatusNeutral}`}
+                      variant="outline"
                       role="status"
                       aria-label={COPY.programs.checkInAvailable}
                     >
                       {COPY.programs.checkInAvailable}
-                    </span>
+                    </Badge>
                   )}
                 </div>
               </li>
@@ -261,7 +267,7 @@ const ParticipantSchedule = ({
           })}
         </ul>
         {totalEventCount > events.length && onExpandAll && (
-          <button
+          <Button
             type="button"
             className={styles.programDetailExpandButton}
             onClick={onExpandAll}
@@ -270,7 +276,7 @@ const ParticipantSchedule = ({
               "{count}",
               String(totalEventCount)
             )}
-          </button>
+          </Button>
         )}
       </div>
     )}
@@ -420,6 +426,7 @@ export const ParticipantProgramDetail = ({
         aria-busy="true"
       >
         <p>{COPY.programs.detailLoading}</p>
+        <Skeleton className="h-16 w-full" aria-hidden="true" />
       </section>
     );
   }
@@ -436,38 +443,38 @@ export const ParticipantProgramDetail = ({
           {COPY.programs.detailUnavailable}
         </h2>
         <p>{COPY.programs.detailUnavailableHint}</p>
-        <button className={styles.retry} type="button" onClick={onBack}>
+        <Button className={styles.retry} type="button" onClick={onBack}>
           {COPY.programs.detailBack}
-        </button>
+        </Button>
       </section>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <section
+      <Alert
         id="program-detail-state"
         className={styles.boundaryError}
         tabIndex={-1}
-        role="alert"
+        variant="destructive"
       >
         <h2 className={styles.boundaryTitle}>
           {COPY.programs.detailLoadError}
         </h2>
         <p>{state.message}</p>
         <div className={styles.programDetailActions}>
-          <button className={styles.retry} type="button" onClick={retryDetail}>
+          <Button className={styles.retry} type="button" onClick={retryDetail}>
             {COPY.programs.detailRetry}
-          </button>
-          <button
+          </Button>
+          <Button
             className={styles.secondaryButton}
             type="button"
             onClick={onBack}
           >
             {COPY.programs.detailBack}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Alert>
     );
   }
 
@@ -497,21 +504,30 @@ export const ParticipantProgramDetail = ({
       className={styles.programDetail}
       aria-labelledby="program-detail-title"
     >
-      <button
+      <Button
         className={styles.programDetailBack}
         type="button"
         aria-label={COPY.programs.detailBack}
         onClick={onBack}
       >
         <EventFactIcon name="back" /> {COPY.programs.detailBack}
-      </button>
+      </Button>
       <header className={styles.programDetailHeader}>
-        <span
+        <Badge
           className={`${styles.directoryStatus} ${statusClass[status.kind]} ${styles.programDetailStatus}`}
+          variant={
+            status.kind === "danger"
+              ? "destructive"
+              : status.kind === "neutral"
+                ? "outline"
+                : status.kind === "pending"
+                  ? "secondary"
+                  : "default"
+          }
           role="status"
         >
           {status.label}
-        </span>
+        </Badge>
         <h1
           id="program-detail-title"
           className={styles.boundaryTitle}
@@ -538,7 +554,7 @@ export const ParticipantProgramDetail = ({
           >
             {eventTitle(nextEvent, 0)}
           </h3>
-          <div className={styles.programDetailInfoCard}>
+          <Card className={styles.programDetailInfoCard}>
             <p
               className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
             >
@@ -554,21 +570,21 @@ export const ParticipantProgramDetail = ({
                 <span>{nextLocation}</span>
               </p>
             ) : null}
-          </div>
+          </Card>
           {nextConflict && (
             <p className={styles.programDetailConflict} role="note">
               {nextConflict}
             </p>
           )}
           {canOpenEventDetail && (
-            <button
+            <Button
               type="button"
               className={styles.secondaryButton}
               onClick={() => onOpenEvent(nextEvent.event_id)}
               aria-label={COPY.programs.viewEventDetail}
             >
               {COPY.programs.viewEventDetail}
-            </button>
+            </Button>
           )}
         </article>
       )}
@@ -584,16 +600,16 @@ export const ParticipantProgramDetail = ({
       {canManage && (
         <div className={styles.managementEntry}>
           <div>
-            <h3>{COPY.programs.managementMode}</h3>
+            <h2>{COPY.programs.managementMode}</h2>
             <p>{COPY.programs.managementLead}</p>
           </div>
-          <button
+          <Button
             className={styles.button}
             type="button"
             onClick={onManagement}
           >
             {COPY.programs.enterManagement}
-          </button>
+          </Button>
         </div>
       )}
       <ParticipantEnrollment

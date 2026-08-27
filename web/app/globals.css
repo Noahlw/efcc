@@ -10,7 +10,7 @@
      --ink            #171a1d  (primary text)
      --ink-muted      #59636a  (secondary text)
      --line           #d6dcde  (hairline dividers)
-     --line-strong    #aeb8bc  (input borders)
+     --line-strong    #6f7b80  (functional control boundaries)
      --accent         #9c302c  (cinnabar — primary submit / active / brand mark)
    --accent-deep    #76231f  (accent hover)
    --focus          #176a87  (focus-visible ring)
@@ -25,13 +25,20 @@
       --pending-border  #c1ad95
       --skeleton       #e3e0e1  (loading placeholder)
    ========================================================================== */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 :root {
   --surface: #f4f5f3;
   --surface-raised: #ffffff;
   --ink: #171a1d;
   --ink-muted: #59636a;
   --line: #d6dcde;
-  --line-strong: #aeb8bc;
+  /* Functional boundaries need 3:1 non-text contrast against white and the
+     civic surface. Keep --line for decorative dividers. */
+  --line-strong: #6f7b80;
   --accent: #9c302c;
   --accent-deep: #76231f;
   --focus: #176a87;
@@ -51,6 +58,48 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-pill: 999px;
+  /* Semantic spacing scale. Components should consume these values instead
+     of introducing one-off rem/px values at the page layer. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --background: #f4f5f3;
+  --foreground: #171a1d;
+  --card: #ffffff;
+  --card-foreground: #171a1d;
+  --popover: #ffffff;
+  --popover-foreground: #171a1d;
+  --primary: #9c302c;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f5f3;
+  --secondary-foreground: #171a1d;
+  --muted: #f4f5f3;
+  --muted-foreground: #59636a;
+  --accent-foreground: #ffffff;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #d6dcde;
+  --input: #6f7b80;
+  --ring: #176a87;
+  --chart-1: #9c302c;
+  --chart-2: #176a87;
+  --chart-3: #2e6b37;
+  --chart-4: #8a5b16;
+  --chart-5: #59636a;
+  --radius: 12px;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #171a1d;
+  --sidebar-primary: #9c302c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f5f3;
+  --sidebar-accent-foreground: #171a1d;
+  --sidebar-border: #d6dcde;
+  --sidebar-ring: #176a87;
 }
 
 html {
@@ -72,12 +121,6 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 a {
@@ -117,7 +160,8 @@ a {
   gap: 0.25rem;
   height: 62px;
   padding: 0.375rem 0.25rem;
-  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  /* Keep scrolling content from bleeding through the fixed dock. */
+  background: var(--surface-raised);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
@@ -187,7 +231,7 @@ a {
     padding: 0.375rem 0.125rem;
     border-radius: 1rem;
     color: var(--ink-muted);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     white-space: nowrap;
     transition:
       background-color 0.15s ease,
@@ -251,7 +295,11 @@ a {
     align-self: flex-start;
     flex-direction: column;
     width: 200px;
-    height: calc(100dvh - 64px);
+    /* Match the actual flex shell body height; the header grows with its
+       content, so subtracting a hard-coded 64px can leave the rail hanging
+       below the viewport. */
+    height: 100%;
+    min-height: 0;
     padding: 1rem 0.75rem;
     overflow-y: auto;
     background: var(--surface-raised);
@@ -261,7 +309,7 @@ a {
 
   .shell-body--scanner .nav-desktop {
     top: 0;
-    height: 100dvh;
+    height: 100%;
   }
 
   .nav-desktop__list {
@@ -476,4 +524,65 @@ input:focus-visible {
 .attention-panel__list span {
   color: var(--ink-muted);
   font-size: 0.88rem;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    /* Keep the reset in Tailwind's base layer so utility classes such as
+       px-4/py-2 can intentionally win in the utilities layer.  An
+       unlayered reset here would silently turn component spacing into 0px. */
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

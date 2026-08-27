@@ -125,6 +125,30 @@ interface AccountPermissionsBody {
       scope: string;
       assignmentState: "assigned" | "assignable";
     }>;
+    policy: {
+      revision: number;
+      actor: {
+        role: "Admin" | "Staff" | "Member";
+        canRead: boolean;
+        canEdit: boolean;
+      };
+      capabilities: {
+        key: string;
+        label: string;
+        description: string;
+        group: string;
+        roles: Record<
+          "admin" | "staff" | "member",
+          {
+            value: boolean;
+            applicable: boolean;
+            editable: boolean;
+            locked: boolean;
+            lockReason: string | null;
+          }
+        >;
+      }[];
+    };
   };
 }
 
@@ -257,7 +281,40 @@ describe("087-03: Account Permissions matrix", () => {
     const { status, body } = await fetchPermissions(staffAccess);
     assert.strictEqual(status, 200);
     const adminView = await fetchPermissions(adminAccess);
-    assert.deepStrictEqual(body.data, adminView.body.data);
+    assert.deepStrictEqual(body.data.accounts, adminView.body.data.accounts);
+    assert.deepStrictEqual(body.data.roles, adminView.body.data.roles);
+    assert.deepStrictEqual(
+      body.data.policy.revision,
+      adminView.body.data.policy.revision
+    );
+    assert.deepStrictEqual(
+      body.data.policy.capabilities.map((capability) =>
+        Object.fromEntries(
+          Object.entries(capability.roles).map(([role, cell]) => [
+            role,
+            {
+              value: cell.value,
+              applicable: cell.applicable,
+              locked: cell.locked,
+              lockReason: cell.lockReason,
+            },
+          ])
+        )
+      ),
+      adminView.body.data.policy.capabilities.map((capability) =>
+        Object.fromEntries(
+          Object.entries(capability.roles).map(([role, cell]) => [
+            role,
+            {
+              value: cell.value,
+              applicable: cell.applicable,
+              locked: cell.locked,
+              lockReason: cell.lockReason,
+            },
+          ])
+        )
+      )
+    );
   });
 
   test("role assignment states count each role holder independently", async () => {
@@ -352,5 +409,117 @@ describe("087-03: Account Permissions matrix", () => {
     assert.strictEqual(body.code, "FORBIDDEN");
     assert.strictEqual(body.status, 403);
     assert.strictEqual(body.requestId, response.headers.get("X-Request-Id"));
+  });
+
+  test("S4 seeds the additive 13-capability role policy", async () => {
+    const rows = await testDb()
+      .prepare(
+        "SELECT role, capability FROM role_capabilities ORDER BY role, capability"
+      )
+      .all<{ role: string; capability: string }>();
+    const actual = rows.results.map((row) => `${row.role}:${row.capability}`);
+    const expected = [
+      "Admin:account.directory.read",
+      "Admin:account.permissions.read",
+      "Admin:account.permissions.write",
+      "Admin:department.manage",
+      "Admin:department.manager.assign",
+      "Admin:department.module.configure",
+      "Admin:department.publish",
+      "Admin:home.publish",
+      "Admin:program.enroll",
+      "Admin:program.leader.assign",
+      "Admin:program.manage",
+      "Admin:program.publish",
+      "Admin:registration.approval.manage",
+      "Staff:account.directory.read",
+      "Staff:account.permissions.read",
+      "Staff:department.manage",
+      "Staff:department.manager.assign",
+      "Staff:department.module.configure",
+      "Staff:department.publish",
+      "Staff:program.enroll",
+      "Staff:program.leader.assign",
+      "Staff:program.manage",
+      "Staff:program.publish",
+      "Staff:registration.approval.manage",
+      "Member:program.enroll",
+    ];
+    assert.deepStrictEqual([...actual].sort(), [...expected].sort());
+  });
+
+  test("S4-04 projects the authoritative revision and complete policy metadata", async () => {
+    const { status, body } = await fetchPermissions(adminAccess);
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.data.policy.revision, 1);
+    assert.deepStrictEqual(
+      body.data.policy.capabilities.map((capability) => capability.key),
+      [
+        "program.enroll",
+        "department.manage",
+        "department.publish",
+        "department.module.configure",
+        "department.manager.assign",
+        "program.manage",
+        "program.publish",
+        "program.leader.assign",
+        "account.permissions.read",
+        "account.directory.read",
+        "registration.approval.manage",
+        "home.publish",
+        "account.permissions.write",
+      ]
+    );
+    const [baseline] = body.data.policy.capabilities;
+    assert.strictEqual(baseline.label, "提交課程報名");
+    assert.strictEqual(baseline.group, "會友基礎");
+    assert.deepStrictEqual(
+      Object.fromEntries(
+        Object.entries(baseline.roles).map(([role, cell]) => [
+          role,
+          {
+            value: cell.value,
+            applicable: cell.applicable,
+            editable: cell.editable,
+            locked: cell.locked,
+          },
+        ])
+      ),
+      {
+        admin: { value: true, applicable: true, editable: false, locked: true },
+        staff: { value: true, applicable: true, editable: false, locked: true },
+        member: { value: true, applicable: true, editable: false, locked: true },
+      }
+    );
+    assert.ok(baseline.roles.admin.lockReason);
+
+    const adminOnly = body.data.policy.capabilities.find(
+      (capability) => capability.key === "account.permissions.write"
+    );
+    assert.ok(adminOnly);
+    assert.strictEqual(adminOnly.roles.admin.value, true);
+    assert.strictEqual(adminOnly.roles.admin.locked, true);
+    assert.strictEqual(adminOnly.roles.staff.applicable, false);
+    assert.strictEqual(adminOnly.roles.member.applicable, false);
+    assert.ok(adminOnly.roles.staff.lockReason);
+    assert.ok(adminOnly.roles.member.lockReason);
+
+    assert.deepStrictEqual(body.data.policy.actor, {
+      role: "Admin",
+      canRead: true,
+      canEdit: true,
+    });
+    const staff = await fetchPermissions(staffAccess);
+    assert.strictEqual(staff.status, 200);
+    assert.deepStrictEqual(staff.body.data.policy.actor, {
+      role: "Staff",
+      canRead: true,
+      canEdit: false,
+    });
+    for (const capability of staff.body.data.policy.capabilities) {
+      for (const cell of Object.values(capability.roles)) {
+        assert.strictEqual(cell.editable, false);
+      }
+    }
   });
 });

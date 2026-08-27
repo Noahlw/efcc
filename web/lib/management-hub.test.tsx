@@ -152,6 +152,7 @@ const NARROW_HUB: HubData = {
 };
 
 const EMPTY_HUB: HubData = { groups: [], entryCard: null };
+const ENTRY_ONLY_HUB: HubData = { groups: [], entryCard: NARROW_HUB.entryCard };
 
 const ALL_ROWS: HubRow[] = ADMIN_HUB.groups.flatMap((group) => group.rows);
 
@@ -352,6 +353,20 @@ describe("ManagementHub component", () => {
         screen.queryByRole("heading", { level: 2, name: group })
       ).not.toBeInTheDocument();
     }
+  });
+
+  test("entry-card-only projection remains discoverable", async () => {
+    getManagementHub.mockResolvedValue(ENTRY_ONLY_HUB);
+    render(<ManagementHub />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("link", {
+          name: new RegExp(COPY.management.goCourseManagement, "u"),
+        })
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   test("shows a busy loading region while the projection is pending", () => {

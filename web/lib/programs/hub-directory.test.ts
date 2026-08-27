@@ -225,7 +225,7 @@ describe("HUB-01: Management Hub directory projection", () => {
     );
   });
 
-  test("Admin sees the full projection: 3 fixed groups, 6 rows, entry card", async () => {
+  test("Admin sees the full projection: 3 fixed groups, 7 rows, entry card", async () => {
     const admin = await login("alice", "alice-secret");
     const suffix = crypto.randomUUID().slice(0, 8);
     const departmentId = await createDepartment(admin, `HUB-ADMIN-${suffix}`);
@@ -241,17 +241,18 @@ describe("HUB-01: Management Hub directory projection", () => {
     assert.deepStrictEqual(
       view.groups.map(rowKeys),
       [
-        ["approvals", "permissions"],
+        ["accounts", "approvals", "permissions"],
         ["departments", "attendance", "members"],
         ["home-content"],
       ]
     );
 
     const rows = allRows(view);
-    assert.strictEqual(rows.length, 6);
+    assert.strictEqual(rows.length, 7);
     const byKey = new Map(rows.map((row) => [row.key, row]));
     assert.deepStrictEqual(
       {
+        accounts: byKey.get("accounts"),
         approvals: byKey.get("approvals"),
         permissions: byKey.get("permissions"),
         departments: byKey.get("departments"),
@@ -260,6 +261,12 @@ describe("HUB-01: Management Hub directory projection", () => {
         "home-content": byKey.get("home-content"),
       },
       {
+        accounts: {
+          key: "accounts",
+          label: "帳戶名錄",
+          description: "搜尋登入身份及帳戶狀態",
+          href: "/management?module=accounts",
+        },
         approvals: {
           key: "approvals",
           label: "註冊審批",
@@ -328,7 +335,7 @@ describe("HUB-01: Management Hub directory projection", () => {
     assert.deepStrictEqual(
       view.groups.map(rowKeys),
       [
-        ["approvals", "permissions"],
+        ["accounts", "approvals", "permissions"],
         ["departments", "attendance", "members"],
       ]
     );

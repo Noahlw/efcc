@@ -3,6 +3,10 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -175,13 +179,13 @@ export const ProgramForm = ({
           {COPY.programs.programCreateUnavailable}
         </p>
         {onCancel && (
-          <button
+          <Button
             className={styles.secondaryButton}
             type="button"
             onClick={onCancel}
           >
             {COPY.programs.cancelEdit}
-          </button>
+          </Button>
         )}
       </section>
     );
@@ -202,9 +206,9 @@ export const ProgramForm = ({
           : COPY.programs.programCreateLead}
       </p>
       {formError && (
-        <p className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {formError}
-        </p>
+        </Alert>
       )}
       {notice && <output className={styles.panelNotice}>{notice}</output>}
       <form className={styles.form} onSubmit={submit}>
@@ -236,7 +240,7 @@ export const ProgramForm = ({
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.programName}
-            <input
+            <Input
               className={styles.input}
               value={values.name}
               onChange={(event) => update("name", event.target.value)}
@@ -251,7 +255,7 @@ export const ProgramForm = ({
             {initial
               ? COPY.programs.programDescription
               : COPY.programs.programPurpose}
-            <textarea
+            <Textarea
               className={styles.textarea}
               value={values.description}
               onChange={(event) => update("description", event.target.value)}
@@ -264,7 +268,7 @@ export const ProgramForm = ({
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.programCategory}
-            <input
+            <Input
               className={styles.input}
               value={values.category}
               onChange={(event) => update("category", event.target.value)}
@@ -384,18 +388,18 @@ export const ProgramForm = ({
           </label>
         </div>
         <div className={styles.workspaceActions}>
-          <button className={styles.button} type="submit" disabled={busy}>
+          <Button className={styles.button} type="submit" disabled={busy}>
             {busy ? COPY.programs.submitting : COPY.programs.saveProgram}
-          </button>
+          </Button>
           {onCancel && (
-            <button
+            <Button
               className={styles.secondaryButton}
               type="button"
               onClick={onCancel}
               disabled={busy}
             >
               {COPY.programs.cancelEdit}
-            </button>
+            </Button>
           )}
         </div>
       </form>

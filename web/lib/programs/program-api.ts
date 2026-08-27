@@ -128,9 +128,59 @@ export interface AccountPermissionRole {
   assignmentState: "assigned" | "assignable";
 }
 
+export type PermissionPolicyRoleKey = "admin" | "staff" | "member";
+
+export interface AccountPermissionPolicyCell {
+  value: boolean;
+  applicable: boolean;
+  editable: boolean;
+  locked: boolean;
+  lockReason: string | null;
+}
+
+export interface AccountPermissionPolicyCapability {
+  key: string;
+  label: string;
+  description: string;
+  group: string;
+  roles: Record<PermissionPolicyRoleKey, AccountPermissionPolicyCell>;
+}
+
+export interface AccountPermissionPolicyActor {
+  role: "Admin" | "Staff" | "Member";
+  canRead: boolean;
+  canEdit: boolean;
+}
+
+export interface AccountPermissionPolicy {
+  revision: number;
+  actor: AccountPermissionPolicyActor;
+  capabilities: AccountPermissionPolicyCapability[];
+}
+
 export interface AccountPermissionsView {
   accounts: AccountPermissionAccount[];
   roles: AccountPermissionRole[];
+  policy: AccountPermissionPolicy;
+}
+
+export interface PermissionPolicyChange {
+  role: PermissionPolicyRoleKey;
+  capability: string;
+  value: boolean;
+}
+
+export interface AccountPermissionsMutation {
+  baseRevision: number;
+  changes: PermissionPolicyChange[];
+}
+
+export interface AccountPermissionsMutationView extends AccountPermissionsView {
+  mutation: {
+    outcome: "SUCCESS" | "DUPLICATE";
+    idempotent: boolean;
+    revision: number;
+  };
 }
 
 export interface ManagementCockpitNextEvent {
@@ -487,9 +537,28 @@ export interface MemberDirectoryMember {
   name: string;
   phone: string | null;
   role: MemberDirectoryRole;
-  status: "Active";
+  status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: MemberDirectoryDepartment[];
 }
+
+export interface AccountDirectoryMember extends MemberDirectoryMember {
+  username: string | null;
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
+  summary: AccountDirectorySummary;
+}
+
+export type AccountDirectoryDetail = AccountDirectoryMember;
 
 export interface GenerateResult {
   run_id: string;
@@ -869,6 +938,19 @@ export function getAccountPermissions(): Promise<AccountPermissionsView> {
   );
 }
 
+/** POST /api/v1/programs/account-permissions — staged atomic policy change. */
+export function updateAccountPermissions(
+  input: AccountPermissionsMutation,
+  idempotencyKey?: string
+): Promise<AccountPermissionsMutationView> {
+  return programsFetch(
+    "/api/v1/programs/account-permissions",
+    "POST",
+    input,
+    { idempotencyKey }
+  );
+}
+
 // ponytail: in-memory catalog cache for F-C01 warming — no contract change,
 // just avoids refetching within 30s and lets /home prefetch prime /programs.
 let catalogCache: { catalog: ParticipantCatalogEntry[]; at: number } | null =
@@ -1076,6 +1158,46 @@ export function searchManagementMembers(
     params.set("limit", String(options.limit));
   }
   return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts?q=...&role=...&status=... — Account Directory. */
+export function searchAccountDirectory(
+  query: string,
+  options?: {
+    cursor?: string;
+    department?: string;
+    limit?: number;
+    role?: AccountDirectoryMember["role"];
+    status?: AccountDirectoryMember["status"];
+  }
+): Promise<AccountDirectoryView> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options?.cursor !== undefined) {
+    params.set("cursor", options.cursor);
+  }
+  if (options?.department !== undefined) {
+    params.set("department", options.department);
+  }
+  if (options?.role !== undefined) {
+    params.set("role", options.role);
+  }
+  if (options?.status !== undefined) {
+    params.set("status", options.status);
+  }
+  return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts/:id — authorized Account Detail. */
+export function getAccountDirectoryDetail(
+  userId: string
+): Promise<AccountDirectoryDetail> {
+  return programsFetch(
+    `/api/v1/programs/accounts/${encodeURIComponent(userId)}`,
+    "GET"
+  );
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */

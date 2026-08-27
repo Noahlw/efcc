@@ -177,6 +177,7 @@ export default {
             handleMe,
             handleAdminUnlock,
             handleApprove,
+            handleApproveBatch,
             handleReject,
             handleListRegistrations,
             handleRegistrationDetail,
@@ -233,6 +234,12 @@ export default {
             request.method === "GET"
           ) {
             return handleListRegistrations(request, authEnv);
+          }
+          if (
+            url.pathname === "/api/v1/auth/registrations/approve-batch" &&
+            request.method === "POST"
+          ) {
+            return handleApproveBatch(request, authEnv);
           }
           const registrationDetail = url.pathname.match(
             /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)$/u
@@ -312,8 +319,11 @@ export default {
         handleListManagementAccess,
         handleGetManagementHub,
         handleGetAccountPermissions,
+        handleUpdateAccountPermissions,
         handleListManagementDirectory,
         handleSearchManagementMembers,
+        handleSearchAccountDirectory,
+        handleGetAccountDirectoryDetail,
         handleGetManagementAttention,
         handleGetManagementNotifications,
         handleMarkManagementNotificationsRead,
@@ -377,10 +387,29 @@ export default {
         return handleGetAccountPermissions(request, programEnv);
       }
       if (
+        url.pathname === "/api/v1/programs/account-permissions" &&
+        request.method === "POST"
+      ) {
+        return handleUpdateAccountPermissions(request, programEnv);
+      }
+      if (
         url.pathname === "/api/v1/programs/management-directory" &&
         request.method === "GET"
       ) {
         return handleListManagementDirectory(request, programEnv);
+      }
+      if (
+        url.pathname.startsWith("/api/v1/programs/accounts/") &&
+        request.method === "GET"
+      ) {
+        const accountId = url.pathname.slice("/api/v1/programs/accounts/".length);
+        return handleGetAccountDirectoryDetail(request, programEnv, accountId);
+      }
+      if (
+        url.pathname === "/api/v1/programs/accounts" &&
+        request.method === "GET"
+      ) {
+        return handleSearchAccountDirectory(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/members" &&

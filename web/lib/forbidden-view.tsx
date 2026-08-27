@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 
 import styles from "./auth-shell.module.css";
@@ -11,26 +13,34 @@ import styles from "./auth-shell.module.css";
  * `返回個人檔案` routed to a safe section. Used by `GuardedSection` for
  * unauthorized (absent) sections and by the shell for a FORBIDDEN restore.
  */
-export function ForbiddenView({
+export const ForbiddenView = ({
   safeHref,
   onSignOut,
 }: {
   safeHref: string;
   onSignOut?: () => void;
-}) {
-  return (
+}) => 
+  (
     <main className={styles.state}>
-      <div className={styles.alert} role="alert">
+      <Alert variant="destructive" className={styles.alert}>
         {COPY.error.forbidden}
-      </div>
+      </Alert>
       {onSignOut && (
-        <button type="button" className={styles.btnPrimary} onClick={onSignOut}>
+        <Button
+          type="button"
+          onClick={onSignOut}
+          className="min-h-11 rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
+        >
           {COPY.logout.forbiddenAction}
-        </button>
+        </Button>
       )}
-      <Link className={styles.btnSecondary} href={safeHref}>
-        {COPY.nav.backToProfile}
-      </Link>
+      <Button
+        asChild
+        variant="outline"
+        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-transparent px-6 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+      >
+        <Link href={safeHref}>{COPY.nav.backToProfile}</Link>
+      </Button>
     </main>
-  );
-}
+  )
+;

@@ -43,11 +43,13 @@ import {
   setAuthCookieHeaders,
 } from "./cookies";
 import { verifyCredential, hashCredential } from "./credentials";
+import { CAPABILITY } from "../programs/capabilities";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
 import {
   approveRegistration,
+  approveRegistrationsBatch,
   findRegistrationById,
-  listPendingRegistrations,
+  listRegistrations,
   createRegistrationRequest,
   rejectRegistration,
   RegistrationConflictError,
@@ -281,6 +283,43 @@ async function requireAdminOrStaff(
       "FORBIDDEN",
       "Forbidden",
       "Admin or Staff role required.",
+      requestId
+    );
+  }
+  return { caller: resolved.account };
+}
+
+/** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
+async function requireCapability(
+  request: Request,
+  env: AuthEnv,
+  requestId: string,
+  capability: string
+): Promise<{ caller: AccountRow } | Response> {
+  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
+  if (resolved instanceof Response) {
+    return resolved;
+  }
+  if (resolved.account.account_status !== "Active") {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Account is not active.",
+      requestId
+    );
+  }
+  const granted = await env.DB.prepare(
+    "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ? LIMIT 1"
+  )
+    .bind(resolved.account.role, capability)
+    .first();
+  if (!granted) {
+    return problem(
+      403,
+      "FORBIDDEN",
+      "Forbidden",
+      "Registration approval capability required.",
       requestId
     );
   }
@@ -1085,7 +1124,12 @@ export async function handleApprove(
       requestId
     );
   }
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
@@ -1138,7 +1182,12 @@ export async function handleReject(
       requestId
     );
   }
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
@@ -1187,6 +1236,99 @@ export async function handleReject(
   return jsonResponse(200, { requestId, data: { accountStatus } }, requestId);
 }
 
+async function registrationBatchHash(requestIds: readonly string[]) {
+  const canonical = JSON.stringify([...requestIds].sort());
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical)
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** POST /api/v1/auth/registrations/approve-batch (S4H-04 #464). */
+export async function handleApproveBatch(
+  request: Request,
+  env: AuthEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const idempotencyKey = request.headers.get("Idempotency-Key");
+  if (!idempotencyKey) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Idempotency-Key header is required.",
+      requestId
+    );
+  }
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  let requestIds: unknown;
+  try {
+    requestIds = ((await request.json()) as { requestIds?: unknown }).requestIds;
+  } catch {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Body must be JSON.",
+      requestId
+    );
+  }
+  if (
+    !Array.isArray(requestIds) ||
+    requestIds.length === 0 ||
+    requestIds.length > 100 ||
+    requestIds.some(
+      (value) => typeof value !== "string" || value.length === 0 || value.length > 128
+    ) ||
+    new Set(requestIds).size !== requestIds.length
+  ) {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Select between one and 100 unique registration requests.",
+      requestId
+    );
+  }
+  const ids = requestIds as string[];
+  const requestHash = await registrationBatchHash(ids);
+  try {
+    const data = await approveRegistrationsBatch(env.DB, {
+      idempotencyKey,
+      requestHash,
+      requestIds: ids,
+      reviewerId: auth.caller.user_id,
+    });
+    return jsonResponse(200, { requestId, data }, requestId);
+  } catch (error) {
+    if (error instanceof RegistrationConflictError) {
+      return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+    }
+    if (error instanceof RegistrationNotFoundError) {
+      return problem(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown registration request.",
+        requestId
+      );
+    }
+    throw error;
+  }
+}
+
 /**
  * GET /api/v1/auth/registrations (AUTH-05 #163)
  *
@@ -1200,12 +1342,28 @@ export async function handleListRegistrations(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }
 
-  const rows = await listPendingRegistrations(env.DB);
+  const rawStatus = new URL(request.url).searchParams.get("status") ?? "Pending";
+  if (rawStatus !== "Pending" && rawStatus !== "Processed") {
+    return problem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Unknown registration queue status.",
+      requestId
+    );
+  }
+  const status = rawStatus as "Pending" | "Processed";
+  const rows = await listRegistrations(env.DB, status);
   const registrations = rows.map((r) => ({
     requestId: r.request_id,
     username: r.username,
@@ -1214,8 +1372,14 @@ export async function handleListRegistrations(
     submittedAt: r.submitted_at,
     accountStatus: r.account_status,
     role: r.role,
+    decision: r.review_decision,
+    decisionNote: r.rejection_note,
   }));
-  return jsonResponse(200, { requestId, data: { registrations } }, requestId);
+  return jsonResponse(
+    200,
+    { requestId, data: { registrations, status } },
+    requestId
+  );
 }
 
 /**
@@ -1235,7 +1399,12 @@ export async function handleRegistrationDetail(
   registrationId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }

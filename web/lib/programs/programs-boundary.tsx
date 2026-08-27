@@ -4,6 +4,10 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -186,9 +190,9 @@ const StatePanel = ({
       {title && <h2 className={styles.boundaryTitle}>{title}</h2>}
       <p>{message}</p>
       {actionLabel && onAction && (
-        <button className={styles.retry} type="button" onClick={onAction}>
+        <Button className={styles.retry} type="button" onClick={onAction}>
           {actionLabel}
-        </button>
+        </Button>
       )}
     </>
   );
@@ -200,19 +204,20 @@ const StatePanel = ({
         className={styles.boundaryState}
         aria-busy="true"
       >
+        <Skeleton className="mb-3 h-4 w-2/3" aria-hidden="true" />
         {content}
       </output>
     );
   }
   return (
-    <section
+    <Alert
       id={id}
       tabIndex={id ? -1 : undefined}
       className={styles.boundaryError}
-      role="alert"
+      variant="destructive"
     >
       {content}
-    </section>
+    </Alert>
   );
 };
 
@@ -253,35 +258,37 @@ const BoundaryFrame = ({
         </h1>
         <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
         {showModeTabs && (
-          <div
-            className={styles.modeSwitch}
-            role="tablist"
-            aria-label={COPY.programs.modeLabel}
+          <Tabs
+            value={intent.mode}
+            onValueChange={(value) =>
+              onModeChange(value as "participant" | "management")
+            }
           >
-            <button
-              id="programs-participant-tab"
-              className={styles.modeButton}
-              type="button"
-              role="tab"
-              aria-selected={intent.mode === "participant"}
-              aria-controls="programs-mode-panel"
-              onClick={() => onModeChange("participant")}
+            <TabsList
+              className={styles.modeSwitch}
+              variant="line"
+              aria-label={COPY.programs.modeLabel}
             >
-              {COPY.programs.participantMode}
-            </button>
-            {intent.mode === "management" && (
-              <button
-                id="programs-management-tab"
+              <TabsTrigger
+                id="programs-participant-tab"
                 className={styles.modeButton}
-                type="button"
-                role="tab"
-                aria-selected
+                value="participant"
                 aria-controls="programs-mode-panel"
               >
-                {COPY.programs.managementMode}
-              </button>
-            )}
-          </div>
+                {COPY.programs.participantMode}
+              </TabsTrigger>
+              {intent.mode === "management" && (
+                <TabsTrigger
+                  id="programs-management-tab"
+                  className={styles.modeButton}
+                  value="management"
+                  aria-controls="programs-mode-panel"
+                >
+                  {COPY.programs.managementMode}
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </Tabs>
         )}
       </header>
       <div
@@ -469,13 +476,13 @@ const ManagementPanel = ({
         {COPY.programs.managementBoundaryHint}
       </p>
       {intent.task === "notifications" && notificationSurface}
-      <button
+      <Button
         className={styles.secondaryButton}
         type="button"
         onClick={onParticipant}
       >
         {COPY.programs.enterParticipant}
-      </button>
+      </Button>
       {intent.task === "notifications" ? null : intent.programId ? (
         <ProgramWorkspace
           key={intent.programId}
@@ -696,6 +703,36 @@ export const ProgramsBoundary = () => {
     };
   }, [intent.malformed, intent.mode, loadAccess, locationReady]);
 
+  // Programs is rendered inside the persistent shell outlet, whose inner
+  // scroll position survives a client-side mode/detail transition. Reset the
+  // outlet when the visible intent changes so the new heading and focused tab
+  // are not mounted above the viewport. Keep the fallback assignment for
+  // jsdom, where Element#scrollTo is not implemented.
+  useEffect(() => {
+    if (!locationReady) {
+      return;
+    }
+    const shellContent = document.querySelector<HTMLElement>("#shell-content");
+    if (!shellContent) {
+      return;
+    }
+    shellContent.scrollTop = 0;
+    shellContent.scrollLeft = 0;
+    if (typeof shellContent.scrollTo === "function") {
+      shellContent.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [
+    intent.created,
+    intent.eventId,
+    intent.hash,
+    intent.malformed,
+    intent.mode,
+    intent.origin,
+    intent.programId,
+    intent.task,
+    locationReady,
+  ]);
+
   const managementModeReady =
     access.kind === "ready" && access.projection.hasManagementCapability;
   const boundaryStateVisible =
@@ -851,10 +888,12 @@ export const ProgramsBoundary = () => {
       return;
     }
     previousMode.current = intent.mode;
-    tab.focus();
+    // The shell owns scrolling; allowing focus() to auto-scroll the inner
+    // outlet can jump the newly rendered boundary back to a stale offset.
+    tab.focus({ preventScroll: true });
     queueMicrotask(() => {
       if (document.contains(tab)) {
-        tab.focus();
+        tab.focus({ preventScroll: true });
       }
     });
     focusMode.current = null;

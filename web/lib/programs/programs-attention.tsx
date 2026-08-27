@@ -2,13 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
-import { hkWallDateTimeLabel } from "@/lib/programs/recurrence";
-import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import type {
   ManagementAttention,
   ManagementAttentionItem,
 } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
+import { hkWallDateTimeLabel } from "@/lib/programs/recurrence";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -16,7 +20,6 @@ export type ManagementAttentionState =
   | { kind: "loading" }
   | { kind: "ready"; attention: ManagementAttention }
   | { kind: "error"; message: string };
-
 
 function attentionHref(item: ManagementAttentionItem): string {
   return buildProgramsHref(
@@ -42,19 +45,22 @@ export interface ProgramsAttentionProps {
   onExpand?: () => void;
 }
 
-export function ProgramsAttention({
+export const ProgramsAttention = ({
   state,
   onRetry,
   onOpen,
   onExpand,
-}: ProgramsAttentionProps) {
+}: ProgramsAttentionProps) => {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const returnFocusPending = useRef(false);
 
   useEffect(() => {
     if (open) {
-      document.getElementById("programs-attention-panel")?.focus();
+      const panel = document.querySelector<HTMLElement>(
+        "#programs-attention-panel"
+      );
+      panel?.focus();
       return;
     }
     if (returnFocusPending.current) {
@@ -67,15 +73,18 @@ export function ProgramsAttention({
   const actionableCount = attention?.total_actionable_count ?? 0;
 
   return (
-    <section className={styles.attentionControl} aria-label={COPY.programs.attentionControlLabel}>
-      <button
-        ref={triggerRef}
+    <section
+      className={styles.attentionControl}
+      aria-label={COPY.programs.attentionControlLabel}
+    >
+      <Button
         className={styles.attentionTrigger}
         type="button"
         aria-expanded={open}
         aria-controls="programs-attention-panel"
         aria-haspopup="dialog"
-        onClick={() => {
+        onClick={(event) => {
+          triggerRef.current = event.currentTarget;
           const nextOpen = !open;
           setOpen(nextOpen);
           if (nextOpen) {
@@ -85,19 +94,20 @@ export function ProgramsAttention({
       >
         <span>{COPY.programs.attentionTitle}</span>
         {actionableCount > 0 && (
-          <span
+          <Badge
             className={`${styles.badge} ${styles.badgeActive}`}
+            variant="default"
             aria-label={COPY.programs.attentionCount.replace(
               "{count}",
               String(actionableCount)
             )}
           >
             {actionableCount}
-          </span>
+          </Badge>
         )}
-      </button>
+      </Button>
       {open && (
-        <div
+        <section
           id="programs-attention-panel"
           className={styles.attentionPopover}
           role="dialog"
@@ -105,39 +115,41 @@ export function ProgramsAttention({
           tabIndex={-1}
         >
           {state.kind === "loading" && (
-            <output
-              className={styles.attentionState}
-              aria-busy="true"
-              role="status"
-            >
-              {COPY.programs.attentionLoading}
-            </output>
+            <>
+              <output className={styles.attentionState} aria-busy="true">
+                {COPY.programs.attentionLoading}
+              </output>
+              <Skeleton className={styles.attentionState} aria-hidden="true" />
+            </>
           )}
           {state.kind === "error" && (
-            <div className={styles.attentionState} role="alert">
+            <Alert className={styles.attentionState} variant="destructive">
               <p>{state.message}</p>
-              <button
-                className={styles.retry}
-                type="button"
-                onClick={onRetry}
-              >
+              <Button className={styles.retry} type="button" onClick={onRetry}>
                 {COPY.programs.attentionRetry}
-              </button>
-            </div>
+              </Button>
+            </Alert>
           )}
           {state.kind === "ready" && state.attention.items.length === 0 && (
-            <p className={styles.attentionZero} role="status">
+            <output className={styles.attentionZero}>
               {COPY.programs.attentionZero}
-            </p>
+            </output>
           )}
           {state.kind === "ready" && state.attention.items.length > 0 && (
             <>
-              <ul className={styles.attentionList} aria-label={COPY.programs.attentionListLabel}>
+              <ul
+                className={styles.attentionList}
+                aria-label={COPY.programs.attentionListLabel}
+              >
                 {state.attention.items.map((item) => {
                   const informational = !item.actionable;
                   return (
                     <li
-                      key={item.kind === "event" ? item.event_id : `${item.kind}-${item.program_id}`}
+                      key={
+                        item.kind === "event"
+                          ? item.event_id
+                          : `${item.kind}-${item.program_id}`
+                      }
                       className={`${styles.attentionItem} ${informational ? styles.attentionInformational : styles.attentionActionable}`}
                     >
                       <a
@@ -175,18 +187,18 @@ export function ProgramsAttention({
                 })}
               </ul>
               {state.attention.has_more && (
-                <button
+                <Button
                   className={styles.attentionViewAll}
                   type="button"
                   onClick={onExpand}
                 >
                   {COPY.programs.attentionViewAll}
-                </button>
+                </Button>
               )}
             </>
           )}
-        </div>
+        </section>
       )}
     </section>
   );
-}
+};
