@@ -23,6 +23,11 @@
   line-height: 1.6;
 }
 
+.groupGrid {
+  display: grid;
+  min-width: 0;
+}
+
 .groupSection {
   margin-top: 1.625rem;
 }
@@ -124,6 +129,27 @@
   border: 1px solid var(--line, #d6dcde);
   border-radius: 10px;
   background: var(--surface-raised, #ffffff);
+}
+
+@media (min-width: 1024px) {
+  .page {
+    max-width: 1120px;
+  }
+
+  .groupGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .groupSection,
+  .entrySection {
+    margin-top: 0;
+  }
+
+  .entrySection {
+    grid-column: 1 / -1;
+  }
 }
 
 .entryLabel {

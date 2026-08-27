@@ -558,6 +558,14 @@ describe("PermissionsPanel", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText(PERMISSIONS.policyDirty)).toBeInTheDocument();
     expect(
+      screen.getByRole("group", { name: "未儲存變更操作" })
+    ).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("group", { name: "未儲存變更操作" })
+      ).getByText("1 項未儲存")
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("heading", { name: PERMISSIONS.policyChangesTitle })
     ).toBeInTheDocument();
     expect(screen.getByText(/管理員 · ✓ → 停用/u)).toBeInTheDocument();

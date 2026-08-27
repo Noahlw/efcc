@@ -358,9 +358,9 @@ const LoginPage = () => {
 
       {/* Minimal civic shell — official church title. */}
       <header className={styles.header}>
-        <div className={styles.brand} aria-label={LANDING.homeLabel}>
+        <h1 className={styles.brand} aria-label={LANDING.homeLabel}>
           <span>{LANDING.brandFull}</span>
-        </div>
+        </h1>
       </header>
 
       <main className={styles.main}>
@@ -530,7 +530,7 @@ const LoginPage = () => {
             </Card>
 
             <div className={styles.loginCopy}>
-              <h1>{LANDING.brandFull}</h1>
+              <p className={styles.loginCopyTitle}>{LANDING.brandFull}</p>
               <p>{LANDING.systemDescription}</p>
             </div>
           </div>

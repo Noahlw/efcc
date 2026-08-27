@@ -223,7 +223,7 @@ export function NoticesPanel() {
         </Button>
       </div>
       {notices.length === 0 ? (
-        <Card className={styles.empty}>
+        <Card size="empty" className={styles.empty}>
           <h2 className={styles.emptyTitle}>{COPY.notices.noticesEmpty}</h2>
           <p className={styles.emptyHint}>{COPY.notices.noticesEmptyHint}</p>
         </Card>

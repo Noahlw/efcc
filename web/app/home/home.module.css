@@ -161,6 +161,10 @@
   padding: 1.125rem;
 }
 
+.errorCard {
+  padding: 1rem;
+}
+
 .enrolledBadge {
   display: inline-flex;
   width: fit-content;
@@ -242,7 +246,6 @@
 }
 
 .emptyCard {
-  padding: 1.25rem 1.125rem;
   text-align: center;
 }
 
@@ -287,6 +290,8 @@
 .sectionLink {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
+  padding-inline: 0.25rem;
 }
 
 .sectionLink:hover {
@@ -300,6 +305,18 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
+  white-space: normal;
+}
+
+.listCard > span {
+  min-width: 0;
+}
+
+/* The shared Button primitive adds a nowrap utility; cards need a stronger
+   selector so long announcement summaries can wrap without changing the
+   primitive's default for other controls. */
+button.listCard {
+  white-space: normal;
 }
 
 .cardTitle,

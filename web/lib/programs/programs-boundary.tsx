@@ -703,6 +703,36 @@ export const ProgramsBoundary = () => {
     };
   }, [intent.malformed, intent.mode, loadAccess, locationReady]);
 
+  // Programs is rendered inside the persistent shell outlet, whose inner
+  // scroll position survives a client-side mode/detail transition. Reset the
+  // outlet when the visible intent changes so the new heading and focused tab
+  // are not mounted above the viewport. Keep the fallback assignment for
+  // jsdom, where Element#scrollTo is not implemented.
+  useEffect(() => {
+    if (!locationReady) {
+      return;
+    }
+    const shellContent = document.querySelector<HTMLElement>("#shell-content");
+    if (!shellContent) {
+      return;
+    }
+    shellContent.scrollTop = 0;
+    shellContent.scrollLeft = 0;
+    if (typeof shellContent.scrollTo === "function") {
+      shellContent.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [
+    intent.created,
+    intent.eventId,
+    intent.hash,
+    intent.malformed,
+    intent.mode,
+    intent.origin,
+    intent.programId,
+    intent.task,
+    locationReady,
+  ]);
+
   const managementModeReady =
     access.kind === "ready" && access.projection.hasManagementCapability;
   const boundaryStateVisible =
@@ -858,10 +888,12 @@ export const ProgramsBoundary = () => {
       return;
     }
     previousMode.current = intent.mode;
-    tab.focus();
+    // The shell owns scrolling; allowing focus() to auto-scroll the inner
+    // outlet can jump the newly rendered boundary back to a stale offset.
+    tab.focus({ preventScroll: true });
     queueMicrotask(() => {
       if (document.contains(tab)) {
-        tab.focus();
+        tab.focus({ preventScroll: true });
       }
     });
     focusMode.current = null;

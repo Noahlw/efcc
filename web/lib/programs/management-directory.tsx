@@ -93,10 +93,12 @@ const DepartmentSettingsLauncher = ({
 
   useEffect(() => {
     if (!open) {
-      triggerRef.current?.focus();
+      if (!returnFocusPending) {
+        return;
+      }
       document
         .getElementById(`${department.department_id}-settings-trigger`)
-        ?.focus();
+        ?.focus({ preventScroll: true });
       setReturnFocusPending(false);
       return;
     }
@@ -106,7 +108,7 @@ const DepartmentSettingsLauncher = ({
     const panel = document.getElementById(
       `${department.department_id}-settings-panel`
     );
-    panel?.focus();
+    panel?.focus({ preventScroll: true });
   }, [open, department.department_id, returnFocusPending]);
 
   const close = () => {

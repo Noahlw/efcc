@@ -1015,6 +1015,59 @@ test.describe("PUI-02 participant Programs directory", () => {
     ).toBeVisible();
   });
 
+  test("management directory cards keep multiline content inside their inset", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto("/programs?mode=management");
+
+    const card = page.getByRole("button", { name: /E2E_DEMO_成人查經/u });
+    await expect(card).toBeVisible();
+    const geometry = await card.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const children = [...element.children].map((child) => {
+        const childRect = child.getBoundingClientRect();
+        return {
+          top: childRect.top,
+          bottom: childRect.bottom,
+          left: childRect.left,
+          right: childRect.right,
+        };
+      });
+      return {
+        height: rect.height,
+        padding: [
+          style.paddingTop,
+          style.paddingRight,
+          style.paddingBottom,
+          style.paddingLeft,
+        ],
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        contentInside: children.every(
+          (child) =>
+            child.top >= rect.top &&
+            child.bottom <= rect.bottom &&
+            child.left >= rect.left &&
+            child.right <= rect.right
+        ),
+      };
+    });
+
+    expect(geometry).toMatchObject({
+      padding: ["14px", "16px", "14px", "16px"],
+      alignItems: "stretch",
+      justifyContent: "flex-start",
+    });
+    expect(geometry.height).toBeGreaterThan(44);
+    expect(geometry.contentInside).toBe(true);
+  });
+
   test("filter pills allow filtering by viewer relationship", async ({
     page,
     browser,

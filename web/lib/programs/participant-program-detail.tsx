@@ -600,7 +600,7 @@ export const ParticipantProgramDetail = ({
       {canManage && (
         <div className={styles.managementEntry}>
           <div>
-            <h3>{COPY.programs.managementMode}</h3>
+            <h2>{COPY.programs.managementMode}</h2>
             <p>{COPY.programs.managementLead}</p>
           </div>
           <Button

@@ -438,6 +438,7 @@ const PermissionPolicy = ({
     <section
       aria-labelledby="permissions-policy-heading"
       className={styles.policySection}
+      data-dirty={dirty ? "true" : "false"}
     >
       <header className={styles.policyHeader}>
         <div>
@@ -469,8 +470,52 @@ const PermissionPolicy = ({
             value={query}
           />
         </label>
-        <span className={styles.policyRoleHint}>{roleCopy.label}</span>
+        <span className={styles.policyRoleHint}>
+          <span className={styles.visuallyHidden}>目前角色：</span>
+          {roleCopy.label}
+        </span>
       </search>
+
+      {dirty && canEdit && (
+        <div
+          aria-label="未儲存變更操作"
+          className={styles.reviewActions}
+          role="group"
+        >
+          <span aria-live="polite" className={styles.mobileDraftCount}>
+            {`${changes.length} 項未儲存`}
+          </span>
+          <button
+            className={styles.reviewButton}
+            onClick={() => setReviewOpen((current) => !current)}
+            type="button"
+          >
+            {reviewOpen ? "隱藏變更" : "檢視變更"}
+          </button>
+          {saveState !== "conflict" && (
+            <button
+              className={styles.saveButton}
+              disabled={saveState === "saving"}
+              aria-busy={saveState === "saving"}
+              onClick={onSave}
+              type="button"
+            >
+              {saveState === "saving"
+                ? COPY.permissions.policySaving
+                : COPY.permissions.policySave}
+            </button>
+          )}
+          {saveState === "conflict" && (
+            <button
+              className={styles.reloadButton}
+              onClick={onReload}
+              type="button"
+            >
+              {COPY.permissions.policyReload}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className={styles.policyLayout}>
         <div className={styles.groupStack}>
@@ -568,15 +613,6 @@ const PermissionPolicy = ({
           <div className={styles.changeSummary}>
             <div className={styles.changeSummaryHeading}>
               <h3>{COPY.permissions.policyChangesTitle}</h3>
-              {dirty && (
-                <button
-                  className={styles.reviewButton}
-                  onClick={() => setReviewOpen((current) => !current)}
-                  type="button"
-                >
-                  {reviewOpen ? "隱藏變更" : "檢視變更"}
-                </button>
-              )}
             </div>
             {reviewOpen && changes.length > 0 ? (
               <ul>
@@ -610,28 +646,6 @@ const PermissionPolicy = ({
               </ul>
             ) : null}
           </div>
-          {canEdit && dirty && reviewOpen && (
-            <button
-              className={styles.saveButton}
-              disabled={saveState === "saving"}
-              aria-busy={saveState === "saving"}
-              onClick={onSave}
-              type="button"
-            >
-              {saveState === "saving"
-                ? COPY.permissions.policySaving
-                : COPY.permissions.policySave}
-            </button>
-          )}
-          {canEdit && saveState === "conflict" && (
-            <button
-              className={styles.reloadButton}
-              onClick={onReload}
-              type="button"
-            >
-              {COPY.permissions.policyReload}
-            </button>
-          )}
         </aside>
       </div>
     </section>
@@ -700,7 +714,7 @@ const RoleList = ({
             {COPY.permissions.rolesSection}
           </h2>
           <p className={styles.sectionLead}>
-            固定全域角色按權限範圍分開管理；部門管理者是同工的 scoped profile。
+            固定全域角色按權限範圍分開管理；部門管理者只可管理所屬部門。
           </p>
         </div>
         <span className={styles.roleCount}>3 個全域角色</span>

@@ -2054,7 +2054,7 @@ const ParticipantsTask = ({
               onValueChange={(value) => setTab(value as ParticipantTab)}
             >
               <TabsList
-                className={styles.taskButton}
+                className={styles.taskTabsList}
                 variant="line"
                 aria-label={COPY.programs.workspaceTaskParticipants}
               >

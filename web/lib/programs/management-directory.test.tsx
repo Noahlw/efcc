@@ -227,6 +227,24 @@ describe(ManagementDirectory, () => {
     await userEvent.click(screen.getByRole("button", { name: /社區關懷/u }));
     expect(onOpenProgram).toHaveBeenCalledWith("program-leader");
   });
+
+  test("does not steal focus while the directory first mounts", async () => {
+    mockDirectory();
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(document.activeElement).not.toHaveAttribute(
+      "id",
+      "dept-youth-settings-trigger"
+    );
+    expect(document.activeElement).not.toHaveAttribute(
+      "id",
+      "dept-outreach-settings-trigger"
+    );
+  });
+
   test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
     render(

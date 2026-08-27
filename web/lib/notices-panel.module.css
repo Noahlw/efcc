@@ -173,7 +173,6 @@
 }
 
 .empty {
-  padding: 2.125rem 1.375rem;
   border: 1px solid var(--line, #d6dcde);
   border-radius: var(--radius-md, 12px);
   background: var(--surface-raised, #fff);

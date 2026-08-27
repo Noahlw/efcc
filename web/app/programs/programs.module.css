@@ -479,6 +479,21 @@
   gap: 0.5rem;
 }
 
+/* TabsList owns the group surface; .taskButton is reserved for each trigger.
+   Keeping the contracts separate prevents a 44px trigger from stretching a
+   32px list and clipping its focus/active indicator. */
+.taskTabsList {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
 .taskButton {
   min-height: 44px;
   padding: 0.5rem 0.75rem;
@@ -1059,6 +1074,7 @@
   .button,
   .toggle,
   .taskButton,
+  .taskTabsList,
   .dangerButton,
   .secondaryButton,
   .dangerOutline,
@@ -1221,7 +1237,7 @@
   border-top: 1px solid var(--line);
 }
 
-.managementEntry h3 {
+.managementEntry h2 {
   margin: 0 0 0.25rem;
   font-size: 1rem;
 }
@@ -1322,14 +1338,13 @@
 
 .directoryFilterGroup {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  overflow-x: auto;
   padding: 0.125rem 0 0.875rem;
 }
 
 .filterChip {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0.375rem 0.875rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
@@ -1463,8 +1478,11 @@
 .directoryCard {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 0.375rem;
   width: 100%;
+  height: auto;
   min-height: 44px;
   padding: 0.875rem 1rem;
   background: var(--surface);
@@ -1473,6 +1491,7 @@
   color: var(--ink);
   font: inherit;
   text-align: left;
+  white-space: normal;
   cursor: pointer;
 }
 .directoryCard:hover {

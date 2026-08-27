@@ -21,7 +21,7 @@
   --accent: #9c302c;
   --accent-deep: #76231f;
   --line: #d6dcde;
-  --line-strong: #aeb8bc;
+  --line-strong: #6f7b80;
   --focus: #176a87;
 
   min-height: 100vh;
@@ -112,7 +112,7 @@
   max-width: 40ch;
 }
 
-.loginCopy h1 {
+.loginCopyTitle {
   margin: 0 0 0.75rem;
   font-size: clamp(1.75rem, 3vw, 2.25rem);
   font-weight: 800;
@@ -124,6 +124,11 @@
   margin: 0;
   color: var(--ink-soft);
   line-height: 1.6;
+}
+
+.loginCopy .loginCopyTitle {
+  margin-bottom: 0.75rem;
+  color: var(--ink);
 }
 
 @media (min-width: 800px) {

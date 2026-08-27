@@ -60,6 +60,7 @@ export default defineProject({
       "lib/assisted-scanner-panel.test.tsx",
       "lib/scanner-boundary.test.tsx",
       "lib/notices-panel.test.tsx",
+      "lib/components-contract.test.tsx",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {

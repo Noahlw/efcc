@@ -436,7 +436,7 @@ export function HomeView({
     return (
       <div className={styles.page}>
         <Alert
-          className={styles.emptyCard}
+          className={styles.errorCard}
           data-testid="home-error-state"
           variant="destructive"
         >
@@ -512,7 +512,11 @@ export function HomeView({
           </Button>
         </Card>
       ) : (
-        <Card className={styles.emptyCard} data-testid="home-empty-state">
+        <Card
+          size="empty"
+          className={styles.emptyCard}
+          data-testid="home-empty-state"
+        >
           <h2>{COPY.home.emptyTitle}</h2>
           <p>{COPY.home.emptySubtitle}</p>
           <Button asChild className={styles.primaryAction}>

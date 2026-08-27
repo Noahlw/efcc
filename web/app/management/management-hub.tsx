@@ -156,7 +156,7 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
         : visibleGroups.length;
 
   return (
-    <>
+    <div className={styles.groupGrid}>
       {visibleGroups.map((group, index) => (
         <Fragment key={group.key}>
           {entryCard && index === entryIndex && (
@@ -168,7 +168,7 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
       {entryCard && entryIndex === visibleGroups.length && (
         <EntryCard entryCard={entryCard} />
       )}
-    </>
+    </div>
   );
 }
 

@@ -169,7 +169,7 @@ export const MessagesPanel = () => {
         <p className={styles.pageLead}>{COPY.home.messagesLead}</p>
       </header>
       {state.announcements.length === 0 ? (
-        <Card className={styles.empty}>
+        <Card size="empty" className={styles.empty}>
           <h2 className={styles.emptyTitle}>{COPY.home.messagesEmpty}</h2>
           <p className={styles.emptyHint}>{COPY.home.messagesEmptyHint}</p>
         </Card>
