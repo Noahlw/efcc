@@ -242,6 +242,131 @@ describe("#476 disposable D1 schema contract", () => {
     }, "role_audit_events is immutable");
   });
 
+  test("D1 rejects UPDATE/DELETE of a terminal role_policy_mutations row, and replays remain idempotent", async () => {
+    const adminUser = "E2E_DISPOSABLE_ADMIN";
+    const base = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    expect(base).toBeDefined();
+    const newRoleId = "018f3b8a-0000-7000-8000-100000001000";
+    const input = {
+      idempotency_key: "t476-terminal-imm-1",
+      request_fingerprint: "fp-terminal-1",
+      actor_user_id: adminUser,
+      base_revision: base?.revision ?? 1,
+      now: "2026-08-27T07:00:00.000Z",
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000016",
+      desired: [
+        {
+          kind: "create_role_definition" as const,
+          role_definition_id: newRoleId,
+          category_key: "Program" as const,
+          stable_key: "t476.terminal.role",
+          label: "T476 Terminal Role",
+          description: "Disposable test role",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 50,
+          capabilities: ["program.manage"],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: newRoleId,
+        new_value_json: JSON.stringify({ label: "T476 Terminal Role" }),
+      },
+    };
+    // First call commits the mutation and flips the ledger row to terminal.
+    const first = await applyRoleMutation(testDb(), input);
+    expect(first.outcome).toBe("SUCCESS");
+    expect(first.idempotent).toBe(false);
+
+    // The terminal row is now immutable: a follow-up UPDATE that
+    // rewrites outcome or resulting_revision is rejected by the trigger.
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_policy_mutations
+                SET outcome = 'CONFLICT', resulting_revision = 0
+              WHERE idempotency_key = ?`
+        )
+        .bind(input.idempotency_key)
+        .run();
+    }, "terminal idempotency rows are immutable");
+    // DELETE is rejected too.
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(`DELETE FROM role_policy_mutations WHERE idempotency_key = ?`)
+        .bind(input.idempotency_key)
+        .run();
+    }, "terminal idempotency rows are immutable");
+
+    // The terminal row is byte-for-byte unchanged after both blocked
+    // attempts: the prior SUCCESS outcome and resulting revision survive.
+    const after = await readScalar<{
+      outcome: string;
+      resulting_revision: number | null;
+    }>(
+      `SELECT outcome, resulting_revision FROM role_policy_mutations
+        WHERE idempotency_key = ?`,
+      input.idempotency_key
+    );
+    expect(after?.outcome).toBe("SUCCESS");
+    expect(after?.resulting_revision).toBe((base?.revision ?? 1) + 1);
+
+    // The legitimate atomic path stays open: a replay of the same
+    // (idempotency_key, request_fingerprint) returns the original
+    // terminal record without inserting any new state.
+    const replay = await applyRoleMutation(testDb(), input);
+    expect(replay.outcome).toBe("SUCCESS");
+    expect(replay.idempotent).toBe(true);
+    expect(replay.resulting_revision).toBe(after?.resulting_revision);
+
+    const ledgerCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_policy_mutations WHERE idempotency_key = ?`,
+      input.idempotency_key
+    );
+    expect(ledgerCount?.c).toBe(1);
+
+    // The legitimate atomic path stays open on a fresh idempotency key
+    // too: the PENDING → terminal flow still commits as before.
+    const freshRoleId = "018f3b8a-0000-7000-8000-100000001001";
+    const base2 = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    const fresh = {
+      ...input,
+      idempotency_key: "t476-terminal-imm-2",
+      request_fingerprint: "fp-terminal-2",
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000017",
+      base_revision: base2?.revision ?? 1,
+      desired: [
+        {
+          kind: "create_role_definition" as const,
+          role_definition_id: freshRoleId,
+          category_key: "Program" as const,
+          stable_key: "t476.terminal2.role",
+          label: "T476 Terminal Role 2",
+          description: "Disposable test role",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 51,
+          capabilities: ["program.manage"],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: freshRoleId,
+        new_value_json: JSON.stringify({ label: "T476 Terminal Role 2" }),
+      },
+    };
+    const freshResult = await applyRoleMutation(testDb(), fresh);
+    expect(freshResult.outcome).toBe("SUCCESS");
+    expect(freshResult.idempotent).toBe(false);
+  });
+
   test("applyRoleMutation succeeds once and replays idempotently with the same key", async () => {
     const adminUser = "E2E_DISPOSABLE_ADMIN";
     const base = await readScalar<{ revision: number }>(

@@ -437,6 +437,18 @@ export async function applyRoleMutation(
       )
       .bind(input.idempotency_key, input.request_fingerprint)
   );
+  statements.push(
+    db
+      .prepare(
+        `UPDATE role_policy_mutations
+            SET audit_written = 1
+          WHERE idempotency_key = ?
+            AND request_fingerprint = ?
+            AND outcome = 'PENDING'
+            AND applied = 1`
+      )
+      .bind(input.idempotency_key, input.request_fingerprint)
+  );
 
   statements.push(
     db
@@ -470,7 +482,7 @@ export async function applyRoleMutation(
           WHERE m.idempotency_key = ?
             AND m.request_fingerprint = ?
             AND m.outcome IN ('SUCCESS', 'CONFLICT')
-            AND m.audit_written = 0`
+            AND m.audit_written = 1`
       )
       .bind(
         input.audit_id,
@@ -485,17 +497,7 @@ export async function applyRoleMutation(
         input.idempotency_key,
         input.idempotency_key,
         input.request_fingerprint
-      ),
-    db
-      .prepare(
-        `UPDATE role_policy_mutations
-            SET audit_written = 1
-          WHERE idempotency_key = ?
-            AND request_fingerprint = ?
-            AND outcome IN ('SUCCESS', 'CONFLICT')
-            AND audit_written = 0`
       )
-      .bind(input.idempotency_key, input.request_fingerprint)
   );
 
   const results = await db.batch(statements);
