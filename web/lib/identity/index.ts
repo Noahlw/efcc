@@ -15,6 +15,7 @@ export type { SeedResult } from "./seeds";
 export {
   applyRoleMutation,
   recordRoleDenial,
+  readCurrentRevision,
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
   RoleCapabilityCatalogError,
@@ -25,6 +26,32 @@ export type {
   RoleMutationResult,
   RoleDesiredChange,
 } from "./mutations";
+
+export {
+  loadRoleHierarchy,
+  loadActorRoles,
+  resolveActorHighestPosition,
+  renameRoleDefinition,
+  recordRoleDenialForRename,
+  ROLE_HIERARCHY_ACTION,
+  ROLE_NAME_MAX_LENGTH,
+  RoleNameConflictError,
+  RoleProtectedIdentityError,
+  RoleHighestProtectedError,
+  RoleScopeMismatchError,
+  RoleSelfRenameError,
+  RoleTargetNotFoundError,
+  __test as __hierarchyTest,
+} from "./role-hierarchy";
+export type {
+  RoleHierarchyView,
+  RoleHierarchyCategory,
+  RoleHierarchyDefinition,
+  RoleHierarchyAction,
+  RoleHierarchyActionAffordance,
+  RoleRenameInput,
+  RoleRenameResult,
+} from "./role-hierarchy";
 
 export {
   ROLE_CATEGORY_KEY,

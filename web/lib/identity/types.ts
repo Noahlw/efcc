@@ -108,6 +108,7 @@ export type RoleAuditOutcome =
   | "DUPLICATE"
   | "CONFLICT"
   | "DENIED"
+  | "REJECTED"
   | "FAILED";
 
 /** Immutable role audit row. */

@@ -62,6 +62,12 @@ export type RoleDesiredChange =
       role_definition_id: string;
     }
   | {
+      kind: "rename_role_definition";
+      role_definition_id: string;
+      /** New display name (globally unique; Spec 091 §9.2 PATCH identity name). */
+      label: string;
+    }
+  | {
       kind: "grant_assignment";
       assignment_id: string;
       account_user_id: string;
@@ -174,7 +180,12 @@ async function findMutation(
     .first<RoleMutationRecord>();
 }
 
-async function readCurrentRevision(db: D1Database): Promise<number> {
+/**
+ * Read the authoritative current revision (Spec 091 §7). Exported for the
+ * rename handler's conflict path (H-12: the response identifies the current
+ * authoritative revision).
+ */
+export async function readCurrentRevision(db: D1Database): Promise<number> {
   const row = await db
     .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
     .first<{ revision: number }>();
@@ -327,6 +338,31 @@ export async function applyRoleMutation(
                 AND ${gateClause}`
           )
           .bind(
+            input.actor_user_id,
+            input.now,
+            change.role_definition_id,
+            ...bindGate(input)
+          )
+      );
+      continue;
+    }
+    if (change.kind === "rename_role_definition") {
+      // #478: the one complete rename mutation. Only label (and the audit
+      // bookkeeping columns) are written; role_definition_id, position,
+      // scope, grants, and assignments are untouched, so the stable ID,
+      // order, scope, and grant/assignment rows survive by construction.
+      // The protected-row guard in migration 0019 rejects Admin/會友基礎 at
+      // the schema layer as the last line of defense.
+      statements.push(
+        db
+          .prepare(
+            `UPDATE role_definitions
+                SET label = ?, updated_by = ?, updated_at = ?
+              WHERE role_definition_id = ?
+                AND ${gateClause}`
+          )
+          .bind(
+            change.label,
             input.actor_user_id,
             input.now,
             change.role_definition_id,
