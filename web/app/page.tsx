@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { authLogin, authMe, authUpgrade, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
@@ -28,42 +33,6 @@ import styles from "./page.module.css";
 
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
-
-/** Squar-cut seal mark (恩) — the brand's carved-stamp identity. */
-const SealMark = ({ size = 28 }: { size?: number }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 32 32"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <rect x="1" y="1" width="30" height="30" rx="6" fill="var(--seal)" />
-    <rect
-      x="1"
-      y="1"
-      width="30"
-      height="30"
-      rx="6"
-      fill="none"
-      stroke="#fff"
-      strokeOpacity="0.18"
-    />
-    <text
-      x="16"
-      y="22.6"
-      textAnchor="middle"
-      fontSize="17"
-      fontWeight="800"
-      fill="#fff"
-      fontFamily="inherit"
-    >
-      恩
-    </text>
-  </svg>
-);
-/* Minimal civic system copy for the signed-out shell (Variant A, Issue #178). */
-const SYSTEM_DESCRIPTION = "會友與教會同工的內部營運系統。";
 
 type View =
   | { kind: "SIGNED_OUT" }
@@ -337,7 +306,10 @@ const LoginPage = () => {
   if (view.kind === "RESTORING") {
     return (
       <main className={styles.restoring}>
-        <div className={styles.spinner} aria-hidden="true" />
+        <Skeleton
+          className="h-8 w-8 rounded-full bg-[var(--skeleton)]"
+          aria-hidden="true"
+        />
         <p>{COPY.restore.loading}</p>
       </main>
     );
@@ -353,21 +325,24 @@ const LoginPage = () => {
   if (view.kind === "SESSION_EXPIRED") {
     return (
       <main className={styles.sessionExpired}>
-        <article className={styles.sessionExpiredCard}>
+        <Card
+          className={`${styles.sessionExpiredCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+          role="article"
+        >
           <h1 className={styles.sessionExpiredTitle}>
             {COPY.sessionExpired.title}
           </h1>
           <p className={styles.sessionExpiredMessage}>
             {COPY.sessionExpired.message}
           </p>
-          <button
-            className={styles.submit}
+          <Button
+            className="min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
             type="button"
             onClick={() => setView({ kind: "SIGNED_OUT" })}
           >
             {COPY.sessionExpired.reLogin}
-          </button>
-        </article>
+          </Button>
+        </Card>
       </main>
     );
   }
@@ -391,9 +366,10 @@ const LoginPage = () => {
       <main className={styles.main}>
         <div className={styles.bodyCenter}>
           <div className={styles.splitLogin}>
-            <section
+            <Card
               id="login"
-              className={styles.formCard}
+              className={`${styles.formCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+              role="region"
               aria-labelledby="login-title"
             >
               <div className={styles.cardHead}>
@@ -403,18 +379,18 @@ const LoginPage = () => {
               </div>
               <p className={styles.cardLead}>{LANDING.loginPanelLead}</p>
               {notice && (
-                <p
-                  role="alert"
+                <Alert
+                  variant={noticeKind === "error" ? "destructive" : "default"}
                   className={`${styles.notice} ${
                     noticeKind === "error"
-                      ? styles.noticeError
+                      ? "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
                       : noticeKind === "success"
-                        ? styles.noticeSuccess
-                        : ""
+                        ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--ink)]"
+                        : "border-[var(--line)] bg-[var(--paper-raised)] text-[var(--ink)]"
                   }`}
                 >
                   {notice}
-                </p>
+                </Alert>
               )}
               <form
                 className={styles.form}
@@ -434,8 +410,8 @@ const LoginPage = () => {
                   <span className={styles.fieldLabel}>
                     {COPY.login.usernameLabel}
                   </span>
-                  <input
-                    className={styles.input}
+                  <Input
+                    className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     disabled={busy || upgradeMode}
@@ -449,8 +425,8 @@ const LoginPage = () => {
                       <span className={styles.fieldLabel}>
                         {COPY.login.legacyPasswordLabel}
                       </span>
-                      <input
-                        className={styles.input}
+                      <Input
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={legacyPin}
                         onChange={(e) => setLegacyPin(e.target.value)}
@@ -467,8 +443,8 @@ const LoginPage = () => {
                       <span className={styles.fieldLabel}>
                         {COPY.login.newPasswordLabel}
                       </span>
-                      <input
-                        className={styles.input}
+                      <Input
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={newCredential}
                         onChange={(e) => setNewCredential(e.target.value)}
@@ -482,8 +458,8 @@ const LoginPage = () => {
                       <span className={styles.fieldLabel}>
                         {COPY.login.confirmPasswordLabel}
                       </span>
-                      <input
-                        className={styles.input}
+                      <Input
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={confirmCredential}
                         onChange={(e) => setConfirmCredential(e.target.value)}
@@ -499,8 +475,8 @@ const LoginPage = () => {
                     <span className={styles.fieldLabel}>
                       {COPY.login.passwordLabel}
                     </span>
-                    <input
-                      className={styles.input}
+                    <Input
+                      className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -510,7 +486,11 @@ const LoginPage = () => {
                     />
                   </label>
                 )}
-                <button className={styles.submit} type="submit" disabled={busy}>
+                <Button
+                  className="min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                  type="submit"
+                  disabled={busy}
+                >
                   {busy
                     ? upgradeMode
                       ? COPY.login.upgrading
@@ -518,24 +498,36 @@ const LoginPage = () => {
                     : upgradeMode
                       ? COPY.login.upgradeSubmit
                       : COPY.login.submit}
-                </button>
+                </Button>
                 <p className={styles.loginNote}>{LANDING.loginAfterNote}</p>
                 <p className={styles.registerEntry}>
-                  <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
+                  <Button
+                    asChild
+                    variant="link"
+                    className="min-h-11 w-full rounded-[8px] text-[var(--ink)] font-bold hover:text-[var(--accent)]"
+                  >
+                    <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
+                  </Button>
                 </p>
                 <p className={styles.guestEntry}>
-                  <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="min-h-11 w-full rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 text-[var(--ink)] font-bold hover:bg-[var(--paper)] hover:text-[var(--ink)]"
+                  >
+                    <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
+                  </Button>
                 </p>
               </form>
               {view.kind === "ERROR" && (
-                <p
-                  role="alert"
-                  className={`${styles.notice} ${styles.noticeError}`}
+                <Alert
+                  variant="destructive"
+                  className={`${styles.notice} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
                 >
                   {view.error}
-                </p>
+                </Alert>
               )}
-            </section>
+            </Card>
 
             <div className={styles.loginCopy}>
               <h1>{LANDING.brandFull}</h1>

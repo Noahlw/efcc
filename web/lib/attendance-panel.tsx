@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
 import type { AttendanceEvent } from "@/lib/attendance";
 import { entryFromValue } from "@/lib/attendance-entry";
@@ -19,6 +22,11 @@ import { guestCheckIn } from "@/lib/programs/program-api";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 import styles from "./attendance-panel.module.css";
+
+const primaryControl = `${styles.button} min-h-11 h-auto w-full rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
+const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
+const backControl = `${styles.back} min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]`;
+const memberLinkControl = `${styles.guestMemberLink} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
 
 interface GuestResult {
   kind: "success" | "duplicate";
@@ -53,8 +61,9 @@ const GuestCheckinResult = ({
   result: GuestResult;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) => (
-  <section
+  <Card
     className={`${styles.card} ${styles.checkinResult}`}
+    role="region"
     aria-labelledby="guest-result-title"
   >
     <header className={styles.resultHeader}>
@@ -83,11 +92,11 @@ const GuestCheckinResult = ({
         : COPY.attendance.guestDuplicate}
     </p>
     <div className={styles.resultActions}>
-      <a className={styles.button} href="/">
-        {COPY.attendance.guestDone}
-      </a>
+      <Button asChild className={primaryControl}>
+        <a href="/">{COPY.attendance.guestDone}</a>
+      </Button>
     </div>
-  </section>
+  </Card>
 );
 
 /** Public guest check-in surface. Authenticated Self uses SelfCheckInPanel. */
@@ -248,10 +257,14 @@ export const AttendancePanel = () => {
 
   return (
     <div className={styles.page} data-surface="guest-check-in">
-      <section className={styles.card} aria-labelledby="attendance-title">
-        <a className={styles.back} href="/">
-          {COPY.attendance.guestBack}
-        </a>
+      <Card
+        className={styles.card}
+        role="region"
+        aria-labelledby="attendance-title"
+      >
+        <Button asChild variant="link" className={backControl}>
+          <a href="/">{COPY.attendance.guestBack}</a>
+        </Button>
         <h1 id="attendance-title" className={styles.title}>
           {COPY.attendance.guestTitle}
         </h1>
@@ -274,10 +287,10 @@ export const AttendancePanel = () => {
             <span className={styles.fieldLabel}>
               {COPY.attendance.guestCode}
             </span>
-            <input
+            <Input
               ref={inputRef}
               id="attendance-code"
-              className={styles.input}
+              className={inputControl}
               value={flow.input}
               onChange={(event) => {
                 setAwaitingSelection(false);
@@ -296,10 +309,10 @@ export const AttendancePanel = () => {
             <span className={styles.fieldLabel}>
               {COPY.attendance.guestName}
             </span>
-            <input
+            <Input
               ref={nameRef}
               id="guest-name"
-              className={styles.input}
+              className={inputControl}
               value={name}
               onChange={(event) => {
                 clearFormStatus();
@@ -316,10 +329,10 @@ export const AttendancePanel = () => {
             <span className={styles.fieldLabel}>
               {COPY.attendance.guestPhoneLabel}
             </span>
-            <input
+            <Input
               ref={phoneRef}
               id="guest-phone"
-              className={styles.input}
+              className={inputControl}
               value={phone}
               onChange={(event) => {
                 clearFormStatus();
@@ -336,8 +349,8 @@ export const AttendancePanel = () => {
               {COPY.attendance.guestPhoneHint}
             </span>
           </label>
-          <button
-            className={styles.button}
+          <Button
+            className={primaryControl}
             type="submit"
             disabled={submitBusy || awaitingSelection}
             aria-busy={submitBusy}
@@ -345,7 +358,7 @@ export const AttendancePanel = () => {
             {submitBusy
               ? COPY.attendance.guestSubmitting
               : COPY.attendance.guestSubmit}
-          </button>
+          </Button>
         </form>
         {flow.events.length > 1 && (
           <ScannerEventPicker
@@ -356,26 +369,27 @@ export const AttendancePanel = () => {
           />
         )}
         <div className={styles.group}>
-          <a
-            className={styles.guestMemberLink}
-            href="/"
-            onClick={() => {
-              const entry = entryFromValue(flow.input);
-              if (entry.value) {
-                writeGuestCredential({
-                  kind:
-                    flow.fromQr || entry.fromQr
-                      ? "program_token"
-                      : "manual_code",
-                  value: entry.value,
-                });
-              }
-            }}
-          >
-            {COPY.attendance.loginForMember}
-          </a>
+          <Button asChild variant="outline" className={memberLinkControl}>
+            <a
+              href="/"
+              onClick={() => {
+                const entry = entryFromValue(flow.input);
+                if (entry.value) {
+                  writeGuestCredential({
+                    kind:
+                      flow.fromQr || entry.fromQr
+                        ? "program_token"
+                        : "manual_code",
+                    value: entry.value,
+                  });
+                }
+              }}
+            >
+              {COPY.attendance.loginForMember}
+            </a>
+          </Button>
         </div>
-      </section>
+      </Card>
     </div>
   );
 };

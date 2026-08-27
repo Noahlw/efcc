@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 
 export interface AttentionItem {
@@ -46,7 +47,6 @@ export const AttentionPanel = ({
 }) => {
   const [tab, setTab] = useState<AttentionTab>("pending");
   const panelRef = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const panelId = useId();
 
@@ -56,7 +56,6 @@ export const AttentionPanel = ({
     }
 
     const previousFocus = document.activeElement;
-    closeRef.current?.focus();
     const panel = panelRef.current;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -112,10 +111,11 @@ export const AttentionPanel = ({
 
   return (
     <div className="attention-overlay">
-      <button
+      <Button
         type="button"
         tabIndex={-1}
-        className="attention-overlay__backdrop"
+        variant="ghost"
+        className="attention-overlay__backdrop hover:bg-transparent"
         aria-label={COPY.attention.close}
         onClick={onClose}
       />
@@ -128,14 +128,15 @@ export const AttentionPanel = ({
       >
         <header className="attention-panel__header">
           <h2 id={titleId}>{COPY.attention.title}</h2>
-          <button
-            ref={closeRef}
+          <Button
             type="button"
-            className="attention-panel__close"
+            variant="outline"
+            className="attention-panel__close min-h-10 rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-transparent px-3 text-[var(--ink)] text-sm font-bold hover:bg-[var(--surface)]"
+            autoFocus
             onClick={onClose}
           >
             {COPY.attention.close}
-          </button>
+          </Button>
         </header>
 
         <div
@@ -143,28 +144,30 @@ export const AttentionPanel = ({
           role="tablist"
           aria-label={COPY.attention.tabsLabel}
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
             role="tab"
             id={`${panelId}-pending-tab`}
             aria-controls={`${panelId}-pending-panel`}
             aria-selected={tab === "pending"}
-            className="attention-panel__tab"
+            className="attention-panel__tab min-h-[42px] rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-[var(--ink-muted)] text-sm font-bold hover:bg-transparent hover:text-[var(--ink)]"
             onClick={() => setTab("pending")}
           >
             {COPY.attention.pendingTab}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
             role="tab"
             id={`${panelId}-notices-tab`}
             aria-controls={`${panelId}-notices-panel`}
             aria-selected={tab === "notices"}
-            className="attention-panel__tab"
+            className="attention-panel__tab min-h-[42px] rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-[var(--ink-muted)] text-sm font-bold hover:bg-transparent hover:text-[var(--ink)]"
             onClick={() => setTab("notices")}
           >
             {COPY.attention.noticesTab}
-          </button>
+          </Button>
         </div>
 
         <div

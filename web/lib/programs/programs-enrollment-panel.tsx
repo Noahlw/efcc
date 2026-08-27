@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -72,20 +76,20 @@ const RequestList = ({
             {request.member_name ?? request.member_user_id}
             {request.member_username ? ` (${request.member_username})` : ""}
           </span>
-          <span className={styles.eventSource}>
+          <Badge className={styles.eventSource} variant="outline">
             {REQUEST_STATUS_LABEL[request.status]}
-          </span>
+          </Badge>
           {canManage && request.status === "Pending" && (
             <form
               className={styles.cancelForm}
               onSubmit={onDecide(request.request_id)}
             >
-              <input
+              <Input
                 type="text"
                 name="decision_note"
                 aria-label={COPY.programs.decisionNote}
               />
-              <button
+              <Button
                 type="submit"
                 name="action"
                 value="Approved"
@@ -93,8 +97,8 @@ const RequestList = ({
                 className={styles.actionButton}
               >
                 {COPY.programs.approve}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 name="action"
                 value="Rejected"
@@ -102,20 +106,20 @@ const RequestList = ({
                 className={styles.actionButton}
               >
                 {COPY.programs.reject}
-              </button>
+              </Button>
             </form>
           )}
           {!canManage &&
             request.member_user_id === currentUserId &&
             request.status === "Pending" && (
-              <button
+              <Button
                 type="button"
                 disabled={busy}
                 className={styles.actionButton}
                 onClick={() => onWithdraw(request.request_id)}
               >
                 {COPY.programs.withdrawRequest}
-              </button>
+              </Button>
             )}
         </li>
       ))
@@ -152,25 +156,26 @@ const EnrollmentList = ({
               ? ` (${enrollment.member_username})`
               : ""}
           </span>
-          <span
+          <Badge
             className={
               enrollment.status === "Cancelled"
                 ? styles.eventCancelled
                 : styles.eventActive
             }
+            variant={enrollment.status === "Cancelled" ? "outline" : "default"}
           >
             {ENROLLMENT_STATUS_LABEL[enrollment.status]}
-          </span>
+          </Badge>
           {(canManage || enrollment.member_user_id === currentUserId) &&
             enrollment.status === "Active" && (
-              <button
+              <Button
                 type="button"
                 disabled={busy}
                 className={styles.actionButton}
                 onClick={() => onCancel(enrollment.enrollment_id)}
               >
                 {COPY.programs.cancelEnrollment}
-              </button>
+              </Button>
             )}
         </li>
       ))
@@ -330,9 +335,9 @@ export const EnrollmentPanel = ({
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
 
       <h3 className={styles.panelHeading}>{COPY.programs.enrollment}</h3>
@@ -346,14 +351,14 @@ export const EnrollmentPanel = ({
       )}
 
       {showRequestButton && (
-        <button
+        <Button
           type="button"
           className={styles.actionButton}
           disabled={busy}
           onClick={handleRequest}
         >
           {busy ? COPY.programs.submitting : COPY.programs.requestEnroll}
-        </button>
+        </Button>
       )}
 
       {canManage && program.enrollment_mode === "ManagerOnly" && (
@@ -364,9 +369,9 @@ export const EnrollmentPanel = ({
             label={COPY.programs.memberId}
             placeholder={COPY.programs.memberIdPlaceholder}
           />
-          <button type="submit" disabled={busy} className={styles.actionButton}>
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.assistedEnroll}
-          </button>
+          </Button>
         </form>
       )}
 

@@ -7,10 +7,6 @@
 
 .section {
   margin-top: 2rem;
-  padding: 1.5rem;
-  border: 1px solid var(--line, #d6dcde);
-  border-radius: 12px;
-  background: var(--surface-raised, #ffffff);
   width: 100%;
   max-width: 600px;
   display: flex;
@@ -66,25 +62,6 @@
   color: var(--ink-muted, #59636a);
 }
 
-.input {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 0.875rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 8px;
-  background: var(--surface-raised, #ffffff);
-  color: var(--ink, #171a1d);
-  font-size: 1rem;
-  font-family: inherit;
-  box-sizing: border-box;
-}
-
-.input:focus-visible {
-  outline: 3px solid var(--focus, #176a87);
-  outline-offset: 2px;
-  border-color: var(--focus, #176a87);
-}
-
 .fieldHint {
   margin: 0;
   font-size: 0.8125rem;
@@ -94,11 +71,6 @@
 
 .error {
   margin: 0;
-  padding: 0.75rem 0.875rem;
-  border-radius: 8px;
-  background: var(--error-surface, #fbeeed);
-  border: 1px solid var(--error-border, #e5b4b0);
-  color: var(--error, #b3261e);
   font-size: 0.9375rem;
   line-height: 1.5;
 }
@@ -110,65 +82,14 @@
   gap: 0.5rem;
 }
 
-.retry {
-  min-height: 44px;
-  padding: 0 1rem;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  border-radius: 8px;
-  background: var(--surface-raised, #ffffff);
-  color: var(--accent-deep, #76231f);
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.retry:hover {
-  border-color: var(--accent-deep, #76231f);
-}
-
-.retry:focus-visible {
-  outline: 3px solid var(--focus, #176a87);
-  outline-offset: 2px;
-}
-
 .notice {
   margin: 0;
-  padding: 0.75rem 0.875rem;
-  border-radius: 8px;
-  background: var(--success-surface, #eef4ef);
-  border: 1px solid var(--success-border, #b9cfbe);
-  color: var(--ink, #171a1d);
-  font-size: 0.9375rem;
   line-height: 1.5;
-}
-
-.submit {
-  min-height: 48px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent, #9c302c);
-  color: var(--surface-raised, #ffffff);
-  font-size: 1rem;
-  font-weight: 800;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.submit:hover {
-  background: var(--accent-deep, #76231f);
-}
-
-.submit:disabled {
-  opacity: 0.7;
-  cursor: default;
 }
 
 /* Success state (已更新): replaces both forms before redirecting to login. */
 .success {
   margin-top: 1.5rem;
-  padding: 1.5rem;
-  border: 1px solid var(--success-border, #b9cfbe);
-  border-radius: 12px;
-  background: var(--surface-raised, #ffffff);
   text-align: center;
 }
 
@@ -195,19 +116,9 @@
 @media (max-width: 799px) {
   .section {
     display: block;
-    padding: 1rem;
   }
 
   .form + .form {
     margin-top: 1rem;
-  }
-}
-
-/* Reduced-motion: the flow has no animation; this defensively disables any
- * transitions/spinners under the OS reduced-motion preference. */
-@media (prefers-reduced-motion: reduce) {
-  .submit,
-  .input {
-    transition: none;
   }
 }

@@ -43,6 +43,7 @@
 .sectionTitle,
 .detailTitle {
   margin: 0;
+  scroll-margin-top: 5rem;
   color: var(--ink, #171a1d);
   font-weight: 800;
   line-height: 1.3;
@@ -83,7 +84,6 @@
 
 .roleCount,
 .revision,
-.lockedBadge,
 .changeCount {
   display: inline-flex;
   width: fit-content;
@@ -126,7 +126,7 @@
   width: 100%;
   min-width: 0;
   min-height: 76px;
-  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  grid-template-columns: minmax(0, 1fr) 20px;
   align-items: center;
   gap: 0.875rem;
   padding: 0.875rem 1rem;
@@ -148,36 +148,13 @@
 .backButton:focus-visible,
 .reviewButton:focus-visible,
 .policyCell:focus-visible,
+.policySwitch:focus-visible,
 .saveButton:focus-visible,
 .reloadButton:focus-visible,
 .retry:focus-visible,
 .searchField input:focus-visible {
   outline: 3px solid var(--focus, #176a87);
   outline-offset: 2px;
-}
-
-.roleMark,
-.detailRoleMark {
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line-strong, #aeb8bc);
-  color: var(--accent, #9c302c);
-  background: var(--surface, #f4f5f3);
-  font-weight: 800;
-}
-
-.roleMark {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-
-.detailRoleMark {
-  width: 52px;
-  height: 52px;
-  flex: 0 0 auto;
-  border-radius: 10px;
-  font-size: 1.2rem;
 }
 
 .roleCopy {
@@ -219,57 +196,24 @@
   stroke-width: 1.7;
 }
 
-.baseline {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.35rem 0.75rem;
-  margin-top: 1rem;
-  padding: 1rem;
-  border: 1px dashed var(--line-strong, #aeb8bc);
-  border-radius: 12px;
-  color: var(--ink, #171a1d);
-  background: var(--surface-raised, #ffffff);
-}
-
-.baselineCopy {
-  display: grid;
-  min-width: 0;
-  gap: 0.25rem;
-}
-
-.baselineCopy strong {
-  font-weight: 800;
-}
-
-.baselineCopy span,
-.baseline p,
-.baselineHint {
+.baselineNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.65rem;
+  margin: 0.75rem 0 0;
   color: var(--ink-muted, #59636a);
+  font-size: 0.84rem;
   line-height: 1.5;
 }
 
-.baselineCopy span {
-  font-size: 0.86rem;
-}
-
-.baseline p {
-  grid-column: 1 / -1;
-  margin: 0;
-  font-size: 0.84rem;
-}
-
-.lockedBadge {
-  border-color: var(--line-strong, #aeb8bc);
-  color: var(--ink-muted, #59636a);
-  background: var(--surface, #f4f5f3);
+.baselineNote strong {
+  color: var(--ink, #171a1d);
+  font-weight: 800;
 }
 
 .roleDetailHeader {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
+  display: block;
   margin-bottom: 1rem;
 }
 
@@ -552,6 +496,12 @@
   gap: 0.75rem;
 }
 
+.groupStack > [data-slot="accordion"] {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+}
+
 .policyGroup {
   min-width: 0;
   overflow: hidden;
@@ -560,28 +510,22 @@
   background: var(--surface-raised, #ffffff);
 }
 
-.policyGroup summary {
-  display: flex;
+.policyGroupTrigger {
   min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
   color: var(--ink, #171a1d);
-  cursor: pointer;
-  list-style-position: inside;
+  text-decoration: none;
 }
 
-.policyGroup summary::marker {
-  color: var(--accent, #9c302c);
+.policyGroupTrigger:hover {
+  background: var(--surface, #f4f5f3);
+  text-decoration: none;
 }
 
-.policyGroup summary:focus-visible {
-  outline: 3px solid var(--focus, #176a87);
-  outline-offset: -3px;
-}
-
-.policyGroup summary span {
+.policyGroupTrigger > span {
   color: var(--ink-muted, #59636a);
   font-size: 0.78rem;
   font-weight: 700;
@@ -638,8 +582,9 @@
   display: grid;
   min-width: 0;
   min-height: 76px;
-  align-content: center;
-  gap: 0.18rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
   padding: 0.55rem 0.6rem;
   border: 1px solid var(--line, #d6dcde);
   border-radius: 8px;
@@ -648,23 +593,26 @@
   line-height: 1.3;
 }
 
-button.policyCell {
-  width: 100%;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+.policyCell[data-editable="false"] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.policyCell strong {
+.policyCellCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.policyCellCopy strong {
   font-size: 0.78rem;
 }
 
-.policyCell span {
+.policyCellCopy > span {
   font-size: 0.82rem;
   font-weight: 700;
 }
 
-.policyCell small {
+.policyCellCopy small {
   color: var(--ink-muted, #59636a);
   font-size: 0.7rem;
   line-height: 1.35;
@@ -676,12 +624,19 @@ button.policyCell {
   background: var(--surface-raised, #ffffff);
 }
 
-button.policyCell[data-editable="true"]:hover {
+.policyCell[data-editable="true"]:focus-within,
+.policyCell[data-editable="true"]:has(.policySwitch:hover) {
   border-color: var(--accent, #9c302c);
   background: #fffaf9;
 }
 
-button.policyCell[aria-pressed="true"] {
+.policySwitch {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 1.5rem;
+}
+
+.policySwitch[aria-pressed="true"] {
   box-shadow: inset 0 0 0 2px rgb(46 107 55 / 28%);
 }
 
@@ -691,9 +646,7 @@ button.policyCell[aria-pressed="true"] {
 }
 
 .reviewPanel {
-  position: sticky;
-  bottom: calc(5.1rem + env(safe-area-inset-bottom, 0px));
-  z-index: 2;
+  position: static;
   display: grid;
   gap: 0.65rem;
   min-width: 0;
@@ -750,6 +703,8 @@ button.policyCell[aria-pressed="true"] {
   margin: 0;
   padding: 0;
   list-style: none;
+  max-height: 12rem;
+  overflow-y: auto;
 }
 
 .changeSummary li {
@@ -893,10 +848,6 @@ button.policyCell[aria-pressed="true"] {
     grid-template-columns: 1fr;
   }
 
-  .reviewPanel {
-    position: sticky;
-  }
-
   .table {
     display: block;
   }
@@ -928,6 +879,12 @@ button.policyCell[aria-pressed="true"] {
   .table th,
   .table td {
     padding: 0.15rem 0;
+  }
+}
+
+@media (max-width: 799px) {
+  .policyLayout {
+    padding-bottom: 0;
   }
 }
 

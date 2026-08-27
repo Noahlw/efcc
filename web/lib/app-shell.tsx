@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
@@ -82,7 +83,10 @@ const LoadingShell = () => {
 
   return (
     <main className={styles.state}>
-      <span className={styles.spinner} aria-hidden="true" />
+      <Skeleton
+        className="h-8 w-8 rounded-full bg-[var(--skeleton)]"
+        aria-hidden="true"
+      />
       <p>{COPY.restore.loading}</p>
     </main>
   );

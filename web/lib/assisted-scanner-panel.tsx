@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
 import type {
   AttendanceEventSummary,
@@ -22,6 +26,11 @@ import {
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
+
+const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
+const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
+const eventButtonControl = `${styles.eventButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
 
 type StatusTone = "info" | "success" | "error";
 
@@ -247,15 +256,19 @@ export const AssistedScannerPanel = ({
 
   return (
     <div className={styles.page}>
-      <section className={styles.card} aria-labelledby="assisted-scanner-title">
+      <Card
+        className={styles.card}
+        role="region"
+        aria-labelledby="assisted-scanner-title"
+      >
         <h1 id="assisted-scanner-title" className={styles.title}>
           {COPY.sections.scanner}
         </h1>
         <p className={styles.lead}>{COPY.attendance.assistedHint}</p>
         <div className={styles.group} aria-label={COPY.attendance.assistedMode}>
           <div className={styles.actionsRow}>
-            <button
-              className={styles.button}
+            <Button
+              className={primaryControl}
               type="button"
               disabled={!selectedEvent || busy || cameraOpen}
               onClick={() => {
@@ -268,10 +281,11 @@ export const AssistedScannerPanel = ({
               {cameraOpen
                 ? COPY.attendance.cameraRetry
                 : COPY.attendance.camera}
-            </button>
+            </Button>
             {cameraOpen && (
-              <button
-                className={styles.buttonSecondary}
+              <Button
+                variant="outline"
+                className={secondaryControl}
                 type="button"
                 onClick={() => {
                   scanEventRef.current = null;
@@ -279,7 +293,7 @@ export const AssistedScannerPanel = ({
                 }}
               >
                 {COPY.attendance.cameraClose}
-              </button>
+              </Button>
             )}
           </div>
           {cameraOpen && (
@@ -311,24 +325,25 @@ export const AssistedScannerPanel = ({
                 <span className={styles.fieldLabel}>
                   {COPY.attendance.memberSearch}
                 </span>
-                <input
+                <Input
                   ref={searchRef}
                   id="assisted-member-search"
-                  className={styles.input}
+                  className={inputControl}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={COPY.attendance.assistedSearchHint}
                   autoComplete="off"
                 />
               </label>
-              <button
-                className={styles.buttonSecondary}
+              <Button
+                variant="outline"
+                className={secondaryControl}
                 type="submit"
                 disabled={busy}
                 aria-busy={busy}
               >
                 {COPY.attendance.search}
-              </button>
+              </Button>
             </form>
             {members.length > 0 && (
               <ul
@@ -340,8 +355,9 @@ export const AssistedScannerPanel = ({
               >
                 {members.map((member) => (
                   <li key={member.user_id}>
-                    <button
-                      className={styles.eventButton}
+                    <Button
+                      variant="outline"
+                      className={eventButtonControl}
                       type="button"
                       disabled={busy}
                       onClick={() =>
@@ -359,15 +375,19 @@ export const AssistedScannerPanel = ({
                       <span className={styles.rowAction}>
                         {COPY.attendance.checkInMember}
                       </span>
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
             )}
           </div>
+        ) : contextError ? (
+          <Alert variant="destructive" className={styles.hint}>
+            {contextError}
+          </Alert>
         ) : (
-          <p className={styles.hint} role={contextError ? "alert" : undefined}>
-            {contextError ?? COPY.attendance.assistedContextRequired}
+          <p className={styles.hint}>
+            {COPY.attendance.assistedContextRequired}
           </p>
         )}
         <div className={styles.context}>
@@ -377,7 +397,7 @@ export const AssistedScannerPanel = ({
             </span>
             <select
               id="assisted-event-context"
-              className={styles.input}
+              className={inputControl}
               value={selectedEvent?.event_id ?? ""}
               onChange={(event) => changeContext(event.target.value || null)}
               aria-describedby="assisted-event-context-hint"
@@ -396,7 +416,7 @@ export const AssistedScannerPanel = ({
           </p>
         </div>
         <ScannerStatusOutput message={status} tone={tone} />
-      </section>
+      </Card>
     </div>
   );
 };

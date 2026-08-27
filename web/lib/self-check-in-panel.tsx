@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
 import type { AttendanceEvent } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
@@ -20,6 +24,11 @@ import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 import styles from "./attendance-panel.module.css";
+
+const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
+const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
+const methodControl = `${styles.methodCard} min-h-24 rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
 
 interface CheckinResult {
   kind: "success" | "duplicate";
@@ -384,10 +393,10 @@ export const SelfCheckInPanel = ({
             {COPY.attendance.manualCodeLabel}
           </span>
         )}
-        <input
+        <Input
           ref={inputRef}
           id="attendance-code"
-          className={styles.input}
+          className={inputControl}
           value={flow.input}
           onChange={(event) => handleManualChange(event.target.value)}
           placeholder={COPY.attendance.manualCodePlaceholder}
@@ -404,23 +413,24 @@ export const SelfCheckInPanel = ({
           </span>
         )}
       </label>
-      <button
-        className={styles.button}
+      <Button
+        className={primaryControl}
         type="submit"
         disabled={flow.busy || submitting}
         aria-busy={flow.busy || submitting}
       >
         {flow.busy ? COPY.attendance.resolving : COPY.attendance.continue}
-      </button>
+      </Button>
       <ScannerStatusOutput message={flow.status} tone={flow.tone} />
       {isPhone && (
-        <button
-          className={styles.buttonSecondary}
+        <Button
+          variant="outline"
+          className={secondaryControl}
           type="button"
           onClick={backToScan}
         >
           {COPY.attendance.backToScan}
-        </button>
+        </Button>
       )}
     </form>
   );
@@ -490,7 +500,7 @@ export const SelfCheckInPanel = ({
   if (!isPhone) {
     return (
       <div className={styles.page} data-scanner-state="desktop-manual">
-        <section className={styles.card} aria-labelledby="attendance-title">
+        <Card className={styles.card} aria-labelledby="attendance-title">
           <h1
             id="attendance-title"
             ref={scanHeadingRef}
@@ -500,7 +510,7 @@ export const SelfCheckInPanel = ({
             {title}
           </h1>
           {manualForm(false)}
-        </section>
+        </Card>
       </div>
     );
   }
@@ -512,10 +522,7 @@ export const SelfCheckInPanel = ({
   if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
     return (
       <div className={styles.page} data-scanner-state="fallback">
-        <section
-          className={styles.card}
-          aria-labelledby="fallback-methods-title"
-        >
+        <Card className={styles.card} aria-labelledby="fallback-methods-title">
           <h1
             ref={fallbackHeadingRef}
             id="fallback-methods-title"
@@ -526,41 +533,44 @@ export const SelfCheckInPanel = ({
           </h1>
           <p className={styles.lead}>{COPY.attendance.fallbackLead}</p>
           {flow.cameraPermissionDenied && (
-            <div className={styles.cameraUnavailable} role="alert">
+            <Alert variant="destructive" className={styles.cameraUnavailable}>
               <strong>{COPY.attendance.cameraDeniedTitle}</strong>
               <p>{COPY.attendance.cameraDeniedBody}</p>
-              <button
-                className={styles.button}
+              <Button
+                className={primaryControl}
                 type="button"
                 onClick={retryCamera}
               >
                 {COPY.attendance.cameraRetry}
-              </button>
-            </div>
+              </Button>
+            </Alert>
           )}
           {flow.cameraUnsupported && !flow.cameraPermissionDenied && (
-            <div className={styles.cameraUnavailable} role="alert">
+            <Alert variant="destructive" className={styles.cameraUnavailable}>
               <strong>{COPY.attendance.cameraUnsupportedTitle}</strong>
               <p>{COPY.attendance.cameraUnsupportedHint}</p>
-            </div>
+            </Alert>
           )}
           <section
             className={styles.methodSection}
             aria-labelledby="fallback-methods-title"
           >
             <div className={styles.methodGrid}>
-              <button
-                className={styles.methodCard}
+              <Button
+                variant="outline"
+                className={methodControl}
                 type="button"
                 onClick={openManual}
               >
                 <strong>{COPY.attendance.manualMethodTitle}</strong>
                 <span>{COPY.attendance.manualMethodHint}</span>
-              </button>
-              <a className={styles.methodCard} href="/profile?from=scanner">
-                <strong>{COPY.attendance.memberQrTitle}</strong>
-                <span>{COPY.attendance.memberQrHint}</span>
-              </a>
+              </Button>
+              <Button asChild variant="outline" className={methodControl}>
+                <a href="/profile?from=scanner">
+                  <strong>{COPY.attendance.memberQrTitle}</strong>
+                  <span>{COPY.attendance.memberQrHint}</span>
+                </a>
+              </Button>
             </div>
           </section>
           {/* Dedicated denied/unsupported alerts above already own these
@@ -569,7 +579,7 @@ export const SelfCheckInPanel = ({
           {!flow.cameraPermissionDenied && !flow.cameraUnsupported && (
             <ScannerStatusOutput message={flow.status} tone={flow.tone} />
           )}
-        </section>
+        </Card>
       </div>
     );
   }

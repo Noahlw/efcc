@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import {
@@ -400,25 +405,37 @@ export const EventDetail = ({
           <h2 ref={recoveryRef} className={styles.boundaryTitle} tabIndex={-1}>
             {COPY.programs.eventDetailRecoveryTitle}
           </h2>
-          <p className={styles.panelError} role="alert">
+          <Alert className={styles.panelError} variant="destructive">
             {loadError}
-          </p>
+          </Alert>
           <div className={styles.programDetailActions}>
-            <button
+            <Button
               type="button"
               className={styles.retry}
               onClick={() => void load()}
             >
               {COPY.error.retry}
-            </button>
+            </Button>
             {programHref !== "/programs" && (
-              <Link href={programHref} className={styles.secondaryButton}>
-                {COPY.programs.eventDetailViewProgram}
-              </Link>
+              <Button
+                asChild
+                className={styles.secondaryButton}
+                variant="outline"
+              >
+                <Link href={programHref}>
+                  {COPY.programs.eventDetailViewProgram}
+                </Link>
+              </Button>
             )}
-            <Link href="/programs" className={styles.secondaryButton}>
-              {COPY.programs.eventDetailBackToCatalog}
-            </Link>
+            <Button
+              asChild
+              className={styles.secondaryButton}
+              variant="outline"
+            >
+              <Link href="/programs">
+                {COPY.programs.eventDetailBackToCatalog}
+              </Link>
+            </Button>
           </div>
         </section>
       );
@@ -430,6 +447,7 @@ export const EventDetail = ({
         aria-label={COPY.programs.eventDetailTitle}
       >
         {COPY.programs.eventDetailLoading}
+        <Skeleton className="mt-3 h-16 w-full" aria-hidden="true" />
       </output>
     );
   }
@@ -455,24 +473,24 @@ export const EventDetail = ({
         aria-labelledby="participant-event-title"
         aria-busy={busy}
       >
-        <button
+        <Button
           type="button"
           className={styles.programDetailBack}
           aria-label={COPY.programs.backToOrigin}
           onClick={onBack}
         >
           <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
-        </button>
+        </Button>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
-            <span
+            <Badge
               className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
-              /* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- role=status pill must stay a span to keep rendered markup stable */
+              variant="default"
               role="status"
               aria-label={COPY.programs.checkInAvailable}
             >
               {COPY.programs.checkInAvailable}
-            </span>
+            </Badge>
           )}
           <p className={styles.programDetailEyebrow}>{programName}</p>
           <h1
@@ -519,12 +537,13 @@ export const EventDetail = ({
         </section>
 
         <div className={styles.actionBarCard}>
-          <Link
-            href={scanHref}
+          <Button
+            asChild
             className={checkInOpen ? styles.button : styles.secondaryButton}
+            variant={checkInOpen ? "default" : "outline"}
           >
-            {COPY.programs.goToScan}
-          </Link>
+            <Link href={scanHref}>{COPY.programs.goToScan}</Link>
+          </Button>
         </div>
       </section>
     );
@@ -536,32 +555,32 @@ export const EventDetail = ({
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
-      <button
+      <Button
         type="button"
         className={styles.programDetailBack}
         onClick={onBack}
       >
         {COPY.programs.eventDetailBack}
-      </button>
+      </Button>
       {notice !== null && (
         <output className={styles.panelNotice} aria-live="polite">
           <span>{notice}</span>
           {undoAvailable && !cancelled && (
-            <button
+            <Button
               type="button"
               className={styles.successOutline}
               disabled={busy}
               onClick={submitActivate}
             >
               {COPY.programs.eventAvailabilityUndo}
-            </button>
+            </Button>
           )}
         </output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
 
       <div className={styles.programDetailHeader}>
@@ -573,35 +592,37 @@ export const EventDetail = ({
             {hkWallDateTimeLabel(event.starts_at)} —{" "}
             {hkWallDateTimeLabel(event.ends_at)}
           </span>
-          <span className={styles.eventSource}>
+          <Badge className={styles.eventSource} variant="outline">
             {event.source === "SCHEDULE"
               ? COPY.programs.eventScheduleSource
               : COPY.programs.eventManualSource}
-          </span>
-          <span className={styles.eventSource}>
+          </Badge>
+          <Badge className={styles.eventSource} variant="outline">
             {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-          </span>
-          <span className={styles.eventSource}>
+          </Badge>
+          <Badge className={styles.eventSource} variant="outline">
             {COPY.programs.repeatLabel.replace(
               "{tag}",
               event.recurrence_tag ?? COPY.programs.recurrenceNone
             )}
-          </span>
-          <span
+          </Badge>
+          <Badge
             className={cancelled ? styles.eventCancelled : styles.eventActive}
+            variant={cancelled ? "outline" : "default"}
           >
             {STATUS_LABEL[event.status]}
-          </span>
+          </Badge>
           {event.availability !== undefined && (
-            <span
+            <Badge
               className={
                 event.availability === "Active"
                   ? styles.eventActive
                   : styles.eventCancelled
               }
+              variant={event.availability === "Active" ? "default" : "outline"}
             >
               {AVAILABILITY_LABEL[event.availability]}
-            </span>
+            </Badge>
           )}
         </p>
         {cancelled && event.cancel_reason !== null && (
@@ -696,26 +717,26 @@ export const EventDetail = ({
                     )}
                   </p>
                   <div className={styles.confirmRow}>
-                    <button
+                    <Button
                       type="button"
                       className={styles.dangerButton}
                       disabled={busy}
                       onClick={() => submitDeactivate(true)}
                     >
                       {COPY.programs.eventAvailabilityConfirmProceed}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       className={styles.secondaryButton}
                       disabled={busy}
                       onClick={() => setConfirmingDeactivate(false)}
                     >
                       {COPY.programs.keepEvent}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
-                <button
+                <Button
                   type="button"
                   className={styles.dangerOutline}
                   disabled={busy}
@@ -734,17 +755,17 @@ export const EventDetail = ({
                   }}
                 >
                   {COPY.programs.eventAvailabilityDeactivate}
-                </button>
+                </Button>
               )
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.successOutline}
                 disabled={busy}
                 onClick={submitActivate}
               >
                 {COPY.programs.eventAvailabilityActivate}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -756,7 +777,7 @@ export const EventDetail = ({
               <form className={styles.ruleForm} onSubmit={submitEdit}>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventName}</span>
-                  <input
+                  <Input
                     type="text"
                     name="name"
                     defaultValue={event.name ?? ""}
@@ -806,7 +827,7 @@ export const EventDetail = ({
                 </p>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventLocation}</span>
-                  <input
+                  <Input
                     type="text"
                     name="location"
                     defaultValue={event.location ?? ""}
@@ -816,7 +837,7 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventStart}</span>
-                  <input
+                  <Input
                     type="datetime-local"
                     name="starts_at"
                     required
@@ -826,7 +847,7 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventEnd}</span>
-                  <input
+                  <Input
                     type="datetime-local"
                     name="ends_at"
                     required
@@ -836,7 +857,7 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
-                  <input
+                  <Input
                     type="datetime-local"
                     name="opens_at"
                     required={
@@ -851,7 +872,7 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
-                  <input
+                  <Input
                     type="datetime-local"
                     name="closes_at"
                     required={
@@ -864,31 +885,31 @@ export const EventDetail = ({
                     aria-label={COPY.programs.eventCheckInWindowClosesAt}
                   />
                 </label>
-                <button
+                <Button
                   type="submit"
                   disabled={busy}
                   className={styles.actionButton}
                 >
                   {COPY.programs.eventEditSave}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className={styles.secondaryButton}
                   disabled={busy}
                   onClick={() => setEditing(false)}
                 >
                   {COPY.programs.eventEditCancel}
-                </button>
+                </Button>
               </form>
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.secondaryButton}
                 disabled={busy}
                 onClick={() => setEditing(true)}
               >
                 {COPY.programs.eventEditTitle}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -909,31 +930,31 @@ export const EventDetail = ({
                 >
                   <strong>{COPY.programs.cancelMeetingConfirmTitle}</strong>
                   <span>{COPY.programs.cancelMeetingConfirmBody}</span>
-                  <input
+                  <Input
                     type="text"
                     name="cancel_reason"
                     placeholder={COPY.programs.cancelReasonPlaceholder}
                     aria-label={COPY.programs.cancelReason}
                   />
-                  <button
+                  <Button
                     type="submit"
                     disabled={busy}
                     className={styles.dangerButton}
                   >
                     {COPY.programs.confirmCancel}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     className={styles.secondaryButton}
                     disabled={busy}
                     onClick={() => setConfirmingCancel(false)}
                   >
                     {COPY.programs.keepMeeting}
-                  </button>
+                  </Button>
                 </div>
               </form>
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.dangerOutline}
                 disabled={busy}
@@ -948,7 +969,7 @@ export const EventDetail = ({
                 }}
               >
                 {COPY.programs.cancelEvent}
-              </button>
+              </Button>
             )}
           </div>
         </>

@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { attendanceEventName } from "@/lib/attendance-display";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -24,6 +30,13 @@ import type {
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 import styles from "./attendance-panel.module.css";
+
+const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
+const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const dangerControl = `${styles.buttonDanger} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--error)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]`;
+const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
+const eventButtonControl = `${styles.eventButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const backControl = `${styles.back} min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]`;
 
 type StatusTone = "info" | "success" | "error";
 
@@ -51,7 +64,11 @@ export const AttendanceChooser = ({
   onRetry,
 }: AttendanceChooserProps) => {
   return (
-    <section className={styles.chooser} aria-labelledby="attendance-chooser-title">
+    <Card
+      className={styles.chooser}
+      role="region"
+      aria-labelledby="attendance-chooser-title"
+    >
       <h1 id="attendance-chooser-title" className={styles.title}>
         {COPY.attendance.chooserTitle}
       </h1>
@@ -61,25 +78,31 @@ export const AttendanceChooser = ({
       </h2>
 
       {loading && (
-        <output className={styles.chooserLoading} aria-busy="true" aria-live="polite">
-          {COPY.management.loading}
+        <output
+          className={styles.chooserLoading}
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Skeleton className="h-3 w-24" aria-hidden="true" />
+          <span>{COPY.management.loading}</span>
         </output>
       )}
 
       {error && !loading && (
-        <div className={styles.chooserError} role="alert">
+        <Alert variant="destructive" className={styles.chooserError}>
           <p>{error}</p>
           {onRetry && (
-            <button
-              className={styles.buttonSecondary}
+            <Button
+              variant="outline"
+              className={secondaryControl}
               type="button"
               onClick={onRetry}
               disabled={busy}
             >
               {COPY.management.retry}
-            </button>
+            </Button>
           )}
-        </div>
+        </Alert>
       )}
 
       {!loading && !error && events.length === 0 && (
@@ -89,11 +112,15 @@ export const AttendanceChooser = ({
       )}
 
       {!loading && !error && events.length > 0 && (
-        <ul className={styles.events} aria-label={COPY.attendance.chooserOpenMeetings}>
+        <ul
+          className={styles.events}
+          aria-label={COPY.attendance.chooserOpenMeetings}
+        >
           {events.map((event) => (
             <li key={event.event_id}>
-              <button
-                className={styles.eventButton}
+              <Button
+                variant="outline"
+                className={eventButtonControl}
                 type="button"
                 disabled={busy}
                 onClick={() => onSelect(event.event_id)}
@@ -105,16 +132,22 @@ export const AttendanceChooser = ({
                     {event.location ? ` · ${event.location}` : ""}
                   </span>
                 </span>
-                <span className={styles.rowAction}>{COPY.attendance.rosterTitle}</span>
-                <svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true">
+                <span className={styles.rowAction}>
+                  {COPY.attendance.rosterTitle}
+                </span>
+                <svg
+                  className={styles.chevron}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
                   <path d="m9 5 7 7-7 7" />
                 </svg>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 };
 
@@ -133,7 +166,10 @@ export interface AttendanceRosterProps {
   onExport?: () => void;
 }
 
-function rowLabel(row: AttendanceRow, memberDirectory: MemberDirectory): string {
+function rowLabel(
+  row: AttendanceRow,
+  memberDirectory: MemberDirectory
+): string {
   if (row.guest_name?.trim()) {
     return row.guest_name;
   }
@@ -147,8 +183,12 @@ function rowPhone(
   row: AttendanceRow,
   memberDirectory: MemberDirectory
 ): string | null {
-  return row.guest_phone ??
-    (row.member_user_id ? memberDirectory[row.member_user_id]?.phone ?? null : null);
+  return (
+    row.guest_phone ??
+    (row.member_user_id
+      ? (memberDirectory[row.member_user_id]?.phone ?? null)
+      : null)
+  );
 }
 
 const EMPTY_MEMBER_DIRECTORY: MemberDirectory = {};
@@ -173,7 +213,6 @@ function printAttendanceRoster() {
     window.print();
   }
 }
-
 
 /** Roster header, live count, record-preserving operations, and print sheet. */
 export const AttendanceRoster = ({
@@ -209,7 +248,8 @@ export const AttendanceRoster = ({
   }, [correctionId]);
 
   const activeRows = rows.filter((row) => row.status === "Active");
-  const statusIsOpen = event.status === "Active" && event.availability === "Active";
+  const statusIsOpen =
+    event.status === "Active" && event.availability === "Active";
   const eventTitle = event.name?.trim() || event.program_name;
 
   async function submitVoid(row: AttendanceRow) {
@@ -247,11 +287,18 @@ export const AttendanceRoster = ({
       <header className={styles.rosterHeader}>
         <div className={styles.rosterHeaderTopline}>
           {onBack && (
-            <button className={styles.back} type="button" onClick={onBack} disabled={busy}>
+            <Button
+              variant="link"
+              className={backControl}
+              type="button"
+              onClick={onBack}
+              disabled={busy}
+            >
               {COPY.attendance.chooseEvent}
-            </button>
+            </Button>
           )}
-          <span
+          <Badge
+            variant="outline"
             className={`${styles.statusBadge} ${
               statusIsOpen ? styles.statusBadgeActive : styles.statusBadgeMuted
             }`}
@@ -261,7 +308,7 @@ export const AttendanceRoster = ({
               : event.status === "Cancelled"
                 ? COPY.attendance.eventCancelled
                 : COPY.attendance.eventClosed}
-          </span>
+          </Badge>
         </div>
         <div className={styles.rosterHeadingRow}>
           <div>
@@ -273,19 +320,33 @@ export const AttendanceRoster = ({
             </p>
           </div>
           <p className={styles.rosterCount} aria-live="polite">
-            <strong>{COPY.attendance.checkedInCount(activeRows.length, rows.length)}</strong>
+            <strong>
+              {COPY.attendance.checkedInCount(activeRows.length, rows.length)}
+            </strong>
           </p>
         </div>
         <div className={styles.actionsRow}>
           {onPrint && (
-            <button className={styles.buttonSecondary} type="button" onClick={onPrint} disabled={busy}>
+            <Button
+              variant="outline"
+              className={secondaryControl}
+              type="button"
+              onClick={onPrint}
+              disabled={busy}
+            >
               {COPY.attendance.printSheet}
-            </button>
+            </Button>
           )}
           {onExport && (
-            <button className={styles.buttonSecondary} type="button" onClick={onExport} disabled={busy}>
+            <Button
+              variant="outline"
+              className={secondaryControl}
+              type="button"
+              onClick={onExport}
+              disabled={busy}
+            >
               {COPY.attendance.exportSheet}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -295,7 +356,10 @@ export const AttendanceRoster = ({
           {COPY.programs.eventNoParticipants}
         </output>
       ) : (
-        <ul className={styles.rosterList} aria-label={COPY.attendance.rosterTitle}>
+        <ul
+          className={styles.rosterList}
+          aria-label={COPY.attendance.rosterTitle}
+        >
           {rows.map((row) => {
             const phone = rowPhone(row, memberDirectory);
             const displayPhone =
@@ -308,18 +372,23 @@ export const AttendanceRoster = ({
               <li className={styles.rowCard} key={row.attendance_id}>
                 <div className={styles.rowHeader}>
                   <div>
-                    <strong className={styles.rowName}>{rowLabel(row, memberDirectory)}</strong>
+                    <strong className={styles.rowName}>
+                      {rowLabel(row, memberDirectory)}
+                    </strong>
                     <p className={styles.eventMeta}>
                       {displayPhone ?? COPY.attendance.method[row.method]}
                     </p>
                   </div>
-                  <span
+                  <Badge
+                    variant="outline"
                     className={`${styles.pill} ${
-                      row.status === "Active" ? styles.pillActive : styles.pillMuted
+                      row.status === "Active"
+                        ? styles.pillActive
+                        : styles.pillMuted
                     }`}
                   >
                     {COPY.attendance.status[row.status]}
-                  </span>
+                  </Badge>
                 </div>
 
                 {row.status === "Voided" && row.void_reason && (
@@ -328,8 +397,9 @@ export const AttendanceRoster = ({
 
                 {row.status === "Active" && (
                   <div className={styles.actionsRow}>
-                    <button
-                      className={styles.buttonDanger}
+                    <Button
+                      variant="outline"
+                      className={dangerControl}
                       type="button"
                       disabled={busy}
                       onClick={() => {
@@ -339,10 +409,11 @@ export const AttendanceRoster = ({
                       }}
                     >
                       {COPY.attendance.voidAttendance}
-                    </button>
+                    </Button>
                     {row.member_user_id === null && (
-                      <button
-                        className={styles.buttonSecondary}
+                      <Button
+                        variant="outline"
+                        className={secondaryControl}
                         type="button"
                         disabled={busy}
                         onClick={() => {
@@ -354,7 +425,7 @@ export const AttendanceRoster = ({
                         }}
                       >
                         {COPY.attendance.correctGuest}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
@@ -367,32 +438,49 @@ export const AttendanceRoster = ({
                       void submitVoid(row);
                     }}
                   >
-                    <h2 className={styles.operationTitle}>{COPY.attendance.voidAttendance}</h2>
-                    <p className={styles.operationLead}>{COPY.attendance.voidLead}</p>
-                    <label className={styles.field} htmlFor={`void-reason-${row.attendance_id}`}>
-                      <span className={styles.fieldLabel}>{COPY.attendance.voidReason}</span>
-                      <input
+                    <h2 className={styles.operationTitle}>
+                      {COPY.attendance.voidAttendance}
+                    </h2>
+                    <p className={styles.operationLead}>
+                      {COPY.attendance.voidLead}
+                    </p>
+                    <label
+                      className={styles.field}
+                      htmlFor={`void-reason-${row.attendance_id}`}
+                    >
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.voidReason}
+                      </span>
+                      <Input
                         ref={voidInputRef}
                         id={`void-reason-${row.attendance_id}`}
-                        className={styles.input}
+                        className={inputControl}
                         value={voidReason}
-                        onChange={(eventChange) => setVoidReason(eventChange.target.value)}
+                        onChange={(eventChange) =>
+                          setVoidReason(eventChange.target.value)
+                        }
                         required
                         autoComplete="off"
                       />
                     </label>
                     <div className={styles.actionsRow}>
-                      <button className={styles.buttonDanger} type="submit" disabled={busy}>
+                      <Button
+                        variant="outline"
+                        className={dangerControl}
+                        type="submit"
+                        disabled={busy}
+                      >
                         {COPY.attendance.voidConfirm}
-                      </button>
-                      <button
-                        className={styles.buttonSecondary}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className={secondaryControl}
                         type="button"
                         onClick={() => setVoidingId(null)}
                         disabled={busy}
                       >
                         {COPY.attendance.chooseEvent}
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 )}
@@ -412,50 +500,78 @@ export const AttendanceRoster = ({
                     >
                       {COPY.attendance.guestCorrection}
                     </h2>
-                    <p className={styles.operationLead}>{COPY.attendance.correctionLead}</p>
-                    <label className={styles.field} htmlFor={`correction-name-${row.attendance_id}`}>
-                      <span className={styles.fieldLabel}>{COPY.attendance.guestName}</span>
-                      <input
+                    <p className={styles.operationLead}>
+                      {COPY.attendance.correctionLead}
+                    </p>
+                    <label
+                      className={styles.field}
+                      htmlFor={`correction-name-${row.attendance_id}`}
+                    >
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.guestName}
+                      </span>
+                      <Input
                         id={`correction-name-${row.attendance_id}`}
-                        className={styles.input}
+                        className={inputControl}
                         value={correctionName}
-                        onChange={(eventChange) => setCorrectionName(eventChange.target.value)}
+                        onChange={(eventChange) =>
+                          setCorrectionName(eventChange.target.value)
+                        }
                         maxLength={80}
                         required
                       />
                     </label>
-                    <label className={styles.field} htmlFor={`correction-phone-${row.attendance_id}`}>
-                      <span className={styles.fieldLabel}>{COPY.attendance.guestPhone}</span>
-                      <input
+                    <label
+                      className={styles.field}
+                      htmlFor={`correction-phone-${row.attendance_id}`}
+                    >
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.guestPhone}
+                      </span>
+                      <Input
                         id={`correction-phone-${row.attendance_id}`}
-                        className={styles.input}
+                        className={inputControl}
                         value={correctionPhone}
-                        onChange={(eventChange) => setCorrectionPhone(eventChange.target.value)}
+                        onChange={(eventChange) =>
+                          setCorrectionPhone(eventChange.target.value)
+                        }
                         required
                       />
                     </label>
-                    <label className={styles.field} htmlFor={`correction-reason-${row.attendance_id}`}>
-                      <span className={styles.fieldLabel}>{COPY.attendance.correctionReason}</span>
-                      <input
+                    <label
+                      className={styles.field}
+                      htmlFor={`correction-reason-${row.attendance_id}`}
+                    >
+                      <span className={styles.fieldLabel}>
+                        {COPY.attendance.correctionReason}
+                      </span>
+                      <Input
                         id={`correction-reason-${row.attendance_id}`}
-                        className={styles.input}
+                        className={inputControl}
                         value={correctionReason}
-                        onChange={(eventChange) => setCorrectionReason(eventChange.target.value)}
+                        onChange={(eventChange) =>
+                          setCorrectionReason(eventChange.target.value)
+                        }
                         required
                       />
                     </label>
                     <div className={styles.actionsRow}>
-                      <button className={styles.button} type="submit" disabled={busy}>
+                      <Button
+                        className={primaryControl}
+                        type="submit"
+                        disabled={busy}
+                      >
                         {COPY.attendance.saveCorrection}
-                      </button>
-                      <button
-                        className={styles.buttonSecondary}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className={secondaryControl}
                         type="button"
                         onClick={() => setCorrectionId(null)}
                         disabled={busy}
                       >
                         {COPY.attendance.chooseEvent}
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 )}
@@ -466,16 +582,20 @@ export const AttendanceRoster = ({
       )}
     </>
   );
-}
+};
 
 export const AttendanceOperatorPanel = () => {
   const [eventId, setEventId] = useState<string | null>(null);
-  const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>([]);
+  const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
+    []
+  );
   const [chooserLoading, setChooserLoading] = useState(true);
   const [chooserError, setChooserError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<AttendanceMember[]>([]);
-  const [memberDirectory, setMemberDirectory] = useState<Record<string, AttendanceMember>>({});
+  const [memberDirectory, setMemberDirectory] = useState<
+    Record<string, AttendanceMember>
+  >({});
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [status, setStatus] = useState("");
@@ -495,7 +615,6 @@ export const AttendanceOperatorPanel = () => {
     showStatus(message, "error");
     announce(message);
   }
-
 
   async function loadChooser() {
     setChooserLoading(true);
@@ -632,7 +751,10 @@ export const AttendanceOperatorPanel = () => {
     onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
   });
 
-  async function handleVoid(row: AttendanceRow, reason: string): Promise<boolean> {
+  async function handleVoid(
+    row: AttendanceRow,
+    reason: string
+  ): Promise<boolean> {
     setBusy(true);
     try {
       await voidAttendance(row.attendance_id, reason);
@@ -667,12 +789,14 @@ export const AttendanceOperatorPanel = () => {
     }
   }
 
-
   function exportRoster() {
     if (typeof window === "undefined" || !event) {
       return;
     }
-    const header = [COPY.attendance.rosterTitle, event.name?.trim() || event.program_name];
+    const header = [
+      COPY.attendance.rosterTitle,
+      event.name?.trim() || event.program_name,
+    ];
     const lines = rows.map((row) => {
       const phone = rowPhone(row, memberDirectory);
       return [
@@ -709,9 +833,12 @@ export const AttendanceOperatorPanel = () => {
   const rosterVisible = Boolean(event && eventId);
   return (
     <div className={styles.page}>
-      <section
+      <Card
         className={styles.card}
-        aria-labelledby={rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"}
+        role="region"
+        aria-labelledby={
+          rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"
+        }
         aria-busy={busy || chooserLoading}
       >
         {!rosterVisible && (
@@ -746,82 +873,105 @@ export const AttendanceOperatorPanel = () => {
             </div>
 
             {event.status === "Active" && event.availability === "Active" && (
-                <section className={styles.group} aria-labelledby="attendance-operations-title">
-                  <h2 id="attendance-operations-title" className={styles.sectionTitle}>
-                    {COPY.attendance.operatorTitle}
-                  </h2>
-                  <div className={styles.actionsRow}>
-                    <button
-                      className={styles.buttonSecondary}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void startCamera()}
-                    >
-                      {cameraOpen ? COPY.attendance.cameraRetry : COPY.attendance.camera}
-                    </button>
-                    {cameraOpen && (
-                      <button
-                        className={styles.buttonSecondary}
-                        type="button"
-                        onClick={stopCamera}
-                      >
-                        {COPY.attendance.cameraClose}
-                      </button>
-                    )}
-                  </div>
+              <section
+                className={styles.group}
+                aria-labelledby="attendance-operations-title"
+              >
+                <h2
+                  id="attendance-operations-title"
+                  className={styles.sectionTitle}
+                >
+                  {COPY.attendance.operatorTitle}
+                </h2>
+                <div className={styles.actionsRow}>
+                  <Button
+                    variant="outline"
+                    className={secondaryControl}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void startCamera()}
+                  >
+                    {cameraOpen
+                      ? COPY.attendance.cameraRetry
+                      : COPY.attendance.camera}
+                  </Button>
                   {cameraOpen && (
-                    <video
-                      ref={videoRef}
-                      className={styles.video}
-                      muted
-                      playsInline
-                      aria-label={COPY.attendance.camera}
-                    />
-                  )}
-                  <div className={styles.inputRow}>
-                    <label className={styles.field} htmlFor="member-search">
-                      <span className={styles.fieldLabel}>{COPY.attendance.memberSearch}</span>
-                      <input
-                        id="member-search"
-                        className={styles.input}
-                        value={query}
-                        onChange={(changeEvent) => setQuery(changeEvent.target.value)}
-                        onKeyDown={(keyEvent) => {
-                          if (keyEvent.key === "Enter") {
-                            keyEvent.preventDefault();
-                            void searchMembers();
-                          }
-                        }}
-                      />
-                    </label>
-                    <button
-                      className={styles.buttonSecondary}
+                    <Button
+                      variant="outline"
+                      className={secondaryControl}
                       type="button"
-                      disabled={busy}
-                      onClick={() => void searchMembers()}
+                      onClick={stopCamera}
                     >
-                      {COPY.attendance.search}
-                    </button>
-                  </div>
-                  {members.length > 0 && (
-                    <ul className={styles.events} aria-label={COPY.attendance.memberSearch}>
-                      {members.map((member) => (
-                        <li key={member.user_id}>
-                          <button
-                            className={styles.eventButton}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void checkIn(member)}
-                          >
-                            <strong>{member.name}</strong>
-                            <span className={styles.eventMeta}>{member.phone ?? member.user_id}</span>
-                            <span className={styles.rowAction}>{COPY.attendance.checkInMember}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                      {COPY.attendance.cameraClose}
+                    </Button>
                   )}
-                </section>
+                </div>
+                {cameraOpen && (
+                  <video
+                    ref={videoRef}
+                    className={styles.video}
+                    muted
+                    playsInline
+                    aria-label={COPY.attendance.camera}
+                  />
+                )}
+                <div className={styles.inputRow}>
+                  <label className={styles.field} htmlFor="member-search">
+                    <span className={styles.fieldLabel}>
+                      {COPY.attendance.memberSearch}
+                    </span>
+                    <Input
+                      id="member-search"
+                      className={inputControl}
+                      value={query}
+                      onChange={(changeEvent) =>
+                        setQuery(changeEvent.target.value)
+                      }
+                      onKeyDown={(keyEvent) => {
+                        if (keyEvent.key === "Enter") {
+                          keyEvent.preventDefault();
+                          void searchMembers();
+                        }
+                      }}
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    className={secondaryControl}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void searchMembers()}
+                  >
+                    {COPY.attendance.search}
+                  </Button>
+                </div>
+                {members.length > 0 && (
+                  <ul
+                    className={styles.events}
+                    aria-label={COPY.attendance.memberSearch}
+                  >
+                    {members.map((member) => (
+                      <li key={member.user_id}>
+                        <Button
+                          variant="outline"
+                          className={eventButtonControl}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void checkIn(member)}
+                        >
+                          <strong>{member.name}</strong>
+                          <span className={styles.eventMeta}>
+                            {member.phone ?? member.user_id}
+                          </span>
+                          <span className={styles.rowAction}>
+                            {COPY.attendance.checkInMember}
+                          </span>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             )}
           </>
         )}
@@ -836,7 +986,10 @@ export const AttendanceOperatorPanel = () => {
         </output>
 
         {rosterVisible && event && (
-          <section className={styles.printSheet} aria-label={COPY.attendance.printSheet}>
+          <section
+            className={styles.printSheet}
+            aria-label={COPY.attendance.printSheet}
+          >
             <h1>{event.name?.trim() || event.program_name}</h1>
             <p>
               {hkWallLabel(event.starts_at)}
@@ -848,14 +1001,16 @@ export const AttendanceOperatorPanel = () => {
                 return (
                   <div className={styles.printRow} key={row.attendance_id}>
                     <span>{rowLabel(row, memberDirectory)}</span>
-                    <span>{phone ? COPY.attendance.maskedPhone(phone) : "—"}</span>
+                    <span>
+                      {phone ? COPY.attendance.maskedPhone(phone) : "—"}
+                    </span>
                   </div>
                 );
               })}
             </div>
           </section>
         )}
-      </section>
+      </Card>
     </div>
   );
 };

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -41,7 +46,6 @@ const MODULE_LABEL: Record<DepartmentModule["module_key"], string> = {
   attendance: COPY.programs.moduleAttendance,
   custom_forms: COPY.programs.moduleCustomForms,
 };
-
 
 export const DepartmentSettingsPanel = ({
   department,
@@ -199,9 +203,9 @@ export const DepartmentSettingsPanel = ({
             {COPY.programs.departmentSettings}: {department.name}
           </h3>
         </div>
-        <button className={styles.toggle} type="button" onClick={onClose}>
+        <Button className={styles.toggle} type="button" onClick={onClose}>
           {COPY.programs.collapse}
-        </button>
+        </Button>
       </div>
 
       {notice !== null && (
@@ -210,202 +214,213 @@ export const DepartmentSettingsPanel = ({
         </output>
       )}
       {actionError !== null && (
-        <p className={styles.error} role="alert">
+        <Alert className={styles.error} variant="destructive">
           {actionError}
-        </p>
+        </Alert>
       )}
       {detail === null || managers === null ? (
-        <p aria-live="polite">{COPY.nav.loading}</p>
+        <div className="flex items-center gap-2">
+          <p aria-live="polite">{COPY.nav.loading}</p>
+          <Skeleton className="h-6 w-24" aria-hidden="true" />
+        </div>
       ) : (
         <>
           {creating ? (
-          <ProgramForm
-            departments={[department]}
-            onSaved={handleProgramSaved}
-            onCancel={() => setCreating(false)}
-          />
-        ) : (
-          <>
-            {department.capabilities.manage && (
-              <div className={styles.workspaceActions}>
-                <button
-                  className={styles.button}
-                  type="button"
-                  onClick={() => {
-                    setNotice(null);
-                    setActionError(null);
-                    setCreating(true);
-                  }}
-                  disabled={busy}
-                >
-                  {COPY.programs.createProgram}
-                </button>
-                <p className={styles.fieldHint}>
-                  {COPY.programs.createProgramInDepartmentHint}
-                </p>
-              </div>
-            )}
-          {department.capabilities.manage && (
-            <form className={styles.form} onSubmit={saveDetails}>
-              <label
-                className={styles.field}
-                htmlFor={`${department.department_id}-name`}
-              >
-                <span className={styles.fieldLabel}>
-                  {COPY.programs.deptName}
-                </span>
-                <input
-                  id={`${department.department_id}-name`}
-                  className={styles.input}
-                  name="name"
-                  defaultValue={detail.department.name}
-                  required
-                />
-              </label>
-              <label
-                className={styles.field}
-                htmlFor={`${department.department_id}-description`}
-              >
-                <span className={styles.fieldLabel}>
-                  {COPY.programs.departmentDetails}
-                </span>
-                <textarea
-                  id={`${department.department_id}-description`}
-                  className={styles.input}
-                  name="description"
-                  defaultValue={detail.department.description ?? ""}
-                  rows={3}
-                />
-              </label>
-              <button className={styles.button} type="submit" disabled={busy}>
-                {COPY.programs.saveDepartment}
-              </button>
-            </form>
-          )}
-          {department.capabilities.module_configure && (
-            <section
-              aria-labelledby={`${department.department_id}-modules-heading`}
-            >
-              <h4
-                id={`${department.department_id}-modules-heading`}
-                className={styles.panelHeading}
-              >
-                {COPY.programs.modules}
-              </h4>
-              <ul className={styles.workspaceTaskList}>
-                {moduleRows.map((module) => (
-                  <li
-                    key={module.module_key}
-                    className={styles.workspaceTaskRow}
+            <ProgramForm
+              departments={[department]}
+              onSaved={handleProgramSaved}
+              onCancel={() => setCreating(false)}
+            />
+          ) : (
+            <>
+              {department.capabilities.manage && (
+                <div className={styles.workspaceActions}>
+                  <Button
+                    className={styles.button}
+                    type="button"
+                    onClick={() => {
+                      setNotice(null);
+                      setActionError(null);
+                      setCreating(true);
+                    }}
+                    disabled={busy}
                   >
-                    <span>{MODULE_LABEL[module.module_key]}</span>
-                    <button
-                      className={styles.toggle}
-                      type="button"
-                      aria-pressed={module.enabled === 1}
-                      disabled={busy}
-                      onClick={() =>
-                        void runAction(
-                          () =>
-                            setDepartmentModule(
-                              department.department_id,
-                              module.module_key,
-                              module.enabled !== 1
-                            ),
-                          COPY.programs.updated
-                        )
-                      }
-                    >
-                      {module.enabled === 1
-                        ? COPY.programs.disable
-                        : COPY.programs.enable}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {department.capabilities.manager_assign && (
-            <section
-              aria-labelledby={`${department.department_id}-managers-heading`}
-            >
-              <h4
-                id={`${department.department_id}-managers-heading`}
-                className={styles.panelHeading}
-              >
-                {COPY.programs.departmentManagers}
-              </h4>
-              <form className={styles.ruleForm} onSubmit={assignManager}>
-                <MemberPicker
-                  programId=""
-                  name="user_id"
-                  label={COPY.programs.departmentManagerUserId}
-                  placeholder={COPY.programs.departmentManagerUserIdPlaceholder}
-                  searchOptions={searchManagers}
-                />
-                <button
-                  className={styles.actionButton}
-                  type="submit"
-                  disabled={busy}
+                    {COPY.programs.createProgram}
+                  </Button>
+                  <p className={styles.fieldHint}>
+                    {COPY.programs.createProgramInDepartmentHint}
+                  </p>
+                </div>
+              )}
+              {department.capabilities.manage && (
+                <form className={styles.form} onSubmit={saveDetails}>
+                  <label
+                    className={styles.field}
+                    htmlFor={`${department.department_id}-name`}
+                  >
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.deptName}
+                    </span>
+                    <Input
+                      id={`${department.department_id}-name`}
+                      className={styles.input}
+                      name="name"
+                      defaultValue={detail.department.name}
+                      required
+                    />
+                  </label>
+                  <label
+                    className={styles.field}
+                    htmlFor={`${department.department_id}-description`}
+                  >
+                    <span className={styles.fieldLabel}>
+                      {COPY.programs.departmentDetails}
+                    </span>
+                    <Textarea
+                      id={`${department.department_id}-description`}
+                      className={styles.input}
+                      name="description"
+                      defaultValue={detail.department.description ?? ""}
+                      rows={3}
+                    />
+                  </label>
+                  <Button
+                    className={styles.button}
+                    type="submit"
+                    disabled={busy}
+                  >
+                    {COPY.programs.saveDepartment}
+                  </Button>
+                </form>
+              )}
+              {department.capabilities.module_configure && (
+                <section
+                  aria-labelledby={`${department.department_id}-modules-heading`}
                 >
-                  {COPY.programs.assignDepartmentManager}
-                </button>
-              </form>
-              <ul
-                className={styles.eventList}
-                aria-label={COPY.programs.departmentManagers}
-              >
-                {managers.length === 0 ? (
-                  <li className={styles.emptyLine}>
-                    {COPY.programs.noDepartmentManagers}
-                  </li>
-                ) : (
-                  managers.map((manager) => (
-                    <li key={manager.user_id} className={styles.eventRow}>
-                      <span className={styles.eventDate}>
-                        {manager.user_name ?? manager.user_id}
-                        {manager.username ? ` (${manager.username})` : ""}
-                      </span>
-                      {confirmingUserId === manager.user_id ? (
-                        <div className={styles.confirmRow}>
-                          <span>
-                            {COPY.programs.confirmRevokeDepartmentManager}
-                          </span>
-                          <button
-                            className={styles.dangerButton}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => revokeManager(manager.user_id)}
-                          >
-                            {COPY.programs.confirmRevoke}
-                          </button>
-                          <button
-                            className={styles.toggle}
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setConfirmingUserId(null)}
-                          >
-                            {COPY.programs.cancelRevoke}
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className={styles.actionButton}
+                  <h4
+                    id={`${department.department_id}-modules-heading`}
+                    className={styles.panelHeading}
+                  >
+                    {COPY.programs.modules}
+                  </h4>
+                  <ul className={styles.workspaceTaskList}>
+                    {moduleRows.map((module) => (
+                      <li
+                        key={module.module_key}
+                        className={styles.workspaceTaskRow}
+                      >
+                        <span>{MODULE_LABEL[module.module_key]}</span>
+                        <Button
+                          className={styles.toggle}
                           type="button"
+                          aria-pressed={module.enabled === 1}
                           disabled={busy}
-                          onClick={() => setConfirmingUserId(manager.user_id)}
+                          onClick={() =>
+                            void runAction(
+                              () =>
+                                setDepartmentModule(
+                                  department.department_id,
+                                  module.module_key,
+                                  module.enabled !== 1
+                                ),
+                              COPY.programs.updated
+                            )
+                          }
                         >
-                          {COPY.programs.revokeDepartmentManager}
-                        </button>
-                      )}
-                    </li>
-                  ))
-                )}
-              </ul>
-            </section>
-          )}
-        </>
+                          {module.enabled === 1
+                            ? COPY.programs.disable
+                            : COPY.programs.enable}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {department.capabilities.manager_assign && (
+                <section
+                  aria-labelledby={`${department.department_id}-managers-heading`}
+                >
+                  <h4
+                    id={`${department.department_id}-managers-heading`}
+                    className={styles.panelHeading}
+                  >
+                    {COPY.programs.departmentManagers}
+                  </h4>
+                  <form className={styles.ruleForm} onSubmit={assignManager}>
+                    <MemberPicker
+                      programId=""
+                      name="user_id"
+                      label={COPY.programs.departmentManagerUserId}
+                      placeholder={
+                        COPY.programs.departmentManagerUserIdPlaceholder
+                      }
+                      searchOptions={searchManagers}
+                    />
+                    <Button
+                      className={styles.actionButton}
+                      type="submit"
+                      disabled={busy}
+                    >
+                      {COPY.programs.assignDepartmentManager}
+                    </Button>
+                  </form>
+                  <ul
+                    className={styles.eventList}
+                    aria-label={COPY.programs.departmentManagers}
+                  >
+                    {managers.length === 0 ? (
+                      <li className={styles.emptyLine}>
+                        {COPY.programs.noDepartmentManagers}
+                      </li>
+                    ) : (
+                      managers.map((manager) => (
+                        <li key={manager.user_id} className={styles.eventRow}>
+                          <span className={styles.eventDate}>
+                            {manager.user_name ?? manager.user_id}
+                            {manager.username ? ` (${manager.username})` : ""}
+                          </span>
+                          {confirmingUserId === manager.user_id ? (
+                            <div className={styles.confirmRow}>
+                              <span>
+                                {COPY.programs.confirmRevokeDepartmentManager}
+                              </span>
+                              <Button
+                                className={styles.dangerButton}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => revokeManager(manager.user_id)}
+                              >
+                                {COPY.programs.confirmRevoke}
+                              </Button>
+                              <Button
+                                className={styles.toggle}
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setConfirmingUserId(null)}
+                              >
+                                {COPY.programs.cancelRevoke}
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              className={styles.actionButton}
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                setConfirmingUserId(manager.user_id)
+                              }
+                            >
+                              {COPY.programs.revokeDepartmentManager}
+                            </Button>
+                          )}
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
         </>
       )}

@@ -3,6 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -87,10 +93,11 @@ const DepartmentSettingsLauncher = ({
 
   useEffect(() => {
     if (!open) {
-      if (returnFocusPending) {
-        triggerRef.current?.focus();
-        setReturnFocusPending(false);
-      }
+      triggerRef.current?.focus();
+      document
+        .getElementById(`${department.department_id}-settings-trigger`)
+        ?.focus();
+      setReturnFocusPending(false);
       return;
     }
     // getElementById, not querySelector: department_id is a UUID and can
@@ -114,17 +121,20 @@ const DepartmentSettingsLauncher = ({
       onOpenProgram={onOpenProgram}
     />
   ) : (
-    <button
-      ref={triggerRef}
+    <Button
+      id={`${department.department_id}-settings-trigger`}
       className={styles.directoryCard}
       type="button"
-      onClick={() => setOpen(true)}
+      onClick={(event) => {
+        triggerRef.current = event.currentTarget;
+        setOpen(true);
+      }}
     >
       <span className={styles.directoryCardTitle}>{department.name}</span>
       <span className={styles.directoryCardMeta}>
         {department.code} · {COPY.programs.departmentSettings}
       </span>
-    </button>
+    </Button>
   );
 };
 export interface ManagementDirectoryProps {
@@ -138,7 +148,11 @@ export const ManagementDirectory = ({
 }: ManagementDirectoryProps) => {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const { state, run: loadDirectory, retry } = useAsyncResource<
+  const {
+    state,
+    run: loadDirectory,
+    retry,
+  } = useAsyncResource<
     { departments: Department[]; programs: ManagementProgramRecord[] },
     DirectoryState
   >(
@@ -208,7 +222,6 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-
   }, [query, state]);
   const scopedDepartments =
     state.kind === "ready"
@@ -237,15 +250,16 @@ export const ManagementDirectory = ({
           aria-busy="true"
         >
           {COPY.programs.managementDirectoryLoading}
+          <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
         </output>
       )}
 
       {state.kind === "error" && (
-        <section
+        <Alert
           id="programs-management-directory-state"
           tabIndex={-1}
           className={styles.boundaryError}
-          role="alert"
+          variant="destructive"
         >
           <h3 className={styles.boundaryTitle}>
             {state.failure === "forbidden"
@@ -257,72 +271,68 @@ export const ManagementDirectory = ({
               ? COPY.programs.managementDirectoryForbiddenHint
               : state.message}
           </p>
-          <button className={styles.retry} type="button" onClick={retry}>
+          <Button className={styles.retry} type="button" onClick={retry}>
             {COPY.programs.managementDirectoryRetry}
-          </button>
-        </section>
+          </Button>
+        </Alert>
       )}
       {state.kind === "ready" && scopedDepartments.length > 0 && (
-          <section
-            className={styles.moduleSection}
-            aria-labelledby="programs-management-department-settings"
+        <section
+          className={styles.moduleSection}
+          aria-labelledby="programs-management-department-settings"
+        >
+          <h3
+            id="programs-management-department-settings"
+            className={styles.sectionLabel}
           >
-            <h3
-              id="programs-management-department-settings"
-              className={styles.sectionLabel}
-            >
-              {departmentOnly
-                ? COPY.programs.departments
-                : COPY.programs.managementScopeDepartment}
-            </h3>
-            <p className={styles.fieldHint}>
-              {departmentOnly
-                ? COPY.programs.departmentsLead
-                : COPY.programs.departmentScopeHint}
-            </p>
-            <ul className={styles.deptList}>
-              {scopedDepartments.map((department) => (
-                  <li
-                    key={department.department_id}
-                    className={styles.deptItem}
-                  >
-                    <DepartmentSettingsLauncher
-                      department={department}
-                      onOpenProgram={onOpenProgram}
-                    />
-                  </li>
-                ))}
-            </ul>
-          </section>
-        )}
+            {departmentOnly
+              ? COPY.programs.departments
+              : COPY.programs.managementScopeDepartment}
+          </h3>
+          <p className={styles.fieldHint}>
+            {departmentOnly
+              ? COPY.programs.departmentsLead
+              : COPY.programs.departmentScopeHint}
+          </p>
+          <ul className={styles.deptList}>
+            {scopedDepartments.map((department) => (
+              <li key={department.department_id} className={styles.deptItem}>
+                <DepartmentSettingsLauncher
+                  department={department}
+                  onOpenProgram={onOpenProgram}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {state.kind === "ready" &&
         (departmentOnly
           ? scopedDepartments.length === 0
           : state.rows.length === 0) && (
-        <section
-          id="programs-management-directory-state"
-          tabIndex={-1}
-          className={styles.boundaryState}
-          role="status"
-          aria-live="polite"
-        >
-          <h3 className={styles.boundaryTitle}>
-            {departmentOnly
-              ? COPY.programs.noDepartments
-              : state.departments.length === 0
-                ? COPY.programs.cockpitEmptyScopeTitle
-                : COPY.programs.managementDirectoryEmpty}
-          </h3>
-          <p>
-            {departmentOnly
-              ? COPY.programs.departmentsLead
-              : state.departments.length === 0
-                ? COPY.programs.cockpitEmptyScopeHint
-                : COPY.programs.managementDirectoryEmptyHint}
-          </p>
-        </section>
-      )}
+          <section
+            id="programs-management-directory-state"
+            tabIndex={-1}
+            className={styles.boundaryState}
+            aria-live="polite"
+          >
+            <h3 className={styles.boundaryTitle}>
+              {departmentOnly
+                ? COPY.programs.noDepartments
+                : state.departments.length === 0
+                  ? COPY.programs.cockpitEmptyScopeTitle
+                  : COPY.programs.managementDirectoryEmpty}
+            </h3>
+            <p>
+              {departmentOnly
+                ? COPY.programs.departmentsLead
+                : state.departments.length === 0
+                  ? COPY.programs.cockpitEmptyScopeHint
+                  : COPY.programs.managementDirectoryEmptyHint}
+            </p>
+          </section>
+        )}
 
       {state.kind === "ready" && state.rows.length > 0 && (
         <>
@@ -334,7 +344,7 @@ export const ManagementDirectory = ({
               {COPY.programs.managementDirectorySearchLabel}
             </label>
             <div className={styles.directorySearchRow}>
-              <input
+              <Input
                 id="programs-management-directory-search"
                 className={styles.input}
                 type="search"
@@ -344,13 +354,13 @@ export const ManagementDirectory = ({
                 autoComplete="off"
               />
               {query.trim() && (
-                <button
+                <Button
                   className={styles.clearButton}
                   type="button"
                   onClick={() => setQuery("")}
                 >
                   {COPY.programs.managementDirectoryClearSearch}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -364,13 +374,13 @@ export const ManagementDirectory = ({
                 {COPY.programs.managementDirectoryNoMatches}
               </h3>
               <p>{COPY.programs.managementDirectoryNoMatchesHint}</p>
-              <button
+              <Button
                 className={styles.retry}
                 type="button"
                 onClick={() => setQuery("")}
               >
                 {COPY.programs.managementDirectoryClearSearch}
-              </button>
+              </Button>
             </section>
           ) : (
             <ul
@@ -379,7 +389,7 @@ export const ManagementDirectory = ({
             >
               {filteredRows.map(({ program, department, scope }) => (
                 <li key={program.program_id} className={styles.directoryItem}>
-                  <button
+                  <Button
                     className={styles.directoryCard}
                     type="button"
                     onClick={() => onOpenProgram(program.program_id)}
@@ -401,22 +411,32 @@ export const ManagementDirectory = ({
                           {program.category}
                         </span>
                       )}
-                      <span className={styles.directoryStatus}>
+                      <Badge
+                        className={styles.directoryStatus}
+                        variant="outline"
+                      >
                         {scope === "department"
                           ? COPY.programs.managementScopeDepartment
                           : COPY.programs.managementScopeProgram}
-                      </span>
-                      <span
+                      </Badge>
+                      <Badge
                         className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
+                        variant={
+                          program.lifecycle === "Active"
+                            ? "default"
+                            : program.lifecycle === "Draft"
+                              ? "secondary"
+                              : "outline"
+                        }
                       >
                         {program.lifecycle === "Active"
                           ? COPY.programs.lifecycleActive
                           : program.lifecycle === "Draft"
                             ? COPY.programs.lifecycleDraft
                             : COPY.programs.lifecycleArchived}
-                      </span>
+                      </Badge>
                     </span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

@@ -2,26 +2,28 @@
 
 import { Suspense } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { MessagesPanel } from "@/lib/messages-panel";
 
 import styles from "@/lib/notices-panel.module.css";
 
-const MessagesPage = () => 
-  (
-    <AppShell>
-      <Suspense
-        fallback={
+const MessagesPage = () => (
+  <AppShell>
+    <Suspense
+      fallback={
+        <>
           <output className={styles.state} aria-busy="true">
             {COPY.home.messagesLoading}
           </output>
-        }
-      >
-        <MessagesPanel />
-      </Suspense>
-    </AppShell>
-  )
-;
+          <Skeleton className={styles.state} aria-hidden="true" />
+        </>
+      }
+    >
+      <MessagesPanel />
+    </Suspense>
+  </AppShell>
+);
 
 export default MessagesPage;

@@ -80,6 +80,10 @@ export default defineConfig({
       use: { viewport: { width: 600, height: 844 } },
     },
     {
+      name: "phone-748",
+      use: { viewport: { width: 748, height: 1366 } },
+    },
+    {
       name: "tablet-799",
       use: { viewport: { width: 799, height: 900 } },
     },

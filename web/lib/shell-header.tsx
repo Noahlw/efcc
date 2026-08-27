@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/app-context";
 import { AttentionPanel, EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import type { AttentionData } from "@/lib/attention-panel";
@@ -87,19 +89,25 @@ export const ShellHeader = ({
 
         {isManagement ? (
           <div className={styles.headerActions}>
-            <button
+            <Button
               type="button"
-              className={styles.bell}
+              variant="ghost"
+              size="icon"
+              className={`${styles.bell} size-11 rounded-full border border-[var(--line-strong)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--accent)]`}
               aria-label={COPY.attention.bellLabel(attentionCount)}
               aria-haspopup="dialog"
               aria-expanded={attentionOpen}
               onClick={() => setAttentionOpen(true)}
             >
               <BellIcon />
-              <span className={styles.bellBadge} aria-hidden="true">
+              <Badge
+                variant="default"
+                className={styles.bellBadge}
+                aria-hidden="true"
+              >
                 {attentionCount}
-              </span>
-            </button>
+              </Badge>
+            </Button>
           </div>
         ) : null}
       </header>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
 
@@ -89,9 +90,8 @@ const CANONICAL_SECTION_HREFS: Record<string, string> = {
   management: "/management",
 };
 
-const canonicalHrefForSection = (key: string): string => 
-  CANONICAL_SECTION_HREFS[key] ?? `/${key}`
-;
+const canonicalHrefForSection = (key: string): string =>
+  CANONICAL_SECTION_HREFS[key] ?? `/${key}`;
 
 const NavigationLink = ({
   section,
@@ -102,16 +102,21 @@ const NavigationLink = ({
 }) => {
   const isScanner = section.key === "scanner";
   return (
-    <Link
-      href={canonicalHrefForSection(section.key)}
+    <Button
+      asChild
+      variant="ghost"
       className={`nav-item${isScanner ? " nav-item--scan" : ""}`}
-      aria-current={section.key === current ? "page" : undefined}
     >
-      <span className="nav-icon">
-        <NavIcon section={section.key} />
-      </span>
-      <span className="nav-label">{section.label}</span>
-    </Link>
+      <Link
+        href={canonicalHrefForSection(section.key)}
+        aria-current={section.key === current ? "page" : undefined}
+      >
+        <span className="nav-icon">
+          <NavIcon section={section.key} />
+        </span>
+        <span className="nav-label">{section.label}</span>
+      </Link>
+    </Button>
   );
 };
 
