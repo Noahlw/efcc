@@ -121,10 +121,8 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const doc = document.documentElement;
-    const horizontalOverflow = Math.max(
-      doc.scrollWidth,
-      document.body.scrollWidth
-    ) - viewportWidth;
+    const horizontalOverflow =
+      Math.max(doc.scrollWidth, document.body.scrollWidth) - viewportWidth;
 
     const nav = document.querySelector<HTMLElement>("#main-navigation");
     const navStyle = nav ? getComputedStyle(nav) : null;
@@ -177,12 +175,9 @@ test("shell critical anchors render at the pinned width with no overflow or obst
       mainScrollable: mainEl
         ? getComputedStyle(mainEl).overflowY === "auto"
         : false,
-      mainPaddingBottom: mainEl
-        ? getComputedStyle(mainEl).paddingBottom
-        : null,
-      undersized: visibleControls.filter(
-        (c) => c.width < 44 || c.height < 44
-      ).length,
+      mainPaddingBottom: mainEl ? getComputedStyle(mainEl).paddingBottom : null,
+      undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44)
+        .length,
     };
   });
 
@@ -249,9 +244,53 @@ test("799px shows the phone shell; 800px shows the desktop shell", async ({
   }
 });
 
+test("attention dialog is a fixed overlay fully inside the viewport", async ({
+  page,
+}) => {
+  await page.goto("/home");
+  await expect(page.locator("#main-navigation")).toBeVisible();
+
+  const bell = page.getByRole("button", {
+    name: new RegExp(COPY.attention.title, "u"),
+  });
+  await expect(bell).toBeVisible();
+  await bell.click();
+
+  const dialog = page.getByRole("dialog", {
+    name: COPY.attention.title,
+  });
+  await expect(dialog).toBeVisible();
+
+  const geometry = await dialog.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return {
+      position: style.position,
+      left: box.left,
+      top: box.top,
+      right: box.right,
+      bottom: box.bottom,
+      width: box.width,
+      height: box.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  // P0 regression: the unlayered `.attention-panel { position: relative }`
+  // overrode the Radix `fixed` utility and pushed the dialog off-screen.
+  // The dialog must be a fixed overlay fully inside the viewport.
+  expect(geometry.position).toBe("fixed");
+  expect(geometry.width).toBeGreaterThan(0);
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+});
+
 test("focus order at the pinned width: skip link, primary nav, main, then chrome tail", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.goto("/home");
   const nav = page.locator("#main-navigation");
   await expect(nav).toBeVisible();
@@ -287,7 +326,9 @@ test("focus order at the pinned width: skip link, primary nav, main, then chrome
 
   const outline = await page.evaluate(() => {
     const el = document.activeElement;
-    return el instanceof HTMLElement ? getComputedStyle(el).outlineWidth : "0px";
+    return el instanceof HTMLElement
+      ? getComputedStyle(el).outlineWidth
+      : "0px";
   });
   expect(outline, "focused nav item must show a focus outline").not.toBe("0px");
 });

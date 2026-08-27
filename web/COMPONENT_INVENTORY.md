@@ -33,13 +33,13 @@ Only primitives needed by at least one shipped Phase A caller are vendored/used;
 | Primitive | Owning Phase A caller | Variant in use | Observable contract seam |
 | --- | --- | --- | --- |
 | `Button` (existing) | `lib/nav-bar.tsx` nav actions, `lib/shell-header.tsx` bell/close, `lib/recovery-view.tsx` retry | `ghost` nav item, `outline` close, `default` recovery | `web/lib/shell/authenticated-shell.test.tsx`, `web/lib/app.test.tsx`, `web/lib/components-contract.test.tsx` |
-| `Dialog` (local shadcn/Radix) | `lib/attention-panel.tsx` attention overlay | Controlled `open`/`onOpenChange`; `DialogContent` with `attention-panel` layout classes | Role/state (`role="dialog"`, labelled), keyboard (Escape), focus trap/restore, modal overlay — Radix Dialog contract; `web/lib/attention-panel.test.tsx`, `web/lib/shell/authenticated-shell.test.tsx` |
+| `Dialog` (local shadcn/Radix) | `lib/attention-panel.tsx` attention dialog | Controlled `open`/`onOpenChange`; `DialogContent` with `attention-panel` surface classes (positioning/z-index stay on the Radix `fixed` utilities — the unlayered `position: relative` override is removed) | Role/state (`role="dialog"`, labelled), keyboard (Escape), focus trap/restore, modal overlay — Radix Dialog contract; `web/lib/attention-panel.test.tsx`, `web/lib/shell/authenticated-shell.test.tsx`, `tests/e2e/shell-geometry.test.ts` (fixed overlay inside the viewport) |
 | `Badge` (existing) | `lib/shell-header.tsx` bell count | `default` | `web/lib/app.test.tsx` |
 | `Skeleton` (existing) | `lib/app-shell.tsx` loading shell | `rounded-full bg-[var(--skeleton)]` | `web/lib/app.test.tsx` |
 | `Alert` (existing) | `lib/recovery-view.tsx` recovery state | `destructive` | `web/lib/app.test.tsx` |
 | `LiveRegion` (shell-owned) | `app/layout.tsx` | single `output[role="status"][aria-live="polite"].sr-only` | `web/lib/app.test.tsx` RootLayout suite; `tests/e2e/responsive.test.ts` (one region) |
 
-No new primitive file was vendored in Phase A: the Dialog primitive already existed in `web/components/ui/dialog.tsx` and is now consumed by a shipped caller (the attention overlay), which closes the previous inventory note that Dialog was vendored-but-unwired. The attention overlay's tab strip keeps explicit `role="tab"`/`aria-selected` semantics (its two tabs switch one panel; the shadcn `Tabs` primitive is already wired in shipped S2 callers and would duplicate this single-panel switch).
+No new primitive file was vendored in Phase A: the Dialog primitive already existed in `web/components/ui/dialog.tsx` and is now consumed by a shipped caller (the attention dialog), which closes the previous inventory note that Dialog was vendored-but-unwired. The attention dialog's tab strip keeps explicit `role="tab"`/`aria-selected` semantics (its two tabs switch one panel; the shadcn `Tabs` primitive is already wired in shipped S2 callers and would duplicate this single-panel switch).
 
 ### Native-exception registry (TK-11)
 

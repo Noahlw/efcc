@@ -1,20 +1,26 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
-import { AppShell } from "@/lib/app-shell";
-import { AppProvider } from "@/lib/app-context";
 import type { Bootstrap, PublicUser } from "@/lib/api";
+import { AppProvider } from "@/lib/app-context";
+import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { LiveRegion, announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "@/lib/sections";
+import { defaultSections, stableNavigationSections } from "@/lib/sections";
 import { setAuthHint } from "@/lib/session";
 
 const mocks = vi.hoisted(() => {
@@ -38,7 +44,9 @@ vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.mockRouter,
   usePathname: () => mocks.pathnameMock(),
   useSearchParams: () =>
-    new URLSearchParams(window.location.search) as unknown as ReadonlyURLSearchParams,
+    new URLSearchParams(
+      window.location.search
+    ) as unknown as ReadonlyURLSearchParams,
 }));
 
 const PUBLIC_USER: PublicUser = {
@@ -119,16 +127,15 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     setAuthHint();
     mocks.pathnameMock.mockReturnValue("/home");
     renderShell();
-    const navs = await screen.findAllByRole("navigation", {
+    const [nav] = await screen.findAllByRole("navigation", {
       name: COPY.nav.label,
     });
     // One landmark: the phone dock and desktop rail are the same list
     // presented by CSS at the 800px breakpoint (TK-05 focus order).
-    expect(navs).toHaveLength(1);
-    const nav = navs[0];
+    expect(nav).toBeInTheDocument();
     expect(nav).toHaveAttribute("id", "main-navigation");
-    const links = Array.from(nav.querySelectorAll("a"));
-    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+    const links = [...nav.querySelectorAll("a")];
+    expect(links.map((l) => l.getAttribute("href"))).toStrictEqual([
       "/home",
       "/programs",
       "/scanner",
@@ -182,7 +189,9 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
       name: COPY.nav.label,
     });
     expect(nav.className).toContain("nav-phone");
-    const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("[class*='nav-phone']"));
+    const fixedElements = [
+      ...document.querySelectorAll<HTMLElement>("[class*='nav-phone']"),
+    ];
     expect(fixedElements.length).toBeGreaterThan(0);
   });
 
@@ -265,16 +274,21 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     renderShell();
     await screen.findByRole("navigation", { name: COPY.nav.label });
     const bell = screen.getByRole("button", {
-      name: new RegExp(COPY.attention.title),
+      name: new RegExp(COPY.attention.title, "u"),
     });
     await user.click(bell);
     const dialog = await screen.findByRole("dialog", {
       name: COPY.attention.title,
     });
     expect(dialog).toBeInTheDocument();
-    // Escape closes (Radix contract).
+    // The dialog surface is the Radix DialogContent (P0: the attention
+    // panel must stay on the primitive's fixed overlay, not a raw
+    // in-flow <div>; geometry is asserted in the Chromium suites).
+    expect(dialog.dataset.slot).toBe("dialog-content");
+    // Escape closes (Radix contract); focus returns to the bell trigger.
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(bell).toHaveFocus();
   });
 
   test("NavBar renders the server projection verbatim without deriving from role", () => {
@@ -285,8 +299,6 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     );
     const nav = screen.getByRole("navigation", { name: COPY.nav.label });
     expect(nav.querySelectorAll("a")).toHaveLength(5);
-    expect(
-      nav.querySelector('a[href="/scanner"]')
-    ).not.toBeNull();
+    expect(nav.querySelector('a[href="/scanner"]')).not.toBeNull();
   });
 });

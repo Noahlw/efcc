@@ -20,9 +20,13 @@
 #                                    contract (lib/app.test.tsx)
 #   shell-responsive
 #     pnpm test:shell-responsive      local static-shell Playwright suite
-#   shell-responsive                      -> builds the static export, serves
-#                                          on 127.0.0.1:4173; no remote
-#                                          target, storage states, or Sheets
+#                                          -> builds the static export, serves
+#                                             on 127.0.0.1:4173; no remote
+#                                             target, storage states, or Sheets
+#   shell-geometry
+#     pnpm test:shell-geometry       pinned-width Chromium geometry suite
+#                                          (TK-09): 320/390/600/799/800/1024/
+#                                          1440 CSS px, numeric evidence only
 #
 # Failures are LOUD: no `continue-on-error`, no `|| true`.
 
@@ -126,6 +130,39 @@ jobs:
 
       - name: Shell responsive suite (static shell, 375px + 1280px)
         run: pnpm test:shell-responsive
+
+  shell-geometry:
+    name: Shell geometry (pinned Chromium widths, TK-09)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        # This job needs the Playwright browser (below), so skip the root
+        # postinstall's Chromium download and install it explicitly with deps.
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium (with system deps)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install web dependencies (for static export build)
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Shell geometry suite (pinned Chromium widths, TK-09)
+        run: pnpm test:shell-geometry
 
   programs-playwright:
     name: Programs D1 Playwright (320/390 + desktop)

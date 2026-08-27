@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
@@ -78,6 +78,34 @@ describe(AttentionPanel, () => {
 
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  test("focus returns to the caller-provided trigger on close", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn<() => void>();
+    const trigger = document.createElement("button");
+    trigger.textContent = "bell";
+    document.body.append(trigger);
+    try {
+      const { unmount } = render(
+        <AttentionPanel
+          open
+          onClose={onClose}
+          onCloseAutoFocus={() => trigger.focus()}
+        />
+      );
+      const dialog = screen.getByRole("dialog", {
+        name: COPY.attention.title,
+      });
+      await user.click(
+        within(dialog).getByRole("button", { name: COPY.attention.close })
+      );
+      expect(onClose).toHaveBeenCalledOnce();
+      unmount();
+      await waitFor(() => expect(trigger).toHaveFocus());
+    } finally {
+      trigger.remove();
+    }
   });
 
   test("renders items when data is provided", async () => {

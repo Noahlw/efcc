@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export const ShellHeader = ({
   const { bootstrap } = useApp();
   const pathname = usePathname();
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
 
   const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
   if (isScanner) {
@@ -90,6 +91,7 @@ export const ShellHeader = ({
         {isManagement ? (
           <div className={styles.headerActions}>
             <Button
+              ref={bellRef}
               type="button"
               variant="ghost"
               size="icon"
@@ -116,6 +118,7 @@ export const ShellHeader = ({
         open={attentionOpen}
         onClose={() => setAttentionOpen(false)}
         data={attentionData}
+        onCloseAutoFocus={() => bellRef.current?.focus()}
       />
     </>
   );

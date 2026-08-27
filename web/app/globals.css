@@ -438,62 +438,46 @@ input:focus-visible {
   }
 }
 
-.attention-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 1rem;
-  background: color-mix(in srgb, var(--ink) 24%, transparent);
-}
-
-.attention-overlay__backdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: transparent;
-  cursor: default;
-}
-
+/* Attention dialog (Spec 089-S1) on the local shadcn/Radix Dialog primitive
+   (TK-03). Positioning and the modal overlay are the Radix Dialog contract:
+   the fixed backdrop/panel live in Tailwind's layered utilities, which
+   override these presentation classes. This block styles the dialog surface
+   only; it must never set position/z-index (that would fight the primitive
+   and push the panel off-screen). */
 .attention-panel {
-  position: relative;
-  z-index: 1;
-  width: min(420px, calc(100vw - 2rem));
-  max-height: calc(100dvh - 2rem);
-  margin: 0;
+  width: var(--width-overlay);
+  max-height: calc(100dvh - var(--space-4) * 2);
   overflow-y: auto;
-  border: 1px solid var(--line-strong);
+  border: var(--border-control);
   border-radius: var(--radius-md);
   color: var(--ink);
   background: var(--surface-raised);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--ink) 20%, transparent);
+  box-shadow: var(--shadow-overlay);
 }
 
 .attention-panel__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   padding: 1.1rem 1.1rem 0.9rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-hairline);
 }
 
 .attention-panel__header h2 {
   font-size: 1.1rem;
-  font-weight: 800;
+  font-weight: var(--weight-extrabold);
 }
 
 .attention-panel__close {
-  min-height: 44px;
+  min-height: var(--control-min-size);
   padding: 0.45rem 0.7rem;
-  border: 1px solid var(--line-strong);
+  border: var(--border-control);
   border-radius: var(--radius-sm);
   color: var(--ink);
   background: transparent;
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   cursor: pointer;
 }
 
@@ -503,13 +487,13 @@ input:focus-visible {
 
 .attention-panel__tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-1);
   padding: 0.7rem 1.1rem 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-hairline);
 }
 
 .attention-panel__tab {
-  min-height: 44px;
+  min-height: var(--control-min-size);
   padding: 0.55rem 0.75rem;
   border: 0;
   border-bottom: 3px solid transparent;
@@ -548,7 +532,7 @@ input:focus-visible {
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid var(--line-strong);
+  border: var(--border-control);
   border-radius: 50%;
   color: var(--success);
   font-size: 1.25rem;
@@ -558,18 +542,18 @@ input:focus-visible {
 .attention-panel__empty h3 {
   color: var(--ink);
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: var(--weight-extrabold);
 }
 
 .attention-panel__empty p {
   max-width: 28ch;
   font-size: 0.88rem;
-  line-height: 1.6;
+  line-height: var(--leading-body);
 }
 
 .attention-panel__list {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-3);
   list-style: none;
 }
 
@@ -577,7 +561,7 @@ input:focus-visible {
   display: grid;
   gap: 0.3rem;
   padding: 0.8rem;
-  border: 1px solid var(--line);
+  border: var(--border-hairline);
   border-radius: var(--radius-sm);
 }
 
@@ -644,6 +628,6 @@ input:focus-visible {
 /* Attention panel title (local shadcn DialogTitle slot). */
 .attention-panel__title {
   font-size: 1.1rem;
-  font-weight: 800;
+  font-weight: var(--weight-extrabold);
   color: var(--ink);
 }

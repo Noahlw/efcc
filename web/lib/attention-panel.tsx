@@ -42,10 +42,14 @@ export const AttentionPanel = ({
   open,
   onClose,
   data = EMPTY_ATTENTION_DATA,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onClose: () => void;
   data?: AttentionData;
+  /** Close focus target (Radix onCloseAutoFocus). The bell trigger is a
+   *  plain button, so callers pass it here for TK-03 focus restore. */
+  onCloseAutoFocus?: () => void;
 }) => {
   const [tab, setTab] = useState<AttentionTab>("pending");
   const panelId = useId();
@@ -74,6 +78,7 @@ export const AttentionPanel = ({
     >
       <DialogContent
         showCloseButton={false}
+        onCloseAutoFocus={onCloseAutoFocus}
         className="attention-panel !top-4 !left-auto !right-4 !w-auto !max-w-[calc(100vw-2rem)] !translate-x-0 !translate-y-0 !gap-0 !rounded-xl !p-0"
       >
         <header className="attention-panel__header">
