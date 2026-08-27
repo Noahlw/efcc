@@ -74,9 +74,7 @@ function stubAuthFor(user: typeof MEMBER_USER) {
 }
 
 test.describe("084-02: 5-slot navigation and shell contract", () => {
-  test("Member role receives 5-slot dock with Notices (not Management)", async ({
-    page,
-  }, testInfo) => {
+  test("Member role receives 5-slot dock with Notices (not Management)", async ({ page }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -86,9 +84,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(MEMBER_USER));
     await page.goto("/home");
 
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
 
     const links = nav.locator("a");
@@ -109,9 +105,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(links.nth(4)).toHaveAttribute("href", "/profile");
   });
 
-  test("Staff role receives 5-slot dock with Management (not Notices)", async ({
-    page,
-  }, testInfo) => {
+  test("Staff role receives 5-slot dock with Management (not Notices)", async ({ page }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -121,9 +115,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(STAFF_USER));
     await page.goto("/home");
 
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
 
     const links = nav.locator("a");
@@ -269,9 +261,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     ).toHaveCount(0);
   });
 
-  test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({
-    page,
-  }, testInfo) => {
+  test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({ page }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -285,9 +275,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     await expect(page.locator("header")).toHaveCount(0);
 
     // Navigation remains visible
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
     await expect(nav.locator(".nav-item--scan")).toBeVisible();
   });

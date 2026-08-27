@@ -1859,7 +1859,7 @@ describe("Shell", () => {
       // The restore resolves to the authenticated shell.
       await expect(
         screen.findAllByRole("navigation", { name: COPY.nav.label })
-      ).resolves.toHaveLength(2);
+      ).resolves.toHaveLength(1);
     });
 
     test("the authenticated shell leads with a skip link to the main content landmark", async () => {
@@ -2087,7 +2087,7 @@ describe("Shell", () => {
       const freshNavs = await screen.findAllByRole("navigation", {
         name: COPY.nav.label,
       });
-      expect(freshNavs).toHaveLength(2);
+      expect(freshNavs).toHaveLength(1);
       expect(
         screen.queryByText(COPY.error.unavailable)
       ).not.toBeInTheDocument();

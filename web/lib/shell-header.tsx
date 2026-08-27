@@ -70,7 +70,7 @@ export const ShellHeader = ({
 
   return (
     <>
-      <header className={styles.header}>
+      <header data-shell-header className={styles.header}>
         <div className={styles.brand}>
           {isManagement ? (
             <>

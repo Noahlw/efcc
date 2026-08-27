@@ -12,18 +12,18 @@
      --line           #d6dcde  (hairline dividers)
      --line-strong    #aeb8bc  (input borders)
      --accent         #9c302c  (cinnabar — primary submit / active / brand mark)
-   --accent-deep    #76231f  (accent hover)
-   --focus          #176a87  (focus-visible ring)
-      --success        #2e6b37  (positive state)
-      --success-surface #eef4ef
-      --success-border  #b9cfbe
-      --error          #b3261e  (error state)
-      --error-surface   #fbeeed
-      --error-border    #e5b4b0
-      --pending        #8a5b16  (pending/awaiting-review state)
-      --pending-surface #f3eee8
-      --pending-border  #c1ad95
-      --skeleton       #e3e0e1  (loading placeholder)
+     --accent-deep    #76231f  (accent hover)
+     --focus          #176a87  (focus-visible ring)
+     --success        #2e6b37  (positive state)
+     --success-surface #eef4ef
+     --success-border  #b9cfbe
+     --error          #b3261e  (error state)
+     --error-surface   #fbeeed
+     --error-border    #e5b4b0
+     --pending        #8a5b16  (pending/awaiting-review state)
+     --pending-surface #f3eee8
+     --pending-border  #c1ad95
+     --skeleton       #e3e0e1  (loading placeholder)
    ========================================================================== */
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -88,6 +88,78 @@
   --sidebar-accent-foreground: #171a1d;
   --sidebar-border: #d6dcde;
   --sidebar-ring: #176a87;
+
+  /* ---- S4 Phase A: Civic Minimal token contract (#477) ------------------
+     Complete token families sourced from DESIGN.md / .impeccable/design.json.
+     Every token below has a documented role (TK-01); shell modules consume
+     these names and must not introduce off-token literals. */
+
+  /* Spacing scale (DESIGN.md spacing: sm 0.75rem / md 1.25rem / lg 2.5rem) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  /* Typography scale (DESIGN.md typography hierarchy) */
+  --text-display: clamp(2.65rem, 6vw, 5rem);
+  --text-title: 1.5rem;
+  --text-subtitle: 1.35rem;
+  --text-body: 1rem;
+  --text-label: 0.875rem;
+  --text-caption: 0.75rem;
+  --leading-display: 1.08;
+  --leading-title: 1.25;
+  --leading-subtitle: 1.35;
+  --leading-body: 1.6;
+  --leading-label: 1.4;
+  --weight-regular: 400;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  /* Target / control size (DESIGN.md: touch targets >= 44px) */
+  --control-min-size: 44px;
+  --control-radius: var(--radius-sm);
+
+  /* Radius (DESIGN.md shapes) */
+  --radius-mark: 6px;
+
+  /* Borders */
+  --border-hairline: 1px solid var(--line);
+  --border-control: 1px solid var(--line-strong);
+
+  /* Elevation (DESIGN.md: flat civic surfaces; restrained shadow) */
+  --shadow-dock: 0 4px 18px rgb(23 26 29 / 14%);
+  --shadow-rail-active: 0 5px 16px rgb(23 26 29 / 12%);
+  --shadow-overlay: 0 18px 48px rgb(23 26 29 / 20%);
+
+  /* Widths */
+  --width-rail: 200px;
+  --width-container: 1180px;
+  --width-overlay: 420px;
+
+  /* Layering (shell chrome below overlays; overlays below top chrome) */
+  --layer-dock: 100;
+  --layer-rail: 90;
+  --layer-offline-banner: 95;
+  --layer-overlay: 200;
+
+  /* Motion (reduced-motion consumers may disable) */
+  --duration-fast: 0.15s;
+  --duration-med: 0.3s;
+  --ease-standard: ease;
+}
+
+/* Named shell breakpoint (TK-01/TK-06): 800px is the authenticated shell
+   phone-dock / desktop-rail transition shared with the prototype (Spec 089).
+   The literal media queries below keep the same 800px boundary; new shell
+   code uses the `shell:` variant generated from this theme token. */
+@theme inline {
+  --breakpoint-shell: 800px;
 }
 
 html {
@@ -135,23 +207,28 @@ a {
 }
 
 /* ---- Shared shell --------------------------------------------------------
-   Phone (<800px): fixed five-slot bottom dock (.nav-phone).
-   Desktop (>=800px): sticky icon + label side rail (.nav-desktop). Breakpoint
-   800px is shared by the prototype and the authenticated shell. */
+   Phone (<800px): fixed five-slot bottom dock.
+   Desktop (>=800px): sticky icon + label side rail. The named 800px shell
+   breakpoint (--breakpoint-shell) is shared by the prototype and the
+   authenticated shell (Spec 089). NavBar renders ONE nav landmark
+   (#main-navigation, "主要導航") whose presentation switches here; both
+   surfaces are the same DOM list, so screen readers never hear two
+   landmarks (TK-04/TK-05/TK-06). */
 .shell-body {
   flex: 1;
   min-height: 0;
   display: flex;
 }
 
-.nav-phone {
+#main-navigation {
   display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  /* Phone: fixed floating dock clearing the safe-area reserve. */
   position: fixed;
   right: 0.875rem;
   bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
   left: 0.875rem;
-  align-items: center;
-  gap: 0.25rem;
   height: 62px;
   padding: 0.375rem 0.25rem;
   background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
@@ -159,19 +236,15 @@ a {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 1.5rem;
-  box-shadow: 0 4px 18px color-mix(in srgb, var(--ink) 14%, transparent);
-  z-index: 100;
-}
-
-.nav-desktop {
-  display: none;
+  box-shadow: var(--shadow-dock);
+  z-index: var(--layer-dock);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: var(--control-min-size);
   padding: 0.5rem;
   border: 0;
   border-radius: var(--radius-md);
@@ -183,9 +256,9 @@ a {
   text-decoration: none;
   cursor: pointer;
   transition:
-    background-color 0.15s ease,
-    box-shadow 0.15s ease,
-    color 0.15s ease;
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
 }
 
 .nav-item:hover {
@@ -195,7 +268,7 @@ a {
 .nav-item[aria-current="page"] {
   color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow: var(--shadow-rail-active);
   font-weight: 800;
 }
 
@@ -212,8 +285,9 @@ a {
   white-space: nowrap;
 }
 
+/* Phone dock presentation (below the 800px shell breakpoint). */
 @media (max-width: 799.98px) {
-  .nav-phone .nav-item {
+  #main-navigation .nav-item {
     flex: 1 1 0;
     flex-direction: column;
     align-items: center;
@@ -227,22 +301,22 @@ a {
     font-size: 0.6875rem;
     white-space: nowrap;
     transition:
-      background-color 0.15s ease,
-      color 0.15s ease;
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard);
   }
 
-  .nav-phone .nav-item[aria-current="page"] {
+  #main-navigation .nav-item[aria-current="page"] {
     color: var(--surface-raised);
     background: var(--accent);
     box-shadow: none;
     font-weight: 700;
   }
 
-  .nav-phone .nav-item[aria-current="page"] .nav-icon {
+  #main-navigation .nav-item[aria-current="page"] .nav-icon {
     color: var(--surface-raised);
   }
 
-  .nav-phone .nav-item--scan {
+  #main-navigation .nav-item--scan {
     position: static;
     flex: 1 1 0;
     align-self: auto;
@@ -257,17 +331,17 @@ a {
     box-shadow: none;
   }
 
-  .nav-phone .nav-item--scan:hover {
+  #main-navigation .nav-item--scan:hover {
     background: var(--surface);
   }
 
-  .nav-phone .nav-item--scan[aria-current="page"] {
+  #main-navigation .nav-item--scan[aria-current="page"] {
     color: var(--surface-raised);
     background: var(--accent);
     box-shadow: none;
   }
 
-  .nav-phone .nav-item--scan .nav-label {
+  #main-navigation .nav-item--scan .nav-label {
     position: static;
     color: inherit;
     font-size: inherit;
@@ -275,46 +349,39 @@ a {
   }
 }
 
+/* Desktop rail presentation (at/above the 800px shell breakpoint). */
 @media (min-width: 800px) {
-  .nav-phone {
-    display: none;
-  }
-
-  .nav-desktop {
-    display: flex;
-    flex: 0 0 200px;
+  #main-navigation {
     position: sticky;
     top: 64px;
+    right: auto;
+    bottom: auto;
+    left: 0;
     align-self: flex-start;
     flex-direction: column;
-    width: 200px;
+    flex: 0 0 var(--width-rail);
+    width: var(--width-rail);
     height: calc(100dvh - 64px);
-    padding: 1rem 0.75rem;
+    padding: var(--space-4) var(--space-3);
     overflow-y: auto;
     background: var(--surface-raised);
     border-right: 1px solid var(--line);
-    z-index: 90;
+    z-index: var(--layer-rail);
   }
 
-  .shell-body--scanner .nav-desktop {
+  .shell-body--scanner #main-navigation {
     top: 0;
     height: 100dvh;
   }
 
-  .nav-desktop__list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .nav-desktop .nav-item {
+  #main-navigation .nav-item {
     justify-content: flex-start;
     gap: 0.7rem;
     width: 100%;
   }
 
-  .nav-desktop .nav-item[aria-current="page"] {
-    box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 12%, transparent);
+  #main-navigation .nav-item[aria-current="page"] {
+    box-shadow: var(--shadow-rail-active);
   }
 }
 
@@ -352,8 +419,11 @@ input:focus-visible {
   overflow: hidden;
 }
 
-/* Scrollable content outlet. Phone: reserve room above the fixed bottom dock. */
-.shell-content {
+/* Scrollable content outlet. Phone: reserve room above the fixed bottom dock.
+   #shell-content is the skip-link target and the sole scroll container of
+   the authenticated shell (TK-04/TK-05/TK-09). */
+.shell-content,
+#shell-content {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -362,7 +432,8 @@ input:focus-visible {
 }
 
 @media (min-width: 800px) {
-  .shell-content {
+  .shell-content,
+  #shell-content {
     padding-bottom: 0;
   }
 }
@@ -415,7 +486,7 @@ input:focus-visible {
 }
 
 .attention-panel__close {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0.45rem 0.7rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
@@ -438,7 +509,7 @@ input:focus-visible {
 }
 
 .attention-panel__tab {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0.55rem 0.75rem;
   border: 0;
   border-bottom: 3px solid transparent;
@@ -568,4 +639,11 @@ input:focus-visible {
   html {
     @apply font-sans;
   }
+}
+
+/* Attention panel title (local shadcn DialogTitle slot). */
+.attention-panel__title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ink);
 }
