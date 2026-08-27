@@ -868,4 +868,101 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
     await captureEvidence(page, testInfo, "management-auth-deep-link");
   });
+
+  test("mobile in-page action surfaces stay in flow", async ({
+    page,
+  }, testInfo) => {
+    onlyProjects(testInfo, [
+      "phone-320",
+      "phone-375",
+      "phone-390",
+      "phone-414",
+      "tablet-600",
+      "phone-748",
+      "tablet-799",
+      "desktop-800",
+      "desktop-1024",
+      "desktop-1440",
+      "desktop-1920",
+    ]);
+    await loginAsAdmin(page);
+    const vw = page.viewportSize()?.width ?? 0;
+    const isCompact = vw < 800;
+
+    const horiz = async () =>
+      page.evaluate(
+        () =>
+          Math.max(
+            document.body.scrollWidth,
+            document.documentElement.scrollWidth
+          ) - window.innerWidth
+      );
+
+    // Approvals tray — measure while on approvals route
+    const suffix = uniqueSuffix();
+    await registerPending(page, `S4 ${suffix}`, `e2e-s4-${suffix}`);
+    await page.goto("/management?module=approvals");
+    await expect(
+      page.getByRole("heading", { name: APPROVALS_TITLE })
+    ).toBeVisible();
+    const sInput = await searchInput(page, "搜尋申請人或登入名稱");
+    await sInput.fill(`S4 ${suffix}`);
+    const cb = await selectionControl(page, `S4 ${suffix}`);
+    await cb.click();
+    await expectSelected(cb);
+    const tray = page.locator('[aria-label="審批選取集"]');
+    await expect(tray).toBeVisible();
+    expect(await horiz()).toBeLessThanOrEqual(1);
+    const trayPos = await tray.evaluate((e) => getComputedStyle(e).position);
+    expect(trayPos).toBe(isCompact ? "static" : "fixed");
+    const approveBtn = tray.getByRole("button", { name: /核准/u }).first();
+    await page.evaluate(() => {
+      const shell = document.querySelector<HTMLElement>(".shell-content");
+      if (shell) {
+        shell.scrollTop = shell.scrollHeight;
+      }
+    });
+    await approveBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    const dockBox = await page.locator(".nav-phone").boundingBox();
+    const actionBox = await approveBtn.boundingBox();
+    if (dockBox && actionBox && isCompact) {
+      expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    }
+
+    // Permissions review — measure while on permissions route
+    await page.goto("/management?module=permissions");
+    await expect(
+      page.getByRole("heading", { name: PERMISSIONS_TITLE })
+    ).toBeVisible();
+    const staffRole = page.getByRole("button", { name: /^同工/u }).first();
+    await staffRole.click();
+    await clickNamed(page, /權限/u);
+    const toggles = page.locator("[data-editable='true'] [role='button']");
+    await toggles.first().click();
+    const review = page.locator("[class*='reviewPanel']").first();
+    await expect(review).toBeVisible();
+    expect(await horiz()).toBeLessThanOrEqual(1);
+    const isReviewCompact = vw < 1024;
+    const reviewPos = await review.evaluate(
+      (e) => getComputedStyle(e).position
+    );
+    expect(reviewPos).toBe(isReviewCompact ? "static" : "sticky");
+    const saveBtn = review.getByRole("button", { name: /儲存/u }).first();
+    await page.evaluate(() => {
+      const shell = document.querySelector<HTMLElement>(".shell-content");
+      if (shell) {
+        shell.scrollTop = shell.scrollHeight;
+      }
+    });
+    await saveBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    const dockBox2 = await page.locator(".nav-phone").boundingBox();
+    const saveBox = await saveBtn.boundingBox();
+    if (dockBox2 && saveBox && isCompact) {
+      expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(dockBox2.y + 1);
+    }
+
+    await captureEvidence(page, testInfo, "mobile-inflow-regression");
+  });
 });

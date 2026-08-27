@@ -646,9 +646,7 @@
 }
 
 .reviewPanel {
-  position: sticky;
-  bottom: calc(5.1rem + env(safe-area-inset-bottom, 0px));
-  z-index: 2;
+  position: static;
   display: grid;
   gap: 0.65rem;
   min-width: 0;
@@ -705,6 +703,8 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  max-height: 12rem;
+  overflow-y: auto;
 }
 
 .changeSummary li {
@@ -848,10 +848,6 @@
     grid-template-columns: 1fr;
   }
 
-  .reviewPanel {
-    position: sticky;
-  }
-
   .table {
     display: block;
   }
@@ -888,8 +884,7 @@
 
 @media (max-width: 799px) {
   .policyLayout {
-    padding-bottom: calc(12rem + env(safe-area-inset-bottom, 0px));
-    scroll-padding-bottom: calc(12rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
   }
 }
 
