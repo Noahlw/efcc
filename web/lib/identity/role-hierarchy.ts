@@ -700,11 +700,7 @@ export async function loadRoleHierarchy(
           : [...names.programs.keys()];
       for (const scopeId of scopeIds) {
         if (
-          !isWithinActorScopeValue(
-            actorRoles,
-            category.category_key,
-            scopeId
-          )
+          !isWithinActorScopeValue(actorRoles, category.category_key, scopeId)
         ) {
           continue;
         }
@@ -790,11 +786,7 @@ function scopeOptionsForActor(
   }
   for (const scopeId of names.departments.keys()) {
     if (
-      isWithinActorScopeValue(
-        actorRoles,
-        ROLE_CATEGORY_KEY.DEPARTMENT,
-        scopeId
-      )
+      isWithinActorScopeValue(actorRoles, ROLE_CATEGORY_KEY.DEPARTMENT, scopeId)
     ) {
       options.push({
         category_key: ROLE_CATEGORY_KEY.DEPARTMENT,
@@ -909,7 +901,11 @@ function isWithinActorScope(
   actorRoles: ActorRoleRow[],
   target: RoleDefinitionRow
 ): boolean {
-  return isWithinActorScopeValue(actorRoles, target.scope_kind, target.scope_id);
+  return isWithinActorScopeValue(
+    actorRoles,
+    target.scope_kind,
+    target.scope_id
+  );
 }
 
 /**
@@ -1306,9 +1302,7 @@ export async function rescopeRoleDefinition(
   if (!target) {
     throw new RoleTargetNotFoundError();
   }
-  const recordValidationRejection = async (
-    error: Error
-  ): Promise<never> => {
+  const recordValidationRejection = async (error: Error): Promise<never> => {
     await recordRoleDenialForCreate(db, {
       actor_user_id: input.actor_user_id,
       now: input.now,
@@ -1333,10 +1327,7 @@ export async function rescopeRoleDefinition(
     });
     throw error;
   };
-  if (
-    input.category_key !== undefined &&
-    input.category_key !== categoryKey
-  ) {
+  if (input.category_key !== undefined && input.category_key !== categoryKey) {
     return recordValidationRejection(new RoleInvalidParentError());
   }
   if (categoryKey === ROLE_CATEGORY_KEY.GLOBAL) {
@@ -1438,10 +1429,7 @@ export async function rescopeRoleDefinition(
             ORDER BY inserted_at DESC
             LIMIT 1`
         )
-        .bind(
-          input.role_definition_id,
-          `idem=${input.idempotency_key}`
-        )
+        .bind(input.role_definition_id, `idem=${input.idempotency_key}`)
         .first<{ new_value_json: string | null }>();
       let saved: {
         category_key?: unknown;
@@ -1532,9 +1520,7 @@ export async function rescopeRoleDefinition(
   }
 
   const category = await db
-    .prepare(
-      `SELECT category_key FROM role_categories WHERE category_key = ?`
-    )
+    .prepare(`SELECT category_key FROM role_categories WHERE category_key = ?`)
     .bind(categoryKey)
     .first<{ category_key: RoleCategoryKey }>();
   if (!category) {
@@ -1667,6 +1653,31 @@ export async function createRoleDefinition(
   if (normalizedLabel.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
     throw new RoleInvalidNameError();
   }
+  const auditEntityId = `key:${input.idempotency_key}`;
+  const recordDenial = async (
+    error: Error,
+    outcome: "DENIED" | "REJECTED" = "DENIED"
+  ): Promise<never> => {
+    await recordRoleDenialForCreate(db, {
+      actor_user_id: input.actor_user_id,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      action: "ROLE_DEFINITION_CREATE",
+      entity_type: "role_definition",
+      entity_id: auditEntityId,
+      reason: error.message.split(":", 1)[0] ?? error.name,
+      outcome,
+      new_value_json: JSON.stringify({
+        category_key: input.category_key,
+        label,
+        description: input.description.trim(),
+        scope_kind: input.scope_kind,
+        scope_id: input.scope_id,
+      }),
+    });
+    throw error;
+  };
   // B-479-16/B-479-17: a replay of the same canonical payload returns the
   // original authoritative result before the name-collision/authority
   // checks — the first attempt already committed server-side. A key reused
@@ -1758,13 +1769,13 @@ export async function createRoleDefinition(
     input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
     input.scope_id !== null
   ) {
-    throw new RoleScopeRequiredError();
+    return recordDenial(new RoleScopeRequiredError(), "REJECTED");
   }
   if (
     input.scope_kind !== ROLE_CATEGORY_KEY.GLOBAL &&
     (input.scope_id === null || input.scope_id.length === 0)
   ) {
-    throw new RoleScopeRequiredError();
+    return recordDenial(new RoleScopeRequiredError(), "REJECTED");
   }
   // A scoped creation must use the fixed Category matching the scope kind
   // (B-479-04: a scoped body without an explicit scope is rejected).
@@ -1772,18 +1783,18 @@ export async function createRoleDefinition(
     input.scope_kind !== ROLE_CATEGORY_KEY.GLOBAL &&
     input.category_key !== input.scope_kind
   ) {
-    throw new RoleInvalidParentError();
+    return recordDenial(new RoleInvalidParentError(), "REJECTED");
   }
   if (
     input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
     input.category_key !== ROLE_CATEGORY_KEY.GLOBAL
   ) {
-    throw new RoleInvalidParentError();
+    return recordDenial(new RoleInvalidParentError(), "REJECTED");
   }
 
   const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
   if (!capabilities["role.create"]) {
-    throw new RoleCapabilityDeniedError();
+    return recordDenial(new RoleCapabilityDeniedError());
   }
   const actorRoles = await loadActorRoles(db, input.actor_user_id);
   const highestPosition =
@@ -1794,17 +1805,19 @@ export async function createRoleDefinition(
   if (input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     // Only Admin (the Global system identity) may create global definitions.
     if (actor?.stable_key !== PROTECTED_STABLE_KEYS.ADMIN) {
-      throw new RoleCapabilityDeniedError();
+      return recordDenial(new RoleCapabilityDeniedError());
     }
   } else {
     // Staff may create scoped definitions only under an existing permitted
     // fixed category. Admin may also create scoped definitions, while custom
     // identities never become create authority by copied grants.
     if (!isEligibleRoleManager(actorRoles)) {
-      throw new RoleCapabilityDeniedError();
+      return recordDenial(new RoleCapabilityDeniedError());
     }
-    if (!isWithinActorScopeValue(actorRoles, input.scope_kind, input.scope_id)) {
-      throw new RoleScopeMismatchError();
+    if (
+      !isWithinActorScopeValue(actorRoles, input.scope_kind, input.scope_id)
+    ) {
+      return recordDenial(new RoleScopeMismatchError());
     }
     const table =
       input.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT
@@ -1819,7 +1832,7 @@ export async function createRoleDefinition(
       .bind(input.scope_id)
       .first();
     if (!scopeExists) {
-      throw new RoleInvalidParentError();
+      return recordDenial(new RoleInvalidParentError(), "REJECTED");
     }
   }
 
@@ -1849,11 +1862,19 @@ export async function createRoleDefinition(
   // Keep every new definition inside the authoritative interval between the
   // Staff and 會友基礎 anchors. Global definitions therefore land above the
   // pinned baseline instead of after it.
-  const nextPosition = await nextRolePosition(
-    db,
-    input.category_key,
-    "__new_role_definition__"
-  );
+  let nextPosition: number;
+  try {
+    nextPosition = await nextRolePosition(
+      db,
+      input.category_key,
+      "__new_role_definition__"
+    );
+  } catch (error) {
+    if (error instanceof RoleInvalidParentError) {
+      return recordDenial(error, "REJECTED");
+    }
+    throw error;
+  }
   const roleDefinitionId = crypto.randomUUID();
   const stableKey = `role.${crypto.randomUUID()}`;
 
@@ -1948,12 +1969,77 @@ export async function reorderRoleDefinitions(
   db: D1Database,
   input: RoleReorderInput
 ): Promise<RoleReorderResult> {
-  if (input.targets.length !== 2) {
-    throw new RoleInvalidParentError();
-  }
   const [first, second] = input.targets;
+  const auditEntityId =
+    first && second
+      ? `${first.role_definition_id},${second.role_definition_id}`
+      : `key:${input.idempotency_key}`;
+  const recordDenial = async (
+    error: Error,
+    outcome: "DENIED" | "REJECTED" = "DENIED"
+  ): Promise<never> => {
+    await recordRoleDenialForCreate(db, {
+      actor_user_id: input.actor_user_id,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      action: "ROLE_DEFINITION_REORDER",
+      entity_type: "role_definition",
+      entity_id: auditEntityId,
+      reason: error.message.split(":", 1)[0] ?? error.name,
+      outcome,
+      new_value_json:
+        JSON.stringify({
+          category_key: input.category_key,
+          targets: input.targets,
+        }) ?? null,
+    });
+    throw error;
+  };
+  if (input.targets.length !== 2) {
+    return recordDenial(new RoleInvalidParentError(), "REJECTED");
+  }
   if (!first || !second) {
-    throw new RoleInvalidParentError();
+    return recordDenial(new RoleInvalidParentError(), "REJECTED");
+  }
+  const fingerprint = canonicalReorderFingerprint({
+    actor_user_id: input.actor_user_id,
+    category_key: input.category_key,
+    base_revision: input.base_revision,
+    targets: input.targets,
+  });
+  const existingReplay = await db
+    .prepare(
+      `SELECT request_fingerprint, actor_user_id, outcome,
+              resulting_revision
+         FROM role_policy_mutations
+        WHERE idempotency_key = ?`
+    )
+    .bind(input.idempotency_key)
+    .first<{
+      request_fingerprint: string;
+      actor_user_id: string;
+      outcome: string;
+      resulting_revision: number | null;
+    }>();
+  if (existingReplay) {
+    if (
+      existingReplay.actor_user_id !== input.actor_user_id ||
+      existingReplay.request_fingerprint !== fingerprint
+    ) {
+      return recordDenial(new RoleIdempotencyConflictError(), "REJECTED");
+    }
+    if (existingReplay.outcome === "SUCCESS") {
+      return {
+        categoryKey: input.category_key,
+        orderedRoleDefinitionIds: [
+          first.role_definition_id,
+          second.role_definition_id,
+        ],
+        revision: existingReplay.resulting_revision ?? input.base_revision,
+        idempotent: true,
+      };
+    }
   }
   // B-479-09: the two targets must be siblings in the same fixed Category
   // and must not be protected anchors.
@@ -1973,40 +2059,40 @@ export async function reorderRoleDefinitions(
   const firstRow = byId.get(first.role_definition_id);
   const secondRow = byId.get(second.role_definition_id);
   if (!firstRow || !secondRow) {
-    throw new RoleTargetNotFoundError();
+    return recordDenial(new RoleTargetNotFoundError(), "REJECTED");
   }
   if (
     firstRow.category_key !== input.category_key ||
     secondRow.category_key !== input.category_key ||
     firstRow.category_key !== secondRow.category_key
   ) {
-    throw new RoleCrossCategoryError();
+    return recordDenial(new RoleCrossCategoryError(), "REJECTED");
   }
   // The positions must be a swap of the two current sibling positions.
   if (
     first.position !== secondRow.position ||
     second.position !== firstRow.position
   ) {
-    throw new RoleInvalidParentError();
+    return recordDenial(new RoleInvalidParentError(), "REJECTED");
   }
   for (const row of [firstRow, secondRow]) {
     if (row.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
-      throw new RoleAdminProtectedError();
+      return recordDenial(new RoleAdminProtectedError());
     }
     if (row.stable_key === PROTECTED_STABLE_KEYS.MEMBER) {
-      throw new RoleBaselineProtectedError();
+      return recordDenial(new RoleBaselineProtectedError());
     }
     if (row.is_protected === 1) {
-      throw new RoleProtectedIdentityError();
+      return recordDenial(new RoleProtectedIdentityError());
     }
     if (row.is_archived === 1) {
-      throw new RoleArchivedError();
+      return recordDenial(new RoleArchivedError(), "REJECTED");
     }
   }
 
   const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
   if (!capabilities["role.reorder"]) {
-    throw new RoleCapabilityDeniedError();
+    return recordDenial(new RoleCapabilityDeniedError());
   }
   const actorRoles = await loadActorRoles(db, input.actor_user_id);
   const highestPosition =
@@ -2017,25 +2103,17 @@ export async function reorderRoleDefinitions(
   // the targets must be strictly below it and inside the actor's scope.
   for (const row of [firstRow, secondRow]) {
     if (row.position <= highestPosition) {
-      throw new RoleHighestProtectedError();
+      return recordDenial(new RoleHighestProtectedError());
     }
     if (actorRoles[0]?.role_definition_id === row.role_definition_id) {
-      throw new RoleHighestProtectedError();
+      return recordDenial(new RoleHighestProtectedError());
     }
     if (!isWithinActorScope(actorRoles, row)) {
-      throw new RoleScopeMismatchError();
+      return recordDenial(new RoleScopeMismatchError());
     }
   }
-
-  const fingerprint = canonicalReorderFingerprint({
-    actor_user_id: input.actor_user_id,
-    category_key: input.category_key,
-    base_revision: input.base_revision,
-    targets: input.targets,
-  });
   const baseRevision = input.base_revision;
   const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;
-  const auditEntityId = `${first.role_definition_id},${second.role_definition_id}`;
 
   try {
     const result = await applyRoleMutation(db, {

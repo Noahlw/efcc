@@ -472,6 +472,32 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
     assert.equal(body.code, "ROLE_FORBIDDEN");
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
     assert.equal(await readCurrentHttpRevision(), base);
+    const denialAudits = await testDb()
+      .prepare(
+        `SELECT actor_user_id, action, entity_id, reason, outcome,
+                correlation_id
+           FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_CREATE'
+            AND correlation_id = ?`
+      )
+      .bind(body.requestId)
+      .all<{
+        actor_user_id: string;
+        action: string;
+        entity_id: string;
+        reason: string;
+        outcome: string;
+        correlation_id: string;
+      }>();
+    assert.equal(denialAudits.results?.length, 1);
+    assert.deepEqual(denialAudits.results?.[0], {
+      actor_user_id: "E2E_DISPOSABLE_STAFF",
+      action: "ROLE_DEFINITION_CREATE",
+      entity_id: "key:http-b479-create-staff-global",
+      reason: "ROLE_FORBIDDEN",
+      outcome: "DENIED",
+      correlation_id: body.requestId,
+    });
   });
 
   test("B-479-14: Staff POST creates a scoped Role Definition under the permitted 成區 Department category", async () => {
@@ -553,6 +579,7 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
     );
     assert.equal(firstRes.status, 200);
     const first = (await firstRes.json()) as {
+      requestId: string;
       data: { roleDefinitionId: string; revision: number; idempotent: boolean };
     };
     const replayRes = await worker.fetch(
@@ -589,6 +616,16 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
       .bind(first.data.roleDefinitionId)
       .first<{ c: number }>();
     assert.equal(count?.c, 1);
+    const auditRows = await testDb()
+      .prepare(
+        `SELECT correlation_id FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_CREATE'
+            AND entity_id = ?`
+      )
+      .bind(first.data.roleDefinitionId)
+      .all<{ correlation_id: string }>();
+    assert.equal(auditRows.results?.length, 1);
+    assert.equal(auditRows.results?.[0]?.correlation_id, first.requestId);
   });
 
   test("B-479-10 HTTP: a stale reorder returns 409 ROLE_ORDER_CONFLICT with the authoritative revision and order", async () => {
@@ -777,6 +814,7 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
       )
     );
   });
+
   test("B-479 scope HTTP: Staff rescope returns the response envelope and audit correlation", async () => {
     const staffCookie = await cookieFor("E2E_DISPOSABLE_STAFF");
     const createBase = await readCurrentHttpRevision();
@@ -907,5 +945,32 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
     const body = await problemBody(res);
     assert.equal(body.code, "ROLE_SCOPE_MISMATCH");
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    const denialAudits = await testDb()
+      .prepare(
+        `SELECT actor_user_id, action, entity_id, reason, outcome,
+                correlation_id
+           FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_RESCOPE'
+            AND entity_id = ?
+            AND correlation_id = ?`
+      )
+      .bind(created.data.roleDefinitionId, body.requestId)
+      .all<{
+        actor_user_id: string;
+        action: string;
+        entity_id: string;
+        reason: string;
+        outcome: string;
+        correlation_id: string;
+      }>();
+    assert.equal(denialAudits.results?.length, 1);
+    assert.deepEqual(denialAudits.results?.[0], {
+      actor_user_id: "E2E_DISPOSABLE_STAFF",
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.data.roleDefinitionId,
+      reason: "ROLE_SCOPE_MISMATCH",
+      outcome: "DENIED",
+      correlation_id: body.requestId,
+    });
   });
 });
