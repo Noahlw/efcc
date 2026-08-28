@@ -1,11 +1,11 @@
 # S4 Phase B — Shared Modules and Identity Definitions Evidence
 
-**Status: READY FOR PUBLICATION — not yet published.** The Phase B implementation, deterministic recovery work, and local authenticated gates are green. The next permitted action is one grouped PR for #479–#484; no merge, deploy, production write, or Phase C work is included.
+**Status: PUBLISHED — PR #497 OPEN.** Phase B #479–#484 implementation and local evidence are green. The PR is stacked on Phase A PR #496 (`remediate-478`); no merge, deploy, production write, or Phase C work is included.
 
 ## Scope and references
 
 - Scope: #479, #480, #481, #482, #483, #484 only.
-- Final recovery head before this evidence update: `c4737690`.
+- Published branch head before this publication record: `a89539dd`.
 - Plan: `docs/omp-plans/2026-08-28-s4-phase-b-shared-modules.md`.
 - Recovery plan: `docs/omp-plans/2026-08-29-s4-phase-b-exit-recovery.md`.
 - Trace: `docs/specs/s4-phase-b-acceptance-trace.md` (61 strict six-column rows, `B-479-01` through `B-484-08`).
@@ -92,4 +92,7 @@ All authenticated browser evidence used `http://127.0.0.1:8787` and disposable l
 
 ## Publication boundary
 
-The branch is ready for publication. The next step is to verify the GitHub account, push without force, open one grouped PR against the actual Phase A PR #496 dependency, and verify its base/head/state. Do not merge, deploy, force-push, touch remote data, or start Phase C.
+- Grouped PR: [#497 — `feat(s4-b): shared UI modules and role definitions`](https://github.com/Noahlw/efcc/pull/497)
+- Base: `remediate-478` (Phase A PR #496); head: `feat/s4-b-shared-modules-role-definitions`; author: `Noahlw`.
+- PR state verified `OPEN`, non-draft; no merge, deploy, force-push, remote-data write, or Phase C source work occurred.
+- Phase C #485–#487 and the post-Phase-F CSS-to-Tailwind/CVA migration remain unstarted.
