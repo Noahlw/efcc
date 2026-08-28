@@ -5470,20 +5470,26 @@ test.describe("HUB-01 Management Hub directory", () => {
 
     await page.goto("/management?module=approvals");
     await expect(page.getByText(lastName, { exact: true })).toBeVisible();
-    await page
-      .getByRole("link", {
-        name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
-      })
-      .scrollIntoViewIfNeeded();
+    const detailLink = page.getByRole("link", {
+      name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
+    });
+    await detailLink.scrollIntoViewIfNeeded();
+    const detailHref = await detailLink.getAttribute("href");
+    const requestId = new URL(detailHref ?? "", TARGET_ORIGIN).searchParams.get(
+      "request"
+    );
+    expect(requestId).toBeTruthy();
     const scrollBefore = await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
       return window.scrollY;
     });
-    await page
-      .getByRole("link", {
-        name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
-      })
-      .click();
+    await detailLink.click();
+    await page.waitForURL(
+      (url) =>
+        url.pathname === "/management" &&
+        url.searchParams.get("module") === "approvals" &&
+        url.searchParams.get("request") === requestId
+    );
     await expect(
       page.getByRole("heading", { name: COPY.approvals.approvalDetailTitle })
     ).toBeVisible();
