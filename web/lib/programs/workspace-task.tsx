@@ -393,36 +393,6 @@ export const WorkspaceOverview = ({
               </span>
             </div>
           </Button>
-          <Button
-            type="button"
-            className={styles.workspaceTaskRow}
-            style={{
-              border: "none",
-              borderTop: "1px solid var(--line)",
-              borderRadius: 0,
-              width: "100%",
-              textAlign: "left",
-              cursor: "pointer",
-              background: "transparent",
-            }}
-            onClick={() => onTaskChange("notifications")}
-          >
-            <div>
-              <span style={{ fontWeight: 600, display: "block" }}>
-                {COPY.programs.notificationsTitle}
-              </span>
-              <span
-                className={styles.programDetailMuted}
-                style={{
-                  fontSize: "0.8125rem",
-                  marginTop: "2px",
-                  display: "block",
-                }}
-              >
-                {COPY.programs.notificationsLead}
-              </span>
-            </div>
-          </Button>
         </div>
       </section>
     </>

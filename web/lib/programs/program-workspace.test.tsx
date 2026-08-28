@@ -792,42 +792,25 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
   });
 
-  test("hands the programless Notifications intent to the boundary without relabeling it", async () => {
-    mockWorkspace();
-    const onTaskChange = vi.fn();
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={onTaskChange}
-      />
-    );
-
-    await screen.findByRole("heading", { name: "查經小組" });
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(COPY.programs.notificationsTitle, "u"),
-      })
-    );
-    expect(onTaskChange).toHaveBeenCalledWith("notifications");
-    cleanup();
+  test("keeps global Notifications out of the program workspace", async () => {
     mockWorkspace();
     render(
       <ProgramWorkspace
         programId="program-1"
-        task="notifications"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
       />
     );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.workspaceTaskNotifications,
-      })
-    ).resolves.toBeInTheDocument();
+
+    await screen.findByRole("heading", { name: "查經小組" });
     expect(
-      screen.queryByRole("heading", {
-        name: COPY.programs.workspaceTaskSettings,
+      screen.queryByRole("button", {
+        name: new RegExp(COPY.programs.notificationsTitle, "u"),
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: COPY.programs.workspaceTaskNotifications,
       })
     ).not.toBeInTheDocument();
   });
