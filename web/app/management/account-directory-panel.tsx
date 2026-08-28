@@ -3,8 +3,18 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RpcError } from "@/lib/api";
-import { COPY } from "@/lib/copy";
+import { COPY, errorCopyFor } from "@/lib/copy";
+import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { announce } from "@/lib/live-region";
 import {
   getAccountDirectoryDetail,
@@ -14,24 +24,53 @@ import type {
   AccountDirectoryMember,
   AccountDirectoryView,
 } from "@/lib/programs/program-api";
+import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
+import {
+  DirectoryFrame,
+  type DirectoryFrameState,
+} from "./directory-frame";
 import {
   ManagementFilterSheet,
   safeManagementReturnHref,
 } from "./management-action-framework";
-import { SettingsBackLink } from "./settings-ui";
-
-import styles from "./account-directory-panel.module.css";
 
 const SEARCH_LIMIT = 50;
 const COPY_ACCOUNT = COPY.accountDirectory;
+const ALL_FILTER_VALUE = "__all";
+const ACCOUNT_INPUT_CLASS =
+  "h-12 min-h-12 w-full min-w-0 rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30";
+const ACCOUNT_SELECT_CLASS =
+  "h-12 min-h-12 w-full min-w-0 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] outline-none focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30";
+const ACCOUNT_FIELD_CLASS = "grid min-w-0 gap-2";
+const ACCOUNT_FIELD_LABEL_CLASS =
+  "text-[0.82rem] font-bold text-[var(--ink)]";
+const ACCOUNT_STATE_CLASS =
+  "mt-[var(--space-4)] grid min-w-0 gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[var(--space-4)] text-[var(--ink-muted)]";
+const ACCOUNT_ERROR_CLASS =
+  "mt-[var(--space-4)] grid min-w-0 gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-[var(--space-4)] text-[var(--ink)]";
+const ACCOUNT_EMPTY_CLASS =
+  "mt-[var(--space-4)] grid min-w-0 gap-[var(--space-2)] rounded-[var(--radius-md)] border border-dashed border-[var(--line-strong)] bg-[var(--surface-raised)] p-[var(--space-4)] text-[var(--ink-muted)]";
+const ACCOUNT_DETAIL_CLASS =
+  "min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[var(--space-4)] text-[var(--ink)]";
+
+interface AccountUrlState {
+  query: string;
+  role: AccountDirectoryMember["role"] | "";
+  status: AccountDirectoryMember["status"] | "";
+  department: string;
+}
 
 type DirectoryState =
-  | { kind: "idle"; data: null }
   | { kind: "loading"; data: null }
   | { kind: "ready"; data: AccountDirectoryView }
-  | { kind: "error"; message: string; data: null };
+  | {
+      kind: "error";
+      failure: "forbidden" | "error";
+      message: string;
+      data: null;
+    };
 
 type DetailState =
   | { kind: "idle" }
@@ -63,119 +102,343 @@ function statusLabel(status: AccountDirectoryMember["status"]): string {
 }
 
 function statusClass(status: AccountDirectoryMember["status"]): string {
-  return status.toLowerCase();
+  if (status === "Active") {
+    return "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]";
+  }
+  if (status === "Pending") {
+    return "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]";
+  }
+  return "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]";
 }
 
 function initials(name: string): string {
   return [...name.replaceAll(/\s+/gu, "")].slice(-2).join("");
 }
 
-// oxlint-disable-next-line eslint/complexity -- This component owns the complete read-only directory state machine.
+function parseRole(value: string | null): AccountDirectoryMember["role"] | "" {
+  return value === "Admin" || value === "Staff" || value === "Member"
+    ? value
+    : "";
+}
+
+function parseStatus(
+  value: string | null
+): AccountDirectoryMember["status"] | "" {
+  return value === "Pending" ||
+    value === "Active" ||
+    value === "Suspended" ||
+    value === "Deactivated"
+    ? value
+    : "";
+}
+
+function buildAccountsHref({
+  department,
+  query,
+  role,
+  status,
+}: AccountUrlState): string {
+  const params = new URLSearchParams({ module: "accounts" });
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  if (role) {
+    params.set("role", role);
+  }
+  if (status) {
+    params.set("status", status);
+  }
+  if (department.trim()) {
+    params.set("department", department.trim());
+  }
+  return `/management?${params.toString()}`;
+}
+
+function accountErrorMessage(error: unknown): string {
+  if (!(error instanceof RpcError)) {
+    return COPY_ACCOUNT.loadError;
+  }
+  const { code, detail, status } = error.problem;
+  if (code === "FORBIDDEN") {
+    return COPY_ACCOUNT.forbidden;
+  }
+  if (status === 404 || code === "NOT_FOUND") {
+    return errorCopyFor("NOT_FOUND", detail);
+  }
+  if (
+    code === "INTERNAL" ||
+    code === "INTERNAL_ERROR" ||
+    code === "NETWORK_ERROR" ||
+    code === "UNAVAILABLE" ||
+    code === "MALFORMED_RESPONSE" ||
+    code === "MALFORMED_REQUEST"
+  ) {
+    return COPY_ACCOUNT.loadError;
+  }
+  return errorCopyFor(code, detail);
+}
+
+function AccountRoleSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: AccountDirectoryMember["role"] | "";
+  onChange: (value: AccountDirectoryMember["role"] | "") => void;
+}) {
+  return (
+    <Select
+      onValueChange={(next) =>
+        onChange(
+          next === ALL_FILTER_VALUE
+            ? ""
+            : (next as AccountDirectoryMember["role"])
+        )
+      }
+      value={value || ALL_FILTER_VALUE}
+    >
+      <SelectTrigger
+        aria-describedby="account-directory-lead"
+        aria-label={COPY_ACCOUNT.roleLabel}
+        className={ACCOUNT_SELECT_CLASS}
+        id={id}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALL_FILTER_VALUE}>{COPY_ACCOUNT.allRoles}</SelectItem>
+        <SelectItem value="Admin">{COPY_ACCOUNT.admin}</SelectItem>
+        <SelectItem value="Staff">{COPY_ACCOUNT.staff}</SelectItem>
+        <SelectItem value="Member">{COPY_ACCOUNT.member}</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function AccountStatusSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: AccountDirectoryMember["status"] | "";
+  onChange: (value: AccountDirectoryMember["status"] | "") => void;
+}) {
+  return (
+    <Select
+      onValueChange={(next) =>
+        onChange(
+          next === ALL_FILTER_VALUE
+            ? ""
+            : (next as AccountDirectoryMember["status"])
+        )
+      }
+      value={value || ALL_FILTER_VALUE}
+    >
+      <SelectTrigger
+        aria-describedby="account-directory-lead"
+        aria-label={COPY_ACCOUNT.statusLabel}
+        className={ACCOUNT_SELECT_CLASS}
+        id={id}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALL_FILTER_VALUE}>{COPY_ACCOUNT.allStatuses}</SelectItem>
+        <SelectItem value="Active">{COPY_ACCOUNT.active}</SelectItem>
+        <SelectItem value="Pending">{COPY_ACCOUNT.pending}</SelectItem>
+        <SelectItem value="Suspended">{COPY_ACCOUNT.suspended}</SelectItem>
+        <SelectItem value="Deactivated">{COPY_ACCOUNT.deactivated}</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function isAuthRequired(error: unknown): error is RpcError {
+  return error instanceof RpcError && error.problem.code === "AUTH_REQUIRED";
+}
+
+function AccountLoadingState({
+  stateRef,
+}: {
+  stateRef: React.RefObject<HTMLElement | null>;
+}) {
+  return (
+    <output
+      ref={(node) => {
+        stateRef.current = node;
+      }}
+      aria-busy="true"
+      aria-live="polite"
+      className={ACCOUNT_STATE_CLASS}
+      tabIndex={-1}
+    >
+      {COPY_ACCOUNT.loading}
+    </output>
+  );
+}
+
+function AccountErrorState({
+  message,
+  onRetry,
+  stateRef,
+}: {
+  message: string;
+  onRetry: () => void;
+  stateRef: React.RefObject<HTMLElement | null>;
+}) {
+  return (
+    <section
+      ref={(node) => {
+        stateRef.current = node;
+      }}
+      aria-live="assertive"
+      className={ACCOUNT_ERROR_CLASS}
+      role="alert"
+      tabIndex={-1}
+    >
+      <h2 className="m-0 text-base font-extrabold">{message}</h2>
+      <Button
+        className="min-h-11 w-fit bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+        onClick={onRetry}
+        type="button"
+      >
+        {COPY_ACCOUNT.retry}
+      </Button>
+    </section>
+  );
+}
+
+function AccountEmptyState({
+  stateRef,
+}: {
+  stateRef: React.RefObject<HTMLElement | null>;
+}) {
+  return (
+    <output
+      ref={(node) => {
+        stateRef.current = node;
+      }}
+      aria-live="polite"
+      className={ACCOUNT_EMPTY_CLASS}
+      tabIndex={-1}
+    >
+      <strong className="m-0 text-base text-[var(--ink)]">
+        {COPY_ACCOUNT.noResults}
+      </strong>
+      <span>{COPY_ACCOUNT.emptyHint}</span>
+    </output>
+  );
+}
+
+// oxlint-disable-next-line eslint/complexity -- the adapter retains Account-only query, filter, URL, and detail behavior.
 export const AccountDirectoryPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const stateRef = useRef<HTMLElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
-  const detailStateRef = useRef<HTMLElement>(null);
-  const errorFocusPending = useRef(false);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState<AccountDirectoryMember["role"] | "">(
-    (searchParams.get("role") as AccountDirectoryMember["role"] | null) ?? ""
+    parseRole(searchParams.get("role"))
   );
   const [status, setStatus] = useState<AccountDirectoryMember["status"] | "">(
-    (searchParams.get("status") as AccountDirectoryMember["status"] | null) ??
-      ""
+    parseStatus(searchParams.get("status"))
   );
   const [department, setDepartment] = useState(
     searchParams.get("department") ?? ""
   );
   const [filterOpen, setFilterOpen] = useState(false);
-  const [retryToken, setRetryToken] = useState(0);
-  const [state, setState] = useState<DirectoryState>({
-    kind: "idle",
-    data: null,
-  });
-  const [detailRetryToken, setDetailRetryToken] = useState(0);
+  const [listRetryKey, setListRetryKey] = useState(0);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  useEffect(() => {
-    const normalizedQuery = query.trim();
-    let current = true;
-    setState({ kind: "loading", data: null });
-    announce(COPY_ACCOUNT.loading);
-    void (async () => {
-      try {
-        const data = await searchAccountDirectory(normalizedQuery, {
-          department: department || undefined,
-          limit: SEARCH_LIMIT,
-          role: role || undefined,
-          status: status || undefined,
-        });
-        if (!current) {
-          return;
-        }
-        setState({ kind: "ready", data });
-        if (data.accounts.length === 0) {
-          announce(COPY_ACCOUNT.noResults);
-        }
-      } catch (error: unknown) {
-        if (!current) {
-          return;
-        }
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
-          rememberDeepLink(
-            `${window.location.pathname}${window.location.search}${window.location.hash}`
-          );
-          router.replace("/");
-          return;
-        }
-        const message =
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    searchParams.get("account")
+  );
+  const [detailRetryKey, setDetailRetryKey] = useState(0);
+  const [appendedView, setAppendedView] = useState<AccountDirectoryView | null>(
+    null
+  );
+  const [detailState, setDetailState] = useState<DetailState>({
+    kind: "idle",
+  });
+  const loadMoreRequestId = useRef(0);
+
+  const listResource = useAsyncResource<AccountDirectoryView, DirectoryState>(
+    () =>
+      searchAccountDirectory(query.trim(), {
+        department: department.trim() || undefined,
+        limit: SEARCH_LIMIT,
+        role: role || undefined,
+        status: status || undefined,
+      }),
+    {
+      toLoading: () => ({ kind: "loading", data: null }),
+      toReady: (data) => ({ kind: "ready", data }),
+      onError: (error) => ({
+        kind: "error",
+        failure:
           error instanceof RpcError && error.problem.code === "FORBIDDEN"
-            ? COPY_ACCOUNT.forbidden
-            : COPY_ACCOUNT.loadError;
-        errorFocusPending.current = true;
-        setState({ kind: "error", message, data: null });
-        announce(message);
-      }
-    })();
+            ? "forbidden"
+            : "error",
+        data: null,
+        message: accountErrorMessage(error),
+      }),
+      announceLoading: COPY_ACCOUNT.loading,
+      announceReady: (data) =>
+        data.accounts.length === 0 ? COPY_ACCOUNT.noResults : undefined,
+      isAuthRequired,
+      onAuthRequired: () => {
+        rememberDeepLink(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+      },
+    },
+    [department, query, role, router, status]
+  );
 
-    return () => {
-      current = false;
-    };
-  }, [department, query, retryToken, role, router, status]);
+  const state = listResource.state;
+  const resourceView = state.kind === "ready" ? state.data : null;
+  const accountView = appendedView ?? resourceView;
+  const accounts = accountView?.accounts ?? [];
+  const hasResults = accounts.length > 0;
+  const selected =
+    detailState.kind === "ready" ? detailState.account : null;
 
   useEffect(() => {
-    if (!errorFocusPending.current) {
-      return;
-    }
-    if (state.kind === "loading" || state.kind === "error") {
-      document.querySelector<HTMLElement>("#account-directory-state")?.focus();
-      if (state.kind === "error") {
-        errorFocusPending.current = false;
-      }
-      return;
-    }
+    void listResource.run();
+  }, [listResource.run]);
+
+  useEffect(() => {
     if (state.kind === "ready") {
-      const target = state.data.accounts.length
-        ? "#account-directory-results-title"
-        : "#account-directory-state";
-      document.querySelector<HTMLElement>(target)?.focus();
-      errorFocusPending.current = false;
+      setAppendedView(state.data);
+    } else if (state.kind === "loading") {
+      setAppendedView(null);
     }
   }, [state]);
 
-  const selectedId = searchParams.get("account");
-  const [detailState, setDetailState] = useState<DetailState>({ kind: "idle" });
+  useEffect(() => {
+    const syncSelection = () => {
+      setSelectedId(new URLSearchParams(window.location.search).get("account"));
+    };
+    setSelectedId(searchParams.get("account"));
+    window.addEventListener("popstate", syncSelection);
+    return () => window.removeEventListener("popstate", syncSelection);
+  }, [searchParams]);
 
   useEffect(() => {
-    let current = true;
+    loadMoreRequestId.current += 1;
+    setLoadMoreError(null);
+  }, [department, query, role, status]);
+
+  useEffect(() => {
     if (!selectedId) {
       setDetailState({ kind: "idle" });
-      return () => {
-        current = false;
-      };
+      return;
     }
+    let current = true;
     setDetailState({ kind: "loading" });
     void (async () => {
       try {
@@ -187,52 +450,32 @@ export const AccountDirectoryPanel = () => {
         if (!current) {
           return;
         }
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
+        if (isAuthRequired(error)) {
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
           router.replace("/");
           return;
         }
-        const forbidden =
-          error instanceof RpcError && error.problem.code === "FORBIDDEN";
         setDetailState({
           kind: "error",
-          message: forbidden ? COPY_ACCOUNT.forbidden : "找不到此帳戶。",
+          message: accountErrorMessage(error),
         });
       }
     })();
     return () => {
       current = false;
     };
-  }, [detailRetryToken, router, selectedId]);
+  }, [detailRetryKey, router, selectedId]);
 
-  const selected = detailState.kind === "ready" ? detailState.account : null;
-
-  useEffect(() => {
-    if (selected) {
-      detailRef.current?.focus();
-    }
-  }, [selected]);
-
-  useEffect(() => {
-    if (
-      !selectedId ||
-      (detailState.kind !== "loading" && detailState.kind !== "error")
-    ) {
-      return;
-    }
-    detailStateRef.current?.focus();
-  }, [detailState.kind, selectedId]);
+  const updateUrl = (next: AccountUrlState) => {
+    window.history.replaceState(null, "", buildAccountsHref(next));
+  };
 
   const updateQuery = (value: string) => {
     setQuery(value);
-    if (!value.trim()) {
-      router.replace("/management?module=accounts");
-    }
+    setSelectedId(null);
+    updateUrl({ department, query: value, role, status });
   };
 
   const updateFilter = (
@@ -241,396 +484,125 @@ export const AccountDirectoryPanel = () => {
   ) => {
     setRole(nextRole);
     setStatus(nextStatus);
+    setSelectedId(null);
+    updateUrl({ department, query, role: nextRole, status: nextStatus });
   };
 
   const updateDepartment = (value: string) => {
     setDepartment(value);
+    setSelectedId(null);
+    updateUrl({ department: value, query, role, status });
   };
 
-  const loadMore = async () => {
-    if (state.kind !== "ready" || !state.data.nextCursor || isLoadingMore) {
-      return;
-    }
-    setIsLoadingMore(true);
-    try {
-      const next = await searchAccountDirectory(query.trim(), {
-        cursor: state.data.nextCursor,
-        department: department || undefined,
-        limit: SEARCH_LIMIT,
-        role: role || undefined,
-        status: status || undefined,
-      });
-      const accounts = new Map(
-        state.data.accounts.map((account) => [account.userId, account])
-      );
-      for (const account of next.accounts) {
-        accounts.set(account.userId, account);
-      }
-      setState({
-        kind: "ready",
-        data: {
-          accounts: [...accounts.values()],
-          nextCursor: next.nextCursor,
-          summary: next.summary,
-        },
-      });
-    } catch {
-      announce(COPY_ACCOUNT.loadError);
-    } finally {
-      setIsLoadingMore(false);
-    }
+  const clearFilters = () => {
+    setRole("");
+    setStatus("");
+    setDepartment("");
+    setSelectedId(null);
+    updateUrl({ department: "", query, role: "", status: "" });
   };
 
-  const returnParams = new URLSearchParams({ module: "accounts" });
-  if (query.trim()) {
-    returnParams.set("q", query.trim());
-  }
-  if (role) {
-    returnParams.set("role", role);
-  }
-  if (status) {
-    returnParams.set("status", status);
-  }
-  if (department.trim()) {
-    returnParams.set("department", department.trim());
-  }
   const returnHref = safeManagementReturnHref(
     searchParams.get("return"),
-    `/management?${returnParams}`
+    buildAccountsHref({ department, query, role, status })
   );
 
   const handleSelect = (account: AccountDirectoryMember) => {
-    const params = new URLSearchParams({
-      module: "accounts",
-      q: query.trim(),
-    });
-    if (role) {
-      params.set("role", role);
-    }
-    if (status) {
-      params.set("status", status);
-    }
-    if (department.trim()) {
-      params.set("department", department.trim());
-    }
+    const params = new URLSearchParams(
+      buildAccountsHref({ department, query, role, status }).split("?")[1]
+    );
     params.set("account", account.userId);
     params.set("return", returnHref);
-    // Native history keeps this same-path query transition routable in the
-    // static Worker build and is integrated with App Router search params.
+    setSelectedId(account.userId);
     window.history.pushState(null, "", `/management?${params.toString()}`);
     announce(account.name);
   };
 
-  const isLoading = state.kind === "loading";
-  const isReady = state.kind === "ready";
-  const showEmpty =
-    isReady && state.data.accounts.length === 0;
-  const hasResults = isReady && state.data.accounts.length > 0;
-  const showWorkspace = Boolean(selectedId) || hasResults;
-  const detailSelected = Boolean(selectedId);
-  const detailOnly = detailSelected && !hasResults;
+  const loadMore = async () => {
+    if (!accountView?.nextCursor || isLoadingMore) {
+      return;
+    }
+    const requestId = loadMoreRequestId.current;
+    setIsLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const next = await searchAccountDirectory(query.trim(), {
+        cursor: accountView.nextCursor,
+        department: department.trim() || undefined,
+        limit: SEARCH_LIMIT,
+        role: role || undefined,
+        status: status || undefined,
+      });
+      if (requestId !== loadMoreRequestId.current) {
+        return;
+      }
+      const accountsById = new Map(
+        accountView.accounts.map((account) => [account.userId, account])
+      );
+      for (const account of next.accounts) {
+        accountsById.set(account.userId, account);
+      }
+      setAppendedView({
+        accounts: [...accountsById.values()],
+        nextCursor: next.nextCursor,
+        summary: next.summary,
+      });
+    } catch (error: unknown) {
+      if (requestId !== loadMoreRequestId.current) {
+        return;
+      }
+      if (isAuthRequired(error)) {
+        rememberDeepLink(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+        return;
+      }
+      const message = accountErrorMessage(error);
+      setLoadMoreError(message);
+      announce(message);
+    } finally {
+      if (requestId === loadMoreRequestId.current) {
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
+  const listRetry = () => {
+    setListRetryKey((key) => key + 1);
+    listResource.retry();
+  };
+
   const activeFilterCount = [role, status, department.trim()].filter(
     Boolean
   ).length;
+  const frameState: DirectoryFrameState =
+    state.kind === "error"
+      ? state.failure === "forbidden"
+        ? "forbidden"
+        : "error"
+      : state.kind === "ready" && !hasResults
+        ? "empty"
+        : state.kind;
+  const detailKey = selectedId
+    ? detailState.kind === "ready"
+      ? detailState.account.userId
+      : detailState.kind
+    : null;
 
   return (
-    <section
-      aria-busy={isLoading}
-      aria-labelledby="account-directory-title"
-      className={styles.page}
-    >
-      <header className={styles.header}>
-        <SettingsBackLink href={returnHref} label={COPY_ACCOUNT.back} />
-        <h1 className={styles.title} id="account-directory-title" tabIndex={-1}>
-          {COPY_ACCOUNT.title}
-        </h1>
-        <p className={styles.lead}>{COPY_ACCOUNT.lead}</p>
-      </header>
-
-      <div className={styles.controls}>
-        <label className={styles.field} htmlFor="account-directory-search">
-          <span className={styles.fieldLabel}>{COPY_ACCOUNT.searchLabel}</span>
-          <input
-            aria-describedby="account-directory-title"
-            autoComplete="off"
-            className={styles.input}
-            id="account-directory-search"
-            onChange={(event) => updateQuery(event.target.value)}
-            placeholder={COPY_ACCOUNT.searchPlaceholder}
-            type="search"
-            value={query}
-          />
-        </label>
-        <button
-          className={styles.filterButton}
-          onClick={() => setFilterOpen(true)}
-          type="button"
-        >
-          篩選{activeFilterCount ? ` ${activeFilterCount}` : ""}
-        </button>
-        <div className={styles.desktopFilters}>
-          <label className={styles.field} htmlFor="account-directory-role">
-          <span className={styles.fieldLabel}>{COPY_ACCOUNT.roleLabel}</span>
-          <select
-            className={styles.select}
-            id="account-directory-role"
-            onChange={(event) =>
-              updateFilter(
-                event.target.value as AccountDirectoryMember["role"] | "",
-                status
-              )
-            }
-            value={role}
-          >
-            <option value="">{COPY_ACCOUNT.allRoles}</option>
-            <option value="Admin">{COPY_ACCOUNT.admin}</option>
-            <option value="Staff">{COPY_ACCOUNT.staff}</option>
-            <option value="Member">{COPY_ACCOUNT.member}</option>
-          </select>
-          </label>
-          <label className={styles.field} htmlFor="account-directory-status">
-          <span className={styles.fieldLabel}>{COPY_ACCOUNT.statusLabel}</span>
-          <select
-            className={styles.select}
-            id="account-directory-status"
-            onChange={(event) =>
-              updateFilter(
-                role,
-                event.target.value as AccountDirectoryMember["status"] | ""
-              )
-            }
-            value={status}
-          >
-            <option value="">{COPY_ACCOUNT.allStatuses}</option>
-            <option value="Active">{COPY_ACCOUNT.active}</option>
-            <option value="Pending">{COPY_ACCOUNT.pending}</option>
-            <option value="Suspended">{COPY_ACCOUNT.suspended}</option>
-            <option value="Deactivated">{COPY_ACCOUNT.deactivated}</option>
-          </select>
-          </label>
-          <label className={styles.field} htmlFor="account-directory-department">
-          <span className={styles.fieldLabel}>
-            {COPY_ACCOUNT.departmentLabel}
-          </span>
-          <input
-            className={styles.input}
-            id="account-directory-department"
-            onChange={(event) => updateDepartment(event.target.value)}
-            placeholder={COPY_ACCOUNT.departmentPlaceholder}
-            type="search"
-            value={department}
-          />
-          </label>
-        </div>
-      </div>
-
-      {filterOpen && (
-        <ManagementFilterSheet
-          label="篩選帳戶"
-          onClose={() => setFilterOpen(false)}
-        >
-          <h2>篩選帳戶</h2>
-          <div className={styles.sheetFilters}>
-            <label className={styles.field} htmlFor="account-sheet-role">
-              <span className={styles.fieldLabel}>{COPY_ACCOUNT.roleLabel}</span>
-              <select
-                className={styles.select}
-                id="account-sheet-role"
-                onChange={(event) =>
-                  updateFilter(
-                    event.target.value as AccountDirectoryMember["role"] | "",
-                    status
-                  )
-                }
-                value={role}
-              >
-                <option value="">{COPY_ACCOUNT.allRoles}</option>
-                <option value="Admin">{COPY_ACCOUNT.admin}</option>
-                <option value="Staff">{COPY_ACCOUNT.staff}</option>
-                <option value="Member">{COPY_ACCOUNT.member}</option>
-              </select>
-            </label>
-            <label className={styles.field} htmlFor="account-sheet-status">
-              <span className={styles.fieldLabel}>{COPY_ACCOUNT.statusLabel}</span>
-              <select
-                className={styles.select}
-                id="account-sheet-status"
-                onChange={(event) =>
-                  updateFilter(
-                    role,
-                    event.target.value as AccountDirectoryMember["status"] | ""
-                  )
-                }
-                value={status}
-              >
-                <option value="">{COPY_ACCOUNT.allStatuses}</option>
-                <option value="Active">{COPY_ACCOUNT.active}</option>
-                <option value="Pending">{COPY_ACCOUNT.pending}</option>
-                <option value="Suspended">{COPY_ACCOUNT.suspended}</option>
-                <option value="Deactivated">{COPY_ACCOUNT.deactivated}</option>
-              </select>
-            </label>
-            <label className={styles.field} htmlFor="account-sheet-department">
-              <span className={styles.fieldLabel}>
-                {COPY_ACCOUNT.departmentLabel}
-              </span>
-              <input
-                className={styles.input}
-                id="account-sheet-department"
-                onChange={(event) => updateDepartment(event.target.value)}
-                placeholder={COPY_ACCOUNT.departmentPlaceholder}
-                type="search"
-                value={department}
-              />
-            </label>
-          </div>
-          <div className={styles.sheetActions}>
-            <button
-              onClick={() => {
-                updateFilter("", "");
-                updateDepartment("");
-              }}
-              type="button"
-            >
-              清除
-            </button>
-            <button onClick={() => setFilterOpen(false)} type="button">
-              套用篩選
-            </button>
-          </div>
-        </ManagementFilterSheet>
-      )}
-
-      {isLoading && (
-        <output
-          aria-busy="true"
-          aria-live="polite"
-          className={styles.state}
-          id="account-directory-state"
-          tabIndex={-1}
-        >
-          {COPY_ACCOUNT.loading}
-        </output>
-      )}
-
-      {state.kind === "error" && (
-        <section
-          aria-live="assertive"
-          className={styles.error}
-          id="account-directory-state"
-          role="alert"
-          tabIndex={-1}
-        >
-          <h2>{state.message}</h2>
-          <button
-            className={styles.retry}
-            onClick={() => {
-              errorFocusPending.current = true;
-              setRetryToken((token) => token + 1);
-            }}
-            type="button"
-          >
-            {COPY_ACCOUNT.retry}
-          </button>
-        </section>
-      )}
-
-      {showEmpty && (
-        <output
-          aria-live="polite"
-          className={styles.empty}
-          id="account-directory-state"
-          tabIndex={-1}
-        >
-          <strong>{COPY_ACCOUNT.noResults}</strong>
-          <span>{COPY_ACCOUNT.emptyHint}</span>
-        </output>
-      )}
-
-      {showWorkspace && (
-        <div
-          className={`${styles.workspace} ${detailSelected ? styles.detailSelected : ""} ${detailOnly ? styles.detailOnly : ""}`}
-        >
-          {hasResults && (
-            <section
-              aria-labelledby="account-directory-results-title"
-              className={styles.resultsColumn}
-            >
-              <div className={styles.metrics}>
-                <div>
-                  <strong>{state.data.summary.total}</strong>
-                  <span>{COPY_ACCOUNT.total}</span>
-                </div>
-                <div>
-                  <strong>{state.data.summary.active}</strong>
-                  <span>{COPY_ACCOUNT.activeCount}</span>
-                </div>
-                <div>
-                  <strong>{state.data.summary.elevated}</strong>
-                  <span>{COPY_ACCOUNT.elevated}</span>
-                </div>
-                <div>
-                  <strong>{state.data.summary.pending}</strong>
-                  <span>{COPY_ACCOUNT.pendingCount}</span>
-                </div>
-              </div>
-              <h2
-                className={styles.resultsTitle}
-                id="account-directory-results-title"
-                tabIndex={-1}
-              >
-                {COPY_ACCOUNT.resultsTitle}
-              </h2>
-              <ul className={styles.results}>
-                {state.data.accounts.map((account) => (
-                  <li key={account.userId}>
-                    <button
-                      aria-pressed={selected?.userId === account.userId}
-                      className={styles.resultButton}
-                      onClick={() => handleSelect(account)}
-                      type="button"
-                    >
-                      <span className={styles.avatar} aria-hidden="true">
-                        {initials(account.name)}
-                      </span>
-                      <span className={styles.resultCopy}>
-                        <strong>{account.name}</strong>
-                        <small>
-                          {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
-                          {roleLabel(account.role)}
-                        </small>
-                      </span>
-                      <span
-                        className={`${styles.status} ${styles[statusClass(account.status)]}`}
-                      >
-                        {statusLabel(account.status)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {state.data.nextCursor && (
-                <button
-                  className={styles.loadMore}
-                  disabled={isLoadingMore}
-                  onClick={() => void loadMore()}
-                  type="button"
-                >
-                  {isLoadingMore ? "正在載入更多帳戶…" : "載入更多帳戶"}
-                </button>
-              )}
-            </section>
-          )}
-
-          {detailState.kind === "loading" ? (
+    <DirectoryFrame
+      ariaLabelledBy="account-directory-title"
+      detail={
+        selectedId ? (
+          detailState.kind === "loading" || detailState.kind === "idle" ? (
             <output
               ref={(node) => {
-                detailStateRef.current = node;
+                detailRef.current = node;
               }}
               aria-busy="true"
-              className={styles.detailState}
-              id="account-directory-detail-state"
               aria-live="polite"
+              className="grid min-h-[180px] min-w-0 place-items-center content-center gap-2 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-center text-[var(--ink-muted)]"
               tabIndex={-1}
             >
               {COPY_ACCOUNT.loading}
@@ -638,57 +610,83 @@ export const AccountDirectoryPanel = () => {
           ) : detailState.kind === "error" ? (
             <section
               ref={(node) => {
-                detailStateRef.current = node;
+                detailRef.current = node;
               }}
               aria-live="assertive"
-              className={styles.detailError}
-              id="account-directory-detail-state"
+              className="grid min-h-[180px] min-w-0 place-items-center content-center gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-center"
               role="alert"
               tabIndex={-1}
             >
-              <strong>{detailState.message}</strong>
-              <p>請返回名錄，再重新搜尋此帳戶。</p>
-              <button
-                className={styles.retry}
-                onClick={() => setDetailRetryToken((token) => token + 1)}
+              <strong className="wrap-anywhere">{detailState.message}</strong>
+              <p className="m-0 wrap-anywhere text-[var(--ink-muted)]">
+                請返回名錄，再重新搜尋此帳戶。
+              </p>
+              <Button
+                className="min-h-11 w-fit bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                onClick={() => setDetailRetryKey((key) => key + 1)}
                 type="button"
               >
                 {COPY_ACCOUNT.retry}
-              </button>
+              </Button>
             </section>
           ) : selected ? (
             <article
+              ref={(node) => {
+                detailRef.current = node;
+              }}
               aria-labelledby="account-directory-detail-title"
-              className={styles.detail}
-              ref={detailRef}
+              className={ACCOUNT_DETAIL_CLASS}
               tabIndex={-1}
             >
-              <span className={styles.eyebrow}>{COPY_ACCOUNT.detail}</span>
-              <div className={styles.detailHeading}>
-                <span className={styles.avatarLarge} aria-hidden="true">
+              <span className="text-[0.72rem] font-extrabold tracking-[0.08em] text-[var(--accent)]">
+                {COPY_ACCOUNT.detail}
+              </span>
+              <div className="mt-2 flex min-w-0 items-center gap-3">
+                <span className="grid size-14 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] font-extrabold text-[1.15rem] text-[var(--accent)]">
                   {selected.name.slice(0, 1)}
                 </span>
-                <div>
-                  <h2 id="account-directory-detail-title">{selected.name}</h2>
-                  <p>{selected.username ?? COPY_ACCOUNT.unavailable}</p>
+                <div className="min-w-0">
+                  <h2
+                    className="m-0 wrap-anywhere text-[1.35rem] font-extrabold"
+                    id="account-directory-detail-title"
+                  >
+                    {selected.name}
+                  </h2>
+                  <p className="m-0 mt-1 wrap-anywhere text-[var(--ink-muted)]">
+                    {selected.username ?? COPY_ACCOUNT.unavailable}
+                  </p>
                 </div>
               </div>
-              <dl className={styles.facts}>
-                <div>
-                  <dt>{COPY_ACCOUNT.role}</dt>
-                  <dd>{roleLabel(selected.role)}</dd>
+              <dl className="mt-4 grid min-w-0 grid-cols-2 border-t border-l border-[var(--line)] max-[479px]:grid-cols-1">
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    {COPY_ACCOUNT.role}
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                    {roleLabel(selected.role)}
+                  </dd>
                 </div>
-                <div>
-                  <dt>{COPY_ACCOUNT.status}</dt>
-                  <dd>{statusLabel(selected.status)}</dd>
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    {COPY_ACCOUNT.status}
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                    {statusLabel(selected.status)}
+                  </dd>
                 </div>
-                <div>
-                  <dt>{COPY_ACCOUNT.contact}</dt>
-                  <dd>{selected.phone ?? COPY_ACCOUNT.unavailable}</dd>
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    {COPY_ACCOUNT.contact}
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                    {selected.phone ?? COPY_ACCOUNT.unavailable}
+                  </dd>
                 </div>
-                <div>
-                  <dt>{COPY_ACCOUNT.departments}</dt>
-                  <dd>
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    {COPY_ACCOUNT.departments}
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
                     {selected.departments.length > 0
                       ? selected.departments
                           .map((departmentRow) => departmentRow.name)
@@ -697,18 +695,310 @@ export const AccountDirectoryPanel = () => {
                   </dd>
                 </div>
               </dl>
-              <div className={styles.readOnlyNote}>
-                <strong>唯讀資料</strong>
-                <p>{COPY_ACCOUNT.detailReadOnly}</p>
+              <div className="mt-4 min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--focus)_35%,var(--line))] bg-[color-mix(in_srgb,var(--focus)_6%,white)] p-3">
+                <strong>{"唯讀資料"}</strong>
+                <p className="m-0 mt-1 wrap-anywhere leading-6 text-[var(--ink-muted)]">
+                  {COPY_ACCOUNT.detailReadOnly}
+                </p>
               </div>
             </article>
-          ) : (
-            <aside className={styles.detailPlaceholder} aria-live="polite">
-              選擇一個帳戶以查看詳細資料。
-            </aside>
-          )}
-        </div>
-      )}
-    </section>
+          ) : null
+        ) : null
+      }
+      desktopFilters={
+        <>
+          <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-directory-role">
+            <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+              {COPY_ACCOUNT.roleLabel}
+            </span>
+            <AccountRoleSelect
+              id="account-directory-role"
+              onChange={(nextRole) => updateFilter(nextRole, status)}
+              value={role}
+            />
+          </label>
+          <label
+            className={ACCOUNT_FIELD_CLASS}
+            htmlFor="account-directory-status"
+          >
+            <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+              {COPY_ACCOUNT.statusLabel}
+            </span>
+            <AccountStatusSelect
+              id="account-directory-status"
+              onChange={(nextStatus) => updateFilter(role, nextStatus)}
+              value={status}
+            />
+          </label>
+          <label
+            className={ACCOUNT_FIELD_CLASS}
+            htmlFor="account-directory-department"
+          >
+            <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+              {COPY_ACCOUNT.departmentLabel}
+            </span>
+            <Input
+              aria-describedby="account-directory-lead"
+              className={ACCOUNT_INPUT_CLASS}
+              id="account-directory-department"
+              onChange={(event) => updateDepartment(event.target.value)}
+              placeholder={COPY_ACCOUNT.departmentPlaceholder}
+              type="search"
+              value={department}
+            />
+          </label>
+        </>
+      }
+      empty={<AccountEmptyState stateRef={stateRef} />}
+      error={
+        state.kind === "error" && state.failure === "error" ? (
+          <AccountErrorState
+            message={state.message}
+            onRetry={listRetry}
+            stateRef={stateRef}
+          />
+        ) : null
+      }
+      filter={
+        <Button
+          aria-label={activeFilterCount > 0 ? `篩選 ${activeFilterCount}` : "篩選"}
+          className="min-h-12 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
+          onClick={() => setFilterOpen(true)}
+          type="button"
+          variant="outline"
+        >
+          篩選{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}
+        </Button>
+      }
+      filterSheet={
+        filterOpen ? (
+          <ManagementFilterSheet
+            label="篩選帳戶"
+            onClose={() => setFilterOpen(false)}
+          >
+            <h2 className="m-0 pr-12 text-lg font-extrabold">篩選帳戶</h2>
+            <div className="mt-4 grid gap-3">
+              <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-sheet-role">
+                <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+                  {COPY_ACCOUNT.roleLabel}
+                </span>
+                <AccountRoleSelect
+                  id="account-sheet-role"
+                  onChange={(nextRole) => updateFilter(nextRole, status)}
+                  value={role}
+                />
+              </label>
+              <label
+                className={ACCOUNT_FIELD_CLASS}
+                htmlFor="account-sheet-status"
+              >
+                <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+                  {COPY_ACCOUNT.statusLabel}
+                </span>
+                <AccountStatusSelect
+                  id="account-sheet-status"
+                  onChange={(nextStatus) => updateFilter(role, nextStatus)}
+                  value={status}
+                />
+              </label>
+              <label
+                className={ACCOUNT_FIELD_CLASS}
+                htmlFor="account-sheet-department"
+              >
+                <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+                  {COPY_ACCOUNT.departmentLabel}
+                </span>
+                <Input
+                  aria-describedby="account-directory-lead"
+                  className={ACCOUNT_INPUT_CLASS}
+                  id="account-sheet-department"
+                  onChange={(event) => updateDepartment(event.target.value)}
+                  placeholder={COPY_ACCOUNT.departmentPlaceholder}
+                  type="search"
+                  value={department}
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                className="min-h-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-bold text-[var(--ink)] hover:bg-[var(--surface)]"
+                onClick={clearFilters}
+                type="button"
+                variant="outline"
+              >
+                清除
+              </Button>
+              <Button
+                className="min-h-11 bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                onClick={() => setFilterOpen(false)}
+                type="button"
+              >
+                套用篩選
+              </Button>
+            </div>
+          </ManagementFilterSheet>
+        ) : null
+      }
+      forbidden={
+        state.kind === "error" && state.failure === "forbidden" ? (
+          <AccountErrorState
+            message={state.message}
+            onRetry={listRetry}
+            stateRef={stateRef}
+          />
+        ) : null
+      }
+      focus={{
+        detailKey,
+        detailRef,
+        resultsRef,
+        retryKey: listRetryKey,
+        stateRef,
+      }}
+      hasDetail={Boolean(selectedId)}
+      hasResults={hasResults}
+      header={
+        <ContextualTaskHeader
+          backHref={returnHref}
+          backLabel={COPY_ACCOUNT.back}
+          headingId="account-directory-title"
+          lead={COPY_ACCOUNT.lead}
+          title={COPY_ACCOUNT.title}
+        />
+      }
+      list={
+        accountView && hasResults
+          ? ({ selection }) => (
+              <section
+                aria-labelledby="account-directory-results-title"
+                className="min-w-0"
+              >
+                <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <div className="flex items-baseline gap-1">
+                    <strong className="text-[0.82rem]">
+                      {accountView.summary.total}
+                    </strong>
+                    <span className="wrap-anywhere text-[0.76rem] text-[var(--ink-muted)]">
+                      {COPY_ACCOUNT.total}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <strong className="text-[0.82rem]">
+                      {accountView.summary.active}
+                    </strong>
+                    <span className="wrap-anywhere text-[0.76rem] text-[var(--ink-muted)]">
+                      {COPY_ACCOUNT.activeCount}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <strong className="text-[0.82rem]">
+                      {accountView.summary.elevated}
+                    </strong>
+                    <span className="wrap-anywhere text-[0.76rem] text-[var(--ink-muted)]">
+                      {COPY_ACCOUNT.elevated}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <strong className="text-[0.82rem]">
+                      {accountView.summary.pending}
+                    </strong>
+                    <span className="wrap-anywhere text-[0.76rem] text-[var(--ink-muted)]">
+                      {COPY_ACCOUNT.pendingCount}
+                    </span>
+                  </div>
+                </div>
+                <h2
+                  ref={(node) => {
+                    resultsRef.current = node;
+                  }}
+                  className="m-0 mb-2 wrap-anywhere text-[0.95rem] font-extrabold outline-none"
+                  id="account-directory-results-title"
+                  tabIndex={-1}
+                >
+                  {COPY_ACCOUNT.resultsTitle}
+                </h2>
+                <ul className="m-0 grid min-w-0 list-none gap-2 p-0">
+                  {accountView.accounts.map((account) => (
+                    <li key={account.userId} className="min-w-0">
+                      <Button
+                        aria-pressed={selection.selectedId === account.userId}
+                        className="grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
+                        onClick={() => selection.onSelect(account.userId)}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <span className="grid size-10 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] font-extrabold text-[var(--accent)]">
+                          {initials(account.name)}
+                        </span>
+                        <span className="grid min-w-0 gap-1">
+                          <strong className="wrap-anywhere">
+                            {account.name}
+                          </strong>
+                          <small className="overflow-hidden text-ellipsis whitespace-nowrap text-[0.74rem] text-[var(--ink-muted)]">
+                            {account.username ?? COPY_ACCOUNT.unavailable} · {roleLabel(account.role)}
+                          </small>
+                        </span>
+                        <span
+                          className={`min-h-[26px] rounded-full border px-2 py-1 text-[0.68rem] font-extrabold whitespace-nowrap ${statusClass(account.status)}`}
+                        >
+                          {statusLabel(account.status)}
+                        </span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )
+          : undefined
+      }
+      loading={<AccountLoadingState stateRef={stateRef} />}
+      pagination={
+        accountView
+          ? {
+              error: loadMoreError,
+              hasMore: Boolean(accountView.nextCursor),
+              label: "載入更多帳戶",
+              loading: isLoadingMore,
+              loadingLabel: "正在載入更多帳戶…",
+              onLoadMore: () => void loadMore(),
+              onRetry: () => void loadMore(),
+              retryLabel: COPY_ACCOUNT.retry,
+            }
+          : undefined
+      }
+      search={
+        <>
+          <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-directory-search">
+            <span className={ACCOUNT_FIELD_LABEL_CLASS}>
+              {COPY_ACCOUNT.searchLabel}
+            </span>
+            <Input
+              aria-describedby="account-directory-lead"
+              autoComplete="off"
+              className={ACCOUNT_INPUT_CLASS}
+              id="account-directory-search"
+              onChange={(event) => updateQuery(event.target.value)}
+              placeholder={COPY_ACCOUNT.searchPlaceholder}
+              type="search"
+              value={query}
+            />
+          </label>
+          <span className="sr-only" id="account-directory-lead">
+            {COPY_ACCOUNT.lead}
+          </span>
+        </>
+      }
+      selection={{
+        onSelect: (id) => {
+          const account = accounts.find((candidate) => candidate.userId === id);
+          if (account) {
+            handleSelect(account);
+          }
+        },
+        selectedId,
+      }}
+      state={frameState}
+      width="wide"
+    />
   );
 };

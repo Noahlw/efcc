@@ -448,7 +448,8 @@ test.describe("S4 Management hardening integration gate", () => {
       await page.getByRole("button", { name: /^篩選/u }).click();
       const dialog = page.getByRole("dialog", { name: "篩選帳戶" });
       await expect(dialog).toBeVisible();
-      await dialog.locator("#account-sheet-role").selectOption("Admin");
+      await dialog.locator("#account-sheet-role").click();
+      await page.getByRole("option", { name: "管理員", exact: true }).click();
       await dialog
         .getByRole("button", { name: "套用篩選", exact: true })
         .click();
@@ -457,11 +458,8 @@ test.describe("S4 Management hardening integration gate", () => {
       ).toBeVisible();
     } else {
       const roleFilter = page.locator("#account-directory-role");
-      await (
-        (await roleFilter.count())
-          ? roleFilter
-          : page.getByLabel("角色", { exact: true }).first()
-      ).selectOption("Admin");
+      await roleFilter.click();
+      await page.getByRole("option", { name: "管理員", exact: true }).click();
     }
     await expect(
       page.getByRole("button", { name: /E2E Admin/u })
@@ -526,6 +524,79 @@ test.describe("S4 Management hardening integration gate", () => {
     await captureEvidence(page, testInfo, "account-directory-pagination");
   });
 
+  test("Directory Frame follows 600 Sheet, shell, reflow, and detail geometry", async ({
+    page,
+  }, testInfo) => {
+    onlyProjects(testInfo, [
+      "tablet-600",
+      "tablet-799",
+      "desktop-800",
+      "desktop-1024",
+    ]);
+    await loginAsAdmin(page);
+    await page.goto("/management?module=accounts");
+    const frame = page.locator("[data-directory-frame]");
+    await expect(frame).toHaveAttribute("data-directory-state", "ready");
+    await expect(
+      frame.getByRole("heading", { name: ACCOUNTS_TITLE })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E Admin/u }).first()
+    ).toBeVisible();
+
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    const workspace = page.locator("[data-directory-workspace]");
+    const columns = await workspace.evaluate(
+      (element) => getComputedStyle(element).gridTemplateColumns
+    );
+    if (viewportWidth >= 800 && viewportWidth < 1024) {
+      expect(columns.split(" ").filter(Boolean)).toHaveLength(1);
+    }
+    if (viewportWidth >= 1024) {
+      expect(columns.split(" ").filter(Boolean).length).toBeGreaterThanOrEqual(
+        2
+      );
+      await page
+        .getByRole("button", { name: /E2E Admin/u })
+        .first()
+        .click();
+      const detail = page.locator(
+        '[data-directory-detail] article[aria-labelledby="account-directory-detail-title"]'
+      );
+      await expect(detail).toBeFocused();
+      await expect(detail).toHaveCSS("position", "sticky");
+    }
+    if (viewportWidth < 800) {
+      const filter = page.getByRole("button", { name: /^篩選/u });
+      await expect(filter).toBeVisible();
+      await filter.click();
+      const dialog = page.getByRole("dialog", { name: "篩選帳戶" });
+      await expect(dialog).toBeVisible();
+      const box = await dialog.boundingBox();
+      expect(box?.width ?? 0).toBeLessThanOrEqual(viewportWidth);
+      await page.keyboard.press("Escape");
+      await expect(filter).toBeFocused();
+    } else {
+      await expect(page.locator("#account-directory-role")).toBeVisible();
+    }
+    await page.evaluate(() => {
+      const longName = "陳大文".repeat(20);
+      document
+        .querySelector<HTMLElement>("[data-directory-list] strong")
+        ?.replaceChildren(longName);
+      document
+        .querySelectorAll<HTMLElement>("[data-directory-detail] dd")
+        .forEach((element) => element.replaceChildren("W".repeat(80)));
+    });
+    const overflow = await page.evaluate(
+      () =>
+        Math.max(
+          document.body.scrollWidth,
+          document.documentElement.scrollWidth
+        ) - window.innerWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
   test("Role list keeps Member Baseline fixed and drills into Permissions or Assigned Accounts", async ({
     page,
   }, testInfo) => {
