@@ -84,6 +84,14 @@ export type RoleDesiredChange =
       }[];
     }
   | {
+      kind: "rescope_role_definition";
+      role_definition_id: string;
+      category_key: "Global" | "Department" | "Program";
+      scope_kind: RoleScopeKind;
+      scope_id: string | null;
+      position: number;
+    }
+  | {
       kind: "grant_assignment";
       assignment_id: string;
       account_user_id: string;
@@ -292,7 +300,8 @@ export async function applyRoleMutation(
   const domainChangeGuard =
     input.desired.length === 1 &&
     (input.desired[0]?.kind === "rename_role_definition" ||
-      input.desired[0]?.kind === "reorder_role_definitions")
+      input.desired[0]?.kind === "reorder_role_definitions" ||
+      input.desired[0]?.kind === "rescope_role_definition")
       ? "AND changes() > 0"
       : "";
 
@@ -444,6 +453,32 @@ export async function applyRoleMutation(
             )
         );
       }
+      continue;
+    }
+    if (change.kind === "rescope_role_definition") {
+      // #479 scope edits atomically reparent the role, update its explicit
+      // scope, and choose the authority-computed sibling position. Stable
+      // identity, label, grants, and assignments remain untouched.
+      statements.push(
+        db
+          .prepare(
+            `UPDATE role_definitions
+                SET category_key = ?, scope_kind = ?, scope_id = ?,
+                    position = ?, updated_by = ?, updated_at = ?
+              WHERE role_definition_id = ? AND is_archived = 0
+                AND ${gateClause}`
+          )
+          .bind(
+            change.category_key,
+            change.scope_kind,
+            change.scope_id,
+            change.position,
+            input.actor_user_id,
+            input.now,
+            change.role_definition_id,
+            ...bindGate(input)
+          )
+      );
       continue;
     }
     if (change.kind === "grant_assignment") {

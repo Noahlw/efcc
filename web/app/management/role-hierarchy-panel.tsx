@@ -14,6 +14,7 @@ import {
   getRoleHierarchy,
   renameRoleDefinition,
   createRoleDefinition,
+  rescopeRoleDefinition,
   reorderRoleDefinitions,
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
@@ -25,17 +26,23 @@ import { SettingsBackLink } from "./settings-ui";
 import styles from "./role-hierarchy-panel.module.css";
 
 const RENAME_LABEL = "重新命名";
+const SCOPE_EDIT_LABEL = "編輯適用範圍";
 const DETAIL_BACK_LABEL = "返回身份組列表";
 const SAVE_LABEL = "儲存名稱";
+const SCOPE_SAVE_LABEL = "儲存適用範圍";
 const CANCEL_LABEL = "取消";
 const SUCCESS_MESSAGE = "身份組名稱已更新";
+const SCOPE_SUCCESS_MESSAGE = "身份組適用範圍已更新";
 const SAVING_MESSAGE = "正在儲存名稱…";
+const SCOPE_SAVING_MESSAGE = "正在儲存適用範圍…";
 const CONFLICT_MESSAGE = "身份組名稱已有更新，請重新載入後再試。";
+const SCOPE_CONFLICT_MESSAGE = "身份組適用範圍已有更新，請重新載入後再試。";
 const FORBIDDEN_MESSAGE = "您沒有權限執行此操作。";
 const NOT_FOUND_MESSAGE = "找不到指定的身份組。";
 const INVALID_NAME_MESSAGE = "名稱不可空白，且不可超過 60 個字元。";
 const NAME_CONFLICT_MESSAGE = "已存在相同名稱的身份組。";
 const ARCHIVED_MESSAGE = "已停用的身份組不可重新命名。";
+const SCOPE_ARCHIVED_MESSAGE = "已停用的身份組不可變更適用範圍。";
 const LOAD_ERROR_MESSAGE = "身份組資料暫時無法載入，請稍後再試。";
 
 const CREATE_LABEL = "建立身份組";
@@ -79,6 +86,17 @@ type RenameState =
   | { kind: "not-found" }
   | { kind: "invalid-name" }
   | { kind: "error" };
+type ScopeState =
+  | { kind: "idle" }
+  | { kind: "editing" }
+  | { kind: "submitting" }
+  | { kind: "success" }
+  | { kind: "conflict" }
+  | { kind: "forbidden" }
+  | { kind: "invalid-scope" }
+  | { kind: "archived" }
+  | { kind: "not-found" }
+  | { kind: "error" };
 
 type CreateState =
   | { kind: "idle" }
@@ -95,6 +113,9 @@ interface CreateDraft {
   scopeOption: string;
   label: string;
   description: string;
+}
+function scopeOptionValue(scopeKind: string, scopeId: string | null): string {
+  return `${scopeKind}:${scopeId ?? "global"}`;
 }
 
 /** Local order state the operator is composing (B-479-10 保留我的排序). */
@@ -257,6 +278,8 @@ export const RoleHierarchyPanel = () => {
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   const listHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const [scopeValue, setScopeValue] = useState("");
+  const [scopeState, setScopeState] = useState<ScopeState>({ kind: "idle" });
 
   const [createView, setCreateView] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>({
@@ -349,6 +372,7 @@ export const RoleHierarchyPanel = () => {
       setSelectedId(urlState.roleId);
       setView(urlState.view);
       setRenameState({ kind: "idle" });
+      setScopeState({ kind: "idle" });
     };
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -403,6 +427,7 @@ export const RoleHierarchyPanel = () => {
     setSelectedId(definition.roleDefinitionId);
     setView("detail");
     setRenameState({ kind: "idle" });
+    setScopeState({ kind: "idle" });
     window.history.pushState(
       null,
       "",
@@ -421,6 +446,7 @@ export const RoleHierarchyPanel = () => {
     }
     setRenameValue(definition.label);
     setRenameState({ kind: "idle" });
+    setScopeState({ kind: "idle" });
     setView("rename");
     window.history.pushState(
       null,
@@ -437,6 +463,7 @@ export const RoleHierarchyPanel = () => {
     if (view === "rename") {
       setView("detail");
       setRenameState({ kind: "idle" });
+      setScopeState({ kind: "idle" });
       window.history.replaceState(
         null,
         "",
@@ -453,6 +480,7 @@ export const RoleHierarchyPanel = () => {
       setSelectedId(null);
       setRenameState({ kind: "idle" });
       window.history.replaceState(null, "", "/management?module=roles");
+      setScopeState({ kind: "idle" });
       return;
     }
     router.push(returnHref);
@@ -533,6 +561,111 @@ export const RoleHierarchyPanel = () => {
       announce(classified.message);
     }
   };
+  const classifyScopeError = (
+    error: unknown
+  ): { state: ScopeState; message: string } => {
+    if (!(error instanceof RpcError)) {
+      return { state: { kind: "error" }, message: LOAD_ERROR_MESSAGE };
+    }
+    const { code } = error.problem;
+    if (
+      code === "ROLE_POLICY_CONFLICT" ||
+      code === "ROLE_REVISION_CONFLICT" ||
+      code === "ROLE_IDEMPOTENCY_REUSE"
+    ) {
+      return { state: { kind: "conflict" }, message: SCOPE_CONFLICT_MESSAGE };
+    }
+    if (code === "ROLE_ARCHIVED") {
+      return { state: { kind: "archived" }, message: SCOPE_ARCHIVED_MESSAGE };
+    }
+    if (code === "ROLE_NOT_FOUND") {
+      return { state: { kind: "not-found" }, message: NOT_FOUND_MESSAGE };
+    }
+    if (code === "ROLE_INVALID_PARENT" || code === "ROLE_SCOPE_REQUIRED") {
+      return {
+        state: { kind: "invalid-scope" },
+        message: CREATE_INVALID_SCOPE_MESSAGE,
+      };
+    }
+    if (
+      code === "FORBIDDEN" ||
+      code === "ROLE_FORBIDDEN" ||
+      code === "ROLE_HIGHEST_PROTECTED" ||
+      code === "ROLE_SCOPE_MISMATCH" ||
+      code === "ROLE_ADMIN_PROTECTED" ||
+      code === "ROLE_BASELINE_PROTECTED" ||
+      code === "ROLE_PROTECTED"
+    ) {
+      return { state: { kind: "forbidden" }, message: FORBIDDEN_MESSAGE };
+    }
+    return { state: { kind: "error" }, message: LOAD_ERROR_MESSAGE };
+  };
+
+  const openScope = (definition: RoleHierarchyDefinition) => {
+    if (
+      !definition.actions.some((action) => action.action === "scope") ||
+      (definition.scopeOptions ?? []).length === 0
+    ) {
+      return;
+    }
+    const options = definition.scopeOptions ?? [];
+    const currentValue = scopeOptionValue(
+      definition.scopeKind,
+      definition.scopeId
+    );
+    const [firstOption] = options;
+    setScopeValue(
+      options.some(
+        (option) =>
+          scopeOptionValue(option.scope_kind, option.scope_id) === currentValue
+      )
+        ? currentValue
+        : firstOption
+          ? scopeOptionValue(firstOption.scope_kind, firstOption.scope_id)
+          : ""
+    );
+    setScopeState({ kind: "editing" });
+  };
+
+  const submitScope = async () => {
+    if (!readyData || !selected || scopeState.kind === "submitting") {
+      return;
+    }
+    const option = (selected.scopeOptions ?? []).find(
+      (candidate) =>
+        scopeOptionValue(candidate.scope_kind, candidate.scope_id) ===
+        scopeValue
+    );
+    if (!option) {
+      setScopeState({ kind: "invalid-scope" });
+      announce(CREATE_INVALID_SCOPE_MESSAGE);
+      return;
+    }
+    setScopeState({ kind: "submitting" });
+    announce(SCOPE_SAVING_MESSAGE);
+    try {
+      await rescopeRoleDefinition(
+        selected.roleDefinitionId,
+        {
+          category_key: option.category_key,
+          scope_kind: option.scope_kind,
+          scope_id: option.scope_id,
+          base_revision: readyData.revision,
+        },
+        crypto.randomUUID()
+      );
+      setScopeState({ kind: "success" });
+      announce(SCOPE_SUCCESS_MESSAGE);
+      const data = await getRoleHierarchy();
+      setState({ kind: "ready", data });
+      setScopeState({ kind: "idle" });
+    } catch (error) {
+      const classified = classifyScopeError(error);
+      setScopeState(classified.state);
+      announce(classified.message);
+    }
+  };
+
 
   const toggleCategory = (categoryKey: string) => {
     setExpandedCategories((current) => {
@@ -1089,6 +1222,93 @@ export const RoleHierarchyPanel = () => {
             >
               {RENAME_LABEL}
             </button>
+          )}
+          {selected.actions.some((action) => action.action === "scope") &&
+            (selected.scopeOptions ?? []).length > 0 && (
+              <button
+                className={styles.renameButton}
+                onClick={() => openScope(selected)}
+                type="button"
+              >
+                {SCOPE_EDIT_LABEL}
+              </button>
+            )}
+          {scopeState.kind !== "idle" && (
+            <section
+              aria-labelledby="role-hierarchy-scope-title"
+              className={styles.rename}
+            >
+              <h3 id="role-hierarchy-scope-title">
+                {SCOPE_EDIT_LABEL}
+              </h3>
+              <label className={styles.field} htmlFor="role-scope-select">
+                <span className={styles.fieldLabel}>{CREATE_SCOPE_LABEL}</span>
+                <select
+                  className={styles.input}
+                  disabled={scopeState.kind === "submitting"}
+                  id="role-scope-select"
+                  onChange={(event) => {
+                    setScopeValue(event.target.value);
+                    if (scopeState.kind !== "editing") {
+                      setScopeState({ kind: "editing" });
+                    }
+                  }}
+                  value={scopeValue}
+                >
+                  {(selected.scopeOptions ?? []).map((option) => (
+                    <option
+                      key={scopeOptionValue(option.scope_kind, option.scope_id)}
+                      value={scopeOptionValue(
+                        option.scope_kind,
+                        option.scope_id
+                      )}
+                    >
+                      {option.scopeLabel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {scopeState.kind === "invalid-scope" && (
+                <p className={styles.feedback}>{CREATE_INVALID_SCOPE_MESSAGE}</p>
+              )}
+              {scopeState.kind === "conflict" && (
+                <p className={styles.feedback}>{SCOPE_CONFLICT_MESSAGE}</p>
+              )}
+              {scopeState.kind === "forbidden" && (
+                <p className={styles.feedback}>{FORBIDDEN_MESSAGE}</p>
+              )}
+              {scopeState.kind === "archived" && (
+                <p className={styles.feedback}>{SCOPE_ARCHIVED_MESSAGE}</p>
+              )}
+              {scopeState.kind === "not-found" && (
+                <p className={styles.feedback}>{NOT_FOUND_MESSAGE}</p>
+              )}
+              {scopeState.kind === "error" && (
+                <p className={styles.feedback}>{LOAD_ERROR_MESSAGE}</p>
+              )}
+              {scopeState.kind === "success" && (
+                <p className={styles.success}>{SCOPE_SUCCESS_MESSAGE}</p>
+              )}
+              <div className={styles.actions}>
+                <button
+                  className={styles.cancel}
+                  onClick={() => setScopeState({ kind: "idle" })}
+                  type="button"
+                >
+                  {CANCEL_LABEL}
+                </button>
+                <button
+                  className={styles.save}
+                  disabled={scopeState.kind === "submitting"}
+                  onClick={() => void submitScope()}
+                  type="button"
+                >
+                  {scopeState.kind === "submitting"
+                    ? SCOPE_SAVING_MESSAGE
+                    : SCOPE_SAVE_LABEL}
+                </button>
+              </div>
+            </section>
           )}
           {selected.isProtected && (
             <p className={styles.protectedNote} role="note">

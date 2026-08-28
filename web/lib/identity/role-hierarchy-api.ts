@@ -13,6 +13,7 @@ import type {
   RoleHierarchyView,
   RoleRenameResult,
   RoleCreateResult,
+  RoleRescopeResult,
   RoleReorderResult,
 } from "@/lib/identity";
 
@@ -174,6 +175,35 @@ export function reorderRoleDefinitions(
       category_key: categoryKey,
       targets,
       base_revision: baseRevision,
+    },
+    idempotencyKey
+  );
+}
+/**
+ * PATCH /api/v1/identity/role-definitions/:id/scope — #479 scope edit.
+ * The server derives the fixed parent from scope_kind and rechecks actor
+ * authority; category_key is an optional integrity echo for tamper detection.
+ */
+export function rescopeRoleDefinition(
+  roleDefinitionId: string,
+  input: {
+    category_key?: "Global" | "Department" | "Program";
+    scope_kind: "Global" | "Department" | "Program";
+    scope_id: string | null;
+    base_revision: number;
+  },
+  idempotencyKey?: string
+): Promise<RoleRescopeResult> {
+  return roleFetch(
+    `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/scope`,
+    "PATCH",
+    {
+      ...(input.category_key === undefined
+        ? {}
+        : { category_key: input.category_key }),
+      scope_kind: input.scope_kind,
+      scope_id: input.scope_id,
+      base_revision: input.base_revision,
     },
     idempotencyKey
   );

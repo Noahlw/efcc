@@ -83,6 +83,23 @@ describe("#476 disposable seed contract", () => {
     expect(adminPos).toBeDefined();
     expect(staff?.position ?? 0).toBeGreaterThan(adminPos?.position ?? 0);
   });
+  test("Staff seeds the role-management grants required for rename and scope edits", async () => {
+    const rows = await testDb()
+      .prepare(
+        `SELECT capability FROM role_definition_grants
+          WHERE role_definition_id = (
+            SELECT role_definition_id FROM role_definitions
+             WHERE stable_key = 'staff'
+          )`
+      )
+      .all<{ capability: string }>();
+    const capabilities = new Set(
+      (rows.results ?? []).map((row) => row.capability)
+    );
+    expect(capabilities.has("role.name.write")).toBe(true);
+    expect(capabilities.has("role.scope.read")).toBe(true);
+    expect(capabilities.has("role.scope.write")).toBe(true);
+  });
 
   test("fixed Department and Program categories are seeded as non-assignable", async () => {
     const rows = await testDb()

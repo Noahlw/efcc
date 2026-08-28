@@ -777,4 +777,135 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
       )
     );
   });
+  test("B-479 scope HTTP: Staff rescope returns the response envelope and audit correlation", async () => {
+    const staffCookie = await cookieFor("E2E_DISPOSABLE_STAFF");
+    const createBase = await readCurrentHttpRevision();
+    const createRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-rescope-create",
+        },
+        body: {
+          category_key: "Department",
+          label: "HTTP 適用範圍角色",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: createBase,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createRes.status, 200);
+    const created = (await createRes.json()) as {
+      data: { roleDefinitionId: string };
+    };
+    const base = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${created.data.roleDefinitionId}/scope`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}`,
+            "Idempotency-Key": "http-b479-rescope-success",
+          },
+          body: {
+            category_key: "Program",
+            scope_kind: "Program",
+            scope_id: "018f3b8a-0000-7000-8000-300000000001",
+            base_revision: base,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      requestId: string;
+      data: {
+        roleDefinitionId: string;
+        categoryKey: string;
+        scopeKind: string;
+        scopeId: string | null;
+        revision: number;
+        idempotent: boolean;
+      };
+    };
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(body.data.roleDefinitionId, created.data.roleDefinitionId);
+    assert.equal(body.data.categoryKey, "Program");
+    assert.equal(body.data.scopeKind, "Program");
+    assert.equal(body.data.scopeId, "018f3b8a-0000-7000-8000-300000000001");
+    assert.equal(body.data.revision, base + 1);
+    assert.equal(body.data.idempotent, false);
+    const correlated = await testDb()
+      .prepare(
+        `SELECT action, outcome, correlation_id FROM role_audit_events
+          WHERE entity_id = ? AND action = 'ROLE_DEFINITION_RESCOPE'
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(created.data.roleDefinitionId)
+      .first<{ action: string; outcome: string; correlation_id: string }>();
+    assert.equal(correlated?.action, "ROLE_DEFINITION_RESCOPE");
+    assert.equal(correlated?.outcome, "SUCCESS");
+    assert.equal(correlated?.correlation_id, body.requestId);
+  });
+
+  test("B-479 scope HTTP: Staff Global destination is rejected with ROLE_SCOPE_MISMATCH", async () => {
+    const staffCookie = await cookieFor("E2E_DISPOSABLE_STAFF");
+    const createBase = await readCurrentHttpRevision();
+    const createRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-rescope-global-target",
+        },
+        body: {
+          category_key: "Department",
+          label: "HTTP 全域拒絕目標",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: createBase,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createRes.status, 200);
+    const created = (await createRes.json()) as {
+      data: { roleDefinitionId: string };
+    };
+    const base = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${created.data.roleDefinitionId}/scope`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}`,
+            "Idempotency-Key": "http-b479-rescope-staff-global",
+          },
+          body: {
+            category_key: "Global",
+            scope_kind: "Global",
+            scope_id: null,
+            base_revision: base,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.equal(res.status, 403);
+    const body = await problemBody(res);
+    assert.equal(body.code, "ROLE_SCOPE_MISMATCH");
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+  });
 });

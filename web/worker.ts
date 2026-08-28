@@ -19,9 +19,8 @@
  *
  *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
  *
- *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478): the
- *     read-only 身份組 hierarchy and the one rename mutation.
- *
+ *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478/#479): the
+ *     hierarchy projection, rename, scope, create, and reorder mutations.
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -1073,6 +1072,7 @@ export default {
         handleGetRoleHierarchy,
         handleRenameRoleDefinition,
         handleCreateRoleDefinition,
+        handleRescopeRoleDefinition,
         handleReorderRoleDefinitions,
       } = await import("./lib/identity/role-handlers");
 
@@ -1093,6 +1093,29 @@ export default {
         request.method === "PATCH"
       ) {
         return handleReorderRoleDefinitions(request, roleEnv);
+      }
+      const rescopePrefix = "/api/v1/identity/role-definitions/";
+      if (
+        url.pathname.startsWith(rescopePrefix) &&
+        url.pathname.endsWith("/scope") &&
+        request.method === "PATCH"
+      ) {
+        const roleDefinitionId = decodePathSegment(
+          url.pathname.slice(rescopePrefix.length, -"/scope".length)
+        );
+        if (roleDefinitionId === null) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleRescopeRoleDefinition(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
       }
       const renamePrefix = "/api/v1/identity/roles/";
       if (

@@ -621,4 +621,84 @@ describe(RoleHierarchyPanel, () => {
     expect(retry.category_key).toBe("Department");
     expect(Array.isArray(retry.targets)).toBeTruthy();
   });
+  test("B-479 scope UI renders only projected Staff destinations and submits the scope edit", async () => {
+    const user = userEvent.setup();
+    let scopeBody: unknown = null;
+    const scopeView: RoleHierarchyView = {
+      ...VIEW,
+      categories: VIEW.categories.map((category) =>
+        category.categoryKey === "Department"
+          ? {
+              ...category,
+              definitions: category.definitions.map((definition) =>
+                definition.roleDefinitionId === MANAGER_ROLE
+                  ? {
+                      ...definition,
+                      actions: [
+                        { action: "rename", label: "重新命名" },
+                        { action: "scope", label: "編輯適用範圍" },
+                      ],
+                      scopeOptions: [
+                        {
+                          category_key: "Department",
+                          scope_kind: "Department",
+                          scope_id:
+                            "018f3b8a-0000-7000-8000-000000000002",
+                          scopeLabel: "成區",
+                        },
+                      ],
+                    }
+                  : definition
+              ),
+            }
+          : category
+      ),
+    };
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(scopeView)),
+      http.patch(
+        `/api/v1/identity/role-definitions/${MANAGER_ROLE}/scope`,
+        async ({ request }) => {
+          scopeBody = await request.json();
+          return HttpResponse.json({
+            requestId: "rid-scope",
+            data: {
+              roleDefinitionId: MANAGER_ROLE,
+              categoryKey: "Department",
+              scopeKind: "Department",
+              scopeId: "018f3b8a-0000-7000-8000-000000000002",
+              position: 12,
+              revision: 5,
+              idempotent: false,
+            },
+          });
+        }
+      )
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
+    await user.click(screen.getByRole("button", { name: "編輯適用範圍" }));
+    const scopeSelect = screen.getByLabelText("適用範圍");
+    expect(scopeSelect).toHaveValue(
+      "Department:018f3b8a-0000-7000-8000-000000000002"
+    );
+    expect(within(scopeSelect).getAllByRole("option")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "儲存適用範圍" }));
+    const body = scopeBody as Record<string, unknown>;
+    expect(body.category_key).toBe("Department");
+    expect(body.scope_kind).toBe("Department");
+    expect(body.scope_id).toBe(
+      "018f3b8a-0000-7000-8000-000000000002"
+    );
+    expect(body.base_revision).toBeTypeOf("number");
+  });
 });

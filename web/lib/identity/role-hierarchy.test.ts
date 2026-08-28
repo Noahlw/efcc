@@ -34,6 +34,8 @@ import {
   recordRoleDenialForRename,
   renameRoleDefinition,
   canonicalRenameFingerprint,
+  canonicalRescopeFingerprint,
+  rescopeRoleDefinition,
   createRoleDefinition,
   reorderRoleDefinitions,
   RoleAdminProtectedError,
@@ -306,9 +308,13 @@ describe("#478 role hierarchy and rename contract", () => {
     const manager = department?.definitions.find(
       (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
     );
-    // Program Leader has read/assignment capability but no name-write grant.
+    // The fixture assigns PL the global Staff identity, so Staff's
+    // role-management grants are effective for lower definitions.
     expect(staff?.isProtected).toBe(false);
-    expect(manager?.actions).toEqual([]);
+    expect(manager?.actions.map((action) => action.action)).toEqual([
+      "rename",
+      "scope",
+    ]);
   });
 
   test("H-05/H-15: rename commits domain, audit, idempotency, and response atomically", async () => {
@@ -1167,6 +1173,61 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       ...overrides,
     };
   }
+  function rescopeInput(
+    overrides: Partial<Parameters<typeof rescopeRoleDefinition>[1]> = {}
+  ) {
+    return {
+      actor_user_id: STAFF,
+      idempotency_key: "b479-rescope-1",
+      base_revision: 1,
+      role_definition_id: DEPARTMENT_MANAGER_ROLE,
+      category_key: "Program" as const,
+      scope_kind: "Program" as const,
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000040",
+      correlation_id: "corr-b479-rescope-1",
+      ...overrides,
+    };
+  }
+  test("B-479 Staff defaults expose rename and scope capabilities and scoped create options", async () => {
+    const grants = await testDb()
+      .prepare(
+        `SELECT capability FROM role_definition_grants
+          WHERE role_definition_id = ?`
+      )
+      .bind(STAFF_ROLE)
+      .all<{ capability: string }>();
+    const capabilitySet = new Set(
+      (grants.results ?? []).map((row) => row.capability)
+    );
+    expect(capabilitySet.has("role.name.write")).toBe(true);
+    expect(capabilitySet.has("role.scope.read")).toBe(true);
+    expect(capabilitySet.has("role.scope.write")).toBe(true);
+    const view = await loadRoleHierarchy(testDb(), STAFF);
+    const global = view.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.GLOBAL
+    );
+    const department = view.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
+    );
+    expect(global?.createOptions).toEqual([]);
+    expect(department?.createOptions.length).toBeGreaterThan(0);
+    expect(department?.createOptions.every((option) => option.scope_id)).toBe(
+      true
+    );
+    const manager = department?.definitions.find(
+      (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+    );
+    expect(
+      manager?.scopeOptions?.every((option) => option.scope_kind !== "Global")
+    ).toBe(true);
+    const adminView = await loadRoleHierarchy(testDb(), ADMIN);
+    const adminDepartment = adminView.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
+    );
+    expect(adminDepartment?.createOptions.length).toBeGreaterThan(0);
+  });
 
   test("B-479-01/B-479-03/B-479-14: Admin creates a scoped Role Definition that is Active, zero-grant, uniquely named, and lands on the authoritative revision", async () => {
     const base = await readRevision();
@@ -1538,5 +1599,349 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       )
     ).rejects.toBeInstanceOf(RoleArchivedError);
     expect(await readRevision()).toBe(afterCreate);
+  });
+  test("B-479 global create stays above the pinned 會友基礎 anchor", async () => {
+    const base = await readRevision();
+    const result = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        category_key: "Global",
+        scope_kind: "Global",
+        scope_id: null,
+        label: "全域新增角色",
+        idempotency_key: "b479-global-position",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000050",
+      })
+    );
+    const anchors = await testDb()
+      .prepare(
+        `SELECT stable_key, position FROM role_definitions
+          WHERE stable_key IN ('admin', 'staff', 'member')`
+      )
+      .all<{ stable_key: string; position: number }>();
+    const byKey = new Map(
+      (anchors.results ?? []).map((row) => [row.stable_key, row.position])
+    );
+    expect(result.position).toBeGreaterThan(byKey.get("staff") ?? 1);
+    expect(result.position).toBeLessThan(byKey.get("member") ?? 999);
+    expect(byKey.get("admin")).toBe(0);
+    expect(byKey.get("staff")).toBe(1);
+    expect(byKey.get("member")).toBe(999);
+  });
+
+  test("B-479 scope edit lets Staff rescope a lower role and preserves identity, grants, assignments, and anchors", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "待改適用範圍角色",
+        idempotency_key: "b479-rescope-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000051",
+      })
+    );
+    await testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'program.enroll', ?, ?)`
+      )
+      .bind(created.roleDefinitionId, ADMIN, NOW)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+      )
+      .bind(
+        "b479-rescope-assignment",
+        MEMBER,
+        created.roleDefinitionId,
+        ADMIN,
+        NOW
+      )
+      .run();
+    const before = await readScalar<{
+      stable_key: string;
+      label: string;
+      position: number;
+      category_key: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT stable_key, label, position, category_key, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    const managerPositionBefore = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      DEPARTMENT_MANAGER_ROLE
+    );
+    const rescopeBase = await readRevision();
+    const result = await rescopeRoleDefinition(
+      testDb(),
+      rescopeInput({
+        base_revision: rescopeBase,
+        role_definition_id: created.roleDefinitionId,
+        idempotency_key: "b479-rescope-success",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000052",
+        correlation_id: "corr-b479-rescope-success",
+      })
+    );
+    expect(result.roleDefinitionId).toBe(created.roleDefinitionId);
+    expect(result.categoryKey).toBe("Program");
+    expect(result.scopeKind).toBe("Program");
+    expect(result.scopeId).toBe(
+      "018f3b8a-0000-7000-8000-300000000001"
+    );
+    expect(result.revision).toBe(rescopeBase + 1);
+    expect(result.idempotent).toBe(false);
+    const after = await readScalar<{
+      stable_key: string;
+      label: string;
+      position: number;
+      category_key: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT stable_key, label, position, category_key, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(after?.stable_key).toBe(before?.stable_key);
+    expect(after?.label).toBe(before?.label);
+    expect(after?.category_key).toBe("Program");
+    expect(after?.scope_kind).toBe("Program");
+    expect(after?.scope_id).toBe(
+      "018f3b8a-0000-7000-8000-300000000001"
+    );
+    expect(after?.position).toBe(result.position);
+    expect(
+      await readScalar<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM role_definition_grants
+          WHERE role_definition_id = ? AND capability = 'program.enroll'`,
+        created.roleDefinitionId
+      )
+    ).toEqual({ c: 1 });
+    expect(
+      await readScalar<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM role_assignments
+          WHERE role_definition_id = ? AND revoked_at IS NULL`,
+        created.roleDefinitionId
+      )
+    ).toEqual({ c: 1 });
+    expect(
+      await readScalar<{ position: number }>(
+        `SELECT position FROM role_definitions WHERE stable_key = 'member'`
+      )
+    ).toEqual({ position: 999 });
+    expect(
+      await readScalar<{ position: number }>(
+        `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+        DEPARTMENT_MANAGER_ROLE
+      )
+    ).toEqual(managerPositionBefore);
+    const audit = await readScalar<{
+      action: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, outcome, correlation_id FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000052"
+    );
+    expect(audit).toEqual({
+      action: "ROLE_DEFINITION_RESCOPE",
+      outcome: "SUCCESS",
+      correlation_id: "corr-b479-rescope-success",
+    });
+  });
+
+  test("B-479 scope edit rejects mismatched parent, Staff Global, and out-of-scope destinations, plus archived targets", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "範圍拒絕角色",
+        idempotency_key: "b479-rescope-rejections-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000053",
+      })
+    );
+    const base = await readRevision();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          category_key: "Department",
+          idempotency_key: "b479-rescope-invalid-parent",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000054",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleInvalidParentError);
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          category_key: "Global",
+          scope_kind: "Global",
+          scope_id: null,
+          idempotency_key: "b479-rescope-staff-global",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000055",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleScopeMismatchError);
+
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions
+            SET scope_kind = 'Department', scope_id = ?
+          WHERE stable_key = 'staff'`
+      )
+      .bind("018f3b8a-0000-7000-8000-000000000002")
+      .run();
+    try {
+      await expect(
+        rescopeRoleDefinition(
+          testDb(),
+          rescopeInput({
+            role_definition_id: created.roleDefinitionId,
+            base_revision: base,
+            idempotency_key: "b479-rescope-out-of-scope",
+            audit_id: "018f3b8a-0000-7000-8000-bbbb00000056",
+          })
+        )
+      ).rejects.toBeInstanceOf(RoleScopeMismatchError);
+    } finally {
+      await testDb()
+        .prepare(
+          `UPDATE role_definitions
+              SET scope_kind = 'Global', scope_id = ?
+            WHERE stable_key = 'staff'`
+        )
+        .bind(null)
+        .run();
+    }
+
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions SET is_archived = 1
+          WHERE role_definition_id = ?`
+      )
+      .bind(created.roleDefinitionId)
+      .run();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          idempotency_key: "b479-rescope-archived",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000057",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleArchivedError);
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479 scope edit reports stale revisions without a partial write", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "過期範圍角色",
+        idempotency_key: "b479-rescope-stale-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000058",
+      })
+    );
+    const current = await readRevision();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: current - 1,
+          idempotency_key: "b479-rescope-stale",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000059",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleRevisionConflictError);
+    expect(await readRevision()).toBe(current);
+    const row = await readScalar<{ category_key: string; scope_kind: string }>(
+      `SELECT category_key, scope_kind FROM role_definitions
+        WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(row).toEqual({ category_key: "Department", scope_kind: "Department" });
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000059"
+    );
+    expect(audit?.outcome).toBe("CONFLICT");
+    expect(audit?.reason).toContain("ROLE_REVISION_CONFLICT");
+  });
+
+  test("B-479 scope edit replays response loss and rejects changed-key reuse", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "可重播範圍角色",
+        idempotency_key: "b479-rescope-replay-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000060",
+      })
+    );
+    const base = await readRevision();
+    const input = rescopeInput({
+      role_definition_id: created.roleDefinitionId,
+      base_revision: base,
+      idempotency_key: "b479-rescope-replay",
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000061",
+      correlation_id: "corr-b479-rescope-replay",
+    });
+    const first = await rescopeRoleDefinition(testDb(), input);
+    const replay = await rescopeRoleDefinition(testDb(), {
+      ...input,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000062",
+      correlation_id: "corr-b479-rescope-replay-2",
+    });
+    expect(replay).toEqual({ ...first, idempotent: true });
+    expect(await readRevision()).toBe(first.revision);
+    await expect(
+      rescopeRoleDefinition(testDb(), {
+        ...input,
+        category_key: "Department",
+        scope_kind: "Department",
+        scope_id: "018f3b8a-0000-7000-8000-000000000002",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000063",
+      })
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+    expect(await readRevision()).toBe(first.revision);
+    const row = await readScalar<{ category_key: string; scope_id: string }>(
+      `SELECT category_key, scope_id FROM role_definitions
+        WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(row).toEqual({
+      category_key: "Program",
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+    });
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000063"
+    );
+    expect(audit).toEqual({
+      outcome: "REJECTED",
+      reason: "ROLE_IDEMPOTENCY_REUSE",
+    });
   });
 });

@@ -49,8 +49,11 @@ const STAFF_ROLE_CAPABILITIES: readonly Capability[] = [
   "role.assign",
   "role.revoke",
   "role.reorder",
+  "role.name.write",
   "role.permissions.read",
   "role.permissions.write",
+  "role.scope.read",
+  "role.scope.write",
   "role.create",
   "role.delete",
 ];

@@ -1,6 +1,6 @@
 /**
- * #478 — S5-A03 Worker/HTTP seam for the 身份組 hierarchy and rename
- * mutation (Spec 091 §9.3, ADR-0042).
+ * #478/#479 — S5-A03 Worker/HTTP seam for the 身份組 hierarchy and identity
+ * mutations (Spec 091 §9.2/§9.3, ADR-0042).
  *
  * Thin adapters in the same shape as `web/lib/programs/program-handlers.ts`:
  * they resolve the cookie-only actor, delegate to the D1 authority seam in
@@ -22,9 +22,9 @@
  *
  * Routes:
  *
- *   * GET  /api/v1/identity/roles            → role hierarchy projection
- *   * PATCH /api/v1/identity/roles/:id/name  → rename mutation
- *
+ *   * GET   /api/v1/identity/roles                  → role hierarchy
+ *   * PATCH /api/v1/identity/roles/:id/name        → rename mutation
+ *   * PATCH /api/v1/identity/role-definitions/:id/scope → scope mutation
  * The rename path requires the `Idempotency-Key` header (ADR-0018 §8); a
  * replay of the same key + request fingerprint returns the original
  * result, and a key reused with a different fingerprint is rejected with
@@ -46,6 +46,7 @@ import {
   normalizeName,
   renameRoleDefinition,
   createRoleDefinition,
+  rescopeRoleDefinition,
   reorderRoleDefinitions,
   ROLE_NAME_MAX_LENGTH,
   RoleAdminProtectedError,
@@ -66,6 +67,7 @@ import {
 import type {
   RoleRenameResult,
   RoleCreateResult,
+  RoleRescopeResult,
   RoleReorderResult,
 } from "./role-hierarchy";
 
@@ -94,6 +96,13 @@ interface CreateBody {
 interface ReorderBody {
   category_key?: unknown;
   targets?: unknown;
+  base_revision?: unknown;
+}
+/** #479 rescope request body (Spec 091 §9.2). */
+interface RescopeBody {
+  category_key?: unknown;
+  scope_kind?: unknown;
+  scope_id?: unknown;
   base_revision?: unknown;
 }
 
@@ -730,6 +739,119 @@ export async function handleCreateRoleDefinition(
       category_key: categoryKey,
       label,
       description: typeof body.description === "string" ? body.description : "",
+      scope_kind: scopeKind,
+      scope_id: body.scope_id ?? null,
+      now: new Date().toISOString(),
+      audit_id: crypto.randomUUID(),
+      correlation_id: requestId,
+    });
+    return roleSuccess(200, result, requestId);
+  } catch (error) {
+    return mapIdentityError(error, requestId);
+  }
+}
+
+/**
+ * PATCH /api/v1/identity/role-definitions/:id/scope — #479 scope edit.
+ * The cookie-only actor and all destination/authority checks are delegated
+ * to the D1 authority seam; the optional category echo is validated there.
+ */
+export async function handleRescopeRoleDefinition(
+  request: Request,
+  env: RoleEnv,
+  roleDefinitionId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const rawKey = request.headers.get("Idempotency-Key");
+  const idempotencyKey = rawKey?.trim() ?? "";
+  if (!idempotencyKey || idempotencyKey.length > 200) {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Idempotency-Key header is required for identity changes.",
+      requestId
+    );
+  }
+
+  let body: RescopeBody;
+  try {
+    body = (await request.json()) as RescopeBody;
+  } catch {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "Request body must be valid JSON.",
+      requestId
+    );
+  }
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof body.scope_kind !== "string" ||
+    typeof body.base_revision !== "number" ||
+    !Number.isInteger(body.base_revision) ||
+    body.base_revision < 1 ||
+    (body.scope_id !== null &&
+      body.scope_id !== undefined &&
+      typeof body.scope_id !== "string") ||
+    (body.category_key !== undefined &&
+      typeof body.category_key !== "string")
+  ) {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "scope_kind, scope_id, and base_revision are required.",
+      requestId
+    );
+  }
+  const scopeKind = body.scope_kind;
+  if (
+    scopeKind !== "Global" &&
+    scopeKind !== "Department" &&
+    scopeKind !== "Program"
+  ) {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "scope_kind must be Global, Department, or Program.",
+      requestId
+    );
+  }
+  if (
+    body.category_key !== undefined &&
+    body.category_key !== "Global" &&
+    body.category_key !== "Department" &&
+    body.category_key !== "Program"
+  ) {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "category_key must be Global, Department, or Program.",
+      requestId
+    );
+  }
+
+  try {
+    const result: RoleRescopeResult = await rescopeRoleDefinition(env.DB, {
+      actor_user_id: auth.account.user_id,
+      idempotency_key: idempotencyKey,
+      base_revision: body.base_revision,
+      role_definition_id: roleDefinitionId,
+      category_key: body.category_key as
+        | "Global"
+        | "Department"
+        | "Program"
+        | undefined,
       scope_kind: scopeKind,
       scope_id: body.scope_id ?? null,
       now: new Date().toISOString(),
