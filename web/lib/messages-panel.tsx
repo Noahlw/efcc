@@ -11,11 +11,8 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnnouncementDetail } from "@/lib/announcement-detail";
 import { COPY } from "@/lib/copy";
-import {
-  FeedPresentation,
-  type FeedAnnouncement,
-  type FeedPresentationState,
-} from "@/lib/feed-presentation";
+import { FeedPresentation } from '@/lib/feed-presentation';
+import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
 import { hkMonthDayLabel } from "@/lib/hk-time";
 import { listAnnouncements } from "@/lib/home-api";
 import type { HomeAnnouncement } from "@/lib/home-api";

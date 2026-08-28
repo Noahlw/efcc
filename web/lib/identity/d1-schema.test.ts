@@ -250,6 +250,7 @@ describe("#476 disposable D1 schema contract", () => {
         .run();
     }, "scope_id is required");
   });
+
   test("D1 allows a custom Role Definition to reparent with its explicit scope", async () => {
     const roleId = "018f3b8a-0000-7000-8000-999900000003";
     await testDb()

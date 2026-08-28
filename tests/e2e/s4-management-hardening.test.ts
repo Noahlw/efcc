@@ -1017,14 +1017,21 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(detailSurface).toBeVisible();
     await expect(detailSurface).toHaveAttribute("data-state", "save");
     expect(
-      await detailSurface.evaluate((element) => getComputedStyle(element).position)
+      await detailSurface.evaluate(
+        (element) => getComputedStyle(element).position
+      )
     ).toBe("static");
     const decisionBounds = await detailSurface
       .getByRole("button")
       .evaluateAll((elements) =>
         elements.map((element) => {
           const rect = element.getBoundingClientRect();
-          return { bottom: rect.bottom, height: rect.height, right: rect.right, width: rect.width };
+          return {
+            bottom: rect.bottom,
+            height: rect.height,
+            right: rect.right,
+            width: rect.width,
+          };
         })
       );
     for (const bounds of decisionBounds) {
@@ -1034,12 +1041,16 @@ test.describe("S4 Management hardening integration gate", () => {
     }
     const detailApprove = detailSurface.getByRole("button", { name: "核准" });
     await detailApprove.click();
-    const detailDialog = page.getByRole("alertdialog", { name: "確認核准申請" });
+    const detailDialog = page.getByRole("alertdialog", {
+      name: "確認核准申請",
+    });
     await expect(detailDialog).toBeVisible();
     const detailDialogBox = await detailDialog.boundingBox();
     if (detailDialogBox) {
       expect(detailDialogBox.width).toBeLessThanOrEqual(vw);
-      expect(detailDialogBox.height).toBeLessThanOrEqual(page.viewportSize()?.height ?? 0);
+      expect(detailDialogBox.height).toBeLessThanOrEqual(
+        page.viewportSize()?.height ?? 0
+      );
     }
     await detailDialog.getByRole("button", { name: "取消" }).click();
     await expect(detailApprove).toBeFocused();

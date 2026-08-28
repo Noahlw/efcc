@@ -14,11 +14,8 @@ import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
-import {
-  FeedPresentation,
-  type FeedAnnouncement,
-  type FeedPresentationState,
-} from "@/lib/feed-presentation";
+import { FeedPresentation } from '@/lib/feed-presentation';
+import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
 import {
   hkShortDateLabel,
   hkShortTimeLabel,
@@ -325,7 +322,7 @@ export function HomeView({
       return;
     }
     window.history.pushState(
-      { ...(window.history.state ?? {}), efccOverlay: "announcement" },
+      { ...window.history.state, efccOverlay: "announcement" },
       "",
       `${window.location.pathname}${window.location.search}${window.location.hash}`
     );
@@ -433,17 +430,17 @@ export function HomeView({
   }, [reloadKey]);
 
   const event =
-    initialEvent !== undefined
-      ? initialEvent
-      : (participant.event ?? projection?.featuredEvent ?? null);
+    initialEvent === undefined
+      ? (participant.event ?? projection?.featuredEvent ?? null)
+      : initialEvent;
   const program =
-    initialProgram !== undefined
-      ? initialProgram
-      : (projection?.featuredProgram ?? participant.program);
+    initialProgram === undefined
+      ? (projection?.featuredProgram ?? participant.program)
+      : initialProgram;
   const announcement =
-    initialAnnouncement !== undefined
-      ? validatedAnnouncement(initialAnnouncement)
-      : (projection?.announcement ?? null);
+    initialAnnouncement === undefined
+      ? (projection?.announcement ?? null)
+      : validatedAnnouncement(initialAnnouncement);
   const feedState: FeedPresentationState =
     announcementOpen && announcement
       ? "detail"
@@ -522,7 +519,9 @@ export function HomeView({
             <div className="my-5 grid min-w-0 gap-2.5 text-[var(--ink-muted)]">
               {date && <EventRow icon="calendar">{date}</EventRow>}
               {time && <EventRow icon="clock">{time}</EventRow>}
-              {event.location && <EventRow icon="pin">{event.location}</EventRow>}
+              {event.location && (
+                <EventRow icon="pin">{event.location}</EventRow>
+              )}
             </div>
           )}
           <Button asChild className="min-h-12 w-full" data-feed-event-action>

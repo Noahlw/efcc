@@ -621,6 +621,7 @@ describe(RoleHierarchyPanel, () => {
     expect(retry.category_key).toBe("Department");
     expect(Array.isArray(retry.targets)).toBeTruthy();
   });
+
   test("B-479 scope UI renders only projected Staff destinations and submits the scope edit", async () => {
     const user = userEvent.setup();
     let scopeBody: unknown = null;
@@ -642,8 +643,7 @@ describe(RoleHierarchyPanel, () => {
                         {
                           category_key: "Department",
                           scope_kind: "Department",
-                          scope_id:
-                            "018f3b8a-0000-7000-8000-000000000002",
+                          scope_id: "018f3b8a-0000-7000-8000-000000000002",
                           scopeLabel: "成區",
                         },
                       ],
@@ -696,9 +696,7 @@ describe(RoleHierarchyPanel, () => {
     const body = scopeBody as Record<string, unknown>;
     expect(body.category_key).toBe("Department");
     expect(body.scope_kind).toBe("Department");
-    expect(body.scope_id).toBe(
-      "018f3b8a-0000-7000-8000-000000000002"
-    );
+    expect(body.scope_id).toBe("018f3b8a-0000-7000-8000-000000000002");
     expect(body.base_revision).toBeTypeOf("number");
   });
 });

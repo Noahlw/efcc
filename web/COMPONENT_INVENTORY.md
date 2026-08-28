@@ -132,13 +132,13 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 - **shadcn used:** none directly — hub is a composition of navigation cards; shared primitives are in child panels
 
-### Member Directory (`app/management/member-directory-panel.tsx`, `member-directory-panel.module.css`)
+### Member Directory (`app/management/member-directory-panel.tsx`, `app/management/directory-frame.tsx`)
 
-- **shadcn used:** none directly — directory is a searchable list with domain row affordances
+- **shadcn used:** `Button`, `Input`; `DirectoryFrame` owns typed state slots, selection, pagination, and focus restoration while Member keeps its two-character search, rows, detail, URL, and permissions local
 
-### Account Directory (`app/management/account-directory-panel.tsx`, `account-directory-panel.module.css`)
+### Account Directory (`app/management/account-directory-panel.tsx`, `app/management/directory-frame.tsx`)
 
-- **shadcn used:** none directly — filter sheet uses `Sheet`-style overlay but via `ManagementFilterSheet` custom composition (not `components/ui/sheet`); badges/status use custom `.status` pills
+- **shadcn used:** `Button`, `Input`, `Select`; `DirectoryFrame` owns typed state slots, selection, pagination, and focus restoration while Account keeps `q`, `role`, `status`, `department`, detail queries, URLs, and permissions local
 
 ### Permissions & Roles (`app/management/permissions-panel.tsx`, `permissions-panel.module.css`)
 
@@ -150,7 +150,8 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ### Approval Queue & Detail (`lib/approval-queue.tsx`, `lib/approval-detail.tsx`, `lib/registration-form.tsx`)
 
-- **shadcn used (approval-detail/registration-form):** `Button`, `Card`, `Alert` (detail cards share shadcn Card/Alert where migrated); **approval-queue** still uses raw `<button>` for `refresh`/`tabs`/`tray` and native `<input>`/`<select>`/`<checkbox>` for queue controls (test contracts assert `getByRole('tab')`, `getByRole('checkbox')`, `select` options)
+- **shadcn used:** `ActionSurface`, `Button`, `Checkbox`, `Select`, `AlertDialog`, `Input`, `Textarea`, `Card`, `Alert`; domain selection, registration queries, confirmation copy, decision mutations, and conflict reconciliation remain local
+
 
 ---
 

@@ -21,13 +21,25 @@ const MEMBER_USER = {
   qrCodeString: "qr:u-member-101",
 };
 
-function stubAuthEndpoints(user: typeof MEMBER_USER) {
+function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
+  let sessionRevoked = revoked;
   return async (route: Route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
 
     if (path === "/api/v1/auth/me" && method === "GET") {
+      if (sessionRevoked) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({
+            requestId: "r-me",
+            error: { code: "AUTH_REQUIRED" },
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -54,6 +66,7 @@ function stubAuthEndpoints(user: typeof MEMBER_USER) {
 
     if (path === "/api/v1/auth/username" && method === "POST") {
       const body = route.request().postDataJSON() as { username?: string };
+      sessionRevoked = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -66,6 +79,7 @@ function stubAuthEndpoints(user: typeof MEMBER_USER) {
     }
 
     if (path === "/api/v1/auth/password" && method === "POST") {
+      sessionRevoked = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -86,14 +100,18 @@ function stubAuthEndpoints(user: typeof MEMBER_USER) {
   };
 }
 
-async function initAuthenticatedPage(page: Page, user = MEMBER_USER) {
+async function initAuthenticatedPage(
+  page: Page,
+  user = MEMBER_USER,
+  revoked = false
+) {
   await page.addInitScript(
     ({ key, value }: { key: string; value: string }) => {
       localStorage.setItem(key, value);
     },
     { key: AUTH_HINT_KEY, value: "1" }
   );
-  await page.route("**/api/v1/auth/**", stubAuthEndpoints(user));
+  await page.route("**/api/v1/auth/**", stubAuthEndpoints(user, revoked));
 }
 
 test.describe("084-03: Account & Account Settings acceptance", () => {
@@ -144,7 +162,7 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await expect(backLink).toBeVisible();
   });
 
-  test("Username change validates non-empty and succeeds with '登入名稱已更新'", async ({
+  test("Username change validates non-empty and routes through sign-in after success", async ({
     page,
   }) => {
     await initAuthenticatedPage(page);
@@ -161,13 +179,22 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     // 1. Submit empty -> client validation error
     await usernameInput.fill("");
     await submitUsernameBtn.click();
-    await expect(page.getByRole("alert").filter({ hasText: ACCOUNT_SETTINGS_COPY.missingUsername })).toBeVisible();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: ACCOUNT_SETTINGS_COPY.missingUsername })
+    ).toBeVisible();
 
-    // 2. Submit valid username -> succeeds
+    // 2. Submit valid username -> session is revoked and sign-in receives a flash
     await usernameInput.fill("member.updated");
     await submitUsernameBtn.click();
 
-    await expect(page.getByText(ACCOUNT_SETTINGS_COPY.usernameSuccess)).toBeVisible();
+    await expect(page).toHaveURL(/\/$/u);
+    await expect(
+      page
+        .getByRole("region", { name: COPY.login.title })
+        .getByRole("alert")
+    ).toHaveText(COPY.account.updatedNotice);
   });
 
   test("Password change validates ≥8 chars and mismatch, succeeds with sign-out redirect", async ({

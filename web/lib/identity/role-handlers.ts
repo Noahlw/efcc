@@ -801,8 +801,7 @@ export async function handleRescopeRoleDefinition(
     (body.scope_id !== null &&
       body.scope_id !== undefined &&
       typeof body.scope_id !== "string") ||
-    (body.category_key !== undefined &&
-      typeof body.category_key !== "string")
+    (body.category_key !== undefined && typeof body.category_key !== "string")
   ) {
     return roleProblem(
       422,

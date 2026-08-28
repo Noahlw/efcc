@@ -6,18 +6,16 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
 import { ContextualTaskHeader } from "@/lib/contextual-task-header";
+import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchManagementMembers } from "@/lib/programs/program-api";
 import type { MemberDirectoryMember } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
-import {
-  DirectoryFrame,
-  type DirectoryFrameState,
-} from "./directory-frame";
+import { DirectoryFrame } from './directory-frame';
+import type { DirectoryFrameState } from './directory-frame';
 import { safeManagementReturnHref } from "./management-action-framework";
 
 const MIN_QUERY_LENGTH = 2;
@@ -199,7 +197,7 @@ export const MemberDirectoryPanel = () => {
     [query, router]
   );
 
-  const state = memberResource.state;
+  const {state} = memberResource;
   const members = state.kind === "ready" ? state.members : [];
   const hasResults = members.length > 0;
   const frameState: DirectoryFrameState =
@@ -263,7 +261,9 @@ export const MemberDirectoryPanel = () => {
                 </dd>
               </div>
               <div className="grid min-w-0 grid-cols-[minmax(5rem,6rem)_minmax(0,1fr)] gap-3 text-sm leading-6 max-[479px]:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)]">
-                <dt className="text-[var(--ink-muted)]">{MEMBERS.memberRole}</dt>
+                <dt className="text-[var(--ink-muted)]">
+                  {MEMBERS.memberRole}
+                </dt>
                 <dd className="m-0 min-w-0 wrap-anywhere font-semibold text-[var(--ink)]">
                   {selected.role}
                 </dd>
@@ -372,7 +372,7 @@ export const MemberDirectoryPanel = () => {
                             {member.name}
                           </span>
                           <span className="wrap-anywhere text-[0.84rem] leading-5 text-[var(--ink-muted)]">
-                            {member.role} · {" "}
+                            {member.role} ·{" "}
                             {member.departments.length > 0
                               ? member.departments
                                   .map((department) => department.name)
@@ -403,8 +403,13 @@ export const MemberDirectoryPanel = () => {
       loading={<MemberLoadingState stateRef={stateRef} />}
       search={
         <>
-          <label className={MEMBER_FIELD_CLASS} htmlFor="member-directory-search">
-            <span className={MEMBER_FIELD_LABEL_CLASS}>{MEMBERS.searchLabel}</span>
+          <label
+            className={MEMBER_FIELD_CLASS}
+            htmlFor="member-directory-search"
+          >
+            <span className={MEMBER_FIELD_LABEL_CLASS}>
+              {MEMBERS.searchLabel}
+            </span>
             <Input
               aria-describedby="member-directory-lead"
               autoComplete="off"

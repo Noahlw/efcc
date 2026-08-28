@@ -1,5 +1,4 @@
 import { defineConfig, devices } from "@playwright/test";
-
 // Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
 // local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
 // dev-testing worker (see .github/CI-SECRETS.md) or another
@@ -62,8 +61,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: [
-    ["list"],
-    ["json", { outputFile: "test-results/programs-d1-results.json" }],
+    ["line"],
   ],
   use: {
     baseURL: targetUrl,

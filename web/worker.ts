@@ -1111,11 +1111,7 @@ export default {
             "找不到指定的身份組。"
           );
         }
-        return handleRescopeRoleDefinition(
-          request,
-          roleEnv,
-          roleDefinitionId
-        );
+        return handleRescopeRoleDefinition(request, roleEnv, roleDefinitionId);
       }
       const renamePrefix = "/api/v1/identity/roles/";
       if (

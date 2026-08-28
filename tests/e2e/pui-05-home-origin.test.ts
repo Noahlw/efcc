@@ -4,11 +4,8 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
-import {
-  restoreEventWindow,
-  type EventWindowSetup,
-  type EventWindowSnapshot,
-} from "./participant-event-window";
+import { restoreEventWindow } from './participant-event-window';
+import type { EventWindowSetup, EventWindowSnapshot } from './participant-event-window';
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
@@ -295,9 +292,7 @@ test.describe("PUI-05 Home origin supplement", () => {
           ),
         ];
         const primaryActions = [
-          ...document.querySelectorAll<HTMLElement>(
-            "[data-feed-event-action]"
-          ),
+          ...document.querySelectorAll<HTMLElement>("[data-feed-event-action]"),
         ];
         if (!outlet || cards.length !== 3) {
           throw new Error("Home long-copy geometry fixture is incomplete");
@@ -531,7 +526,9 @@ test.describe("PUI-05 Home origin supplement", () => {
         '[data-feed-announcement-owner="global-live-region"]'
       );
       await expect(feed).toBeVisible();
-      await expect(feed.locator("[data-feed-list-item], [data-feed-list]")).toBeVisible();
+      await expect(
+        feed.locator("[data-feed-list-item], [data-feed-list]")
+      ).toBeVisible();
       for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
         const geometry = await feed.evaluate((element) => {

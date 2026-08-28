@@ -248,7 +248,6 @@ function mockWorkspace() {
     requests: [request],
     enrollments: [enrollment],
   });
-
 }
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
@@ -334,7 +333,10 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*待審批報名 ×3`, "u"),
+        name: new RegExp(
+          `${COPY.programs.cockpitParticipantsTile}.*待審批報名 ×3`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
 
@@ -347,7 +349,10 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`, "u"),
+        name: new RegExp(
+          `${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
     expect(
@@ -397,7 +402,10 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitNoPending}`, "u"),
+        name: new RegExp(
+          `${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitNoPending}`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
   });
@@ -436,14 +444,14 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Verify all 6 read-only fields
-    expect(screen.getByRole("heading", { name: "查經小組" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "查經小組" })
+    ).toBeInTheDocument();
     expect(screen.getByText("週三晚上的門徒訓練查經。")).toBeInTheDocument();
     expect(screen.getByText("青年事工")).toBeInTheDocument();
     expect(
@@ -467,11 +475,9 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.backToOverview })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitOperations,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
   });
 
   test("renders Course Edit from Facts, validates non-empty fields, saves changes, and returns to Facts with updated values", async () => {
@@ -506,21 +512,17 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Open Course Edit
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Pre-filled values
     const nameInput = screen.getByRole("textbox", {
@@ -561,11 +563,9 @@ describe(ProgramWorkspace, () => {
     });
 
     // Success returns to Facts with updated values
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "門徒進階查經" })
     ).toBeInTheDocument();
@@ -596,11 +596,9 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
 
     // Click back button returns to Facts view
     await userEvent.click(
@@ -611,11 +609,9 @@ describe(ProgramWorkspace, () => {
         ),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
   });
 
   test("handles Course Edit save API error gracefully", async () => {
@@ -656,9 +652,7 @@ describe(ProgramWorkspace, () => {
     );
 
     // Error is displayed and form remains with input intact
-    expect(
-      await screen.findByText(COPY.error.serverError)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.error.serverError)).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
     ).toHaveValue("新名稱");
@@ -741,6 +735,7 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
     expect(mocks.listEvents).not.toHaveBeenCalled();
   });
+
   test("keeps server denial explicit on a focused task", async () => {
     mockWorkspace();
     mocks.listEvents.mockRejectedValue(
@@ -762,6 +757,7 @@ describe(ProgramWorkspace, () => {
       expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
     );
   });
+
   test("mounts the focused Settings task with all domain-owned groups", async () => {
     mockWorkspace();
     render(
@@ -814,7 +810,6 @@ describe(ProgramWorkspace, () => {
       })
     ).not.toBeInTheDocument();
   });
-
 });
 describe("ENR-01 participants workspace", () => {
   test("renders pending, active, and history tabs from server state", async () => {
@@ -856,11 +851,9 @@ describe("ENR-01 participants workspace", () => {
     await waitFor(() =>
       expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
     );
-    expect(
-      await screen.findByRole("tab", {
+    await expect(screen.findByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (1)`,
@@ -886,25 +879,22 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.approve })
     );
-    expect(
-      await screen.findByText(COPY.programs.decisionMade)
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("tab", {
+    await expect(screen.findByText(COPY.programs.decisionMade)).resolves.toBeInTheDocument();
+    await expect(screen.findByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
-      })
-    ).toBeInTheDocument();
+      })).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
       })
     );
-    expect(await screen.findByText("陳同工")).toBeInTheDocument();
-    expect(await screen.findByText("李同工")).toBeInTheDocument();
+    await expect(screen.findByText("陳同工")).resolves.toBeInTheDocument();
+    await expect(screen.findByText("李同工")).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.approve })
     ).not.toBeInTheDocument();
   });
+
   test("rejects a pending request into terminal history", async () => {
     mockWorkspace();
     mocks.listEnrollmentSnapshot
@@ -936,19 +926,14 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.reject })
     );
-    expect(
-      await screen.findByText(COPY.programs.decisionMade)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.decisionMade)).resolves.toBeInTheDocument();
     const historyTab = await screen.findByRole("tab", {
       name: `${COPY.programs.tabsHistory} (1)`,
     });
     await userEvent.click(historyTab);
-    expect(
-      await screen.findByText(COPY.programs.requestRejected)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.requestRejected)).resolves.toBeInTheDocument();
     expect(screen.getByText("名額已滿")).toBeInTheDocument();
   });
-
 
   test("renders an honest empty state for each participant tab", async () => {
     mockWorkspace();
@@ -965,9 +950,7 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    expect(
-      await screen.findByText(COPY.programs.tabsEmpty.pending)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.tabsEmpty.pending)).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
     );
@@ -1012,9 +995,7 @@ describe("ENR-01 participants workspace", () => {
         1
       )
     );
-    expect(
-      await screen.findByText(COPY.programs.workspaceParticipantsStale)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.workspaceParticipantsStale)).resolves.toBeInTheDocument();
     expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
 
@@ -1026,9 +1007,7 @@ describe("ENR-01 participants workspace", () => {
       modules,
     });
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockRejectedValue(
       new RpcError({
@@ -1050,15 +1029,15 @@ describe("ENR-01 participants workspace", () => {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
-    expect(
-      await screen.findByText(
+    await expect(screen.findByText(
         `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
-      )
-    ).toBeInTheDocument();
+      )).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1139,9 +1118,7 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.approve })
     );
-    expect(
-      await screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1167,9 +1144,7 @@ describe("ENR-01 participants workspace", () => {
       enrollments: [],
     });
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockResolvedValue({
       enrollment: { ...enrollment, member_user_id: "member-3" },
@@ -1187,23 +1162,21 @@ describe("ENR-01 participants workspace", () => {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
     await waitFor(() =>
-      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
-        "program-1",
-        "member-3"
-      )
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith("program-1", "member-3")
     );
   });
+
   test("renders assisted enrollment for a MemberRequest program", async () => {
     mockWorkspace();
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockResolvedValue({
       enrollment: { ...enrollment, member_user_id: "member-3" },
@@ -1217,22 +1190,19 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    expect(
-      await screen.findByText(COPY.programs.assistedEnrollAck)
-    ).toBeInTheDocument();
+    await expect(screen.findByText(COPY.programs.assistedEnrollAck)).resolves.toBeInTheDocument();
     const picker = screen.getByRole("combobox", {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
     await waitFor(() =>
-      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
-        "program-1",
-        "member-3"
-      )
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith("program-1", "member-3")
     );
   });
 });
@@ -1260,6 +1230,7 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
     await userEvent.click(open);
     expect(onEventChange).toHaveBeenCalledWith("event-1");
   });
+
   test("creates an Event with HK wall-time fields and opens its detail", async () => {
     mockWorkspace();
     mocks.createEvent.mockResolvedValue({
@@ -1296,7 +1267,9 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       target: { value: COPY.programs.recurrenceNone },
     });
     await userEvent.click(
-      screen.getAllByRole("button", { name: COPY.programs.createMeeting }).at(-1)!
+      screen
+        .getAllByRole("button", { name: COPY.programs.createMeeting })
+        .at(-1)!
     );
 
     await waitFor(() =>
@@ -1395,9 +1368,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.generateEvents })
     );
 
-    await expect(
-      screen.findByRole("alert")
-    ).resolves.toHaveTextContent(COPY.programs.previewChanged);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.previewChanged
+    );
     expect(
       screen.queryByRole("button", { name: COPY.programs.generateEvents })
     ).not.toBeInTheDocument();
@@ -1453,9 +1426,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       />
     );
     // The failure is communicated by the existing error alert…
-    await expect(
-      screen.findByRole("alert")
-    ).resolves.toHaveTextContent(COPY.error.forbidden);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.error.forbidden
+    );
     // …but the Preview form must stay reachable (rules stays null on error,
     // so the no-rules empty state is NOT shown and the horizon input lives
     // on). A transient rules-load failure must not masquerade as "no
@@ -1504,9 +1477,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         .replace("{skipped}", "0")
         .replace("{failed}", "1")
     );
-    expect(
-      screen.queryByText(COPY.programs.generated)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(COPY.programs.generated)).not.toBeInTheDocument();
     // The plan is kept and Generate stays enabled so the operator can
     // immediately retry the failed units on the same plan.
     expect(
@@ -1535,7 +1506,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("preview controls stay hidden without the manage capability", async () => {
     mocks.getManagementProgram.mockResolvedValue({
-      program: { ...program, capabilities: { ...program.capabilities, manage: false } },
+      program: {
+        ...program,
+        capabilities: { ...program.capabilities, manage: false },
+      },
       department,
       modules,
     });

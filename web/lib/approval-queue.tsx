@@ -5,6 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ManagementPageHeader,
+  ManagementStickyActionBar,
+  safeManagementReturnHref,
+} from "@/app/management/management-action-framework";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,11 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ManagementPageHeader,
-  ManagementStickyActionBar,
-  safeManagementReturnHref,
-} from "@/app/management/management-action-framework";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -244,7 +244,6 @@ export const ApprovalQueue = () => {
     void load(activeStatus);
   }, [activeStatus, load]);
 
-
   const registrations =
     state.kind === "ready" && state.status === activeStatus
       ? state.registrations
@@ -280,7 +279,6 @@ export const ApprovalQueue = () => {
         .filter((item): item is PendingRegistration => item !== undefined),
     [selectedIds]
   );
-
 
   useEffect(() => {
     if (state.kind === "ready") {
@@ -501,16 +499,15 @@ export const ApprovalQueue = () => {
     0,
     selectedItems.length - confirmationNames.length
   );
-  const actionSurfaceState =
-    busy
-      ? "busy"
-      : noticeKind === "error"
-        ? notice === APPROVAL_UI_COPY.staleConflict
-          ? "conflict"
-          : "failure"
-        : trayOpen
-          ? "review"
-          : "selection";
+  const actionSurfaceState = busy
+    ? "busy"
+    : noticeKind === "error"
+      ? notice === APPROVAL_UI_COPY.staleConflict
+        ? "conflict"
+        : "failure"
+      : trayOpen
+        ? "review"
+        : "selection";
 
   return (
     <section
@@ -637,7 +634,10 @@ export const ApprovalQueue = () => {
               />
             </label>
             <div className={styles.field}>
-              <span className={styles.fieldLabel} id="approval-role-filter-label">
+              <span
+                className={styles.fieldLabel}
+                id="approval-role-filter-label"
+              >
                 {APPROVAL_UI_COPY.roleFilterLabel}
               </span>
               <Select
@@ -655,7 +655,9 @@ export const ApprovalQueue = () => {
                   <SelectValue placeholder={APPROVAL_UI_COPY.allRoles} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{APPROVAL_UI_COPY.allRoles}</SelectItem>
+                  <SelectItem value="all">
+                    {APPROVAL_UI_COPY.allRoles}
+                  </SelectItem>
                   <SelectItem value="Member">
                     {COPY.shell.roleLabels.Member}
                   </SelectItem>

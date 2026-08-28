@@ -1,6 +1,7 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 import Link from "next/link";
 import * as React from "react";
 
@@ -22,8 +23,7 @@ type ContextualTaskHeaderVariants = VariantProps<
   typeof contextualTaskHeaderVariants
 >;
 
-export interface ContextualTaskHeaderProps
-  extends ContextualTaskHeaderVariants {
+export interface ContextualTaskHeaderProps extends ContextualTaskHeaderVariants {
   backHref: string;
   backLabel: string;
   title: string;
@@ -52,8 +52,8 @@ export const ContextualTaskHeader = ({
   headingRef,
   className,
   layout,
-}: ContextualTaskHeaderProps) => {
-  return (
+}: ContextualTaskHeaderProps) =>
+  (
     <header
       className={cn(contextualTaskHeaderVariants({ layout, className }))}
       data-contextual-task-header
@@ -101,5 +101,5 @@ export const ContextualTaskHeader = ({
         )}
       </div>
     </header>
-  );
-};
+  )
+;

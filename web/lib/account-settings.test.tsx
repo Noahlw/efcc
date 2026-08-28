@@ -3,12 +3,20 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import ProfilePage from "@/app/profile/page";
 import ProfileSettingsPage from "@/app/profile/settings/page";
-import type { Bootstrap, PublicUser } from "@/lib/api";
 import { ACCOUNT_SETTINGS_COPY } from "@/lib/account-settings-copy";
+import type { Bootstrap, PublicUser } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import {
   defaultSections,
@@ -33,12 +41,12 @@ const mocks = vi.hoisted(() => {
 
 const { replaceMock, pathnameMock, mockRouter, announceMock } = mocks;
 
-vi.mock("next/navigation", () => ({
+vi.mock(import('next/navigation'), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
 }));
 
-vi.mock("@/lib/live-region", () => ({
+vi.mock(import('@/lib/live-region'), () => ({
   announce: mocks.announceMock,
 }));
 const sessionMocks = vi.hoisted(() => ({
@@ -49,7 +57,7 @@ const sessionMocks = vi.hoisted(() => ({
   rememberDeepLinkMock: vi.fn<(value: string) => void>(),
 }));
 
-vi.mock("@/lib/session", () => ({
+vi.mock(import('@/lib/session'), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -85,10 +93,14 @@ afterEach(() => {
   sessionMocks.clearAuthHintMock.mockReset();
   sessionMocks.rememberDeepLinkMock.mockReset();
   announceMock.mockReset();
-  Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+  Object.defineProperty(navigator, "onLine", {
+    value: true,
+    configurable: true,
+  });
   sessionStorage.clear();
   window.history.replaceState({}, "", "/");
 });
+
 afterAll(() => server.close());
 
 async function renderSettingsPage() {
@@ -110,7 +122,9 @@ async function renderProfilePage() {
   sessionMocks.hasAuthHintMock.mockReturnValue(true);
   const view = render(<ProfilePage />);
   await waitFor(() => {
-    expect(screen.getByRole("heading", { name: COPY.profile.title })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.profile.title })
+    ).toBeInTheDocument();
   });
   return view;
 }
@@ -130,7 +144,9 @@ async function fillPassword(
   const currentInput = screen.getByLabelText(
     ACCOUNT_SETTINGS_COPY.currentPasswordLabel
   );
-  const newInput = screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel);
+  const newInput = screen.getByLabelText(
+    ACCOUNT_SETTINGS_COPY.newPasswordLabel
+  );
   const confirmInput = screen.getByLabelText(
     ACCOUNT_SETTINGS_COPY.confirmPasswordLabel
   );
@@ -146,26 +162,50 @@ describe(ProfileSettingsPage, () => {
   test("renders one canonical surface with labels, hints, back, and current username", async () => {
     await renderSettingsPage();
 
-    expect(screen.getAllByText(ACCOUNT_SETTINGS_COPY.headerTitle)).toHaveLength(1);
+    expect(screen.getAllByText(ACCOUNT_SETTINGS_COPY.headerTitle)).toHaveLength(
+      1
+    );
     const backLink = document.querySelector(
       "[data-contextual-task-header] a[href='/profile']"
     );
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute("href", "/profile");
-    expect(screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })).toBeInTheDocument();
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.sectionLead)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.sectionLead)
+    ).toBeInTheDocument();
 
-    const usernameInput = screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel);
+    const usernameInput = screen.getByLabelText(
+      ACCOUNT_SETTINGS_COPY.usernameLabel
+    );
     expect(usernameInput).toHaveValue(PROFILE.username);
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.usernameHint)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })).toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.usernameHint)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    ).toBeInTheDocument();
 
-    expect(screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.passwordTitle })).toBeInTheDocument();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)).toBeInTheDocument();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)).toBeInTheDocument();
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.passwordHint)).toBeInTheDocument();
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.passwordNotice)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.passwordTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.passwordHint)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.passwordNotice)
+    ).toBeInTheDocument();
   });
 
   test("username change validates, preserves the draft on conflict, and completes with one flash", async () => {
@@ -195,24 +235,40 @@ describe(ProfileSettingsPage, () => {
     const user = userEvent.setup();
     await renderSettingsPage();
 
-    await user.clear(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel));
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.missingUsername)).toBeInTheDocument();
+    await user.clear(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    );
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.missingUsername)
+    ).toBeInTheDocument();
 
     await fillUsername(user, "taken.user");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
-    expect(await screen.findByText(ACCOUNT_SETTINGS_COPY.usernameTaken)).toBeInTheDocument();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)).toHaveValue("taken.user");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.usernameTaken)).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    ).toHaveValue("taken.user");
 
     await fillUsername(user, "member.new");
     announceMock.mockClear();
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
-    expect(await screen.findByRole("heading", { name: ACCOUNT_SETTINGS_COPY.updated })).toBeInTheDocument();
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.usernameSuccess)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+    await expect(screen.findByRole("heading", {
+        name: ACCOUNT_SETTINGS_COPY.updated,
+      })).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.usernameSuccess)
+    ).toBeInTheDocument();
     expect(replaceMock).toHaveBeenCalledWith("/");
-    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledTimes(1);
+    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledOnce();
     expect(sessionStorage.getItem("efcc_account_updated")).toBe("1");
-    expect(announceMock).toHaveBeenCalledTimes(1);
+    expect(announceMock).toHaveBeenCalledOnce();
     expect(announceMock).toHaveBeenCalledWith(ACCOUNT_SETTINGS_COPY.updated);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
@@ -230,14 +286,18 @@ describe(ProfileSettingsPage, () => {
     const user = userEvent.setup();
     await renderSettingsPage();
     announceMock.mockClear();
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    await expect(screen.findByRole("status")).resolves.toHaveTextContent(
       ACCOUNT_SETTINGS_COPY.usernameUnchanged
     );
     expect(replaceMock).not.toHaveBeenCalled();
     expect(sessionMocks.clearAuthHintMock).not.toHaveBeenCalled();
-    expect(announceMock).not.toHaveBeenCalledWith(ACCOUNT_SETTINGS_COPY.usernameUnchanged);
+    expect(announceMock).not.toHaveBeenCalledWith(
+      ACCOUNT_SETTINGS_COPY.usernameUnchanged
+    );
   });
 
   test("password change validates length and confirmation without sending invalid drafts", async () => {
@@ -254,16 +314,28 @@ describe(ProfileSettingsPage, () => {
 
     const user = userEvent.setup();
     await renderSettingsPage();
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.missingPasswordFields)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.missingPasswordFields)
+    ).toBeInTheDocument();
 
     await fillPassword(user, "curr-pass-123", "short", "short");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
-    expect(screen.getByRole("alert")).toHaveTextContent(ACCOUNT_SETTINGS_COPY.shortPassword);
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      ACCOUNT_SETTINGS_COPY.shortPassword
+    );
 
     await fillPassword(user, "curr-pass-123", "new-secret-888", "mismatch-999");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.passwordMismatch)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.passwordMismatch)
+    ).toBeInTheDocument();
     expect(calls).toBe(0);
   });
 
@@ -279,14 +351,25 @@ describe(ProfileSettingsPage, () => {
 
     const user = userEvent.setup();
     await renderSettingsPage();
-    await fillPassword(user, "curr-pass-123", "new-secret-888", "new-secret-888");
+    await fillPassword(
+      user,
+      "curr-pass-123",
+      "new-secret-888",
+      "new-secret-888"
+    );
     announceMock.mockClear();
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
 
-    expect(await screen.findByRole("heading", { name: ACCOUNT_SETTINGS_COPY.updated })).toBeInTheDocument();
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.passwordSuccess)).toBeInTheDocument();
+    await expect(screen.findByRole("heading", {
+        name: ACCOUNT_SETTINGS_COPY.updated,
+      })).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.passwordSuccess)
+    ).toBeInTheDocument();
     expect(replaceMock).toHaveBeenCalledWith("/");
-    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledTimes(1);
+    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledOnce();
     expect(sessionStorage.getItem("efcc_account_updated")).toBe("1");
     expect(announceMock).toHaveBeenCalledWith(ACCOUNT_SETTINGS_COPY.updated);
   });
@@ -311,30 +394,57 @@ describe(ProfileSettingsPage, () => {
     const user = userEvent.setup();
     await renderSettingsPage();
     await fillPassword(user, "wrong-pass", "new-secret-888", "new-secret-888");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
 
-    expect(await screen.findByText(ACCOUNT_SETTINGS_COPY.wrongCurrentPassword)).toBeInTheDocument();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)).toHaveValue("wrong-pass");
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)).toHaveValue("new-secret-888");
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)).toHaveValue("new-secret-888");
-    expect(screen.queryByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })).not.toBeInTheDocument();
+    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.wrongCurrentPassword)).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)
+    ).toHaveValue("wrong-pass");
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)
+    ).toHaveValue("new-secret-888");
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)
+    ).toHaveValue("new-secret-888");
+    expect(
+      screen.queryByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })
+    ).not.toBeInTheDocument();
   });
 
   test("offline and unavailable submissions expose retry controls with preserved drafts", async () => {
     const user = userEvent.setup();
     await renderSettingsPage();
 
-    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    Object.defineProperty(navigator, "onLine", {
+      value: false,
+      configurable: true,
+    });
     await fillUsername(user, "member.offline");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
-    expect(screen.getByText(ACCOUNT_SETTINGS_COPY.offlineError)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })).toHaveFocus();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)).toHaveValue("member.offline");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+    expect(
+      screen.getByText(ACCOUNT_SETTINGS_COPY.offlineError)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })
+    ).toHaveFocus();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    ).toHaveValue("member.offline");
 
     await fillPassword(user, "curr-pass", "new-secret-888", "new-secret-888");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
-    expect(screen.getAllByText(ACCOUNT_SETTINGS_COPY.offlineError).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)).toHaveValue("new-secret-888");
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
+    expect(
+      screen.getAllByText(ACCOUNT_SETTINGS_COPY.offlineError).length
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)
+    ).toHaveValue("new-secret-888");
   });
 
   test("network retry resubmits the same username form", async () => {
@@ -355,16 +465,22 @@ describe(ProfileSettingsPage, () => {
     const user = userEvent.setup();
     await renderSettingsPage();
     await fillUsername(user, "member.retry");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
-    const retry = await screen.findByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry });
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
+    const retry = await screen.findByRole("button", {
+      name: ACCOUNT_SETTINGS_COPY.retry,
+    });
     expect(retry).toHaveFocus();
     await user.click(retry);
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    await expect(screen.findByRole("status")).resolves.toHaveTextContent(
       ACCOUNT_SETTINGS_COPY.usernameUnchanged
     );
     expect(calls).toBe(2);
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)).toHaveValue("member.retry");
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    ).toHaveValue("member.retry");
   });
 
   test("UNAVAILABLE keeps the password draft and offers a retry action", async () => {
@@ -386,14 +502,29 @@ describe(ProfileSettingsPage, () => {
 
     const user = userEvent.setup();
     await renderSettingsPage();
-    await fillPassword(user, "current-pass", "new-secret-888", "new-secret-888");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
+    await fillPassword(
+      user,
+      "current-pass",
+      "new-secret-888",
+      "new-secret-888"
+    );
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
 
-    expect(await screen.findByText(ACCOUNT_SETTINGS_COPY.unavailable)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })).toHaveFocus();
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)).toHaveValue("current-pass");
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)).toHaveValue("new-secret-888");
-    expect(screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)).toHaveValue("new-secret-888");
+    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.unavailable)).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })
+    ).toHaveFocus();
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)
+    ).toHaveValue("current-pass");
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.newPasswordLabel)
+    ).toHaveValue("new-secret-888");
+    expect(
+      screen.getByLabelText(ACCOUNT_SETTINGS_COPY.confirmPasswordLabel)
+    ).toHaveValue("new-secret-888");
   });
 
   test("forbidden response removes both forms and leaves a safe profile exit", async () => {
@@ -416,19 +547,31 @@ describe(ProfileSettingsPage, () => {
     const user = userEvent.setup();
     await renderSettingsPage();
     await fillUsername(user, "member.forbidden");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
 
-    expect(await screen.findByText(COPY.error.forbidden)).toBeInTheDocument();
-    expect(screen.queryByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })).not.toBeInTheDocument();
+    await expect(screen.findByText(COPY.error.forbidden)).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: ACCOUNT_SETTINGS_COPY.usernameSubmit,
+      })
+    ).not.toBeInTheDocument();
     const safeExit = screen
       .getAllByRole("link", { name: COPY.nav.backToProfile })
-      .find((element) => element.getAttribute("data-slot") === "button");
+      .find((element) => element.dataset.slot === "button");
     expect(safeExit).toHaveAttribute("href", "/profile");
   });
 
   test("AUTH_REQUIRED remembers the safe deep link and redirects to canonical sign-in", async () => {
-    window.history.replaceState({}, "", "/profile/settings?tab=password#current");
+    window.history.replaceState(
+      {},
+      "",
+      "/profile/settings?tab=password#current"
+    );
     pathnameMock.mockReturnValue("/profile/settings");
     server.use(
       http.post("/api/v1/auth/password", () =>
@@ -448,26 +591,41 @@ describe(ProfileSettingsPage, () => {
 
     const user = userEvent.setup();
     await renderSettingsPage();
-    await fillPassword(user, "current-pass", "new-secret-888", "new-secret-888");
+    await fillPassword(
+      user,
+      "current-pass",
+      "new-secret-888",
+      "new-secret-888"
+    );
     announceMock.mockClear();
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
+    );
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
     expect(sessionMocks.rememberDeepLinkMock).toHaveBeenCalledWith(
       "/profile/settings?tab=password#current"
     );
-    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledTimes(1);
+    expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledOnce();
     expect(sessionStorage.getItem("efcc_session_expired")).toBeNull();
-    expect(screen.queryByText(ACCOUNT_SETTINGS_COPY.sessionExpired)).not.toBeInTheDocument();
-    expect(announceMock).toHaveBeenCalledWith(ACCOUNT_SETTINGS_COPY.sessionExpired);
+    expect(
+      screen.queryByText(ACCOUNT_SETTINGS_COPY.sessionExpired)
+    ).not.toBeInTheDocument();
+    expect(announceMock).toHaveBeenCalledWith(
+      ACCOUNT_SETTINGS_COPY.sessionExpired
+    );
   });
 
   test("state errors and completion move focus to an intentional target", async () => {
     const user = userEvent.setup();
     await renderSettingsPage();
-    const usernameInput = screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel);
+    const usernameInput = screen.getByLabelText(
+      ACCOUNT_SETTINGS_COPY.usernameLabel
+    );
     await user.clear(usernameInput);
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
     await waitFor(() => {
       expect(screen.getByRole("alert").parentElement).toHaveFocus();
     });
@@ -480,9 +638,15 @@ describe(ProfileSettingsPage, () => {
       )
     );
     await fillUsername(user, "member.focus");
-    await user.click(screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit }));
+    await user.click(
+      screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
+    );
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: ACCOUNT_SETTINGS_COPY.sectionTitle })).toHaveFocus();
+      expect(
+        screen.getByRole("heading", {
+          name: ACCOUNT_SETTINGS_COPY.sectionTitle,
+        })
+      ).toHaveFocus();
     });
   });
 });
@@ -490,15 +654,22 @@ describe(ProfileSettingsPage, () => {
 describe(ProfilePage, () => {
   test("renders profile info and account settings/logout actions", async () => {
     server.use(
-      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 }))
+      http.post(
+        "/api/v1/auth/logout",
+        () => new HttpResponse(null, { status: 204 })
+      )
     );
     const user = userEvent.setup();
     await renderProfilePage();
 
-    expect(screen.getByRole("heading", { name: COPY.profile.title })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.profile.title })
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.profile.subtitle)).toBeInTheDocument();
     expect(screen.getByText(COPY.profile.qrBadge)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: PROFILE.name })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: PROFILE.name })
+    ).toBeInTheDocument();
     expect(screen.getByText(COPY.profile.statusValid)).toBeInTheDocument();
     expect(screen.getByText(COPY.profile.accountDetails)).toBeInTheDocument();
     expect(screen.getByText(PROFILE.username)).toBeInTheDocument();
@@ -518,13 +689,22 @@ describe(ProfilePage, () => {
     const logoutButtons = screen.getAllByRole("button", {
       name: new RegExp(COPY.profile.logout, "u"),
     });
-    await user.click(logoutButtons[logoutButtons.length - 1]);
-    await waitFor(() => expect(sessionMocks.clearAuthHintMock).toHaveBeenCalled());
+    const logoutButton = logoutButtons.at(-1);
+    if (!logoutButton) {
+      throw new Error("Expected a logout button");
+    }
+    await user.click(logoutButton);
+    await waitFor(() =>
+      expect(sessionMocks.clearAuthHintMock).toHaveBeenCalledWith()
+    );
   });
 
   test("renders management settings link for management-capable accounts", async () => {
     server.use(
-      http.post("/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 }))
+      http.post(
+        "/api/v1/auth/logout",
+        () => new HttpResponse(null, { status: 204 })
+      )
     );
     const managementSections = defaultSections();
     sessionMocks.restoreBootstrapMock.mockResolvedValue({
@@ -537,12 +717,19 @@ describe(ProfilePage, () => {
     render(<ProfilePage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: COPY.profile.title })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: COPY.profile.title })
+      ).toBeInTheDocument();
     });
     const settingsHubEntry = screen.getByRole("link", {
       name: new RegExp(`^${COPY.profile.settingsEntry}`, "u"),
     });
-    expect(settingsHubEntry).toHaveAttribute("href", "/management?module=settings");
-    expect(screen.getByText(COPY.profile.settingsEntryHint)).toBeInTheDocument();
+    expect(settingsHubEntry).toHaveAttribute(
+      "href",
+      "/management?module=settings"
+    );
+    expect(
+      screen.getByText(COPY.profile.settingsEntryHint)
+    ).toBeInTheDocument();
   });
 });

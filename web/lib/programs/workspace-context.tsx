@@ -19,10 +19,7 @@ export interface WorkspaceTaskContextValue {
   modules: readonly DepartmentModule[];
   attention: ManagementAttention | null;
   onAttentionRefresh: () => void;
-  onTaskChange: (
-    task: ProgramsTask | null,
-    eventId?: string | null
-  ) => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;
 }
 

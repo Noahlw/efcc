@@ -13,8 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RpcError } from "@/lib/api";
-import { COPY, errorCopyFor } from "@/lib/copy";
 import { ContextualTaskHeader } from "@/lib/contextual-task-header";
+import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   getAccountDirectoryDetail,
@@ -27,10 +27,8 @@ import type {
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
-import {
-  DirectoryFrame,
-  type DirectoryFrameState,
-} from "./directory-frame";
+import { DirectoryFrame } from './directory-frame';
+import type { DirectoryFrameState } from './directory-frame';
 import {
   ManagementFilterSheet,
   safeManagementReturnHref,
@@ -44,8 +42,7 @@ const ACCOUNT_INPUT_CLASS =
 const ACCOUNT_SELECT_CLASS =
   "h-12 min-h-12 w-full min-w-0 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] outline-none focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30";
 const ACCOUNT_FIELD_CLASS = "grid min-w-0 gap-2";
-const ACCOUNT_FIELD_LABEL_CLASS =
-  "text-[0.82rem] font-bold text-[var(--ink)]";
+const ACCOUNT_FIELD_LABEL_CLASS = "text-[0.82rem] font-bold text-[var(--ink)]";
 const ACCOUNT_STATE_CLASS =
   "mt-[var(--space-4)] grid min-w-0 gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[var(--space-4)] text-[var(--ink-muted)]";
 const ACCOUNT_ERROR_CLASS =
@@ -207,7 +204,9 @@ function AccountRoleSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL_FILTER_VALUE}>{COPY_ACCOUNT.allRoles}</SelectItem>
+        <SelectItem value={ALL_FILTER_VALUE}>
+          {COPY_ACCOUNT.allRoles}
+        </SelectItem>
         <SelectItem value="Admin">{COPY_ACCOUNT.admin}</SelectItem>
         <SelectItem value="Staff">{COPY_ACCOUNT.staff}</SelectItem>
         <SelectItem value="Member">{COPY_ACCOUNT.member}</SelectItem>
@@ -245,7 +244,9 @@ function AccountStatusSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL_FILTER_VALUE}>{COPY_ACCOUNT.allStatuses}</SelectItem>
+        <SelectItem value={ALL_FILTER_VALUE}>
+          {COPY_ACCOUNT.allStatuses}
+        </SelectItem>
         <SelectItem value="Active">{COPY_ACCOUNT.active}</SelectItem>
         <SelectItem value="Pending">{COPY_ACCOUNT.pending}</SelectItem>
         <SelectItem value="Suspended">{COPY_ACCOUNT.suspended}</SelectItem>
@@ -399,13 +400,12 @@ export const AccountDirectoryPanel = () => {
     [department, query, role, router, status]
   );
 
-  const state = listResource.state;
+  const {state} = listResource;
   const resourceView = state.kind === "ready" ? state.data : null;
   const accountView = appendedView ?? resourceView;
   const accounts = accountView?.accounts ?? [];
   const hasResults = accounts.length > 0;
-  const selected =
-    detailState.kind === "ready" ? detailState.account : null;
+  const selected = detailState.kind === "ready" ? detailState.account : null;
 
   useEffect(() => {
     void listResource.run();
@@ -696,7 +696,7 @@ export const AccountDirectoryPanel = () => {
                 </div>
               </dl>
               <div className="mt-4 min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--focus)_35%,var(--line))] bg-[color-mix(in_srgb,var(--focus)_6%,white)] p-3">
-                <strong>{"唯讀資料"}</strong>
+                <strong>唯讀資料</strong>
                 <p className="m-0 mt-1 wrap-anywhere leading-6 text-[var(--ink-muted)]">
                   {COPY_ACCOUNT.detailReadOnly}
                 </p>
@@ -707,7 +707,10 @@ export const AccountDirectoryPanel = () => {
       }
       desktopFilters={
         <>
-          <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-directory-role">
+          <label
+            className={ACCOUNT_FIELD_CLASS}
+            htmlFor="account-directory-role"
+          >
             <span className={ACCOUNT_FIELD_LABEL_CLASS}>
               {COPY_ACCOUNT.roleLabel}
             </span>
@@ -761,7 +764,9 @@ export const AccountDirectoryPanel = () => {
       }
       filter={
         <Button
-          aria-label={activeFilterCount > 0 ? `篩選 ${activeFilterCount}` : "篩選"}
+          aria-label={
+            activeFilterCount > 0 ? `篩選 ${activeFilterCount}` : "篩選"
+          }
           className="min-h-12 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
           onClick={() => setFilterOpen(true)}
           type="button"
@@ -778,7 +783,10 @@ export const AccountDirectoryPanel = () => {
           >
             <h2 className="m-0 pr-12 text-lg font-extrabold">篩選帳戶</h2>
             <div className="mt-4 grid gap-3">
-              <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-sheet-role">
+              <label
+                className={ACCOUNT_FIELD_CLASS}
+                htmlFor="account-sheet-role"
+              >
                 <span className={ACCOUNT_FIELD_LABEL_CLASS}>
                   {COPY_ACCOUNT.roleLabel}
                 </span>
@@ -935,7 +943,8 @@ export const AccountDirectoryPanel = () => {
                             {account.name}
                           </strong>
                           <small className="overflow-hidden text-ellipsis whitespace-nowrap text-[0.74rem] text-[var(--ink-muted)]">
-                            {account.username ?? COPY_ACCOUNT.unavailable} · {roleLabel(account.role)}
+                            {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
+                            {roleLabel(account.role)}
                           </small>
                         </span>
                         <span
@@ -968,7 +977,10 @@ export const AccountDirectoryPanel = () => {
       }
       search={
         <>
-          <label className={ACCOUNT_FIELD_CLASS} htmlFor="account-directory-search">
+          <label
+            className={ACCOUNT_FIELD_CLASS}
+            htmlFor="account-directory-search"
+          >
             <span className={ACCOUNT_FIELD_LABEL_CLASS}>
               {COPY_ACCOUNT.searchLabel}
             </span>

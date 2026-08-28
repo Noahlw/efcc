@@ -2,10 +2,7 @@
 
 import { ProgramSettings } from "./program-settings";
 import { LeadersPanel } from "./programs-leaders-panel";
-import {
-  hasModule,
-  useWorkspaceTaskContext,
-} from "./workspace-context";
+import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
 
 export const SettingsTask = () => {
   const { program, modules, onTaskChange, onAttentionRefresh } =

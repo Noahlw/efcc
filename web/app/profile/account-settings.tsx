@@ -319,12 +319,12 @@ export const AccountSettings = () => {
           <div className={styles.field}>
             <label
               className={styles.fieldLabel}
-              htmlFor="account-settings-username"
+              htmlFor="new-username"
             >
               {ACCOUNT_SETTINGS_COPY.usernameLabel}
             </label>
             <Input
-              id="account-settings-username"
+              id="new-username"
               name="username"
               className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
               autoComplete="username"
@@ -332,8 +332,8 @@ export const AccountSettings = () => {
               aria-invalid={usernameState.kind === "error" ? true : undefined}
               aria-describedby={
                 usernameState.kind === "error"
-                  ? "account-settings-username-hint account-settings-username-error"
-                  : "account-settings-username-hint"
+                  ? "new-username-hint new-username-error"
+                  : "new-username-hint"
               }
               value={username}
               onChange={(event) => {
@@ -344,7 +344,7 @@ export const AccountSettings = () => {
               }}
               disabled={usernameState.kind === "submitting"}
             />
-            <p id="account-settings-username-hint" className={styles.fieldHint}>
+            <p id="new-username-hint" className={styles.fieldHint}>
               {ACCOUNT_SETTINGS_COPY.usernameHint}
             </p>
           </div>
@@ -354,7 +354,7 @@ export const AccountSettings = () => {
                 variant="destructive"
                 className={`${styles.errorBlock} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
               >
-                <p id="account-settings-username-error" className={styles.error}>
+                <p id="new-username-error" className={styles.error}>
                   {usernameState.message}
                 </p>
                 {usernameState.retryable && (
@@ -404,12 +404,12 @@ export const AccountSettings = () => {
           <div className={styles.field}>
             <label
               className={styles.fieldLabel}
-              htmlFor="account-settings-current-password"
+              htmlFor="current-password"
             >
               {ACCOUNT_SETTINGS_COPY.currentPasswordLabel}
             </label>
             <Input
-              id="account-settings-current-password"
+              id="current-password"
               name="currentPassword"
               type="password"
               className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
@@ -418,7 +418,7 @@ export const AccountSettings = () => {
               aria-invalid={passwordState.kind === "error" ? true : undefined}
               aria-describedby={
                 passwordState.kind === "error"
-                  ? "account-settings-password-error"
+                  ? "password-error"
                   : undefined
               }
               value={currentPassword}
@@ -434,12 +434,12 @@ export const AccountSettings = () => {
           <div className={styles.field}>
             <label
               className={styles.fieldLabel}
-              htmlFor="account-settings-new-password"
+              htmlFor="new-password"
             >
               {ACCOUNT_SETTINGS_COPY.newPasswordLabel}
             </label>
             <Input
-              id="account-settings-new-password"
+              id="new-password"
               name="newPassword"
               type="password"
               className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
@@ -449,8 +449,8 @@ export const AccountSettings = () => {
               aria-invalid={passwordState.kind === "error" ? true : undefined}
               aria-describedby={
                 passwordState.kind === "error"
-                  ? "account-settings-password-hint account-settings-password-error"
-                  : "account-settings-password-hint"
+                  ? "new-password-hint password-error"
+                  : "new-password-hint"
               }
               value={newPassword}
               onChange={(event) => {
@@ -461,19 +461,19 @@ export const AccountSettings = () => {
               }}
               disabled={passwordState.kind === "submitting"}
             />
-            <p id="account-settings-password-hint" className={styles.fieldHint}>
+            <p id="new-password-hint" className={styles.fieldHint}>
               {ACCOUNT_SETTINGS_COPY.passwordHint}
             </p>
           </div>
           <div className={styles.field}>
             <label
               className={styles.fieldLabel}
-              htmlFor="account-settings-confirm-password"
+              htmlFor="confirm-password"
             >
               {ACCOUNT_SETTINGS_COPY.confirmPasswordLabel}
             </label>
             <Input
-              id="account-settings-confirm-password"
+              id="confirm-password"
               name="confirmPassword"
               type="password"
               className="min-h-12 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
@@ -482,7 +482,7 @@ export const AccountSettings = () => {
               aria-invalid={passwordState.kind === "error" ? true : undefined}
               aria-describedby={
                 passwordState.kind === "error"
-                  ? "account-settings-password-error"
+                  ? "password-error"
                   : undefined
               }
               value={confirmPassword}
@@ -501,7 +501,7 @@ export const AccountSettings = () => {
                 variant="destructive"
                 className={`${styles.errorBlock} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
               >
-                <p id="account-settings-password-error" className={styles.error}>
+                <p id="password-error" className={styles.error}>
                   {passwordState.message}
                 </p>
                 {passwordState.retryable && (

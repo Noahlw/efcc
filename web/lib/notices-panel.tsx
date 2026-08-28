@@ -8,11 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
-import {
-  FeedPresentation,
-  type FeedAnnouncement,
-  type FeedPresentationState,
-} from "@/lib/feed-presentation";
+import { FeedPresentation } from '@/lib/feed-presentation';
+import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
 import { hkNoticeListLabel } from "@/lib/hk-time";
 import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
 import type { Notice, NoticesResult } from "@/lib/notices-api";
@@ -216,7 +213,10 @@ export function NoticesPanel() {
     state.kind === "ready" ? (
       <>
         {toolbar}
-        <ul className="m-0 list-none overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] p-0 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
+        <ul
+          aria-label={COPY.notices.noticesListLabel}
+          className="m-0 list-none overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] p-0 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
+        >
           {state.result.notices.map((notice) => (
             <NoticeRow key={notice.notice_id} notice={notice} />
           ))}

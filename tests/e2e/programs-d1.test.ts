@@ -357,8 +357,7 @@ const COPY = {
     "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
   // 087-03 Account Permissions matrix (mirrors COPY.permissions).
   permissionsTitle: "帳戶與權限",
-  permissionsLead:
-    "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
+  permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
   accountsSection: "管理員帳戶",
   rolesSection: "角色定義",
   accountName: "姓名",
@@ -2879,11 +2878,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
               !element.closest("[hidden]")
             );
           };
-          const controls = Array.from(
-            workspace.querySelectorAll<HTMLElement>(
-              "a,button,input,select,textarea"
-            )
-          )
+          const controls = [...workspace.querySelectorAll<HTMLElement>('a,button,input,select,textarea')]
             .filter(visible)
             .map((element) => {
               const box = element.getBoundingClientRect();
@@ -2936,7 +2931,6 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       }
     }
   });
-
 });
 
 test.describe("CFG-01 Program Settings", () => {
@@ -5463,7 +5457,11 @@ test.describe("HUB-01 Management Hub directory", () => {
 
     await page.goto("/management?module=approvals");
     await expect(page.getByText(lastName, { exact: true })).toBeVisible();
-    await page.getByRole("link", { name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u") }).scrollIntoViewIfNeeded();
+    await page
+      .getByRole("link", {
+        name: new RegExp(`${COPY.approvals.openDetail} ${lastName}`, "u"),
+      })
+      .scrollIntoViewIfNeeded();
     const scrollBefore = await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
       return window.scrollY;

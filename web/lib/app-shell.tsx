@@ -14,8 +14,8 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { OfflineBanner } from "@/lib/offline-banner";
-import { RecoveryView } from "@/lib/recovery-view";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
   clearDeepLink,
@@ -178,11 +178,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
       );
     }
     return (
-      <RecoveryView
-        message={state.message}
-        safeHref="/"
-        onRetry={retry}
-      />
+      <RecoveryView message={state.message} safeHref="/" onRetry={retry} />
     );
   }
 

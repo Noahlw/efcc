@@ -17,14 +17,14 @@ import {
   listEnrollmentSnapshot,
 } from "@/lib/programs/program-api";
 import type { Enrollment, EnrollmentRequest } from "@/lib/programs/program-api";
-import { MemberPicker } from "./member-picker";
 
+import { MemberPicker } from "./member-picker";
+import { useAsyncResource } from "./use-async-resource";
 import {
   formatEventTime,
   redirectToLoginIfRequired,
   useWorkspaceTaskContext,
 } from "./workspace-context";
-import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -93,8 +93,7 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 }
 
 export const ParticipantsTask = () => {
-  const { program, attention, onAttentionRefresh } =
-    useWorkspaceTaskContext();
+  const { program, attention, onAttentionRefresh } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
   const { state, run, retry } = useAsyncResource<

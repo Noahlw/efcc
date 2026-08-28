@@ -666,7 +666,6 @@ export const RoleHierarchyPanel = () => {
     }
   };
 
-
   const toggleCategory = (categoryKey: string) => {
     setExpandedCategories((current) => {
       const next = new Set(current);
@@ -1238,9 +1237,7 @@ export const RoleHierarchyPanel = () => {
               aria-labelledby="role-hierarchy-scope-title"
               className={styles.rename}
             >
-              <h3 id="role-hierarchy-scope-title">
-                {SCOPE_EDIT_LABEL}
-              </h3>
+              <h3 id="role-hierarchy-scope-title">{SCOPE_EDIT_LABEL}</h3>
               <label className={styles.field} htmlFor="role-scope-select">
                 <span className={styles.fieldLabel}>{CREATE_SCOPE_LABEL}</span>
                 <select
@@ -1269,7 +1266,9 @@ export const RoleHierarchyPanel = () => {
                 </select>
               </label>
               {scopeState.kind === "invalid-scope" && (
-                <p className={styles.feedback}>{CREATE_INVALID_SCOPE_MESSAGE}</p>
+                <p className={styles.feedback}>
+                  {CREATE_INVALID_SCOPE_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "conflict" && (
                 <p className={styles.feedback}>{SCOPE_CONFLICT_MESSAGE}</p>

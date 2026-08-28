@@ -13,14 +13,9 @@ import type {
   ProgramEvent,
 } from "./program-api";
 import type { ProgramsTask } from "./programs-intent";
+import { formatEventTime, hasModule, taskLabel, WorkspaceTaskProvider } from './workspace-context';
+import type { WorkspaceTaskContextValue } from './workspace-context';
 import { EventsTask } from "./workspace-events-task";
-import {
-  formatEventTime,
-  hasModule,
-  taskLabel,
-  WorkspaceTaskProvider,
-  type WorkspaceTaskContextValue,
-} from "./workspace-context";
 import { ParticipantsTask } from "./workspace-participants-task";
 import { SettingsTask } from "./workspace-settings-task";
 
@@ -46,10 +41,7 @@ export const WorkspaceNavigation = ({
   programId: string;
   task?: ProgramsTask;
   modules: readonly DepartmentModule[];
-  onTaskChange: (
-    task: ProgramsTask | null,
-    eventId?: string | null
-  ) => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
   const tasks: ProgramsTask[] = [
     ...(hasModule(modules, "events") ? ["events" as const] : []),
@@ -102,10 +94,7 @@ export const WorkspaceOverview = ({
   cockpit?: ManagementCockpitView | null;
   summary: WorkspaceSummaryState;
   onOpenFacts: () => void;
-  onTaskChange: (
-    task: ProgramsTask | null,
-    eventId?: string | null
-  ) => void;
+  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
   const eventRead =
     summary.events.status === "ready" ? summary.events.value : null;

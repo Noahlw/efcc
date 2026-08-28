@@ -30,12 +30,12 @@ import {
 } from "@/lib/programs/recurrence";
 
 import { hkWallInputToIso } from "./event-detail";
+import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
   redirectToLoginIfRequired,
   useWorkspaceTaskContext,
 } from "./workspace-context";
-import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
 

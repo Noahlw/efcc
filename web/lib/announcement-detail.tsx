@@ -1,8 +1,9 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
-import { Button } from "@/components/ui/button";
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 
+import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 import { cn } from "@/lib/utils";
 
@@ -140,12 +141,8 @@ export function AnnouncementDetail({
           {COPY.home.venueInstructions}
         </p>
         <ul className="mt-3.5 list-disc pl-5 leading-[1.7] text-[var(--ink-muted)]">
-          <li className="min-w-0 wrap-anywhere">
-            {COPY.home.worshipLocation}
-          </li>
-          <li className="min-w-0 wrap-anywhere">
-            {COPY.home.familyRoom}
-          </li>
+          <li className="min-w-0 wrap-anywhere">{COPY.home.worshipLocation}</li>
+          <li className="min-w-0 wrap-anywhere">{COPY.home.familyRoom}</li>
           <li className="min-w-0 wrap-anywhere">
             {COPY.home.visitorReception}
           </li>

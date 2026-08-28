@@ -86,7 +86,7 @@ export function useAsyncResource<T, S extends { kind: string }>(
     async (request?: { cancelled: boolean }) => {
       requestId.current += 1;
       const currentRequest = requestId.current;
-      const current = optionsRef.current;
+      const {current} = optionsRef;
       setState(current.toLoading());
       if (current.announceLoading) {
         announce(current.announceLoading);
@@ -113,10 +113,7 @@ export function useAsyncResource<T, S extends { kind: string }>(
         ) {
           return;
         }
-        if (
-          current.onAuthRequired &&
-          current.isAuthRequired?.(error)
-        ) {
+        if (current.onAuthRequired && current.isAuthRequired?.(error)) {
           current.onAuthRequired(error);
           return;
         }

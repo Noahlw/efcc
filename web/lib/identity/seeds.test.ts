@@ -83,6 +83,7 @@ describe("#476 disposable seed contract", () => {
     expect(adminPos).toBeDefined();
     expect(staff?.position ?? 0).toBeGreaterThan(adminPos?.position ?? 0);
   });
+
   test("Staff seeds the role-management grants required for rename and scope edits", async () => {
     const rows = await testDb()
       .prepare(

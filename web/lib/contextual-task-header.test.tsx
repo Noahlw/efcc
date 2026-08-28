@@ -1,11 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, test } from "vitest";
 import { createRef } from "react";
-import {
-  ContextualTaskHeader,
-  type ContextualTaskHeaderProps,
-} from "@/lib/contextual-task-header";
+import { afterEach, describe, expect, test } from "vitest";
+
+import { ContextualTaskHeader } from '@/lib/contextual-task-header';
+import type { ContextualTaskHeaderProps } from '@/lib/contextual-task-header';
 
 afterEach(() => cleanup());
 
@@ -21,7 +20,7 @@ describe(ContextualTaskHeader, () => {
     render(
       <ContextualTaskHeader
         {...DEFAULT_PROPS}
-        status={<output role="status">已載入</output>}
+        status={<output >已載入</output>}
         action={<button type="button">儲存</button>}
       />
     );
@@ -29,30 +28,35 @@ describe(ContextualTaskHeader, () => {
     expect(screen.getByRole("banner")).toHaveAttribute(
       "data-contextual-task-header"
     );
-    expect(screen.getByRole("heading", { name: DEFAULT_PROPS.title })).toHaveAttribute(
-      "tabindex",
-      "-1"
-    );
+    expect(
+      screen.getByRole("heading", { name: DEFAULT_PROPS.title })
+    ).toHaveAttribute("tabindex", "-1");
     expect(screen.getByText(DEFAULT_PROPS.lead)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })).toHaveAttribute(
-      "href",
-      DEFAULT_PROPS.backHref
-    );
+    expect(
+      screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })
+    ).toHaveAttribute("href", DEFAULT_PROPS.backHref);
     expect(screen.getByRole("status")).toHaveTextContent("已載入");
     expect(screen.getByRole("button", { name: "儲存" })).toBeEnabled();
   });
+
   test("supports keyboard navigation and caller-owned heading focus", async () => {
     const user = userEvent.setup();
     const headingRef = createRef<HTMLHeadingElement>();
     render(<ContextualTaskHeader {...DEFAULT_PROPS} headingRef={headingRef} />);
 
     await user.tab();
-    expect(screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })).toHaveFocus();
+    expect(
+      screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })
+    ).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("heading", { name: DEFAULT_PROPS.title })).not.toHaveFocus();
+    expect(
+      screen.getByRole("heading", { name: DEFAULT_PROPS.title })
+    ).not.toHaveFocus();
 
     headingRef.current?.focus();
-    expect(screen.getByRole("heading", { name: DEFAULT_PROPS.title })).toHaveFocus();
+    expect(
+      screen.getByRole("heading", { name: DEFAULT_PROPS.title })
+    ).toHaveFocus();
   });
 
   test("keeps busy and disabled action semantics while the compact layout remains composed", () => {
@@ -60,7 +64,11 @@ describe(ContextualTaskHeader, () => {
       <ContextualTaskHeader
         {...DEFAULT_PROPS}
         layout="compact"
-        status={<output role="status" aria-busy="true">正在載入…</output>}
+        status={
+          <output  aria-busy="true">
+            正在載入…
+          </output>
+        }
         action={
           <button type="button" disabled aria-busy="true">
             儲存中…
@@ -75,6 +83,8 @@ describe(ContextualTaskHeader, () => {
       "aria-busy",
       "true"
     );
-    expect(screen.getByRole("heading", { name: DEFAULT_PROPS.title })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: DEFAULT_PROPS.title })
+    ).toBeInTheDocument();
   });
 });

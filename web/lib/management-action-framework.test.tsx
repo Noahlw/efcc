@@ -102,7 +102,7 @@ describe("S4 management action framework", () => {
     expect(surface).toHaveAttribute("data-state", state);
     expect(surface).toHaveAttribute("aria-busy", String(state === "busy"));
     if (state === "failure") {
-      expect(surface).toHaveAttribute("aria-disabled", "true");
+      expect(surface).toHaveAttribute("data-disabled", "true");
     }
   });
 

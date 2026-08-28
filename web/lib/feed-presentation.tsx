@@ -1,7 +1,9 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
+import { useEffect, useRef } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import { announce as announceToLiveRegion } from "@/lib/live-region";
 import { cn } from "@/lib/utils";
@@ -63,7 +65,7 @@ export interface FeedPresentationProps extends FeedPresentationVariants {
  * read state, permissions, and actions; this seam owns state semantics,
  * focus transfer, and the single polite announcement owner.
  */
-export function FeedPresentation({
+export const FeedPresentation = ({
   state,
   list,
   detail,
@@ -79,7 +81,7 @@ export function FeedPresentation({
   "aria-labelledby": ariaLabelledBy,
   className,
   layout,
-}: FeedPresentationProps) {
+}: FeedPresentationProps) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const lastAnnouncementKey = useRef<string | number | null>(null);
 
@@ -91,7 +93,21 @@ export function FeedPresentation({
     onAnnounce(announcement.message);
   }, [announcement, onAnnounce]);
 
+  const mountedRef = useRef(false);
+  const previousStateRef = useRef<FeedPresentationState | null>(null);
   useEffect(() => {
+    const previous = previousStateRef.current;
+    previousStateRef.current = state;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    // Only transfer focus for user-initiated transitions (retry, detail
+    // open/close). Initial data loads announce through the live region
+    // and must not steal focus from the shell's skip link.
+    if (previous === "loading" || previous === null) {
+      return;
+    }
     const target = focusTargetRef?.current ?? rootRef.current;
     target?.focus();
   }, [focusTargetRef, state]);
@@ -105,7 +121,7 @@ export function FeedPresentation({
           ? empty
           : state === "detail"
             ? detail
-: list;
+            : list;
 
   return (
     <div
@@ -124,6 +140,6 @@ export function FeedPresentation({
       {content}
     </div>
   );
-}
+};
 
 export { feedPresentationVariants };

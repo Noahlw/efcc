@@ -32,11 +32,8 @@ import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail } from "./event-detail";
 import type { ProgramsTask } from "./programs-intent";
-import {
-  hasModule,
-  redirectToLoginIfRequired,
-} from "./workspace-context";
 import { useAsyncResource } from "./use-async-resource";
+import { hasModule, redirectToLoginIfRequired } from "./workspace-context";
 import {
   WorkspaceNavigation,
   WorkspaceOverview,
@@ -125,9 +122,7 @@ async function readSummary<TInput, TValue>(
     };
   }
 }
-function unavailableSummary<T>(
-  message: string
-): WorkspaceSummaryRead<T> {
+function unavailableSummary<T>(message: string): WorkspaceSummaryRead<T> {
   return { status: "unavailable", message };
 }
 
@@ -412,10 +407,6 @@ const CourseEdit = ({
   );
 };
 
-
-
-
-
 export const ProgramWorkspace = ({
   programId,
   task,
@@ -663,14 +654,7 @@ export const ProgramWorkspace = ({
         {COPY.programs.workspaceBack}
       </Button>
       <header className={styles.workspaceHeader}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "12px",
-          }}
-        >
+        <div className={styles.workspaceHeaderMain}>
           <h3 id="programs-workspace-title" className={styles.boundaryTitle}>
             {workspaceProgram.name}
           </h3>
@@ -686,15 +670,11 @@ export const ProgramWorkspace = ({
               </Button>
             )}
         </div>
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "4px",
-          }}
-        >
-          <Badge className={styles.directoryStatus} variant="outline">
+        <div className={styles.workspaceHeaderMeta}>
+          <Badge
+            className={`${styles.directoryStatus} ${styles.workspaceDepartmentBadge}`}
+            variant="outline"
+          >
             {state.department
               ? `${state.department.name} · ${state.department.code}`
               : COPY.programs.workspaceDepartment}

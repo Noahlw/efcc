@@ -1,6 +1,7 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 import { useEffect, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
@@ -112,11 +113,14 @@ export interface DirectoryFrameProps extends DirectoryFrameVariants {
   focus?: DirectoryFrameFocus;
 }
 
-function Pagination({
+const Pagination = ({
   pagination,
 }: {
   pagination: DirectoryFramePagination;
-}) {
+}) => {
+  const handleRetry = pagination.onRetry;
+  const handleLoadMore = pagination.onLoadMore;
+
   if (!pagination.hasMore && !pagination.error) {
     return null;
   }
@@ -135,10 +139,10 @@ function Pagination({
           <div className="min-w-0 wrap-anywhere text-sm">
             {pagination.error}
           </div>
-          {pagination.onRetry && (
+          {handleRetry && (
             <Button
               className="min-h-11 w-fit border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
-              onClick={pagination.onRetry}
+              onClick={handleRetry}
               type="button"
             >
               {pagination.retryLabel ?? "重試連接"}
@@ -150,7 +154,7 @@ function Pagination({
         <Button
           className="min-h-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-bold text-[var(--ink)] hover:bg-[var(--surface)]"
           disabled={pagination.loading}
-          onClick={pagination.onLoadMore}
+          onClick={handleLoadMore}
           type="button"
           variant="outline"
         >
@@ -161,13 +165,14 @@ function Pagination({
       )}
     </div>
   );
-}
+};
 
 /**
  * Shared responsive composition for management directories. Route adapters
  * provide every slot and retain their own data and action decisions; this frame
  * only coordinates placement and state focus.
  */
+// oxlint-disable-next-line eslint/complexity -- the generic frame renders its finite state and slot matrix without domain branching.
 export const DirectoryFrame = ({
   ariaLabelledBy,
   className,
@@ -202,7 +207,7 @@ export const DirectoryFrame = ({
     selectionProp ??
     ({
       selectedId: null,
-      onSelect: () => undefined,
+      onSelect: () => {},
     } satisfies DirectorySelection);
   const virtualization = virtualizationProp ?? {};
   const frameStateSlot =

@@ -103,6 +103,7 @@ describe(MessagesPanel, () => {
     expect(window.location.pathname).toBe("/messages");
     expect(window.location.search).toBe("");
   });
+
   test("shows a visible retry after a message load failure", async () => {
     mocks.listAnnouncements
       .mockRejectedValueOnce(new Error("unavailable"))

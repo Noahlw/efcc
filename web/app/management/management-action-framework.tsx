@@ -1,5 +1,6 @@
 "use client";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
@@ -45,7 +46,7 @@ export type ActionSurfaceProps = Omit<
   busy?: boolean;
 };
 
-export function ActionSurface({
+export const ActionSurface = ({
   busy = false,
   children,
   className,
@@ -53,15 +54,17 @@ export function ActionSurface({
   label,
   state = "selection",
   ...props
-}: ActionSurfaceProps) {
+}: ActionSurfaceProps) => {
   const isBusy = busy || state === "busy";
   return (
     <section
       {...props}
       aria-busy={isBusy}
-      aria-disabled={disabled || undefined}
       aria-label={label}
-      className={cn(actionSurfaceVariants({ state, className }), styles.actionSurface)}
+      className={cn(
+        actionSurfaceVariants({ state, className }),
+        styles.actionSurface
+      )}
       data-disabled={disabled || undefined}
       data-slot="action-surface"
       data-state={state}
@@ -69,8 +72,7 @@ export function ActionSurface({
       {children}
     </section>
   );
-}
-
+};
 
 export function safeManagementReturnHref(
   value: string | null,

@@ -1,5 +1,5 @@
-import { clearAccessCache, clearCatalogCache } from "@/lib/programs/program-api";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -13,25 +13,26 @@ import {
   vi,
 } from "vitest";
 
-import HomePage, {
-  HomeView,
-  type HomeEvent,
-  type HomeProgram,
-} from "@/app/home/page";
-import {
-  AnnouncementDetail,
-  type AnnouncementData,
-} from "@/lib/announcement-detail";
+import HomePage, { HomeView } from '@/app/home/page';
+import type { HomeEvent, HomeProgram } from '@/app/home/page';
+import { AnnouncementDetail } from '@/lib/announcement-detail';
+import type { AnnouncementData } from '@/lib/announcement-detail';
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
+import {
+  clearAccessCache,
+  clearCatalogCache,
+} from "@/lib/programs/program-api";
 import { defaultSections, stableNavigationSections } from "@/lib/sections";
 
 const mocks = vi.hoisted(() => {
   const pushMock = vi.fn();
   const replaceMock = vi.fn();
   const pathnameMock = vi.fn(() => "/home");
-  const searchParamsMock = vi.fn(() => new URLSearchParams());
+  const searchParamsMock = vi.fn(
+    () => new URLSearchParams() as unknown as ReadonlyURLSearchParams
+  );
   return {
     pushMock,
     replaceMock,
@@ -50,7 +51,7 @@ const mocks = vi.hoisted(() => {
 
 const { pushMock, replaceMock, pathnameMock, mockRouter } = mocks;
 
-vi.mock("next/navigation", () => ({
+vi.mock(import('next/navigation'), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () => mocks.searchParamsMock(),
@@ -63,7 +64,7 @@ const sessionMocks = vi.hoisted(() => ({
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
-vi.mock("@/lib/session", () => ({
+vi.mock(import('@/lib/session'), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -359,6 +360,7 @@ describe("HomeView Component", () => {
     expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
   });
+
   test("closes the announcement with browser Back without adding history entries", async () => {
     const user = userEvent.setup();
     window.history.replaceState({ efccSection: "home" }, "", "/home");

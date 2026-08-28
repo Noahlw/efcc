@@ -19,7 +19,6 @@ import { COPY } from "@/lib/copy";
 import type { Notice } from "@/lib/notices-api";
 import { NoticesPanel } from "@/lib/notices-panel";
 
-
 const unreadEvent: Notice = {
   notice_id: "notice-event",
   kind: "event",
@@ -148,6 +147,7 @@ describe(NoticesPanel, () => {
       screen.queryByText(COPY.notices.noticesUnread)
     ).not.toBeInTheDocument();
   });
+
   test("keeps read failure visible and leaves the action available", async () => {
     const user = userEvent.setup();
     mocks.listNotices.mockResolvedValue({
@@ -195,6 +195,7 @@ describe(NoticesPanel, () => {
 
     expect(screen.getByText(COPY.notices.noticesLoading)).toBeInTheDocument();
   });
+
   test("keeps the global live region as the only announcement owner", async () => {
     mocks.listNotices.mockResolvedValue({ notices: [], unread_count: 0 });
 

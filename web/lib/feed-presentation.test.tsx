@@ -76,19 +76,6 @@ describe(FeedPresentation, () => {
 
     rerender(
       <FeedPresentation
-        state="loading"
-        list={<p>列表內容</p>}
-        loading={<output>載入中</output>}
-        error={<p>載入失敗</p>}
-        empty={<p>暫時沒有內容</p>}
-        announcement={{ key: "load-1", message: "正在載入" }}
-        onAnnounce={onAnnounce}
-      />
-    );
-    expect(onAnnounce).toHaveBeenCalledTimes(1);
-
-    rerender(
-      <FeedPresentation
         state="error"
         list={<p>列表內容</p>}
         loading={<output>載入中</output>}
@@ -102,8 +89,12 @@ describe(FeedPresentation, () => {
     expect(onAnnounce).toHaveBeenLastCalledWith("載入失敗");
   });
 
-  test("focuses a caller target after state changes without adding a live region", () => {
-    function Harness() {
+  test("focuses a caller target only on non-loading post-mount transitions", () => {
+    function Harness({
+      state,
+    }: {
+      state: React.ComponentProps<typeof FeedPresentation>["state"];
+    }) {
       const targetRef = useRef<HTMLButtonElement>(null);
       return (
         <>
@@ -111,7 +102,7 @@ describe(FeedPresentation, () => {
             返回清單
           </button>
           <FeedPresentation
-            state="ready"
+            state={state}
             list={<p>列表內容</p>}
             loading={<output>載入中</output>}
             error={<div role="alert">載入失敗</div>}
@@ -122,11 +113,45 @@ describe(FeedPresentation, () => {
       );
     }
 
-    render(<Harness />);
+    const { rerender } = render(<Harness state="ready" />);
+    expect(screen.getByRole("button", { name: "返回清單" })).not.toHaveFocus();
+    rerender(<Harness state="detail" />);
     expect(screen.getByRole("button", { name: "返回清單" })).toHaveFocus();
     expect(document.querySelectorAll("[aria-live]")).toHaveLength(0);
     expect(
-      document.querySelectorAll('[data-feed-announcement-owner="global-live-region"]')
+      document.querySelectorAll(
+        "[data-feed-announcement-owner='global-live-region']"
+      )
     ).toHaveLength(1);
+  });
+
+  test("keeps focus on the shell skip link during initial data loads", () => {
+    function Harness({
+      state,
+    }: {
+      state: React.ComponentProps<typeof FeedPresentation>["state"];
+    }) {
+      const targetRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={targetRef} type="button">
+            返回清單
+          </button>
+          <FeedPresentation
+            state={state}
+            list={<p>列表內容</p>}
+            loading={<output>載入中</output>}
+            error={<div role="alert">載入失敗</div>}
+            empty={<p>暫時沒有內容</p>}
+            focusTargetRef={targetRef}
+          />
+        </>
+      );
+    }
+
+    const { rerender } = render(<Harness state="loading" />);
+    expect(screen.getByRole("button", { name: "返回清單" })).not.toHaveFocus();
+    rerender(<Harness state="error" />);
+    expect(screen.getByRole("button", { name: "返回清單" })).not.toHaveFocus();
   });
 });
