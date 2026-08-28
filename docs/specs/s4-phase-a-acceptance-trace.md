@@ -13,7 +13,7 @@
 ## Phase A scope boundary
 
 **In scope (this trace only):**
-- #476 — disposable pre-production D1 identity foundation: Role Categories, protected system identities (Admin, Staff, 會友基礎), normalized Role Definitions, Role Assignments, grants, revisions, idempotency, immutable audit, local/CI seeds, and the safe pre-production reset.
+- #476 — disposable pre-production D1 identity foundation: Role Categories, the protected Admin and 會友基礎 system-identity anchors, the assignable Staff system identity (Global, below Admin, governed by capability and hierarchy rules), normalized Role Definitions, Role Assignments, grants, revisions, idempotency, immutable audit, local/CI seeds, and the safe pre-production reset.
 - #477 — Civic Minimal Tailwind token contract, named 800px shell breakpoint, local shadcn/Radix primitive additions required by shipped callers, Authenticated Shell/chrome migration without changing session or navigation outcomes.
 - #478 — read-only 身份組 hierarchy projection plus one complete rename mutation: shared actor, hierarchy, scope, revision, idempotency, transaction, audit, error, URL, and feedback seams.
 
@@ -40,7 +40,7 @@
 
 ### Contract under test
 
-The disposable pre-production D1 schema replaces the obsolete fixed-role permission tables with fixed Role Categories, protected system identities (Admin, Staff, 會友基礎), normalized Role Definitions, Role Assignments, grants, revisions, idempotency records, and an immutable audit log. A stale pre-091 schema fails with explicit reset instructions and never auto-drops an unknown database. Seeds create the protected anchors, fixed Department/Program categories, scoped Role Definitions with explicit scope, and representative Active Accounts. D1 constraints enforce one explicit scope for scoped identities, one active Account/Role Definition assignment pair, closed capability sets, protected system identity rows, and immutable audit/idempotency rows. The focused disposable-D1 contract proves clean creation, duplicate rejection, archive-safe history, and reset safety.
+The disposable pre-production D1 schema replaces the obsolete fixed-role permission tables with fixed Role Categories, the protected Admin and 會友基礎 system-identity anchors, the assignable Staff system identity (Global, below Admin, governed by capability and hierarchy rules), normalized Role Definitions, Role Assignments, grants, revisions, idempotency records, and an immutable audit log. A stale pre-091 schema fails with explicit reset instructions and never auto-drops an unknown database. Seeds create the protected anchors, fixed Department/Program categories, scoped Role Definitions with explicit scope, and representative Active Accounts. D1 constraints enforce one explicit scope for scoped identities, one active Account/Role Definition assignment pair, closed capability sets, write-guarded protected-anchor rows, and immutable audit/idempotency rows. Staff is not write-guarded at the schema layer; its label/position are mutated through the Worker role-rename authority seam under the documented capability and hierarchy rules. The focused dis…
 
 ### Acceptance trace
 
@@ -48,11 +48,11 @@ The disposable pre-production D1 schema replaces the obsolete fixed-role permiss
 | --- | --- | --- | --- |
 | D1-01 | A disposable local/CI D1 contains a pre-091 schema (legacy fixed-role tables present) | Run the preflight/migration seam | Migration fails with explicit reset instructions (e.g. `wrangler d1 execute ... --command "DROP TABLE IF EXISTS legacy_*"` shown in operator output); no row is dropped automatically and the database name is not matched against any non-disposable identifier. |
 | D1-02 | The preflight detects an unknown or non-disposable database name | Run the preflight | Preflight refuses to proceed, surfaces the database name and the reset command the operator must run by hand, and exits non-zero without issuing any `DROP`. |
-| D1-03 | A fresh disposable D1 is provided | Run seeds | Protected `Admin`, `Staff`, `會友基礎` Role Definitions exist with their locked highest/lowest positions; fixed `Department` and `Program` Role Categories are seeded as non-assignable; scoped Role Definitions (`成人部門管理者`, `青少年查經帶領`, and one per Program) exist with exactly one explicit scope; representative Active Accounts exist with the documented baseline 會友基礎 assignment. |
+| D1-03 | A fresh disposable D1 is provided | Run seeds | Protected `Admin` and 會友基礎 Role Definitions exist with their locked highest/lowest positions; the assignable `Staff` system identity (Global, below Admin) is seeded with its documented position and capability grants; fixed `Department` and `Program` Role Categories are seeded as non-assignable; scoped Role Definitions (`成人部門管理者`, `青少年查經帶領`, and one per Program) exist with exactly one explicit scope; representative Active Accounts exist with the documented baseline 會友基礎 assignment. |
 | D1-04 | A scoped Role Definition is inserted without an explicit scope | Submit a D1 write that omits scope | D1 constraint rejects the write; the row does not exist; no audit row is produced for a non-existent mutation. |
 | D1-05 | An attempt is made to create a second active `RoleAssignment` row for the same (Account, Role Definition) pair while an active row exists | Submit the duplicate assignment write | D1 constraint rejects the duplicate; the existing active assignment is unchanged; a rejected-attempt audit row is written only if the originating call reached a Worker transaction (not for raw D1 attempts). |
 | D1-06 | A Role Definition row is created with a grant set that includes an unknown capability key | Submit the write | D1 constraint rejects the write because the capability set must be closed against the canonical capability catalog; no Role Definition row or grant row is written. |
-| D1-07 | A write attempts to mutate or delete a protected system identity (Admin, Staff, 會友基礎) | Submit the mutation | D1 constraint and the Worker transaction both reject the write; the protected row is unchanged; a DENIED audit row is recorded when the attempt reached the Worker. |
+| D1-07 | A write attempts to mutate or delete a protected system identity (Admin or 會友基礎 — Staff is assignable, not write-guarded at the schema layer) | Submit the mutation | D1 constraint and the Worker transaction both reject the write; the protected row is unchanged; a DENIED audit row is recorded when the attempt reached the Worker. A write that targets the assignable Staff identity is rejected by the Worker role-management authority seam (capability and hierarchy rules) rather than by the protected-row D1 guard. |
 | D1-08 | An audit row is written, then an attempt is made to UPDATE or DELETE that row | Submit the mutation | The row is unchanged; immutable audit is enforced at the D1 layer. |
 | D1-09 | A successful privileged mutation is committed | Inspect the audit/idempotency tables | One SUCCESS audit row exists with actor, base revision, new revision, change summary, and idempotency key; the idempotency record is terminal and references the same revision. |
 | D1-10 | The same idempotency key is replayed with an equivalent change set | Replay the mutation | The mutation is idempotent: the same revision is returned, no duplicate Role Definition/grant/assignment rows exist, and a DUPLICATE audit row may be emitted but is identifiable as the replay. |
@@ -62,7 +62,7 @@ The disposable pre-production D1 schema replaces the obsolete fixed-role permiss
 
 ### Test seams and gates
 
-- **Worker/D1 seam:** `web/lib/identity/d1-schema.test.ts` and `web/lib/identity/seeds.test.ts` exercise preflight reset messaging, seed creation, scope enforcement, duplicate assignment rejection, closed-capability writes, protected-identity immutability, immutable audit, idempotency terminal state, archive-safe revocation, and replay under disposable D1.
+- **Worker/D1 seam:** `web/lib/identity/d1-schema.test.ts` and `web/lib/identity/seeds.test.ts` exercise preflight reset messaging, seed creation, scope enforcement, duplicate assignment rejection, closed-capability writes, protected-anchor immutability (Admin and 會友基礎), Staff assignability under the role-management authority seam, immutable audit, idempotency terminal state, archive-safe revocation, and replay under disposable D1.
 - **Constraint seam:** D1 CHECK and UNIQUE constraints are exercised at the SQL boundary (not via Worker) to prove that no application path can circumvent them.
 - **Required gates for #476:** root and `web/` typecheck, focused disposable-D1 test suite, `git diff --check`, no production D1/Apps Script/Sheets/Cloudflare mutation.
 
@@ -71,8 +71,8 @@ The disposable pre-production D1 schema replaces the obsolete fixed-role permiss
 | Ticket criterion | Trace rows |
 | --- | --- |
 | Stale pre-091 local/CI schema fails with explicit reset instructions and never auto-drops an unknown database. | D1-01, D1-02 |
-| Seeds create protected Admin, Staff, 會友基礎, fixed Department/Program categories, scoped Role Definitions, grants, and representative Accounts. | D1-03 |
-| D1 constraints enforce one explicit scope for scoped identities, one active Account/Role Definition pair, closed capabilities, protected system identities, and immutable audit/idempotency records. | D1-04, D1-05, D1-06, D1-07, D1-08, D1-09 |
+| Seeds create the protected Admin and 會友基礎 anchors, the assignable Staff system identity, fixed Department/Program categories, scoped Role Definitions, grants, and representative Accounts. | D1-03 |
+| D1 constraints enforce one explicit scope for scoped identities, one active Account/Role Definition pair, closed capabilities, write-guarded protected-anchor rows (Admin and 會友基礎), and immutable audit/idempotency records; Staff mutation is governed by the Worker role-management authority seam (capability and hierarchy rules). | D1-04, D1-05, D1-06, D1-07, D1-08, D1-09 |
 | The focused disposable-D1 contract proves clean creation, duplicate rejection, archive-safe history, and reset safety. | D1-10, D1-11, D1-12, D1-13 |
 
 ---
