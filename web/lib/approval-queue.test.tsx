@@ -304,7 +304,7 @@ describe("ApprovalQueue", () => {
     expect(screen.queryByText("Dave Ng")).not.toBeInTheDocument();
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
     await user.click(screen.getByRole("combobox", { name: "篩選角色" }));
-    await user.click(screen.getByRole("option", { name: "同工", exact: true }));
+    await user.click(screen.getByRole("option", { name: /^同工$/u }));
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "檢視所選" }));
     expect(screen.getByRole("button", { name: "移除 Dave Ng" })).toBeInTheDocument();
