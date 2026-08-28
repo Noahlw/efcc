@@ -32,6 +32,7 @@ const FORBIDDEN_MESSAGE = "您沒有權限執行此操作。";
 const NOT_FOUND_MESSAGE = "找不到指定的身份組。";
 const INVALID_NAME_MESSAGE = "名稱不可空白，且不可超過 60 個字元。";
 const NAME_CONFLICT_MESSAGE = "已存在相同名稱的身份組。";
+const ARCHIVED_MESSAGE = "已停用的身份組不可重新命名。";
 const LOAD_ERROR_MESSAGE = "身份組資料暫時無法載入，請稍後再試。";
 
 type PanelState =
@@ -47,6 +48,7 @@ type RenameState =
   | { kind: "conflict" }
   | { kind: "forbidden" }
   | { kind: "name-conflict" }
+  | { kind: "archived" }
   | { kind: "not-found" }
   | { kind: "invalid-name" }
   | { kind: "error" };
@@ -121,6 +123,7 @@ export const RoleHierarchyPanel = () => {
 
   const [renameValue, setRenameValue] = useState("");
   const [renameState, setRenameState] = useState<RenameState>({ kind: "idle" });
+  const renameSeedRef = useRef<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   const listHeadingRef = useRef<HTMLHeadingElement | null>(null);
@@ -166,7 +169,9 @@ export const RoleHierarchyPanel = () => {
           return;
         }
         const message =
-          error instanceof RpcError && error.problem.code === "FORBIDDEN"
+          error instanceof RpcError &&
+          (error.problem.code === "FORBIDDEN" ||
+            error.problem.code === "ROLE_FORBIDDEN")
             ? FORBIDDEN_MESSAGE
             : LOAD_ERROR_MESSAGE;
         setState({ kind: "error", message });
@@ -203,8 +208,22 @@ export const RoleHierarchyPanel = () => {
       ? (readyData.categories
           .flatMap((category) => category.definitions)
           .find((definition) => definition.roleDefinitionId === selectedId) ??
+
         null)
       : null;
+  // Direct `view=rename` links load the projection first, then seed the input
+  // from the authoritative current label. The role ref prevents a user's
+  // cleared/edited draft from being overwritten on every keystroke.
+  useEffect(() => {
+    if (view !== "rename" || !selected) {
+      renameSeedRef.current = null;
+      return;
+    }
+    if (renameSeedRef.current !== selected.roleDefinitionId) {
+      renameSeedRef.current = selected.roleDefinitionId;
+      setRenameValue(selected.label);
+    }
+  }, [selected, view]);
 
   useEffect(() => {
     if (view === "detail" && selected) {
@@ -214,10 +233,11 @@ export const RoleHierarchyPanel = () => {
 
   useEffect(() => {
     if (view === "rename" && renameState.kind === "idle") {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
+      const input = renameInputRef.current;
+      input?.focus();
+      input?.select();
     }
-  }, [renameState.kind, view]);
+  }, [renameState.kind, view, selected?.roleDefinitionId]);
 
   // Focus restore when returning to the list (H-17).
   useEffect(() => {
@@ -264,7 +284,7 @@ export const RoleHierarchyPanel = () => {
     if (view === "rename") {
       setView("detail");
       setRenameState({ kind: "idle" });
-      window.history.pushState(
+      window.history.replaceState(
         null,
         "",
         rolesHref({
@@ -299,6 +319,9 @@ export const RoleHierarchyPanel = () => {
     }
     if (code === "ROLE_IDEMPOTENCY_REUSE") {
       return { state: { kind: "conflict" }, message: CONFLICT_MESSAGE };
+    }
+    if (code === "ROLE_ARCHIVED") {
+      return { state: { kind: "archived" }, message: ARCHIVED_MESSAGE };
     }
     if (code === "ROLE_NAME_TAKEN") {
       return {
@@ -392,17 +415,15 @@ export const RoleHierarchyPanel = () => {
       </header>
 
       {state.kind === "loading" && (
-        <output aria-busy="true" aria-live="polite" tabIndex={-1}>
+        <output aria-busy="true" tabIndex={-1}>
           {COPY.permissions.loading}
         </output>
       )}
 
       {state.kind === "error" && (
         <section
-          aria-live="assertive"
           className={styles.error}
           id="role-hierarchy-state"
-          role="alert"
           tabIndex={-1}
         >
           <h2>{state.message}</h2>
@@ -556,7 +577,10 @@ export const RoleHierarchyPanel = () => {
               maxLength={60}
               onChange={(event) => {
                 setRenameValue(event.target.value);
-                if (renameState.kind === "invalid-name") {
+                if (
+                  renameState.kind === "idle" ||
+                  renameState.kind === "invalid-name"
+                ) {
                   setRenameState({ kind: "dirty" });
                 }
               }}
@@ -565,34 +589,25 @@ export const RoleHierarchyPanel = () => {
             />
           </label>
           {renameState.kind === "invalid-name" && (
-            <p className={styles.feedback} role="alert">
-              {INVALID_NAME_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{INVALID_NAME_MESSAGE}</p>
           )}
           {renameState.kind === "name-conflict" && (
-            <p className={styles.feedback} role="alert">
-              {NAME_CONFLICT_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{NAME_CONFLICT_MESSAGE}</p>
+          )}
+          {renameState.kind === "archived" && (
+            <p className={styles.feedback}>{ARCHIVED_MESSAGE}</p>
           )}
           {renameState.kind === "conflict" && (
-            <p className={styles.feedback} role="alert">
-              {CONFLICT_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{CONFLICT_MESSAGE}</p>
           )}
           {renameState.kind === "forbidden" && (
-            <p className={styles.feedback} role="alert">
-              {FORBIDDEN_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{FORBIDDEN_MESSAGE}</p>
           )}
           {renameState.kind === "not-found" && (
-            <p className={styles.feedback} role="alert">
-              {NOT_FOUND_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{NOT_FOUND_MESSAGE}</p>
           )}
           {renameState.kind === "error" && (
-            <p className={styles.feedback} role="alert">
-              {LOAD_ERROR_MESSAGE}
-            </p>
+            <p className={styles.feedback}>{LOAD_ERROR_MESSAGE}</p>
           )}
           {renameState.kind === "success" && (
             <p className={styles.success}>{SUCCESS_MESSAGE}</p>

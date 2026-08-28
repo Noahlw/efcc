@@ -50,6 +50,7 @@ import {
   RoleCapabilityDeniedError,
   RoleHighestProtectedError,
   RoleNameConflictError,
+  RoleArchivedError,
   RoleProtectedIdentityError,
   RoleScopeMismatchError,
   RoleSelfRenameError,
@@ -248,6 +249,15 @@ function mapRenameError(error: unknown, requestId: string): Response {
       "ROLE_SCOPE_MISMATCH",
       "Forbidden",
       "身份組超出你的可管理範圍。",
+      requestId
+    );
+  }
+  if (error instanceof RoleArchivedError) {
+    return roleProblem(
+      409,
+      "ROLE_ARCHIVED",
+      "Conflict",
+      "已停用的身份組不可重新命名。",
       requestId
     );
   }

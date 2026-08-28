@@ -32,7 +32,6 @@ const DISPOSABLE_NAME_PREFIXES = [
   "E2E_",
   "E2E_DEMO_",
   "E2E_DISPOSABLE_",
-  "disposable-",
 ] as const;
 
 const LEGACY_PRE_019_TABLES = [
@@ -89,7 +88,7 @@ function buildResetCommand(database: string): string {
   ).join(" ");
   return (
     `wrangler d1 execute ${database} --local --command "${drops}" ` +
-    `# then: pnpm db:migrate:local && pnpm db:seed:disposable`
+    `# then: pnpm --dir web db:migrate:local && pnpm db:seed:disposable`
   );
 }
 

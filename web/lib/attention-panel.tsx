@@ -86,6 +86,7 @@ export const AttentionPanel = ({
         showCloseButton={false}
         onCloseAutoFocus={onCloseAutoFocus}
         className="attention-panel"
+        overlayClassName="attention-panel__overlay"
       >
         <header className="attention-panel__header">
           <DialogTitle className="attention-panel__title">

@@ -1,10 +1,11 @@
 /**
  * #476 — Disposable seed contract.
  *
- * The seeds create the three protected system identities (Admin, Staff,
- * 會友基礎), the fixed Department / Program Role Categories, a representative
- * scoped Department manager Role Definition, a representative scoped
- * Program leader Role Definition, and the representative Active Accounts.
+ * The seeds create the three system identities (Admin and 會友基礎 are
+ * protected; Staff remains assignable), the fixed Department / Program Role
+ * Categories, a representative scoped Department manager Role Definition, a
+ * representative scoped Program leader Role Definition, and the
+ * representative Active Accounts.
  *
  * Every seed is idempotent (INSERT OR IGNORE on a stable key) so re-running
  * the seeds against a partially seeded disposable D1 must not double-insert
@@ -42,7 +43,7 @@ describe("#476 disposable seed contract", () => {
     });
   });
 
-  test("protected system identities are seeded with is_protected = 1 and stable keys", async () => {
+  test("Admin and 會友基礎 are protected while Staff remains assignable", async () => {
     const admin = await readScalar<{
       label: string;
       is_protected: number;
@@ -67,13 +68,14 @@ describe("#476 disposable seed contract", () => {
     );
     expect(member).toBeDefined();
     expect(member?.is_protected).toBe(1);
+    expect(member?.stable_key).toBe("member");
 
     const staff = await readScalar<{ is_protected: number; position: number }>(
       `SELECT is_protected, position FROM role_definitions WHERE stable_key = ?`,
       "staff"
     );
     expect(staff).toBeDefined();
-    expect(staff?.is_protected).toBe(1);
+    expect(staff?.is_protected).toBe(0);
     const adminPos = await readScalar<{ position: number }>(
       `SELECT position FROM role_definitions WHERE stable_key = ?`,
       "admin"

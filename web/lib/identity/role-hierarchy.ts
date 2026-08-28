@@ -139,6 +139,13 @@ export class RoleNameConflictError extends Error {
   }
 }
 
+export class RoleArchivedError extends Error {
+  constructor() {
+    super("ROLE_ARCHIVED: archived Role Definition cannot be renamed");
+    this.name = "RoleArchivedError";
+  }
+}
+
 export class RoleCapabilityDeniedError extends Error {
   constructor() {
     super("ROLE_FORBIDDEN: actor lacks the operation capability");
@@ -244,12 +251,19 @@ interface ActorRoleRow {
 }
 
 function roleKind(
-  categoryKey: RoleCategoryKey
+  categoryKey: RoleCategoryKey,
+  stableKey: string
 ): RoleHierarchyDefinition["kind"] {
-  // Every Global-category definition is one of the protected system anchors
-  // (Admin / Staff / 會友基礎, Spec 091 §4.2); scoped categories map 1:1.
-  if (categoryKey === ROLE_CATEGORY_KEY.GLOBAL) {
+  // Global custom identities are assignable Role Definitions, not system
+  // anchors. Only the three code-owned stable keys are system identities.
+  if (
+    categoryKey === ROLE_CATEGORY_KEY.GLOBAL &&
+    Object.values(PROTECTED_STABLE_KEYS).includes(stableKey)
+  ) {
     return "SYSTEM";
+  }
+  if (categoryKey === ROLE_CATEGORY_KEY.GLOBAL) {
+    return "GLOBAL";
   }
   if (categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT) {
     return "DEPARTMENT_SCOPED";
@@ -449,7 +463,7 @@ export async function loadRoleHierarchy(
           roleDefinitionId: row.role_definition_id,
           label: row.label,
           description: row.description,
-          kind: roleKind(row.category_key),
+          kind: roleKind(row.category_key, row.stable_key),
           scopeKind: row.scope_kind,
           scopeId: row.scope_id,
           scopeLabel: scopeLabel(row.scope_kind, row.scope_id, names),
@@ -524,11 +538,12 @@ export function normalizeName(label: string): string {
  * key reused with a different change cannot replay a false result.
  */
 export function canonicalRenameFingerprint(input: {
+  actor_user_id: string;
   role_definition_id: string;
   base_revision: number;
   label: string;
 }): string {
-  return `rename|${input.role_definition_id}|${input.base_revision}|${normalizeName(input.label)}`;
+  return `rename|${input.actor_user_id}|${input.role_definition_id}|${input.base_revision}|${normalizeName(input.label)}`;
 }
 
 /** Rename eligibility is recomputed here from D1 (H-16: UI is not authority). */
@@ -548,6 +563,11 @@ async function assertRenameEligible(
     actorRoles.length > 0
       ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
+  // Archived definitions remain historical records but are no longer mutable.
+  // The Worker maps this stable lifecycle failure to ROLE_ARCHIVED.
+  if (target.is_archived === 1) {
+    throw new RoleArchivedError();
+  }
 
   // H-08: Admin and 會友基礎 are locked for every actor. Staff is a
   // protected-by-position system identity but remains renameable by an
@@ -625,15 +645,15 @@ export async function renameRoleDefinition(
   try {
     await assertRenameEligible(db, input.actor_user_id, target);
   } catch (error) {
-    if (
+    const isDenied =
       error instanceof RoleCapabilityDeniedError ||
       error instanceof RoleAdminProtectedError ||
       error instanceof RoleBaselineProtectedError ||
       error instanceof RoleProtectedIdentityError ||
       error instanceof RoleSelfRenameError ||
       error instanceof RoleHighestProtectedError ||
-      error instanceof RoleScopeMismatchError
-    ) {
+      error instanceof RoleScopeMismatchError;
+    if (isDenied || error instanceof RoleArchivedError) {
       await recordRoleDenialForRename(db, {
         actor_user_id: input.actor_user_id,
         role_definition_id: input.role_definition_id,
@@ -642,8 +662,9 @@ export async function renameRoleDefinition(
         correlation_id: input.correlation_id,
         old_label: oldName,
         new_label: newName,
-        outcome: "DENIED",
-        reason: error.name,
+        outcome: error instanceof RoleArchivedError ? "REJECTED" : "DENIED",
+        reason:
+          error instanceof RoleArchivedError ? "ROLE_ARCHIVED" : error.name,
       });
     }
     throw error;
@@ -682,6 +703,7 @@ export async function renameRoleDefinition(
   // so a key reused with a different change returns ROLE_IDEMPOTENCY_REUSE
   // instead of replaying a false result.
   const fingerprint = canonicalRenameFingerprint({
+    actor_user_id: input.actor_user_id,
     role_definition_id: input.role_definition_id,
     base_revision: input.base_revision,
     label: newName,
@@ -726,9 +748,10 @@ export async function renameRoleDefinition(
       idempotent: result.idempotent,
     };
   } catch (error) {
-    if (error instanceof RoleRevisionConflictError) {
-      // H-12: CONFLICT audit row; the idempotency ledger records the
-      // rejected attempt as its own terminal row.
+    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
+      // Preflight stale revisions do not create a ledger row, so they still
+      // need one conflict audit. A raced batch already writes its immutable
+      // conflict audit atomically and must not be duplicated here.
       await recordRoleDenialForRename(db, {
         actor_user_id: input.actor_user_id,
         role_definition_id: input.role_definition_id,

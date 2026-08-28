@@ -111,11 +111,17 @@ export class RoleIdempotencyConflictError extends Error {
 export class RoleRevisionConflictError extends Error {
   readonly currentRevision: number;
   readonly reusedKey: boolean;
-  constructor(currentRevision: number, reusedKey: boolean) {
+  readonly auditWritten: boolean;
+  constructor(
+    currentRevision: number,
+    reusedKey: boolean,
+    auditWritten = false
+  ) {
     super("ROLE_REVISION_CONFLICT: stale base revision");
     this.name = "RoleRevisionConflictError";
     this.currentRevision = currentRevision;
     this.reusedKey = reusedKey;
+    this.auditWritten = auditWritten;
   }
 }
 
@@ -140,13 +146,14 @@ interface RoleMutationRecord {
 function gate(
   input: Pick<
     RoleMutationInput,
-    "idempotency_key" | "request_fingerprint" | "base_revision"
+    "idempotency_key" | "request_fingerprint" | "actor_user_id" | "base_revision"
   >
 ): string {
   return `EXISTS (
     SELECT 1 FROM role_policy_mutations m
      WHERE m.idempotency_key = ?
        AND m.request_fingerprint = ?
+       AND m.actor_user_id = ?
        AND m.outcome = 'PENDING'
   ) AND EXISTS (
     SELECT 1 FROM role_policy_revisions s
@@ -157,12 +164,13 @@ function gate(
 function bindGate(
   input: Pick<
     RoleMutationInput,
-    "idempotency_key" | "request_fingerprint" | "base_revision"
+    "idempotency_key" | "request_fingerprint" | "actor_user_id" | "base_revision"
   >
 ) {
   return [
     input.idempotency_key,
     input.request_fingerprint,
+    input.actor_user_id,
     input.base_revision,
   ];
 }
@@ -228,12 +236,18 @@ export async function applyRoleMutation(
 
   const existing = await findMutation(db, input.idempotency_key);
   if (existing) {
-    if (existing.request_fingerprint !== input.request_fingerprint) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== input.request_fingerprint
+    ) {
       throw new RoleIdempotencyConflictError();
     }
     if (existing.outcome === "CONFLICT" || existing.outcome === "DENIED") {
+      // A terminal conflict/denial already has its immutable audit outcome.
+      // Replays must not append another row.
       throw new RoleRevisionConflictError(
         existing.resulting_revision ?? input.base_revision,
+        true,
         true
       );
     }
@@ -251,6 +265,14 @@ export async function applyRoleMutation(
   if (currentRevision !== input.base_revision) {
     throw new RoleRevisionConflictError(currentRevision, false);
   }
+  // A single rename must prove that its guarded UPDATE changed a row before
+  // the revision can advance. This closes the concurrent revision race:
+  // another writer may commit after the pre-read but before this batch.
+  const domainChangeGuard =
+    input.desired.length === 1 &&
+    input.desired[0]?.kind === "rename_role_definition"
+      ? "AND changes() > 0"
+      : "";
 
   const statements: D1PreparedStatement[] = [
     db
@@ -268,6 +290,7 @@ export async function applyRoleMutation(
         input.now
       ),
   ];
+
 
   for (const change of input.desired) {
     const gateClause = gate(input);
@@ -360,7 +383,7 @@ export async function applyRoleMutation(
           .prepare(
             `UPDATE role_definitions
                 SET label = ?, updated_by = ?, updated_at = ?
-              WHERE role_definition_id = ?
+              WHERE role_definition_id = ? AND is_archived = 0
                 AND ${gateClause}`
           )
           .bind(
@@ -451,10 +474,12 @@ export async function applyRoleMutation(
         `UPDATE role_policy_revisions
             SET revision = revision + 1, updated_at = ?
           WHERE id = 1 AND revision = ?
+            ${domainChangeGuard}
             AND EXISTS (
               SELECT 1 FROM role_policy_mutations m
                WHERE m.idempotency_key = ?
                  AND m.request_fingerprint = ?
+                 AND m.actor_user_id = ?
                  AND m.outcome = 'PENDING'
             )`
       )
@@ -462,7 +487,8 @@ export async function applyRoleMutation(
         input.now,
         input.base_revision,
         input.idempotency_key,
-        input.request_fingerprint
+        input.request_fingerprint,
+        input.actor_user_id
       ),
     db
       .prepare(
@@ -470,10 +496,15 @@ export async function applyRoleMutation(
             SET applied = 1
           WHERE idempotency_key = ?
             AND request_fingerprint = ?
+            AND actor_user_id = ?
             AND outcome = 'PENDING'
             AND changes() > 0`
       )
-      .bind(input.idempotency_key, input.request_fingerprint)
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      )
   );
   statements.push(
     db
@@ -482,10 +513,14 @@ export async function applyRoleMutation(
             SET audit_written = 1
           WHERE idempotency_key = ?
             AND request_fingerprint = ?
-            AND outcome = 'PENDING'
-            AND applied = 1`
+            AND actor_user_id = ?
+            AND outcome = 'PENDING'`
       )
-      .bind(input.idempotency_key, input.request_fingerprint)
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      )
   );
 
   statements.push(
@@ -499,9 +534,15 @@ export async function applyRoleMutation(
                 completed_at = ?
           WHERE idempotency_key = ?
             AND request_fingerprint = ?
+            AND actor_user_id = ?
             AND outcome = 'PENDING'`
       )
-      .bind(input.now, input.idempotency_key, input.request_fingerprint)
+      .bind(
+        input.now,
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      )
   );
 
   // The terminal audit row is the one the read projection can join on;
@@ -519,6 +560,7 @@ export async function applyRoleMutation(
            FROM role_policy_mutations m
           WHERE m.idempotency_key = ?
             AND m.request_fingerprint = ?
+            AND m.actor_user_id = ?
             AND m.outcome IN ('SUCCESS', 'CONFLICT')
             AND m.audit_written = 1`
       )
@@ -534,17 +576,29 @@ export async function applyRoleMutation(
         input.audit_summary.reason ?? null,
         input.correlation_id ?? null,
         input.idempotency_key,
-        input.request_fingerprint
+        input.request_fingerprint,
+        input.actor_user_id
       )
   );
 
   const results = await db.batch(statements);
   const record = await findMutation(db, input.idempotency_key);
-  if (!record || record.request_fingerprint !== input.request_fingerprint) {
+  if (
+    !record ||
+    record.actor_user_id !== input.actor_user_id ||
+    record.request_fingerprint !== input.request_fingerprint
+  ) {
     throw new RoleIdempotencyConflictError();
   }
   if (record.outcome === "PENDING" || record.outcome === "DENIED") {
     throw new Error("role mutation did not reach a terminal state");
+  }
+  if (record.outcome === "CONFLICT") {
+    throw new RoleRevisionConflictError(
+      record.resulting_revision ?? (await readCurrentRevision(db)),
+      false,
+      true
+    );
   }
   return {
     outcome: record.outcome,

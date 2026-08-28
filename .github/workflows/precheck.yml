@@ -90,6 +90,10 @@ jobs:
 
       - name: Install web dependencies
         run: pnpm --dir web install --frozen-lockfile
+      - name: Apply local disposable identity schema and seed
+        run: |
+          pnpm --dir web db:migrate:local
+          pnpm db:seed:disposable
 
       - name: Typecheck (Next app + worker/auth)
         run: pnpm --dir web typecheck

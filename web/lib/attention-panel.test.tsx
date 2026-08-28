@@ -27,6 +27,15 @@ describe(AttentionPanel, () => {
       screen.getByRole("tab", { name: COPY.attention.noticesTab })
     ).toHaveAttribute("aria-selected", "false");
   });
+  test("places the modal surface and overlay above shell chrome", () => {
+    render(<AttentionPanel open onClose={() => {}} />);
+    expect(
+      screen.getByRole("dialog", { name: COPY.attention.title })
+    ).toHaveClass("attention-panel");
+    expect(
+      document.querySelector('[data-slot="dialog-overlay"]')
+    ).toHaveClass("attention-panel__overlay");
+  });
 
   test("renders empty state for pending tab by default", () => {
     render(<AttentionPanel open onClose={() => {}} />);

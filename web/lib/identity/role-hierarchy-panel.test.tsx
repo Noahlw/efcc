@@ -48,6 +48,7 @@ const server = setupServer();
 
 const ADMIN_ROLE = "018f3b8a-0000-7000-8000-000000000a01";
 const MANAGER_ROLE = "018f3b8a-0000-7000-8000-100000000001";
+const FORBIDDEN_MESSAGE = "您沒有權限執行此操作。";
 
 const VIEW: RoleHierarchyView = {
   revision: 4,
@@ -202,6 +203,7 @@ describe(RoleHierarchyPanel, () => {
       screen.findByRole("heading", { name: "成人部門管理者" })
     ).resolves.toBeTruthy();
     expect(screen.getByText(/成區/u)).toBeTruthy();
+    expect(screen.getByText("11")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重新命名" })).toBeTruthy();
   });
 
@@ -221,6 +223,19 @@ describe(RoleHierarchyPanel, () => {
     expect(
       screen.queryByRole("heading", { name: "成人部門管理者" })
     ).toBeNull();
+  });
+  test("H-17: direct rename links preload the selected role's current name", async () => {
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=rename`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+
+    const input = await screen.findByLabelText("新名稱");
+    await waitFor(() => {
+      expect(input).toHaveValue("成人部門管理者");
+    });
+    expect(input).toHaveFocus();
   });
 
   test("H-19: rename focus moves to the input and Cantonese success is announced once", async () => {
@@ -263,10 +278,39 @@ describe(RoleHierarchyPanel, () => {
     await expect(screen.findByRole("status")).resolves.toHaveTextContent(
       /身份組名稱已更新/u
     );
-    // LiveRegion is the sole production announcement owner; the visible
-    // success copy is intentionally not a live region.
+    // LiveRegion is the sole production announcement owner; visible
+    // success/error copy is intentionally not a live region.
     expect(document.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByText(/身份組名稱已更新/u)).toHaveLength(2);
+  });
+  test("hierarchy load errors use the global LiveRegion without a duplicate alert", async () => {
+    server.use(
+      http.get("/api/v1/identity/roles", () =>
+        HttpResponse.json(
+          {
+            status: 403,
+            code: "FORBIDDEN",
+            title: "Forbidden",
+            detail: "forbidden",
+            requestId: "rid-forbidden",
+          },
+          { status: 403 }
+        )
+      )
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await expect(
+      screen.findByText(FORBIDDEN_MESSAGE, { selector: "h2" })
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(FORBIDDEN_MESSAGE);
+    expect(document.querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("Back from detail returns to the list without mutating the URL", async () => {
@@ -282,6 +326,21 @@ describe(RoleHierarchyPanel, () => {
     await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
     expect(screen.getByRole("heading", { name: /部門/u })).toBeTruthy();
     expect(mocks.router.push).not.toHaveBeenCalled();
+  });
+  test("Back from rename does not add a duplicate history entry", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await user.click(screen.getByRole("button", { name: "重新命名" }));
+    const historyLength = window.history.length;
+    await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
+    expect(window.history.length).toBe(historyLength);
+    expect(window.location.search).toContain(`role=${MANAGER_ROLE}`);
+    expect(window.location.search).toContain("view=detail");
+    await waitFor(() => expect(screen.getByRole("article")).toHaveFocus());
   });
 
   test("H-17: popstate reconciles detail/list and restores focus", async () => {

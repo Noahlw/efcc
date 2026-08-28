@@ -340,4 +340,36 @@ describe("#478 identity Worker/HTTP seam", () => {
     assert.equal(body.data.idempotent, false);
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
   });
+  test("archived role rename returns ROLE_ARCHIVED Problem Details", async () => {
+    await testDb()
+      .prepare(`UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`)
+      .bind(DEPARTMENT_MANAGER_ROLE)
+      .run();
+    const revision = await testDb()
+      .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
+      .first<{ revision: number }>();
+    const res = await worker.fetch(
+      request(`/api/v1/identity/roles/${DEPARTMENT_MANAGER_ROLE}/name`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-archived",
+        },
+        body: {
+          label: "不應更新",
+          base_revision: revision?.revision ?? 1,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 409);
+    const body = await problemBody(res);
+    assert.equal(body.code, "ROLE_ARCHIVED");
+    const row = await testDb()
+      .prepare(`SELECT label FROM role_definitions WHERE role_definition_id = ?`)
+      .bind(DEPARTMENT_MANAGER_ROLE)
+      .first<{ label: string }>();
+    assert.equal(row?.label, "成人部門主管");
+  });
 });

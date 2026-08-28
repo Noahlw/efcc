@@ -192,7 +192,7 @@ describe("Shell", () => {
     sessionStorage.clear();
     authCalls.length = 0;
     replaceMock.mockClear();
-    pathnameMock.mockClear();
+    pathnameMock.mockReset().mockReturnValue("/");
   });
 
   afterEach(() => {
@@ -1658,6 +1658,7 @@ describe("Shell", () => {
     test("scanner page renders COPY.sections.scanner title", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
+      pathnameMock.mockReturnValue("/scanner");
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
@@ -1669,6 +1670,7 @@ describe("Shell", () => {
     test("scanner page renders self check-in for a Member", async () => {
       withAuthRestore(PUBLIC_USER);
       setAuthHint();
+      pathnameMock.mockReturnValue("/scanner");
       render(<ScannerPage />);
       await waitFor(() => {
         expect(

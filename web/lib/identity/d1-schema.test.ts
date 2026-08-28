@@ -86,6 +86,8 @@ describe("#476 disposable D1 schema contract", () => {
       throw new Error("expected non-disposable outcome");
     }
     expect(result.resetCommand).toContain("DROP TABLE IF EXISTS");
+    expect(result.resetCommand).toContain("pnpm db:seed:disposable");
+    expect(result.resetCommand).toContain("pnpm --dir web db:migrate:local");
     expect(result.message).toContain("efcc-identity-prod");
     const tables = await readAllTables();
     expect(tables).toContain("role_definitions");
@@ -131,6 +133,43 @@ describe("#476 disposable D1 schema contract", () => {
           .run();
       }
     }
+  });
+  test("D1 keeps fixed Role Categories non-assignable and immutable", async () => {
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_categories SET label = '已篡改'
+             WHERE category_key = 'Global'`
+        )
+        .run();
+    }, "role_categories are fixed and non-assignable");
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_categories SET is_assignable = 1
+             WHERE category_key = 'Department'`
+        )
+        .run();
+    }, "role_categories are fixed and non-assignable");
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `DELETE FROM role_categories WHERE category_key = 'Program'`
+        )
+        .run();
+    }, "role_categories is fixed and non-assignable");
+    const rows = await testDb()
+      .prepare(
+        `SELECT category_key, is_assignable FROM role_categories
+          ORDER BY display_order`
+      )
+      .all<{ category_key: string; is_assignable: number }>();
+    expect(rows.results?.map((row) => row.category_key)).toStrictEqual([
+      "Global",
+      "Department",
+      "Program",
+    ]);
+    expect(rows.results?.every((row) => row.is_assignable === 0)).toBe(true);
   });
 
   test("D1 rejects a scoped Role Definition without an explicit scope_id", async () => {
@@ -196,38 +235,89 @@ describe("#476 disposable D1 schema contract", () => {
     }, "CHECK constraint failed");
   });
 
-  test("D1 rejects UPDATE/DELETE of a protected system identity", async () => {
-    const adminRoleId = "018f3b8a-0000-7000-8000-000000000a01";
+  test("D1 rejects UPDATE/DELETE of every protected system-identity column", async () => {
+    const anchorIds = [
+      "018f3b8a-0000-7000-8000-000000000a01",
+      "018f3b8a-0000-7000-8000-000000000a03",
+    ];
+    const columnUpdates = [
+      ["category_key", "'Department'"],
+      ["stable_key", "'protected.changed'"],
+      ["label", "'Hacked'"],
+      ["description", "'Hacked'"],
+      ["scope_kind", "'Department'"],
+      ["scope_id", "'scope-changed'"],
+      ["position", "2"],
+      ["is_protected", "0"],
+      ["is_archived", "1"],
+      ["created_by", "NULL"],
+      ["created_at", "'2026-08-28T00:00:00.000Z'"],
+      ["updated_by", "NULL"],
+      ["updated_at", "'2026-08-28T00:00:00.000Z'"],
+    ] as const;
+
+    for (const roleId of anchorIds) {
+      for (const [column, value] of columnUpdates) {
+        await expectAbort(async () => {
+          await testDb()
+            .prepare(
+              `UPDATE role_definitions SET ${column} = ${value}
+                WHERE role_definition_id = ?`
+            )
+            .bind(roleId)
+            .run();
+        }, "protected system identity rows are immutable");
+      }
+      await expectAbort(async () => {
+        await testDb()
+          .prepare(`DELETE FROM role_definitions WHERE role_definition_id = ?`)
+          .bind(roleId)
+          .run();
+      }, "protected system identity rows are immutable");
+    }
+  });
+
+  test("Staff remains assignable and writable at the D1 boundary", async () => {
+    const staffRoleId = "018f3b8a-0000-7000-8000-000000000a02";
     await expectAbort(async () => {
       await testDb()
         .prepare(
-          `UPDATE role_definitions SET label = 'Hacked' WHERE role_definition_id = ?`
+          `UPDATE role_definitions SET is_protected = 1
+            WHERE role_definition_id = ?`
         )
-        .bind(adminRoleId)
+        .bind(staffRoleId)
         .run();
-    }, "protected system identity rows are immutable");
+    }, "Staff must remain assignable");
+    await testDb()
+      .prepare(`UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`)
+      .bind("同工測試", staffRoleId)
+      .run();
+    const changed = await readScalar<{ label: string; is_protected: number }>(
+      `SELECT label, is_protected FROM role_definitions WHERE role_definition_id = ?`,
+      staffRoleId
+    );
+    expect(changed?.label).toBe("同工測試");
+    expect(changed?.is_protected).toBe(0);
     await expectAbort(async () => {
       await testDb()
         .prepare(
-          `UPDATE role_definitions SET is_protected = 0 WHERE role_definition_id = ?`
+          `UPDATE role_definitions
+              SET role_definition_id = '018f3b8a-0000-7000-8000-9999000000a1'
+            WHERE role_definition_id = ?`
         )
-        .bind(adminRoleId)
+        .bind(staffRoleId)
         .run();
-    }, "protected system identity rows are immutable");
-    await expectAbort(async () => {
-      await testDb()
-        .prepare(
-          `UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`
-        )
-        .bind(adminRoleId)
-        .run();
-    }, "protected system identity rows are immutable");
-    await expectAbort(async () => {
-      await testDb()
-        .prepare(`DELETE FROM role_definitions WHERE role_definition_id = ?`)
-        .bind(adminRoleId)
-        .run();
-    }, "protected system identity rows are immutable");
+    }, "role_definition_id is immutable");
+    await testDb()
+      .prepare(`UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`)
+      .bind("同工", staffRoleId)
+      .run();
+    const assignment = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_assignments
+         WHERE role_definition_id = ? AND revoked_at IS NULL`,
+      staffRoleId
+    );
+    expect(assignment?.c).toBeGreaterThan(0);
   });
 
   test("D1 rejects UPDATE/DELETE of an audit row", async () => {
@@ -504,6 +594,58 @@ describe("#476 disposable D1 schema contract", () => {
       `SELECT revision FROM role_policy_revisions WHERE id = 1`
     );
     expect(final?.revision).toBe(after?.revision);
+  });
+  test("actor-bound idempotency rejects the same key from another actor", async () => {
+    const base = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    const roleId = "018f3b8a-0000-7000-8000-1000000000a1";
+    const input = {
+      idempotency_key: "t476-actor-bound",
+      request_fingerprint: "same-client-fingerprint",
+      actor_user_id: "E2E_DISPOSABLE_ADMIN",
+      base_revision: base?.revision ?? 1,
+      now: "2026-08-27T03:30:00.000Z",
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000018",
+      desired: [
+        {
+          kind: "create_role_definition" as const,
+          role_definition_id: roleId,
+          category_key: "Program" as const,
+          stable_key: "t476.actor.bound",
+          label: "T476 Actor Bound",
+          description: "Disposable actor-bound fixture",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 52,
+          capabilities: [],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleId,
+        new_value_json: JSON.stringify({ label: "T476 Actor Bound" }),
+      },
+    };
+    await applyRoleMutation(testDb(), input);
+    await expect(
+      applyRoleMutation(testDb(), {
+        ...input,
+        actor_user_id: "E2E_DISPOSABLE_STAFF",
+        audit_id: "018f3b8a-0000-7000-8000-aaaa00000019",
+      })
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+    const row = await readScalar<{
+      actor_user_id: string;
+      outcome: string;
+    }>(
+      `SELECT actor_user_id, outcome FROM role_policy_mutations
+        WHERE idempotency_key = ?`,
+      input.idempotency_key
+    );
+    expect(row?.actor_user_id).toBe("E2E_DISPOSABLE_ADMIN");
+    expect(row?.outcome).toBe("SUCCESS");
   });
 
   test("stale base revision is rejected and the policy is unchanged", async () => {

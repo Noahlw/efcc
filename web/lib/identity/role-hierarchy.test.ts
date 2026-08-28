@@ -33,7 +33,9 @@ import {
   seedDisposableIdentity,
   recordRoleDenialForRename,
   renameRoleDefinition,
+  canonicalRenameFingerprint,
   RoleAdminProtectedError,
+  RoleArchivedError,
   RoleBaselineProtectedError,
   RoleCapabilityDeniedError,
   RoleHighestProtectedError,
@@ -213,6 +215,60 @@ describe("#478 role hierarchy and rename contract", () => {
     // Technical capability keys never appear in the projection.
     expect(JSON.stringify(view)).not.toContain("department.manage");
   });
+  test("H-03 distinguishes a custom Global identity from system anchors", async () => {
+    const roleId = "018f3b8a-0000-7000-8000-1000000000f1";
+    const base = await readRevision();
+    await applyRoleMutation(testDb(), {
+      idempotency_key: "h-03-custom-global",
+      request_fingerprint: "fp-h-03-custom-global",
+      actor_user_id: ADMIN,
+      base_revision: base,
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-aaaa0000050f",
+      desired: [
+        {
+          kind: "create_role_definition",
+          role_definition_id: roleId,
+          category_key: "Global",
+          stable_key: "t478.custom.global",
+          label: "全域自訂身份組",
+          description: "H-03 custom Global fixture",
+          scope_kind: "Global",
+          scope_id: null,
+          position: 30,
+          capabilities: [],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleId,
+        new_value_json: JSON.stringify({ label: "全域自訂身份組" }),
+      },
+    });
+    const view = await loadRoleHierarchy(testDb(), ADMIN);
+    const custom = view.categories
+      .flatMap((category) => category.definitions)
+      .find((definition) => definition.roleDefinitionId === roleId);
+    expect(custom?.kind).toBe("GLOBAL");
+    expect(custom?.isProtected).toBe(false);
+    expect(custom?.actions.map((action) => action.action)).toContain("rename");
+  });
+  test("H-13: canonical rename fingerprints are actor-bound", () => {
+    const input = {
+      role_definition_id: DEPARTMENT_MANAGER_ROLE,
+      base_revision: 7,
+      label: "  成人部門管理者  ",
+    };
+    expect(
+      canonicalRenameFingerprint({ actor_user_id: ADMIN, ...input })
+    ).not.toBe(
+      canonicalRenameFingerprint({ actor_user_id: STAFF, ...input })
+    );
+    expect(
+      canonicalRenameFingerprint({ actor_user_id: ADMIN, ...input })
+    ).toContain("|成人部門管理者");
+  });
 
   test("H-02: expansion state is local to the projection (no persisted state)", async () => {
     // The projection carries no expansion state; the component owns it.
@@ -367,6 +423,190 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(
       auditsAfter.filter((audit) => audit.outcome === "SUCCESS").length
     ).toBe(successBefore);
+  });
+  test("H-12: concurrent rename revision race yields one success and one conflict", async () => {
+    const roleA = "018f3b8a-0000-7000-8000-1000000000f2";
+    const roleB = "018f3b8a-0000-7000-8000-1000000000f3";
+    const createBase = await readRevision();
+    await applyRoleMutation(testDb(), {
+      idempotency_key: "h-12-race-create",
+      request_fingerprint: "fp-h-12-race-create",
+      actor_user_id: ADMIN,
+      base_revision: createBase,
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000510",
+      desired: [
+        {
+          kind: "create_role_definition",
+          role_definition_id: roleA,
+          category_key: "Program",
+          stable_key: "t478.race.a",
+          label: "競爭角色甲",
+          description: "H-12 race fixture A",
+          scope_kind: "Program",
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 40,
+          capabilities: [],
+        },
+        {
+          kind: "create_role_definition",
+          role_definition_id: roleB,
+          category_key: "Program",
+          stable_key: "t478.race.b",
+          label: "競爭角色乙",
+          description: "H-12 race fixture B",
+          scope_kind: "Program",
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 41,
+          capabilities: [],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleA,
+        new_value_json: JSON.stringify({ label: "競爭角色甲" }),
+      },
+    });
+    const base = await readRevision();
+    const results = await Promise.allSettled([
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-12-race-a",
+          base_revision: base,
+          role_definition_id: roleA,
+          label: "競爭角色甲更新",
+          audit_id: "018f3b8a-0000-7000-8000-aaaa00000511",
+          correlation_id: "corr-h-12-race-a",
+        })
+      ),
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-12-race-b",
+          base_revision: base,
+          role_definition_id: roleB,
+          label: "競爭角色乙更新",
+          audit_id: "018f3b8a-0000-7000-8000-aaaa00000512",
+          correlation_id: "corr-h-12-race-b",
+        })
+      ),
+    ]);
+    const successes = results.filter(
+      (result) => result.status === "fulfilled"
+    );
+    const conflicts = results.filter(
+      (result) =>
+        result.status === "rejected" &&
+        result.reason instanceof RoleRevisionConflictError
+    );
+    expect(successes).toHaveLength(1);
+    expect(conflicts).toHaveLength(1);
+    expect(await readRevision()).toBe(base + 1);
+    const labels = await testDb()
+      .prepare(
+        `SELECT role_definition_id, label FROM role_definitions
+          WHERE role_definition_id IN (?, ?)
+          ORDER BY role_definition_id`
+      )
+      .bind(roleA, roleB)
+      .all<{ role_definition_id: string; label: string }>();
+    const roleLabels = labels.results?.map((row) => row.label) ?? [];
+    expect(roleLabels).toHaveLength(2);
+    expect(
+      roleLabels.filter((label) => label.endsWith("更新")).length
+    ).toBe(1);
+    expect(
+      roleLabels.filter((label) => label === "競爭角色甲" || label === "競爭角色乙")
+    ).toHaveLength(1);
+    const raceAudits = await testDb()
+      .prepare(
+        `SELECT outcome FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_RENAME'
+            AND entity_id IN (?, ?)`
+      )
+      .bind(roleA, roleB)
+      .all<{ outcome: string }>();
+    expect(
+      raceAudits.results?.map((audit) => audit.outcome).sort()
+    ).toStrictEqual(["CONFLICT", "SUCCESS"]);
+  });
+  test("ROLE_ARCHIVED: archived targets reject rename without mutation", async () => {
+    const roleId = "018f3b8a-0000-7000-8000-1000000000f4";
+    const createBase = await readRevision();
+    await applyRoleMutation(testDb(), {
+      idempotency_key: "h-archived-create",
+      request_fingerprint: "fp-h-archived-create",
+      actor_user_id: ADMIN,
+      base_revision: createBase,
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000513",
+      desired: [
+        {
+          kind: "create_role_definition",
+          role_definition_id: roleId,
+          category_key: "Program",
+          stable_key: "t478.archived.rename",
+          label: "已停用身份組",
+          description: "Archived rename fixture",
+          scope_kind: "Program",
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 50,
+          capabilities: [],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleId,
+        new_value_json: JSON.stringify({ label: "已停用身份組" }),
+      },
+    });
+    const archiveBase = await readRevision();
+    await applyRoleMutation(testDb(), {
+      idempotency_key: "h-archived-archive",
+      request_fingerprint: "fp-h-archived-archive",
+      actor_user_id: ADMIN,
+      base_revision: archiveBase,
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-aaaa00000514",
+      desired: [{ kind: "archive_role_definition", role_definition_id: roleId }],
+      audit_summary: {
+        action: "ROLE_DEFINITION_ARCHIVE",
+        entity_type: "role_definition",
+        entity_id: roleId,
+        new_value_json: JSON.stringify({ is_archived: 1 }),
+      },
+    });
+    const renameBase = await readRevision();
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-archived-rename",
+          base_revision: renameBase,
+          role_definition_id: roleId,
+          label: "不應更新",
+          audit_id: "018f3b8a-0000-7000-8000-aaaa00000515",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleArchivedError);
+    expect(await readRevision()).toBe(renameBase);
+    const row = await readScalar<{ label: string; is_archived: number }>(
+      `SELECT label, is_archived FROM role_definitions
+        WHERE role_definition_id = ?`,
+      roleId
+    );
+    expect(row?.label).toBe("已停用身份組");
+    expect(row?.is_archived).toBe(1);
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-aaaa00000515"
+    );
+    expect(audit?.outcome).toBe("REJECTED");
+    expect(audit?.reason).toBe("ROLE_ARCHIVED");
   });
 
   test("H-13: idempotency key reused with a different payload is rejected and audited", async () => {

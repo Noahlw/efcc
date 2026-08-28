@@ -40,6 +40,7 @@ export {
   canonicalRenameFingerprint,
   RoleInvalidNameError,
   RoleNameConflictError,
+  RoleArchivedError,
   RoleCapabilityDeniedError,
   RoleAdminProtectedError,
   RoleBaselineProtectedError,

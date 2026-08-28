@@ -445,8 +445,8 @@ input:focus-visible {
    class (no off-token Tailwind literals). The class is unlayered (it lives
    after the Tailwind utilities layer), so it beats the shadcn/Radix
    `top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl
-   p-4` utility defaults without `!important`. `position: fixed` and the
-   modal overlay z-index stay on the primitive utilities (TK-03). */
+   p-4` utility defaults without `!important`. Both dialog surfaces use the
+   shell overlay layer so they remain above the phone dock and desktop rail. */
 .attention-panel {
   top: var(--space-4);
   right: var(--space-4);
@@ -454,6 +454,7 @@ input:focus-visible {
   width: auto;
   max-width: calc(100vw - var(--space-4) * 2);
   max-height: calc(100dvh - var(--space-4) * 2);
+  z-index: var(--layer-overlay);
   padding: 0;
   gap: 0;
   /* Reset the Radix DialogContent's `top-1/2 left-1/2 -translate-x-1/2
@@ -467,6 +468,9 @@ input:focus-visible {
   color: var(--ink);
   background: var(--surface-raised);
   box-shadow: var(--shadow-overlay);
+}
+.attention-panel__overlay {
+  z-index: var(--layer-overlay);
 }
 
 .attention-panel__header {

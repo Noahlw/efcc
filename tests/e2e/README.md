@@ -40,13 +40,14 @@ Use two terminals:
 pnpm dev:local
 
 # terminal 2
-pnpm db:seed:local       # E2E_ accounts; also restores the legacy-PIN fixture
+pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
+pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
 pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
-`pnpm dev:local` builds the Next static export, applies local migrations, and starts the Worker. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, then seeds these local accounts:
 
+`pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
 | Username     | Credential                | Role   |
 | ------------ | ------------------------- | ------ |
 | `E2E_admin`  | `E2E_admin!dev`           | Admin  |
