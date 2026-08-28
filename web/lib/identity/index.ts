@@ -35,6 +35,7 @@ export {
   recordRoleDenialForRename,
   ROLE_HIERARCHY_ACTION,
   ROLE_NAME_MAX_LENGTH,
+  RoleInvalidNameError,
   RoleNameConflictError,
   RoleProtectedIdentityError,
   RoleHighestProtectedError,

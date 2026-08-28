@@ -14,6 +14,7 @@ import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
 import { MemberDirectoryPanel } from "./member-directory-panel";
 import { PermissionsPanel } from "./permissions-panel";
+import { RoleHierarchyPanel } from "./role-hierarchy-panel";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
 
@@ -41,6 +42,9 @@ const ManagementModule = () => {
     }
     case "permissions": {
       return <PermissionsPanel />;
+    }
+    case "roles": {
+      return <RoleHierarchyPanel />;
     }
     case "attendance": {
       return <AttendanceOperatorPanel />;

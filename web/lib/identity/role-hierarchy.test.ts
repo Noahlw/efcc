@@ -20,7 +20,7 @@
  * The audit/idempotency seam asserts the documented outcome rows and
  * exactly one terminal idempotency row per key.
  */
-/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects, vitest/expect-expect, vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy, vitest/prefer-strict-equal, eslint/no-await-in-loop, eslint/no-unused-vars -- shared workerd/D1 fixture spans the suite; max-expects is per-acceptance-trace group. */
+/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects, vitest/expect-expect, vitest/prefer-expect-resolves, vitest/prefer-to-have-length, vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy, vitest/prefer-strict-equal, eslint/no-await-in-loop, eslint/no-inline-comments, eslint/no-unused-vars, unicorn/no-await-expression-member -- shared workerd/D1 fixture spans the suite; max-expects is per-acceptance-trace group; inline comments mark fixture IDs. */
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -29,18 +29,21 @@ import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import {
   applyRoleMutation,
   loadRoleHierarchy,
+  preflightDisposableSchema,
+  seedDisposableIdentity,
   recordRoleDenialForRename,
   renameRoleDefinition,
   RoleHighestProtectedError,
   RoleIdempotencyConflictError,
+  RoleInvalidNameError,
   RoleNameConflictError,
   RoleProtectedIdentityError,
   RoleRevisionConflictError,
   RoleScopeMismatchError,
   RoleSelfRenameError,
   RoleTargetNotFoundError,
+  ROLE_NAME_MAX_LENGTH,
 } from "./index";
-import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
 import { ROLE_CATEGORY_KEY } from "./types";
 
 const DISPOSABLE_DATABASE = "E2E_disposable-local";
@@ -54,10 +57,8 @@ const MEMBER = "E2E_DISPOSABLE_MEMBER";
 const ADMIN_ROLE = "018f3b8a-0000-7000-8000-000000000a01";
 const STAFF_ROLE = "018f3b8a-0000-7000-8000-000000000a02";
 const MEMBER_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
-const DEPARTMENT_MANAGER_ROLE =
-  "018f3b8a-0000-7000-8000-100000000001"; // 成人部門管理者
-const PROGRAM_LEADER_ROLE =
-  "018f3b8a-0000-7000-8000-100000000002"; // 青少年查經帶領
+const DEPARTMENT_MANAGER_ROLE = "018f3b8a-0000-7000-8000-100000000001"; // 成人部門管理者
+const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002"; // 青少年查經帶領
 
 const NOW = "2026-08-28T00:00:00.000Z";
 
@@ -107,7 +108,9 @@ async function readMutation(
   );
 }
 
-function renameInput(overrides: Partial<Parameters<typeof renameRoleDefinition>[1]> = {}) {
+function renameInput(
+  overrides: Partial<Parameters<typeof renameRoleDefinition>[1]> = {}
+) {
   return {
     actor_user_id: ADMIN,
     request_fingerprint: "fp-h-05",
@@ -240,7 +243,9 @@ describe("#478 role hierarchy and rename contract", () => {
     const before = await loadRoleHierarchy(testDb(), ADMIN);
     const target = before.categories
       .flatMap((category) => category.definitions)
-      .find((definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE);
+      .find(
+        (definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE
+      );
     expect(target).toBeDefined();
     if (!target) {
       throw new Error("missing program leader definition");
@@ -279,14 +284,21 @@ describe("#478 role hierarchy and rename contract", () => {
     const after = await loadRoleHierarchy(testDb(), ADMIN);
     const renamed = after.categories
       .flatMap((category) => category.definitions)
-      .find((definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE);
+      .find(
+        (definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE
+      );
     expect(renamed?.assignmentCount).toBe(assignmentsBefore);
     expect(renamed?.grantCount).toBe(grantsBefore);
     expect(renamed?.position).toBe(20);
 
     // H-15: audit + idempotency terminal row committed with the rename.
-    const audits = await readAuditRows("ROLE_DEFINITION_RENAME", PROGRAM_LEADER_ROLE);
-    expect(audits.filter((audit) => audit.outcome === "SUCCESS")).toHaveLength(1);
+    const audits = await readAuditRows(
+      "ROLE_DEFINITION_RENAME",
+      PROGRAM_LEADER_ROLE
+    );
+    expect(audits.filter((audit) => audit.outcome === "SUCCESS")).toHaveLength(
+      1
+    );
     const mutation = await readMutation("h-05-rename");
     expect(mutation?.outcome).toBe("SUCCESS");
     expect(mutation?.resulting_revision).toBe(base + 1);
@@ -349,11 +361,21 @@ describe("#478 role hierarchy and rename contract", () => {
       "ROLE_DEFINITION_RENAME",
       DEPARTMENT_MANAGER_ROLE
     );
-    expect(auditsAfter.length).toBe(auditsBefore.length);
+    // H-13 documents a REJECTED audit row for key reuse with a different
+    // payload; no domain mutation happens (no row was written for this
+    // target, the revision is unchanged, and the original SUCCESS row is
+    // untouched).
+    expect(auditsAfter.length).toBe(auditsBefore.length + 1);
+    expect(auditsAfter.at(-1)?.outcome).toBe("REJECTED");
+    expect(auditsAfter.at(-1)?.reason).toBe("ROLE_IDEMPOTENCY_REUSE");
+    expect(await readRevision()).toBe(base);
   });
 
   test("H-07: name conflict returns a typed error, no mutation, no revision advance, and a REJECTED audit row", async () => {
     const base = await readRevision();
+    const rejectedBefore = (
+      await readAuditRows("ROLE_DEFINITION_RENAME", DEPARTMENT_MANAGER_ROLE)
+    ).filter((audit) => audit.outcome === "REJECTED").length;
     await expect(
       renameRoleDefinition(
         testDb(),
@@ -377,9 +399,74 @@ describe("#478 role hierarchy and rename contract", () => {
       "ROLE_DEFINITION_RENAME",
       DEPARTMENT_MANAGER_ROLE
     );
-    expect(audits.filter((audit) => audit.outcome === "REJECTED")).toHaveLength(1);
+    expect(audits.filter((audit) => audit.outcome === "REJECTED").length).toBe(
+      rejectedBefore + 1
+    );
     const mutation = await readMutation("h-07-conflict");
     expect(mutation).toBeNull();
+  });
+
+  test("H-11: empty or over-long names are rejected before any write with no mutation", async () => {
+    const base = await readRevision();
+    const auditsBefore = await readAuditRows(
+      "ROLE_DEFINITION_RENAME",
+      DEPARTMENT_MANAGER_ROLE
+    );
+    // Empty after trimming.
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-11-empty",
+          request_fingerprint: "fp-h-11-empty",
+          base_revision: base,
+          role_definition_id: DEPARTMENT_MANAGER_ROLE,
+          label: "   ",
+          audit_id: "018f3b8a-0000-7000-8000-aaaa0000050c",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleInvalidNameError);
+    // Over the documented 60-character maximum.
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-11-long",
+          request_fingerprint: "fp-h-11-long",
+          base_revision: base,
+          role_definition_id: DEPARTMENT_MANAGER_ROLE,
+          label: "超".repeat(ROLE_NAME_MAX_LENGTH + 1),
+          audit_id: "018f3b8a-0000-7000-8000-aaaa0000050d",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleInvalidNameError);
+    // No mutation: revision, label, and audit rows are all unchanged.
+    expect(await readRevision()).toBe(base);
+    const row = await readScalar<{ label: string }>(
+      `SELECT label FROM role_definitions WHERE role_definition_id = ?`,
+      DEPARTMENT_MANAGER_ROLE
+    );
+    expect(row?.label).toBe("成人部門管理者");
+    const auditsAfter = await readAuditRows(
+      "ROLE_DEFINITION_RENAME",
+      DEPARTMENT_MANAGER_ROLE
+    );
+    const trimmedMax = ` ${"長".repeat(ROLE_NAME_MAX_LENGTH)} `;
+    const baseAfter = await readRevision();
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-11-trimmed-max",
+          request_fingerprint: "fp-h-11-trimmed",
+          base_revision: baseAfter,
+          role_definition_id: DEPARTMENT_MANAGER_ROLE,
+          label: trimmedMax,
+          audit_id: "018f3b8a-0000-7000-8000-aaaa0000050e",
+        })
+      )
+    ).resolves.toMatchObject({ label: "長".repeat(ROLE_NAME_MAX_LENGTH) });
+    expect(await readRevision()).toBe(baseAfter + 1);
   });
 
   test("H-08: Admin and 會友基礎 are locked for every actor", async () => {
@@ -495,14 +582,7 @@ describe("#478 role hierarchy and rename contract", () => {
     await importLegacyUsers(
       testDb(),
       [
-        [
-          "User_ID",
-          "Name",
-          "Username",
-          "PIN_Code",
-          "System_Role",
-          "Status",
-        ],
+        ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
         [
           scopedAccount,
           "Disposable Scoped PL",

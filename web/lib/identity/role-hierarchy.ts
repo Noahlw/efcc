@@ -17,10 +17,10 @@
  *     returns the original result.
  *
  * Authority is recomputed from D1 on every call — the UI projection is
- * never the authority (Spec 091 §10). The Worker handler
- * (web/lib/identity/role-handlers.ts) is the only caller.
+ * never the authority (Spec 091 §10). The Worker handlers
+ * (web/lib/identity/role-handlers.ts) are the only callers.
  */
-/* oxlint-disable eslint/max-classes-per-file, eslint/no-unused-vars, unicorn/no-lonely-if -- classes mirror the Worker error vocabulary; guards are sequential by design. */
+/* oxlint-disable eslint/max-classes-per-file, eslint/no-unused-vars, eslint/no-use-before-define, eslint/prefer-destructuring, eslint/require-await, unicorn/no-lonely-if -- classes mirror the Worker error vocabulary; guards are sequential by design and authority helpers are declared top-down for readability. */
 import {
   applyRoleMutation,
   readCurrentRevision,
@@ -29,11 +29,7 @@ import {
   RoleRevisionConflictError,
 } from "./mutations";
 import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
-import type {
-  RoleAuditOutcome,
-  RoleCategoryKey,
-  RoleScopeKind,
-} from "./types";
+import type { RoleAuditOutcome, RoleCategoryKey, RoleScopeKind } from "./types";
 
 /** Name contract (H-11): trimmed, non-empty, ≤ 60 characters (Spec 091 §8.2). */
 export const ROLE_NAME_MAX_LENGTH = 60;
@@ -117,6 +113,15 @@ export interface RoleRenameResult {
 }
 
 /** Typed rename failures; the handler maps them to Problem Details. */
+export class RoleInvalidNameError extends Error {
+  constructor() {
+    super(
+      "INVALID_NAME: display name must be trimmed, non-empty, and within ROLE_NAME_MAX_LENGTH"
+    );
+    this.name = "RoleInvalidNameError";
+  }
+}
+
 export class RoleNameConflictError extends Error {
   constructor() {
     super("ROLE_NAME_TAKEN: normalized display name already exists");
@@ -342,49 +347,49 @@ export async function loadRoleHierarchy(
 
   const highestPosition =
     actorRoles.length > 0
-      ? actorRoles[0]?.position ?? Number.POSITIVE_INFINITY
+      ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
 
-  const categoriesView: RoleHierarchyCategory[] = (categories.results ?? []).map(
-    (category) => {
-      const definitionsView = (definitions.results ?? [])
-        .filter((row) => row.category_key === category.category_key)
-        .map((row) => {
-          const countsForRole = countById.get(row.role_definition_id);
-          const canRename =
-            !row.is_protected &&
-            row.is_archived === 0 &&
-            row.position > highestPosition &&
-            actorRoles[0]?.role_definition_id !== row.role_definition_id &&
-            isWithinActorScope(actorRoles, row);
-          return {
-            roleDefinitionId: row.role_definition_id,
-            label: row.label,
-            description: row.description,
-            kind: roleKind(row.category_key),
-            scopeKind: row.scope_kind,
-            scopeId: row.scope_id,
-            scopeLabel: scopeLabel(row.scope_kind, row.scope_id, names),
-            position: row.position,
-            isProtected: row.is_protected === 1,
-            isArchived: row.is_archived === 1,
-            assignmentCount: countsForRole?.assignments ?? 0,
-            grantCount: countsForRole?.grants ?? 0,
-            actions: canRename
-              ? [{ action: ROLE_HIERARCHY_ACTION.RENAME, label: "重新命名" }]
-              : [],
-          };
-        });
-      return {
-        categoryKey: category.category_key,
-        label: category.label,
-        description: category.description,
-        displayOrder: category.display_order,
-        childCount: definitionsView.length,
-        definitions: definitionsView,
-      };
-    }
-  );
+  const categoriesView: RoleHierarchyCategory[] = (
+    categories.results ?? []
+  ).map((category) => {
+    const definitionsView = (definitions.results ?? [])
+      .filter((row) => row.category_key === category.category_key)
+      .map((row) => {
+        const countsForRole = countById.get(row.role_definition_id);
+        const canRename =
+          !row.is_protected &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        return {
+          roleDefinitionId: row.role_definition_id,
+          label: row.label,
+          description: row.description,
+          kind: roleKind(row.category_key),
+          scopeKind: row.scope_kind,
+          scopeId: row.scope_id,
+          scopeLabel: scopeLabel(row.scope_kind, row.scope_id, names),
+          position: row.position,
+          isProtected: row.is_protected === 1,
+          isArchived: row.is_archived === 1,
+          assignmentCount: countsForRole?.assignments ?? 0,
+          grantCount: countsForRole?.grants ?? 0,
+          actions: canRename
+            ? [{ action: ROLE_HIERARCHY_ACTION.RENAME, label: "重新命名" }]
+            : [],
+        };
+      });
+    return {
+      categoryKey: category.category_key,
+      label: category.label,
+      description: category.description,
+      displayOrder: category.display_order,
+      childCount: definitionsView.length,
+      definitions: definitionsView,
+    };
+  });
 
   return {
     categories: categoriesView,
@@ -433,7 +438,7 @@ async function assertRenameEligible(
   const actorRoles = await loadActorRoles(db, actorUserId);
   const highestPosition =
     actorRoles.length > 0
-      ? actorRoles[0]?.position ?? Number.POSITIVE_INFINITY
+      ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
 
   // H-08: Admin and 會友基礎 are locked for every actor.
@@ -485,13 +490,21 @@ export async function renameRoleDefinition(
   db: D1Database,
   input: RoleRenameInput
 ): Promise<RoleRenameResult> {
+  // H-11: name validation happens before any D1 write or audit row
+  // (Spec 091 §9.3): trimmed, non-empty, ≤ ROLE_NAME_MAX_LENGTH. The
+  // canonical uniqueness check below re-validates the normalized form.
+  const label = input.label.trim();
+  if (label.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
+    throw new RoleInvalidNameError();
+  }
+
   const target = await findRoleDefinition(db, input.role_definition_id);
   if (!target) {
     throw new RoleTargetNotFoundError();
   }
 
   const oldName = target.label;
-  const newName = input.label;
+  const newName = label;
 
   // Recompute every authority rule from D1 before any write (Spec 091 §10);
   // each rejection records the documented DENIED/CONFLICT audit row.
@@ -590,6 +603,22 @@ export async function renameRoleDefinition(
         new_label: newName,
         outcome: "CONFLICT",
         reason: `ROLE_REVISION_CONFLICT:current=${error.currentRevision}`,
+      });
+    }
+    if (error instanceof RoleIdempotencyConflictError) {
+      // H-13: a key already used for a different change is rejected and
+      // recorded as the documented immutable REJECTED audit row; no
+      // domain row is written (the batch never ran).
+      await recordRoleDenialForRename(db, {
+        actor_user_id: input.actor_user_id,
+        role_definition_id: input.role_definition_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        old_label: oldName,
+        new_label: newName,
+        outcome: "REJECTED",
+        reason: "ROLE_IDEMPOTENCY_REUSE",
       });
     }
     throw error;

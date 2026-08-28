@@ -19,6 +19,9 @@
  *
  *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
  *
+ *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478): the
+ *     read-only 身份組 hierarchy and the one rename mutation.
+ *
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -402,7 +405,9 @@ export default {
         url.pathname.startsWith("/api/v1/programs/accounts/") &&
         request.method === "GET"
       ) {
-        const accountId = url.pathname.slice("/api/v1/programs/accounts/".length);
+        const accountId = url.pathname.slice(
+          "/api/v1/programs/accounts/".length
+        );
         return handleGetAccountDirectoryDetail(request, programEnv, accountId);
       }
       if (
@@ -1022,6 +1027,48 @@ export default {
         "NOT_FOUND",
         "Not found",
         "Unknown home route."
+      );
+    }
+
+    // ---- Role Identity domain (Spec 091 / #478): cookie-only transport --
+    if (url.pathname.startsWith("/api/v1/identity/")) {
+      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+        return authProblemResponse(
+          503,
+          "AUTH_NOT_CONFIGURED",
+          "Service unavailable",
+          "Auth signing secret is not configured."
+        );
+      }
+      const roleEnv = {
+        DB: env.DB,
+        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+      } as const;
+      const { handleGetRoleHierarchy, handleRenameRoleDefinition } =
+        await import("./lib/identity/role-handlers");
+
+      if (
+        url.pathname === "/api/v1/identity/roles" &&
+        request.method === "GET"
+      ) {
+        return handleGetRoleHierarchy(request, roleEnv);
+      }
+      const renamePrefix = "/api/v1/identity/roles/";
+      if (
+        url.pathname.startsWith(renamePrefix) &&
+        url.pathname.endsWith("/name") &&
+        request.method === "PATCH"
+      ) {
+        const roleDefinitionId = decodeURIComponent(
+          url.pathname.slice(renamePrefix.length, -"/name".length)
+        );
+        return handleRenameRoleDefinition(request, roleEnv, roleDefinitionId);
+      }
+      return authProblemResponse(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Unknown identity route."
       );
     }
 
