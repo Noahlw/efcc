@@ -30,7 +30,6 @@ import { ParticipantEventDetailPage } from "./participant-event-detail-page";
 import { ParticipantProgramDetail } from "./participant-program-detail";
 import { ProgramWorkspace } from "./program-workspace";
 import type { ProgramsManagementAccess } from "./programs-access";
-import type { ManagementAttentionState } from "./programs-attention";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ProgramsIntent,
@@ -42,6 +41,11 @@ import type { ManagementNotificationState } from "./programs-notifications";
 import { useAsyncResource } from "./use-async-resource";
 
 import styles from "@/app/programs/programs.module.css";
+
+type ManagementAttentionState =
+  | { kind: "loading" }
+  | { kind: "ready"; attention: ManagementAttention }
+  | { kind: "error"; message: string };
 
 type AccessState =
   | { kind: "loading" }

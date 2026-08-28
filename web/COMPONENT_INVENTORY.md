@@ -91,9 +91,10 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ## S2 — Home / Programs / Notices / Messages
 
-### Home (`app/home/page.tsx`, `lib/announcement-detail.tsx`, `lib/home-*`)
+### Home (`app/home/page.tsx`, `lib/announcement-detail.tsx`, `lib/feed-presentation.tsx`)
 
-- **shadcn used:** `Badge` (enrolledBadge), `Button` (primaryAction, backButton, externalLink), `Card` (eventCard, venueCard, listCard, emptyCard), `Alert` (state/error), `Skeleton` (skeletonPage/Region/Block/Intro/EventCard etc.)
+- **shadcn used:** `Badge` (enrolled state), `Button` (event/announcement/navigation actions), `Card` (event, venue, list, empty states), `Alert` (load recovery), `Skeleton` (loading)
+- **shared presentation:** `FeedPresentation` owns feed state/focus/announcement semantics; Home keeps projection fetching, CTA validation, history, and domain links local. Tailwind utilities own layout.
 
 ### Programs — Boundary / Directory / Detail / Workspace
 
@@ -101,13 +102,15 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 - **shadcn used:** `Button` (all program/workspace actions, enrollment, attention), `Badge` (program status, attention counts), `Card` (directoryCard, participantDirectoryCard, workspace sections), `Input` (search, program form), `Textarea` (programForm, settings), `Alert` (boundaryState/error, intentNotice), `Skeleton` (directorySkeleton*, boundaryState), `Tabs` (program-workspace, programs-boundary), `Accordion` (permissions-panel integration)
 
-### Notices (`app/notices/page.tsx`, `lib/notices-panel.tsx`)
+### Notices (`app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/feed-presentation.tsx`)
 
-- **shadcn used:** `Button` (markAll, retry), `Badge` (unreadCount), `Card` (empty, list wrapper), `Alert` (error), `Skeleton` (loading)
+- **shadcn used:** `Button` (mark-all, retry), `Badge` (unread count), `Card` (empty/list surfaces), `Alert` (read/load recovery), `Skeleton` (loading)
+- **shared presentation:** `FeedPresentation` owns state/focus/announcement semantics; Notices keeps notice queries, read mutation, timestamps, and Programs/Profile destinations local. Tailwind utilities own layout.
 
-### Messages (`app/messages/page.tsx`, `lib/messages-panel.tsx`, `lib/message-feed` via `notices-panel.module.css`)
+### Messages (`app/messages/page.tsx`, `lib/messages-panel.tsx`, `lib/feed-presentation.tsx`)
 
-- **shadcn used:** `Button` (mark-all, retry), `Badge` (unread), `Card`/`Card` wrappers, `Alert`, `Skeleton`
+- **shadcn used:** `Button` (retry/back), `Badge` (published date), `Card` (message/empty surfaces), `Alert` (load/intent recovery), `Skeleton` (loading)
+- **shared presentation:** `FeedPresentation` owns state/focus/announcement semantics; Messages keeps announcement fetching, `messages-intent`, history, and HTTPS CTA validation local. Tailwind utilities own layout.
 
 ---
 
@@ -160,10 +163,10 @@ All shipped S1–S4 **common visual elements** (submit/primary actions, secondar
 | Module | Layout / domain classes kept | Control primitives replaced |
 | --- | --- | --- |
 | `app/page.module.css` | page, header, main, bodyCenter, splitLogin, loginCopy, formCard, etc. | `Button`, `Input`, `Card`, `Alert`, `Skeleton` |
-| `app/home/home.module.css` | page, intro, eventCard, listCard, section, detailPage, etc. | `Badge`, `Button`, `Card`, `Alert`, `Skeleton` |
+| `app/home/page.tsx`, `lib/announcement-detail.tsx`, `lib/feed-presentation.tsx` | Tailwind page/detail/feed layout and semantic state slots | `Badge`, `Button`, `Card`, `Alert`, `Skeleton` |
 | `app/programs/programs.module.css` | page, card, deptList, eventsPanel, programDetail, workspace*, directory* | `Button`, `Badge`, `Card`, `Input`, `Textarea`, `Alert`, `Skeleton`, `Tabs`, `Accordion` |
 | `lib/attendance-panel.module.css` | page, card, camera*, method*, confirmation, chooser, roster* | `Button`, `Input`, `Card`, `Alert`, `Badge`, `Skeleton` (radio chooser stays native) |
-| `lib/notices-panel.module.css` | page, pageHeader, panel, toolbar, list, item, messageFeed/Card* | `Button`, `Badge`, `Card`, `Alert`, `Skeleton` |
+| `app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/messages-panel.tsx` | Tailwind page/list/detail layout and semantic state slots | `Button`, `Badge`, `Card`, `Alert`, `Skeleton` |
 | `app/management/*` | page, header, groupCard, row, results, detail, policyLayout, etc. | `Switch`, `Accordion`, `Input`, `Badge` where used; row-buttons stay native |
 | `lib/approval-queue.module.css` | page, tabs, rows, tray, confirm* | `Button`/`Alert` partially; checkbox/select stay native for test contracts |
 | `lib/approval-detail.module.css` | page, header, card, detailRow, actions | `Button`, `Card`, `Alert` |

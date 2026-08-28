@@ -1,5 +1,4 @@
 "use client";
-/* oxlint-disable eslint/no-plusplus react/function-component-definition */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -9,18 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
+import {
+  FeedPresentation,
+  type FeedAnnouncement,
+  type FeedPresentationState,
+} from "@/lib/feed-presentation";
 import { hkNoticeListLabel } from "@/lib/hk-time";
-import { announce } from "@/lib/live-region";
 import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
 import type { Notice, NoticesResult } from "@/lib/notices-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
-
-import styles from "./notices-panel.module.css";
 
 type NoticesState =
   | { kind: "loading" }
   | { kind: "ready"; result: NoticesResult }
   | { kind: "error" };
+
+interface FeedbackState extends FeedAnnouncement {}
 
 function noticeHref(notice: Notice): string {
   if (notice.kind === "event" && notice.program_id && notice.event_id) {
@@ -58,20 +61,31 @@ function NoticeRow({ notice }: { notice: Notice }) {
   const time = noticeTime(notice.created_at);
 
   return (
-    <li className={styles.item}>
-      <a className={styles.itemLink} href={noticeHref(notice)}>
+    <li className="border-[var(--line)] not-first:border-t">
+      <a
+        className="grid min-h-[92px] min-w-0 grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-2.5 p-4 text-left outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-[var(--focus)] hover:bg-[var(--surface)]"
+        href={noticeHref(notice)}
+        data-feed-list-item
+      >
         <span
-          className={unread ? styles.unreadDot : styles.readDot}
+          className={`mt-1.5 size-2 rounded-full ${unread ? "bg-[var(--accent)]" : "bg-transparent"}`}
           aria-hidden="true"
         />
         {unread && (
           <span className="sr-only">{COPY.notices.noticesUnread}</span>
         )}
-        <span className={styles.itemCopy}>
-          <strong className={styles.itemTitle}>{notice.title}</strong>
-          <span className={styles.itemBody}>{notice.body}</span>
+        <span className="min-w-0">
+          <strong className="block min-w-0 wrap-anywhere text-base font-semibold leading-[1.4] text-[var(--ink)]">
+            {notice.title}
+          </strong>
+          <span className="mt-1.5 block min-w-0 wrap-anywhere text-[0.9375rem] leading-[1.55] text-[var(--ink-muted)]">
+            {notice.body}
+          </span>
         </span>
-        <time className={styles.itemTime} dateTime={time.dateTime}>
+        <time
+          className="whitespace-nowrap text-xs leading-[1.5] text-[var(--ink-muted)]"
+          dateTime={time.dateTime}
+        >
           {time.label}
         </time>
       </a>
@@ -83,13 +97,17 @@ export function NoticesPanel() {
   const [state, setState] = useState<NoticesState>({ kind: "loading" });
   const [marking, setMarking] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(1);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const requestVersion = useRef(0);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const feedbackKey = useRef(0);
 
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
+    setLoadAttempt(version);
     setState({ kind: "loading" });
     setMarkError(null);
+    setFeedback(null);
     try {
       const result = await listNotices();
       if (requestVersion.current !== version) {
@@ -111,17 +129,17 @@ export function NoticesPanel() {
     };
   }, [load]);
 
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, [state.kind]);
+  const announceFeedback = useCallback((message: string) => {
+    setFeedback({ key: ++feedbackKey.current, message });
+  }, []);
 
   const markAllRead = async () => {
     if (state.kind !== "ready" || state.result.unread_count === 0 || marking) {
       return;
     }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      setMarkError(COPY.notices.noticesMarkAllReadError);
-      announce(COPY.notices.noticesMarkAllReadError);
+      const message = COPY.notices.noticesMarkAllReadError;
+      setMarkError(message);
       return;
     }
     setMarking(true);
@@ -146,99 +164,120 @@ export function NoticesPanel() {
           },
         };
       });
-      announce(COPY.notices.noticesMarkedAllRead);
+      announceFeedback(COPY.notices.noticesMarkedAllRead);
     } catch {
-      setMarkError(COPY.notices.noticesMarkAllReadError);
-      announce(COPY.notices.noticesMarkAllReadError);
+      const message = COPY.notices.noticesMarkAllReadError;
+      setMarkError(message);
     } finally {
       setMarking(false);
     }
   };
 
-  if (state.kind === "loading") {
-    return (
-      <section
-        ref={panelRef}
-        className={styles.panel}
-        aria-label={COPY.notices.noticesListLabel}
-        tabIndex={-1}
-      >
-        <output className={styles.state} aria-busy="true">
-          {COPY.notices.noticesLoading}
-        </output>
-        <Skeleton className={styles.state} aria-hidden="true" />
-      </section>
-    );
-  }
+  const presentationState: FeedPresentationState =
+    state.kind === "loading"
+      ? "loading"
+      : state.kind === "error"
+        ? "error"
+        : state.result.notices.length === 0
+          ? "empty"
+          : "ready";
+  const announcement: FeedAnnouncement | undefined =
+    feedback ??
+    (state.kind === "loading"
+      ? { key: `loading:${loadAttempt}`, message: COPY.notices.noticesLoading }
+      : undefined);
 
-  if (state.kind === "error") {
-    return (
-      <section
-        ref={panelRef}
-        className={styles.panel}
-        aria-label={COPY.notices.noticesListLabel}
-        tabIndex={-1}
-      >
-        <Alert className={styles.error} variant="destructive">
-          <p>{COPY.notices.noticesLoadError}</p>
-        </Alert>
-        <Button
-          className={styles.retry}
-          type="button"
-          onClick={() => void load()}
-        >
-          {COPY.notices.noticesRetry}
-        </Button>
-      </section>
-    );
-  }
-
-  const { notices, unread_count: unreadCount } = state.result;
-  return (
-    <section
-      ref={panelRef}
-      className={styles.panel}
-      aria-label={COPY.notices.noticesListLabel}
-      tabIndex={-1}
-    >
-      {markError !== null && (
-        <Alert className={styles.error} variant="destructive">
-          <p>{markError}</p>
-        </Alert>
-      )}
-      <div className={styles.toolbar}>
-        {unreadCount > 0 && (
-          <Badge className={styles.unreadCount} variant="outline">
-            {unreadCount} {COPY.notices.noticesUnread}
+  const toolbar =
+    state.kind === "ready" ? (
+      <div className="mb-2 flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1">
+        {state.result.unread_count > 0 ? (
+          <Badge
+            className="inline-flex min-h-6 items-center rounded-full bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] px-2.5 py-1 text-[0.8125rem] font-bold text-[var(--accent)]"
+            variant="outline"
+          >
+            {state.result.unread_count} {COPY.notices.noticesUnread}
           </Badge>
+        ) : (
+          <span aria-hidden="true" />
         )}
         <Button
-          className={styles.markAll}
+          className="min-h-11"
           type="button"
           onClick={() => void markAllRead()}
-          disabled={marking || unreadCount === 0}
+          disabled={marking || state.result.unread_count === 0}
           aria-busy={marking}
         >
           {COPY.notices.noticesMarkAllRead}
         </Button>
       </div>
-      {notices.length === 0 ? (
-        <Card className={styles.empty}>
-          <h2 className={styles.emptyTitle}>{COPY.notices.noticesEmpty}</h2>
-          <p className={styles.emptyHint}>{COPY.notices.noticesEmptyHint}</p>
+    ) : null;
+
+  const list =
+    state.kind === "ready" ? (
+      <>
+        {toolbar}
+        <ul className="m-0 list-none overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] p-0 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
+          {state.result.notices.map((notice) => (
+            <NoticeRow key={notice.notice_id} notice={notice} />
+          ))}
+        </ul>
+      </>
+    ) : null;
+
+  const empty =
+    state.kind === "ready" ? (
+      <>
+        {toolbar}
+        <Card className="border border-[var(--line)] bg-[var(--surface-raised)] p-[2.125rem_1.375rem] text-center shadow-none">
+          <h2 className="text-[1.125rem] leading-[1.4]">
+            {COPY.notices.noticesEmpty}
+          </h2>
+          <p className="mt-2 text-[var(--ink-muted)] leading-[1.6]">
+            {COPY.notices.noticesEmptyHint}
+          </p>
         </Card>
-      ) : (
-        <Card className="border-0 bg-transparent p-0 shadow-none">
-          <ul
-            className={styles.list}
-            aria-label={COPY.notices.noticesListLabel}
+      </>
+    ) : null;
+
+  return (
+    <FeedPresentation
+      state={presentationState}
+      list={list}
+      empty={empty}
+      loading={
+        <>
+          <output className="block p-4 text-[var(--ink-muted)] leading-[1.6]">
+            {COPY.notices.noticesLoading}
+          </output>
+          <Skeleton
+            className="block h-20 w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]"
+            aria-hidden="true"
+          />
+        </>
+      }
+      error={
+        <>
+          <Alert className="block leading-[1.6]" variant="destructive">
+            <p>{COPY.notices.noticesLoadError}</p>
+          </Alert>
+          <Button
+            className="mt-3 min-h-11"
+            type="button"
+            onClick={() => void load()}
           >
-            {notices.map((notice) => (
-              <NoticeRow key={notice.notice_id} notice={notice} />
-            ))}
-          </ul>
-        </Card>
-      )}
-    </section>
+            {COPY.notices.noticesRetry}
+          </Button>
+        </>
+      }
+      status={
+        markError ? (
+          <Alert className="mb-3 block leading-[1.6]" variant="destructive">
+            <p>{markError}</p>
+          </Alert>
+        ) : undefined
+      }
+      announcement={announcement}
+      aria-label={COPY.notices.noticesListLabel}
+    />
   );
 }

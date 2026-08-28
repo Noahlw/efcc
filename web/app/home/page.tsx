@@ -1,8 +1,7 @@
 "use client";
-/* oxlint-disable eslint/complexity, eslint/no-use-before-define, react/function-component-definition, promise/prefer-await-to-then, unicorn/no-negated-condition */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +15,11 @@ import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import {
+  FeedPresentation,
+  type FeedAnnouncement,
+  type FeedPresentationState,
+} from "@/lib/feed-presentation";
+import {
   hkShortDateLabel,
   hkShortTimeLabel,
   hkShortTimeRange,
@@ -27,8 +31,6 @@ import {
   listParticipantCatalog,
 } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
-
-import styles from "./home.module.css";
 
 export interface HomeEvent {
   eventId: string | null;
@@ -53,10 +55,7 @@ interface HomeProjection {
 }
 
 export interface HomeViewProps {
-  /**
-   * These optional values make the surface deterministic in component tests.
-   * The route itself obtains them from the authenticated data boundaries.
-   */
+  /** These optional values make the surface deterministic in component tests. */
   featuredEvent?: HomeEvent | null;
   featuredProgram?: HomeProgram | null;
   announcement?: AnnouncementData | null;
@@ -72,6 +71,15 @@ function externalUrlFrom(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function validatedAnnouncement(
+  value: AnnouncementData | null
+): AnnouncementData | null {
+  if (!value) {
+    return null;
+  }
+  return { ...value, externalUrl: externalUrlFrom(value.externalUrl) };
 }
 
 function formatAnnouncementDate(value: string): string {
@@ -235,9 +243,9 @@ function EventRow({
   children: string;
 }) {
   return (
-    <div className={styles.eventRow}>
-      <Icon name={icon} className={styles.eventIcon} />
-      <span>{children}</span>
+    <div className="flex min-w-0 items-start gap-2.5 leading-[1.55]">
+      <Icon name={icon} className="mt-0.5 size-5 shrink-0" />
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </div>
   );
 }
@@ -245,62 +253,37 @@ function EventRow({
 function HomeLoadingSkeleton() {
   return (
     <div
-      className={`${styles.page} ${styles.skeletonPage}`}
+      className="mx-auto w-full max-w-[680px] min-w-0 px-[clamp(1rem,4vw,1.5rem)] pb-[calc(6rem+env(safe-area-inset-bottom,0px))] max-[799px]:pb-6"
       data-testid="home-loading-skeleton"
     >
       <section
-        className={styles.skeletonRegion}
+        className="grid gap-3 pt-2"
         data-testid="home-loading-state"
         aria-busy="true"
-        aria-live="polite"
       >
-        <output className={styles.skeletonAnnouncement}>
+        <output className="block text-[0.78rem] text-[var(--ink-muted)]">
           {COPY.home.loading}
         </output>
-        <div aria-hidden="true">
-          <div className={styles.skeletonIntro}>
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonDate}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonHeading}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonText}`}
-            />
+        <div aria-hidden="true" className="grid gap-2.5">
+          <div className="grid gap-2.5 px-0 pb-5 pt-2">
+            <Skeleton className="block h-3 w-28 rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block h-10 w-[min(70%,16rem)] rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block h-5 w-[min(82%,22rem)] rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
           </div>
-          <div className={styles.skeletonEventCard}>
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonBadge}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonTitle}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonDetail}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonAction}`}
-            />
+          <div className="grid gap-3 rounded-[10px] border border-[var(--line)] bg-[var(--surface-raised)] p-[22px]">
+            <Skeleton className="block h-7 w-[5.5rem] rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block h-7 w-[min(78%,20rem)] rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block h-5 w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block h-5 w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="mt-2 block h-12 w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
           </div>
-          <div className={styles.skeletonSection}>
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
-            />
+          <div className="mt-4 grid gap-3">
+            <Skeleton className="block h-6 w-32 rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block min-h-[72px] w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
           </div>
-          <div className={styles.skeletonSection}>
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonSectionHeading}`}
-            />
-            <Skeleton
-              className={`${styles.skeletonBlock} ${styles.skeletonListCard}`}
-            />
+          <div className="mt-4 grid gap-3">
+            <Skeleton className="block h-6 w-32 rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
+            <Skeleton className="block min-h-[72px] w-full rounded-[var(--radius-sm)] bg-[var(--skeleton)]" />
           </div>
         </div>
       </section>
@@ -327,37 +310,79 @@ export function HomeView({
     hasInitialData ? "ready" : "loading"
   );
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadAttempt, setLoadAttempt] = useState(hasInitialData ? 0 : 1);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const announcementTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const overlayEntryRef = useRef(false);
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
 
-  const openAnnouncement = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.history.pushState(
-        { efccOverlay: "announcement" },
-        "",
-        window.location.href
-      );
-    }
-    setAnnouncementOpen(true);
+  const focusAnnouncementTrigger = useCallback(() => {
+    queueMicrotask(() => announcementTriggerRef.current?.focus());
   }, []);
 
+  const openAnnouncement = useCallback(() => {
+    if (announcementOpen || typeof window === "undefined") {
+      return;
+    }
+    window.history.pushState(
+      { ...(window.history.state ?? {}), efccOverlay: "announcement" },
+      "",
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
+    );
+    overlayEntryRef.current = true;
+    setAnnouncementOpen(true);
+  }, [announcementOpen]);
+
   const closeAnnouncement = useCallback(() => {
+    const shouldPop =
+      typeof window !== "undefined" &&
+      overlayEntryRef.current &&
+      window.history.state?.efccOverlay === "announcement";
+    overlayEntryRef.current = false;
     setAnnouncementOpen(false);
-  }, []);
+    if (shouldPop) {
+      window.history.back();
+    }
+    focusAnnouncementTrigger();
+  }, [focusAnnouncementTrigger]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-    const onPopState = () => {
-      setAnnouncementOpen(window.history.state?.efccOverlay === "announcement");
+    const clearOverlayState = () => {
+      const currentState = window.history.state;
+      if (currentState?.efccOverlay !== "announcement") {
+        return;
+      }
+      const { efccOverlay: _overlay, ...rest } = currentState;
+      window.history.replaceState(
+        rest,
+        "",
+        `${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
     };
+    const onPopState = () => {
+      const isAnnouncement =
+        window.history.state?.efccOverlay === "announcement";
+      overlayEntryRef.current = isAnnouncement;
+      setAnnouncementOpen(isAnnouncement);
+      if (!isAnnouncement) {
+        focusAnnouncementTrigger();
+      }
+    };
+    if (window.history.state?.efccOverlay === "announcement") {
+      overlayEntryRef.current = true;
+      setAnnouncementOpen(true);
+    }
     window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      clearOverlayState();
+    };
+  }, [focusAnnouncementTrigger]);
 
   // ponytail: warm participant catalog + access for /programs (F-C01)
-  // fire-and-forget so /programs first paint hits cache within 30s
   useEffect(() => {
     void listParticipantCatalog().catch(() => {});
     void getManagementAccess().catch(() => {});
@@ -366,6 +391,7 @@ export function HomeView({
   useEffect(() => {
     let mounted = true;
     const load = async () => {
+      setLoadAttempt(reloadKey + 1);
       setLoadState("loading");
       try {
         const nextProjection = await loadHomeProjection();
@@ -416,42 +442,22 @@ export function HomeView({
       : (projection?.featuredProgram ?? participant.program);
   const announcement =
     initialAnnouncement !== undefined
-      ? initialAnnouncement
+      ? validatedAnnouncement(initialAnnouncement)
       : (projection?.announcement ?? null);
-
-  if (announcementOpen && announcement) {
-    return (
-      <AnnouncementDetail
-        announcement={announcement}
-        onBack={closeAnnouncement}
-      />
-    );
-  }
-
-  if (!hasInitialData && loadState === "loading") {
-    return <HomeLoadingSkeleton />;
-  }
-
-  if (!hasInitialData && loadState === "error") {
-    return (
-      <div className={styles.page}>
-        <Alert
-          className={styles.emptyCard}
-          data-testid="home-error-state"
-          variant="destructive"
-        >
-          <p>{COPY.home.loadError}</p>
-          <Button
-            className={styles.primaryAction}
-            type="button"
-            onClick={() => setReloadKey((current) => current + 1)}
-          >
-            {COPY.home.retry}
-          </Button>
-        </Alert>
-      </div>
-    );
-  }
+  const feedState: FeedPresentationState =
+    announcementOpen && announcement
+      ? "detail"
+      : !hasInitialData && loadState === "loading"
+        ? "loading"
+        : !hasInitialData && loadState === "error"
+          ? "error"
+          : event || program || announcement
+            ? "ready"
+            : "empty";
+  const feedAnnouncement: FeedAnnouncement | undefined =
+    !hasInitialData && loadState === "loading"
+      ? { key: `loading:${loadAttempt}`, message: COPY.home.loading }
+      : undefined;
 
   const programTitle = event?.programTitle ?? program?.name;
   const eventHref =
@@ -474,106 +480,184 @@ export function HomeView({
   const date = eventDate(event?.startsAt ?? null);
   const time = eventTimeRange(event?.startsAt ?? null, event?.endsAt ?? null);
 
-  return (
-    <div className={styles.page} data-testid="home-page">
-      <div className={styles.intro}>
+  const homeContent = (
+    <div
+      className="mx-auto w-full max-w-[680px] min-w-0 px-[clamp(1rem,4vw,1.5rem)] pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)] max-[799px]:pb-6"
+      data-testid="home-page"
+    >
+      <div className="px-0 pb-4 pt-2.5">
         <time
-          className={styles.dateTag}
+          className="mb-2.5 inline-flex items-center font-mono text-[0.72rem] font-semibold tracking-[0.08em] text-[var(--ink-muted)]"
           dateTime={new Date().toISOString().slice(0, 10)}
         >
           {greetingDate()}
         </time>
-        <h1>
+        <h1 className="m-0 min-w-0 wrap-anywhere text-[clamp(1.6rem,5.5vw,2rem)] font-extrabold leading-[1.25] tracking-[-0.02em]">
           {COPY.home.greeting}，{displayName}
         </h1>
-        <p>{COPY.home.subtitle}</p>
+        <p className="mt-1 min-w-0 wrap-anywhere text-[0.9375rem] leading-[1.55] text-[var(--ink-muted)]">
+          {COPY.home.subtitle}
+        </p>
       </div>
 
       {event ? (
-        <Card className={styles.eventCard} data-testid="next-event-card">
-          <Badge className={styles.enrolledBadge}>
+        <Card
+          className="min-w-0 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-[1.125rem] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
+          data-testid="next-event-card"
+        >
+          <Badge className="inline-flex min-h-6 w-fit items-center rounded-full border-0 bg-[var(--accent)] px-3 py-1 text-xs font-bold tracking-[0.02em] text-white">
             {COPY.home.enrolledBadge}
           </Badge>
           {programTitle && (
-            <p className={styles.programTitle}>{programTitle}</p>
+            <p className="mt-3.5 min-w-0 wrap-anywhere text-[0.86rem] font-semibold text-[var(--ink-muted)]">
+              {programTitle}
+            </p>
           )}
-          {title && <h2>{title}</h2>}
+          {title && (
+            <h2 className="mt-2.5 min-w-0 wrap-anywhere text-2xl font-semibold leading-[1.3] tracking-[-0.02em]">
+              {title}
+            </h2>
+          )}
           {(date || time || event.location) && (
-            <div className={styles.eventDetails}>
+            <div className="my-5 grid min-w-0 gap-2.5 text-[var(--ink-muted)]">
               {date && <EventRow icon="calendar">{date}</EventRow>}
               {time && <EventRow icon="clock">{time}</EventRow>}
-              {event.location && (
-                <EventRow icon="pin">{event.location}</EventRow>
-              )}
+              {event.location && <EventRow icon="pin">{event.location}</EventRow>}
             </div>
           )}
-          <Button asChild className={styles.primaryAction}>
+          <Button asChild className="min-h-12 w-full" data-feed-event-action>
             <Link href={eventHref}>{COPY.home.viewEvent}</Link>
           </Button>
         </Card>
       ) : (
-        <Card className={styles.emptyCard} data-testid="home-empty-state">
-          <h2>{COPY.home.emptyTitle}</h2>
-          <p>{COPY.home.emptySubtitle}</p>
-          <Button asChild className={styles.primaryAction}>
+        <Card
+          className="min-w-0 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-5 text-center shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
+          data-testid="home-empty-state"
+        >
+          <h2 className="min-w-0 wrap-anywhere text-[1.0625rem] font-bold leading-[1.4]">
+            {COPY.home.emptyTitle}
+          </h2>
+          <p className="mt-1.5 min-w-0 wrap-anywhere text-sm leading-[1.55] text-[var(--ink-muted)]">
+            {COPY.home.emptySubtitle}
+          </p>
+          <Button asChild className="mt-3.5 min-h-12 w-full">
             <Link href="/programs">{COPY.home.explorePrograms}</Link>
           </Button>
         </Card>
       )}
 
       {announcement && (
-        <section
-          className={styles.section}
-          aria-labelledby="church-news-heading"
-        >
-          <div className={styles.sectionHeading}>
-            <h2 id="church-news-heading">{COPY.home.churchNews}</h2>
-            <Button asChild className={styles.sectionLink} variant="link">
+        <section className="mt-5" aria-labelledby="church-news-heading">
+          <div className="mb-2 flex items-baseline justify-between gap-4 px-1">
+            <h2
+              className="m-0 text-[0.8125rem] font-extrabold tracking-[0.1em] text-[var(--ink-muted)]"
+              id="church-news-heading"
+            >
+              {COPY.home.churchNews}
+            </h2>
+            <Button asChild className="min-h-11" variant="link">
               <Link href="/messages">{COPY.home.viewAllMessages}</Link>
             </Button>
           </div>
           <Button
+            ref={announcementTriggerRef}
             type="button"
             variant="ghost"
-            className={styles.listCard}
+            className="grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3.5 whitespace-normal rounded-[1.125rem] p-4 text-left outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             data-testid="announcement-card"
             onClick={openAnnouncement}
           >
-            <span>
-              <span className={styles.cardTitle}>{announcement.title}</span>
-              <span className={styles.cardDescription}>
+            <span className="min-w-0">
+              <span className="block min-w-0 wrap-anywhere font-semibold leading-[1.45]">
+                {announcement.title}
+              </span>
+              <span className="mt-1.5 block min-w-0 wrap-anywhere text-[0.86rem] leading-[1.5] text-[var(--ink-muted)]">
                 {announcement.summary} · {announcement.date}
               </span>
             </span>
-            <Icon name="chevron" className={styles.chevron} />
+            <Icon
+              name="chevron"
+              className="size-5 shrink-0 text-[var(--ink-muted)]"
+            />
           </Button>
         </section>
       )}
 
       {program && (
-        <section className={styles.section} aria-labelledby="explore-heading">
-          <div className={styles.sectionHeading}>
-            <h2 id="explore-heading">{COPY.home.explore}</h2>
-            <Button asChild className={styles.sectionLink} variant="link">
+        <section className="mt-5" aria-labelledby="explore-heading">
+          <div className="mb-2 flex items-baseline justify-between gap-4 px-1">
+            <h2
+              className="m-0 text-[0.8125rem] font-extrabold tracking-[0.1em] text-[var(--ink-muted)]"
+              id="explore-heading"
+            >
+              {COPY.home.explore}
+            </h2>
+            <Button asChild className="min-h-11" variant="link">
               <Link href="/programs">{COPY.home.allPrograms}</Link>
             </Button>
           </div>
-          <Link href={exploreProgramHref} data-testid="explore-card">
-            <Card className={styles.listCard}>
-              <span>
-                <span className={styles.cardTitle}>{program.name}</span>
+          <Link
+            href={exploreProgramHref}
+            className="block min-h-16 min-w-0 rounded-[1.125rem] outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+            data-testid="explore-card"
+          >
+            <Card className="grid min-h-16 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3.5 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)] transition-colors hover:bg-[var(--surface)]">
+              <span className="min-w-0">
+                <span className="block min-w-0 wrap-anywhere font-semibold leading-[1.45]">
+                  {program.name}
+                </span>
                 {program.description && (
-                  <span className={styles.cardDescription}>
+                  <span className="mt-1.5 block min-w-0 wrap-anywhere text-[0.86rem] leading-[1.5] text-[var(--ink-muted)]">
                     {program.description}
                   </span>
                 )}
               </span>
-              <Icon name="chevron" className={styles.chevron} />
+              <Icon
+                name="chevron"
+                className="size-5 shrink-0 text-[var(--ink-muted)]"
+              />
             </Card>
           </Link>
         </section>
       )}
     </div>
+  );
+
+  return (
+    <FeedPresentation
+      state={feedState}
+      list={homeContent}
+      empty={homeContent}
+      detail={
+        announcement ? (
+          <AnnouncementDetail
+            announcement={announcement}
+            onBack={closeAnnouncement}
+          />
+        ) : null
+      }
+      loading={<HomeLoadingSkeleton />}
+      error={
+        <div className="mx-auto w-full max-w-[680px] min-w-0 px-[clamp(1rem,4vw,1.5rem)] pb-8">
+          <Alert
+            data-testid="home-error-state"
+            className="block leading-[1.6]"
+            variant="destructive"
+          >
+            <p>{COPY.home.loadError}</p>
+            <Button
+              className="mt-3 min-h-11"
+              type="button"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              {COPY.home.retry}
+            </Button>
+          </Alert>
+        </div>
+      }
+      announcement={feedAnnouncement}
+      focusTargetRef={announcementTriggerRef}
+    />
   );
 }
 
