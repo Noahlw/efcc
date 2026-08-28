@@ -4,8 +4,11 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
-import { restoreEventWindow } from './participant-event-window';
-import type { EventWindowSetup, EventWindowSnapshot } from './participant-event-window';
+import { restoreEventWindow } from "./participant-event-window";
+import type {
+  EventWindowSetup,
+  EventWindowSnapshot,
+} from "./participant-event-window";
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
 const ADMIN_CRED =
@@ -459,9 +462,14 @@ test.describe("PUI-05 Home origin supplement", () => {
     await page.evaluate(() => window.history.back());
     await expect(page.getByTestId("announcement-detail")).toHaveCount(0);
     await expect(announcementCard).toBeVisible();
-    expect(await page.evaluate(() => window.history.length)).toBe(
-      historyLength
-    );
+    const afterBack = await page.evaluate(() => ({
+      historyLength: window.history.length,
+      overlay: window.history.state?.efccOverlay ?? null,
+    }));
+    // history.length is the number of entries, not the current index; Back
+    // consumes the overlay entry by restoring the prior non-overlay state.
+    expect(afterBack.historyLength).toBe(historyLength + 1);
+    expect(afterBack.overlay).toBeNull();
   });
   test("Notices and Messages keep long feed copy inside the W7 viewport seams", async ({
     page,
@@ -534,7 +542,19 @@ test.describe("PUI-05 Home origin supplement", () => {
         const geometry = await feed.evaluate((element) => {
           const text = [
             ...element.querySelectorAll<HTMLElement>("h1,h2,p,strong,span"),
-          ];
+          ].filter((node) => {
+            const style = getComputedStyle(node);
+            return (
+              !node.closest(".sr-only") &&
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              !(
+                style.position === "absolute" &&
+                node.clientWidth <= 1 &&
+                node.clientHeight <= 1
+              )
+            );
+          });
           const actions = [
             ...element.querySelectorAll<HTMLElement>("a,button"),
           ];
