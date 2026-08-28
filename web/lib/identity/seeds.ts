@@ -2,7 +2,7 @@
  * EFCC D1 identity (Spec 091 §§ 2–6) — disposable pre-production seeds.
  *
  * The seeds are the single source of the disposable identity foundation:
- * the three protected system identities (Admin, Staff, 會友基礎), the
+ * the fixed Admin and 會友基礎 identities plus assignable Staff, the
  * fixed Department / Program categories (already created by migration 0019),
  * a representative scoped Department manager Role Definition, a
  * representative scoped Program leader Role Definition, and a small set of
@@ -44,6 +44,31 @@ const SYSTEM_DEFINITIONS = {
 } as const;
 
 const MEMBER_BASELINE_CAPABILITIES: readonly Capability[] = ["program.enroll"];
+const STAFF_ROLE_CAPABILITIES: readonly Capability[] = [
+  "role.read",
+  "role.assign",
+  "role.revoke",
+  "role.reorder",
+  "role.permissions.read",
+  "role.permissions.write",
+  "role.create",
+  "role.delete",
+];
+
+const DEPARTMENT_MANAGER_ROLE_CAPABILITIES: readonly Capability[] = [
+  "role.read",
+  "role.assign",
+  "role.revoke",
+  "role.reorder",
+  "role.permissions.read",
+  "role.permissions.write",
+];
+
+const PROGRAM_LEADER_ROLE_CAPABILITIES: readonly Capability[] = [
+  "role.read",
+  "role.assign",
+  "role.revoke",
+];
 
 const DEPARTMENT_MANAGER_ADULT = {
   role_definition_id: "018f3b8a-0000-7000-8000-100000000001",
@@ -180,6 +205,22 @@ function assertCapability(capability: string): Capability {
   }
   return capability as Capability;
 }
+async function seedRoleGrants(
+  db: D1Database,
+  roleDefinitionId: string,
+  capabilities: readonly Capability[]
+): Promise<void> {
+  for (const capability of capabilities) {
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, assertCapability(capability), CREATED_AT)
+      .run();
+  }
+}
 
 /** Stable, distinct assignment_id derived from role + account. */
 function assignmentIdFor(
@@ -238,13 +279,16 @@ export async function seedDisposableIdentity(
   ];
 
   for (const row of systemRoleDefinitionRows) {
+    const isProtected =
+      row.stable_key === PROTECTED_STABLE_KEYS.ADMIN ||
+      row.stable_key === PROTECTED_STABLE_KEYS.MEMBER;
     await db
       .prepare(
         `INSERT OR IGNORE INTO role_definitions
            (role_definition_id, category_key, stable_key, label, description,
             scope_kind, scope_id, position, is_protected, is_archived,
             created_by, created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, ?, NULL, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, ?)`
       )
       .bind(
         row.role_definition_id,
@@ -255,22 +299,15 @@ export async function seedDisposableIdentity(
         row.scope_kind,
         row.scope_id,
         row.position,
+        isProtected ? 1 : 0,
         CREATED_AT,
         CREATED_AT
       )
       .run();
   }
 
-  for (const capability of MEMBER_BASELINE_CAPABILITIES) {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO role_definition_grants
-           (role_definition_id, capability, granted_by, granted_at)
-         VALUES (?, ?, NULL, ?)`
-      )
-      .bind(systemRoleIds.MEMBER, assertCapability(capability), CREATED_AT)
-      .run();
-  }
+  await seedRoleGrants(db, systemRoleIds.MEMBER, MEMBER_BASELINE_CAPABILITIES);
+  await seedRoleGrants(db, systemRoleIds.STAFF, STAFF_ROLE_CAPABILITIES);
 
   await db
     .prepare(
@@ -293,20 +330,16 @@ export async function seedDisposableIdentity(
       CREATED_AT
     )
     .run();
-  for (const capability of DEPARTMENT_MANAGER_ADULT.capabilities) {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO role_definition_grants
-           (role_definition_id, capability, granted_by, granted_at)
-         VALUES (?, ?, NULL, ?)`
-      )
-      .bind(
-        DEPARTMENT_MANAGER_ADULT.role_definition_id,
-        assertCapability(capability),
-        CREATED_AT
-      )
-      .run();
-  }
+  await seedRoleGrants(
+    db,
+    DEPARTMENT_MANAGER_ADULT.role_definition_id,
+    DEPARTMENT_MANAGER_ROLE_CAPABILITIES
+  );
+  await seedRoleGrants(
+    db,
+    DEPARTMENT_MANAGER_ADULT.role_definition_id,
+    DEPARTMENT_MANAGER_ADULT.capabilities
+  );
 
   await db
     .prepare(
@@ -347,20 +380,16 @@ export async function seedDisposableIdentity(
       CREATED_AT
     )
     .run();
-  for (const capability of PROGRAM_LEADER_YOUTH_BIBLE_STUDY.capabilities) {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO role_definition_grants
-           (role_definition_id, capability, granted_by, granted_at)
-         VALUES (?, ?, NULL, ?)`
-      )
-      .bind(
-        PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
-        assertCapability(capability),
-        CREATED_AT
-      )
-      .run();
-  }
+  await seedRoleGrants(
+    db,
+    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
+    PROGRAM_LEADER_ROLE_CAPABILITIES
+  );
+  await seedRoleGrants(
+    db,
+    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
+    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.capabilities
+  );
 
   await importLegacyUsers(db, disposableRows());
   for (const account of Object.values(DISPOSABLE_ACCOUNTS)) {

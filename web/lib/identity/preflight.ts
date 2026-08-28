@@ -118,8 +118,6 @@ export async function preflightDisposableSchema(
         `Only databases prefixed with ${DISPOSABLE_NAME_PREFIXES.join(
           ", "
         )} are eligible for the disposable pre-production schema.`,
-        `To override, set EFCC_DISPOSABLE_ALLOW_NON_DISPOSABLE=1 in the local environment,`,
-        `or rename the database to follow the disposable convention.`,
         `Manual reset command:`,
         buildResetCommand(database),
       ].join("\n"),

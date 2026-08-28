@@ -27,6 +27,8 @@
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
  */
 
+import { ACCESS_COOKIE_NAME, parseCookies } from "./lib/auth/cookies";
+
 export interface Env {
   ASSETS: Fetcher;
   /**
@@ -57,8 +59,6 @@ function authProblemResponse(
   code: string,
   title: string,
   detail: string,
-  // Optional correlation id; the caller may pre-generate one to link the
-  // response envelope to its own server log line (catch blocks).
   requestId: string = crypto.randomUUID()
 ): Response {
   return Response.json(
@@ -80,6 +80,19 @@ function authProblemResponse(
   );
 }
 
+/**
+ * Decode a percent-encoded path segment without throwing on malformed
+ * encoding (e.g. a lone `%` or a truncated `%E4`). Returns null for
+ * malformed input so routes can answer with a stable RFC 9457
+ * validation/not-found problem instead of a 500.
+ */
+function decodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
 /**
  * Cookie-only transport guard for the `/api/v1/auth/*` surface (AUTH-04 #162).
  * Rejects:
@@ -1032,6 +1045,18 @@ export default {
 
     // ---- Role Identity domain (Spec 091 / #478): cookie-only transport --
     if (url.pathname.startsWith("/api/v1/identity/")) {
+      const guard = authTransportGuard(request);
+      if (guard) {
+        return guard;
+      }
+      if (!parseCookies(request.headers.get("Cookie"))[ACCESS_COOKIE_NAME]) {
+        return authProblemResponse(
+          401,
+          "AUTH_REQUIRED",
+          "Unauthorized",
+          "Access cookie missing."
+        );
+      }
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
         return authProblemResponse(
           503,
@@ -1059,9 +1084,19 @@ export default {
         url.pathname.endsWith("/name") &&
         request.method === "PATCH"
       ) {
-        const roleDefinitionId = decodeURIComponent(
+        const roleDefinitionId = decodePathSegment(
           url.pathname.slice(renamePrefix.length, -"/name".length)
         );
+        if (roleDefinitionId === null) {
+          // Malformed percent-encoding in the role ID is a stable 404
+          // Problem Details response, never a 500 (RFC 9457).
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
         return handleRenameRoleDefinition(request, roleEnv, roleDefinitionId);
       }
       return authProblemResponse(

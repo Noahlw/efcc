@@ -14,9 +14,9 @@
 --     (Global, Department, Program) that group Role Definitions.
 --   * role_definitions — normalized Role Definitions with explicit
 --     scope_kind (Global, Department, Program) and scope_id, capability
---     grants, and an archive state. Protected system identities (Admin,
---     Staff, 會友基礎) live here and are write-guarded by trigger; a row's
---     stable role_definition_id is immutable once written.
+--     grants, and an archive state. Admin and 會友基礎 are fixed protected
+--     system identities; Staff is an assignable system identity whose
+--     name/grants may be changed by an eligible higher actor.
 --   * role_definition_grants — Role Definition → capability grants, closed
 --     against the canonical capability catalog via CHECK.
 --   * role_assignments — Account → Role Definition with grant/revoke
@@ -141,15 +141,19 @@ BEGIN
   SELECT RAISE(ABORT, 'role_definitions.scope_id is required for non-Global scope and forbidden for Global scope');
 END;
 
--- Protected system identity immutability. Admin, Staff, 會友基礎 are seeded
--- with is_protected = 1; any UPDATE of label/description/position that
--- touches a protected row, or any DELETE, is rejected at the schema layer.
+-- Protected system identity immutability. Admin and 會友基礎 are seeded with
+-- is_protected = 1; Staff remains assignable. Any UPDATE of
+-- label/description/position that touches a protected row, or any DELETE,
+-- is rejected at the schema layer.
 CREATE TRIGGER role_definitions_protected_update_guard
 BEFORE UPDATE ON role_definitions
 WHEN OLD.is_protected = 1
+   AND OLD.stable_key <> 'staff'
    AND (OLD.label <> NEW.label
         OR OLD.description <> NEW.description
         OR OLD.position <> NEW.position
+        OR OLD.is_protected <> NEW.is_protected
+        OR OLD.is_archived <> NEW.is_archived
         OR OLD.stable_key <> NEW.stable_key
         OR OLD.category_key <> NEW.category_key
         OR OLD.scope_kind <> NEW.scope_kind
@@ -161,6 +165,7 @@ END;
 CREATE TRIGGER role_definitions_protected_delete_guard
 BEFORE DELETE ON role_definitions
 WHEN OLD.is_protected = 1
+   AND OLD.stable_key <> 'staff'
 BEGIN
   SELECT RAISE(ABORT, 'role_definitions: protected system identity rows are immutable');
 END;
@@ -182,6 +187,17 @@ CREATE TABLE role_definition_grants (
   role_definition_id TEXT NOT NULL,
   capability         TEXT NOT NULL
                      CHECK (capability IN (
+                       'role.read',
+                       'role.assign',
+                       'role.revoke',
+                       'role.reorder',
+                       'role.name.write',
+                       'role.permissions.read',
+                       'role.permissions.write',
+                       'role.scope.read',
+                       'role.scope.write',
+                       'role.create',
+                       'role.delete',
                        'department.manage',
                        'department.publish',
                        'department.module.configure',
@@ -319,7 +335,7 @@ CREATE TABLE role_audit_events (
   new_value_json  TEXT,
   reason          TEXT,
   outcome         TEXT NOT NULL
-                  CHECK (outcome IN ('SUCCESS','DUPLICATE','CONFLICT','DENIED','FAILED')),
+                  CHECK (outcome IN ('SUCCESS','DUPLICATE','CONFLICT','DENIED','REJECTED','FAILED')),
   correlation_id  TEXT
 ) STRICT;
 

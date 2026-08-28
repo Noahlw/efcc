@@ -28,6 +28,8 @@ const DISPOSABLE_DATABASE = "E2E_disposable-local";
 
 const ADMIN = "E2E_DISPOSABLE_ADMIN";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
+const ADMIN_ROLE = "018f3b8a-0000-7000-8000-000000000a01";
+const MEMBER_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
 const DEPARTMENT_MANAGER_ROLE = "018f3b8a-0000-7000-8000-100000000001";
 
 /** A signed access cookie for the given account, minted via the auth seam. */
@@ -132,7 +134,7 @@ describe("#478 identity Worker/HTTP seam", () => {
   test("no access cookie is a 401 AUTH_REQUIRED problem", async () => {
     const res = await worker.fetch(
       request("/api/v1/identity/roles"),
-      testEnv()
+      testEnv({ EFCC_ACCESS_TOKEN_SECRET: undefined })
     );
     assert.equal(res.status, 401);
     const body = await problemBody(res);
@@ -142,7 +144,7 @@ describe("#478 identity Worker/HTTP seam", () => {
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
   });
 
-  test("a Member cannot rename: 403 ROLE_HIGHEST_PROTECTED problem", async () => {
+  test("a Member cannot rename: 403 ROLE_FORBIDDEN problem", async () => {
     const res = await worker.fetch(
       request(`/api/v1/identity/roles/${DEPARTMENT_MANAGER_ROLE}/name`, {
         method: "PATCH",
@@ -161,10 +163,23 @@ describe("#478 identity Worker/HTTP seam", () => {
     );
     assert.equal(res.status, 403);
     const body = await problemBody(res);
-    assert.equal(body.code, "ROLE_HIGHEST_PROTECTED");
+    assert.equal(body.code, "ROLE_FORBIDDEN");
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
     // No sensitive payload data is echoed back.
     assert.ok(!JSON.stringify(body).includes("改名嘗試"));
+  });
+
+  test("a Member cannot read the hierarchy without role.read", async () => {
+    const res = await worker.fetch(
+      request("/api/v1/identity/roles", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 403);
+    const body = await problemBody(res);
+    assert.equal(body.code, "ROLE_FORBIDDEN");
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
   });
 
   test("rename with an invalid name is a 400 INVALID_NAME problem (H-11 HTTP)", async () => {
@@ -236,6 +251,49 @@ describe("#478 identity Worker/HTTP seam", () => {
     assert.equal(res.status, 404);
     const body = await problemBody(res);
     assert.equal(body.code, "ROLE_NOT_FOUND");
+  });
+
+  test("malformed encoded role IDs return a stable ROLE_NOT_FOUND problem", async () => {
+    const res = await worker.fetch(
+      request("/api/v1/identity/roles/%E0%A4/name", {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-malformed-role",
+        },
+        body: { label: "不存在", base_revision: 1 },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 404);
+    const body = await problemBody(res);
+    assert.equal(body.code, "ROLE_NOT_FOUND");
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+  });
+
+  test("Admin and 會友基礎 return distinct protected Problem Details codes", async () => {
+    const cases = [
+      [ADMIN_ROLE, "http-admin-protected", "ROLE_ADMIN_PROTECTED"],
+      [MEMBER_ROLE, "http-baseline-protected", "ROLE_BASELINE_PROTECTED"],
+    ] as const;
+    await Promise.all(
+      cases.map(async ([roleId, key, expectedCode]) => {
+        const res = await worker.fetch(
+          request(`/api/v1/identity/roles/${roleId}/name`, {
+            method: "PATCH",
+            headers: {
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+              "Idempotency-Key": key,
+            },
+            body: { label: "改名嘗試", base_revision: 1 },
+          }),
+          testEnv()
+        );
+        assert.equal(res.status, 403);
+        const body = await problemBody(res);
+        assert.equal(body.code, expectedCode);
+      })
+    );
   });
 
   test("a valid rename succeeds and returns the authoritative response (H-05/H-15 HTTP)", async () => {

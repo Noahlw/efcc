@@ -7,7 +7,7 @@
  * actions.
  */
 /* oxlint-disable vitest/max-expects -- each acceptance-trace row asserts its full observable contract in one test. */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -24,6 +24,7 @@ import {
 
 import { RoleHierarchyPanel } from "@/app/management/role-hierarchy-panel";
 import type { RoleHierarchyView } from "@/lib/identity";
+import { LiveRegion } from "@/lib/live-region";
 
 const mocks = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
@@ -83,11 +84,11 @@ const VIEW: RoleHierarchyView = {
           scopeId: null,
           scopeLabel: null,
           position: 1,
-          isProtected: true,
+          isProtected: false,
           isArchived: false,
           assignmentCount: 1,
           grantCount: 0,
-          actions: [],
+          actions: [{ action: "rename", label: "重新命名" }],
         },
         {
           roleDefinitionId: "018f3b8a-0000-7000-8000-000000000a03",
@@ -125,7 +126,7 @@ const VIEW: RoleHierarchyView = {
           isProtected: false,
           isArchived: false,
           assignmentCount: 1,
-          grantCount: 6,
+          grantCount: 12,
           actions: [{ action: "rename", label: "重新命名" }],
         },
       ],
@@ -160,24 +161,33 @@ describe(RoleHierarchyPanel, () => {
 
   afterAll(() => server.close());
 
-  test("H-17: renders the hierarchy list with fixed categories and server-projected actions", async () => {
+  test("H-01/H-02: categories collapse by default and expand locally", async () => {
+    const user = userEvent.setup();
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
 
     await expect(
       screen.findByRole("heading", { name: /身份組/u })
     ).resolves.toBeTruthy();
-    expect(screen.getByRole("heading", { name: /全教會/u })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /部門/u })).toBeTruthy();
-    // The protected baseline shows its fixed note; no rename action is
-    // rendered for protected anchors.
-    expect(screen.getByText(/系統管理員/u)).toBeTruthy();
-    expect(screen.getByText(/會友基礎/u)).toBeTruthy();
+    const globalToggle = screen.getByRole("button", { name: /全教會/u });
+    const departmentToggle = screen.getByRole("button", { name: /部門/u });
+    expect(globalToggle).toHaveAttribute("aria-expanded", "false");
+    expect(departmentToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("系統管理員")).toBeNull();
+
+    await user.click(globalToggle);
+    expect(globalToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("系統管理員")).toBeInTheDocument();
+    expect(screen.getByText("會友基礎")).toBeInTheDocument();
   });
 
-  test("H-03: technical capability keys never appear as primary labels", () => {
+  test("H-03: technical capability keys never appear as primary labels", async () => {
+    const user = userEvent.setup();
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    expect(screen.getByText("成人部門管理者")).toBeInTheDocument();
     expect(screen.queryByText(/department\.manage/u)).toBeNull();
   });
 
@@ -229,11 +239,17 @@ describe(RoleHierarchyPanel, () => {
         })
       )
     );
-    render(<RoleHierarchyPanel />);
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
     await expect(
       screen.findByRole("heading", { name: /身份組/u })
     ).resolves.toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: /部門/u }));
     await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
     await user.click(screen.getByRole("button", { name: "重新命名" }));
     const input = screen.getByLabelText("新名稱") as HTMLInputElement;
@@ -247,9 +263,10 @@ describe(RoleHierarchyPanel, () => {
     await expect(screen.findByRole("status")).resolves.toHaveTextContent(
       /身份組名稱已更新/u
     );
-    // Single live-region announcement owner: the panel announces once and
-    // the visible status is the only success surface.
-    expect(screen.getAllByText(/身份組名稱已更新/u)).toHaveLength(1);
+    // LiveRegion is the sole production announcement owner; the visible
+    // success copy is intentionally not a live region.
+    expect(document.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    expect(screen.getAllByText(/身份組名稱已更新/u)).toHaveLength(2);
   });
 
   test("Back from detail returns to the list without mutating the URL", async () => {
@@ -260,9 +277,48 @@ describe(RoleHierarchyPanel, () => {
       screen.findByRole("heading", { name: /身份組/u })
     ).resolves.toBeTruthy();
 
+    await user.click(screen.getByRole("button", { name: /部門/u }));
     await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
     await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
     expect(screen.getByRole("heading", { name: /部門/u })).toBeTruthy();
     expect(mocks.router.push).not.toHaveBeenCalled();
+  });
+
+  test("H-17: popstate reconciles detail/list and restores focus", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await waitFor(() => expect(screen.getByRole("article")).toHaveFocus());
+
+    window.history.pushState(
+      {},
+      "",
+      `/management?module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.getByRole("article")).toBeInTheDocument()
+    );
+
+    window.history.pushState({}, "", "/management?module=roles");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /身份組/u })).toHaveFocus()
+    );
+  });
+
+  test("H-17: rename URL is downgraded when the projection has no rename action", async () => {
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${ADMIN_ROLE}&view=rename`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: "系統管理員" })
+    ).resolves.toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "新名稱" })).toBeNull();
   });
 });

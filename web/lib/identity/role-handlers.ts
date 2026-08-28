@@ -28,7 +28,9 @@
  * The rename path requires the `Idempotency-Key` header (ADR-0018 §8); a
  * replay of the same key + request fingerprint returns the original
  * result, and a key reused with a different fingerprint is rejected with
- * `IDEMPOTENCY_CONFLICT` (H-13, Spec 091 §9.3).
+ * `ROLE_IDEMPOTENCY_REUSE` (H-13, Spec 091 §9.3). The fingerprint is
+ * computed server-side from the request semantics; a client-supplied
+ * value is never the authority.
  */
 import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
@@ -40,8 +42,12 @@ import {
 } from "./mutations";
 import {
   loadRoleHierarchy,
+  normalizeName,
   renameRoleDefinition,
   ROLE_NAME_MAX_LENGTH,
+  RoleAdminProtectedError,
+  RoleBaselineProtectedError,
+  RoleCapabilityDeniedError,
   RoleHighestProtectedError,
   RoleNameConflictError,
   RoleProtectedIdentityError,
@@ -60,7 +66,6 @@ export interface RoleEnv {
 interface RenameBody {
   label?: unknown;
   base_revision?: unknown;
-  request_fingerprint?: unknown;
 }
 
 function roleProblem(
@@ -183,12 +188,39 @@ async function requireActor(
  * revision conflicts; no payload data is echoed back.
  */
 function mapRenameError(error: unknown, requestId: string): Response {
-  if (error instanceof RoleProtectedIdentityError) {
+  if (error instanceof RoleCapabilityDeniedError) {
+    return roleProblem(
+      403,
+      "ROLE_FORBIDDEN",
+      "Forbidden",
+      "您沒有權限執行此操作。",
+      requestId
+    );
+  }
+  if (error instanceof RoleAdminProtectedError) {
     return roleProblem(
       403,
       "ROLE_ADMIN_PROTECTED",
       "Forbidden",
-      "受保護系統身份（系統管理員／會友基礎）不可重新命名。",
+      "系統管理員身份不可重新命名。",
+      requestId
+    );
+  }
+  if (error instanceof RoleBaselineProtectedError) {
+    return roleProblem(
+      403,
+      "ROLE_BASELINE_PROTECTED",
+      "Forbidden",
+      "會友基礎身份不可重新命名。",
+      requestId
+    );
+  }
+  if (error instanceof RoleProtectedIdentityError) {
+    return roleProblem(
+      403,
+      "ROLE_PROTECTED",
+      "Forbidden",
+      "受保護系統身份不可重新命名。",
       requestId
     );
   }
@@ -278,7 +310,18 @@ export async function handleGetRoleHierarchy(
   try {
     const view = await loadRoleHierarchy(env.DB, auth.account.user_id);
     return roleSuccess(200, view, requestId);
-  } catch {
+  } catch (error) {
+    // A caller without the effective `role.read` capability receives the
+    // canonical ROLE_FORBIDDEN problem (Spec 091 §9.3), not a 500.
+    if (error instanceof RoleCapabilityDeniedError) {
+      return roleProblem(
+        403,
+        "ROLE_FORBIDDEN",
+        "Forbidden",
+        "您沒有權限執行此操作。",
+        requestId
+      );
+    }
     return roleProblem(
       500,
       "INTERNAL_ERROR",
@@ -336,22 +379,22 @@ export async function handleRenameRoleDefinition(
     typeof body.label !== "string" ||
     typeof body.base_revision !== "number" ||
     !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1 ||
-    typeof body.request_fingerprint !== "string" ||
-    body.request_fingerprint.length === 0 ||
-    body.request_fingerprint.length > 200
+    body.base_revision < 1
   ) {
     return roleProblem(
       422,
       "VALIDATION",
       "Validation failed",
-      "label, base_revision and request_fingerprint are required.",
+      "label and base_revision are required.",
       requestId
     );
   }
 
   const label = body.label.trim();
-  if (label.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
+  if (
+    normalizeName(label).length === 0 ||
+    label.length > ROLE_NAME_MAX_LENGTH
+  ) {
     return roleProblem(
       400,
       "INVALID_NAME",
@@ -364,7 +407,6 @@ export async function handleRenameRoleDefinition(
   try {
     const result: RoleRenameResult = await renameRoleDefinition(env.DB, {
       actor_user_id: auth.account.user_id,
-      request_fingerprint: body.request_fingerprint,
       idempotency_key: idempotencyKey,
       base_revision: body.base_revision,
       role_definition_id: roleDefinitionId,

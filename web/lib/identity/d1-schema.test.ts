@@ -208,6 +208,22 @@ describe("#476 disposable D1 schema contract", () => {
     }, "protected system identity rows are immutable");
     await expectAbort(async () => {
       await testDb()
+        .prepare(
+          `UPDATE role_definitions SET is_protected = 0 WHERE role_definition_id = ?`
+        )
+        .bind(adminRoleId)
+        .run();
+    }, "protected system identity rows are immutable");
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`
+        )
+        .bind(adminRoleId)
+        .run();
+    }, "protected system identity rows are immutable");
+    await expectAbort(async () => {
+      await testDb()
         .prepare(`DELETE FROM role_definitions WHERE role_definition_id = ?`)
         .bind(adminRoleId)
         .run();
@@ -720,6 +736,17 @@ describe("#476 disposable D1 schema contract", () => {
 
   test("CAPABILITY_CATALOG is closed and matches the schema CHECK set", () => {
     const expected = [
+      "role.read",
+      "role.assign",
+      "role.revoke",
+      "role.reorder",
+      "role.name.write",
+      "role.permissions.read",
+      "role.permissions.write",
+      "role.scope.read",
+      "role.scope.write",
+      "role.create",
+      "role.delete",
       "department.manage",
       "department.publish",
       "department.module.configure",

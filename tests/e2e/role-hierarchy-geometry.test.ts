@@ -62,6 +62,21 @@ const HIERARCHY = {
           actions: [],
         },
         {
+          roleDefinitionId: "r-staff",
+          label: "同工",
+          description: "可指派的系統身份",
+          kind: "SYSTEM",
+          scopeKind: "Global",
+          scopeId: null,
+          scopeLabel: null,
+          position: 1,
+          isProtected: false,
+          isArchived: false,
+          assignmentCount: 1,
+          grantCount: 8,
+          actions: [{ action: "rename", label: "重新命名" }],
+        },
+        {
           roleDefinitionId: "r-member",
           label: "會友基礎",
           description: "最低限度身份",
@@ -101,6 +116,14 @@ const HIERARCHY = {
           actions: [{ action: "rename", label: "重新命名" }],
         },
       ],
+    },
+    {
+      categoryKey: "Program",
+      label: "課程",
+      description: "課程範圍的可指派身份組分類",
+      displayOrder: 2,
+      childCount: 0,
+      definitions: [],
     },
   ],
 };
@@ -177,13 +200,21 @@ const isPhone = (projectName: string) =>
 
 test("identity hierarchy panel has no overflow or undersized controls at the pinned width", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.goto("/management?module=roles");
 
   const heading = page.getByRole("heading", { name: "身份組" });
   await expect(heading).toBeVisible();
   await expect(page.getByRole("heading", { name: "全教會" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "部門" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "課程" })).toBeVisible();
+  const categoryToggles = page.locator(
+    'button[aria-controls^="role-category-body-"]'
+  );
+  await expect(categoryToggles).toHaveCount(3);
+  await page.getByRole("button", { name: /部門/u }).click();
+  await expect(
+    page.getByRole("button", { name: /成人部門管理者/u })
+  ).toBeVisible();
 
   const geometry = await page.evaluate(() => {
     const viewportWidth = window.innerWidth;
@@ -221,23 +252,10 @@ test("identity hierarchy panel has no overflow or undersized controls at the pin
           c.bottom > 0
       );
 
-    const dock = document.querySelector<HTMLElement>(".nav-phone");
-    const dockBox = dock?.getBoundingClientRect();
-    const renameButtons = [
-      ...document.querySelectorAll<HTMLElement>("button"),
-    ].filter((element) => element.textContent?.includes("重新命名"));
-
     return {
       viewportWidth,
       horizontalOverflow,
       undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
-      dockTop: dockBox ? dockBox.top : null,
-      renameBottom:
-        renameButtons.length > 0
-          ? (renameButtons
-              .map((element) => element.getBoundingClientRect().bottom)
-              .at(-1) ?? null)
-          : null,
     };
   });
 
@@ -252,14 +270,6 @@ test("identity hierarchy panel has no overflow or undersized controls at the pin
     geometry.undersized.length,
     `undersized controls: ${JSON.stringify(geometry.undersized)}`
   ).toBe(0);
-
-  // Phone: the rename affordance (opened from detail) must clear the dock.
-  if (isPhone(testInfo.project.name) && geometry.renameBottom !== null) {
-    expect(geometry.dockTop).not.toBeNull();
-    if (geometry.dockTop !== null) {
-      expect(geometry.renameBottom).toBeLessThanOrEqual(geometry.dockTop + 1);
-    }
-  }
 });
 
 test("rename detail keeps the affordance visible and in flow at the pinned width", async ({
@@ -268,6 +278,7 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
   await page.goto("/management?module=roles");
 
   await expect(page.getByRole("heading", { name: "身份組" })).toBeVisible();
+  await page.getByRole("button", { name: /部門/u }).click();
   const managerRow = page.getByRole("button", { name: /成人部門管理者/u });
   await managerRow.click();
   const rename = page.getByRole("button", { name: "重新命名" });
@@ -285,7 +296,9 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
       Math.max(doc.scrollWidth, document.body.scrollWidth) - viewportWidth;
     const dock = document.querySelector<HTMLElement>(".nav-phone");
     const dockBox = dock?.getBoundingClientRect();
-    const save = document.querySelector<HTMLElement>("button");
+    const save = [...document.querySelectorAll<HTMLElement>("button")].find(
+      (element) => element.textContent?.includes("儲存名稱")
+    );
     const saveBox = save?.getBoundingClientRect();
     return {
       viewportWidth,
@@ -300,9 +313,10 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
     `horizontal overflow at ${geometry.viewportWidth}px`
   ).toBeLessThanOrEqual(1);
 
-  if (isPhone(testInfo.project.name) && geometry.saveBottom !== null) {
+  expect(geometry.saveBottom).not.toBeNull();
+  if (isPhone(testInfo.project.name)) {
     expect(geometry.dockTop).not.toBeNull();
-    if (geometry.dockTop !== null) {
+    if (geometry.dockTop !== null && geometry.saveBottom !== null) {
       expect(geometry.saveBottom).toBeLessThanOrEqual(geometry.dockTop + 1);
     }
   }

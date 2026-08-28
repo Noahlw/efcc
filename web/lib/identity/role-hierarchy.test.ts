@@ -33,11 +33,13 @@ import {
   seedDisposableIdentity,
   recordRoleDenialForRename,
   renameRoleDefinition,
+  RoleAdminProtectedError,
+  RoleBaselineProtectedError,
+  RoleCapabilityDeniedError,
   RoleHighestProtectedError,
   RoleIdempotencyConflictError,
   RoleInvalidNameError,
   RoleNameConflictError,
-  RoleProtectedIdentityError,
   RoleRevisionConflictError,
   RoleScopeMismatchError,
   RoleSelfRenameError,
@@ -113,7 +115,6 @@ function renameInput(
 ) {
   return {
     actor_user_id: ADMIN,
-    request_fingerprint: "fp-h-05",
     idempotency_key: "h-05-rename",
     base_revision: 1,
     role_definition_id: PROGRAM_LEADER_ROLE,
@@ -162,6 +163,13 @@ describe("#478 role hierarchy and rename contract", () => {
     const admin = global.definitions.find(
       (definition) => definition.roleDefinitionId === ADMIN_ROLE
     );
+    const staff = global.definitions.find(
+      (definition) => definition.roleDefinitionId === STAFF_ROLE
+    );
+    expect(staff).toBeDefined();
+    if (!staff) {
+      throw new Error("missing assignable Staff identity");
+    }
     const member = global.definitions.find(
       (definition) => definition.roleDefinitionId === MEMBER_ROLE
     );
@@ -177,6 +185,8 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(member.isProtected).toBe(true);
     expect(admin.actions).toEqual([]);
     expect(member.actions).toEqual([]);
+    expect(staff.isProtected).toBe(false);
+    expect(staff.actions.map((action) => action.action)).toContain("rename");
 
     const department = view.categories.find(
       (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
@@ -195,7 +205,7 @@ describe("#478 role hierarchy and rename contract", () => {
     // H-03: scope label, position, grant count, assignment count, protected state.
     expect(manager.scopeLabel).toBeTruthy();
     expect(manager.position).toBe(10);
-    expect(manager.grantCount).toBe(6);
+    expect(manager.grantCount).toBe(12);
     expect(manager.assignmentCount).toBe(1);
     expect(manager.isProtected).toBe(false);
     // Admin may rename any lower non-protected definition.
@@ -234,8 +244,9 @@ describe("#478 role hierarchy and rename contract", () => {
     const manager = department?.definitions.find(
       (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
     );
-    // Department Manager (position 10) sits below Staff: rename is projected.
-    expect(manager?.actions.map((action) => action.action)).toContain("rename");
+    // Program Leader has read/assignment capability but no name-write grant.
+    expect(staff?.isProtected).toBe(false);
+    expect(manager?.actions).toEqual([]);
   });
 
   test("H-05/H-15: rename commits domain, audit, idempotency, and response atomically", async () => {
@@ -299,6 +310,26 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(audits.filter((audit) => audit.outcome === "SUCCESS")).toHaveLength(
       1
     );
+    const audit = await readScalar<{
+      actor_user_id: string;
+      old_value_json: string;
+      new_value_json: string;
+      reason: string;
+      correlation_id: string;
+    }>(
+      `SELECT actor_user_id, old_value_json, new_value_json, reason, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-aaaa00000501"
+    );
+    expect(audit?.actor_user_id).toBe(ADMIN);
+    expect(JSON.parse(audit?.old_value_json ?? "{}").label).toBe(
+      "青少年查經帶領"
+    );
+    expect(JSON.parse(audit?.new_value_json ?? "{}").label).toBe(
+      "青少年查經組長"
+    );
+    expect(audit?.reason).toBe(`base=${base};new=${base + 1};idem=h-05-rename`);
+    expect(audit?.correlation_id).toBe("corr-h-05");
     const mutation = await readMutation("h-05-rename");
     expect(mutation?.outcome).toBe("SUCCESS");
     expect(mutation?.resulting_revision).toBe(base + 1);
@@ -317,7 +348,7 @@ describe("#478 role hierarchy and rename contract", () => {
     const replay = await renameRoleDefinition(
       testDb(),
       renameInput({
-        base_revision: 999, // stale base is irrelevant on replay
+        base_revision: (mutationBefore?.resulting_revision ?? 2) - 1,
         label: "青少年查經組長",
       })
     );
@@ -349,7 +380,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-05-rename", // already used for the program leader
-          request_fingerprint: "fp-different-payload",
           base_revision: base,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "成人部門主管",
@@ -381,7 +411,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-07-conflict",
-          request_fingerprint: "fp-h-07",
           base_revision: base,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "系統管理員", // collides with Admin's label (case/space-insensitive)
@@ -418,7 +447,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-11-empty",
-          request_fingerprint: "fp-h-11-empty",
           base_revision: base,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "   ",
@@ -432,7 +460,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-11-long",
-          request_fingerprint: "fp-h-11-long",
           base_revision: base,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "超".repeat(ROLE_NAME_MAX_LENGTH + 1),
@@ -458,7 +485,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-11-trimmed-max",
-          request_fingerprint: "fp-h-11-trimmed",
           base_revision: baseAfter,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: trimmedMax,
@@ -469,46 +495,122 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(await readRevision()).toBe(baseAfter + 1);
   });
 
-  test("H-08: Admin and 會友基礎 are locked for every actor", async () => {
+  test("H-08/B5: Admin and 會友基礎 use distinct protected errors", async () => {
     const base = await readRevision();
-    for (const roleId of [ADMIN_ROLE, MEMBER_ROLE]) {
-      await expect(
-        renameRoleDefinition(
-          testDb(),
-          renameInput({
-            idempotency_key: `h-08-${roleId}`,
-            request_fingerprint: `fp-h-08-${roleId}`,
-            base_revision: base,
-            role_definition_id: roleId,
-            label: "改名嘗試",
-            audit_id: `018f3b8a-0000-7000-8000-aaaa00000504-${roleId}`,
-          })
-        )
-      ).rejects.toBeInstanceOf(RoleProtectedIdentityError);
-    }
-    expect(await readRevision()).toBe(base);
-  });
-
-  test("H-09: an actor cannot rename a Role Definition at or above their highest position", async () => {
-    const base = await readRevision();
-    // Member's highest identity is 會友基礎 (position 999, the global
-    // baseline); every real definition sits at-or-above that, so any
-    // target is locked (H-09 highest lock).
     await expect(
       renameRoleDefinition(
         testDb(),
         renameInput({
-          actor_user_id: MEMBER,
-          idempotency_key: "h-09-member-high",
-          request_fingerprint: "fp-h-09",
+          idempotency_key: "h-08-admin",
           base_revision: base,
-          role_definition_id: DEPARTMENT_MANAGER_ROLE,
+          role_definition_id: ADMIN_ROLE,
           label: "改名嘗試",
-          audit_id: "018f3b8a-0000-7000-8000-aaaa00000505",
+          audit_id: "018f3b8a-0000-8000-aaaa00000504-admin",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleAdminProtectedError);
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          idempotency_key: "h-08-member",
+          base_revision: base,
+          role_definition_id: MEMBER_ROLE,
+          label: "改名嘗試",
+          audit_id: "018f3b8a-0000-8000-aaaa00000504-member",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleBaselineProtectedError);
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("H-09: capable actor cannot rename a role at or above highest position", async () => {
+    const actor = "E2E_DISPOSABLE_HIGHEST";
+    const actorRoleId = "018f3b8a-0000-7000-8000-1000000000d1";
+    const higherRoleId = "018f3b8a-0000-7000-8000-1000000000d2";
+    await importLegacyUsers(
+      testDb(),
+      [
+        ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
+        [
+          actor,
+          "Highest Test Actor",
+          "highest_test_actor",
+          "0000",
+          "Staff",
+          "Active",
+        ],
+      ],
+      Date.parse(NOW)
+    );
+    const base = await readRevision();
+    await applyRoleMutation(testDb(), {
+      idempotency_key: "h-09-create",
+      request_fingerprint: "fp-h-09-create",
+      actor_user_id: ADMIN,
+      base_revision: base,
+      now: NOW,
+      audit_id: "018f3b8a-0000-8000-aaaa00000505-create",
+      desired: [
+        {
+          kind: "create_role_definition",
+          role_definition_id: actorRoleId,
+          category_key: "Program" as const,
+          stable_key: "t478.highest.actor",
+          label: "最高順位測試角色",
+          description: "H-09 actor fixture",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-8000-300000000001",
+          position: 5,
+          capabilities: ["role.read", "role.name.write"],
+        },
+        {
+          kind: "create_role_definition",
+          role_definition_id: higherRoleId,
+          category_key: "Program" as const,
+          stable_key: "t478.highest.target",
+          label: "更高順位測試角色",
+          description: "H-09 target fixture",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-8000-300000000001",
+          position: 4,
+          capabilities: [],
+        },
+        {
+          kind: "grant_assignment" as const,
+          assignment_id: `${actorRoleId}-${actor}`,
+          account_user_id: actor,
+          role_definition_id: actorRoleId,
+        },
+        {
+          kind: "grant_assignment" as const,
+          assignment_id: `${MEMBER_ROLE}-${actor}`,
+          account_user_id: actor,
+          role_definition_id: MEMBER_ROLE,
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: actorRoleId,
+        new_value_json: JSON.stringify({ label: "最高順位測試角色" }),
+      },
+    });
+    const afterCreate = await readRevision();
+    await expect(
+      renameRoleDefinition(
+        testDb(),
+        renameInput({
+          actor_user_id: actor,
+          idempotency_key: "h-09-high-target",
+          base_revision: afterCreate,
+          role_definition_id: higherRoleId,
+          label: "改名嘗試",
+          audit_id: "018f3b8a-0000-8000-aaaa00000505-attempt",
         })
       )
     ).rejects.toBeInstanceOf(RoleHighestProtectedError);
-    expect(await readRevision()).toBe(base);
+    expect(await readRevision()).toBe(afterCreate);
   });
 
   test("H-14: an actor cannot rename their own highest assignment", async () => {
@@ -534,7 +636,7 @@ describe("#478 role hierarchy and rename contract", () => {
           scope_kind: "Program" as const,
           scope_id: "018f3b8a-0000-7000-8000-300000000001",
           position: 5,
-          capabilities: [],
+          capabilities: ["role.name.write"],
         },
         {
           kind: "grant_assignment" as const,
@@ -558,7 +660,6 @@ describe("#478 role hierarchy and rename contract", () => {
         renameInput({
           actor_user_id: MEMBER,
           idempotency_key: "h-14-member-highest",
-          request_fingerprint: "fp-h-14",
           base_revision: afterCreate,
           role_definition_id: customRoleId,
           label: "改名嘗試",
@@ -614,7 +715,7 @@ describe("#478 role hierarchy and rename contract", () => {
           // Below the Department Manager (position 10) so the target passes
           // the highest lock and the SCOPE lock is what fires.
           position: 5,
-          capabilities: [],
+          capabilities: ["role.read", "role.name.write"],
         },
       ],
       audit_summary: {
@@ -665,7 +766,6 @@ describe("#478 role hierarchy and rename contract", () => {
         renameInput({
           actor_user_id: scopedAccount,
           idempotency_key: "h-10-out-of-scope",
-          request_fingerprint: "fp-h-10",
           base_revision: afterCreate,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "改名嘗試",
@@ -695,7 +795,6 @@ describe("#478 role hierarchy and rename contract", () => {
         renameInput({
           actor_user_id: MEMBER,
           idempotency_key: "h-16-member-direct",
-          request_fingerprint: "fp-h-16",
           base_revision: base,
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "改名嘗試",
@@ -722,7 +821,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-12-stale",
-          request_fingerprint: "fp-h-12",
           base_revision: current - 10, // stale
           role_definition_id: DEPARTMENT_MANAGER_ROLE,
           label: "成人部門主管",
@@ -744,7 +842,6 @@ describe("#478 role hierarchy and rename contract", () => {
         testDb(),
         renameInput({
           idempotency_key: "h-unknown",
-          request_fingerprint: "fp-unknown",
           role_definition_id: "018f3b8a-0000-7000-8000-00000000dead",
           label: "不存在",
           audit_id: "018f3b8a-0000-7000-8000-aaaa0000050a",

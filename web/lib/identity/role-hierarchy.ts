@@ -8,7 +8,9 @@
  *   * `loadRoleHierarchy()` — the read-only tree: fixed Role Categories
  *     (non-assignable headings), ordered Role Definition summaries, the
  *     protected Admin / 會友基礎 anchors, scope labels, child counts,
- *     protected states, and the server-projected action affordances.
+ *     protected states, and the server-projected action affordances. The
+ *     read is gated on the actor's effective `role.read` capability; the
+ *     rename affordance is projected only when `role.name.write` is held.
  *   * `renameRoleDefinition()` — the one complete lower-target mutation:
  *     stable ID, assignments, order position, scope, and grants all
  *     survive; the D1 batch commits domain state, the immutable audit row,
@@ -19,6 +21,12 @@
  * Authority is recomputed from D1 on every call — the UI projection is
  * never the authority (Spec 091 §10). The Worker handlers
  * (web/lib/identity/role-handlers.ts) are the only callers.
+ *
+ * Name contract (Spec 091 §8.2): display names are globally unique after
+ * trim / Unicode normalization (NFC) / case folding; the canonical
+ * fingerprint for idempotency is computed server-side from the request
+ * semantics (role ID, base revision, normalized name) and never trusts a
+ * client-supplied value.
  */
 /* oxlint-disable eslint/max-classes-per-file, eslint/no-unused-vars, eslint/no-use-before-define, eslint/prefer-destructuring, eslint/require-await, unicorn/no-lonely-if -- classes mirror the Worker error vocabulary; guards are sequential by design and authority helpers are declared top-down for readability. */
 import {
@@ -28,7 +36,11 @@ import {
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
-import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
+import {
+  CAPABILITY_CATALOG,
+  PROTECTED_STABLE_KEYS,
+  ROLE_CATEGORY_KEY,
+} from "./types";
 import type { RoleAuditOutcome, RoleCategoryKey, RoleScopeKind } from "./types";
 
 /** Name contract (H-11): trimmed, non-empty, ≤ 60 characters (Spec 091 §8.2). */
@@ -91,8 +103,6 @@ export interface RoleHierarchyView {
 /** Rename mutation input (H-05). */
 export interface RoleRenameInput {
   actor_user_id: string;
-  /** Canonical payload fingerprint; must match the stored key. */
-  request_fingerprint: string;
   idempotency_key: string;
   base_revision: number;
   role_definition_id: string;
@@ -126,6 +136,27 @@ export class RoleNameConflictError extends Error {
   constructor() {
     super("ROLE_NAME_TAKEN: normalized display name already exists");
     this.name = "RoleNameConflictError";
+  }
+}
+
+export class RoleCapabilityDeniedError extends Error {
+  constructor() {
+    super("ROLE_FORBIDDEN: actor lacks the operation capability");
+    this.name = "RoleCapabilityDeniedError";
+  }
+}
+
+export class RoleAdminProtectedError extends Error {
+  constructor() {
+    super("ROLE_ADMIN_PROTECTED: Admin is immutable");
+    this.name = "RoleAdminProtectedError";
+  }
+}
+
+export class RoleBaselineProtectedError extends Error {
+  constructor() {
+    super("ROLE_BASELINE_PROTECTED: 會友基礎 is immutable");
+    this.name = "RoleBaselineProtectedError";
   }
 }
 
@@ -209,6 +240,7 @@ interface ActorRoleRow {
   scope_kind: RoleScopeKind;
   scope_id: string | null;
   label: string;
+  stable_key: string;
 }
 
 function roleKind(
@@ -233,7 +265,8 @@ export async function loadActorRoles(
   const rows = await db
     .prepare(
       `SELECT rd.role_definition_id, rd.position, rd.is_protected,
-              rd.category_key, rd.scope_kind, rd.scope_id, rd.label
+              rd.category_key, rd.scope_kind, rd.scope_id, rd.label,
+              rd.stable_key
          FROM role_assignments ra
          JOIN role_definitions rd ON rd.role_definition_id = ra.role_definition_id
         WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL
@@ -242,6 +275,44 @@ export async function loadActorRoles(
     .bind(actorUserId)
     .all<ActorRoleRow>();
   return rows.results ?? [];
+}
+
+/**
+ * Effective capability resolution (Spec 091 §4.5/§6.1): Admin holds every
+ * `role.*` capability; every other actor's capabilities are the union of
+ * grants across their active assignments. The hierarchy/rename surface
+ * checks exactly `role.read` (read projection) and `role.name.write`
+ * (rename mutation) — never the UI projection.
+ */
+export async function resolveActorCapabilities(
+  db: D1Database,
+  actorUserId: string
+): Promise<Record<string, boolean>> {
+  const roles = await loadActorRoles(db, actorUserId);
+  const capabilities: Record<string, boolean> = {};
+  for (const role of roles) {
+    if (role.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
+      for (const capability of CAPABILITY_CATALOG) {
+        if (capability.startsWith("role.")) {
+          capabilities[capability] = true;
+        }
+      }
+    }
+  }
+  const grants = await db
+    .prepare(
+      `SELECT DISTINCT rg.capability
+         FROM role_definition_grants rg
+         JOIN role_assignments ra
+           ON ra.role_definition_id = rg.role_definition_id
+        WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL`
+    )
+    .bind(actorUserId)
+    .all<{ capability: string }>();
+  for (const grant of grants.results ?? []) {
+    capabilities[grant.capability] = true;
+  }
+  return capabilities;
 }
 
 /**
@@ -303,6 +374,13 @@ export async function loadRoleHierarchy(
   db: D1Database,
   actorUserId: string
 ): Promise<RoleHierarchyView> {
+  // Spec 091 §10: resolve the operation capability before any projection.
+  // `role.read` gates the read surface; a caller without it receives the
+  // canonical ROLE_FORBIDDEN problem and no tree.
+  const capabilities = await resolveActorCapabilities(db, actorUserId);
+  if (!capabilities["role.read"]) {
+    throw new RoleCapabilityDeniedError();
+  }
   const [categories, definitions, counts, revisionRow, actorRoles] =
     await Promise.all([
       db
@@ -358,7 +436,11 @@ export async function loadRoleHierarchy(
       .map((row) => {
         const countsForRole = countById.get(row.role_definition_id);
         const canRename =
-          !row.is_protected &&
+          capabilities["role.name.write"] === true &&
+          // Staff is assignable and can be renamed by an eligible higher
+          // actor holding role.name.write; only Admin and 會友基礎 are locked.
+          (row.is_protected === 0 ||
+            row.stable_key === PROTECTED_STABLE_KEYS.STAFF) &&
           row.is_archived === 0 &&
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
@@ -425,8 +507,28 @@ function isWithinActorScope(
   );
 }
 
-function normalizeName(label: string): string {
-  return label.trim().toLocaleLowerCase("zh-Hant");
+/**
+ * Canonical name normalization (Spec 091 §8.2): trim, Unicode NFC
+ * normalization, then case folding. Used for both collision detection and
+ * the canonical rename fingerprint; display labels are stored verbatim
+ * (trimmed only) so the operator's chosen casing/spelling is preserved.
+ */
+export function normalizeName(label: string): string {
+  return label.trim().normalize("NFC").toLowerCase();
+}
+
+/**
+ * Canonical rename fingerprint computed server-side from the request
+ * semantics (Spec 091 §11 / H-13): role ID, base revision, normalized name.
+ * The client-supplied `request_fingerprint` is never authoritative, so a
+ * key reused with a different change cannot replay a false result.
+ */
+export function canonicalRenameFingerprint(input: {
+  role_definition_id: string;
+  base_revision: number;
+  label: string;
+}): string {
+  return `rename|${input.role_definition_id}|${input.base_revision}|${normalizeName(input.label)}`;
 }
 
 /** Rename eligibility is recomputed here from D1 (H-16: UI is not authority). */
@@ -435,18 +537,29 @@ async function assertRenameEligible(
   actorUserId: string,
   target: RoleDefinitionRow
 ): Promise<void> {
+  // Spec 091 §10 order: capability first (ROLE_FORBIDDEN), then the
+  // protected Admin / 會友基礎 locks (H-08), then self/highest/scope.
+  const capabilities = await resolveActorCapabilities(db, actorUserId);
+  if (!capabilities["role.name.write"]) {
+    throw new RoleCapabilityDeniedError();
+  }
   const actorRoles = await loadActorRoles(db, actorUserId);
   const highestPosition =
     actorRoles.length > 0
       ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
 
-  // H-08: Admin and 會友基礎 are locked for every actor.
-  if (
-    target.is_protected === 1 ||
-    target.stable_key === PROTECTED_STABLE_KEYS.ADMIN ||
-    target.stable_key === PROTECTED_STABLE_KEYS.MEMBER
-  ) {
+  // H-08: Admin and 會友基礎 are locked for every actor. Staff is a
+  // protected-by-position system identity but remains renameable by an
+  // eligible higher actor (Spec 091 §4.2 / §9.2).
+  if (target.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
+    throw new RoleAdminProtectedError();
+  }
+  if (target.stable_key === PROTECTED_STABLE_KEYS.MEMBER) {
+    throw new RoleBaselineProtectedError();
+  }
+  if (target.is_protected === 1) {
+    // Any other protected row (future system identity) stays hard-locked.
     throw new RoleProtectedIdentityError();
   }
   // H-14: an actor cannot rename its own highest assigned identity
@@ -494,7 +607,8 @@ export async function renameRoleDefinition(
   // (Spec 091 §9.3): trimmed, non-empty, ≤ ROLE_NAME_MAX_LENGTH. The
   // canonical uniqueness check below re-validates the normalized form.
   const label = input.label.trim();
-  if (label.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
+  const normalizedLabel = normalizeName(label);
+  if (normalizedLabel.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
     throw new RoleInvalidNameError();
   }
 
@@ -507,11 +621,14 @@ export async function renameRoleDefinition(
   const newName = label;
 
   // Recompute every authority rule from D1 before any write (Spec 091 §10);
-  // each rejection records the documented DENIED/CONFLICT audit row.
+  // each rejection records the documented DENIED audit row.
   try {
     await assertRenameEligible(db, input.actor_user_id, target);
   } catch (error) {
     if (
+      error instanceof RoleCapabilityDeniedError ||
+      error instanceof RoleAdminProtectedError ||
+      error instanceof RoleBaselineProtectedError ||
       error instanceof RoleProtectedIdentityError ||
       error instanceof RoleSelfRenameError ||
       error instanceof RoleHighestProtectedError ||
@@ -534,15 +651,16 @@ export async function renameRoleDefinition(
 
   const normalizedNew = normalizeName(newName);
   if (normalizedNew !== normalizeName(oldName)) {
-    const collision = await db
+    const candidates = await db
       .prepare(
-        `SELECT 1 FROM role_definitions
-          WHERE role_definition_id <> ?
-            AND lower(trim(label)) = ?
-          LIMIT 1`
+        `SELECT role_definition_id, label FROM role_definitions
+          WHERE role_definition_id <> ?`
       )
-      .bind(input.role_definition_id, normalizedNew)
-      .first();
+      .bind(input.role_definition_id)
+      .all<{ role_definition_id: string; label: string }>();
+    const collision = (candidates.results ?? []).some(
+      (row) => normalizeName(row.label) === normalizedNew
+    );
     if (collision) {
       await recordRoleDenialForRename(db, {
         actor_user_id: input.actor_user_id,
@@ -559,14 +677,32 @@ export async function renameRoleDefinition(
     }
   }
 
+  // The canonical fingerprint is computed server-side from the request
+  // semantics (H-13): a client-supplied fingerprint is never the authority,
+  // so a key reused with a different change returns ROLE_IDEMPOTENCY_REUSE
+  // instead of replaying a false result.
+  const fingerprint = canonicalRenameFingerprint({
+    role_definition_id: input.role_definition_id,
+    base_revision: input.base_revision,
+    label: newName,
+  });
+
+  // H-05/H-15 audit evidence: the immutable SUCCESS row carries the actor
+  // (actor_user_id), old/new names (old/new_value_json), the base revision,
+  // the resulting revision (base + 1 is deterministic under the revision
+  // gate), and the idempotency key (reason field).
+  const baseRevision = input.base_revision;
+  const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;
+
   try {
     const result = await applyRoleMutation(db, {
       idempotency_key: input.idempotency_key,
-      request_fingerprint: input.request_fingerprint,
+      request_fingerprint: fingerprint,
       actor_user_id: input.actor_user_id,
       base_revision: input.base_revision,
       now: input.now,
       audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
       desired: [
         {
           kind: "rename_role_definition",
@@ -578,7 +714,7 @@ export async function renameRoleDefinition(
         action: "ROLE_DEFINITION_RENAME",
         entity_type: "role_definition",
         entity_id: input.role_definition_id,
-        reason: input.correlation_id,
+        reason: auditReason,
         old_value_json: JSON.stringify({ label: oldName }),
         new_value_json: JSON.stringify({ label: newName }),
       },
@@ -663,6 +799,7 @@ export async function recordRoleDenialForRename(
 
 export const __test = {
   normalizeName,
+  canonicalRenameFingerprint,
   isWithinActorScope,
   roleKind,
 };

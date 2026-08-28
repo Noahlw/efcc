@@ -6,7 +6,7 @@
  *   1. Inserts the PENDING idempotency row (gated by idempotency_key +
  *      request_fingerprint) so replays of the same payload are idempotent
  *      and a key reused with a different payload is rejected with 409
- *      IDEMPOTENCY_CONFLICT.
+ *      ROLE_IDEMPOTENCY_REUSE.
  *   2. Performs the role / grant / assignment / archive / revoke writes,
  *      each gated on the same PENDING row plus the expected base revision.
  *   3. Advances role_policy_revisions by one on success.
@@ -33,6 +33,8 @@ export interface RoleMutationInput {
   base_revision: number;
   now: string;
   audit_id: string;
+  /** Correlation/request ID copied to the immutable audit event. */
+  correlation_id?: string | null;
   desired: readonly RoleDesiredChange[];
   audit_summary: {
     action: string;
@@ -100,7 +102,7 @@ export interface RoleMutationResult {
 export class RoleIdempotencyConflictError extends Error {
   constructor() {
     super(
-      "IDEMPOTENCY_CONFLICT: idempotency_key reused with a different payload"
+      "ROLE_IDEMPOTENCY_REUSE: idempotency_key reused with a different payload"
     );
     this.name = "RoleIdempotencyConflictError";
   }
@@ -530,7 +532,7 @@ export async function applyRoleMutation(
         input.audit_summary.old_value_json ?? null,
         input.audit_summary.new_value_json ?? null,
         input.audit_summary.reason ?? null,
-        input.idempotency_key,
+        input.correlation_id ?? null,
         input.idempotency_key,
         input.request_fingerprint
       )

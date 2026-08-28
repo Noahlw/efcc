@@ -75,6 +75,36 @@
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
 }
+.categoryToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.categoryToggle:hover,
+.categoryToggle:focus-visible {
+  border-color: var(--focus);
+}
+
+.categoryMarker {
+  width: 1.25rem;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.categoryLabel {
+  min-width: 0;
+  flex: 1;
+}
 
 .categoryCount {
   color: var(--ink-muted);
@@ -243,6 +273,7 @@
 .save:focus-visible,
 .cancel:focus-visible,
 .retry:focus-visible,
+.categoryToggle:focus-visible,
 .roleButton:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;

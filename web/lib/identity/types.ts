@@ -38,9 +38,10 @@ export type RoleScopeKind =
 /**
  * Normalized Role Definition (Spec 091 §3).
  *
- * `is_protected` covers the three system anchors (`admin`, `staff`,
- * `member` — the last rendered as 會友基礎); their label/description/position
- * are write-guarded at the schema layer.
+ * `is_protected` covers the two fixed system identities (`admin`, `member` —
+ * the last rendered as 會友基礎); their label/description/position are
+ * write-guarded at the schema layer. Staff is assignable and therefore not
+ * protected.
  *
  * `is_archived` is the lifecycle flag; archived roles keep their grants and
  * assignment history but the Worker transaction is the only path that
@@ -135,6 +136,17 @@ export interface RoleAuditEventRow {
  * seam in lockstep.
  */
 export const CAPABILITY_CATALOG = [
+  "role.read",
+  "role.assign",
+  "role.revoke",
+  "role.reorder",
+  "role.name.write",
+  "role.permissions.read",
+  "role.permissions.write",
+  "role.scope.read",
+  "role.scope.write",
+  "role.create",
+  "role.delete",
   "department.manage",
   "department.publish",
   "department.module.configure",
@@ -156,7 +168,7 @@ export function isCapability(value: string): value is Capability {
   return (CAPABILITY_CATALOG as readonly string[]).includes(value);
 }
 
-/** Stable keys for the three protected system identities. */
+/** Stable keys for the two fixed system identities and assignable Staff. */
 export const PROTECTED_STABLE_KEYS = {
   ADMIN: "admin",
   STAFF: "staff",

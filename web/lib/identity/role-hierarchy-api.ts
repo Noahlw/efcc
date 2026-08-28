@@ -98,14 +98,14 @@ export function getRoleHierarchy(): Promise<RoleHierarchyView> {
 /**
  * PATCH /api/v1/identity/roles/:id/name — one complete rename mutation.
  * Pass a stable idempotency key to replay a lost response; the server
- * returns the original result for the same key + fingerprint.
+ * computes the canonical request fingerprint itself (Spec 091 §11), so a
+ * client-supplied fingerprint is never the authority.
  */
 export function renameRoleDefinition(
   roleDefinitionId: string,
   input: {
     label: string;
     baseRevision: number;
-    requestFingerprint: string;
   },
   idempotencyKey?: string
 ): Promise<RoleRenameResult> {
@@ -115,7 +115,6 @@ export function renameRoleDefinition(
     {
       label: input.label,
       base_revision: input.baseRevision,
-      request_fingerprint: input.requestFingerprint,
     },
     idempotencyKey
   );

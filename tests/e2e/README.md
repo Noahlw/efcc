@@ -14,10 +14,13 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `live-ui.config.ts` | `pnpm exec playwright test -c tests/e2e/live-ui.config.ts` | Rebuilt Next UI shell, Profile, Account Settings, approval flow, and responsive browser states. |
 | `responsive.config.ts` | `pnpm test:shell-responsive` | Deterministic static-shell responsive/accessibility checks with an in-browser RPC stub. |
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
+| `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
 
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
 
 `pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites are part of the deterministic precheck (`precheck.yml`) and of `pnpm verify`.
+
+`pnpm test:role-hierarchy-geometry` builds the static export and runs the real category expand, detail, and rename controls at each pinned width. It asserts non-vacuous hierarchy anchors, 44px controls, no horizontal overflow, and phone dock clearance; the command is included in `pnpm verify` and CI precheck.
 
 The retired Apps Script `/exec` Playwright suite, Google storage-state capture helper, clasp deployment helper, `src/gas/`, and `tests/gas/` VM-harness were removed with the GAS retirement.
 
