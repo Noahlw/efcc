@@ -33,11 +33,16 @@ export {
   resolveActorHighestPosition,
   resolveActorCapabilities,
   renameRoleDefinition,
+  createRoleDefinition,
+  reorderRoleDefinitions,
   recordRoleDenialForRename,
+  recordRoleDenialForCreate,
   ROLE_HIERARCHY_ACTION,
   ROLE_NAME_MAX_LENGTH,
   normalizeName,
   canonicalRenameFingerprint,
+  canonicalCreateFingerprint,
+  canonicalReorderFingerprint,
   RoleInvalidNameError,
   RoleNameConflictError,
   RoleArchivedError,
@@ -49,6 +54,10 @@ export {
   RoleScopeMismatchError,
   RoleSelfRenameError,
   RoleTargetNotFoundError,
+  RoleInvalidParentError,
+  RoleCrossCategoryError,
+  RoleScopeRequiredError,
+  RoleOrderConflictError,
   __test as __hierarchyTest,
 } from "./role-hierarchy";
 export type {
@@ -57,8 +66,14 @@ export type {
   RoleHierarchyDefinition,
   RoleHierarchyAction,
   RoleHierarchyActionAffordance,
+  RoleHierarchyScopeOption,
+  RoleHierarchyOrderTarget,
   RoleRenameInput,
   RoleRenameResult,
+  RoleCreateInput,
+  RoleCreateResult,
+  RoleReorderInput,
+  RoleReorderResult,
 } from "./role-hierarchy";
 
 export {

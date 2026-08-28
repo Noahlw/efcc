@@ -1069,14 +1069,30 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
-      const { handleGetRoleHierarchy, handleRenameRoleDefinition } =
-        await import("./lib/identity/role-handlers");
+      const {
+        handleGetRoleHierarchy,
+        handleRenameRoleDefinition,
+        handleCreateRoleDefinition,
+        handleReorderRoleDefinitions,
+      } = await import("./lib/identity/role-handlers");
 
       if (
         url.pathname === "/api/v1/identity/roles" &&
         request.method === "GET"
       ) {
         return handleGetRoleHierarchy(request, roleEnv);
+      }
+      if (
+        url.pathname === "/api/v1/identity/role-definitions" &&
+        request.method === "POST"
+      ) {
+        return handleCreateRoleDefinition(request, roleEnv);
+      }
+      if (
+        url.pathname === "/api/v1/identity/roles/order" &&
+        request.method === "PATCH"
+      ) {
+        return handleReorderRoleDefinitions(request, roleEnv);
       }
       const renamePrefix = "/api/v1/identity/roles/";
       if (

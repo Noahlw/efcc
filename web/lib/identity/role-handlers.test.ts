@@ -340,9 +340,12 @@ describe("#478 identity Worker/HTTP seam", () => {
     assert.equal(body.data.idempotent, false);
     assert.equal(res.headers.get("X-Request-Id"), body.requestId);
   });
+
   test("archived role rename returns ROLE_ARCHIVED Problem Details", async () => {
     await testDb()
-      .prepare(`UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`)
+      .prepare(
+        `UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`
+      )
       .bind(DEPARTMENT_MANAGER_ROLE)
       .run();
     const revision = await testDb()
@@ -367,9 +370,411 @@ describe("#478 identity Worker/HTTP seam", () => {
     const body = await problemBody(res);
     assert.equal(body.code, "ROLE_ARCHIVED");
     const row = await testDb()
-      .prepare(`SELECT label FROM role_definitions WHERE role_definition_id = ?`)
+      .prepare(
+        `SELECT label FROM role_definitions WHERE role_definition_id = ?`
+      )
       .bind(DEPARTMENT_MANAGER_ROLE)
       .first<{ label: string }>();
     assert.equal(row?.label, "成人部門主管");
+  });
+});
+
+async function readCurrentHttpRevision(): Promise<number> {
+  const row = await testDb()
+    .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
+    .first<{ revision: number }>();
+  return row?.revision ?? 1;
+}
+
+describe("#479 Worker/HTTP create + reorder seam", () => {
+  // Shares the seeded disposable D1 from the #478 suite above (same file,
+  // same binding): migrations + seeds already ran there.
+
+  test("B-479-01: Admin POST creates a scoped Role Definition with the { requestId, data } envelope and X-Request-Id correlation", async () => {
+    const base = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-create-1",
+        },
+        body: {
+          category_key: "Department",
+          label: "HTTP 建立部門角色",
+          description: "HTTP create fixture",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      requestId: string;
+      data: {
+        roleDefinitionId: string;
+        categoryKey: string;
+        label: string;
+        scopeKind: string;
+        scopeId: string | null;
+        position: number;
+        revision: number;
+        idempotent: boolean;
+      };
+    };
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(body.data.categoryKey, "Department");
+    assert.equal(body.data.scopeKind, "Department");
+    assert.equal(body.data.scopeId, "018f3b8a-0000-7000-8000-000000000002");
+    assert.equal(body.data.label, "HTTP 建立部門角色");
+    assert.equal(body.data.revision, base + 1);
+    assert.equal(body.data.idempotent, false);
+    const audit = await testDb()
+      .prepare(
+        `SELECT action, outcome, correlation_id FROM role_audit_events
+          WHERE entity_id = ? AND action = 'ROLE_DEFINITION_CREATE'
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(body.data.roleDefinitionId)
+      .first<{ action: string; outcome: string; correlation_id: string }>();
+    assert.equal(audit?.action, "ROLE_DEFINITION_CREATE");
+    assert.equal(audit?.outcome, "SUCCESS");
+    assert.equal(audit?.correlation_id, body.requestId);
+  });
+
+  test("B-479-02: Staff POST with a Global scope is rejected 403 ROLE_FORBIDDEN with X-Request-Id correlation", async () => {
+    const staffCookie = await cookieFor("E2E_DISPOSABLE_STAFF");
+    const base = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}`,
+          "Idempotency-Key": "http-b479-create-staff-global",
+        },
+        body: {
+          category_key: "Global",
+          label: "Staff 全域角色",
+          description: "",
+          scope_kind: "Global",
+          scope_id: null,
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 403);
+    const body = await problemBody(res);
+    assert.equal(body.code, "ROLE_FORBIDDEN");
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(await readCurrentHttpRevision(), base);
+  });
+
+  test("B-479-14: Staff POST creates a scoped Role Definition under the permitted 成區 Department category", async () => {
+    const staffCookie = await cookieFor("E2E_DISPOSABLE_STAFF");
+    const base = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${staffCookie}`,
+          "Idempotency-Key": "http-b479-create-staff-scoped",
+        },
+        body: {
+          category_key: "Department",
+          label: "成區支援角色",
+          description: "Staff scoped creation",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      requestId: string;
+      data: {
+        roleDefinitionId: string;
+        scopeKind: string;
+        position: number;
+        revision: number;
+      };
+    };
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(body.data.scopeKind, "Department");
+    assert.ok(body.data.position > 1);
+    const grants = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS c FROM role_definition_grants
+          WHERE role_definition_id = ?`
+      )
+      .bind(body.data.roleDefinitionId)
+      .first<{ c: number }>();
+    assert.equal(grants?.c, 0);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, correlation_id FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_CREATE'
+            AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(body.data.roleDefinitionId)
+      .first<{ outcome: string; correlation_id: string }>();
+    assert.equal(audit?.outcome, "SUCCESS");
+    assert.equal(audit?.correlation_id, body.requestId);
+  });
+
+  test("B-479-17: response-loss replay of the same key returns the original create without a duplicate row", async () => {
+    const base = await readCurrentHttpRevision();
+    const firstRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-create-replay",
+        },
+        body: {
+          category_key: "Department",
+          label: "重播建立部門角色",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(firstRes.status, 200);
+    const first = (await firstRes.json()) as {
+      data: { roleDefinitionId: string; revision: number; idempotent: boolean };
+    };
+    const replayRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-create-replay",
+        },
+        body: {
+          category_key: "Department",
+          label: "重播建立部門角色",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(replayRes.status, 200);
+    const replay = (await replayRes.json()) as {
+      data: { roleDefinitionId: string; revision: number; idempotent: boolean };
+    };
+    assert.equal(replay.data.roleDefinitionId, first.data.roleDefinitionId);
+    assert.equal(replay.data.revision, first.data.revision);
+    assert.equal(replay.data.idempotent, true);
+    const count = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS c FROM role_definitions
+          WHERE role_definition_id = ?`
+      )
+      .bind(first.data.roleDefinitionId)
+      .first<{ c: number }>();
+    assert.equal(count?.c, 1);
+  });
+
+  test("B-479-10 HTTP: a stale reorder returns 409 ROLE_ORDER_CONFLICT with the authoritative revision and order", async () => {
+    const base = await readCurrentHttpRevision();
+    // Make a fresh sibling pair via the create route (the seeded manager
+    // was archived by the #478 suite's archived-rename test).
+    const createRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-reorder-sibling-a",
+        },
+        body: {
+          category_key: "Department",
+          label: "重排序部門角色甲",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createRes.status, 200);
+    const siblingA = (await createRes.json()) as {
+      data: { roleDefinitionId: string; position: number };
+    };
+    const afterA = await readCurrentHttpRevision();
+    const createB = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-reorder-sibling-b",
+        },
+        body: {
+          category_key: "Department",
+          label: "重排序部門角色乙",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: afterA,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createB.status, 200);
+    const siblingB = (await createB.json()) as {
+      data: { roleDefinitionId: string; position: number };
+    };
+    const afterCreate = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request("/api/v1/identity/roles/order", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-b479-reorder-stale",
+        },
+        body: {
+          category_key: "Department",
+          targets: [
+            {
+              role_definition_id: siblingA.data.roleDefinitionId,
+              position: siblingB.data.position,
+            },
+            {
+              role_definition_id: siblingB.data.roleDefinitionId,
+              position: siblingA.data.position,
+            },
+          ],
+          base_revision: afterCreate - 1,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 409);
+    const body = (await res.json()) as {
+      code: string;
+      requestId: string;
+      currentRevision?: unknown;
+      orderedRoleDefinitionIds?: unknown;
+    };
+    assert.equal(body.code, "ROLE_ORDER_CONFLICT");
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(body.currentRevision, afterCreate);
+    assert.ok(Array.isArray(body.orderedRoleDefinitionIds));
+  });
+
+  test("B-479-07 HTTP: a valid sibling reorder returns the authoritative order with revision + 1", async () => {
+    const adminCookie2 = await cookieFor("E2E_DISPOSABLE_ADMIN");
+    const base = await readCurrentHttpRevision();
+    const createRes = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie2}`,
+          "Idempotency-Key": "http-b479-reorder-valid-sibling-a",
+        },
+        body: {
+          category_key: "Department",
+          label: "有效重排序角色甲",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: base,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createRes.status, 200);
+    const siblingA = (await createRes.json()) as {
+      data: { roleDefinitionId: string; position: number };
+    };
+    const afterA = await readCurrentHttpRevision();
+    const createB = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie2}`,
+          "Idempotency-Key": "http-b479-reorder-valid-sibling-b",
+        },
+        body: {
+          category_key: "Department",
+          label: "有效重排序角色乙",
+          description: "",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          base_revision: afterA,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(createB.status, 200);
+    const siblingB = (await createB.json()) as {
+      data: { roleDefinitionId: string; position: number };
+    };
+    const afterCreate = await readCurrentHttpRevision();
+    const res = await worker.fetch(
+      request("/api/v1/identity/roles/order", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie2}`,
+          "Idempotency-Key": "http-b479-reorder-valid",
+        },
+        body: {
+          category_key: "Department",
+          targets: [
+            {
+              role_definition_id: siblingA.data.roleDefinitionId,
+              position: siblingB.data.position,
+            },
+            {
+              role_definition_id: siblingB.data.roleDefinitionId,
+              position: siblingA.data.position,
+            },
+          ],
+          base_revision: afterCreate,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      requestId: string;
+      data: {
+        categoryKey: string;
+        orderedRoleDefinitionIds: string[];
+        revision: number;
+        idempotent: boolean;
+      };
+    };
+    assert.equal(res.headers.get("X-Request-Id"), body.requestId);
+    assert.equal(body.data.categoryKey, "Department");
+    assert.equal(body.data.revision, afterCreate + 1);
+    assert.equal(body.data.idempotent, false);
+    assert.ok(
+      body.data.orderedRoleDefinitionIds.includes(
+        siblingA.data.roleDefinitionId
+      )
+    );
   });
 });

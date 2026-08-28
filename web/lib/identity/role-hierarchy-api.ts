@@ -9,7 +9,12 @@
  */
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
-import type { RoleHierarchyView, RoleRenameResult } from "@/lib/identity";
+import type {
+  RoleHierarchyView,
+  RoleRenameResult,
+  RoleCreateResult,
+  RoleReorderResult,
+} from "@/lib/identity";
 
 interface RoleSuccess<T> {
   requestId: string;
@@ -18,7 +23,7 @@ interface RoleSuccess<T> {
 
 async function roleFetch<T>(
   path: string,
-  method: "GET" | "PATCH",
+  method: "GET" | "PATCH" | "POST",
   body?: unknown,
   idempotencyKey?: string
 ): Promise<T> {
@@ -115,6 +120,60 @@ export function renameRoleDefinition(
     {
       label: input.label,
       base_revision: input.baseRevision,
+    },
+    idempotencyKey
+  );
+}
+
+/**
+ * POST /api/v1/identity/role-definitions — #479 creation (B-479-01/B-479-14).
+ * The server recomputes the actor's creation authority from D1; the client
+ * only sends the fixed Category and explicit scope the projection offered.
+ */
+export function createRoleDefinition(
+  input: {
+    category_key: "Global" | "Department" | "Program";
+    label: string;
+    description: string;
+    scope_kind: "Global" | "Department" | "Program";
+    scope_id: string | null;
+    base_revision: number;
+  },
+  idempotencyKey?: string
+): Promise<RoleCreateResult> {
+  return roleFetch(
+    "/api/v1/identity/role-definitions",
+    "POST",
+    {
+      category_key: input.category_key,
+      label: input.label,
+      description: input.description,
+      scope_kind: input.scope_kind,
+      scope_id: input.scope_id,
+      base_revision: input.base_revision,
+    },
+    idempotencyKey
+  );
+}
+
+/**
+ * PATCH /api/v1/identity/roles/order — #479 sibling-only reorder
+ * (B-479-07/B-479-08). Pass a stable idempotency key to replay a lost
+ * response; the server computes the canonical fingerprint itself.
+ */
+export function reorderRoleDefinitions(
+  categoryKey: "Global" | "Department" | "Program",
+  targets: { role_definition_id: string; position: number }[],
+  baseRevision: number,
+  idempotencyKey?: string
+): Promise<RoleReorderResult> {
+  return roleFetch(
+    "/api/v1/identity/roles/order",
+    "PATCH",
+    {
+      category_key: categoryKey,
+      targets,
+      base_revision: baseRevision,
     },
     idempotencyKey
   );

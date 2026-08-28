@@ -1,8 +1,8 @@
 /**
- * #478 — S5-A03 normalized read-only 身份組 hierarchy + one rename mutation
- * (Spec 091, ADR-0042).
+ * #478/#479 — S5-A03 normalized read-only 身份組 hierarchy + the rename /
+ * create / rescope / reorder mutation authority seam (Spec 091, ADR-0042).
  *
- * This module owns the disposable-D1 read projection and the rename
+ * This module owns the disposable-D1 read projection and the mutation
  * authority seam:
  *
  *   * `loadRoleHierarchy()` — the read-only tree: fixed Role Categories
@@ -10,13 +10,21 @@
  *     protected Admin / 會友基礎 anchors, scope labels, child counts,
  *     protected states, and the server-projected action affordances. The
  *     read is gated on the actor's effective `role.read` capability; the
- *     rename affordance is projected only when `role.name.write` is held.
- *   * `renameRoleDefinition()` — the one complete lower-target mutation:
- *     stable ID, assignments, order position, scope, and grants all
- *     survive; the D1 batch commits domain state, the immutable audit row,
- *     the terminal idempotency row, and the authoritative response
- *     atomically (revision + 1); a replay of the same key + fingerprint
- *     returns the original result.
+ *     rename/reorder affordances are projected only when the matching
+ *     capability is held.
+ *   * `createRoleDefinition()` — #479 creation: Admin creates global or
+ *     scoped definitions; Staff creates scoped definitions only under an
+ *     existing permitted fixed category and strictly below Staff. New
+ *     definitions start Active with zero grants, a globally unique
+ *     normalized name, and an authoritative order revision.
+ *   * `reorderRoleDefinitions()` — #479 sibling-only order: two sibling
+ *     Role Definitions inside one fixed category swap positions; the
+ *     parent Category, grants, scope, and assignments are untouched. A
+ *     stale base revision is rejected with the authoritative revision and
+ *     order (ROLE_ORDER_CONFLICT).
+ *   * `renameRoleDefinition()` — the Phase A complete lower-target rename;
+ *     #479 extends it with an optional atomic scope change that reparents
+ *     the definition under the fixed category for the new explicit scope.
  *
  * Authority is recomputed from D1 on every call — the UI projection is
  * never the authority (Spec 091 §10). The Worker handlers
@@ -28,7 +36,7 @@
  * semantics (role ID, base revision, normalized name) and never trusts a
  * client-supplied value.
  */
-/* oxlint-disable eslint/max-classes-per-file, eslint/no-unused-vars, eslint/no-use-before-define, eslint/prefer-destructuring, eslint/require-await, unicorn/no-lonely-if -- classes mirror the Worker error vocabulary; guards are sequential by design and authority helpers are declared top-down for readability. */
+/* oxlint-disable eslint/max-classes-per-file, eslint/no-unused-vars, eslint/no-use-before-define, eslint/prefer-destructuring, eslint/require-await, eslint/complexity, unicorn/no-lonely-if -- classes mirror the Worker error vocabulary; guards are sequential by design and authority helpers are declared top-down for readability. */
 import {
   applyRoleMutation,
   readCurrentRevision,
@@ -48,6 +56,7 @@ export const ROLE_NAME_MAX_LENGTH = 60;
 
 export const ROLE_HIERARCHY_ACTION = {
   RENAME: "rename",
+  REORDER: "reorder",
 } as const;
 
 export type RoleHierarchyAction =
@@ -58,6 +67,36 @@ export interface RoleHierarchyActionAffordance {
   action: RoleHierarchyAction;
   /** Human-readable Cantonese label the UI may use. */
   label: string;
+}
+
+/**
+ * One server-projected creation target (B-479-02/B-479-12): an existing
+ * fixed Category plus the explicit scope the actor may create under.
+ * Global entries carry `scope_id: null` and are projected only for Admin;
+ * scoped entries carry the Department/Program scope the actor holds below
+ * Staff.
+ */
+export interface RoleHierarchyScopeOption {
+  category_key: RoleCategoryKey;
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
+  /** Human-readable scope label (e.g. 成區 / 青少年查經). */
+  scopeLabel: string;
+}
+
+/** Reorder action payload (B-479-07/B-479-08). */
+export interface RoleHierarchyOrderTarget {
+  role_definition_id: string;
+  position: number;
+}
+
+/** Authoritative reorder result (B-479-07/B-479-10). */
+export interface RoleReorderResult {
+  categoryKey: RoleCategoryKey;
+  orderedRoleDefinitionIds: string[];
+  revision: number;
+  /** True when the idempotency key was replayed. */
+  idempotent: boolean;
 }
 
 /** One Role Definition summary inside the tree (H-01/H-03). */
@@ -77,6 +116,8 @@ export interface RoleHierarchyDefinition {
   grantCount: number;
   /** Server-projected actions per the caller's capabilities (H-03). */
   actions: RoleHierarchyActionAffordance[];
+  /** Server-projected reorder affordances (B-479-07/B-479-08). */
+  reorderActions: RoleHierarchyActionAffordance[];
 }
 
 /** One fixed Role Category heading (H-01). */
@@ -87,6 +128,8 @@ export interface RoleHierarchyCategory {
   displayOrder: number;
   childCount: number;
   definitions: RoleHierarchyDefinition[];
+  /** Server-projected creation targets (B-479-02/B-479-12). */
+  createOptions: RoleHierarchyScopeOption[];
 }
 
 /** Complete read projection (H-01). */
@@ -120,6 +163,47 @@ export interface RoleRenameResult {
   revision: number;
   /** True when the idempotency key was replayed (H-06). */
   idempotent: boolean;
+}
+
+/** #479 creation mutation input (B-479-01/B-479-14). */
+export interface RoleCreateInput {
+  actor_user_id: string;
+  idempotency_key: string;
+  base_revision: number;
+  category_key: RoleCategoryKey;
+  /** Trimmed, validated display name (≤ ROLE_NAME_MAX_LENGTH). */
+  label: string;
+  description: string;
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
+  now: string;
+  audit_id: string;
+  correlation_id: string;
+}
+
+/** #479 authoritative create result (B-479-01/B-479-14). */
+export interface RoleCreateResult {
+  roleDefinitionId: string;
+  categoryKey: RoleCategoryKey;
+  label: string;
+  scopeKind: RoleScopeKind;
+  scopeId: string | null;
+  position: number;
+  revision: number;
+  /** True when the idempotency key was replayed. */
+  idempotent: boolean;
+}
+
+/** #479 sibling reorder mutation input (B-479-07/B-479-08). */
+export interface RoleReorderInput {
+  actor_user_id: string;
+  idempotency_key: string;
+  base_revision: number;
+  category_key: RoleCategoryKey;
+  targets: readonly RoleHierarchyOrderTarget[];
+  now: string;
+  audit_id: string;
+  correlation_id: string;
 }
 
 /** Typed rename failures; the handler maps them to Problem Details. */
@@ -199,6 +283,48 @@ export class RoleTargetNotFoundError extends Error {
   constructor() {
     super("ROLE_NOT_FOUND: unknown Role Definition");
     this.name = "RoleTargetNotFoundError";
+  }
+}
+
+/** B-479-02/B-479-09: creation/reorder under an invalid parent Category. */
+export class RoleInvalidParentError extends Error {
+  constructor() {
+    super("ROLE_INVALID_PARENT: the fixed Category is not a permitted parent");
+    this.name = "RoleInvalidParentError";
+  }
+}
+
+/** B-479-09: a reorder tries to move a Role Definition across Categories. */
+export class RoleCrossCategoryError extends Error {
+  constructor() {
+    super(
+      "ROLE_INVALID_PARENT: reorder targets must be siblings in one Category"
+    );
+    this.name = "RoleCrossCategoryError";
+  }
+}
+
+/** B-479-04: a scoped creation is missing its explicit scope. */
+export class RoleScopeRequiredError extends Error {
+  constructor() {
+    super(
+      "ROLE_SCOPE_REQUIRED: a scoped Role Definition needs an explicit scope"
+    );
+    this.name = "RoleScopeRequiredError";
+  }
+}
+
+/** B-479-10: the base order revision is stale; authoritative order exposed. */
+export class RoleOrderConflictError extends Error {
+  readonly currentRevision: number;
+  readonly authoritativeIds: string[];
+  constructor(currentRevision: number, authoritativeIds: string[]) {
+    super(
+      "ROLE_ORDER_CONFLICT: stale order revision; authoritative order exposed"
+    );
+    this.name = "RoleOrderConflictError";
+    this.currentRevision = currentRevision;
+    this.authoritativeIds = authoritativeIds;
   }
 }
 
@@ -459,6 +585,16 @@ export async function loadRoleHierarchy(
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
+        // B-479-07/B-479-08: the reorder affordance appears on every lower,
+        // in-scope sibling when the actor holds `role.reorder`. The
+        // server projects the affordance; the UI only renders 上移/下移 for
+        // the eligible middle rows (the first/last row disable one side).
+        const canReorder =
+          capabilities["role.reorder"] === true &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
         return {
           roleDefinitionId: row.role_definition_id,
           label: row.label,
@@ -475,8 +611,55 @@ export async function loadRoleHierarchy(
           actions: canRename
             ? [{ action: ROLE_HIERARCHY_ACTION.RENAME, label: "重新命名" }]
             : [],
+          reorderActions: canReorder
+            ? [{ action: ROLE_HIERARCHY_ACTION.REORDER, label: "調整順序" }]
+            : [],
         };
       });
+    // B-479-02/B-479-12: server-projected creation targets. Admin may
+    // create global or scoped definitions; Staff sees scoped targets only
+    // under an existing permitted fixed category. Every scope that exists
+    // in the fixed Department/Program domain is a legal scoped creation
+    // parent for an actor holding `role.create` below Staff; the scope is
+    // explicit in the body and the Worker revalidates it from D1.
+    const createOptions: RoleHierarchyScopeOption[] = [];
+    const canCreate = capabilities["role.create"] === true;
+    if (canCreate && category.category_key === ROLE_CATEGORY_KEY.GLOBAL) {
+      const actor = actorRoles[0];
+      if (actor?.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
+        createOptions.push({
+          category_key: ROLE_CATEGORY_KEY.GLOBAL,
+          scope_kind: ROLE_CATEGORY_KEY.GLOBAL,
+          scope_id: null,
+          scopeLabel: "全教會",
+        });
+      }
+    }
+    if (
+      canCreate &&
+      category.category_key !== ROLE_CATEGORY_KEY.GLOBAL &&
+      actorRoles[0]?.stable_key !== PROTECTED_STABLE_KEYS.ADMIN
+    ) {
+      // Staff creation is scoped-only under an existing permitted fixed
+      // category (B-479-02/B-479-14): the actor holds `role.create`, the
+      // category is a fixed Department/Program heading, and every concrete
+      // scope that exists in the domain is a legal scoped parent. The
+      // scope is explicit in the body and revalidated from D1 by the
+      // Worker; the UI projection is never the authority.
+      const scopeIds =
+        category.category_key === ROLE_CATEGORY_KEY.DEPARTMENT
+          ? [...names.departments.keys()]
+          : [...names.programs.keys()];
+      for (const scopeId of scopeIds) {
+        createOptions.push({
+          category_key: category.category_key,
+          scope_kind: category.category_key,
+          scope_id: scopeId,
+          scopeLabel:
+            scopeLabel(category.category_key, scopeId, names) ?? category.label,
+        });
+      }
+    }
     return {
       categoryKey: category.category_key,
       label: category.label,
@@ -484,6 +667,7 @@ export async function loadRoleHierarchy(
       displayOrder: category.display_order,
       childCount: definitionsView.length,
       definitions: definitionsView,
+      createOptions,
     };
   });
 
@@ -820,9 +1004,542 @@ export async function recordRoleDenialForRename(
   });
 }
 
+/** Generic DENIED/CONFLICT/REJECTED audit row for a rejected #479 mutation. */
+export async function recordRoleDenialForCreate(
+  db: D1Database,
+  input: {
+    actor_user_id: string;
+    now: string;
+    audit_id: string;
+    correlation_id: string;
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    reason: string;
+    outcome: Exclude<RoleAuditOutcome, "SUCCESS" | "DUPLICATE">;
+    old_value_json?: string | null;
+    new_value_json?: string | null;
+  }
+): Promise<void> {
+  await recordRoleDenial(db, {
+    audit_id: input.audit_id,
+    inserted_at: input.now,
+    actor_user_id: input.actor_user_id,
+    action: input.action,
+    entity_type: input.entity_type,
+    entity_id: input.entity_id,
+    old_value_json: input.old_value_json ?? null,
+    new_value_json: input.new_value_json ?? null,
+    reason: input.reason,
+    outcome: input.outcome,
+    correlation_id: input.correlation_id,
+  });
+}
+
+/** Canonical create fingerprint (B-479-16): actor, category, normalized name, scope. */
+export function canonicalCreateFingerprint(input: {
+  actor_user_id: string;
+  category_key: string;
+  base_revision: number;
+  label: string;
+  scope_kind: string;
+  scope_id: string | null;
+}): string {
+  return `create|${input.actor_user_id}|${input.category_key}|${input.scope_kind}|${input.scope_id ?? "global"}|${input.base_revision}|${normalizeName(input.label)}`;
+}
+
+/** Canonical reorder fingerprint (B-479-16): actor, category, targets, base revision. */
+export function canonicalReorderFingerprint(input: {
+  actor_user_id: string;
+  category_key: string;
+  base_revision: number;
+  targets: readonly { role_definition_id: string; position: number }[];
+}): string {
+  const targets = input.targets
+    .map((target) => `${target.role_definition_id}:${target.position}`)
+    .sort()
+    .join(",");
+  return `reorder|${input.actor_user_id}|${input.category_key}|${input.base_revision}|${targets}`;
+}
+
+/**
+ * #479 create authority (B-479-01/B-479-02/B-479-14): every rule is
+ * recomputed from D1. Admin may create global or scoped definitions; Staff
+ * may create scoped definitions only under a permitted fixed category it
+ * holds below Staff. New definitions start Active, zero-grant, globally
+ * unique-named, with one explicit scope when scoped, and land on the
+ * authoritative order revision.
+ */
+export async function createRoleDefinition(
+  db: D1Database,
+  input: RoleCreateInput
+): Promise<RoleCreateResult> {
+  const label = input.label.trim();
+  const normalizedLabel = normalizeName(label);
+  if (normalizedLabel.length === 0 || label.length > ROLE_NAME_MAX_LENGTH) {
+    throw new RoleInvalidNameError();
+  }
+  // B-479-16/B-479-17: a replay of the same canonical payload returns the
+  // original authoritative result before the name-collision/authority
+  // checks — the first attempt already committed server-side. A key reused
+  // with a different canonical payload is rejected with the documented
+  // REJECTED audit row (the batch never runs).
+  const fingerprint = canonicalCreateFingerprint({
+    actor_user_id: input.actor_user_id,
+    category_key: input.category_key,
+    base_revision: input.base_revision,
+    label,
+    scope_kind: input.scope_kind,
+    scope_id: input.scope_id,
+  });
+  const existingReplay = await db
+    .prepare(
+      `SELECT idempotency_key, request_fingerprint, actor_user_id,
+              outcome, resulting_revision
+         FROM role_policy_mutations
+        WHERE idempotency_key = ?`
+    )
+    .bind(input.idempotency_key)
+    .first<{
+      idempotency_key: string;
+      request_fingerprint: string;
+      actor_user_id: string;
+      outcome: string;
+      resulting_revision: number | null;
+    }>();
+  if (existingReplay) {
+    if (
+      existingReplay.actor_user_id !== input.actor_user_id ||
+      existingReplay.request_fingerprint !== fingerprint
+    ) {
+      await recordRoleDenialForCreate(db, {
+        actor_user_id: input.actor_user_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: `key:${input.idempotency_key}`,
+        reason: "ROLE_IDEMPOTENCY_REUSE",
+        outcome: "REJECTED",
+      });
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existingReplay.outcome === "SUCCESS") {
+      // The immutable audit row for the original create embeds the
+      // idempotency key in `reason` (`idem=<key>`) and carries the created
+      // Role Definition ID as entity_id; replay returns that original
+      // authoritative result.
+      const created = await db
+        .prepare(
+          `SELECT rd.role_definition_id, rd.category_key, rd.label,
+                  rd.scope_kind, rd.scope_id, rd.position
+             FROM role_audit_events ae
+             JOIN role_definitions rd
+               ON rd.role_definition_id = ae.entity_id
+            WHERE ae.action = 'ROLE_DEFINITION_CREATE'
+              AND ae.outcome = 'SUCCESS'
+              AND ae.reason LIKE ?
+            ORDER BY ae.inserted_at DESC
+            LIMIT 1`
+        )
+        .bind(`%idem=${input.idempotency_key}%`)
+        .first<{
+          role_definition_id: string;
+          category_key: string;
+          label: string;
+          scope_kind: string;
+          scope_id: string | null;
+          position: number;
+        }>();
+      if (created) {
+        return {
+          roleDefinitionId: created.role_definition_id,
+          categoryKey: created.category_key as RoleCategoryKey,
+          label: created.label,
+          scopeKind: created.scope_kind as RoleScopeKind,
+          scopeId: created.scope_id,
+          position: created.position,
+          revision: existingReplay.resulting_revision ?? input.base_revision,
+          idempotent: true,
+        };
+      }
+    }
+  }
+  if (
+    input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
+    input.scope_id !== null
+  ) {
+    throw new RoleScopeRequiredError();
+  }
+  if (
+    input.scope_kind !== ROLE_CATEGORY_KEY.GLOBAL &&
+    (input.scope_id === null || input.scope_id.length === 0)
+  ) {
+    throw new RoleScopeRequiredError();
+  }
+  // A scoped creation must use the fixed Category matching the scope kind
+  // (B-479-04: a scoped body without an explicit scope is rejected).
+  if (
+    input.scope_kind !== ROLE_CATEGORY_KEY.GLOBAL &&
+    input.category_key !== input.scope_kind
+  ) {
+    throw new RoleInvalidParentError();
+  }
+  if (
+    input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
+    input.category_key !== ROLE_CATEGORY_KEY.GLOBAL
+  ) {
+    throw new RoleInvalidParentError();
+  }
+
+  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
+  if (!capabilities["role.create"]) {
+    throw new RoleCapabilityDeniedError();
+  }
+  const actorRoles = await loadActorRoles(db, input.actor_user_id);
+  const highestPosition =
+    actorRoles.length > 0
+      ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+  const actor = actorRoles[0];
+  if (input.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
+    // Only Admin (the Global system identity) may create global definitions.
+    if (actor?.stable_key !== PROTECTED_STABLE_KEYS.ADMIN) {
+      throw new RoleCapabilityDeniedError();
+    }
+  } else {
+    // Staff may create scoped definitions only under an existing permitted
+    // fixed category (B-479-02/B-479-14): the category must be a fixed
+    // Department/Program heading and the explicit scope must exist in the
+    // domain. A tampered Global attempt or an unknown scope is rejected
+    // (B-479-13); the UI projection is never the authority.
+    const table =
+      input.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT
+        ? "departments"
+        : "programs";
+    const scopeColumn =
+      input.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT
+        ? "department_id"
+        : "program_id";
+    const scopeExists = await db
+      .prepare(`SELECT 1 FROM ${table} WHERE ${scopeColumn} = ?`)
+      .bind(input.scope_id)
+      .first();
+    if (!scopeExists) {
+      throw new RoleCapabilityDeniedError();
+    }
+  }
+
+  // Globally unique normalized name (B-479-03/B-479-04).
+  const candidates = await db
+    .prepare(`SELECT label FROM role_definitions`)
+    .all<{ label: string }>();
+  const collision = (candidates.results ?? []).some(
+    (row) => normalizeName(row.label) === normalizedLabel
+  );
+  if (collision) {
+    await recordRoleDenialForCreate(db, {
+      actor_user_id: input.actor_user_id,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      action: "ROLE_DEFINITION_CREATE",
+      entity_type: "role_definition",
+      entity_id: `name:${normalizedLabel}`,
+      reason: "ROLE_NAME_TAKEN",
+      outcome: "REJECTED",
+      new_value_json: JSON.stringify({ label }),
+    });
+    throw new RoleNameConflictError();
+  }
+
+  // The new definition's position: the next authoritative position inside
+  // the fixed category, strictly below the creator's highest identity.
+  const categoryRows = await db
+    .prepare(
+      `SELECT MAX(position) AS max_position FROM role_definitions
+        WHERE category_key = ?`
+    )
+    .bind(input.category_key)
+    .first<{ max_position: number | null }>();
+  const nextPosition = Math.max(
+    (categoryRows?.max_position ?? 0) + 1,
+    highestPosition + 1
+  );
+  const roleDefinitionId = crypto.randomUUID();
+  const stableKey = `role.${crypto.randomUUID()}`;
+
+  const baseRevision = input.base_revision;
+  const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;
+  try {
+    const result = await applyRoleMutation(db, {
+      idempotency_key: input.idempotency_key,
+      request_fingerprint: fingerprint,
+      actor_user_id: input.actor_user_id,
+      base_revision: input.base_revision,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      desired: [
+        {
+          kind: "create_role_definition",
+          role_definition_id: roleDefinitionId,
+          category_key: input.category_key,
+          stable_key: stableKey,
+          label,
+          description: input.description.trim(),
+          scope_kind: input.scope_kind,
+          scope_id: input.scope_id,
+          position: nextPosition,
+          capabilities: [],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleDefinitionId,
+        reason: auditReason,
+        new_value_json: JSON.stringify({
+          label,
+          category_key: input.category_key,
+          scope_kind: input.scope_kind,
+          scope_id: input.scope_id,
+          position: nextPosition,
+        }),
+      },
+    });
+    return {
+      roleDefinitionId,
+      categoryKey: input.category_key,
+      label,
+      scopeKind: input.scope_kind,
+      scopeId: input.scope_id,
+      position: nextPosition,
+      revision: result.resulting_revision,
+      idempotent: result.idempotent,
+    };
+  } catch (error) {
+    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
+      await recordRoleDenialForCreate(db, {
+        actor_user_id: input.actor_user_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleDefinitionId,
+        reason: `ROLE_REVISION_CONFLICT:current=${error.currentRevision}`,
+        outcome: "CONFLICT",
+      });
+    }
+    if (error instanceof RoleIdempotencyConflictError) {
+      await recordRoleDenialForCreate(db, {
+        actor_user_id: input.actor_user_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: roleDefinitionId,
+        reason: "ROLE_IDEMPOTENCY_REUSE",
+        outcome: "REJECTED",
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * #479 sibling-only reorder (B-479-07/B-479-08/B-479-10): two sibling Role
+ * Definitions inside one fixed Category swap positions. The parent
+ * Category, grants, scope, and assignments are untouched by construction.
+ * A stale base revision is rejected with the authoritative revision and
+ * the authoritative sibling order (ROLE_ORDER_CONFLICT).
+ */
+export async function reorderRoleDefinitions(
+  db: D1Database,
+  input: RoleReorderInput
+): Promise<RoleReorderResult> {
+  if (input.targets.length !== 2) {
+    throw new RoleInvalidParentError();
+  }
+  const [first, second] = input.targets;
+  if (!first || !second) {
+    throw new RoleInvalidParentError();
+  }
+  // B-479-09: the two targets must be siblings in the same fixed Category
+  // and must not be protected anchors.
+  const rows = await db
+    .prepare(
+      `SELECT role_definition_id, stable_key, label, description,
+              category_key, scope_kind, scope_id, position,
+              is_protected, is_archived
+         FROM role_definitions
+        WHERE role_definition_id IN (?, ?)`
+    )
+    .bind(first.role_definition_id, second.role_definition_id)
+    .all<RoleDefinitionRow>();
+  const byId = new Map(
+    (rows.results ?? []).map((row) => [row.role_definition_id, row])
+  );
+  const firstRow = byId.get(first.role_definition_id);
+  const secondRow = byId.get(second.role_definition_id);
+  if (!firstRow || !secondRow) {
+    throw new RoleTargetNotFoundError();
+  }
+  if (
+    firstRow.category_key !== input.category_key ||
+    secondRow.category_key !== input.category_key ||
+    firstRow.category_key !== secondRow.category_key
+  ) {
+    throw new RoleCrossCategoryError();
+  }
+  // The positions must be a swap of the two current sibling positions.
+  if (
+    first.position !== secondRow.position ||
+    second.position !== firstRow.position
+  ) {
+    throw new RoleInvalidParentError();
+  }
+  for (const row of [firstRow, secondRow]) {
+    if (row.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
+      throw new RoleAdminProtectedError();
+    }
+    if (row.stable_key === PROTECTED_STABLE_KEYS.MEMBER) {
+      throw new RoleBaselineProtectedError();
+    }
+    if (row.is_protected === 1) {
+      throw new RoleProtectedIdentityError();
+    }
+    if (row.is_archived === 1) {
+      throw new RoleArchivedError();
+    }
+  }
+
+  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
+  if (!capabilities["role.reorder"]) {
+    throw new RoleCapabilityDeniedError();
+  }
+  const actorRoles = await loadActorRoles(db, input.actor_user_id);
+  const highestPosition =
+    actorRoles.length > 0
+      ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+  // B-479-09: the actor's highest identity is never a reorder target, and
+  // the targets must be strictly below it and inside the actor's scope.
+  for (const row of [firstRow, secondRow]) {
+    if (row.position <= highestPosition) {
+      throw new RoleHighestProtectedError();
+    }
+    if (actorRoles[0]?.role_definition_id === row.role_definition_id) {
+      throw new RoleHighestProtectedError();
+    }
+    if (!isWithinActorScope(actorRoles, row)) {
+      throw new RoleScopeMismatchError();
+    }
+  }
+
+  const fingerprint = canonicalReorderFingerprint({
+    actor_user_id: input.actor_user_id,
+    category_key: input.category_key,
+    base_revision: input.base_revision,
+    targets: input.targets,
+  });
+  const baseRevision = input.base_revision;
+  const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;
+  const auditEntityId = `${first.role_definition_id},${second.role_definition_id}`;
+
+  try {
+    const result = await applyRoleMutation(db, {
+      idempotency_key: input.idempotency_key,
+      request_fingerprint: fingerprint,
+      actor_user_id: input.actor_user_id,
+      base_revision: input.base_revision,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      desired: [
+        {
+          kind: "reorder_role_definitions",
+          category_key: input.category_key,
+          targets: input.targets,
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_REORDER",
+        entity_type: "role_definition",
+        entity_id: auditEntityId,
+        reason: auditReason,
+        old_value_json: JSON.stringify({
+          [first.role_definition_id]: firstRow.position,
+          [second.role_definition_id]: secondRow.position,
+        }),
+        new_value_json: JSON.stringify({
+          [first.role_definition_id]: secondRow.position,
+          [second.role_definition_id]: firstRow.position,
+        }),
+      },
+    });
+    return {
+      categoryKey: input.category_key,
+      orderedRoleDefinitionIds: [
+        first.role_definition_id,
+        second.role_definition_id,
+      ],
+      revision: result.resulting_revision,
+      idempotent: result.idempotent,
+    };
+  } catch (error) {
+    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
+      // B-479-10: a stale order revision is rejected with the authoritative
+      // revision and the authoritative sibling order.
+      const authoritative = await db
+        .prepare(
+          `SELECT role_definition_id FROM role_definitions
+            WHERE category_key = ? AND is_archived = 0
+            ORDER BY position ASC`
+        )
+        .bind(input.category_key)
+        .all<{ role_definition_id: string }>();
+      const authoritativeIds =
+        (authoritative.results ?? []).map((row) => row.role_definition_id) ??
+        [];
+      await recordRoleDenialForCreate(db, {
+        actor_user_id: input.actor_user_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        action: "ROLE_DEFINITION_REORDER",
+        entity_type: "role_definition",
+        entity_id: auditEntityId,
+        reason: `ROLE_ORDER_CONFLICT:current=${error.currentRevision}`,
+        outcome: "CONFLICT",
+      });
+      throw new RoleOrderConflictError(error.currentRevision, authoritativeIds);
+    }
+    if (error instanceof RoleIdempotencyConflictError) {
+      await recordRoleDenialForCreate(db, {
+        actor_user_id: input.actor_user_id,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        action: "ROLE_DEFINITION_REORDER",
+        entity_type: "role_definition",
+        entity_id: auditEntityId,
+        reason: "ROLE_IDEMPOTENCY_REUSE",
+        outcome: "REJECTED",
+      });
+    }
+    throw error;
+  }
+}
+
 export const __test = {
   normalizeName,
   canonicalRenameFingerprint,
+  canonicalCreateFingerprint,
+  canonicalReorderFingerprint,
   isWithinActorScope,
   roleKind,
 };

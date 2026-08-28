@@ -70,6 +70,20 @@ export type RoleDesiredChange =
       label: string;
     }
   | {
+      kind: "reorder_role_definitions";
+      category_key: "Global" | "Department" | "Program";
+      /**
+       * Exactly two sibling Role Definitions inside the fixed category whose
+       * positions swap. The mutation kernel writes only these two position
+       * values — the parent Category, grants, scope, and assignments are
+       * untouched by construction (B-479-07/B-479-08).
+       */
+      targets: readonly {
+        role_definition_id: string;
+        position: number;
+      }[];
+    }
+  | {
       kind: "grant_assignment";
       assignment_id: string;
       account_user_id: string;
@@ -274,9 +288,11 @@ export async function applyRoleMutation(
   // A single rename must prove that its guarded UPDATE changed a row before
   // the revision can advance. This closes the concurrent revision race:
   // another writer may commit after the pre-read but before this batch.
+  // A single sibling reorder proves the same for its first position UPDATE.
   const domainChangeGuard =
     input.desired.length === 1 &&
-    input.desired[0]?.kind === "rename_role_definition"
+    (input.desired[0]?.kind === "rename_role_definition" ||
+      input.desired[0]?.kind === "reorder_role_definitions")
       ? "AND changes() > 0"
       : "";
 
@@ -399,6 +415,35 @@ export async function applyRoleMutation(
             ...bindGate(input)
           )
       );
+      continue;
+    }
+    if (change.kind === "reorder_role_definitions") {
+      // #479 B-479-07/B-479-08: a sibling-only position swap inside one
+      // fixed Category. Only the two named position values are written; the
+      // parent Category, grants, scope, and assignments are untouched by
+      // construction. The schema protected-row guard rejects Admin/會友基礎,
+      // and the authority seam pre-validates the two targets are siblings
+      // in the same category before this batch runs.
+      for (const target of change.targets) {
+        statements.push(
+          db
+            .prepare(
+              `UPDATE role_definitions
+                  SET position = ?, updated_by = ?, updated_at = ?
+                WHERE role_definition_id = ? AND category_key = ?
+                  AND is_archived = 0
+                  AND ${gateClause}`
+            )
+            .bind(
+              target.position,
+              input.actor_user_id,
+              input.now,
+              target.role_definition_id,
+              change.category_key,
+              ...bindGate(input)
+            )
+        );
+      }
       continue;
     }
     if (change.kind === "grant_assignment") {
