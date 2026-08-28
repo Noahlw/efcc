@@ -113,17 +113,18 @@ test.beforeEach(async ({ page }: { page: Page }) => {
 
 const isMobile = (projectName: string) => projectName.startsWith("mobile");
 
-test("bottom nav below 768px, side rail at or above 768px", async ({
+test("bottom nav below 800px, side rail at or above 800px", async ({
   page,
 }, testInfo) => {
   await page.goto("/home.html");
 
+  const nav = page.locator("#main-navigation");
+  await expect(nav).toBeVisible();
+  const position = await nav.evaluate((el) => getComputedStyle(el).position);
   if (isMobile(testInfo.project.name)) {
-    await expect(page.locator(".nav-phone")).toBeVisible();
-    await expect(page.locator(".nav-desktop")).toBeHidden();
+    expect(position).toBe("fixed");
   } else {
-    await expect(page.locator(".nav-desktop")).toBeVisible();
-    await expect(page.locator(".nav-phone")).toBeHidden();
+    expect(position).toBe("sticky");
   }
 });
 
@@ -139,7 +140,7 @@ test("shell header spans top and desktop side rail sits below it, not overlappin
   expect(headerBox.x).toBe(0);
 
   if (!isMobile(testInfo.project.name)) {
-    const rail = page.locator(".nav-desktop");
+    const rail = page.locator("#main-navigation");
     await expect(rail).toBeVisible();
     const railBox = requireBox(await rail.boundingBox());
     expect(railBox.x).toBe(0);
@@ -195,7 +196,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   });
 
   const layout = await page.evaluate(() => {
-    const nav = document.querySelector<HTMLElement>(".nav-phone");
+    const nav = document.querySelector<HTMLElement>("#main-navigation");
     const shell = document.querySelector<HTMLElement>(".shell-content");
     const navStyle = nav ? getComputedStyle(nav) : null;
     const shellStyle = shell ? getComputedStyle(shell) : null;
@@ -205,7 +206,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
     };
   });
 
-  // At/above 768px the side rail replaces the fixed bottom nav, so the
+  // At/above 800px the side rail replaces the fixed bottom nav, so the
   // outlet intentionally reserves nothing (padding-bottom: 0).
   const expectedShell = isMobile(testInfo.project.name) ? "118px" : "0px";
 
@@ -226,10 +227,7 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
 }, testInfo) => {
   await page.goto("/profile.html");
 
-  const visibleNavSelector = isMobile(testInfo.project.name)
-    ? ".nav-phone"
-    : ".nav-desktop";
-  const visibleNav = page.locator(visibleNavSelector);
+  const visibleNav = page.locator("#main-navigation");
   await expect(visibleNav).toBeVisible();
 
   const navItems = visibleNav.locator(".nav-item");
@@ -275,36 +273,22 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
 
 test("active section exposes aria-current and the nav has an accessible label", async ({
   page,
-}, testInfo) => {
+}) => {
   // Clean URL — the production worker serves /home; the static test server
   // maps extensionless paths to *.html. The app derives the active section
   // from the pathname, so a .html suffix would break aria-current detection.
   await page.goto("/home");
 
-  const nav = page.locator(`nav[aria-label="${COPY.nav.label}"]:visible`);
+  const nav = page.locator("#main-navigation:visible");
   await expect(nav).toBeVisible();
 
   const activeCount = await nav.locator('[aria-current="page"]').count();
-  expect(activeCount, "exactly one active section in visible nav").toBe(1);
+  expect(activeCount, "exactly one active section in the nav landmark").toBe(1);
   const activeHref = await nav
     .locator('[aria-current="page"]')
     .first()
     .getAttribute("href");
   expect(activeHref).toBe("/home");
-
-  // Both rails render the same sections; the hidden one must also carry a
-  // single aria-current=page marker (proves the conditional render uses
-  // the same data path).
-  const otherSelector = isMobile(testInfo.project.name)
-    ? ".nav-desktop"
-    : ".nav-phone";
-  const otherActiveCount = await page
-    .locator(`${otherSelector} [aria-current="page"]`)
-    .count();
-  expect(
-    otherActiveCount,
-    "exactly one active section in the hidden nav rail too"
-  ).toBe(1);
 });
 
 test("exactly one polite live region announces shell status", async ({

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
@@ -27,16 +27,28 @@ describe(AttentionPanel, () => {
       screen.getByRole("tab", { name: COPY.attention.noticesTab })
     ).toHaveAttribute("aria-selected", "false");
   });
+  test("places the modal surface and overlay above shell chrome", () => {
+    render(<AttentionPanel open onClose={() => {}} />);
+    expect(
+      screen.getByRole("dialog", { name: COPY.attention.title })
+    ).toHaveClass("attention-panel");
+    expect(
+      document.querySelector('[data-slot="dialog-overlay"]')
+    ).toHaveClass("attention-panel__overlay");
+  });
 
   test("renders empty state for pending tab by default", () => {
     render(<AttentionPanel open onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
     expect(
-      screen.getByRole("heading", {
+      within(dialog).getByRole("heading", {
         name: COPY.attention.pendingEmptyTitle,
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.attention.pendingEmptyHint)
+      within(dialog).getByText(COPY.attention.pendingEmptyHint)
     ).toBeInTheDocument();
   });
 
@@ -50,13 +62,16 @@ describe(AttentionPanel, () => {
     await user.click(noticesTab);
 
     expect(noticesTab).toHaveAttribute("aria-selected", "true");
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
     expect(
-      screen.getByRole("heading", {
+      within(dialog).getByRole("heading", {
         name: COPY.attention.noticesEmptyTitle,
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.attention.noticesEmptyHint)
+      within(dialog).getByText(COPY.attention.noticesEmptyHint)
     ).toBeInTheDocument();
   });
 
@@ -80,6 +95,34 @@ describe(AttentionPanel, () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  test("focus returns to the caller-provided trigger on close", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn<() => void>();
+    const trigger = document.createElement("button");
+    trigger.textContent = "bell";
+    document.body.append(trigger);
+    try {
+      const { unmount } = render(
+        <AttentionPanel
+          open
+          onClose={onClose}
+          onCloseAutoFocus={() => trigger.focus()}
+        />
+      );
+      const dialog = screen.getByRole("dialog", {
+        name: COPY.attention.title,
+      });
+      await user.click(
+        within(dialog).getByRole("button", { name: COPY.attention.close })
+      );
+      expect(onClose).toHaveBeenCalledOnce();
+      unmount();
+      await waitFor(() => expect(trigger).toHaveFocus());
+    } finally {
+      trigger.remove();
+    }
+  });
+
   test("renders items when data is provided", async () => {
     const user = userEvent.setup();
     const customData: AttentionData = {
@@ -97,12 +140,15 @@ describe(AttentionPanel, () => {
     };
 
     render(<AttentionPanel open onClose={() => {}} data={customData} />);
-    expect(screen.getByText("1 項註冊待審批")).toBeInTheDocument();
-    expect(screen.getByText("請前往審批隊列")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: COPY.attention.title,
+    });
+    expect(within(dialog).getByText("1 項註冊待審批")).toBeInTheDocument();
+    expect(within(dialog).getByText("請前往審批隊列")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("tab", { name: COPY.attention.noticesTab })
     );
-    expect(screen.getByText("主日學即將開課")).toBeInTheDocument();
+    expect(within(dialog).getByText("主日學即將開課")).toBeInTheDocument();
   });
 });

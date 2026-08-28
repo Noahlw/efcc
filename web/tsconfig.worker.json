@@ -30,7 +30,8 @@
     "lib/home-cms-handlers.ts",
     "lib/home-cms-worker.test.ts",
     "lib/auth/**/*.ts",
-    "lib/programs/**/*.ts"
+    "lib/programs/**/*.ts",
+    "lib/identity/**/*.ts"
   ],
   "exclude": [
     "lib/programs/program-api.ts",

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { COPY } from "@/lib/copy";
 
 export interface AttentionItem {
@@ -28,73 +29,36 @@ export const EMPTY_ATTENTION_DATA: AttentionData = {
 
 type AttentionTab = "pending" | "notices";
 
-function focusableElements(root: HTMLElement): HTMLElement[] {
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
-    ),
-  ];
-}
-
+/**
+ * Attention overlay (Spec 089-S1) on the local shadcn/Radix Dialog primitive.
+ *
+ * Role/state, keyboard (Escape), focus trap, focus restore, and the modal
+ * overlay are the Radix Dialog observable contract (TK-03): the dialog is
+ * `role="dialog"`, labelled by the title, focus moves into the panel on open
+ * and back to the bell trigger on close, and Escape closes. The tab list
+ * keeps explicit `role="tab"`/`aria-selected` semantics (TK-02 variant).
+ *
+ * Layout: this component ships ONLY the `attention-panel` class. Position,
+ * width, max-width, padding, and radius are declared in `app/globals.css`
+ * on the same class (using Civic Minimal tokens) so the shadcn/Radix
+ * primitive's `top-1/2 left-1/2` utility defaults are overridden without
+ * off-token `!important` literals (TK-01).
+ */
 export const AttentionPanel = ({
   open,
   onClose,
   data = EMPTY_ATTENTION_DATA,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onClose: () => void;
   data?: AttentionData;
+  /** Close focus target (Radix onCloseAutoFocus). The bell trigger is a
+   *  plain button, so callers pass it here for TK-03 focus restore. */
+  onCloseAutoFocus?: () => void;
 }) => {
   const [tab, setTab] = useState<AttentionTab>("pending");
-  const panelRef = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const panelId = useId();
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const previousFocus = document.activeElement;
-    const panel = panelRef.current;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || !panel) {
-        return;
-      }
-      const focusable = focusableElements(panel);
-      const first = focusable.at(0);
-      const last = focusable.at(-1);
-      if (!first || !last) {
-        event.preventDefault();
-        return;
-      }
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      if (previousFocus instanceof HTMLElement) {
-        previousFocus.focus();
-      }
-    };
-  }, [onClose, open]);
-
-  if (!open) {
-    return null;
-  }
 
   const unreadNoticeCount = data.notices.filter(
     (notice) => notice.unread
@@ -110,29 +74,29 @@ export const AttentionPanel = ({
       : COPY.attention.noticesEmptyHint;
 
   return (
-    <div className="attention-overlay">
-      <Button
-        type="button"
-        tabIndex={-1}
-        variant="ghost"
-        className="attention-overlay__backdrop hover:bg-transparent"
-        aria-label={COPY.attention.close}
-        onClick={onClose}
-      />
-      <dialog
-        ref={panelRef}
-        open
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        onCloseAutoFocus={onCloseAutoFocus}
         className="attention-panel"
-        aria-modal="true"
-        aria-labelledby={titleId}
+        overlayClassName="attention-panel__overlay"
       >
         <header className="attention-panel__header">
-          <h2 id={titleId}>{COPY.attention.title}</h2>
+          <DialogTitle className="attention-panel__title">
+            {COPY.attention.title}
+          </DialogTitle>
           <Button
             type="button"
             variant="outline"
-            className="attention-panel__close min-h-10 rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-transparent px-3 text-[var(--ink)] text-sm font-bold hover:bg-[var(--surface)]"
-            autoFocus
+            data-dialog-close
+            className="attention-panel__close border-[var(--line-strong)] bg-transparent px-3 text-sm font-bold text-[var(--ink)] hover:bg-[var(--surface)]"
             onClick={onClose}
           >
             {COPY.attention.close}
@@ -151,7 +115,7 @@ export const AttentionPanel = ({
             id={`${panelId}-pending-tab`}
             aria-controls={`${panelId}-pending-panel`}
             aria-selected={tab === "pending"}
-            className="attention-panel__tab min-h-[42px] rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-[var(--ink-muted)] text-sm font-bold hover:bg-transparent hover:text-[var(--ink)]"
+            className="attention-panel__tab rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-sm font-bold text-[var(--ink-muted)] hover:bg-transparent hover:text-[var(--ink)]"
             onClick={() => setTab("pending")}
           >
             {COPY.attention.pendingTab}
@@ -163,7 +127,7 @@ export const AttentionPanel = ({
             id={`${panelId}-notices-tab`}
             aria-controls={`${panelId}-notices-panel`}
             aria-selected={tab === "notices"}
-            className="attention-panel__tab min-h-[42px] rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-[var(--ink-muted)] text-sm font-bold hover:bg-transparent hover:text-[var(--ink)]"
+            className="attention-panel__tab rounded-none border-0 border-b-[3px] border-transparent bg-transparent px-3 py-2 text-sm font-bold text-[var(--ink-muted)] hover:bg-transparent hover:text-[var(--ink)]"
             onClick={() => setTab("notices")}
           >
             {COPY.attention.noticesTab}
@@ -222,7 +186,7 @@ export const AttentionPanel = ({
             unreadNoticeCount + data.pendingItems.length
           )}
         </span>
-      </dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
