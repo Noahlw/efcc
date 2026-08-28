@@ -20,6 +20,8 @@ export default defineProject({
       "lib/approval-detail.test.tsx",
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
+      "lib/contextual-task-header.test.tsx",
+      "lib/programs/use-async-resource.test.tsx",
       "lib/home.test.tsx",
       "lib/hk-time.test.ts",
       "lib/messages-intent.test.ts",
