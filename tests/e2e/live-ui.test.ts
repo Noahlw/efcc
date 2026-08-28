@@ -29,6 +29,8 @@ const configuredTarget = process.env.AUTH_UI_TARGET_URL;
 const localTarget =
   !configuredTarget ||
   ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
+const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
+  .origin;
 const ADMIN_USER =
   process.env.PROGRAMS_ADMIN_USERNAME ??
   (localTarget ? DEV_ADMIN.username : undefined);
@@ -70,7 +72,7 @@ const ROLE_FIXTURES = [
 ] as const;
 
 const COPY = {
-  appFullName: "中國基督教播道會顯恩堂",
+  appFullName: "顯恩堂",
   loginSubmit: "登入",
   loginError: "用戶名稱或密碼不正確。",
   registerTitle: "註冊帳戶",
@@ -78,30 +80,34 @@ const COPY = {
   registerPassword: "密碼",
   registerName: "姓名",
   registerSubmit: "提交註冊申請",
-  accountSettingsTitle: "帳戶資料",
-  currentPassword: "目前密碼",
+  accountSettingsTitle: "帳戶設定",
+  currentPassword: "現時密碼",
   newPassword: "新密碼",
-  settingsUsername: "新用戶名稱",
-  passwordHint: "密碼須至少 8 個字元。",
-  confirmationPassword: "確認密碼",
-  qrCode: "QR Code",
+  settingsUsername: "新登入名稱",
+  passwordHint: "最少 8 個字元。",
+  confirmationPassword: "確認新密碼",
+  qrCode: "會員二維碼 · 預覽",
   phone: "電話",
-  registrationPhone: "電話（選填）",
+  registrationPhone: "電話",
   status: "狀態",
-  profileSection: "個人檔案",
+  homeSection: "首頁",
+  profileSection: "帳戶",
   programsSection: "課程與活動",
-  eventsSection: "聚會管理",
-  scannerSection: "掃描簽到",
-  careSection: "關懷儀表板",
-  permissionsSection: "權限管理",
+  scannerSection: "掃描",
+  managementSection: "管理",
+  noticesSection: "通知",
   approvalTitle: "註冊審批",
-  approvalCount: /\d+ 筆待審核/,
+  approvalCount: /待審批 \d+/,
   approvalEmpty: "目前沒有待審批的申請。",
-  approve: "批准",
+  approve: "核准",
   reject: "拒絕",
+  approvalDetailTitle: "註冊審批 · 詳情",
+  decisionNote: "決定備註",
+  confirmReject: "確認拒絕",
+  statusRejected: "已拒絕",
   forbidden: "您沒有權限執行此操作。",
   registerDone: "申請已提交",
-  passwordSubmit: "更新密碼",
+  passwordSubmit: "更改密碼",
   accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
   // 084-04 Settings hub (mirrors web/lib/copy.ts settings + profile blocks).
   settingsEntry: "設定",
@@ -217,12 +223,13 @@ test.describe("UI-04 Next frontend trace", () => {
     );
     await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
+    await page.getByText("帳戶資料", { exact: true }).click();
     await expect(
       page.getByText(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER), {
         exact: true,
       })
     ).toBeVisible();
-    await expect(page.getByText("Admin", { exact: true })).toBeVisible();
+    await expect(page.getByText("管理員", { exact: true })).toBeVisible();
     const qr = page.getByRole("img", { name: COPY.qrCode });
     await expect(qr).toBeVisible();
     await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
@@ -245,14 +252,17 @@ test.describe("UI-04 Next frontend trace", () => {
     );
     await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
-    await expect(page.getByText("Staff", { exact: true })).toBeVisible();
+    await expect(page.getByText("同工", { exact: true })).toBeVisible();
     for (const section of [
-      COPY.profileSection,
+      COPY.homeSection,
       COPY.programsSection,
-      COPY.eventsSection,
       COPY.scannerSection,
+      COPY.managementSection,
+      COPY.profileSection,
     ]) {
-      await expect(page.getByRole("link", { name: section })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: section, exact: true })
+      ).toBeVisible();
     }
   });
 
@@ -265,7 +275,7 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
+    await page.getByText("帳戶資料", { exact: true }).click();
     await expect(page.getByText("Member", { exact: true })).toBeVisible();
   });
 
@@ -278,12 +288,14 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    for (const section of [COPY.eventsSection, COPY.scannerSection]) {
-      await expect(page.getByRole("link", { name: section })).toBeVisible();
+    for (const section of [COPY.scannerSection, COPY.noticesSection]) {
+      await expect(
+        page.getByRole("link", { name: section, exact: true })
+      ).toBeVisible();
     }
-    for (const section of [COPY.careSection, COPY.permissionsSection]) {
-      await expect(page.getByRole("link", { name: section })).toHaveCount(0);
-    }
+    await expect(
+      page.getByRole("link", { name: COPY.managementSection, exact: true })
+    ).toHaveCount(0);
   });
 
   test("member direct links to restricted sections render the shared forbidden state", async ({
@@ -294,7 +306,7 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CRED", MEMBER_CRED)
     );
-    for (const path of ["/events", "/care", "/permissions", "/registrations"]) {
+    for (const path of ["/events", "/permissions", "/registrations"]) {
       await page.goto(appPath(path));
       await expect(
         page.getByRole("alert").filter({ hasText: COPY.forbidden })
@@ -332,11 +344,13 @@ test.describe("UI-04 Next frontend trace", () => {
     ).toBeVisible();
     await expect(page.getByLabel(COPY.settingsUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.currentPassword)).toBeVisible();
-    await expect(page.getByLabel(COPY.newPassword)).toBeVisible();
+    await expect(
+      page.getByLabel(COPY.newPassword, { exact: true })
+    ).toBeVisible();
     await expect(
       page.getByText(COPY.passwordHint, { exact: true })
     ).toBeVisible();
-    await expect(page.getByLabel(COPY.confirmationPassword)).toHaveCount(0);
+    await expect(page.getByLabel(COPY.confirmationPassword)).toBeVisible();
     await expect(page.locator("form")).toHaveCount(2);
   });
 
@@ -350,17 +364,17 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.approvalTitle })
     ).toBeVisible();
-    await expect(page.getByText(COPY.approvalCount)).toBeVisible();
-    // Approve buttons carry a role-qualified aria-label (批准 Member) so
-    // screen-reader users can disambiguate rows; match it loosely.
-    const approveButtons = page.getByRole("button", {
-      name: new RegExp(`^${COPY.approve}(?: Member)?$`, "u"),
-    });
-    const rejectButtons = page.getByRole("button", { name: COPY.reject });
-    if ((await approveButtons.count()) > 0) {
-      await expect(rejectButtons).toHaveCount(await approveButtons.count());
+    await expect(page.getByRole("tab", { name: /待審批 \d+/u })).toBeVisible();
+    await expect(
+      page.getByRole("tabpanel", { name: /待審批 \d+/u })
+    ).toBeVisible();
+    const pendingList = page.getByRole("list", { name: "待審批" });
+    if ((await pendingList.count()) > 0) {
+      await expect(pendingList).toBeVisible();
     } else {
-      await expect(page.getByText(COPY.approvalEmpty)).toBeVisible();
+      await expect(
+        page.getByText(COPY.approvalEmpty, { exact: true })
+      ).toBeVisible();
     }
   });
 
@@ -405,17 +419,10 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     await page.goto(appPath("/profile"));
-    const { width } = page.viewportSize() ?? { width: 0 };
-    const phone = width < 800;
-    const phoneNav = page.locator(".nav-phone").first();
-    const desktopNav = page.locator(".nav-desktop").first();
-    if (phone) {
-      await expect(phoneNav).toBeVisible();
-      await expect(desktopNav).toBeHidden();
-    } else {
-      await expect(desktopNav).toBeVisible();
-      await expect(phoneNav).toBeHidden();
-    }
+    const phone = (page.viewportSize()?.width ?? 0) < 800;
+    const navigation = page.getByRole("navigation", { name: "主要導航" });
+    await expect(navigation).toBeVisible();
+    await expect(navigation).toHaveCSS("position", phone ? "fixed" : "sticky");
   });
 
   test("registration submit creates a new request the admin queue can reject", async ({
@@ -429,6 +436,7 @@ test.describe("UI-04 Next frontend trace", () => {
     await page.getByLabel(COPY.registerUsername).fill(username);
     await page.getByLabel(COPY.registerPassword).fill("register-pw-123");
     await page.getByLabel(COPY.registerName).fill("E2E Registration");
+    await page.getByLabel(COPY.registrationPhone).fill("555-0199");
     await page.getByRole("button", { name: COPY.registerSubmit }).click();
     await expect(
       page.getByRole("heading", { name: COPY.registerDone })
@@ -439,18 +447,28 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto(appPath("/registrations"));
-    await expect(
-      page.getByRole("cell", { name: username, exact: true })
-    ).toBeVisible();
-    await page
-      .locator("tr")
-      .filter({ hasText: username })
-      .getByRole("button", { name: COPY.reject })
-      .click();
-    await expect(page.locator("tr").filter({ hasText: username })).toHaveCount(
-      0
+    await page.goto(appPath("/management?module=approvals"));
+    const row = page.getByRole("listitem").filter({ hasText: username });
+    await expect(row).toBeVisible();
+    const detailLink = row.getByRole("link");
+    const detailHref = required(
+      "approval detail href",
+      (await detailLink.getAttribute("href")) ?? undefined
     );
+    const requestId = new URL(detailHref, TARGET_ORIGIN).searchParams.get(
+      "request"
+    );
+    expect(requestId).toBeTruthy();
+    await page.goto(detailHref);
+    await expect(
+      page.getByRole("heading", { name: COPY.approvalDetailTitle })
+    ).toBeVisible();
+    await page.getByRole("button", { name: COPY.reject }).click();
+    await page.getByLabel(COPY.decisionNote).fill("E2E cleanup note");
+    await page.getByRole("button", { name: COPY.confirmReject }).click();
+    await expect(
+      page.getByText(COPY.statusRejected, { exact: true })
+    ).toBeVisible();
   });
 
   test("Settings hub trace: 設定 entry → hub → 簽到設定 → 時區 (read-only)", async ({
@@ -592,7 +610,10 @@ test.describe("UI-04 Next frontend trace", () => {
     // Rotate to the throwaway value; success revokes every session and
     // routes to the login surface with the one-time notice.
     await page.getByLabel(COPY.currentPassword).fill(fixturePassword);
-    await page.getByLabel(COPY.newPassword).fill(rotationPassword);
+    await page
+      .getByLabel(COPY.newPassword, { exact: true })
+      .fill(rotationPassword);
+    await page.getByLabel(COPY.confirmationPassword).fill(rotationPassword);
     await page.getByRole("button", { name: COPY.passwordSubmit }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })
@@ -610,7 +631,10 @@ test.describe("UI-04 Next frontend trace", () => {
 
     // Change back so the fixture ends exactly as it started.
     await page.getByLabel(COPY.currentPassword).fill(rotationPassword);
-    await page.getByLabel(COPY.newPassword).fill(fixturePassword);
+    await page
+      .getByLabel(COPY.newPassword, { exact: true })
+      .fill(fixturePassword);
+    await page.getByLabel(COPY.confirmationPassword).fill(fixturePassword);
     await page.getByRole("button", { name: COPY.passwordSubmit }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })
