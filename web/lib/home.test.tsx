@@ -1,5 +1,5 @@
-import { clearAccessCache, clearCatalogCache } from "@/lib/programs/program-api";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -13,25 +13,26 @@ import {
   vi,
 } from "vitest";
 
-import HomePage, {
-  HomeView,
-  type HomeEvent,
-  type HomeProgram,
-} from "@/app/home/page";
-import {
-  AnnouncementDetail,
-  type AnnouncementData,
-} from "@/lib/announcement-detail";
+import HomePage, { HomeView } from '@/app/home/page';
+import type { HomeEvent, HomeProgram } from '@/app/home/page';
+import { AnnouncementDetail } from '@/lib/announcement-detail';
+import type { AnnouncementData } from '@/lib/announcement-detail';
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
+import {
+  clearAccessCache,
+  clearCatalogCache,
+} from "@/lib/programs/program-api";
 import { defaultSections, stableNavigationSections } from "@/lib/sections";
 
 const mocks = vi.hoisted(() => {
   const pushMock = vi.fn();
   const replaceMock = vi.fn();
   const pathnameMock = vi.fn(() => "/home");
-  const searchParamsMock = vi.fn(() => new URLSearchParams());
+  const searchParamsMock = vi.fn(
+    () => new URLSearchParams() as unknown as ReadonlyURLSearchParams
+  );
   return {
     pushMock,
     replaceMock,
@@ -50,7 +51,7 @@ const mocks = vi.hoisted(() => {
 
 const { pushMock, replaceMock, pathnameMock, mockRouter } = mocks;
 
-vi.mock("next/navigation", () => ({
+vi.mock(import('next/navigation'), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () => mocks.searchParamsMock(),
@@ -63,7 +64,7 @@ const sessionMocks = vi.hoisted(() => ({
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
-vi.mock("@/lib/session", () => ({
+vi.mock(import('@/lib/session'), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -161,6 +162,7 @@ const server = setupServer(
 beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/home");
   server.resetHandlers();
   pushMock.mockClear();
   replaceMock.mockClear();
@@ -317,6 +319,7 @@ describe("HomeView Component", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: COPY.home.churchNews })
     ).toBeInTheDocument();
+    expect(document.querySelectorAll("[aria-live]")).toHaveLength(0);
     const announcementCard = screen.getByTestId("announcement-card");
     expect(announcementCard).toBeInTheDocument();
     expect(screen.getByText("本週崇拜及聚會安排")).toBeInTheDocument();
@@ -356,6 +359,49 @@ describe("HomeView Component", () => {
 
     expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
+  });
+
+  test("closes the announcement with browser Back without adding history entries", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({ efccSection: "home" }, "", "/home");
+    renderWithApp(
+      <HomeView
+        featuredEvent={null}
+        featuredProgram={null}
+        announcement={SAMPLE_ANNOUNCEMENT}
+      />
+    );
+
+    await user.click(screen.getByTestId("announcement-card"));
+    expect(window.history.state?.efccOverlay).toBe("announcement");
+    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+
+    window.history.back();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("announcement-detail")
+      ).not.toBeInTheDocument();
+    });
+    expect(window.history.state?.efccOverlay).not.toBe("announcement");
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+  });
+
+  test("drops non-HTTPS announcement CTAs while keeping the detail readable", async () => {
+    const user = userEvent.setup();
+    renderWithApp(
+      <HomeView
+        featuredEvent={null}
+        featuredProgram={null}
+        announcement={{
+          ...SAMPLE_ANNOUNCEMENT,
+          externalUrl: "javascript:alert(1)",
+        }}
+      />
+    );
+
+    await user.click(screen.getByTestId("announcement-card"));
+    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   test("renders explore section with featured program and link to /programs", () => {

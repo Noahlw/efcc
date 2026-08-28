@@ -251,6 +251,55 @@ describe("#476 disposable D1 schema contract", () => {
     }, "scope_id is required");
   });
 
+  test("D1 allows a custom Role Definition to reparent with its explicit scope", async () => {
+    const roleId = "018f3b8a-0000-7000-8000-999900000003";
+    await testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+           (role_definition_id, category_key, stable_key, label, description,
+            scope_kind, scope_id, position, is_protected, is_archived,
+            created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Department', 'test.rescope.boundary', 'Test rescope',
+                 'Test', 'Department',
+                 '018f3b8a-0000-7000-8000-000000000002', 50, 0, 0,
+                 NULL, '2026-08-27T00:00:00.000Z', NULL,
+                 '2026-08-27T00:00:00.000Z')`
+      )
+      .bind(roleId)
+      .run();
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions
+            SET category_key = 'Program',
+                scope_kind = 'Program',
+                scope_id = '018f3b8a-0000-7000-8000-300000000001',
+                position = 51
+          WHERE role_definition_id = ?`
+      )
+      .bind(roleId)
+      .run();
+    const row = await readScalar<{
+      category_key: string;
+      scope_kind: string;
+      scope_id: string | null;
+      position: number;
+    }>(
+      `SELECT category_key, scope_kind, scope_id, position
+         FROM role_definitions WHERE role_definition_id = ?`,
+      roleId
+    );
+    expect(row).toEqual({
+      category_key: "Program",
+      scope_kind: "Program",
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+      position: 51,
+    });
+    await testDb()
+      .prepare(`DELETE FROM role_definitions WHERE role_definition_id = ?`)
+      .bind(roleId)
+      .run();
+  });
+
   test("D1 rejects a duplicate active assignment for the same (account, Role Definition)", async () => {
     const dmUser = "E2E_DISPOSABLE_DM";
     const roleId = "018f3b8a-0000-7000-8000-100000000001";

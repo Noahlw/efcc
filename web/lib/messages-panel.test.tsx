@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   const searchParams = vi.fn(() => new URLSearchParams());
   return {
     listAnnouncements: vi.fn(),
+    announce: vi.fn(),
     push,
     searchParams,
     router: { push, replace: vi.fn(), back: vi.fn(), refresh: vi.fn() },
@@ -25,6 +26,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/home-api", () => ({
   listAnnouncements: mocks.listAnnouncements,
 }));
+vi.mock("@/lib/live-region", () => ({ announce: mocks.announce }));
 
 const SAMPLE = {
   contentId: "church-msg-1",
@@ -42,6 +44,7 @@ const SAMPLE = {
 beforeEach(() => {
   window.history.replaceState({}, "", "/messages");
   mocks.listAnnouncements.mockReset();
+  mocks.announce.mockReset();
   mocks.push.mockReset();
   mocks.router.replace.mockReset();
   mocks.searchParams.mockReturnValue(new URLSearchParams());
@@ -99,5 +102,52 @@ describe(MessagesPanel, () => {
     );
     expect(window.location.pathname).toBe("/messages");
     expect(window.location.search).toBe("");
+  });
+
+  test("shows a visible retry after a message load failure", async () => {
+    mocks.listAnnouncements
+      .mockRejectedValueOnce(new Error("unavailable"))
+      .mockResolvedValueOnce({ announcements: [] });
+    render(<MessagesPanel />);
+
+    await expect(
+      screen.findByText(COPY.home.messagesLoadError)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.home.messagesRetry })
+    ).toBeEnabled();
+    expect(mocks.announce).not.toHaveBeenCalledWith(
+      COPY.home.messagesLoadError
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.home.messagesRetry })
+    );
+    await expect(
+      screen.findByText(COPY.home.messagesEmpty)
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("keeps one global announcement owner and rejects non-HTTPS CTAs", async () => {
+    mocks.listAnnouncements.mockResolvedValue({
+      announcements: [
+        {
+          ...SAMPLE,
+          ctaUrl: "javascript:alert(1)",
+        },
+      ],
+    });
+    mocks.searchParams.mockReturnValue(
+      new URLSearchParams("content=church-msg-1&from=messages")
+    );
+    render(<MessagesPanel />);
+
+    await expect(
+      screen.findByTestId("announcement-detail")
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[aria-live]")).toHaveLength(0);
+    expect(
+      screen.getByRole("region", { name: COPY.home.messagesListLabel })
+    ).toHaveAttribute("data-feed-announcement-owner", "global-live-region");
   });
 });

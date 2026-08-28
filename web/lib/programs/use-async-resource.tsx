@@ -20,6 +20,17 @@ export interface AsyncResourceOptions<T, S extends { kind: string }> {
   /** aria-live message announced when a load succeeds; `undefined` stays silent. */
   announceReady?: (data: T) => string | undefined;
   /**
+   * Optional single owner for announcing a visible error state. Call sites
+   * that render `role="alert"` should omit this callback to avoid duplication.
+   */
+  announceError?: (error: unknown) => string | undefined;
+  /**
+   * Narrow auth handoff: route adapters classify the domain error and own the
+   * destination/deep-link; the lifecycle only invokes the callback.
+   */
+  isAuthRequired?: (error: unknown) => boolean;
+  onAuthRequired?: (error: unknown) => void;
+  /**
    * Selector of the panel focused when a retried load settles on an error
    * (shared "focus the error panel after a failed retry" behavior). Sites
    * with a bespoke focus policy leave this out and manage focus themselves.
@@ -27,7 +38,7 @@ export interface AsyncResourceOptions<T, S extends { kind: string }> {
   focusTarget?: string;
 }
 
-export interface AsyncResource<T, S extends { kind: string }> {
+export interface AsyncResource<_T, S extends { kind: string }> {
   state: S;
   /** Run a load; pass a `{ cancelled }` token to drop the run when it flips. */
   run: (request?: { cancelled: boolean }) => Promise<void>;
@@ -75,7 +86,7 @@ export function useAsyncResource<T, S extends { kind: string }>(
     async (request?: { cancelled: boolean }) => {
       requestId.current += 1;
       const currentRequest = requestId.current;
-      const current = optionsRef.current;
+      const {current} = optionsRef;
       setState(current.toLoading());
       if (current.announceLoading) {
         announce(current.announceLoading);
@@ -102,11 +113,19 @@ export function useAsyncResource<T, S extends { kind: string }>(
         ) {
           return;
         }
+        if (current.onAuthRequired && current.isAuthRequired?.(error)) {
+          current.onAuthRequired(error);
+          return;
+        }
         const outcome = current.onError(error);
         if (outcome === null) {
           return;
         }
         setState(outcome);
+        const errorMessage = current.announceError?.(error);
+        if (errorMessage) {
+          announce(errorMessage);
+        }
       }
     },
     // `deps` intentionally drives run identity (mirrors each call site's

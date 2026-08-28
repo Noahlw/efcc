@@ -7,7 +7,13 @@
  * actions.
  */
 /* oxlint-disable vitest/max-expects -- each acceptance-trace row asserts its full observable contract in one test. */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -75,6 +81,7 @@ const VIEW: RoleHierarchyView = {
           assignmentCount: 1,
           grantCount: 0,
           actions: [],
+          reorderActions: [],
         },
         {
           roleDefinitionId: "018f3b8a-0000-7000-8000-000000000a02",
@@ -90,6 +97,7 @@ const VIEW: RoleHierarchyView = {
           assignmentCount: 1,
           grantCount: 0,
           actions: [{ action: "rename", label: "重新命名" }],
+          reorderActions: [],
         },
         {
           roleDefinitionId: "018f3b8a-0000-7000-8000-000000000a03",
@@ -105,6 +113,15 @@ const VIEW: RoleHierarchyView = {
           assignmentCount: 1,
           grantCount: 1,
           actions: [],
+          reorderActions: [],
+        },
+      ],
+      createOptions: [
+        {
+          category_key: "Global",
+          scope_kind: "Global",
+          scope_id: null,
+          scopeLabel: "全教會",
         },
       ],
     },
@@ -113,7 +130,7 @@ const VIEW: RoleHierarchyView = {
       label: "部門",
       description: "部門範圍的可指派身份組分類",
       displayOrder: 1,
-      childCount: 1,
+      childCount: 2,
       definitions: [
         {
           roleDefinitionId: MANAGER_ROLE,
@@ -129,6 +146,31 @@ const VIEW: RoleHierarchyView = {
           assignmentCount: 1,
           grantCount: 12,
           actions: [{ action: "rename", label: "重新命名" }],
+          reorderActions: [{ action: "reorder", label: "調整順序" }],
+        },
+        {
+          roleDefinitionId: "018f3b8a-0000-7000-8000-1000000000bb",
+          label: "成區副手",
+          description: "部門副手。",
+          kind: "DEPARTMENT_SCOPED",
+          scopeKind: "Department",
+          scopeId: "018f3b8a-0000-7000-8000-000000000002",
+          scopeLabel: "成區",
+          position: 11,
+          isProtected: false,
+          isArchived: false,
+          assignmentCount: 0,
+          grantCount: 0,
+          actions: [],
+          reorderActions: [{ action: "reorder", label: "調整順序" }],
+        },
+      ],
+      createOptions: [
+        {
+          category_key: "Department",
+          scope_kind: "Department",
+          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+          scopeLabel: "成區",
         },
       ],
     },
@@ -139,6 +181,7 @@ const VIEW: RoleHierarchyView = {
       displayOrder: 2,
       childCount: 0,
       definitions: [],
+      createOptions: [],
     },
   ],
 };
@@ -224,6 +267,7 @@ describe(RoleHierarchyPanel, () => {
       screen.queryByRole("heading", { name: "成人部門管理者" })
     ).toBeNull();
   });
+
   test("H-17: direct rename links preload the selected role's current name", async () => {
     mocks.searchParams = new URLSearchParams(
       `module=roles&role=${MANAGER_ROLE}&view=rename`
@@ -265,7 +309,9 @@ describe(RoleHierarchyPanel, () => {
     ).resolves.toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /部門/u }));
-    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
     await user.click(screen.getByRole("button", { name: "重新命名" }));
     const input = screen.getByLabelText("新名稱") as HTMLInputElement;
     expect(input.value).toBe("成人部門管理者");
@@ -284,6 +330,7 @@ describe(RoleHierarchyPanel, () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByText(/身份組名稱已更新/u)).toHaveLength(2);
   });
+
   test("hierarchy load errors use the global LiveRegion without a duplicate alert", async () => {
     server.use(
       http.get("/api/v1/identity/roles", () =>
@@ -322,22 +369,27 @@ describe(RoleHierarchyPanel, () => {
     ).resolves.toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: /部門/u }));
-    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
     await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
     expect(screen.getByRole("heading", { name: /部門/u })).toBeTruthy();
     expect(mocks.router.push).not.toHaveBeenCalled();
   });
+
   test("Back from rename does not add a duplicate history entry", async () => {
     const user = userEvent.setup();
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
     await screen.findByRole("heading", { name: /身份組/u });
     await user.click(screen.getByRole("button", { name: /部門/u }));
-    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
     await user.click(screen.getByRole("button", { name: "重新命名" }));
     const historyLength = window.history.length;
     await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
-    expect(window.history.length).toBe(historyLength);
+    expect(window.history).toHaveLength(historyLength);
     expect(window.location.search).toContain(`role=${MANAGER_ROLE}`);
     expect(window.location.search).toContain("view=detail");
     await waitFor(() => expect(screen.getByRole("article")).toHaveFocus());
@@ -349,7 +401,9 @@ describe(RoleHierarchyPanel, () => {
     render(<RoleHierarchyPanel />);
     await screen.findByRole("heading", { name: /身份組/u });
     await user.click(screen.getByRole("button", { name: /部門/u }));
-    await user.click(screen.getByRole("button", { name: /成人部門管理者/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
     await waitFor(() => expect(screen.getByRole("article")).toHaveFocus());
 
     window.history.pushState(
@@ -365,7 +419,9 @@ describe(RoleHierarchyPanel, () => {
     window.history.pushState({}, "", "/management?module=roles");
     window.dispatchEvent(new PopStateEvent("popstate"));
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: /身份組/u })).toHaveFocus()
+      expect(
+        screen.getByRole("heading", { name: "身份組", level: 1 })
+      ).toHaveFocus()
     );
   });
 
@@ -379,5 +435,268 @@ describe(RoleHierarchyPanel, () => {
       screen.findByRole("heading", { name: "系統管理員" })
     ).resolves.toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "新名稱" })).toBeNull();
+  });
+
+  test("B-479-12: Admin sees the global creation affordance on the Global category", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /全教會/u }));
+    expect(
+      screen.getAllByRole("button", { name: "建立身份組" }).length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  test("B-479-14: the create form submits a scoped body under the projected Department scope", async () => {
+    const user = userEvent.setup();
+    let createBody: unknown = null;
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse()),
+      http.post("/api/v1/identity/role-definitions", async ({ request }) => {
+        createBody = await request.json();
+        return HttpResponse.json({
+          requestId: "rid-create",
+          data: {
+            roleDefinitionId: "018f3b8a-0000-7000-8000-1000000000aa",
+            categoryKey: "Department",
+            label: "成區新角色",
+            scopeKind: "Department",
+            scopeId: "018f3b8a-0000-7000-8000-000000000002",
+            position: 12,
+            revision: 5,
+            idempotent: false,
+          },
+        });
+      }),
+      http.get("/api/v1/identity/roles", () => hierarchyResponse())
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    const departmentSection = screen
+      .getByRole("heading", { name: /部門/u })
+      .closest("section");
+    expect(departmentSection).not.toBeNull();
+    await user.click(
+      within(departmentSection as HTMLElement).getByRole("button", {
+        name: "建立身份組",
+      })
+    );
+    const nameInput = screen.getByLabelText("名稱");
+    await user.type(nameInput, "成區新角色");
+    await user.click(screen.getByRole("button", { name: "建立" }));
+    await expect(screen.findByRole("status")).resolves.toHaveTextContent(
+      /身份組已建立/u
+    );
+    await waitFor(() => {
+      expect(createBody).not.toBeNull();
+    });
+    const body = createBody as Record<string, unknown>;
+    expect(body.category_key).toBe("Department");
+    expect(body.scope_kind).toBe("Department");
+    expect(body.scope_id).toBe("018f3b8a-0000-7000-8000-000000000002");
+    expect(body.label).toBe("成區新角色");
+    expect(body.base_revision).toBeTypeOf("number");
+  });
+
+  test("B-479-08: 上移/下移 buttons appear on reorder-eligible siblings and submit the swap", async () => {
+    const user = userEvent.setup();
+    let reorderBody: unknown = null;
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse()),
+      http.patch("/api/v1/identity/roles/order", async ({ request }) => {
+        reorderBody = await request.json();
+        return HttpResponse.json({
+          requestId: "rid-reorder",
+          data: {
+            categoryKey: "Department",
+            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+            revision: 5,
+            idempotent: false,
+          },
+        });
+      })
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    const managerRow = screen.getByRole("button", {
+      name: /成人部門管理者 · 詳情/u,
+    });
+    expect(managerRow).toBeInTheDocument();
+    const upButton = screen.getByRole("button", {
+      name: /上移 · 成人部門管理者/u,
+    });
+    // The manager is the first sibling: 上移 is disabled, 下移 is enabled.
+    expect(upButton).toBeDisabled();
+    const downButton = screen.getByRole("button", {
+      name: /下移 · 成人部門管理者/u,
+    });
+    expect(downButton).toBeEnabled();
+    await user.click(downButton);
+    await waitFor(() => {
+      expect(reorderBody).not.toBeNull();
+    });
+    const body = reorderBody as Record<string, unknown>;
+    expect(body.category_key).toBe("Department");
+    expect(Array.isArray(body.targets)).toBeTruthy();
+    expect(body.targets as unknown[]).toHaveLength(2);
+  });
+
+  test("B-479-10: ROLE_ORDER_CONFLICT exposes 保留我的排序 and 採用最新排序 recovery", async () => {
+    const user = userEvent.setup();
+    let keepMineBody: unknown = null;
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse()),
+      http.patch("/api/v1/identity/roles/order", async ({ request }) => {
+        if (keepMineBody === null) {
+          // The first attempt is the conflict.
+          keepMineBody = "first";
+          return HttpResponse.json(
+            {
+              status: 409,
+              code: "ROLE_ORDER_CONFLICT",
+              title: "Conflict",
+              detail: "身份組順序已有更新，請選擇保留方式後再試。",
+              requestId: "rid-conflict",
+              currentRevision: 9,
+              orderedRoleDefinitionIds: ["sibling-b", MANAGER_ROLE],
+            },
+            { status: 409 }
+          );
+        }
+        const body = await request.json();
+        keepMineBody = body;
+        return HttpResponse.json({
+          requestId: "rid-reorder-retry",
+          data: {
+            categoryKey: "Department",
+            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+            revision: 10,
+            idempotent: false,
+          },
+        });
+      })
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    await user.click(
+      screen.getByRole("button", { name: /下移 · 成人部門管理者/u })
+    );
+    await expect(
+      screen.findByRole("heading", { name: "順序衝突" })
+    ).resolves.toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "保留我的排序" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "採用最新排序" })
+    ).toBeInTheDocument();
+    // Both the local and the authoritative order are exposed.
+    expect(screen.getByText("我的排序")).toBeInTheDocument();
+    expect(screen.getByText("最新排序")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保留我的排序" }));
+    await waitFor(() => {
+      expect(keepMineBody).not.toBe("first");
+    });
+    const retry = keepMineBody as Record<string, unknown>;
+    expect(retry.category_key).toBe("Department");
+    expect(Array.isArray(retry.targets)).toBeTruthy();
+  });
+
+  test("B-479 scope UI renders only projected Staff destinations and submits the scope edit", async () => {
+    const user = userEvent.setup();
+    let scopeBody: unknown = null;
+    const scopeView: RoleHierarchyView = {
+      ...VIEW,
+      categories: VIEW.categories.map((category) =>
+        category.categoryKey === "Department"
+          ? {
+              ...category,
+              definitions: category.definitions.map((definition) =>
+                definition.roleDefinitionId === MANAGER_ROLE
+                  ? {
+                      ...definition,
+                      actions: [
+                        { action: "rename", label: "重新命名" },
+                        { action: "scope", label: "編輯適用範圍" },
+                      ],
+                      scopeOptions: [
+                        {
+                          category_key: "Department",
+                          scope_kind: "Department",
+                          scope_id: "018f3b8a-0000-7000-8000-000000000002",
+                          scopeLabel: "成區",
+                        },
+                      ],
+                    }
+                  : definition
+              ),
+            }
+          : category
+      ),
+    };
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(scopeView)),
+      http.patch(
+        `/api/v1/identity/role-definitions/${MANAGER_ROLE}/scope`,
+        async ({ request }) => {
+          scopeBody = await request.json();
+          return HttpResponse.json({
+            requestId: "rid-scope",
+            data: {
+              roleDefinitionId: MANAGER_ROLE,
+              categoryKey: "Department",
+              scopeKind: "Department",
+              scopeId: "018f3b8a-0000-7000-8000-000000000002",
+              position: 12,
+              revision: 5,
+              idempotent: false,
+            },
+          });
+        }
+      )
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+    await user.click(
+      screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+    );
+    await user.click(screen.getByRole("button", { name: "編輯適用範圍" }));
+    const scopeSelect = screen.getByLabelText("適用範圍");
+    expect(scopeSelect).toHaveValue(
+      "Department:018f3b8a-0000-7000-8000-000000000002"
+    );
+    expect(within(scopeSelect).getAllByRole("option")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "儲存適用範圍" }));
+    const body = scopeBody as Record<string, unknown>;
+    expect(body.category_key).toBe("Department");
+    expect(body.scope_kind).toBe("Department");
+    expect(body.scope_id).toBe("018f3b8a-0000-7000-8000-000000000002");
+    expect(body.base_revision).toBeTypeOf("number");
   });
 });

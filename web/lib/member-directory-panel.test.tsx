@@ -9,6 +9,7 @@ import {
   cleanup,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -24,14 +25,17 @@ const mocks = vi.hoisted(() => {
     forward: vi.fn<() => void>(),
     refresh: vi.fn<() => void>(),
     push: vi.fn<() => void>(),
-    replace: vi.fn<() => void>(),
+    replace: vi.fn<(href: string) => void>(),
     prefetch: vi.fn<() => void>(),
   };
-  return { router };
+  return { router, rememberDeepLink: vi.fn<(path: string) => void>() };
 });
 
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.router,
+}));
+vi.mock("@/lib/session", () => ({
+  rememberDeepLink: mocks.rememberDeepLink,
 }));
 
 const server = setupServer();
@@ -110,6 +114,7 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   vi.clearAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 afterAll(() => server.close());
 
@@ -135,6 +140,24 @@ describe("MemberDirectoryPanel", () => {
     ).toBeNull();
   });
 
+  test("suppresses network search until two trimmed characters are present", async () => {
+    const user = userEvent.setup();
+    let requests = 0;
+    server.use(
+      http.get("/api/v1/programs/members", () => {
+        requests += 1;
+        return membersResponse([]);
+      })
+    );
+    render(<MemberDirectoryPanel />);
+
+    const search = screen.getByLabelText(MEMBERS.searchLabel);
+    await user.type(search, "陳");
+    expect(requests).toBe(0);
+    await user.type(search, "大");
+    await waitFor(() => expect(requests).toBeGreaterThan(0));
+  });
+
   test("selecting a result shows the member detail inline — no separate commit step", async () => {
     const user = userEvent.setup();
     server.use(liveSearchHandler());
@@ -149,8 +172,10 @@ describe("MemberDirectoryPanel", () => {
       name: MEMBERS.memberDetail,
     });
     const detailRoot = detail.closest("section") ?? detail.parentElement;
+    const detailCard = detail.closest("article");
     expect(detailRoot).not.toBeNull();
-    if (detailRoot === null) return;
+    expect(detailCard).not.toBeNull();
+    if (detailRoot === null || detailCard === null) return;
     const detailView = within(detailRoot as HTMLElement);
     expect(detailView.getByText(MEMBERS.memberContact)).toBeTruthy();
     expect(detailView.getByText("9123 4567")).toBeTruthy();
@@ -159,6 +184,8 @@ describe("MemberDirectoryPanel", () => {
     expect(detailView.getByText(MEMBERS.memberDepartments)).toBeTruthy();
     expect(detailView.getByText("培育部")).toBeTruthy();
     expect(detailView.getByText("崇拜部")).toBeTruthy();
+    expect(danaRow).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(detailCard).toHaveFocus());
     // No commit step: no save/confirm/submit control, and no navigation.
     expect(
       screen.queryByRole("button", { name: /儲存|確認|提交/ })
@@ -219,7 +246,7 @@ describe("MemberDirectoryPanel", () => {
       container.querySelector('[aria-busy="true"]')
     ).not.toBeNull();
 
-    resolvePending?.(membersResponse([MEMBER_ROWS[0]!]));
+    resolvePending?.(membersResponse([MEMBER_ROWS[0]!]).clone());
     expect(await screen.findByRole("button", { name: /陳大文/ })).toBeTruthy();
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
   });
@@ -244,6 +271,14 @@ describe("MemberDirectoryPanel", () => {
     await user.click(screen.getByRole("button", { name: MEMBERS.retry }));
     expect(await screen.findByRole("button", { name: /王大文/ })).toBeTruthy();
     expect(screen.queryByText(MEMBERS.loadError)).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          level: 2,
+          name: MEMBERS.membersTitle,
+        })
+      ).toHaveFocus()
+    );
   });
 
   test("a server-shaped forbidden response renders the forbidden state", async () => {
@@ -257,5 +292,35 @@ describe("MemberDirectoryPanel", () => {
 
     await user.type(screen.getByLabelText(MEMBERS.searchLabel), "陳大");
     expect(await screen.findByText(MEMBERS.forbidden)).toBeTruthy();
+  });
+
+  test("hands an AUTH_REQUIRED search back through the safe deep-link seam", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/management?module=members");
+    server.use(
+      http.get("/api/v1/programs/members", () =>
+        problemResponse(401, "AUTH_REQUIRED", "Session expired")
+      )
+    );
+    render(<MemberDirectoryPanel />);
+
+    await user.type(screen.getByLabelText(MEMBERS.searchLabel), "陳大");
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=members"
+    );
+  });
+
+  test("uses an origin-aware same-origin Back link", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=members&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    render(<MemberDirectoryPanel />);
+
+    expect(
+      screen.getByRole("link", { name: MEMBERS.backToManagement })
+    ).toHaveAttribute("href", "/management?module=settings");
   });
 });

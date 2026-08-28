@@ -60,6 +60,7 @@ const HIERARCHY = {
           assignmentCount: 1,
           grantCount: 0,
           actions: [],
+          reorderActions: [],
         },
         {
           roleDefinitionId: "r-staff",
@@ -75,6 +76,7 @@ const HIERARCHY = {
           assignmentCount: 1,
           grantCount: 8,
           actions: [{ action: "rename", label: "重新命名" }],
+          reorderActions: [],
         },
         {
           roleDefinitionId: "r-member",
@@ -90,6 +92,15 @@ const HIERARCHY = {
           assignmentCount: 1,
           grantCount: 1,
           actions: [],
+          reorderActions: [],
+        },
+      ],
+      createOptions: [
+        {
+          category_key: "Global",
+          scope_kind: "Global",
+          scope_id: null,
+          scopeLabel: "全教會",
         },
       ],
     },
@@ -114,6 +125,15 @@ const HIERARCHY = {
           assignmentCount: 1,
           grantCount: 6,
           actions: [{ action: "rename", label: "重新命名" }],
+          reorderActions: [{ action: "reorder", label: "調整順序" }],
+        },
+      ],
+      createOptions: [
+        {
+          category_key: "Department",
+          scope_kind: "Department",
+          scope_id: "dept-adult",
+          scopeLabel: "成區",
         },
       ],
     },
@@ -124,6 +144,7 @@ const HIERARCHY = {
       displayOrder: 2,
       childCount: 0,
       definitions: [],
+      createOptions: [],
     },
   ],
 };
@@ -203,17 +224,17 @@ test("identity hierarchy panel has no overflow or undersized controls at the pin
 }) => {
   await page.goto("/management?module=roles");
 
-  const heading = page.getByRole("heading", { name: "身份組" });
+  const heading = page.getByRole("heading", { name: "身份組", exact: true });
   await expect(heading).toBeVisible();
-  await expect(page.getByRole("heading", { name: "全教會" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "課程" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^全教會/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^課程/ })).toBeVisible();
   const categoryToggles = page.locator(
     'button[aria-controls^="role-category-body-"]'
   );
   await expect(categoryToggles).toHaveCount(3);
   await page.getByRole("button", { name: /部門/u }).click();
   await expect(
-    page.getByRole("button", { name: /成人部門管理者/u })
+    page.getByRole("button", { name: /成人部門管理者 · 詳情/u })
   ).toBeVisible();
 
   const geometry = await page.evaluate(() => {
@@ -277,9 +298,13 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
 }, testInfo) => {
   await page.goto("/management?module=roles");
 
-  await expect(page.getByRole("heading", { name: "身份組" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "身份組", exact: true })
+  ).toBeVisible();
   await page.getByRole("button", { name: /部門/u }).click();
-  const managerRow = page.getByRole("button", { name: /成人部門管理者/u });
+  const managerRow = page.getByRole("button", {
+    name: /成人部門管理者 · 詳情/u,
+  });
   await managerRow.click();
   const rename = page.getByRole("button", { name: "重新命名" });
   await expect(rename).toBeVisible();
@@ -320,4 +345,60 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
       expect(geometry.saveBottom).toBeLessThanOrEqual(geometry.dockTop + 1);
     }
   }
+});
+
+test("B-479-12: create and reorder affordances keep their critical anchors at the pinned width", async ({
+  page,
+}) => {
+  await page.goto("/management?module=roles");
+
+  await expect(
+    page.getByRole("heading", { name: "身份組", exact: true })
+  ).toBeVisible();
+  // Admin sees the creation affordance on the Global category.
+  const createButtons = page.getByRole("button", { name: "建立身份組" });
+  await expect(createButtons).toHaveCount(2);
+  await page.getByRole("button", { name: /部門/u }).click();
+  await expect(
+    page.getByRole("button", { name: /成人部門管理者 · 詳情/u })
+  ).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const doc = document.documentElement;
+    const horizontalOverflow =
+      Math.max(doc.scrollWidth, document.body.scrollWidth) - viewportWidth;
+    const dock = document.querySelector<HTMLElement>(".nav-phone");
+    const dockBox = dock?.getBoundingClientRect();
+    const create = [...document.querySelectorAll<HTMLElement>("button")].find(
+      (element) => element.textContent?.trim() === "建立身份組"
+    );
+    const createBox = create?.getBoundingClientRect();
+    const orderButtons = [
+      ...document.querySelectorAll<HTMLElement>("button"),
+    ].filter((element) =>
+      /^(上移|下移) · /u.test(element.getAttribute("aria-label") ?? "")
+    );
+    const undersizedOrder = orderButtons.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width < 44 || rect.height < 44;
+    });
+    return {
+      viewportWidth,
+      horizontalOverflow,
+      createBottom: createBox ? createBox.bottom : null,
+      orderCount: orderButtons.length,
+      undersizedOrder: undersizedOrder.length,
+      dockTop: dockBox ? dockBox.top : null,
+    };
+  });
+
+  expect(
+    geometry.horizontalOverflow,
+    `horizontal overflow at ${geometry.viewportWidth}px`
+  ).toBeLessThanOrEqual(1);
+  // The creation affordance is present and 44px minimum targets hold.
+  expect(geometry.createBottom).not.toBeNull();
+  expect(geometry.orderCount).toBeGreaterThan(0);
+  expect(geometry.undersizedOrder).toBe(0);
 });

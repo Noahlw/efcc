@@ -1,19 +1,30 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  ActionSurface,
+  ManagementPageHeader,
+} from "@/app/management/management-action-framework";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import {
-  decideRegistration,
-  fetchRegistrationDetail,
-  RegistrationApiError,
-  type Decision,
-  type RegistrationDetail,
-} from "@/lib/registration-client";
+import { decideRegistration, fetchRegistrationDetail, RegistrationApiError } from '@/lib/registration-client';
+import type { Decision, RegistrationDetail } from '@/lib/registration-client';
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
 
 import { clearApprovalSelection } from "./approval-queue";
+
 import styles from "./approval-detail.module.css";
 
 type DetailState =
@@ -23,26 +34,33 @@ type DetailState =
   | { kind: "forbidden" };
 
 type DecisionBusy = Decision | null;
+type NoticeKind = "success" | "error";
 
 function statusCopy(status: RegistrationDetail["status"]): string {
   switch (status) {
-    case "Active":
+    case "Active": {
       return COPY.approvals.statusApproved;
-    case "Rejected":
+    }
+    case "Rejected": {
       return COPY.approvals.statusRejected;
-    default:
+    }
+    default: {
       return COPY.approvals.statusPending;
+    }
   }
 }
 
 function statusClass(status: RegistrationDetail["status"]): string {
   switch (status) {
-    case "Active":
+    case "Active": {
       return styles.statusApproved;
-    case "Rejected":
+    }
+    case "Rejected": {
       return styles.statusRejected;
-    default:
+    }
+    default: {
       return styles.statusPending;
+    }
   }
 }
 
@@ -56,229 +74,6 @@ function errorCopy(error: unknown): string {
 function detailRoleLabel(role: string): string {
   return (
     COPY.shell.roleLabels[role as keyof typeof COPY.shell.roleLabels] ?? role
-  );
-}
-
-function LegacyApprovalDetail({ requestId }: { requestId: string }) {
-  const [state, setState] = useState<DetailState>({ kind: "loading" });
-  const [busy, setBusy] = useState<DecisionBusy>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const [noteError, setNoteError] = useState(false);
-  const mounted = useRef(true);
-  const headingRef = useRef<HTMLHeadingElement>(null);
-
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
-    setNoteError(false);
-    try {
-      const registration = await fetchRegistrationDetail(requestId);
-      if (mounted.current) setState({ kind: "ready", registration });
-    } catch (error) {
-      if (!mounted.current) return;
-      if (
-        error instanceof RegistrationApiError &&
-        (error.status === 401 || error.status === 403)
-      ) {
-        setState({ kind: "forbidden" });
-        return;
-      }
-      setState({ kind: "error", message: errorCopy(error) });
-    }
-  }, [requestId]);
-
-  useEffect(() => {
-    mounted.current = true;
-    void load();
-    return () => {
-      mounted.current = false;
-    };
-  }, [load]);
-
-  useEffect(() => {
-    if (state.kind === "ready") headingRef.current?.focus();
-  }, [state.kind]);
-
-  const handleDecision = async (decision: Decision) => {
-    if (busy || state.kind !== "ready" || state.registration.status !== "Pending") {
-      return;
-    }
-
-    const decisionNote = note.trim();
-    if (decision === "reject" && !decisionNote) {
-      setNoteError(true);
-      announce(COPY.approvals.rejectionNoteRequired);
-      return;
-    }
-
-    setBusy(decision);
-    setNotice(null);
-    setNoteError(false);
-    try {
-      await decideRegistration(
-        requestId,
-        decision,
-        decision === "reject" ? decisionNote : undefined
-      );
-      if (!mounted.current) return;
-      announce(COPY.approvals.decisionMade);
-      setNotice(COPY.approvals.decisionMade);
-      await load();
-    } catch (error) {
-      if (!mounted.current) return;
-      if (
-        error instanceof RegistrationApiError &&
-        (error.status === 401 || error.status === 403)
-      ) {
-        setState({ kind: "forbidden" });
-        return;
-      }
-      setNotice(errorCopy(error));
-    } finally {
-      if (mounted.current) setBusy(null);
-    }
-  };
-
-  const backHref = "/management?module=approvals";
-
-  if (state.kind === "forbidden") {
-    return (
-      <section className={styles.page} aria-labelledby="approval-detail-title">
-        <h1 id="approval-detail-title" className={styles.title} tabIndex={-1}>
-          {COPY.approvals.approvalDetailTitle}
-        </h1>
-        <p role="alert" className={styles.error}>
-          {COPY.error.forbidden}
-        </p>
-        <Link href={backHref} className={styles.back}>
-          {COPY.approvals.backToApprovals}
-        </Link>
-      </section>
-    );
-  }
-
-  return (
-    <section
-      className={styles.page}
-      aria-labelledby="approval-detail-title"
-      aria-busy={state.kind === "loading" || busy !== null}
-    >
-      <header className={styles.header}>
-        <Link href={backHref} className={styles.back}>
-          {COPY.approvals.backToApprovals}
-        </Link>
-        <h1
-          id="approval-detail-title"
-          ref={headingRef}
-          className={styles.title}
-          tabIndex={-1}
-        >
-          {COPY.approvals.approvalDetailTitle}
-        </h1>
-      </header>
-
-      {notice && (
-        <p role="status" className={styles.notice}>
-          {notice}
-        </p>
-      )}
-
-      {state.kind === "loading" && (
-        <p role="status" aria-live="polite" className={styles.loading}>
-          {COPY.approvals.loading}
-        </p>
-      )}
-
-      {state.kind === "error" && (
-        <p role="alert" className={styles.error}>
-          {state.message}
-        </p>
-      )}
-
-      {state.kind === "ready" && (
-        <>
-          <div className={styles.card}>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.applicantName}</span>
-              <span className={styles.value}>{state.registration.name}</span>
-            </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.applicantContact}</span>
-              <span className={styles.value}>
-                <span>{state.registration.username}</span>
-                {state.registration.phone && (
-                  <span>{state.registration.phone}</span>
-                )}
-              </span>
-            </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.status}</span>
-              <span className={`${styles.status} ${statusClass(state.registration.status)}`}>
-                {statusCopy(state.registration.status)}
-              </span>
-            </div>
-            {state.registration.decisionNote && (
-              <div className={styles.detailRow}>
-                <span className={styles.label}>{COPY.approvals.decisionNote}</span>
-                <span className={styles.value}>{state.registration.decisionNote}</span>
-              </div>
-            )}
-          </div>
-
-          {state.registration.status === "Pending" ? (
-            <div className={styles.actions}>
-              <div className={styles.noteField}>
-                <label htmlFor="approval-decision-note" className={styles.label}>
-                  {COPY.approvals.decisionNote}
-                </label>
-                <textarea
-                  id="approval-decision-note"
-                  value={note}
-                  onChange={(event) => {
-                    setNote(event.target.value);
-                    if (event.target.value.trim()) setNoteError(false);
-                  }}
-                  className={styles.textarea}
-                  aria-invalid={noteError}
-                  aria-describedby={noteError ? "approval-note-error" : undefined}
-                  placeholder={COPY.approvals.decisionNotePlaceholder}
-                  required
-                />
-                {noteError && (
-                  <p id="approval-note-error" className={styles.fieldError} role="alert">
-                    {COPY.approvals.rejectionNoteRequired}
-                  </p>
-                )}
-              </div>
-              <div className={styles.actionButtons}>
-                <button
-                  type="button"
-                  className={styles.approve}
-                  disabled={busy !== null}
-                  aria-busy={busy === "approve"}
-                  onClick={() => void handleDecision("approve")}
-                >
-                  {busy === "approve" ? COPY.approvals.approving : COPY.approvals.approve}
-                </button>
-                <button
-                  type="button"
-                  className={styles.reject}
-                  disabled={busy !== null}
-                  aria-busy={busy === "reject"}
-                  onClick={() => void handleDecision("reject")}
-                >
-                  {busy === "reject" ? COPY.approvals.rejecting : COPY.approvals.reject}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p role="status" className={styles.readOnly}>
-              {COPY.approvals.decisionMade}
-            </p>
-          )}
-        </>
-      )}
-    </section>
   );
 }
 
@@ -308,6 +103,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   const [state, setState] = useState<DetailState>({ kind: "loading" });
   const [busy, setBusy] = useState<DecisionBusy>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>("success");
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState(false);
@@ -315,27 +111,29 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const returningToQueue = useRef(false);
-
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const closeConfirmation = useCallback(() => {
     setConfirmKind(null);
     setNote("");
     setNoteError(false);
-    queueMicrotask(() => {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    });
+    const target = previousFocusRef.current;
+    if (target) {
+      queueMicrotask(() => {
+        target.focus();
+        previousFocusRef.current = null;
+      });
+    }
   }, []);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
+    announce(COPY.approvals.loading);
     try {
       const registration = await fetchRegistrationDetail(requestId);
-      if (mounted.current) setState({ kind: "ready", registration });
+      if (mounted.current) {setState({ kind: "ready", registration });}
     } catch (error) {
-      if (!mounted.current) return;
+      if (!mounted.current) {return;}
       if (
         error instanceof RegistrationApiError &&
         (error.status === 401 || error.status === 403)
@@ -343,7 +141,9 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
         setState({ kind: "forbidden" });
         return;
       }
-      setState({ kind: "error", message: errorCopy(error) });
+      const message = errorCopy(error);
+      setState({ kind: "error", message });
+      announce(message);
     }
   }, [requestId]);
 
@@ -357,57 +157,49 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
     return () => {
       mounted.current = false;
       window.removeEventListener("popstate", onPopState);
-      if (!returningToQueue.current) clearApprovalSelection();
+      if (!returningToQueue.current) {clearApprovalSelection();}
     };
   }, [load]);
 
   useEffect(() => {
-    if (state.kind === "ready") headingRef.current?.focus();
-    if (state.kind === "error") errorRef.current?.focus();
-    if (state.kind === "forbidden") headingRef.current?.focus();
+    if (state.kind === "ready") {headingRef.current?.focus();}
+    if (state.kind === "error") {errorRef.current?.focus();}
+    if (state.kind === "forbidden") {headingRef.current?.focus();}
   }, [state]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (confirmKind === null) {
-      if (dialog.open) dialog.close();
-      return;
-    }
-    if (!dialog.open) dialog.showModal();
-    if (confirmKind === "reject") {
-      noteRef.current?.focus();
-    } else {
-      dialog.querySelector<HTMLButtonElement>("[data-confirm-dismiss]")?.focus();
-    }
-    const onCancel = (event: Event) => {
-      event.preventDefault();
-      closeConfirmation();
-    };
-    dialog.addEventListener("cancel", onCancel);
-    return () => dialog.removeEventListener("cancel", onCancel);
-  }, [confirmKind]);
 
   const commitDecision = useCallback(
     async (decision: Decision, decisionNote?: string) => {
-      if (busy || state.kind !== "ready" || state.registration.status !== "Pending") {
+      if (
+        busy ||
+        state.kind !== "ready" ||
+        state.registration.status !== "Pending"
+      ) {
         return;
       }
       setBusy(decision);
       setNotice(null);
       try {
         await decideRegistration(requestId, decision, decisionNote);
-        if (!mounted.current) return;
+        if (!mounted.current) {return;}
         announce(COPY.approvals.decisionMade);
         setNotice(COPY.approvals.decisionMade);
+        setNoticeKind("success");
         await load();
       } catch (error) {
-        if (!mounted.current) return;
+        if (!mounted.current) {return;}
+        if (
+          error instanceof RegistrationApiError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          setState({ kind: "forbidden" });
+          return;
+        }
         const message = errorCopy(error);
         setNotice(message);
+        setNoticeKind("error");
         announce(message);
       } finally {
-        if (mounted.current) setBusy(null);
+        if (mounted.current) {setBusy(null);}
       }
     },
     [busy, load, requestId, state]
@@ -432,7 +224,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   };
 
   const acceptConfirmation = () => {
-    if (confirmKind === null) return;
+    if (confirmKind === null) {return;}
     const decision = confirmKind;
     if (decision === "reject" && !note.trim()) {
       setNoteError(true);
@@ -446,30 +238,32 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   };
 
   const backHref = "/management?module=approvals";
+  const actionSurfaceState =
+    busy === null
+      ? noticeKind === "error" && notice
+        ? notice === QUEUE_COPY.conflict
+          ? "conflict"
+          : "failure"
+        : "save"
+      : "busy";
 
   if (state.kind === "forbidden") {
     return (
       <section className={styles.page} aria-labelledby="approval-detail-title">
-        <h1
-          id="approval-detail-title"
-          ref={headingRef}
-          className={styles.title}
-          tabIndex={-1}
-        >
-          {COPY.approvals.approvalDetailTitle}
-        </h1>
+        <ManagementPageHeader
+          backHref={backHref}
+          backLabel={COPY.approvals.backToApprovals}
+          lead={COPY.approvals.approvalsLead}
+          title={COPY.approvals.approvalDetailTitle}
+          titleId="approval-detail-title"
+          titleRef={headingRef}
+          onBackClick={() => {
+            returningToQueue.current = true;
+          }}
+        />
         <p role="alert" className={styles.error} ref={errorRef} tabIndex={-1}>
           {COPY.error.forbidden}
         </p>
-        <Link
-          href={backHref}
-          className={styles.back}
-          onClick={() => {
-            returningToQueue.current = true;
-          }}
-        >
-          {COPY.approvals.backToApprovals}
-        </Link>
       </section>
     );
   }
@@ -480,32 +274,26 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
       aria-labelledby="approval-detail-title"
       aria-busy={state.kind === "loading" || busy !== null}
     >
-      <header className={styles.header}>
-        <Link
-          href={backHref}
-          className={styles.back}
-          onClick={() => {
-            returningToQueue.current = true;
-          }}
-        >
-          {COPY.approvals.backToApprovals}
-        </Link>
-        <h1
-          id="approval-detail-title"
-          ref={headingRef}
-          className={styles.title}
-          tabIndex={-1}
-        >
-          {COPY.approvals.approvalDetailTitle}
-        </h1>
-      </header>
+      <ManagementPageHeader
+        backHref={backHref}
+        backLabel={COPY.approvals.backToApprovals}
+        lead={COPY.approvals.approvalsLead}
+        title={COPY.approvals.approvalDetailTitle}
+        titleId="approval-detail-title"
+        titleRef={headingRef}
+        onBackClick={() => {
+          returningToQueue.current = true;
+        }}
+      />
 
       <p
-        role="status"
-        aria-live="polite"
+        role={noticeKind === "error" && notice ? "alert" : "status"}
+        aria-live={noticeKind === "error" && notice ? "assertive" : "polite"}
         className={
           notice
-            ? styles.notice
+            ? noticeKind === "error"
+              ? styles.noticeError
+              : styles.notice
             : state.kind === "loading"
               ? styles.loading
               : styles.liveRegion
@@ -515,29 +303,40 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
       </p>
 
       {state.kind === "error" && (
-        <p
-          role="alert"
-          aria-live="assertive"
-          className={styles.error}
-          ref={errorRef}
-          tabIndex={-1}
-        >
-          {state.message}
-        </p>
+        <div className={styles.error}>
+          <p role="alert" aria-live="assertive" ref={errorRef} tabIndex={-1}>
+            {state.message}
+          </p>
+          <Button
+            type="button"
+            className={`${styles.retry} min-h-11`}
+            onClick={() => void load()}
+            size="lg"
+            variant="outline"
+          >
+            重試連接
+          </Button>
+        </div>
       )}
 
       {state.kind === "ready" && (
         <>
           <div className={styles.card}>
             <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.applicantName}</span>
+              <span className={styles.label}>
+                {COPY.approvals.applicantName}
+              </span>
               <span className={styles.value}>{state.registration.name}</span>
             </div>
             <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.applicantContact}</span>
+              <span className={styles.label}>
+                {COPY.approvals.applicantContact}
+              </span>
               <span className={styles.value}>
                 <span>{state.registration.username}</span>
-                {state.registration.phone && <span>{state.registration.phone}</span>}
+                {state.registration.phone && (
+                  <span>{state.registration.phone}</span>
+                )}
               </span>
             </div>
             <div className={styles.detailRow}>
@@ -562,38 +361,151 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
             </div>
             {state.registration.decisionNote && (
               <div className={styles.detailRow}>
-                <span className={styles.label}>{COPY.approvals.decisionNote}</span>
-                <span className={styles.value}>{state.registration.decisionNote}</span>
+                <span className={styles.label}>
+                  {COPY.approvals.decisionNote}
+                </span>
+                <span className={styles.value}>
+                  {state.registration.decisionNote}
+                </span>
               </div>
             )}
           </div>
 
           {state.registration.status === "Pending" ? (
-            <div className={styles.actions} aria-label="申請處理操作">
-              <p className={styles.actionHint}>
-                請先核對申請人資料，確認後才會更新狀態。
-              </p>
-              <div className={styles.actionButtons}>
-                <button
-                  type="button"
-                  className={styles.approve}
-                  disabled={busy !== null}
-                  aria-busy={busy === "approve"}
-                  onClick={() => beginConfirmation("approve")}
-                >
-                  {COPY.approvals.approve}
-                </button>
-                <button
-                  type="button"
-                  className={styles.reject}
-                  disabled={busy !== null}
-                  aria-busy={busy === "reject"}
-                  onClick={() => beginConfirmation("reject")}
-                >
-                  {COPY.approvals.reject}
-                </button>
-              </div>
-            </div>
+            <AlertDialog
+              open={confirmKind !== null}
+              onOpenChange={(open) => {
+                if (!open) {closeConfirmation();}
+              }}
+            >
+              <ActionSurface
+                busy={busy !== null}
+                disabled={busy !== null}
+                label="申請處理操作"
+                state={actionSurfaceState}
+              >
+                <p className={styles.actionHint}>
+                  請先核對申請人資料，確認後才會更新狀態。
+                </p>
+                <div className={styles.actionButtons}>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      className={`${styles.actionButton} min-h-11`}
+                      disabled={busy !== null}
+                      aria-busy={busy === "approve"}
+                      aria-haspopup="dialog"
+                      onClick={() => beginConfirmation("approve")}
+                      size="lg"
+                      variant="default"
+                    >
+                      {busy === "approve"
+                        ? COPY.approvals.approving
+                        : COPY.approvals.approve}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      className={`${styles.actionButton} min-h-11`}
+                      disabled={busy !== null}
+                      aria-busy={busy === "reject"}
+                      aria-haspopup="dialog"
+                      onClick={() => beginConfirmation("reject")}
+                      size="lg"
+                      variant="destructive"
+                    >
+                      {busy === "reject"
+                        ? COPY.approvals.rejecting
+                        : COPY.approvals.reject}
+                    </Button>
+                  </AlertDialogTrigger>
+                </div>
+              </ActionSurface>
+              <AlertDialogContent
+                className={styles.confirmDialog}
+                aria-labelledby="approval-detail-confirm-title"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  const target = previousFocusRef.current;
+                  queueMicrotask(() => target?.focus());
+                }}
+                aria-describedby="approval-detail-confirm-body"
+                onOpenAutoFocus={(event) => {
+                  if (confirmKind === "reject") {
+                    event.preventDefault();
+                    queueMicrotask(() => noteRef.current?.focus());
+                  }
+                }}
+              >
+                <div className={styles.confirmSurface}>
+                  <AlertDialogTitle id="approval-detail-confirm-title">
+                    {confirmKind === "approve"
+                      ? DETAIL_UI_COPY.confirmTitleApprove
+                      : DETAIL_UI_COPY.confirmTitleReject}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription id="approval-detail-confirm-body">
+                    {confirmKind === "approve"
+                      ? `${state.registration.name} · ${DETAIL_UI_COPY.confirmBodyApprove}`
+                      : `${state.registration.name} · ${DETAIL_UI_COPY.confirmBodyReject}`}
+                  </AlertDialogDescription>
+                  {confirmKind === "reject" && (
+                    <div className={styles.noteField}>
+                      <label
+                        htmlFor="approval-detail-note"
+                        className={styles.label}
+                      >
+                        {COPY.approvals.decisionNote}
+                      </label>
+                      <Textarea
+                        ref={noteRef}
+                        id="approval-detail-note"
+                        value={note}
+                        onChange={(event) => {
+                          setNote(event.target.value);
+                          setNoteError(false);
+                        }}
+                        className={styles.textarea}
+                        aria-invalid={noteError}
+                        aria-describedby={
+                          noteError ? "approval-detail-note-error" : undefined
+                        }
+                        placeholder={COPY.approvals.decisionNotePlaceholder}
+                        required
+                      />
+                      {noteError && (
+                        <p
+                          id="approval-detail-note-error"
+                          className={styles.fieldError}
+                          role="alert"
+                        >
+                          {COPY.approvals.rejectionNoteRequired}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <AlertDialogFooter className={styles.confirmActions}>
+                    <AlertDialogCancel onClick={closeConfirmation}>
+                      {DETAIL_UI_COPY.confirmCancel}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(event) => {
+                        if (confirmKind === "reject" && !note.trim()) {
+                          event.preventDefault();
+                        }
+                        acceptConfirmation();
+                      }}
+                      disabled={busy !== null}
+                      aria-busy={busy !== null}
+                    >
+                      {confirmKind === "approve"
+                        ? DETAIL_UI_COPY.confirmApprove
+                        : DETAIL_UI_COPY.confirmReject}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </div>
+              </AlertDialogContent>
+            </AlertDialog>
           ) : (
             <p className={styles.readOnly}>
               <span>{COPY.approvals.decisionMade}</span>{" "}
@@ -601,82 +513,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
             </p>
           )}
         </>
-      )}
-
-      {confirmKind !== null && state.kind === "ready" && (
-        <dialog
-          ref={dialogRef}
-          className={styles.confirmDialog}
-          aria-modal="true"
-          aria-labelledby="approval-detail-confirm-title"
-          aria-describedby="approval-detail-confirm-body"
-        >
-          <div className={styles.confirmSurface}>
-            <h2 id="approval-detail-confirm-title">
-              {confirmKind === "approve"
-                ? DETAIL_UI_COPY.confirmTitleApprove
-                : DETAIL_UI_COPY.confirmTitleReject}
-            </h2>
-            <p id="approval-detail-confirm-body">
-              {confirmKind === "approve"
-                ? `${state.registration.name} · ${DETAIL_UI_COPY.confirmBodyApprove}`
-                : `${state.registration.name} · ${DETAIL_UI_COPY.confirmBodyReject}`}
-            </p>
-            {confirmKind === "reject" && (
-              <div className={styles.noteField}>
-                <label htmlFor="approval-detail-note" className={styles.label}>
-                  {COPY.approvals.decisionNote}
-                </label>
-                <textarea
-                  ref={noteRef}
-                  id="approval-detail-note"
-                  value={note}
-                  onChange={(event) => {
-                    setNote(event.target.value);
-                    if (event.target.value.trim()) setNoteError(false);
-                  }}
-                  className={styles.textarea}
-                  aria-invalid={noteError}
-                  aria-describedby={noteError ? "approval-detail-note-error" : undefined}
-                  placeholder={COPY.approvals.decisionNotePlaceholder}
-                  required
-                />
-                {noteError && (
-                  <p
-                    id="approval-detail-note-error"
-                    className={styles.fieldError}
-                    role="alert"
-                  >
-                    {COPY.approvals.rejectionNoteRequired}
-                  </p>
-                )}
-              </div>
-            )}
-            <div className={styles.confirmActions}>
-              <button
-                type="button"
-                className={styles.secondary}
-                data-confirm-dismiss
-                onClick={closeConfirmation}
-              >
-                {DETAIL_UI_COPY.confirmCancel}
-              </button>
-              <button
-                type="button"
-                className={
-                  confirmKind === "approve" ? styles.approve : styles.reject
-                }
-                onClick={acceptConfirmation}
-                disabled={busy !== null}
-                aria-busy={busy !== null}
-              >
-                {confirmKind === "approve"
-                  ? DETAIL_UI_COPY.confirmApprove
-                  : DETAIL_UI_COPY.confirmReject}
-              </button>
-            </div>
-          </div>
-        </dialog>
       )}
     </section>
   );

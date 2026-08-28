@@ -37,7 +37,7 @@
     "vitest": "^2.1.9"
   },
   "lint-staged": {
-    "*.{js,cjs,mjs,jsx,ts,tsx,cts,mts}": "ultracite fix",
+    "*.{js,cjs,mjs,jsx,ts,tsx,cts,mts}": "oxfmt --write --no-error-on-unmatched-pattern",
     "*.{json,jsonc,css,scss,html,md}": "oxfmt --write --no-error-on-unmatched-pattern"
   },
   "packageManager": "pnpm@11.7.0"

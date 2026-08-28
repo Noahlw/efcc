@@ -1,8 +1,8 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 // AUTH-05 (#163) — component tests for the Staff/Admin approval queue.
 // MSW intercepts the Worker queue endpoints (the same seam used by
 // lib/app.test.tsx). Fixtures carry no credential material.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import type { ReadonlyURLSearchParams } from "next/navigation";
@@ -24,6 +24,14 @@ vi.mock(import("next/navigation"), () => ({
   useSearchParams: () =>
     new URLSearchParams() as unknown as ReadonlyURLSearchParams,
 }));
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+}
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
 
 const server = setupServer();
 
@@ -46,9 +54,10 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
 });
+
 afterAll(() => server.close());
 
-describe("ApprovalQueue", () => {
+describe(ApprovalQueue, () => {
   test("lists Pending registrations with explicit selection controls", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
@@ -59,18 +68,15 @@ describe("ApprovalQueue", () => {
       )
     );
     render(<ApprovalQueue />);
-    expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
+    await expect(screen.findByText("Dave Ng")).resolves.toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /待審批/u })).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: /待審批/u })
+      screen.getByRole("checkbox", { name: "選取 Dave Ng" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "選取 Dave Ng" })).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: `${COPY.approvals.openDetail} Dave Ng` })
-    ).toHaveAttribute(
-      "href",
-      "/management?module=approvals&request=req-1"
-    );
+    ).toHaveAttribute("href", "/management?module=approvals&request=req-1");
     expect(
       screen.queryByRole("button", { name: QUEUE_COPY.approve })
     ).not.toBeInTheDocument();
@@ -83,7 +89,7 @@ describe("ApprovalQueue", () => {
       )
     );
     render(<ApprovalQueue />);
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
+    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
   });
 
   test("renders pending requests in submission order with routable detail links", async () => {
@@ -126,7 +132,7 @@ describe("ApprovalQueue", () => {
     const links = await screen.findAllByRole("link", {
       name: new RegExp(COPY.approvals.openDetail, "u"),
     });
-    expect(links.map((link) => link.getAttribute("aria-label"))).toEqual([
+    expect(links.map((link) => link.getAttribute("aria-label"))).toStrictEqual([
       `${COPY.approvals.openDetail} Anna Poon`,
       `${COPY.approvals.openDetail} Ben Lau`,
     ]);
@@ -148,6 +154,34 @@ describe("ApprovalQueue", () => {
     expect(screen.queryByRole("button", { name: /批准 Member/u })).toBeNull();
   });
 
+  test("select-all reflects mixed local Checkbox state", async () => {
+    const rows = [
+      PENDING_ONE[0],
+      { ...PENDING_ONE[0], requestId: "req-2", name: "Anna Poon" },
+      { ...PENDING_ONE[0], requestId: "req-3", name: "Ben Lau" },
+    ];
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-mixed",
+          data: { registrations: rows },
+        })
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
+    await user.click(screen.getByRole("checkbox", { name: "選取 Anna Poon" }));
+
+    const selectAll = screen.getByRole("checkbox", {
+      name: "全選目前結果",
+    });
+    expect(selectAll).toHaveAttribute("aria-checked", "mixed");
+    expect(selectAll).toHaveAttribute("data-state", "indeterminate");
+  });
+
   test("bulk approve waits for one explicit confirmation, then reloads the list", async () => {
     let approved = false;
     let batchCalls = 0;
@@ -160,28 +194,91 @@ describe("ApprovalQueue", () => {
           },
         })
       ),
-      http.post("/api/v1/auth/registrations/approve-batch", async ({ request }) => {
-        batchCalls += 1;
+      http.post(
+        "/api/v1/auth/registrations/approve-batch",
+        async ({ request }) => {
+          batchCalls += 1;
+          approved = true;
+          expect(request.headers.get("idempotency-key")).toBeTruthy();
+          await expect(request.json()).resolves.toStrictEqual({ requestIds: ["req-1"] });
+          return HttpResponse.json({
+            requestId: "rid-4",
+            data: { accountStatus: "active", approvedCount: 1 },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
+    const bulkButton = await screen.findByRole("button", { name: "核准所選" });
+    await user.click(bulkButton);
+    expect(batchCalls).toBe(0);
+    expect(
+      screen.getByRole("alertdialog", { name: "確認核准所選申請" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Dave Ng").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(bulkButton).toHaveFocus();
+    expect(batchCalls).toBe(0);
+    await user.click(bulkButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
+    expect(batchCalls).toBe(1);
+  });
+
+  test("busy batch approval locks the Action Surface and selection controls", async () => {
+    let approved = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-busy",
+          data: { registrations: approved ? [] : PENDING_ONE },
+        })
+      ),
+      http.post("/api/v1/auth/registrations/approve-batch", async () => {
+        await gate;
         approved = true;
-        expect(request.headers.get("idempotency-key")).toBeTruthy();
-        expect(await request.json()).toEqual({ requestIds: ["req-1"] });
         return HttpResponse.json({
-          requestId: "rid-4",
+          requestId: "rid-busy-post",
           data: { accountStatus: "active", approvedCount: 1 },
         });
       })
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
     const bulkButton = await screen.findByRole("button", { name: "核准所選" });
     await user.click(bulkButton);
-    expect(batchCalls).toBe(0);
-    expect(screen.getByRole("dialog", { name: "確認核准所選申請" })).toBeInTheDocument();
-    expect(screen.getAllByText("Dave Ng").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "確認核准" }));
-    expect(await screen.findByText(QUEUE_COPY.empty)).toBeInTheDocument();
-    expect(batchCalls).toBe(1);
+
+    await waitFor(() => expect(bulkButton).toBeDisabled());
+    expect(bulkButton).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("region", { name: "審批選取集" })).toHaveAttribute(
+      "aria-busy",
+      "true"
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "選取 Dave Ng" })
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "檢視所選" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "清除" })).toBeDisabled();
+    expect(screen.getByRole("region", { name: "審批選取集" })).toHaveAttribute(
+      "data-state",
+      "busy"
+    );
+
+    release();
+    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
   });
 
   test("selection persists across search/filter and supports review removal and clear", async () => {
@@ -205,15 +302,23 @@ describe("ApprovalQueue", () => {
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
-    await user.type(screen.getByRole("searchbox", { name: "搜尋申請" }), "Anna");
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜尋申請" }),
+      "Anna"
+    );
     expect(screen.queryByText("Dave Ng")).not.toBeInTheDocument();
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: "篩選角色" }), "Staff");
+    await user.click(screen.getByRole("combobox", { name: "篩選角色" }));
+    await user.click(screen.getByRole("option", { name: /^同工$/u }));
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "檢視所選" }));
-    expect(screen.getByRole("button", { name: "移除 Dave Ng" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "移除 Dave Ng" })
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "移除 Dave Ng" }));
     expect(screen.queryByText("已選 1 位")).not.toBeInTheDocument();
   });
@@ -244,9 +349,13 @@ describe("ApprovalQueue", () => {
     const user = userEvent.setup();
     render(<ApprovalQueue />);
     await user.click(await screen.findByRole("tab", { name: /已處理/u }));
-    expect(await screen.findByText(COPY.approvals.statusRejected)).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: /選取/u })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "核准所選" })).not.toBeInTheDocument();
+    await expect(screen.findByText(COPY.approvals.statusRejected)).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: /選取/u })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "核准所選" })
+    ).not.toBeInTheDocument();
   });
 
   test("hides the pending selection actions while viewing Processed", async () => {
@@ -264,21 +373,26 @@ describe("ApprovalQueue", () => {
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
     await user.click(screen.getByRole("tab", { name: /已處理/u }));
-    expect(await screen.findByText("目前沒有已處理的申請。"))
-      .toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "核准所選" })).not.toBeInTheDocument();
+    await expect(screen.findByText("目前沒有已處理的申請。")).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "核准所選" })
+    ).not.toBeInTheDocument();
   });
 
   test("stale batch conflict preserves the selection and identifies stale rows", async () => {
+    let reads = 0;
     server.use(
-      http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
+      http.get("/api/v1/auth/registrations", () => {
+        const registrations = reads++ === 0 ? PENDING_ONE : [];
+        return HttpResponse.json({
           requestId: "rid-conflict",
-          data: { registrations: PENDING_ONE },
-        })
-      ),
+          data: { registrations },
+        });
+      }),
       http.post("/api/v1/auth/registrations/approve-batch", () =>
         HttpResponse.json(
           {
@@ -292,12 +406,22 @@ describe("ApprovalQueue", () => {
     );
     const user = userEvent.setup();
     render(<ApprovalQueue />);
-    await user.click(await screen.findByRole("checkbox", { name: "選取 Dave Ng" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
+    );
     await user.click(screen.getByRole("button", { name: "核准所選" }));
     await user.click(screen.getByRole("button", { name: "確認核准" }));
-    await waitFor(() => expect(screen.getByText("已選 1 位")).toBeInTheDocument());
+    await expect(screen.findByText("部分申請已變更，請檢視所選項目後再試。")).resolves.toBeInTheDocument();
+    expect(screen.getByText("已選 1 位")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "審批選取集" })).toHaveAttribute(
+      "data-state",
+      "conflict"
+    );
     await user.click(screen.getByRole("button", { name: "檢視所選" }));
-    expect(screen.getByRole("button", { name: "移除 Dave Ng" })).toBeInTheDocument();
+    expect(screen.getByText("資料已變更，請重新檢視")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "移除 Dave Ng" })
+    ).toBeInTheDocument();
   });
 
   test("exposes busy, live-region, and result-heading focus targets", async () => {
@@ -322,7 +446,6 @@ describe("ApprovalQueue", () => {
     expect(heading).toHaveFocus();
   });
 
-
   test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
@@ -334,14 +457,19 @@ describe("ApprovalQueue", () => {
             code: "FORBIDDEN",
             requestId: "rid-5",
           },
-          { status: 403, headers: { "Content-Type": "application/problem+json" } }
+          {
+            status: 403,
+            headers: { "Content-Type": "application/problem+json" },
+          }
         )
       )
     );
     render(<ApprovalQueue />);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("您沒有權限執行此操作。");
-    const link = screen.getByRole("link", { name: COPY.nav.backToProfile });
-    expect(link).toHaveAttribute("href", "/profile");
+    const link = screen.getByRole("link", {
+      name: COPY.approvals.backToApprovals,
+    });
+    expect(link).toHaveAttribute("href", "/management?module=approvals");
   });
 });

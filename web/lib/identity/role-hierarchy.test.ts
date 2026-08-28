@@ -34,6 +34,10 @@ import {
   recordRoleDenialForRename,
   renameRoleDefinition,
   canonicalRenameFingerprint,
+  canonicalRescopeFingerprint,
+  rescopeRoleDefinition,
+  createRoleDefinition,
+  reorderRoleDefinitions,
   RoleAdminProtectedError,
   RoleArchivedError,
   RoleBaselineProtectedError,
@@ -46,6 +50,10 @@ import {
   RoleScopeMismatchError,
   RoleSelfRenameError,
   RoleTargetNotFoundError,
+  RoleOrderConflictError,
+  RoleInvalidParentError,
+  RoleCrossCategoryError,
+  RoleScopeRequiredError,
   ROLE_NAME_MAX_LENGTH,
 } from "./index";
 import { ROLE_CATEGORY_KEY } from "./types";
@@ -215,6 +223,7 @@ describe("#478 role hierarchy and rename contract", () => {
     // Technical capability keys never appear in the projection.
     expect(JSON.stringify(view)).not.toContain("department.manage");
   });
+
   test("H-03 distinguishes a custom Global identity from system anchors", async () => {
     const roleId = "018f3b8a-0000-7000-8000-1000000000f1";
     const base = await readRevision();
@@ -254,6 +263,7 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(custom?.isProtected).toBe(false);
     expect(custom?.actions.map((action) => action.action)).toContain("rename");
   });
+
   test("H-13: canonical rename fingerprints are actor-bound", () => {
     const input = {
       role_definition_id: DEPARTMENT_MANAGER_ROLE,
@@ -262,9 +272,7 @@ describe("#478 role hierarchy and rename contract", () => {
     };
     expect(
       canonicalRenameFingerprint({ actor_user_id: ADMIN, ...input })
-    ).not.toBe(
-      canonicalRenameFingerprint({ actor_user_id: STAFF, ...input })
-    );
+    ).not.toBe(canonicalRenameFingerprint({ actor_user_id: STAFF, ...input }));
     expect(
       canonicalRenameFingerprint({ actor_user_id: ADMIN, ...input })
     ).toContain("|成人部門管理者");
@@ -300,9 +308,13 @@ describe("#478 role hierarchy and rename contract", () => {
     const manager = department?.definitions.find(
       (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
     );
-    // Program Leader has read/assignment capability but no name-write grant.
+    // The fixture assigns PL the global Staff identity, so Staff's
+    // role-management grants are effective for lower definitions.
     expect(staff?.isProtected).toBe(false);
-    expect(manager?.actions).toEqual([]);
+    expect(manager?.actions.map((action) => action.action)).toEqual([
+      "rename",
+      "scope",
+    ]);
   });
 
   test("H-05/H-15: rename commits domain, audit, idempotency, and response atomically", async () => {
@@ -424,6 +436,7 @@ describe("#478 role hierarchy and rename contract", () => {
       auditsAfter.filter((audit) => audit.outcome === "SUCCESS").length
     ).toBe(successBefore);
   });
+
   test("H-12: concurrent rename revision race yields one success and one conflict", async () => {
     const roleA = "018f3b8a-0000-7000-8000-1000000000f2";
     const roleB = "018f3b8a-0000-7000-8000-1000000000f3";
@@ -493,9 +506,7 @@ describe("#478 role hierarchy and rename contract", () => {
         })
       ),
     ]);
-    const successes = results.filter(
-      (result) => result.status === "fulfilled"
-    );
+    const successes = results.filter((result) => result.status === "fulfilled");
     const conflicts = results.filter(
       (result) =>
         result.status === "rejected" &&
@@ -514,11 +525,11 @@ describe("#478 role hierarchy and rename contract", () => {
       .all<{ role_definition_id: string; label: string }>();
     const roleLabels = labels.results?.map((row) => row.label) ?? [];
     expect(roleLabels).toHaveLength(2);
+    expect(roleLabels.filter((label) => label.endsWith("更新")).length).toBe(1);
     expect(
-      roleLabels.filter((label) => label.endsWith("更新")).length
-    ).toBe(1);
-    expect(
-      roleLabels.filter((label) => label === "競爭角色甲" || label === "競爭角色乙")
+      roleLabels.filter(
+        (label) => label === "競爭角色甲" || label === "競爭角色乙"
+      )
     ).toHaveLength(1);
     const raceAudits = await testDb()
       .prepare(
@@ -532,6 +543,7 @@ describe("#478 role hierarchy and rename contract", () => {
       raceAudits.results?.map((audit) => audit.outcome).sort()
     ).toStrictEqual(["CONFLICT", "SUCCESS"]);
   });
+
   test("ROLE_ARCHIVED: archived targets reject rename without mutation", async () => {
     const roleId = "018f3b8a-0000-7000-8000-1000000000f4";
     const createBase = await readRevision();
@@ -571,7 +583,9 @@ describe("#478 role hierarchy and rename contract", () => {
       base_revision: archiveBase,
       now: NOW,
       audit_id: "018f3b8a-0000-7000-8000-aaaa00000514",
-      desired: [{ kind: "archive_role_definition", role_definition_id: roleId }],
+      desired: [
+        { kind: "archive_role_definition", role_definition_id: roleId },
+      ],
       audit_summary: {
         action: "ROLE_DEFINITION_ARCHIVE",
         entity_type: "role_definition",
@@ -1112,5 +1126,1116 @@ describe("#478 role hierarchy and rename contract", () => {
     );
     expect(auditsAfter.length).toBe(auditsBefore.length + 1);
     expect(auditsAfter.at(-1)?.outcome).toBe("DENIED");
+  });
+});
+
+describe("#479 role definition creation, scoped authority, and sibling order", () => {
+  function createInput(
+    overrides: Partial<Parameters<typeof createRoleDefinition>[1]> = {}
+  ) {
+    return {
+      actor_user_id: ADMIN,
+      idempotency_key: "b479-create-1",
+      base_revision: 1,
+      category_key: "Department" as const,
+      label: "新設部門角色",
+      description: "B-479 creation fixture",
+      scope_kind: "Department" as const,
+      scope_id: "018f3b8a-0000-7000-8000-000000000002", // 成區
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000001",
+      correlation_id: "corr-b479-create-1",
+      ...overrides,
+    };
+  }
+
+  function reorderInput(
+    overrides: Partial<Parameters<typeof reorderRoleDefinitions>[1]> = {}
+  ) {
+    return {
+      actor_user_id: ADMIN,
+      idempotency_key: "b479-reorder-1",
+      base_revision: 1,
+      category_key: "Department" as const,
+      targets: [
+        {
+          role_definition_id: DEPARTMENT_MANAGER_ROLE,
+          position: 11,
+        },
+        {
+          role_definition_id: "018f3b8a-0000-7000-8000-1000000000f9",
+          position: 10,
+        },
+      ],
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000020",
+      correlation_id: "corr-b479-reorder-1",
+      ...overrides,
+    };
+  }
+  function rescopeInput(
+    overrides: Partial<Parameters<typeof rescopeRoleDefinition>[1]> = {}
+  ) {
+    return {
+      actor_user_id: STAFF,
+      idempotency_key: "b479-rescope-1",
+      base_revision: 1,
+      role_definition_id: DEPARTMENT_MANAGER_ROLE,
+      category_key: "Program" as const,
+      scope_kind: "Program" as const,
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+      now: NOW,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000040",
+      correlation_id: "corr-b479-rescope-1",
+      ...overrides,
+    };
+  }
+
+  test("B-479 Staff defaults expose rename and scope capabilities and scoped create options", async () => {
+    const grants = await testDb()
+      .prepare(
+        `SELECT capability FROM role_definition_grants
+          WHERE role_definition_id = ?`
+      )
+      .bind(STAFF_ROLE)
+      .all<{ capability: string }>();
+    const capabilitySet = new Set(
+      (grants.results ?? []).map((row) => row.capability)
+    );
+    expect(capabilitySet.has("role.name.write")).toBe(true);
+    expect(capabilitySet.has("role.scope.read")).toBe(true);
+    expect(capabilitySet.has("role.scope.write")).toBe(true);
+    const view = await loadRoleHierarchy(testDb(), STAFF);
+    const global = view.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.GLOBAL
+    );
+    const department = view.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
+    );
+    expect(global?.createOptions).toEqual([]);
+    expect(department?.createOptions.length).toBeGreaterThan(0);
+    expect(department?.createOptions.every((option) => option.scope_id)).toBe(
+      true
+    );
+    const manager = department?.definitions.find(
+      (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+    );
+    expect(
+      manager?.scopeOptions?.every((option) => option.scope_kind !== "Global")
+    ).toBe(true);
+    const adminView = await loadRoleHierarchy(testDb(), ADMIN);
+    const adminDepartment = adminView.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
+    );
+    expect(adminDepartment?.createOptions.length).toBeGreaterThan(0);
+  });
+
+  test("B-479-01/B-479-03/B-479-14: Admin creates a scoped Role Definition that is Active, zero-grant, uniquely named, and lands on the authoritative revision", async () => {
+    const base = await readRevision();
+    const result = await createRoleDefinition(
+      testDb(),
+      createInput({ base_revision: base })
+    );
+    expect(result.roleDefinitionId).toBeTruthy();
+    expect(result.categoryKey).toBe("Department");
+    expect(result.scopeKind).toBe("Department");
+    expect(result.scopeId).toBe("018f3b8a-0000-7000-8000-000000000002");
+    expect(result.position).toBeGreaterThan(0);
+    expect(result.revision).toBe(base + 1);
+    expect(result.idempotent).toBe(false);
+
+    const row = await readScalar<{
+      label: string;
+      is_archived: number;
+      is_protected: number;
+      position: number;
+    }>(
+      `SELECT label, is_archived, is_protected, position FROM role_definitions
+        WHERE role_definition_id = ?`,
+      result.roleDefinitionId
+    );
+    expect(row?.label).toBe("新設部門角色");
+    expect(row?.is_archived).toBe(0);
+    expect(row?.is_protected).toBe(0);
+    const grants = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_definition_grants
+        WHERE role_definition_id = ?`,
+      result.roleDefinitionId
+    );
+    expect(grants?.c).toBe(0);
+    const audit = await readScalar<{
+      action: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, outcome, correlation_id FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000001"
+    );
+    expect(audit?.action).toBe("ROLE_DEFINITION_CREATE");
+    expect(audit?.outcome).toBe("SUCCESS");
+    expect(audit?.correlation_id).toBe("corr-b479-create-1");
+  });
+
+  test("B-479-02/B-479-13: a Member (no role.create) cannot create, and a tampered Global attempt is rejected by the Worker authority", async () => {
+    const base = await readRevision();
+    await expect(
+      createRoleDefinition(
+        testDb(),
+        createInput({
+          actor_user_id: MEMBER,
+          base_revision: base,
+          idempotency_key: "b479-create-member",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000033",
+          correlation_id: "corr-b479-create-member",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+    await expect(
+      createRoleDefinition(
+        testDb(),
+        createInput({
+          base_revision: base,
+          category_key: "Global",
+          scope_kind: "Global",
+          scope_id: null,
+          idempotency_key: "b479-create-global-staff",
+          actor_user_id: STAFF,
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000034",
+          correlation_id: "corr-b479-create-global-staff",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+    const staffAudit = await readScalar<{
+      actor_user_id: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT actor_user_id, action, entity_type, entity_id, reason, outcome,
+              correlation_id
+         FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000034"
+    );
+    expect(staffAudit).toEqual({
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_CREATE",
+      entity_type: "role_definition",
+      entity_id: "key:b479-create-global-staff",
+      reason: "ROLE_FORBIDDEN",
+      outcome: "DENIED",
+      correlation_id: "corr-b479-create-global-staff",
+    });
+    const staffAuditCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events
+        WHERE action = 'ROLE_DEFINITION_CREATE'
+          AND correlation_id = ?`,
+      "corr-b479-create-global-staff"
+    );
+    expect(staffAuditCount?.c).toBe(1);
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479-04: a scoped creation without an explicit scope is rejected before any write", async () => {
+    const base = await readRevision();
+    await expect(
+      createRoleDefinition(
+        testDb(),
+        createInput({
+          base_revision: base,
+          scope_id: null,
+          idempotency_key: "b479-create-no-scope",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000035",
+          correlation_id: "corr-b479-create-no-scope",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleScopeRequiredError);
+    const audit = await readScalar<{
+      action: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, entity_id, reason, outcome, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000035"
+    );
+    expect(audit).toEqual({
+      action: "ROLE_DEFINITION_CREATE",
+      entity_id: "key:b479-create-no-scope",
+      reason: "ROLE_SCOPE_REQUIRED",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-create-no-scope",
+    });
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479-04: a duplicate normalized name is rejected with a REJECTED audit row and no revision advance", async () => {
+    const base = await readRevision();
+    await expect(
+      createRoleDefinition(
+        testDb(),
+        createInput({
+          base_revision: base,
+          label: "  系統管理員  ",
+          idempotency_key: "b479-create-taken",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000003",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleNameConflictError);
+    expect(await readRevision()).toBe(base);
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000003"
+    );
+    expect(audit?.outcome).toBe("REJECTED");
+    expect(audit?.reason).toBe("ROLE_NAME_TAKEN");
+  });
+
+  test("B-479-16/B-479-17: create replays idempotently and rejects a changed payload with ROLE_IDEMPOTENCY_REUSE", async () => {
+    const base = await readRevision();
+    const first = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        label: "重播建立角色",
+        idempotency_key: "b479-create-replay",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000030",
+      })
+    );
+    const after = await readRevision();
+    expect(first.revision).toBe(base + 1);
+    // Response-loss replay: same actor/key/payload returns the original.
+    const replay = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        label: "重播建立角色",
+        idempotency_key: "b479-create-replay",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000031",
+      })
+    );
+    expect(replay.roleDefinitionId).toBe(first.roleDefinitionId);
+    expect(replay.revision).toBe(after);
+    expect(replay.idempotent).toBe(true);
+    const roleCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_definitions WHERE role_definition_id = ?`,
+      first.roleDefinitionId
+    );
+    expect(roleCount?.c).toBe(1);
+    const replayAuditCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events
+        WHERE action = 'ROLE_DEFINITION_CREATE'
+          AND entity_id = ?`,
+      first.roleDefinitionId
+    );
+    expect(replayAuditCount?.c).toBe(1);
+    const replayAudit = await readScalar<{ correlation_id: string }>(
+      `SELECT correlation_id FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000030"
+    );
+    expect(replayAudit?.correlation_id).toBe("corr-b479-create-1");
+    // Changed payload with the same key is rejected.
+    await expect(
+      createRoleDefinition(
+        testDb(),
+        createInput({
+          base_revision: base,
+          label: "另一個名稱",
+          idempotency_key: "b479-create-replay",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000032",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+    expect(await readRevision()).toBe(after);
+  });
+
+  test("B-479-07/B-479-08: 上移/下移 sibling reorder swaps two positions and never touches grants, scope, or assignments", async () => {
+    const base = await readRevision();
+    // Create a second Department sibling at position 11.
+    const sibling = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        label: "成區副管理者",
+        idempotency_key: "b479-reorder-sibling-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000005",
+      })
+    );
+    const before = await loadRoleHierarchy(testDb(), ADMIN);
+    const managerBefore = before.categories
+      .flatMap((category) => category.definitions)
+      .find(
+        (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+      );
+    const siblingBefore = before.categories
+      .flatMap((category) => category.definitions)
+      .find(
+        (definition) => definition.roleDefinitionId === sibling.roleDefinitionId
+      );
+    expect(managerBefore?.position).toBe(10);
+    expect(siblingBefore?.position).toBe(sibling.position);
+    expect(siblingBefore?.position).toBeGreaterThan(10);
+    const managerGrantsBefore = managerBefore?.grantCount;
+    const managerAssignmentsBefore = managerBefore?.assignmentCount;
+
+    const reorderBase = await readRevision();
+    const result = await reorderRoleDefinitions(
+      testDb(),
+      reorderInput({
+        base_revision: reorderBase,
+        targets: [
+          { role_definition_id: sibling.roleDefinitionId, position: 10 },
+          {
+            role_definition_id: DEPARTMENT_MANAGER_ROLE,
+            position: sibling.position,
+          },
+        ],
+        idempotency_key: "b479-reorder-1",
+      })
+    );
+    expect(result.revision).toBe(reorderBase + 1);
+    expect(result.idempotent).toBe(false);
+    const after = await loadRoleHierarchy(testDb(), ADMIN);
+    const managerAfter = after.categories
+      .flatMap((category) => category.definitions)
+      .find(
+        (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+      );
+    const siblingAfter = after.categories
+      .flatMap((category) => category.definitions)
+      .find(
+        (definition) => definition.roleDefinitionId === sibling.roleDefinitionId
+      );
+    expect(managerAfter?.position).toBe(sibling.position);
+    const replay = await reorderRoleDefinitions(
+      testDb(),
+      reorderInput({
+        base_revision: reorderBase,
+        targets: [
+          { role_definition_id: sibling.roleDefinitionId, position: 10 },
+          {
+            role_definition_id: DEPARTMENT_MANAGER_ROLE,
+            position: sibling.position,
+          },
+        ],
+        idempotency_key: "b479-reorder-1",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb0000003a",
+        correlation_id: "corr-b479-reorder-replay",
+      })
+    );
+    expect(replay).toEqual({ ...result, idempotent: true });
+    const reorderReplayAuditCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events
+        WHERE action = 'ROLE_DEFINITION_REORDER'
+          AND entity_id = ?`,
+      `${sibling.roleDefinitionId},${DEPARTMENT_MANAGER_ROLE}`
+    );
+    expect(reorderReplayAuditCount?.c).toBe(1);
+    expect(siblingAfter?.position).toBe(10);
+    // Grants/scope/assignments are untouched by construction.
+    expect(managerAfter?.grantCount).toBe(managerGrantsBefore);
+    expect(managerAfter?.assignmentCount).toBe(managerAssignmentsBefore);
+    expect(managerAfter?.scopeId).toBe("018f3b8a-0000-7000-8000-000000000002");
+    const audit = await readScalar<{ action: string; outcome: string }>(
+      `SELECT action, outcome FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000020"
+    );
+    expect(audit?.action).toBe("ROLE_DEFINITION_REORDER");
+    expect(audit?.outcome).toBe("SUCCESS");
+  });
+
+  test("B-479-09: cross-category reorder is rejected with ROLE_INVALID_PARENT and no mutation", async () => {
+    const base = await readRevision();
+    await expect(
+      reorderRoleDefinitions(
+        testDb(),
+        reorderInput({
+          base_revision: base,
+          targets: [
+            { role_definition_id: DEPARTMENT_MANAGER_ROLE, position: 1 },
+            { role_definition_id: STAFF_ROLE, position: 10 },
+          ],
+          idempotency_key: "b479-reorder-cross",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000036",
+          correlation_id: "corr-b479-reorder-cross",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleCrossCategoryError);
+    const crossAudit = await readScalar<{
+      action: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, entity_id, reason, outcome, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000036"
+    );
+    expect(crossAudit).toEqual({
+      action: "ROLE_DEFINITION_REORDER",
+      entity_id: `${DEPARTMENT_MANAGER_ROLE},${STAFF_ROLE}`,
+      reason: "ROLE_INVALID_PARENT",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-reorder-cross",
+    });
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479 protected reorder is denied with one immutable audit row", async () => {
+    const base = await readRevision();
+    await expect(
+      reorderRoleDefinitions(
+        testDb(),
+        reorderInput({
+          base_revision: base,
+          category_key: "Global",
+          targets: [
+            { role_definition_id: ADMIN_ROLE, position: 1 },
+            { role_definition_id: STAFF_ROLE, position: 0 },
+          ],
+          idempotency_key: "b479-reorder-admin-protected",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000037",
+          correlation_id: "corr-b479-reorder-admin-protected",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleAdminProtectedError);
+    const protectedAudit = await readScalar<{
+      actor_user_id: string;
+      action: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT actor_user_id, action, entity_id, reason, outcome, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000037"
+    );
+    expect(protectedAudit).toEqual({
+      actor_user_id: ADMIN,
+      action: "ROLE_DEFINITION_REORDER",
+      entity_id: `${ADMIN_ROLE},${STAFF_ROLE}`,
+      reason: "ROLE_ADMIN_PROTECTED",
+      outcome: "DENIED",
+      correlation_id: "corr-b479-reorder-admin-protected",
+    });
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479-10: a stale order revision is rejected with the authoritative revision and order (ROLE_ORDER_CONFLICT)", async () => {
+    const current = await readRevision();
+    // Make a real sibling pair inside Department: the manager (position 10)
+    // plus a fresh sibling whose position is the manager's swap target.
+    const sibling = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: current,
+        label: "成區副手",
+        idempotency_key: "b479-stale-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000007",
+      })
+    );
+    const managerRow = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      DEPARTMENT_MANAGER_ROLE
+    );
+    const siblingRow = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      sibling.roleDefinitionId
+    );
+    expect(managerRow).toBeDefined();
+    expect(siblingRow).toBeDefined();
+    const afterCreate = await readRevision();
+    expect(managerRow).toBeDefined();
+    expect(siblingRow).toBeDefined();
+    const managerPosition = managerRow?.position ?? 0;
+    const siblingPosition = siblingRow?.position ?? 0;
+    // A genuine swap of the two current positions, but with a stale base
+    // revision — the kernel must reject with the authoritative revision
+    // and expose the authoritative sibling order.
+    let conflict: unknown = null;
+    try {
+      await reorderRoleDefinitions(
+        testDb(),
+        reorderInput({
+          base_revision: afterCreate - 1, // stale
+          targets: [
+            {
+              role_definition_id: sibling.roleDefinitionId,
+              position: managerPosition,
+            },
+            {
+              role_definition_id: DEPARTMENT_MANAGER_ROLE,
+              position: siblingPosition,
+            },
+          ],
+          idempotency_key: "b479-reorder-stale",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000008",
+        })
+      );
+    } catch (error) {
+      conflict = error;
+    }
+    expect(conflict).toBeInstanceOf(RoleOrderConflictError);
+    expect((conflict as RoleOrderConflictError).currentRevision).toBe(
+      afterCreate
+    );
+    expect(
+      (conflict as RoleOrderConflictError).authoritativeIds.length
+    ).toBeGreaterThan(0);
+    expect(await readRevision()).toBe(afterCreate);
+    const conflictAudit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000008"
+    );
+    expect(conflictAudit?.outcome).toBe("CONFLICT");
+    expect(conflictAudit?.reason).toContain("ROLE_ORDER_CONFLICT");
+  });
+
+  test("B-479-15: an archived target rejects reorder with ROLE_ARCHIVED and no mutation", async () => {
+    const base = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        label: "待封存角色",
+        idempotency_key: "b479-archived-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000006",
+      })
+    );
+    const afterCreate = await readRevision();
+    const managerRow = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      DEPARTMENT_MANAGER_ROLE
+    );
+    const createdRow = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(managerRow).toBeDefined();
+    expect(createdRow).toBeDefined();
+    const managerPosition = managerRow?.position ?? 0;
+    const createdPosition = createdRow?.position ?? 0;
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions SET is_archived = 1 WHERE role_definition_id = ?`
+      )
+      .bind(created.roleDefinitionId)
+      .run();
+    await expect(
+      reorderRoleDefinitions(
+        testDb(),
+        reorderInput({
+          base_revision: afterCreate,
+          targets: [
+            {
+              role_definition_id: created.roleDefinitionId,
+              position: managerPosition,
+            },
+            {
+              role_definition_id: DEPARTMENT_MANAGER_ROLE,
+              position: createdPosition,
+            },
+          ],
+          idempotency_key: "b479-reorder-archived",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000038",
+          correlation_id: "corr-b479-reorder-archived",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleArchivedError);
+    const archivedAudit = await readScalar<{
+      action: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, entity_id, reason, outcome, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000038"
+    );
+    expect(archivedAudit).toEqual({
+      action: "ROLE_DEFINITION_REORDER",
+      entity_id: `${created.roleDefinitionId},${DEPARTMENT_MANAGER_ROLE}`,
+      reason: "ROLE_ARCHIVED",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-reorder-archived",
+    });
+    expect(await readRevision()).toBe(afterCreate);
+  });
+
+  test("B-479 global create stays above the pinned 會友基礎 anchor", async () => {
+    const base = await readRevision();
+    const result = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: base,
+        category_key: "Global",
+        scope_kind: "Global",
+        scope_id: null,
+        label: "全域新增角色",
+        idempotency_key: "b479-global-position",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000050",
+      })
+    );
+    const anchors = await testDb()
+      .prepare(
+        `SELECT stable_key, position FROM role_definitions
+          WHERE stable_key IN ('admin', 'staff', 'member')`
+      )
+      .all<{ stable_key: string; position: number }>();
+    const byKey = new Map(
+      (anchors.results ?? []).map((row) => [row.stable_key, row.position])
+    );
+    expect(result.position).toBeGreaterThan(byKey.get("staff") ?? 1);
+    expect(result.position).toBeLessThan(byKey.get("member") ?? 999);
+    expect(byKey.get("admin")).toBe(0);
+    expect(byKey.get("staff")).toBe(1);
+    expect(byKey.get("member")).toBe(999);
+  });
+
+  test("B-479 scope edit lets Staff rescope a lower role and preserves identity, grants, assignments, and anchors", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "待改適用範圍角色",
+        idempotency_key: "b479-rescope-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000051",
+      })
+    );
+    await testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'program.enroll', ?, ?)`
+      )
+      .bind(created.roleDefinitionId, ADMIN, NOW)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+      )
+      .bind(
+        "b479-rescope-assignment",
+        MEMBER,
+        created.roleDefinitionId,
+        ADMIN,
+        NOW
+      )
+      .run();
+    const before = await readScalar<{
+      stable_key: string;
+      label: string;
+      position: number;
+      category_key: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT stable_key, label, position, category_key, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    const managerPositionBefore = await readScalar<{ position: number }>(
+      `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+      DEPARTMENT_MANAGER_ROLE
+    );
+    const rescopeBase = await readRevision();
+    const result = await rescopeRoleDefinition(
+      testDb(),
+      rescopeInput({
+        base_revision: rescopeBase,
+        role_definition_id: created.roleDefinitionId,
+        idempotency_key: "b479-rescope-success",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000052",
+        correlation_id: "corr-b479-rescope-success",
+      })
+    );
+    expect(result.roleDefinitionId).toBe(created.roleDefinitionId);
+    expect(result.categoryKey).toBe("Program");
+    expect(result.scopeKind).toBe("Program");
+    expect(result.scopeId).toBe("018f3b8a-0000-7000-8000-300000000001");
+    expect(result.revision).toBe(rescopeBase + 1);
+    expect(result.idempotent).toBe(false);
+    const after = await readScalar<{
+      stable_key: string;
+      label: string;
+      position: number;
+      category_key: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT stable_key, label, position, category_key, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(after?.stable_key).toBe(before?.stable_key);
+    expect(after?.label).toBe(before?.label);
+    expect(after?.category_key).toBe("Program");
+    expect(after?.scope_kind).toBe("Program");
+    expect(after?.scope_id).toBe("018f3b8a-0000-7000-8000-300000000001");
+    expect(after?.position).toBe(result.position);
+    expect(
+      await readScalar<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM role_definition_grants
+          WHERE role_definition_id = ? AND capability = 'program.enroll'`,
+        created.roleDefinitionId
+      )
+    ).toEqual({ c: 1 });
+    expect(
+      await readScalar<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM role_assignments
+          WHERE role_definition_id = ? AND revoked_at IS NULL`,
+        created.roleDefinitionId
+      )
+    ).toEqual({ c: 1 });
+    expect(
+      await readScalar<{ position: number }>(
+        `SELECT position FROM role_definitions WHERE stable_key = 'member'`
+      )
+    ).toEqual({ position: 999 });
+    expect(
+      await readScalar<{ position: number }>(
+        `SELECT position FROM role_definitions WHERE role_definition_id = ?`,
+        DEPARTMENT_MANAGER_ROLE
+      )
+    ).toEqual(managerPositionBefore);
+    const audit = await readScalar<{
+      action: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT action, outcome, correlation_id FROM role_audit_events
+        WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000052"
+    );
+    expect(audit).toEqual({
+      action: "ROLE_DEFINITION_RESCOPE",
+      outcome: "SUCCESS",
+      correlation_id: "corr-b479-rescope-success",
+    });
+  });
+
+  test("B-479 scope edit rejects mismatched parent, Staff Global, and out-of-scope destinations, plus archived targets", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "範圍拒絕角色",
+        idempotency_key: "b479-rescope-rejections-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000053",
+      })
+    );
+    const base = await readRevision();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          category_key: "Program",
+          scope_kind: "Program",
+          scope_id: null,
+          idempotency_key: "b479-rescope-no-scope",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000039",
+          correlation_id: "corr-b479-rescope-no-scope",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleScopeRequiredError);
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          category_key: "Department",
+          idempotency_key: "b479-rescope-invalid-parent",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000054",
+          correlation_id: "corr-b479-rescope-invalid-parent",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleInvalidParentError);
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          category_key: "Global",
+          scope_kind: "Global",
+          scope_id: null,
+          idempotency_key: "b479-rescope-staff-global",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000055",
+          correlation_id: "corr-b479-rescope-staff-global",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleScopeMismatchError);
+
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions
+            SET scope_kind = 'Department', scope_id = ?
+          WHERE stable_key = 'staff'`
+      )
+      .bind("018f3b8a-0000-7000-8000-000000000002")
+      .run();
+    try {
+      await expect(
+        rescopeRoleDefinition(
+          testDb(),
+          rescopeInput({
+            role_definition_id: created.roleDefinitionId,
+            base_revision: base,
+            idempotency_key: "b479-rescope-out-of-scope",
+            audit_id: "018f3b8a-0000-7000-8000-bbbb00000056",
+            correlation_id: "corr-b479-rescope-out-of-scope",
+          })
+        )
+      ).rejects.toBeInstanceOf(RoleScopeMismatchError);
+    } finally {
+      await testDb()
+        .prepare(
+          `UPDATE role_definitions
+              SET scope_kind = 'Global', scope_id = ?
+            WHERE stable_key = 'staff'`
+        )
+        .bind(null)
+        .run();
+    }
+
+    await testDb()
+      .prepare(
+        `UPDATE role_definitions SET is_archived = 1
+          WHERE role_definition_id = ?`
+      )
+      .bind(created.roleDefinitionId)
+      .run();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: base,
+          idempotency_key: "b479-rescope-archived",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000057",
+          correlation_id: "corr-b479-rescope-archived",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleArchivedError);
+    const rescopeAudits = await testDb()
+      .prepare(
+        `SELECT audit_id, actor_user_id, action, entity_id, reason, outcome,
+                correlation_id
+           FROM role_audit_events
+          WHERE audit_id IN (?, ?, ?, ?)`
+      )
+      .bind(
+        "018f3b8a-0000-7000-8000-bbbb00000039",
+        "018f3b8a-0000-7000-8000-bbbb00000054",
+        "018f3b8a-0000-7000-8000-bbbb00000055",
+        "018f3b8a-0000-7000-8000-bbbb00000056"
+      )
+      .all<{
+        audit_id: string;
+        actor_user_id: string;
+        action: string;
+        entity_id: string;
+        reason: string;
+        outcome: string;
+        correlation_id: string;
+      }>();
+    expect(rescopeAudits.results ?? []).toHaveLength(4);
+    const rescopeAuditById = new Map(
+      (rescopeAudits.results ?? []).map((audit) => [audit.audit_id, audit])
+    );
+    expect(
+      rescopeAuditById.get("018f3b8a-0000-7000-8000-bbbb00000039")
+    ).toEqual({
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000039",
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.roleDefinitionId,
+      reason: "ROLE_SCOPE_REQUIRED",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-rescope-no-scope",
+    });
+    expect(
+      rescopeAuditById.get("018f3b8a-0000-7000-8000-bbbb00000054")
+    ).toEqual({
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000054",
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.roleDefinitionId,
+      reason: "ROLE_INVALID_PARENT",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-rescope-invalid-parent",
+    });
+    expect(
+      rescopeAuditById.get("018f3b8a-0000-7000-8000-bbbb00000055")
+    ).toEqual({
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000055",
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.roleDefinitionId,
+      reason: "ROLE_SCOPE_MISMATCH",
+      outcome: "DENIED",
+      correlation_id: "corr-b479-rescope-staff-global",
+    });
+    expect(
+      rescopeAuditById.get("018f3b8a-0000-7000-8000-bbbb00000056")
+    ).toEqual({
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000056",
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.roleDefinitionId,
+      reason: "ROLE_SCOPE_MISMATCH",
+      outcome: "DENIED",
+      correlation_id: "corr-b479-rescope-out-of-scope",
+    });
+    const archivedAudit = await readScalar<{
+      actor_user_id: string;
+      action: string;
+      entity_id: string;
+      reason: string;
+      outcome: string;
+      correlation_id: string;
+    }>(
+      `SELECT actor_user_id, action, entity_id, reason, outcome, correlation_id
+         FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000057"
+    );
+    expect(archivedAudit).toEqual({
+      actor_user_id: STAFF,
+      action: "ROLE_DEFINITION_RESCOPE",
+      entity_id: created.roleDefinitionId,
+      reason: "ROLE_ARCHIVED",
+      outcome: "REJECTED",
+      correlation_id: "corr-b479-rescope-archived",
+    });
+    expect(await readRevision()).toBe(base);
+  });
+
+  test("B-479 scope edit reports stale revisions without a partial write", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "過期範圍角色",
+        idempotency_key: "b479-rescope-stale-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000058",
+      })
+    );
+    const current = await readRevision();
+    await expect(
+      rescopeRoleDefinition(
+        testDb(),
+        rescopeInput({
+          role_definition_id: created.roleDefinitionId,
+          base_revision: current - 1,
+          idempotency_key: "b479-rescope-stale",
+          audit_id: "018f3b8a-0000-7000-8000-bbbb00000059",
+        })
+      )
+    ).rejects.toBeInstanceOf(RoleRevisionConflictError);
+    expect(await readRevision()).toBe(current);
+    const row = await readScalar<{ category_key: string; scope_kind: string }>(
+      `SELECT category_key, scope_kind FROM role_definitions
+        WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(row).toEqual({
+      category_key: "Department",
+      scope_kind: "Department",
+    });
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000059"
+    );
+    expect(audit?.outcome).toBe("CONFLICT");
+    expect(audit?.reason).toContain("ROLE_REVISION_CONFLICT");
+  });
+
+  test("B-479 scope edit replays response loss and rejects changed-key reuse", async () => {
+    const createBase = await readRevision();
+    const created = await createRoleDefinition(
+      testDb(),
+      createInput({
+        base_revision: createBase,
+        label: "可重播範圍角色",
+        idempotency_key: "b479-rescope-replay-create",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000060",
+      })
+    );
+    const base = await readRevision();
+    const input = rescopeInput({
+      role_definition_id: created.roleDefinitionId,
+      base_revision: base,
+      idempotency_key: "b479-rescope-replay",
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000061",
+      correlation_id: "corr-b479-rescope-replay",
+    });
+    const first = await rescopeRoleDefinition(testDb(), input);
+    const replay = await rescopeRoleDefinition(testDb(), {
+      ...input,
+      audit_id: "018f3b8a-0000-7000-8000-bbbb00000062",
+      correlation_id: "corr-b479-rescope-replay-2",
+    });
+    expect(replay).toEqual({ ...first, idempotent: true });
+    expect(await readRevision()).toBe(first.revision);
+    const rescopeReplayAuditCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events
+        WHERE action = 'ROLE_DEFINITION_RESCOPE'
+          AND entity_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(rescopeReplayAuditCount?.c).toBe(1);
+    const rescopeReplayAudit = await readScalar<{ correlation_id: string }>(
+      `SELECT correlation_id FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000061"
+    );
+    expect(rescopeReplayAudit?.correlation_id).toBe("corr-b479-rescope-replay");
+    await expect(
+      rescopeRoleDefinition(testDb(), {
+        ...input,
+        category_key: "Department",
+        scope_kind: "Department",
+        scope_id: "018f3b8a-0000-7000-8000-000000000002",
+        audit_id: "018f3b8a-0000-7000-8000-bbbb00000063",
+      })
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+    expect(await readRevision()).toBe(first.revision);
+    const row = await readScalar<{ category_key: string; scope_id: string }>(
+      `SELECT category_key, scope_id FROM role_definitions
+        WHERE role_definition_id = ?`,
+      created.roleDefinitionId
+    );
+    expect(row).toEqual({
+      category_key: "Program",
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+    });
+    const audit = await readScalar<{ outcome: string; reason: string }>(
+      `SELECT outcome, reason FROM role_audit_events WHERE audit_id = ?`,
+      "018f3b8a-0000-7000-8000-bbbb00000063"
+    );
+    expect(audit).toEqual({
+      outcome: "REJECTED",
+      reason: "ROLE_IDEMPOTENCY_REUSE",
+    });
   });
 });

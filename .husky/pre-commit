@@ -1,2 +1,4 @@
-npx lint-staged --config package.json
+# Keep the commit hook deterministic: format staged files here; run `pnpm check`
+# separately until the repository's existing full-lint baseline is cleared.
+pnpm exec lint-staged --config package.json
 pnpm typecheck

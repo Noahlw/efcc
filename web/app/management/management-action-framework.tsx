@@ -1,12 +1,78 @@
 "use client";
-
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
+
+import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
 
 import styles from "./management-action-framework.module.css";
+
+export const actionSurfaceVariants = cva(
+  "relative isolate w-full min-w-0 rounded-xl border text-sm",
+  {
+    variants: {
+      state: {
+        dirty: "border-input",
+        selection: "border-input",
+        review: "border-ring",
+        save: "border-primary",
+        busy: "border-input",
+        failure: "border-destructive bg-destructive/10",
+        conflict: "border-destructive bg-destructive/10",
+      },
+    },
+    defaultVariants: {
+      state: "selection",
+    },
+  }
+);
+
+export type ActionSurfaceState = NonNullable<
+  VariantProps<typeof actionSurfaceVariants>["state"]
+>;
+
+export type ActionSurfaceProps = Omit<
+  ComponentPropsWithoutRef<"section">,
+  "aria-label"
+> & {
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  state?: ActionSurfaceState;
+  busy?: boolean;
+};
+
+export const ActionSurface = ({
+  busy = false,
+  children,
+  className,
+  disabled = false,
+  label,
+  state = "selection",
+  ...props
+}: ActionSurfaceProps) => {
+  const isBusy = busy || state === "busy";
+  return (
+    <section
+      {...props}
+      aria-busy={isBusy}
+      aria-label={label}
+      className={cn(
+        actionSurfaceVariants({ state, className }),
+        styles.actionSurface
+      )}
+      data-disabled={disabled || undefined}
+      data-slot="action-surface"
+      data-state={state}
+    >
+      {children}
+    </section>
+  );
+};
 
 export function safeManagementReturnHref(
   value: string | null,
@@ -36,6 +102,8 @@ export const ManagementPageHeader = ({
   lead,
   titleId,
   title,
+  titleRef,
+  onBackClick,
 }: {
   action?: ReactNode;
   backHref: string;
@@ -43,15 +111,19 @@ export const ManagementPageHeader = ({
   lead: string;
   titleId?: string;
   title: string;
+  titleRef?: Ref<HTMLHeadingElement>;
+  onBackClick?: () => void;
 }) => (
   <header className={styles.header}>
-    <Link className={styles.back} href={backHref}>
+    <Link className={styles.back} href={backHref} onClick={onBackClick}>
       <BackIcon />
       <span>{backLabel}</span>
     </Link>
     <div className={styles.titleRow}>
       <div>
-        <h1 id={titleId}>{title}</h1>
+        <h1 id={titleId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
+          {title}
+        </h1>
         <p>{lead}</p>
       </div>
       {action && <div className={styles.headerAction}>{action}</div>}
@@ -62,13 +134,25 @@ export const ManagementPageHeader = ({
 export const ManagementStickyActionBar = ({
   children,
   label,
+  state = "selection",
+  busy = false,
+  disabled = false,
 }: {
   children: ReactNode;
   label: string;
+  state?: ActionSurfaceState;
+  busy?: boolean;
+  disabled?: boolean;
 }) => (
-  <section aria-label={label} className={styles.stickyBar}>
+  <ActionSurface
+    busy={busy}
+    className={styles.stickyBar}
+    disabled={disabled}
+    label={label}
+    state={state}
+  >
     {children}
-  </section>
+  </ActionSurface>
 );
 
 export const ManagementFilterSheet = ({

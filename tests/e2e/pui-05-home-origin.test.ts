@@ -4,10 +4,10 @@ import type { Locator, Page } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
 import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
-import {
-  restoreEventWindow,
-  type EventWindowSetup,
-  type EventWindowSnapshot,
+import { restoreEventWindow } from "./participant-event-window";
+import type {
+  EventWindowSetup,
+  EventWindowSnapshot,
 } from "./participant-event-window";
 
 const ADMIN_USER = process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username;
@@ -280,8 +280,10 @@ test.describe("PUI-05 Home origin supplement", () => {
       [375, 844],
       [390, 844],
       [414, 844],
+      [600, 844],
       [799, 900],
       [800, 900],
+      [1024, 900],
       [1440, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
@@ -293,7 +295,7 @@ test.describe("PUI-05 Home origin supplement", () => {
           ),
         ];
         const primaryActions = [
-          ...document.querySelectorAll<HTMLElement>('[class*="primaryAction"]'),
+          ...document.querySelectorAll<HTMLElement>("[data-feed-event-action]"),
         ];
         if (!outlet || cards.length !== 3) {
           throw new Error("Home long-copy geometry fixture is incomplete");
@@ -306,9 +308,9 @@ test.describe("PUI-05 Home origin supplement", () => {
           outletRight: right(outlet),
           cards: cards.map((card) => {
             const isEventCard = card.dataset.testid === "next-event-card";
-            const chevron =
-              card.querySelector<SVGElement>('[class*="chevron"]');
-            const eventIcons = card.querySelectorAll('[class*="eventIcon"]');
+            const icons = card.querySelectorAll("svg");
+            const chevron = isEventCard ? null : (icons[0] ?? null);
+            const eventIcons = isEventCard ? icons : [];
             if (
               (isEventCard && eventIcons.length < 3) ||
               (!isEventCard && !chevron)
@@ -381,8 +383,10 @@ test.describe("PUI-05 Home origin supplement", () => {
       [390, 844],
       [414, 844],
       [799, 900],
+      [600, 844],
       [800, 900],
       [1440, 900],
+      [1024, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
       const detailGeometry = await page.evaluate(() => {
@@ -390,11 +394,9 @@ test.describe("PUI-05 Home origin supplement", () => {
         const detailPage = document.querySelector<HTMLElement>(
           '[data-testid="announcement-detail"]'
         );
-        const back = detailPage?.querySelector<HTMLElement>(
-          '[class*="backButton"]'
-        );
+        const back = detailPage?.querySelector<HTMLElement>("[data-feed-back]");
         const external = detailPage?.querySelector<HTMLElement>(
-          '[class*="externalLink"]'
+          "[data-feed-external]"
         );
         if (!outlet || !detailPage || !back || !external) {
           throw new Error("announcement detail geometry fixture is incomplete");
@@ -441,6 +443,144 @@ test.describe("PUI-05 Home origin supplement", () => {
     }
     await detailBack.click();
     await expect(exploreCard).toBeVisible();
+  });
+  test("Home announcement Back consumes only the overlay history entry", async ({
+    page,
+  }) => {
+    await loginAs(page, MEMBER_USER, MEMBER_CRED);
+    await page.goto("/home");
+    const announcementCard = page.getByTestId("announcement-card");
+    await expect(announcementCard).toBeVisible();
+    const historyLength = await page.evaluate(() => window.history.length);
+
+    await announcementCard.click();
+    await expect(page.getByTestId("announcement-detail")).toBeVisible();
+    expect(await page.evaluate(() => window.history.length)).toBe(
+      historyLength + 1
+    );
+
+    await page.evaluate(() => window.history.back());
+    await expect(page.getByTestId("announcement-detail")).toHaveCount(0);
+    await expect(announcementCard).toBeVisible();
+    const afterBack = await page.evaluate(() => ({
+      historyLength: window.history.length,
+      overlay: window.history.state?.efccOverlay ?? null,
+    }));
+    // history.length is the number of entries, not the current index; Back
+    // consumes the overlay entry by restoring the prior non-overlay state.
+    expect(afterBack.historyLength).toBe(historyLength + 1);
+    expect(afterBack.overlay).toBeNull();
+  });
+  test("Notices and Messages keep long feed copy inside the W7 viewport seams", async ({
+    page,
+  }) => {
+    await loginAs(page, MEMBER_USER, MEMBER_CRED);
+    const longCopy =
+      "https://example.invalid/feed/this-is-a-deliberately-unbroken-value-with-cantonese-長篇內容";
+    await page.route("**/api/v1/programs/notices", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          requestId: "r-notices-geometry",
+          data: {
+            unread_count: 1,
+            notices: [
+              {
+                notice_id: "notice-geometry",
+                kind: "account",
+                title: longCopy,
+                body: longCopy,
+                program_id: null,
+                event_id: null,
+                read_at: null,
+                created_at: Date.parse("2026-08-19T01:00:00.000Z"),
+              },
+            ],
+          },
+        }),
+      });
+    });
+    await page.route("**/api/v1/home/announcements", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          requestId: "r-messages-geometry",
+          data: {
+            announcements: [
+              {
+                contentId: "message-geometry",
+                version: 1,
+                title: longCopy,
+                summary: longCopy,
+                bodyMarkdown: null,
+                ctaLabel: null,
+                ctaUrl: null,
+                imageUrl: null,
+                imageAlt: null,
+                publishedAt: "2026-08-19T01:00:00.000Z",
+              },
+            ],
+          },
+        }),
+      });
+    });
+
+    const widths = [320, 390, 600, 799, 800, 1024, 1440] as const;
+    for (const path of ["/notices", "/messages"] as const) {
+      await page.goto(path);
+      const feed = page.locator(
+        '[data-feed-announcement-owner="global-live-region"]'
+      );
+      await expect(feed).toBeVisible();
+      await expect(
+        feed.locator("[data-feed-list-item], [data-feed-list]")
+      ).toBeVisible();
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        const geometry = await feed.evaluate((element) => {
+          const text = [
+            ...element.querySelectorAll<HTMLElement>("h1,h2,p,strong,span"),
+          ].filter((node) => {
+            const style = getComputedStyle(node);
+            return (
+              !node.closest(".sr-only") &&
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              !(
+                style.position === "absolute" &&
+                node.clientWidth <= 1 &&
+                node.clientHeight <= 1
+              )
+            );
+          });
+          const actions = [
+            ...element.querySelectorAll<HTMLElement>("a,button"),
+          ];
+          return {
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            textOverflow: text.some(
+              (node) => node.scrollWidth > node.clientWidth
+            ),
+            actionsInside: actions.every((action) => {
+              const feedRect = element.getBoundingClientRect();
+              const actionRect = action.getBoundingClientRect();
+              return (
+                actionRect.left >= feedRect.left - 1 &&
+                actionRect.right <= feedRect.right + 1
+              );
+            }),
+            nestedLiveRegions: element.querySelectorAll("[aria-live]").length,
+          };
+        });
+        expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+        expect(geometry.textOverflow).toBe(false);
+        expect(geometry.actionsInside).toBe(true);
+        expect(geometry.nestedLiveRegions).toBe(0);
+      }
+    }
   });
 
   test("Home next-event card opens event detail with 可簽到 and back-nav", async ({

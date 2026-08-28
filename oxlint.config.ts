@@ -160,7 +160,6 @@ export default defineConfig({
         "web/app/profile/page.tsx",
         "web/app/management/permissions-panel.tsx",
         "web/lib/approval-queue.tsx",
-        "web/lib/programs/programs-attention.tsx",
         "web/lib/programs/event-detail.tsx",
         "web/lib/attendance-panel.tsx",
         "web/lib/attendance-operator-panel.tsx",

@@ -9,6 +9,26 @@ import {
   ManagementStickyActionBar,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -172,9 +192,6 @@ export const ApprovalQueue = () => {
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const stateRef = useRef<HTMLParagraphElement>(null);
   const forbiddenHeadingRef = useRef<HTMLHeadingElement>(null);
-  const selectAllRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async (status: RegistrationQueueStatus) => {
     const sequence = ++requestSequence.current;
@@ -227,23 +244,6 @@ export const ApprovalQueue = () => {
     void load(activeStatus);
   }, [activeStatus, load]);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (!confirmOpen) {
-      if (dialog.open) dialog.close();
-      return;
-    }
-    if (!dialog.open) dialog.showModal();
-    dialog.querySelector<HTMLButtonElement>("[data-confirm-dismiss]")?.focus();
-    const onCancel = (event: Event) => {
-      event.preventDefault();
-      closeConfirmation();
-    };
-    dialog.addEventListener("cancel", onCancel);
-    return () => dialog.removeEventListener("cancel", onCancel);
-  }, [confirmOpen]);
-
   const registrations =
     state.kind === "ready" && state.status === activeStatus
       ? state.registrations
@@ -267,6 +267,11 @@ export const ApprovalQueue = () => {
   const someVisibleSelected = selectableIds.some((requestId) =>
     selectedIds.includes(requestId)
   );
+  const selectAllState = allVisibleSelected
+    ? true
+    : someVisibleSelected
+      ? "indeterminate"
+      : false;
   const selectedItems = useMemo(
     () =>
       selectedIds
@@ -274,16 +279,6 @@ export const ApprovalQueue = () => {
         .filter((item): item is PendingRegistration => item !== undefined),
     [selectedIds]
   );
-
-  useEffect(() => {
-    const checkbox = selectAllRef.current;
-    if (!checkbox) return;
-    const visibleSelected = filteredRegistrations.filter((item) =>
-      selectedIds.includes(item.requestId)
-    ).length;
-    checkbox.indeterminate =
-      visibleSelected > 0 && visibleSelected < filteredRegistrations.length;
-  });
 
   useEffect(() => {
     if (state.kind === "ready") {
@@ -297,10 +292,6 @@ export const ApprovalQueue = () => {
 
   function closeConfirmation() {
     setConfirmOpen(false);
-    queueMicrotask(() => {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    });
   }
 
   const toggleSelection = (item: PendingRegistration) => {
@@ -371,6 +362,7 @@ export const ApprovalQueue = () => {
   };
 
   const removeSelection = (requestId: string) => {
+    if (busy) return;
     const item = approvalSelection.get(requestId);
     approvalSelection.delete(requestId);
     setSelectedIds((ids) => ids.filter((id) => id !== requestId));
@@ -383,6 +375,7 @@ export const ApprovalQueue = () => {
   };
 
   const clearSelection = () => {
+    if (busy) return;
     approvalSelection.clear();
     setSelectedIds([]);
     setStaleIds(new Set());
@@ -462,10 +455,6 @@ export const ApprovalQueue = () => {
 
   const beginBatchConfirmation = () => {
     if (busy || selectedIds.length === 0 || selectedIds.length > 100) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
     setNotice(null);
     setConfirmOpen(true);
   };
@@ -497,8 +486,8 @@ export const ApprovalQueue = () => {
           {COPY.approvals.approvalsTitle}
         </h1>
         <p role="alert">{COPY.error.forbidden}</p>
-        <Link href="/profile" className={styles.back}>
-          {COPY.nav.backToProfile}
+        <Link href="/management?module=approvals" className={styles.back}>
+          {COPY.approvals.backToApprovals}
         </Link>
       </section>
     );
@@ -510,6 +499,15 @@ export const ApprovalQueue = () => {
     0,
     selectedItems.length - confirmationNames.length
   );
+  const actionSurfaceState = busy
+    ? "busy"
+    : noticeKind === "error"
+      ? notice === APPROVAL_UI_COPY.staleConflict
+        ? "conflict"
+        : "failure"
+      : trayOpen
+        ? "review"
+        : "selection";
 
   return (
     <section
@@ -519,15 +517,17 @@ export const ApprovalQueue = () => {
     >
       <ManagementPageHeader
         action={
-          <button
+          <Button
             type="button"
             onClick={() => void load(activeStatus)}
-            className={styles.refresh}
+            className="min-h-11"
             disabled={busy}
             aria-busy={state.kind === "loading"}
+            size="lg"
+            variant="outline"
           >
             {QUEUE_COPY.refresh}
-          </button>
+          </Button>
         }
         backHref={returnHref}
         backLabel={returnLabel}
@@ -541,42 +541,46 @@ export const ApprovalQueue = () => {
         role="tablist"
         aria-label={APPROVAL_UI_COPY.tabsLabel}
       >
-        <button
+        <Button
           type="button"
           role="tab"
           id="approval-pending-tab"
           aria-controls="approval-queue-panel"
           aria-selected={activeStatus === "Pending"}
-          className={styles.tab}
+          className={`${styles.tab} min-h-11`}
           onClick={() => handleTab("Pending")}
           disabled={busy}
+          size="lg"
+          variant="ghost"
         >
           {COPY.approvals.statusPending}
           {activeStatus === "Pending" && state.kind === "ready" && (
             <span className={styles.tabCount}>{registrations.length}</span>
           )}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           role="tab"
           id="approval-processed-tab"
           aria-controls="approval-queue-panel"
           aria-selected={activeStatus === "Processed"}
-          className={styles.tab}
+          className={`${styles.tab} min-h-11`}
           onClick={() => handleTab("Processed")}
           disabled={busy}
+          size="lg"
+          variant="ghost"
         >
           {APPROVAL_UI_COPY.processedTab}
           {activeStatus === "Processed" && state.kind === "ready" && (
             <span className={styles.tabCount}>{registrations.length}</span>
           )}
-        </button>
+        </Button>
       </div>
 
       {notice && (
         <p
-          role="status"
-          aria-live="polite"
+          role={noticeKind === "error" ? "alert" : "status"}
+          aria-live={noticeKind === "error" ? "assertive" : "polite"}
           className={`${styles.notice} ${
             noticeKind === "success" ? styles.noticeSuccess : styles.noticeError
           }`}
@@ -619,7 +623,7 @@ export const ApprovalQueue = () => {
               <span className={styles.fieldLabel}>
                 {APPROVAL_UI_COPY.searchLabel}
               </span>
-              <input
+              <Input
                 id="approval-search"
                 type="search"
                 value={query}
@@ -629,22 +633,43 @@ export const ApprovalQueue = () => {
                 autoComplete="off"
               />
             </label>
-            <label className={styles.field} htmlFor="approval-role-filter">
-              <span className={styles.fieldLabel}>
+            <div className={styles.field}>
+              <span
+                className={styles.fieldLabel}
+                id="approval-role-filter-label"
+              >
                 {APPROVAL_UI_COPY.roleFilterLabel}
               </span>
-              <select
-                id="approval-role-filter"
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value)}
-                className={styles.select}
+              <Select
+                value={roleFilter || "all"}
+                onValueChange={(value) =>
+                  setRoleFilter(value === "all" ? "" : value)
+                }
               >
-                <option value="">{APPROVAL_UI_COPY.allRoles}</option>
-                <option value="Member">{COPY.shell.roleLabels.Member}</option>
-                <option value="Staff">{COPY.shell.roleLabels.Staff}</option>
-                <option value="Admin">{COPY.shell.roleLabels.Admin}</option>
-              </select>
-            </label>
+                <SelectTrigger
+                  id="approval-role-filter"
+                  aria-labelledby="approval-role-filter-label"
+                  className={styles.select}
+                  size="default"
+                >
+                  <SelectValue placeholder={APPROVAL_UI_COPY.allRoles} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {APPROVAL_UI_COPY.allRoles}
+                  </SelectItem>
+                  <SelectItem value="Member">
+                    {COPY.shell.roleLabels.Member}
+                  </SelectItem>
+                  <SelectItem value="Staff">
+                    {COPY.shell.roleLabels.Staff}
+                  </SelectItem>
+                  <SelectItem value="Admin">
+                    {COPY.shell.roleLabels.Admin}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {activeStatus === "Pending" && registrations.length > 0 && (
@@ -653,19 +678,11 @@ export const ApprovalQueue = () => {
                 className={styles.checkboxLabel}
                 htmlFor="approval-select-all"
               >
-                <input
-                  ref={selectAllRef}
+                <Checkbox
                   id="approval-select-all"
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  aria-checked={
-                    allVisibleSelected
-                      ? "true"
-                      : someVisibleSelected
-                        ? "mixed"
-                        : "false"
-                  }
-                  onChange={toggleSelectAll}
+                  aria-label={APPROVAL_UI_COPY.selectAll}
+                  checked={selectAllState}
+                  onCheckedChange={toggleSelectAll}
                   disabled={busy || selectableIds.length === 0}
                 />
                 <span>{APPROVAL_UI_COPY.selectAll}</span>
@@ -715,11 +732,10 @@ export const ApprovalQueue = () => {
                   return (
                     <li className={styles.row} key={item.requestId}>
                       {activeStatus === "Pending" && (
-                        <input
+                        <Checkbox
                           id={`approval-select-${index}`}
-                          type="checkbox"
                           checked={selected}
-                          onChange={() => toggleSelection(item)}
+                          onCheckedChange={() => toggleSelection(item)}
                           disabled={busy}
                           aria-label={`選取 ${item.name}`}
                           className={styles.checkbox}
@@ -765,114 +781,130 @@ export const ApprovalQueue = () => {
       )}
 
       {activeStatus === "Pending" && selectedIds.length > 0 && (
-        <ManagementStickyActionBar label={APPROVAL_UI_COPY.selectionRegion}>
-          <div className={styles.tray}>
-            <div className={styles.trayMain}>
-              <strong>{APPROVAL_UI_COPY.selected(selectedIds.length)}</strong>
-              <button
-                type="button"
-                className={styles.trayLink}
-                onClick={() => setTrayOpen((open) => !open)}
-                aria-expanded={trayOpen}
-              >
-                {trayOpen
-                  ? APPROVAL_UI_COPY.hideSelected
-                  : APPROVAL_UI_COPY.reviewSelected}
-              </button>
-            </div>
-            <div className={styles.trayActions}>
-              <button
-                type="button"
-                className={styles.clear}
-                onClick={clearSelection}
-                disabled={busy}
-              >
-                {APPROVAL_UI_COPY.clear}
-              </button>
-              <button
-                type="button"
-                className={styles.bulkApprove}
-                onClick={beginBatchConfirmation}
-                disabled={busy}
-                aria-busy={busy}
-              >
-                {APPROVAL_UI_COPY.bulkApprove}
-              </button>
-            </div>
-            {trayOpen && (
-              <ul
-                className={styles.trayItems}
-                aria-label={APPROVAL_UI_COPY.selectedItemsLabel}
-              >
-                {visibleNames.map((item) => (
-                  <li key={item.requestId} className={styles.trayItem}>
-                    <span>
-                      {item.name}
-                      {staleIds.has(item.requestId) && (
-                        <small className={styles.stale}>
-                          {APPROVAL_UI_COPY.stale}
-                        </small>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      className={styles.remove}
-                      onClick={() => removeSelection(item.requestId)}
-                      disabled={busy}
-                      aria-label={APPROVAL_UI_COPY.remove(item.name)}
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </ManagementStickyActionBar>
-      )}
-
-      {confirmOpen && (
-        <dialog
-          ref={dialogRef}
-          className={styles.confirmDialog}
-          aria-modal="true"
-          aria-labelledby="approval-batch-confirm-title"
-          aria-describedby="approval-batch-confirm-body"
+        <AlertDialog
+          open={confirmOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setConfirmOpen(true);
+            } else {
+              closeConfirmation();
+            }
+          }}
         >
-          <div className={styles.confirmSurface}>
-            <h2 id="approval-batch-confirm-title">
-              {APPROVAL_UI_COPY.confirmTitle}
-            </h2>
-            <p id="approval-batch-confirm-body">
-              {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
-            </p>
-            <ul className={styles.confirmNames}>
-              {confirmationNames.map((item) => (
-                <li key={item.requestId}>{item.name}</li>
-              ))}
-              {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
-            </ul>
-            <div className={styles.confirmActions}>
-              <button
-                type="button"
-                className={styles.clear}
-                data-confirm-dismiss
-                onClick={closeConfirmation}
-              >
-                {APPROVAL_UI_COPY.confirmCancel}
-              </button>
-              <button
-                type="button"
-                className={styles.bulkApprove}
-                onClick={acceptBatchConfirmation}
-                disabled={busy}
-                aria-busy={busy}
-              >
-                {APPROVAL_UI_COPY.confirmApprove}
-              </button>
+          <ManagementStickyActionBar
+            busy={busy}
+            disabled={busy}
+            label={APPROVAL_UI_COPY.selectionRegion}
+            state={actionSurfaceState}
+          >
+            <div className={styles.tray}>
+              <div className={styles.trayMain}>
+                <strong>{APPROVAL_UI_COPY.selected(selectedIds.length)}</strong>
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  onClick={() => setTrayOpen((open) => !open)}
+                  aria-expanded={trayOpen}
+                  disabled={busy}
+                  size="lg"
+                  variant="outline"
+                >
+                  {trayOpen
+                    ? APPROVAL_UI_COPY.hideSelected
+                    : APPROVAL_UI_COPY.reviewSelected}
+                </Button>
+              </div>
+              <div className={styles.trayActions}>
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  onClick={clearSelection}
+                  disabled={busy}
+                  size="lg"
+                  variant="outline"
+                >
+                  {APPROVAL_UI_COPY.clear}
+                </Button>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    onClick={beginBatchConfirmation}
+                    disabled={busy}
+                    aria-busy={busy}
+                    aria-haspopup="dialog"
+                    size="lg"
+                    variant="default"
+                  >
+                    {APPROVAL_UI_COPY.bulkApprove}
+                  </Button>
+                </AlertDialogTrigger>
+              </div>
+              {trayOpen && (
+                <ul
+                  className={styles.trayItems}
+                  aria-label={APPROVAL_UI_COPY.selectedItemsLabel}
+                >
+                  {visibleNames.map((item) => (
+                    <li key={item.requestId} className={styles.trayItem}>
+                      <span>
+                        {item.name}
+                        {staleIds.has(item.requestId) && (
+                          <small className={styles.stale}>
+                            {APPROVAL_UI_COPY.stale}
+                          </small>
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        className={`${styles.remove} min-h-11 min-w-11`}
+                        onClick={() => removeSelection(item.requestId)}
+                        disabled={busy}
+                        aria-label={APPROVAL_UI_COPY.remove(item.name)}
+                        size="icon"
+                        variant="outline"
+                      >
+                        ×
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-          </div>
-        </dialog>
+          </ManagementStickyActionBar>
+          <AlertDialogContent
+            className={styles.confirmDialog}
+            aria-labelledby="approval-batch-confirm-title"
+            aria-describedby="approval-batch-confirm-body"
+          >
+            <div className={styles.confirmSurface}>
+              <AlertDialogTitle id="approval-batch-confirm-title">
+                {APPROVAL_UI_COPY.confirmTitle}
+              </AlertDialogTitle>
+              <AlertDialogDescription id="approval-batch-confirm-body">
+                {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
+              </AlertDialogDescription>
+              <ul className={styles.confirmNames}>
+                {confirmationNames.map((item) => (
+                  <li key={item.requestId}>{item.name}</li>
+                ))}
+                {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
+              </ul>
+              <AlertDialogFooter className={styles.confirmActions}>
+                <AlertDialogCancel onClick={closeConfirmation}>
+                  {APPROVAL_UI_COPY.confirmCancel}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={acceptBatchConfirmation}
+                  disabled={busy}
+                  aria-busy={busy}
+                >
+                  {APPROVAL_UI_COPY.confirmApprove}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </section>
   );
