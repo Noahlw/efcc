@@ -13,8 +13,13 @@ import type {
   ProgramEvent,
 } from "./program-api";
 import type { ProgramsTask } from "./programs-intent";
-import { formatEventTime, hasModule, taskLabel, WorkspaceTaskProvider } from './workspace-context';
-import type { WorkspaceTaskContextValue } from './workspace-context';
+import {
+  formatEventTime,
+  hasModule,
+  taskLabel,
+  WorkspaceTaskProvider,
+} from "./workspace-context";
+import type { WorkspaceTaskContextValue } from "./workspace-context";
 import { EventsTask } from "./workspace-events-task";
 import { ParticipantsTask } from "./workspace-participants-task";
 import { SettingsTask } from "./workspace-settings-task";
@@ -325,7 +330,7 @@ export const WorkspaceOverview = ({
         >
           <Button
             type="button"
-            className={styles.workspaceTaskRow}
+            className={`${styles.workspaceTaskRow} min-w-0 h-auto min-h-[44px] whitespace-normal [overflow-wrap:anywhere] [&>div]:min-w-0`}
             style={{
               border: "none",
               borderRadius: 0,
@@ -354,7 +359,7 @@ export const WorkspaceOverview = ({
           </Button>
           <Button
             type="button"
-            className={styles.workspaceTaskRow}
+            className={`${styles.workspaceTaskRow} min-w-0 h-auto min-h-[44px] whitespace-normal [overflow-wrap:anywhere] [&>div]:min-w-0`}
             style={{
               border: "none",
               borderTop: "1px solid var(--line)",

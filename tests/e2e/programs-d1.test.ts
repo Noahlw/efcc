@@ -2878,7 +2878,11 @@ test.describe("MUI-01 management Directory and Workspace", () => {
               !element.closest("[hidden]")
             );
           };
-          const controls = [...workspace.querySelectorAll<HTMLElement>('a,button,input,select,textarea')]
+          const controls = [
+            ...workspace.querySelectorAll<HTMLElement>(
+              "a,button,input,select,textarea"
+            ),
+          ]
             .filter(visible)
             .map((element) => {
               const box = element.getBoundingClientRect();
@@ -3767,6 +3771,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   });
   function hkWallLabel(wallInput: string): string {
     return HK_WALL_FORMATTER.format(new Date(`${wallInput}:00+08:00`));
@@ -5346,6 +5351,10 @@ test.describe("HUB-01 Management Hub directory", () => {
     // 核准 commits atomically: the detail flips to the read-only outcome.
     await page.getByRole("button", { name: COPY.approvals.approve }).click();
     await expect(
+      page.getByRole("alertdialog", { name: "確認核准申請" })
+    ).toBeVisible();
+    await page.getByRole("button", { name: "確認核准" }).click();
+    await expect(
       page.getByText(COPY.approvals.statusApproved, { exact: true })
     ).toBeVisible();
     await expect(
@@ -5373,6 +5382,10 @@ test.describe("HUB-01 Management Hub directory", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: COPY.approvals.reject }).click();
     await expect(
+      page.getByRole("alertdialog", { name: "確認拒絕申請" })
+    ).toBeVisible();
+    await page.getByRole("button", { name: "確認拒絕" }).click();
+    await expect(
       page
         .getByRole("alert")
         .filter({ hasText: COPY.approvals.rejectionNoteRequired })
@@ -5384,7 +5397,7 @@ test.describe("HUB-01 Management Hub directory", () => {
     // With the note, rejection commits atomically and stays viewable.
     const note = "資料不完整，請補充聯絡方式。";
     await page.getByLabel(COPY.approvals.decisionNote).fill(note);
-    await page.getByRole("button", { name: COPY.approvals.reject }).click();
+    await page.getByRole("button", { name: "確認拒絕" }).click();
     await expect(
       page.getByText(COPY.approvals.statusRejected, { exact: true })
     ).toBeVisible();
@@ -5482,15 +5495,11 @@ test.describe("HUB-01 Management Hub directory", () => {
   });
 });
 
-// 087-03 (#320): Account Permissions real matrix — real elevated accounts
-// (Admin / Staff / Staff-with-DM-grant) with role + department context, the
-// fixed three role definitions with live assignment states (角色變更會即時反映),
-// and the server-side DM denial asserted by direct API call — the DM-only
-// fixture (Member with a grant) exercises the endpoint itself, never
-// client-side hiding alone. A Member DM grant stays scoped access and never
-// enters this church-wide matrix (worker contract, migration 0013).
-test.describe("PERM-01 Account Permissions matrix", () => {
-  test("Admin sees the real matrix; a Staff DM grant reflects immediately; the DM-only fixture is denied server-side", async ({
+// PERM-01 verifies the role-first Account & Permissions projection:
+// fixed global roles, read-only assigned-account views, scoped Department
+// Manager context, and server-side denial for a Member with a DM grant.
+test.describe("PERM-01 Account Permissions role projection", () => {
+  test("Admin sees role-first accounts; a Staff DM grant reflects immediately; the DM-only fixture is denied server-side", async ({
     page,
   }) => {
     await loginAs(
@@ -5557,82 +5566,100 @@ test.describe("PERM-01 Account Permissions matrix", () => {
       await revokeManagerGrant(DEV_STAFF.userId);
       await revokeManagerGrant(DEV_MEMBER.userId);
 
-      // Admin opens the matrix: every elevated fixture is listed with role +
-      // department context; no grants at baseline, so the department cell
-      // falls back to the role scope.
+      // The Phase B permissions surface is role-first. Account rows are
+      // read-only under the selected role, not shown in the initial list.
       await page.goto("/management?module=permissions");
       await expect(
         page.getByRole("heading", { name: COPY.permissionsTitle })
       ).toBeVisible();
       await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
 
-      const table = page.getByRole("table", { name: COPY.accountsSection });
-      await expect(table).toBeVisible();
-      await expect(
-        table.getByRole("columnheader", { name: COPY.accountName })
-      ).toBeVisible();
-      await expect(
-        table.getByRole("columnheader", { name: COPY.accountRole })
-      ).toBeVisible();
-      await expect(
-        table.getByRole("columnheader", { name: COPY.accountDepartment })
-      ).toBeVisible();
-      await expect(
-        table.getByRole("rowheader", { name: "E2E Admin", exact: true })
-      ).toBeVisible();
-      await expect(
-        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
-      ).toBeVisible();
-      // A Member (DM grant or not) is never an elevated matrix account.
-      await expect(
-        table.getByRole("rowheader", { name: "E2E Member", exact: true })
-      ).toHaveCount(0);
-
-      // Fixed role definitions: exactly three, each with scope + state.
       const rolesRegion = page.getByRole("region", {
         name: COPY.rolesSection,
       });
       await expect(rolesRegion).toBeVisible();
-      await expect(rolesRegion.locator("li")).toHaveCount(3);
-      await expect(rolesRegion.getByText(COPY.roleAdmin)).toBeVisible();
-      await expect(rolesRegion.getByText(COPY.roleAdminScope)).toBeVisible();
+      const roleList = rolesRegion.getByRole("list", {
+        name: COPY.rolesSection,
+      });
+      await expect(roleList.locator("li")).toHaveCount(3);
       await expect(
-        rolesRegion.getByText(COPY.roleDepartmentManager)
+        roleList.getByRole("button", {
+          name: `${COPY.roleAdmin} · 角色詳情`,
+          exact: true,
+        })
       ).toBeVisible();
       await expect(
-        rolesRegion.getByText(COPY.roleDepartmentManagerScope)
+        roleList.getByRole("button", {
+          name: `${COPY.roleStaff} · 角色詳情`,
+          exact: true,
+        })
       ).toBeVisible();
-      await expect(rolesRegion.getByText(COPY.roleStaff)).toBeVisible();
-      await expect(rolesRegion.getByText(COPY.roleStaffScope)).toBeVisible();
-      // Baseline states: the Admin + Staff fixtures hold their roles; the
-      // department-manager role has no holder yet -> 可指派.
-      await expect(rolesRegion.getByText(COPY.stateAssigned)).toHaveCount(2);
-      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(1);
+      await expect(
+        roleList.getByRole("button", {
+          name: "會友 · 角色詳情",
+          exact: true,
+        })
+      ).toBeVisible();
+      await expect(roleList.getByText(COPY.roleDepartmentManager)).toHaveCount(
+        0
+      );
 
-      // Grant the STAFF fixture Department Manager on the demo department:
-      // the matrix reflects the change on the next load (即時反映) — the
-      // account projects as 部門管理者 with its real department context.
+      const openAssignedAccounts = async (
+        roleLabel: string
+      ): Promise<Locator> => {
+        await page
+          .getByRole("button", {
+            name: `${roleLabel} · 角色詳情`,
+            exact: true,
+          })
+          .click();
+        await page
+          .getByRole("button", {
+            name: `${roleLabel} · 已指派帳戶`,
+            exact: true,
+          })
+          .click();
+        const assigned = page.getByRole("table", {
+          name: `${roleLabel} · 已指派帳戶`,
+          exact: true,
+        });
+        await expect(assigned).toBeVisible();
+        return assigned;
+      };
+
+      let table = await openAssignedAccounts(COPY.roleStaff);
+      for (const header of [
+        COPY.accountName,
+        COPY.accountRole,
+        COPY.accountDepartment,
+      ]) {
+        await expect(
+          table.getByRole("columnheader", { name: header })
+        ).toBeVisible();
+      }
+      await expect(
+        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
+      ).toBeVisible();
+
+      // Grant the STAFF fixture Department Manager on the demo department.
+      // The role-first assigned-account projection reflects it on reload.
       expect(await grantManager(DEV_STAFF.userId)).toBe(200);
-
       await page.reload();
+      table = await openAssignedAccounts(COPY.roleStaff);
       await expect(
         table.getByRole("rowheader", { name: "E2E Staff", exact: true })
       ).toBeVisible();
       await expect(
         table.getByText("E2E_DEMO_示範事工", { exact: true })
       ).toBeVisible();
-      await expect(
-        table.getByText(COPY.roleDepartmentManager).first()
-      ).toBeVisible();
-      // Every role now has a holder: three 已設, no 可指派.
-      await expect(rolesRegion.getByText(COPY.stateAssigned)).toHaveCount(3);
-      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(0);
 
-      // Revoke: the Staff account returns to 同工 and the DM role to 可指派.
+      // Revoke: the Staff account no longer projects the demo department.
       await revokeManagerGrant(DEV_STAFF.userId);
       await page.reload();
-      await expect(table.getByText(COPY.roleDepartmentManager)).toHaveCount(0);
-      await expect(rolesRegion.getByText(COPY.stateAssignable)).toHaveCount(1);
+      table = await openAssignedAccounts(COPY.roleStaff);
+      await expect(
+        table.getByText("E2E_DEMO_示範事工", { exact: true })
+      ).toHaveCount(0);
 
       // The DM-only fixture is denied server-side: after granting the MEMBER
       // fixture a department manager role, the direct endpoint call returns

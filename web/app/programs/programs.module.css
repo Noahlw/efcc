@@ -1832,7 +1832,6 @@
   gap: 1.25rem;
 }
 
-
 .workspaceHeaderMain {
   display: flex;
   align-items: flex-start;
@@ -2162,6 +2161,7 @@
 
   .settingsForm {
     align-items: stretch;
+    flex-direction: column;
     flex-wrap: nowrap;
   }
 
