@@ -9,7 +9,7 @@
  * The test path is the natural seam for the role-level disposable contract;
  * Worker handlers, the read projection (#478), and downstream command
  */
-/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects, vitest/expect-expect, vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy, vitest/prefer-strict-equal, eslint/no-await-in-loop, eslint/no-unused-vars -- shared workerd/D1 fixture spans the suites; max-expects is per-acceptance-trace group. */
+/* oxlint-disable vitest/require-top-level-describe, vitest/max-expects, vitest/expect-expect, vitest/prefer-to-be-truthy, vitest/prefer-to-be-falsy, vitest/prefer-strict-equal, eslint/no-await-in-loop, eslint/no-unused-vars, promise/avoid-new -- shared workerd/D1 fixture spans the suites; max-expects is per-acceptance-trace group; the H-06 barrier needs a manually resolved deferred gate because Promise.withResolvers is ES2024 and the web build targets ES2017. */
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -71,9 +71,24 @@ async function expectAbort(
  * loser's INSERT OR IGNORE must lose the PK claim instead of replaying via
  * the sequential fast path.
  */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let release!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    release = resolve;
+  });
+  return { promise, resolve: release };
+}
+
 function barrieredDb(db: D1Database): D1Database {
   let arrived = 0;
-  const gate = Promise.withResolvers<void>();
+  // Promise.withResolvers is ES2024; the web build targets ES2017, so build
+  // the same deferred gate with the Promise constructor instead.
+  const gate = deferred<void>();
   const realBatch = db.batch.bind(db);
   const batch = async (
     statements: D1PreparedStatement[]
