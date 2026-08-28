@@ -146,7 +146,10 @@ interface RoleMutationRecord {
 function gate(
   input: Pick<
     RoleMutationInput,
-    "idempotency_key" | "request_fingerprint" | "actor_user_id" | "base_revision"
+    | "idempotency_key"
+    | "request_fingerprint"
+    | "actor_user_id"
+    | "base_revision"
   >
 ): string {
   return `EXISTS (
@@ -164,7 +167,10 @@ function gate(
 function bindGate(
   input: Pick<
     RoleMutationInput,
-    "idempotency_key" | "request_fingerprint" | "actor_user_id" | "base_revision"
+    | "idempotency_key"
+    | "request_fingerprint"
+    | "actor_user_id"
+    | "base_revision"
   >
 ) {
   return [
@@ -290,7 +296,6 @@ export async function applyRoleMutation(
         input.now
       ),
   ];
-
 
   for (const change of input.desired) {
     const gateClause = gate(input);
@@ -545,8 +550,13 @@ export async function applyRoleMutation(
       )
   );
 
-  // The terminal audit row is the one the read projection can join on;
-  // a replay never writes a new row because audit_written is monotonic.
+  // The terminal audit row is the one the read projection can join on.
+  // The INSERT is gated on this batch's own PENDING→terminal transition
+  // (the outcome UPDATE immediately above): a same-key concurrent batch
+  // whose INSERT OR IGNORE lost the PK claim sees changes() = 0 here and
+  // must not append a duplicate SUCCESS/CONFLICT audit for the winner's
+  // already-audited row. A replay never writes a new row either, because
+  // it never flips a PENDING row.
   statements.push(
     db
       .prepare(
@@ -562,7 +572,8 @@ export async function applyRoleMutation(
             AND m.request_fingerprint = ?
             AND m.actor_user_id = ?
             AND m.outcome IN ('SUCCESS', 'CONFLICT')
-            AND m.audit_written = 1`
+            AND m.audit_written = 1
+            AND changes() > 0`
       )
       .bind(
         input.audit_id,
@@ -600,11 +611,25 @@ export async function applyRoleMutation(
       true
     );
   }
+  // The batch's INSERT OR IGNORE is the authoritative claim on the
+  // idempotency key: when another same-key batch won the PK (a concurrent
+  // caller that passed preflight before this one), this batch's writes
+  // no-oped and the terminal row belongs to the winner. Report the
+  // authoritative result as a replay instead of a second SUCCESS.
+  const claimed = (results[0]?.meta?.changes ?? 0) > 0;
+  if (!claimed) {
+    return {
+      outcome: record.outcome,
+      resulting_revision: record.resulting_revision ?? input.base_revision,
+      idempotent: true,
+      created: false,
+    };
+  }
   return {
     outcome: record.outcome,
     resulting_revision: record.resulting_revision ?? input.base_revision,
     idempotent: false,
-    created: (results[0]?.meta?.changes ?? 0) > 0,
+    created: true,
   };
 }
 

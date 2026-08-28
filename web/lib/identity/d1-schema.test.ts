@@ -63,6 +63,39 @@ async function expectAbort(
   expect((thrown as Error).message).toContain(messageFragment);
 }
 
+/**
+ * D1 wrapper that holds same-key callers at the batch barrier until every
+ * caller has passed preflight, then releases them together. This forces the
+ * H-06 concurrency race deterministically: both `applyRoleMutation` calls
+ * read "no ledger row, base revision N" before either batch commits, so the
+ * loser's INSERT OR IGNORE must lose the PK claim instead of replaying via
+ * the sequential fast path.
+ */
+function barrieredDb(db: D1Database): D1Database {
+  let arrived = 0;
+  const gate = Promise.withResolvers<void>();
+  const realBatch = db.batch.bind(db);
+  const batch = async (
+    statements: D1PreparedStatement[]
+  ): Promise<D1Result<unknown>[]> => {
+    arrived += 1;
+    if (arrived >= 2) {
+      gate.resolve();
+    }
+    await gate.promise;
+    return realBatch(statements);
+  };
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === "batch") {
+        return batch;
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 describe("#476 disposable D1 schema contract", () => {
   beforeAll(async () => {
     await applyMigrations();
@@ -134,6 +167,7 @@ describe("#476 disposable D1 schema contract", () => {
       }
     }
   });
+
   test("D1 keeps fixed Role Categories non-assignable and immutable", async () => {
     await expectAbort(async () => {
       await testDb()
@@ -153,9 +187,7 @@ describe("#476 disposable D1 schema contract", () => {
     }, "role_categories are fixed and non-assignable");
     await expectAbort(async () => {
       await testDb()
-        .prepare(
-          `DELETE FROM role_categories WHERE category_key = 'Program'`
-        )
+        .prepare(`DELETE FROM role_categories WHERE category_key = 'Program'`)
         .run();
     }, "role_categories is fixed and non-assignable");
     const rows = await testDb()
@@ -289,7 +321,9 @@ describe("#476 disposable D1 schema contract", () => {
         .run();
     }, "Staff must remain assignable");
     await testDb()
-      .prepare(`UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`)
+      .prepare(
+        `UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`
+      )
       .bind("同工測試", staffRoleId)
       .run();
     const changed = await readScalar<{ label: string; is_protected: number }>(
@@ -309,7 +343,9 @@ describe("#476 disposable D1 schema contract", () => {
         .run();
     }, "role_definition_id is immutable");
     await testDb()
-      .prepare(`UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`)
+      .prepare(
+        `UPDATE role_definitions SET label = ? WHERE role_definition_id = ?`
+      )
       .bind("同工", staffRoleId)
       .run();
     const assignment = await readScalar<{ c: number }>(
@@ -542,6 +578,115 @@ describe("#476 disposable D1 schema contract", () => {
     expect(assignmentCount?.c).toBe(1);
   });
 
+  test("H-06: concurrent same-key mutations commit once and the loser replays the authoritative result", async () => {
+    const adminUser = "E2E_DISPOSABLE_ADMIN";
+    const base = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    expect(base).toBeDefined();
+    const newRoleId = "018f3b8a-0000-7000-8000-1000000000e2";
+    const key = "t476-concurrent-same-key";
+    const fingerprint = "fp-concurrent-same-key";
+    const makeInput = (auditId: string, correlationId: string) => ({
+      idempotency_key: key,
+      request_fingerprint: fingerprint,
+      actor_user_id: adminUser,
+      base_revision: base?.revision ?? 1,
+      now: "2026-08-27T08:00:00.000Z",
+      audit_id: auditId,
+      correlation_id: correlationId,
+      desired: [
+        {
+          kind: "create_role_definition" as const,
+          role_definition_id: newRoleId,
+          category_key: "Program" as const,
+          stable_key: "t478.concurrent.race.role",
+          label: "T478 Concurrent Race Role",
+          description: "Disposable concurrent race fixture",
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
+          position: 60,
+          capabilities: ["program.manage"],
+        },
+      ],
+      audit_summary: {
+        action: "ROLE_DEFINITION_CREATE",
+        entity_type: "role_definition",
+        entity_id: newRoleId,
+        new_value_json: JSON.stringify({ label: "T478 Concurrent Race Role" }),
+      },
+    });
+    const auditA = "018f3b8a-0000-7000-8000-aaaa00000020";
+    const auditB = "018f3b8a-0000-7000-8000-aaaa00000021";
+    // The barrier holds both calls at db.batch until each has passed
+    // preflight, so both believe "no ledger row, revision N" and race for
+    // the idempotency-key PK instead of replaying via the fast path.
+    const db = barrieredDb(testDb());
+    const [first, second] = await Promise.all([
+      applyRoleMutation(db, makeInput(auditA, "corr-race-a")),
+      applyRoleMutation(db, makeInput(auditB, "corr-race-b")),
+    ]);
+    // Exactly one caller claimed the key; the other is an identifiable
+    // replay of the authoritative result — never a second SUCCESS.
+    const outcomes = [first, second].map((result) => result.outcome);
+    const idempotentFlags = [first, second].map((result) => result.idempotent);
+    expect(outcomes).toStrictEqual(["SUCCESS", "SUCCESS"]);
+    expect(idempotentFlags.filter(Boolean)).toHaveLength(1);
+    expect(idempotentFlags.filter((flag) => !flag)).toHaveLength(1);
+    for (const result of [first, second]) {
+      expect(result.resulting_revision).toBe((base?.revision ?? 1) + 1);
+      expect(result.created).toBe(!result.idempotent);
+    }
+
+    // One committed mutation: one role row, one revision advance, one
+    // ledger row, one SUCCESS audit (only the winner's audit_id exists).
+    const roleCount = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_definitions WHERE role_definition_id = ?`,
+      newRoleId
+    );
+    expect(roleCount?.c).toBe(1);
+    const revision = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    expect(revision?.revision).toBe((base?.revision ?? 1) + 1);
+    const ledger = await readScalar<{ c: number; outcome: string }>(
+      `SELECT COUNT(*) AS c, MAX(outcome) AS outcome
+         FROM role_policy_mutations WHERE idempotency_key = ?`,
+      key
+    );
+    expect(ledger?.c).toBe(1);
+    expect(ledger?.outcome).toBe("SUCCESS");
+    const audit = await readScalar<{ c: number; outcome: string }>(
+      `SELECT COUNT(*) AS c, MAX(outcome) AS outcome
+         FROM role_audit_events WHERE entity_id = ?`,
+      newRoleId
+    );
+    expect(audit?.c).toBe(1);
+    expect(audit?.outcome).toBe("SUCCESS");
+    const winnerAudits = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events
+        WHERE audit_id IN (?, ?)`,
+      auditA,
+      auditB
+    );
+    expect(winnerAudits?.c).toBe(1);
+
+    // A later sequential replay of the same key returns the same
+    // authoritative result without any new audit or state.
+    const replay = await applyRoleMutation(
+      testDb(),
+      makeInput(auditA, "corr-race-replay")
+    );
+    expect(replay.outcome).toBe("SUCCESS");
+    expect(replay.idempotent).toBe(true);
+    expect(replay.resulting_revision).toBe(revision?.revision);
+    const auditsAfterReplay = await readScalar<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM role_audit_events WHERE entity_id = ?`,
+      newRoleId
+    );
+    expect(auditsAfterReplay?.c).toBe(1);
+  });
+
   test("reusing an idempotency key for a different payload is rejected with no second write", async () => {
     const adminUser = "E2E_DISPOSABLE_ADMIN";
     const base = await readScalar<{ revision: number }>(
@@ -595,6 +740,7 @@ describe("#476 disposable D1 schema contract", () => {
     );
     expect(final?.revision).toBe(after?.revision);
   });
+
   test("actor-bound idempotency rejects the same key from another actor", async () => {
     const base = await readScalar<{ revision: number }>(
       `SELECT revision FROM role_policy_revisions WHERE id = 1`
