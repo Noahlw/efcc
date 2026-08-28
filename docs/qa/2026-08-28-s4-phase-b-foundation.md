@@ -23,6 +23,7 @@
 - Integration correction head before this evidence pass: `28e80113`.
 - Final correction commit: `8bf830e3` (`fix(s4-b): finalize shared module corrections`).
 - The normal Husky hook failed on the documented Ultracite findings; the staged correction commit was then created with `HUSKY=0`. This is an explicit hook bypass, not a green hook result.
+- Hook repair commit: `58773da` changes staged JS/TS handling to formatter-only `oxfmt`, switches the hook to `pnpm exec`, and documents that full `pnpm check` remains separate while the baseline is unresolved.
 - Shared boundaries remain narrow: queries, rows, filters, validation, URLs, permissions, and mutations stay in route/domain adapters. No generic Form/DataTable/Task/authorization framework was added.
 
 ## Live E2E progress configuration
@@ -59,7 +60,7 @@ The MUI-01 failure reproduced twice on a live Worker with the same assertion and
 | `git diff --check` | 0 after removing one trailing-space defect |
 | `pnpm check` | **1**; full Ultracite baseline plus remaining changed-file findings |
 
-The normal Husky commit hook was attempted. `ultracite fix` failed and Husky rolled back its temporary formatting changes; representative findings include `react-hooks/exhaustive-deps`, `react(function-component-definition)`, `vitest(max-expects)`, `vitest(require-top-level-describe)`, and `eslint(no-empty-function)`. No assertions were weakened and no lint suppression was added.
+The normal Husky hook was attempted on the correction set. `ultracite fix` failed and Husky rolled back its temporary formatting changes; representative findings include `react-hooks/exhaustive-deps`, `react(function-component-definition)`, `vitest(max-expects)`, `vitest(require-top-level-describe)`, and `eslint(no-empty-function)`. No assertions were weakened and no lint suppression was added. The follow-up hook repair was verified by running `.husky/pre-commit` (`PRE_COMMIT_EXIT=0`) and a normal hook-protected commit (`HOOK_COMMIT_EXIT=0`).
 
 ## Local D1 E2E gate classification
 
