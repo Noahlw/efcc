@@ -2,7 +2,9 @@
 
 **Date:** 2026-08-28
 **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev-478`
-**Branch:** `remediate-478` at `8e902b4a1eadf4a2f25aa2924243d53ab2f471d4`
+**Implementation/reviewed head:** `8e902b4a1eadf4a2f25aa2924243d53ab2f471d4`
+**Evidence record:** `8b1e141d14af93e06d5517cd55a1d37aa6382c45` (this report)
+**Final branch head:** `8b1e141d14af93e06d5517cd55a1d37aa6382c45`
 **Stack base:** `85817f563a801e891bfbf758e3174ea0bdea9544` (PR #473 `feat/s4-12-shadcn-migration` head)
 **Acceptance trace:** [`docs/specs/s4-phase-a-acceptance-trace.md`](../specs/s4-phase-a-acceptance-trace.md)
 **Grouped PR:** #496 `feat(s4-a): identity and UI foundations` — open, no merge
@@ -61,7 +63,7 @@ Note: root `pnpm build` is a pre-existing stub script that fails on a known non-
 | #477 focused components | 3 files / 102 tests |
 | #478 focused worker (role-hierarchy) | 5 files / 69 tests |
 | `pnpm --dir web test` (full web suite) | 36 files / 540 tests |
-| `pnpm --dir web/components test` (full components) | 54 files / 613 tests on rerun (one initial parallel-load focus flake; isolated pass confirms) |
+| `pnpm --dir web test:components` (full components) | 54 files / 613 tests on rerun (one initial parallel-load focus flake; isolated pass confirms) |
 | Shell responsive suite | 92 passed / 1 skipped |
 | Shell geometry | 28 assertions |
 | Role geometry at 320 / 390 / 600 / 799 / 800 / 1024 / 1440 | 14 assertions |
@@ -85,6 +87,5 @@ Note: root `pnpm build` is a pre-existing stub script that fails on a known non-
 
 ## Verdict
 
-**PHASE A IMPLEMENTED — LOCAL EVIDENCE GREEN; PR #496 OPEN, NO MERGE.**
+The Phase A implementation chain (#476, #477, #478 plus the trace correction `f87f2ee2`) is present on `remediate-478` at the implementation head `8e902b4a`; the evidence record at `8b1e141d` is this report and is the current branch head. Deterministic local code gates are green and the final review returned READY with no findings. The grouped child PR #496 is open against PR #473 and has not been merged. No production-readiness claim is made from this report; remote CI and human accessibility/device gates remain manual.
 
-The Phase A implementation chain (#476, #477, #478 plus the trace correction `f87f2ee2`) is present on `remediate-478` at `8e902b4a`. Deterministic local code gates are green and the final review returned READY with no findings. The grouped child PR #496 is open against PR #473 and has not been merged. No production-readiness claim is made from this report; remote CI and human accessibility/device gates remain manual.
