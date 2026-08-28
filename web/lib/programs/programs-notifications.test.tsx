@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
@@ -98,5 +98,46 @@ describe("management notification control", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.notificationsRetry })
     ).toBeInTheDocument();
+  });
+  test("full Notifications task marks unread items without rendering the compact bell", async () => {
+    const user = userEvent.setup();
+    const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
+
+    const { container } = render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+        onViewAll={vi.fn<ProgramsNotificationsProps["onViewAll"]>()}
+        full
+      />
+    );
+
+    const fullSurface = container.querySelector<HTMLElement>(
+      'section[aria-labelledby="programs-notifications-title"]'
+    );
+    expect(fullSurface).not.toBeNull();
+    if (!fullSurface) {
+      throw new Error("full Notifications task surface is missing");
+    }
+    const scoped = within(fullSurface);
+    expect(
+      scoped.getByRole("heading", { name: COPY.programs.notificationsTitle })
+    ).toBeInTheDocument();
+    expect(
+      scoped.queryByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(onMarkRead).toHaveBeenCalledWith([
+        expect.objectContaining({
+          source_key: notification.source_key,
+          source_revision: notification.source_revision,
+        }),
+      ]);
+    });
+    await user.click(scoped.getByRole("link", { name: /青年團契/u }));
+    expect(onMarkRead).toHaveBeenCalled();
   });
 });

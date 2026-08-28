@@ -2795,6 +2795,148 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("button", { name: COPY.workspaceBack })
     ).toBeVisible();
   });
+  test("workspace overview and focused tasks satisfy numeric W7 geometry", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [targetId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const programId = required("target program", targetId);
+    const routes = [
+      {
+        path: `/programs?mode=management&program=${encodeURIComponent(programId)}`,
+        heading: "E2E_DEMO_成人查經",
+      },
+      {
+        path: `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`,
+        heading: COPY.workspaceTaskEvents,
+      },
+      {
+        path: `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`,
+        heading: COPY.workspaceTaskParticipants,
+      },
+      {
+        path: `/programs?mode=management&program=${encodeURIComponent(programId)}&task=settings`,
+        heading: COPY.workspaceTaskSettings,
+      },
+    ] as const;
+    const widths = [
+      [320, 812],
+      [390, 844],
+      [600, 900],
+      [799, 900],
+      [800, 900],
+      [1024, 900],
+      [1440, 900],
+    ] as const;
+
+    for (const route of routes) {
+      await page.goto(route.path);
+      await expect(
+        page.getByRole("heading", { name: route.heading, exact: true })
+      ).toBeVisible();
+      for (const [width, height] of widths) {
+        await page.setViewportSize({ width, height });
+        const focusTarget = page
+          .locator(
+            '[class*="managementWorkspace"] a, [class*="managementWorkspace"] button, [class*="managementWorkspace"] input, [class*="managementWorkspace"] select, [class*="managementWorkspace"] textarea'
+          )
+          .first();
+        await focusTarget.focus();
+        const focus = await page.evaluate(() => {
+          const active = document.activeElement;
+          if (!(active instanceof HTMLElement)) {
+            return { outlineStyle: "none", outlineWidth: 0 };
+          }
+          const style = getComputedStyle(active);
+          return {
+            outlineStyle: style.outlineStyle,
+            outlineWidth: Number.parseFloat(style.outlineWidth),
+          };
+        });
+        expect(focus.outlineStyle).not.toBe("none");
+        expect(focus.outlineWidth).toBeGreaterThanOrEqual(2);
+        const geometry = await page.evaluate(() => {
+          const workspace = document.querySelector<HTMLElement>(
+            '[class*="managementWorkspace"]'
+          );
+          const outlet = document.querySelector<HTMLElement>("#shell-content");
+          const dock = document.querySelector<HTMLElement>(".nav-phone");
+          if (!workspace || !outlet) {
+            throw new Error("workspace geometry fixture is incomplete");
+          }
+          const visible = (element: HTMLElement) => {
+            const box = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return (
+              box.width > 0 &&
+              box.height > 0 &&
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              !element.closest("[hidden]")
+            );
+          };
+          const controls = Array.from(
+            workspace.querySelectorAll<HTMLElement>(
+              "a,button,input,select,textarea"
+            )
+          )
+            .filter(visible)
+            .map((element) => {
+              const box = element.getBoundingClientRect();
+              return {
+                width: box.width,
+                height: box.height,
+                right: box.right,
+                bottom: box.bottom,
+              };
+            });
+          const workspaceBox = workspace.getBoundingClientRect();
+          const outletBox = outlet.getBoundingClientRect();
+          const dockBox = dock?.getBoundingClientRect() ?? null;
+          return {
+            innerWidth: window.innerWidth,
+            bodyScrollWidth: document.body.scrollWidth,
+            documentScrollWidth: document.documentElement.scrollWidth,
+            workspaceClientWidth: workspace.clientWidth,
+            workspaceScrollWidth: workspace.scrollWidth,
+            workspaceRight: workspaceBox.right,
+            outletRight: outletBox.right,
+            outletPaddingBottom: Number.parseFloat(
+              getComputedStyle(outlet).paddingBottom
+            ),
+            dockTop: dockBox?.top ?? null,
+            controls,
+          };
+        });
+        expect(geometry.innerWidth).toBe(width);
+        expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(width + 1);
+        expect(geometry.documentScrollWidth).toBeLessThanOrEqual(width + 1);
+        expect(geometry.workspaceScrollWidth).toBeLessThanOrEqual(
+          geometry.workspaceClientWidth + 1
+        );
+        expect(geometry.workspaceRight).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+        expect(
+          geometry.controls.every(
+            ({ width: controlWidth, height: controlHeight }) =>
+              controlWidth >= 44 && controlHeight >= 44
+          )
+        ).toBe(true);
+        if (width < 800) {
+          expect(geometry.outletPaddingBottom).toBeGreaterThanOrEqual(84);
+          expect(geometry.dockTop).not.toBeNull();
+        } else {
+          expect(geometry.outletPaddingBottom).toBe(0);
+        }
+      }
+    }
+  });
+
 });
 
 test.describe("CFG-01 Program Settings", () => {

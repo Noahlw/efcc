@@ -762,6 +762,76 @@ describe(ProgramWorkspace, () => {
       expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
     );
   });
+  test("mounts the focused Settings task with all domain-owned groups", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskSettings,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsEnrollment })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsSchedule })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsAttendance })
+    ).toBeInTheDocument();
+  });
+
+  test("hands the programless Notifications intent to the boundary without relabeling it", async () => {
+    mockWorkspace();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await screen.findByRole("heading", { name: "查經小組" });
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.programs.notificationsTitle, "u"),
+      })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith("notifications");
+    cleanup();
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="notifications"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskNotifications,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", {
+        name: COPY.programs.workspaceTaskSettings,
+      })
+    ).not.toBeInTheDocument();
+  });
+
 });
 describe("ENR-01 participants workspace", () => {
   test("renders pending, active, and history tabs from server state", async () => {
