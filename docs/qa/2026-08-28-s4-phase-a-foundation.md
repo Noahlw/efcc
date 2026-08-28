@@ -5,7 +5,7 @@
 **Implementation/reviewed head:** `8e902b4a1eadf4a2f25aa2924243d53ab2f471d4`
 **Evidence record:** `8b1e141d14af93e06d5517cd55a1d37aa6382c45` (this report)
 **Evidence correction:** `48b4dbe059a361ec801811a503f6c97c71c91c13`
-**Final branch head:** `48b4dbe059a361ec801811a503f6c97c71c91c13`
+**Final branch head:** the branch tip containing this report and its documentation-only corrections.
 **Stack base:** `85817f563a801e891bfbf758e3174ea0bdea9544` (PR #473 `feat/s4-12-shadcn-migration` head)
 **Acceptance trace:** [`docs/specs/s4-phase-a-acceptance-trace.md`](../specs/s4-phase-a-acceptance-trace.md)
 **Grouped PR:** #496 `feat(s4-a): identity and UI foundations` — open, no merge
@@ -87,5 +87,5 @@ Note: root `pnpm build` is a pre-existing stub script that fails on a known non-
 - Numeric role-geometry and shell-geometry assertions have no screenshots attached; their evidence is the assertion log only.
 
 ## Verdict
-The Phase A implementation chain (#476, #477, #478 plus the trace correction `f87f2ee2`) is present on `remediate-478` at the implementation head `8e902b4a`; the evidence record at `8b1e141d` is this report, the evidence correction at `48b4dbe0` is this branch's current head. Deterministic local code gates are green and the final review returned READY with no findings. The grouped child PR #496 is open against PR #473 and has not been merged. No production-readiness claim is made from this report; remote CI and human accessibility/device gates remain manual.
+The Phase A implementation chain (#476, #477, #478 plus the trace correction `f87f2ee2`) is present on `remediate-478` at the implementation head `8e902b4a`; the evidence record at `8b1e141d` is this report, and the evidence correction at `48b4dbe0` documents the provenance updates applied on this branch. The final branch head is the tip of `remediate-478` and may include further documentation-only corrections beyond the evidence record and its provenance fix. Deterministic local code gates are green and the final review returned READY with no findings. The grouped child PR #496 is open against PR #473 and has not been merged. No production-readiness claim is made from this report; remote CI and human accessibility/device gates remain manual.
 
