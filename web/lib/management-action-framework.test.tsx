@@ -1,13 +1,18 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, test } from "vitest";
 
 import {
+  ActionSurface,
   ManagementFilterSheet,
   ManagementPageHeader,
   ManagementStickyActionBar,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
 
+afterEach(() => {
+  cleanup();
+});
 describe("S4 management action framework", () => {
   test("accepts only internal Management return URLs", () => {
     expect(
@@ -72,5 +77,44 @@ describe("S4 management action framework", () => {
     expect(
       screen.getByRole("region", { name: "審批選取集" })
     ).toBeInTheDocument();
+  });
+  test.each([
+    "dirty",
+    "selection",
+    "review",
+    "save",
+    "busy",
+    "failure",
+    "conflict",
+  ] as const)("exposes finite Action Surface state %s", (state) => {
+    render(
+      <ActionSurface
+        disabled={state === "failure"}
+        label="未儲存變更操作"
+        state={state}
+      >
+        <button type="button">儲存</button>
+      </ActionSurface>
+    );
+
+    const surface = screen.getByRole("region", { name: "未儲存變更操作" });
+    expect(surface).toHaveAttribute("data-slot", "action-surface");
+    expect(surface).toHaveAttribute("data-state", state);
+    expect(surface).toHaveAttribute("aria-busy", String(state === "busy"));
+    if (state === "failure") {
+      expect(surface).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  test("keeps action controls keyboard reachable", async () => {
+    const user = userEvent.setup();
+    render(
+      <ActionSurface label="選取操作" state="selection">
+        <button type="button">核准</button>
+      </ActionSurface>
+    );
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "核准" })).toHaveFocus();
   });
 });

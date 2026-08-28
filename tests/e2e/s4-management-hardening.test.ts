@@ -645,7 +645,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await captureEvidence(page, testInfo, "approval-selection-review");
     await tray.getByRole("button", { name: "核准所選", exact: true }).click();
     await expect(
-      page.getByRole("dialog", { name: "確認核准所選申請" })
+      page.getByRole("alertdialog", { name: "確認核准所選申請" })
     ).toBeVisible();
     await captureEvidence(page, testInfo, "approval-confirmation");
     await page.getByRole("button", { name: "取消", exact: true }).click();
@@ -900,7 +900,11 @@ test.describe("S4 Management hardening integration gate", () => {
 
     // Approvals tray — measure while on approvals route
     const suffix = uniqueSuffix();
-    await registerPending(page, `S4 ${suffix}`, `e2e-s4-${suffix}`);
+    const approval = await registerPending(
+      page,
+      `S4 ${suffix}`,
+      `e2e-s4-${suffix}`
+    );
     await page.goto("/management?module=approvals");
     await expect(
       page.getByRole("heading", { name: APPROVALS_TITLE })
@@ -929,6 +933,45 @@ test.describe("S4 Management hardening integration gate", () => {
     if (dockBox && actionBox && isCompact) {
       expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(dockBox.y + 1);
     }
+    // Detail decision surface — the same Action Surface stays in flow at every width.
+    await page.goto(
+      `/management?module=approvals&request=${encodeURIComponent(approval.requestId)}`
+    );
+    await expect(
+      page.getByRole("heading", { name: /註冊審批/u })
+    ).toBeVisible();
+    const detailSurface = page.locator(
+      '[data-slot="action-surface"][aria-label="申請處理操作"]'
+    );
+    await expect(detailSurface).toBeVisible();
+    await expect(detailSurface).toHaveAttribute("data-state", "save");
+    expect(
+      await detailSurface.evaluate((element) => getComputedStyle(element).position)
+    ).toBe("static");
+    const decisionBounds = await detailSurface
+      .getByRole("button")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { bottom: rect.bottom, height: rect.height, right: rect.right, width: rect.width };
+        })
+      );
+    for (const bounds of decisionBounds) {
+      expect(bounds.width).toBeGreaterThanOrEqual(44);
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.right).toBeLessThanOrEqual(vw + 1);
+    }
+    const detailApprove = detailSurface.getByRole("button", { name: "核准" });
+    await detailApprove.click();
+    const detailDialog = page.getByRole("alertdialog", { name: "確認核准申請" });
+    await expect(detailDialog).toBeVisible();
+    const detailDialogBox = await detailDialog.boundingBox();
+    if (detailDialogBox) {
+      expect(detailDialogBox.width).toBeLessThanOrEqual(vw);
+      expect(detailDialogBox.height).toBeLessThanOrEqual(page.viewportSize()?.height ?? 0);
+    }
+    await detailDialog.getByRole("button", { name: "取消" }).click();
+    await expect(detailApprove).toBeFocused();
 
     // Permissions review — measure while on permissions route
     await page.goto("/management?module=permissions");

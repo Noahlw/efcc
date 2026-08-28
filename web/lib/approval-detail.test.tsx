@@ -113,15 +113,21 @@ describe("ApprovalDetail", () => {
     const user = userEvent.setup();
     render(<ApprovalDetail requestId="req-1" />);
 
-    await user.click(
-      await screen.findByRole("button", { name: COPY.approvals.approve })
-    );
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
 
     expect(approveCalls).toHaveLength(0);
     expect(
-      screen.getByRole("dialog", { name: "確認核准申請" })
+      screen.getByRole("alertdialog", { name: "確認核准申請" })
     ).toBeInTheDocument();
     expect(screen.getByText(/Dave Ng.*Active Account/u)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(approveButton).toHaveFocus();
+    expect(approveCalls).toHaveLength(0);
+    await user.click(approveButton);
     await user.click(screen.getByRole("button", { name: "確認核准" }));
 
     // The decision posts with an Idempotency-Key and the detail reloads to
@@ -164,7 +170,9 @@ describe("ApprovalDetail", () => {
       await screen.findByRole("button", { name: COPY.approvals.reject })
     );
 
-    expect(screen.getByRole("dialog", { name: "確認拒絕申請" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("alertdialog", { name: "確認拒絕申請" })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "確認拒絕" })
     ).toBeInTheDocument();
@@ -177,7 +185,112 @@ describe("ApprovalDetail", () => {
     ).toBeInTheDocument();
     expect(rejectPosts).toBe(0);
     expect(
-      screen.getByRole("button", { name: COPY.approvals.reject })
+      screen.getByRole("alertdialog", { name: "確認拒絕申請" })
+    ).toBeInTheDocument();
+    const noteInput = screen.getByRole("textbox", {
+      name: COPY.approvals.decisionNote,
+    });
+    expect(noteInput).toHaveAttribute("aria-invalid", "true");
+    expect(noteInput).toHaveFocus();
+  });
+  test("retrying a load failure restores the detail and focuses the error", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/v1/auth/registrations/req-retry", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(
+              { code: "UNAVAILABLE", detail: "temporary" },
+              { status: 500 }
+            )
+          : detailResponse({ ...PENDING, requestId: "req-retry" });
+      })
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-retry" />);
+
+    const error = await screen.findByRole("alert");
+    await waitFor(() => expect(error).toHaveFocus());
+    expect(error).toHaveAttribute("tabindex", "-1");
+    await user.click(screen.getByRole("button", { name: "重試連接" }));
+    expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  test("conflict failure keeps pending decisions available with conflict styling", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(PENDING)),
+      http.post(
+        "/api/v1/auth/registrations/req-1/approve",
+        () =>
+          HttpResponse.json(
+            { requestId: "rid-detail-conflict", code: "CONFLICT" },
+            { status: 409 }
+          )
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-1" />);
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+
+    const conflict = await screen.findByRole("alert", {
+      name: "",
+    });
+    expect(conflict).toHaveTextContent(QUEUE_COPY.conflict);
+    expect(
+      screen.getByRole("region", { name: "申請處理操作" })
+    ).toHaveAttribute("data-state", "conflict");
+    expect(
+      screen.getByRole("button", { name: COPY.approvals.approve })
+    ).toBeInTheDocument();
+  });
+
+  test("decision busy state locks the Action Surface until the server resolves", async () => {
+    let release!: () => void;
+    let detail: RegistrationDetail = PENDING;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(detail)),
+      http.post("/api/v1/auth/registrations/req-1/approve", async () => {
+        await gate;
+        detail = {
+          ...detail,
+          status: "Active",
+          decision: "Approved",
+          decidedAt: 1_700_000_500_000,
+        };
+        return HttpResponse.json({
+          requestId: "rid-detail-busy",
+          data: { accountStatus: "active" },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-1" />);
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+
+    await waitFor(() => expect(approveButton).toBeDisabled());
+    expect(approveButton).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("region", { name: COPY.approvals.approvalDetailTitle })
+    ).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("region", { name: "申請處理操作" })
+    ).toHaveAttribute("data-state", "busy");
+
+    release();
+    expect(
+      await screen.findByText(COPY.approvals.statusApproved)
     ).toBeInTheDocument();
   });
 

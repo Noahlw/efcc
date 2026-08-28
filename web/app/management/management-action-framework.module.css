@@ -49,19 +49,39 @@
   flex: none;
 }
 
-.stickyBar {
+.actionSurface {
   position: static;
-  display: flex;
-  min-height: 58px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgb(255 255 255 / 98%);
-  box-shadow: 0 10px 30px rgb(30 38 42 / 18%);
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  max-height: min(48dvh, 420px);
+  gap: var(--space-3, 0.75rem);
+  margin-top: var(--space-4, 1rem);
+  padding: var(--space-3, 0.75rem)
+    var(--space-3, 0.75rem)
+    calc(var(--space-3, 0.75rem) + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-raised, #fff);
+  box-shadow: var(--shadow-dock, 0 4px 18px rgb(23 26 29 / 14%));
+  scroll-margin-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
 }
+
+.actionSurface :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.actionSurface[data-disabled="true"] {
+  opacity: 0.7;
+}
+.actionSurface[data-state="failure"],
+.actionSurface[data-state="conflict"] {
+  border-color: var(--error-border);
+  background: var(--error-surface);
+}
+
 
 .backdrop {
   position: fixed;
