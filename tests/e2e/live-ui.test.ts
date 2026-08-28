@@ -368,6 +368,9 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(
       page.getByRole("tabpanel", { name: /待審批 \d+/u })
     ).toBeVisible();
+    await expect(
+      page.getByText(COPY.approvalEmpty, { exact: true })
+    ).toBeVisible();
   });
 
   test("approval queue is forbidden for Member (role-gated)", async ({
