@@ -106,7 +106,7 @@ interface RescopeBody {
   base_revision?: unknown;
 }
 
-function roleProblem(
+export function roleProblem(
   status: number,
   code: string,
   title: string,
@@ -134,7 +134,7 @@ function roleProblem(
   });
 }
 
-function roleSuccess(
+export function roleSuccess(
   status: number,
   body: unknown,
   requestId: string
@@ -173,7 +173,7 @@ function readCookie(headers: Headers, name: string): string | null {
  * Resolve the cookie-only actor (same contract as the auth/programs
  * surfaces). Returns a Problem Details Response on any auth failure.
  */
-async function requireActor(
+export async function requireActor(
   request: Request,
   env: RoleEnv,
   requestId: string

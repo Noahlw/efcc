@@ -10,6 +10,8 @@
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
+  PermissionGrantChange,
+  RoleDefinitionDetailView,
   RoleHierarchyView,
   RoleRenameResult,
   RoleCreateResult,
@@ -99,6 +101,40 @@ async function roleFetch<T>(
 /** GET /api/v1/identity/roles — the read-only hierarchy projection. */
 export function getRoleHierarchy(): Promise<RoleHierarchyView> {
   return roleFetch("/api/v1/identity/roles", "GET");
+}
+
+/** GET /api/v1/identity/role-definitions/:id — one safe detail projection. */
+export function getRoleDefinitionDetail(
+  roleDefinitionId: string
+): Promise<RoleDefinitionDetailView> {
+  return roleFetch(
+    `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}`,
+    "GET"
+  );
+}
+
+/**
+ * PATCH /api/v1/identity/role-definitions/:id/grants — revision-bound grant
+ * replacement. The Worker derives the actor from the cookie and validates the
+ * closed catalog; this client only serializes the public request shape.
+ */
+export function updateRoleDefinitionGrants(
+  roleDefinitionId: string,
+  input: {
+    baseRevision: number;
+    changes: readonly PermissionGrantChange[];
+  },
+  idempotencyKey?: string
+): Promise<RoleDefinitionDetailView & { idempotent: boolean }> {
+  return roleFetch(
+    `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/grants`,
+    "PATCH",
+    {
+      base_revision: input.baseRevision,
+      changes: input.changes,
+    },
+    idempotencyKey
+  );
 }
 
 /**

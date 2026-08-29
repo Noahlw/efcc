@@ -22,8 +22,9 @@
  * role, rejects an unknown capability key in role_definition_grants).
  */
 /* oxlint-disable eslint/max-classes-per-file, eslint/complexity, eslint/no-unused-vars, eslint/require-await, unicorn/no-lonely-if, unicorn/prefer-single-call -- the mutation batch is one D1 transaction; classes mirror the Worker error vocabulary. */
-import { isCapability } from "./types";
-import type { Capability, RoleAuditEventRow, RoleScopeKind } from "./types";
+import { isCapability } from "./capability-catalog";
+import type { Capability } from "./capability-catalog";
+import type { RoleAuditEventRow, RoleScopeKind } from "./types";
 
 /** Shape of the privileged mutation input the Worker sends to D1. */
 export interface RoleMutationInput {

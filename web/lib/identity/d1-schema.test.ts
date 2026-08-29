@@ -1113,7 +1113,9 @@ describe("#476 disposable D1 schema contract", () => {
       "registration.approval.manage",
       "home.publish",
     ];
-    expect([...CAPABILITY_CATALOG].sort()).toStrictEqual(expected.sort());
+    expect(
+      CAPABILITY_CATALOG.map((entry) => entry.capability).sort()
+    ).toStrictEqual(expected.sort());
     expect(PROTECTED_STABLE_KEYS.ADMIN).toBe("admin");
   });
 });

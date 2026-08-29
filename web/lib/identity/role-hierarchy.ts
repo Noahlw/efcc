@@ -46,11 +46,8 @@ import {
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
-import {
-  CAPABILITY_CATALOG,
-  PROTECTED_STABLE_KEYS,
-  ROLE_CATEGORY_KEY,
-} from "./types";
+import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
+import { CAPABILITY_CATALOG } from "./capability-catalog";
 import type { RoleAuditOutcome, RoleCategoryKey, RoleScopeKind } from "./types";
 
 /** Name contract (H-11): trimmed, non-empty, ≤ 60 characters (Spec 091 §8.2). */
@@ -317,6 +314,14 @@ export class RoleTargetNotFoundError extends Error {
     this.name = "RoleTargetNotFoundError";
   }
 }
+/** Empty role IDs are invalid targets, distinct from unknown IDs. */
+export class RoleInvalidTargetError extends Error {
+  constructor() {
+    super("ROLE_INVALID_TARGET: role definition target is required");
+    this.name = "RoleInvalidTargetError";
+  }
+}
+
 
 /** B-479-02/B-479-09: creation/reorder under an invalid parent Category. */
 export class RoleInvalidParentError extends Error {
@@ -441,7 +446,9 @@ export async function loadActorRoles(
               rd.stable_key
          FROM role_assignments ra
          JOIN role_definitions rd ON rd.role_definition_id = ra.role_definition_id
-        WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL
+        WHERE ra.account_user_id = ?
+          AND ra.revoked_at IS NULL
+          AND rd.is_archived = 0
         ORDER BY rd.position ASC`
     )
     .bind(actorUserId)
@@ -451,10 +458,10 @@ export async function loadActorRoles(
 
 /**
  * Effective capability resolution (Spec 091 §4.5/§6.1): Admin holds every
- * `role.*` capability; every other actor's capabilities are the union of
- * grants across their active assignments. The hierarchy/rename surface
- * checks exactly `role.read` (read projection) and `role.name.write`
- * (rename mutation) — never the UI projection.
+ * closed catalog capability; every Active Account receives the automatic
+ * `program.enroll` baseline; all other capabilities are the union of grants
+ * across active assignments. The highest assigned identity is still used by
+ * role-management guards, never to subtract effective grants.
  */
 export async function resolveActorCapabilities(
   db: D1Database,
@@ -462,13 +469,19 @@ export async function resolveActorCapabilities(
 ): Promise<Record<string, boolean>> {
   const roles = await loadActorRoles(db, actorUserId);
   const capabilities: Record<string, boolean> = {};
+  const account = await db
+    .prepare(`SELECT account_status FROM accounts WHERE user_id = ?`)
+    .bind(actorUserId)
+    .first<{ account_status: string }>();
+  if (account?.account_status === "Active") {
+    capabilities["program.enroll"] = true;
+  }
   for (const role of roles) {
     if (role.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
-      for (const capability of CAPABILITY_CATALOG) {
-        if (capability.startsWith("role.")) {
-          capabilities[capability] = true;
-        }
+      for (const entry of CAPABILITY_CATALOG) {
+        capabilities[entry.capability] = true;
       }
+      return capabilities;
     }
   }
   const grants = await db
@@ -477,7 +490,11 @@ export async function resolveActorCapabilities(
          FROM role_definition_grants rg
          JOIN role_assignments ra
            ON ra.role_definition_id = rg.role_definition_id
-        WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL`
+         JOIN role_definitions rd
+           ON rd.role_definition_id = ra.role_definition_id
+        WHERE ra.account_user_id = ?
+          AND ra.revoked_at IS NULL
+          AND rd.is_archived = 0`
     )
     .bind(actorUserId)
     .all<{ capability: string }>();

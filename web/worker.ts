@@ -19,8 +19,9 @@
  *
  *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
  *
- *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478/#479): the
- *     hierarchy projection, rename, scope, create, and reorder mutations.
+ *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478/#479/#485):
+ *     hierarchy, role-definition detail, grant editing, rename, scope, create,
+ *     and reorder mutations.
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -1075,6 +1076,10 @@ export default {
         handleRescopeRoleDefinition,
         handleReorderRoleDefinitions,
       } = await import("./lib/identity/role-handlers");
+      const {
+        handleGetRoleDefinitionDetail,
+        handleUpdateRoleDefinitionGrants,
+      } = await import("./lib/identity/permission-editor-handlers");
 
       if (
         url.pathname === "/api/v1/identity/roles" &&
@@ -1093,6 +1098,53 @@ export default {
         request.method === "PATCH"
       ) {
         return handleReorderRoleDefinitions(request, roleEnv);
+      }
+      const detailPrefix = "/api/v1/identity/role-definitions/";
+      const detailPath = url.pathname.slice(detailPrefix.length);
+      if (
+        url.pathname.startsWith(detailPrefix) &&
+        request.method === "GET" &&
+        !detailPath.includes("/")
+      ) {
+        const roleDefinitionId = decodePathSegment(detailPath);
+        if (roleDefinitionId === null) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleGetRoleDefinitionDetail(request, roleEnv, roleDefinitionId);
+      }
+      if (
+        url.pathname.startsWith(detailPrefix) &&
+        request.method === "PATCH" &&
+        detailPath.endsWith("/grants")
+      ) {
+        const rolePath = detailPath.slice(0, -"/grants".length);
+        if (rolePath.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        const roleDefinitionId = decodePathSegment(rolePath);
+        if (roleDefinitionId === null) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleUpdateRoleDefinitionGrants(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
       }
       const rescopePrefix = "/api/v1/identity/role-definitions/";
       if (

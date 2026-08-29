@@ -55,6 +55,7 @@ export {
   RoleHighestProtectedError,
   RoleScopeMismatchError,
   RoleSelfRenameError,
+  RoleInvalidTargetError,
   RoleTargetNotFoundError,
   RoleInvalidParentError,
   RoleCrossCategoryError,
@@ -88,6 +89,28 @@ export {
   ROLE_AUDIT_ACTION,
   isCapability,
 } from "./types";
+export {
+  HIGH_RISK_CAPABILITIES,
+  capabilityMetadata,
+} from "./capability-catalog";
+export type {
+  CapabilityMetadata,
+  CapabilityRisk,
+  CapabilityGroup,
+} from "./capability-catalog";
+
+export {
+  loadRoleDefinitionDetail,
+  updateRoleDefinitionGrants,
+  canonicalPermissionFingerprint,
+} from "./permission-editor";
+export type {
+  RoleDefinitionDetailView,
+  RoleDefinitionPermission,
+  RoleDefinitionAssignedAccount,
+  PermissionGrantChange,
+  UpdateRoleDefinitionGrantsInput,
+} from "./permission-editor";
 export type {
   RoleCategoryKey,
   RoleScopeKind,

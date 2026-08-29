@@ -7,6 +7,13 @@
  * this module is the type-only surface other modules import.
  */
 
+import { CAPABILITY_CATALOG, isCapability } from "./capability-catalog";
+import type { Capability } from "./capability-catalog";
+
+export { CAPABILITY_CATALOG, isCapability };
+export type { Capability };
+
+
 export const ROLE_CATEGORY_KEY = {
   GLOBAL: "Global",
   DEPARTMENT: "Department",
@@ -128,45 +135,10 @@ export interface RoleAuditEventRow {
 }
 
 /**
- * Closed capability catalog (Spec 091 §4).
- *
- * The CHECK in role_definition_grants validates against this set at the SQL
- * boundary; an unknown capability key is rejected before any D1 write. New
- * capabilities must be added here, in the migration, and in the authorization
- * seam in lockstep.
+ * The capability key and metadata catalog live in capability-catalog.ts.
+ * Re-exporting the closed keys here keeps the existing identity type surface
+ * stable while leaving one code-owned metadata source.
  */
-export const CAPABILITY_CATALOG = [
-  "role.read",
-  "role.assign",
-  "role.revoke",
-  "role.reorder",
-  "role.name.write",
-  "role.permissions.read",
-  "role.permissions.write",
-  "role.scope.read",
-  "role.scope.write",
-  "role.create",
-  "role.delete",
-  "department.manage",
-  "department.publish",
-  "department.module.configure",
-  "department.manager.assign",
-  "program.manage",
-  "program.publish",
-  "program.enroll",
-  "program.leader.assign",
-  "account.permissions.read",
-  "account.permissions.write",
-  "account.directory.read",
-  "registration.approval.manage",
-  "home.publish",
-] as const;
-
-export type Capability = (typeof CAPABILITY_CATALOG)[number];
-
-export function isCapability(value: string): value is Capability {
-  return (CAPABILITY_CATALOG as readonly string[]).includes(value);
-}
 
 /** Stable keys for the two fixed system identities and assignable Staff. */
 export const PROTECTED_STABLE_KEYS = {
@@ -183,6 +155,7 @@ export const ROLE_AUDIT_ACTION = {
   ROLE_DEFINITION_ARCHIVE: "ROLE_DEFINITION_ARCHIVE",
   ROLE_DEFINITION_GRANT: "ROLE_DEFINITION_GRANT",
   ROLE_DEFINITION_REVOKE: "ROLE_DEFINITION_REVOKE",
+  ROLE_DEFINITION_POLICY_UPDATE: "ROLE_DEFINITION_POLICY_UPDATE",
   ROLE_ASSIGNMENT_GRANT: "ROLE_ASSIGNMENT_GRANT",
   ROLE_ASSIGNMENT_REVOKE: "ROLE_ASSIGNMENT_REVOKE",
 } as const;

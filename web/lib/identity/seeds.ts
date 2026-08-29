@@ -18,7 +18,7 @@
 import { importLegacyUsers } from "../auth/accounts";
 import { preflightDisposableSchema } from "./preflight";
 import type { DisposableDatabaseInfo } from "./preflight";
-import { CAPABILITY_CATALOG, PROTECTED_STABLE_KEYS } from "./types";
+import { isCapability, PROTECTED_STABLE_KEYS } from "./types";
 import type { Capability } from "./types";
 
 const SYSTEM_DEFINITIONS = {
@@ -201,7 +201,7 @@ function disposableRows() {
 }
 
 function assertCapability(capability: string): Capability {
-  if (!(CAPABILITY_CATALOG as readonly string[]).includes(capability)) {
+  if (!isCapability(capability)) {
     throw new Error(
       `disposable seed references unknown capability: ${capability}`
     );

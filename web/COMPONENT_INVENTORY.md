@@ -100,7 +100,7 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 `lib/programs/*` — participant-default boundary (PUI-01) + management directory/detail/workspace.
 
-- **shadcn used:** `Button` (all program/workspace actions, enrollment, attention), `Badge` (program status, attention counts), `Card` (directoryCard, participantDirectoryCard, workspace sections), `Input` (search, program form), `Textarea` (programForm, settings), `Alert` (boundaryState/error, intentNotice), `Skeleton` (directorySkeleton*, boundaryState), `Tabs` (program-workspace, programs-boundary), `Accordion` (permissions-panel integration)
+- **shadcn used:** `Button` (all program/workspace actions, enrollment, attention), `Badge` (program status, attention counts), `Card` (directoryCard, participantDirectoryCard, workspace sections), `Input` (search, program form), `Textarea` (programForm, settings), `Alert` (boundaryState/error, intentNotice), `Skeleton` (directorySkeleton*, boundaryState), `Tabs` (program-workspace, programs-boundary)
 
 ### Notices (`app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/feed-presentation.tsx`)
 
@@ -140,9 +140,9 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 - **shadcn used:** `Button`, `Input`, `Select`; `DirectoryFrame` owns typed state slots, selection, pagination, and focus restoration while Account keeps `q`, `role`, `status`, `department`, detail queries, URLs, and permissions local
 
-### Permissions & Roles (`app/management/permissions-panel.tsx`, `permissions-panel.module.css`)
+### Permissions & Roles (`app/management/permission-editor-panel.tsx`, `app/management/role-hierarchy-panel.tsx`)
 
-- **shadcn used:** `Switch` (policySwitch), `Accordion` (policyGroupTrigger/Body), `Input` (searchField), `Badge` (roleCount/revision)
+- **shadcn used:** `Switch`, `Sheet`, `AlertDialog`, `Button`, `Input`, and `ActionSurface`; Permission Editor owns selected Role Definition draft/review state while identity remains server-authoritative
 
 ### Home CMS Editor (`app/management/home-cms-editor.tsx`, `home-cms-editor.module.css`)
 

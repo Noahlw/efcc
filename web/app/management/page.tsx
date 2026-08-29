@@ -13,7 +13,7 @@ import { CheckinSettings } from "./checkin-settings";
 import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
 import { MemberDirectoryPanel } from "./member-directory-panel";
-import { PermissionsPanel } from "./permissions-panel";
+import { PermissionEditorPanel } from "./permission-editor-panel";
 import { RoleHierarchyPanel } from "./role-hierarchy-panel";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
@@ -41,7 +41,7 @@ const ManagementModule = () => {
       return <HomeContentEditor />;
     }
     case "permissions": {
-      return <PermissionsPanel />;
+      return <PermissionEditorPanel />;
     }
     case "roles": {
       return <RoleHierarchyPanel />;

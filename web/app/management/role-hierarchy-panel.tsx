@@ -46,6 +46,7 @@ const SCOPE_ARCHIVED_MESSAGE = "已停用的身份組不可變更適用範圍。
 const LOAD_ERROR_MESSAGE = "身份組資料暫時無法載入，請稍後再試。";
 
 const CREATE_LABEL = "建立身份組";
+const PERMISSION_EDIT_LABEL = "編輯權限";
 const CREATE_TITLE = "建立身份組";
 const CREATE_SAVE_LABEL = "建立";
 const CREATE_SAVING_LABEL = "建立中…";
@@ -1232,6 +1233,17 @@ export const RoleHierarchyPanel = () => {
                 {SCOPE_EDIT_LABEL}
               </button>
             )}
+          <button
+            className={styles.renameButton}
+            onClick={() =>
+              router.push(
+                `/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`
+              )
+            }
+            type="button"
+          >
+            {PERMISSION_EDIT_LABEL}
+          </button>
           {scopeState.kind !== "idle" && (
             <section
               aria-labelledby="role-hierarchy-scope-title"
