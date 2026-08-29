@@ -357,3 +357,152 @@ No dedicated component-only TypeScript config/command exists; the full web `tsco
 ### Manual gates and next action
 
 `C-485-M1` and `C-485-M2` remain **MANUAL** and unclaimed. This evidence does not claim keyboard-only, screen-reader, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, or WCAG completion. The Worker infrastructure failure, missing Permission Editor geometry coverage, and `D1Result` build/typecheck failure remain explicit blockers for the coordinator/correction owner.
+
+## #485 evidence rerun — 2026-08-29
+
+**Evidence scope:** rerun of focused checks after the `D1Result` global type fix (`7762bb23 fix(build): expose D1Result global in worker-globals.d.ts`) and the Next TypeScript test-path exclusions for the Permission Editor (`aef36b81c3c493c38395c16f284381a8a51c91db build(web): exclude #485 permission-editor test paths from Next typecheck`). The rerun is evidence-only; it does not edit production code and does not relabel earlier honest blockers as PASS.
+
+### Provenance and runtimes
+
+- **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-485-evidence-rerun`
+- **Branch:** `feat/s4-c-485-evidence-rerun`
+- **Integrated Phase C coordinator head (current):** `ca55715981b49c25cebee03d70c1e63b775d6392`
+- **Permission Editor implementation head under test:** `aef36b81c3c493c38395c16f284381a8a51c91db` (`build(web): exclude #485 permission-editor test paths from Next typecheck`)
+- **Phase B base SHA:** `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`
+- **Node:** `v22.18.0`
+- **pnpm:** `11.7.0`
+- **Vitest:** `4.1.10` (web workspace)
+- **Wrangler:** `4.127.1` (web lockfile)
+- **Miniflare:** `5.20260828.0-alpha` (web lockfile; an alternate `5.20260730.0-alpha` is also present in the pnpm store but is not the test pool)
+- **Playwright:** `1.62.1`
+- **Pinned Chromium:** Chrome for Testing `151.0.7922.34`, Playwright Chromium revision `v1234` (already installed at `/Users/noah.wong/Library/Caches/ms-playwright/chromium-1234`)
+
+### C-485 criterion-to-check matrix (rerun)
+
+| Criterion | Directly exercised check | Result |
+| --- | --- | --- |
+| C-485-01 | `GET /api/v1/identity/role-definitions/:id` envelope shape, request ID, and complete catalog projection are exercised by the Worker seam test only; the rerun still cannot reach that test because the cloudflare-pool infrastructure fails before any product assertion. Component seam covers list/detail URL fallback, continuous catalog search, and safe-URL behaviour. | **BLOCKED — focused Worker coverage still does not exercise the criterion (infra); component seam covers URL fallback only.** |
+| C-485-02 | Component seam asserts one locked row remains visible with a plain-language reason, local `Switch` with `role="switch"`, `aria-checked`, disabled/`aria-disabled`, and keyboard activation of an editable row. Other lock targets (Admin, baseline, highest/self, archived, out-of-scope, unavailable) and saving/busy semantics are not asserted. | **BLOCKED — only one named lock case and basic switch semantics exercised; remaining lock cases and busy focus unexercised.** |
+| C-485-03 | Component seam asserts one toggle becomes dirty, one ordinary Sheet save returns the authoritative revision, a non-conflict `503` keeps the dirty draft, and a `409 ROLE_POLICY_CONFLICT` restart UI is rendered. Saving-lock and explicit `aria-busy` propagation are not directly asserted. | **BLOCKED — saving-lock semantics remain unexercised; other behaviours PASS by assertion.** |
+| C-485-04 | Component seam asserts one ordinary change opens the local `Sheet` and one high-risk change opens the dedicated `AlertDialog`. Exact 1/2/3 versus 4-ordinary threshold, viewport/dock geometry, and every high-risk key are not exercised. | **BLOCKED — 4-ordinary threshold and high-risk full set unexercised; sheet/dedicated split PASS by assertion.** |
+| C-485-05 | The Worker patch+replay audit path was not reached because the cloudflare-pool infrastructure fails before any product assertion. Component mocks do not prove D1 revision/audit/idempotency atomicity. | **BLOCKED — Cloudflare pool infrastructure failure; 0 product assertions in Worker seam.** |
+| C-485-06 | Component conflict UI was exercised. Worker stale-revision, changed-payload idempotency reuse, Member/unauthorized, Admin/baseline, closed-capability, and denial/rejection-audit paths were not executed because the cloudflare-pool infrastructure fails before any product assertion. | **BLOCKED — Worker infrastructure failure; named server outcomes unexercised.** |
+
+The role-hierarchy component suite passed its existing 16 tests again; source/test inspection still finds no direct assertion for the Permission Editor action link. The implementation link is in `web/app/management/role-hierarchy-panel.tsx:1236-1246` and routes to `/management?module=permissions&role=<id>&view=permissions`, the canonical route expected by the panel.
+
+### UI primitive and source inspection (rerun)
+
+**PASS — source contract inspection only (not a manual accessibility claim).** `web/app/management/permission-editor-panel.tsx:3-29` still imports the locally owned `Sheet`, `AlertDialog`, `Button`, `Input`, and `Switch` primitives plus `cva` and `cn`. `web/components/ui/switch.tsx:3-29` still wraps `radix-ui` `SwitchPrimitive.Root`/`Thumb` and composes classes with `cn`; the panel defines `roleButtonVariants` and `permissionRowVariants` with CVA at `:80-104` and applies them through `cn` at `:497-504` and `:607-612`. No unfamiliar library/API behaviour required a Context7 lookup. Human keyboard, AT, reduced-motion, forced-colors, reflow/text-spacing, real-device, and WCAG gates remain manual and unclaimed.
+
+### Focused Worker/domain command (rerun)
+
+Command:
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts \
+    lib/identity/permission-editor.test.ts \
+    lib/identity/permission-editor-handlers.test.ts
+```
+
+Result: **exit 1; infrastructure blocked before assertions.** Vitest caught 2 unhandled errors during the test run. Both `permission-editor.test.ts` and `permission-editor-handlers.test.ts` fail at cloudflare-pool startup with the same cause as the prior evidence section:
+
+```text
+Caused by: EvalError: Code generation from strings disallowed for this context
+ ❯ getAsyncFunctionDeclarationPaddingLineCount
+    node_modules/.pnpm/vite@8.2.0/.../vite/dist/node/module-runner.js:27:35
+ ❯ <instance_members_initializer>
+    node_modules/.pnpm/vite@8.2.0/.../vite/dist/node/module-runner.js:1008:16
+ ❯ new ESModulesEvaluator
+    node_modules/.pnpm/vite@8.2.0/.../vite/dist/node/module-runner.js:1007:26
+ ❯ new ModuleRunner
+    node_modules/.pnpm/vite@8.2.0/.../vite/dist/node/module-runner.js:1111:35
+ ❯ createEnvironmentLoader … loadEnvironment … setupBaseEnvironment
+
+Test Files  no tests
+     Tests  no tests
+    Errors  2 errors
+  Start at  14:20:58
+  Duration  5.19s (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+```
+
+The two failure stacks are identical save for the file path. No product assertion is reached. The rerun does not relabel this as PASS or FAIL; it is recorded as harness infrastructure with zero product assertions.
+
+### Focused component commands (rerun)
+
+Command:
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/permission-editor-panel.test.tsx \
+    lib/identity/role-hierarchy-panel.test.tsx
+```
+
+Result: **exit 0**
+
+```text
+ Test Files  2 passed (2)
+      Tests  23 passed (23)
+   Start at  14:21:10
+   Duration  4.91s (transform 1.35s, setup 809ms, import 2.40s, tests 3.38s, environment 2.58s)
+```
+
+Per-file focused results were not re-collected separately in this rerun because the consolidated run already reported the same two files. The seven Permission Editor tests assert: safe role-list fallback + continuous searchable catalog; malformed `role`/`view` URL normalization; locked-row reason plus `role="switch"` / `aria-checked` / `disabled` / `aria-disabled` and keyboard activation of an editable row; ordinary Sheet save and authoritative revision return; non-conflict `503` dirty-draft preservation; high-risk dedicated review and conflict restart UI; and Back/focus restoration. They do not assert source class strings or implementation names. The 16 role-hierarchy component tests are existing H/B tests; none is a direct Permission Editor action-link test.
+
+### Focused typecheck and build (rerun)
+
+Commands and results:
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json
+exit 0 (no output)
+
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.json
+exit 0 (no output)
+
+$ pnpm --dir web build
+▲ Next.js 16.2.12 (Turbopack)
+✓ Compiled successfully in 2.3s
+  Running TypeScript ...
+  Finished TypeScript in 9.3s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (18/18) in 399ms
+Route (app)
+┌ ○ / ├ ○ /_not-found ├ ○ /events ├ ○ /guest-check-in ├ ○ /home ├ ○ /management
+├ ○ /messages ├ ○ /notices ├ ○ /permissions ├ ○ /profile ├ ○ /profile/settings
+├ ○ /programs ├ ○ /prototype ├ ○ /register ├ ○ /registrations └ ○ /scanner
+○  (Static)  prerendered as static content
+```
+
+The `D1Result` global type fix and the Next TypeScript test-path exclusions for `#485` are reflected in the rerun: `tsc` against `tsconfig.worker.json` and `tsconfig.json` both pass with zero output, and the web `next build` now compiles successfully. The earlier `D1Result` build blocker at `web/lib/auth/registrations.ts:148:15` no longer triggers. No new TS/build error is reported.
+
+### Geometry coverage and result (rerun)
+
+The pinned role-hierarchy harness was re-run after the build unblock:
+
+```text
+$ pnpm test:role-hierarchy-geometry
+$ playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts
+Running 21 tests using 1 worker
+  ✓   1 [w-320]  › identity hierarchy panel has no overflow or undersized controls at the pinned width
+  ✓   2 [w-320]  › rename detail keeps the affordance visible and in flow at the pinned width
+  ✓   3 [w-320]  › B-479-12: create and reorder affordances keep their critical anchors at the pinned width
+  … (continues for each viewport: 320, 390, 600, 799, 800, 1024, 1440; 3 scenarios each)
+  ✓  21 [w-1440] › B-479-12: create and reorder affordances keep their critical anchors at the pinned width
+  21 passed (17.8s)
+```
+
+All 21 existing pinned tests now run; the harness webServer starts because the prior `D1Result` build blocker is gone. The Pinned Chromium remains Chrome for Testing `151.0.7922.34` revision `v1234`; the projects `w-320`, `w-390`, `w-600`, `w-799`, `w-800`, `w-1024`, and `w-1440` are reused unchanged. CSS-pixel evidence only; no screenshots or pixel-diff tests are used.
+
+The existing `tests/e2e/role-hierarchy-geometry.test.ts` only matches `role-hierarchy-geometry.test.ts` (`testMatch: /role-hierarchy-geometry\.test\.ts$/u`) and only exercises `/management?module=roles`. The earlier in-session attempt to extend that file with a numeric W7 Permission Editor list test, and the later attempt to add a separate `permission-editor-geometry.{test,config}.ts` pair, were both reverted before the commit per the assignment's coordinator revert: in this evidence-only commit the rerun did **not** mutate `tests/e2e/role-hierarchy-geometry.test.ts`, did **not** introduce a competing `permission-editor-geometry.config.ts`, and did **not** introduce a new `tests/e2e/permission-editor-geometry.test.ts`. The C-485 W7 numeric Permission Editor geometry is therefore **BLOCKED** in this rerun, with the exact reason recorded: the static-export harness and `role-hierarchy-geometry.test.ts` cover `/management?module=roles` only, and the existing pinned config matches only that file. Adding Permission Editor coverage via a separate `tests/e2e` file or a competing config is out of scope for this evidence-only rerun.
+
+**C-485 W7 numeric geometry status:** **BLOCKED — no Permission Editor coverage in `pnpm test:role-hierarchy-geometry`; existing harness webServer now starts (D1Result fix) but the file/config in this commit does not add Permission Editor tests.** The Permission Editor detail, Sheet, AlertDialog, conflict, and Sticky Action Bar surfaces are also not exercised by numeric geometry and remain a manual gate.
+
+### Manual gates and next action (rerun)
+
+`C-485-M1` and `C-485-M2` remain **MANUAL** and unclaimed. This rerun does not claim keyboard-only, screen-reader, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, or WCAG completion. The Worker infrastructure failure (cloudflare-pool `EvalError: Code generation from strings disallowed for this context`) remains the only active product blocker for C-485-01/05/06; the `D1Result` build blocker is gone, the W7 numeric geometry for the Permission Editor list view is **BLOCKED — not exercised in this evidence-only commit**, and component coverage for C-485-02/03/04 remains partial (only one named lock case; the saving-lock, threshold, and full-high-risk surfaces are still unexercised).
+
+### Files changed in this evidence-only commit
+
+- `docs/specs/s4-phase-c-acceptance-trace.md` (this section appended; no prior section removed or edited)
+
+No production source, schema, migration, seed, fixture, test, or config file was changed in this commit. The temporary `tests/e2e/permission-editor-geometry.test.ts` and `tests/e2e/permission-editor-geometry.config.ts` that were created and verified during the rerun were removed before the commit; their outcome is summarised above as BLOCKED rather than retained as a second harness.
