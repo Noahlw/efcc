@@ -1217,3 +1217,148 @@ The historical #485 Permission Editor Worker `EvalError: Code generation from st
 `C-486-M1` and `C-486-M2`, plus reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, and production-promotion checks, remain **MANUAL — unclaimed**. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made.
 
 Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this evidence append. No source, test, migration, schema, fixture, config, deployment, or **#487 path** was changed by this evidence commit; the branch remains stopped before Phase D.
+## #486 final corrected revalidation — 2026-08-30
+
+**Evidence scope:** fresh focused revalidation of the corrected #486 Account Access and identity-lifecycle implementation at coordinator HEAD `32829092668e16a5c46a92f13e6c0354450de0a9`. This is one evidence-only append; all prior rows and evidence, including the historical `## #486 corrected focused evidence — 2026-08-29` section at `ffb2999…`, remain unchanged. No source, test, migration, schema, fixture, geometry config, deployment, screenshot, snapshot, or pixel-diff file was changed.
+
+### Authority reread
+
+Before validation, I reread `issue://486`, parent `issue://475`, `docs/specs/091-stackable-identity-backend.md`, `docs/specs/092-discord-identity-design-system-adoption.md`, approved `local://s4-phase-c-identity-integration-plan.md`, the full current `docs/specs/s4-phase-c-acceptance-trace.md`, `docs/adr/0042-discord-like-stackable-role-model.md`, and `docs/adr/0043-owned-civic-design-system-governance.md`. The checks below target only the final corrected #486 paths.
+
+### Provenance and exact runtimes
+
+- **Fresh child:** `/private/tmp/efcc-t486-evidence-final-corrected`, branch `evidence/486-final-corrected`, created with `git worktree add ... 32829092`; `git show` verified `32829092668e16a5c46a92f13e6c0354450de0a9` (`fix(identity): close remaining account access review findings`).
+- **Coordinator reference:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-phase-c`, branch `feat/s4-c-stackable-identity-integration`, exact HEAD `32829092668e16a5c46a92f13e6c0354450de0a9`.
+- **Runtime command:** `node --version && pnpm --version && pnpm --dir web exec vitest --version && pnpm --dir web exec wrangler --version && pnpm exec playwright --version && pnpm --dir web exec tsc --version && pnpm --dir web why miniflare --depth 5 && "$HOME/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" --version`
+- **Observed:** Node `v22.18.0`; pnpm `11.7.0`; Vitest `4.1.10`; Wrangler `4.127.1`; Playwright `1.62.1`; TypeScript `5.9.3`; direct web Miniflare `5.20260828.0-alpha`; transitive Miniflare `5.20260730.0-alpha` under `wrangler@4.118.0` / `@cloudflare/vitest-pool-workers@0.20.1`; pinned Chrome for Testing `151.0.7922.34` (Playwright revision `v1234`).
+
+### Required Context7 CLI library and docs lookups
+
+The required lookups used the Context7 CLI (`npx --yes ctx7@latest`), not MCP Context7:
+
+```text
+$ npx --yes ctx7@latest library radix-ui "Switch Root checked onCheckedChange disabled keyboard focus semantics"
+Library result used: /radix-ui/primitives
+$ npx --yes ctx7@latest docs /radix-ui/primitives "Switch Root checked onCheckedChange disabled role keyboard focus behavior"
+Useful section: Switch Root renders a button with role="switch", aria-checked,
+disabled/data-disabled state, data-state, and click/onCheckedChange behavior.
+
+$ npx --yes ctx7@latest library class-variance-authority "CVA variants composition type-safe class names"
+Library result used: /joe-bell/cva
+$ npx --yes ctx7@latest docs /joe-bell/cva "type-safe cva variants composition class variance authority"
+Useful section: cva base classes, variants, defaults, compound variants, and
+type-safe composition.
+
+$ npx --yes ctx7@latest library playwright "viewport CSS pixels locator boundingBox focus webServer"
+Library result used: /microsoft/playwright
+$ npx --yes ctx7@latest docs /microsoft/playwright "Locator boundingBox CSS pixels viewport focus keyboard press"
+Useful sections: Locator.boundingBox returns viewport-relative CSS-pixel
+rectangles; Locator.press focuses before key input; toBeFocused asserts focus.
+
+$ npx --yes ctx7@latest library "Cloudflare Workers" "D1Database prepared statements batch transactions"
+Library result used: /cloudflare/workers-sdk
+$ npx --yes ctx7@latest docs /cloudflare/workers-sdk "D1Database prepare bind batch transaction atomic"
+Useful section: prepare/bind statements are collected and passed to db.batch()
+for atomic D1 transactions.
+```
+
+### Focused checks and exact results
+
+#### Worker identity Account Access, handlers, schema, and role hierarchy
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts \
+    lib/identity/account-access.test.ts \
+    lib/identity/account-access-handlers.test.ts \
+    lib/identity/d1-schema.test.ts \
+    lib/identity/role-hierarchy.test.ts
+
+ RUN  v4.1.10 /private/tmp/efcc-t486-evidence-final-corrected/web
+ Test Files  4 passed (4)
+      Tests  84 passed (84)
+   Start at  00:48:43
+   Duration  7.65s (transform 860ms, setup 0ms, import 2.73s, tests 5.05s, environment 0ms)
+exit 0
+```
+
+This disposable local D1 run directly exercised eligible-account/private-field filtering, authorization before target disclosure, canonical self/forbidden outcomes, automatic baseline and scope provenance, atomic multi-identity assignment, authorized picker output, active duplicates, invalid-batch rollback, immutable revoke/re-add history, authoritative revoke/lifecycle impact, archive/restore without assignment recreation, terminal response replay, audit reasons/correlation, protected-schema constraints, duplicate assignment IDs, and changed-intent idempotency rejection. No remote, Apps Script, Google Sheets, Cloudflare production, or other external database write was made.
+
+#### Account Access/API/directory/role-hierarchy/Department/Programs components
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/account-access-panel.test.tsx \
+    lib/account-access-api.test.ts \
+    lib/account-directory-panel.test.tsx \
+    lib/identity/role-hierarchy-panel.test.tsx \
+    lib/programs/department-settings-panel.test.tsx \
+    lib/programs/programs-leaders-panel.test.tsx
+
+ RUN  v4.1.10 /private/tmp/efcc-t486-evidence-final-corrected/web
+ Test Files  6 passed (6)
+      Tests  71 passed (71)
+   Start at  00:48:45
+   Duration  7.71s (transform 2.72s, setup 1.89s, import 5.59s, tests 13.66s, environment 5.58s)
+exit 0
+```
+
+The direct component checks exercised Account Access scope groups, role-first and account-first entry, zero-assignment role assignment, authorized picker projection, atomic add/revoke review, authoritative revoke-preview refresh, lifecycle impact review, canonical URLs, route-state reset, DirectoryFrame retry/focus recovery, one visible live-region owner, persistent retry idempotency keys, concrete scope labels/history IDs, Account Directory behavior, Role Hierarchy focus/live-region behavior, and affected Department Settings / Programs Leaders states.
+
+#### Worker/web TypeScript
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json
+(no output)
+exit 0
+```
+
+#### Web production build
+
+```text
+$ pnpm --dir web build
+▲ Next.js 16.2.12 (Turbopack)
+✓ Compiled successfully in 1887ms
+✓ Generating static pages using 9 workers (18/18) in 190ms
+○  (Static)  prerendered as static content
+exit 0
+```
+
+The visible route table was `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, and `/scanner`; Next reported 18 static routes. The existing workspace-root/multiple-lockfile, no-cache, and telemetry notices did not fail the build.
+
+#### Shared W7 numeric geometry
+
+```text
+$ pnpm test:role-hierarchy-geometry
+Running 49 tests using 1 worker
+49 passed (42.4s)
+exit 0
+
+$ pnpm exec playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts
+Running 49 tests using 1 worker
+49 passed (35.8s)
+exit 0
+```
+
+The shared config matched `account-access-geometry.test.ts`, `permission-editor-geometry.test.ts`, and `role-hierarchy-geometry.test.ts` at W7 `320, 390, 600, 799, 800, 1024, 1440` CSS px. Account Access contributed 2 scenarios per width (**14/14 passed**), for **49/49 total** with 14 Permission Editor and 21 Role Hierarchy scenarios. Numeric checks covered no horizontal overflow, in-bounds content/actions, the Account Access search Input at least `44px` high, Button and Switch targets (Switch width/height at least `44px`), phone-dock clearance, `84px` phone reserve, the fixed-to-sticky `799px`/`800px` transition, and the Account Access add-review Sheet within the viewport. No screenshot, image snapshot, or pixel-diff test was used.
+
+### Corrected-review coverage
+
+The following source audit was checked against the exact corrected HEAD; source inspection is not substituted for the passing runtime checks:
+
+| Reviewer fix | Direct evidence |
+| --- | --- |
+| Auth-before-target and no private-data leakage | Worker/domain tests `authorizes Account Access and lifecycle before target disclosure` and unauthorized active-duplicate/absent-revoke cases; handler test `authorizes before revealing unknown targets or lifecycle state`; safe projection tests reject credential/phone/attendance/pastoral fields. Source seams: `account-access.ts:1080-1129,1343-1462,1500-1531,1741-1773`. |
+| Terminal response snapshot and immutable history | Worker `replays the original successful projection after response loss`, revoke/re-add fresh-event and scope-snapshot tests, D1 terminal-history tests; source seams: `account-access.ts:1196-1244,1297-1335,1891-1926,2271-2295`, `mutations.ts:383-385,495-500,1010-1071`. |
+| UI route state, focus, and live-region ownership | Component tests `clears account-scoped selection and dialogs when the route account changes`, `retries through the shared resource and focuses the settled state`, `keeps Account Access mutation feedback in one visible live region`, plus Role Hierarchy focus/live-region tests; source seams: `account-access-panel.tsx:320-587,784-815,1457-1490`, `directory-frame.tsx:242-268`. |
+| Role-first assignment/impact, zero-assignment role, and retry | Component tests `opens an identity-first role entry with every assigned account`, `identity-first entry offers assignment for a zero-assignment role`, `focuses identity-first detail and exposes retryable hierarchy errors`, and `loads authoritative lifecycle impact before identity-first archive`; identity-first lifecycle and assignment source seams: `account-access-panel.tsx:824-1055`. |
+| Authorized picker | Worker `returns a server-authorized assignment picker and lifecycle impact preview` and component `uses server-authorized account assignment options without loading role.read hierarchy`; source seam: `account-access.ts:945-1021`. |
+| Canonical 403/self errors | Handler `returns ROLE_FORBIDDEN for self-targeting a lower identity` and `authorizes before revealing unknown targets or lifecycle state`; canonical mappings are in `account-access-handlers.ts:56-175`. |
+| Authoritative revoke preview | Component `refreshes revoke preview before confirmation and uses its revision`; handler `previews lifecycle impact through the identity route`; source seams: `account-access-panel.tsx:642-678`, `account-access.ts:2023-2086`. |
+| Idempotency and duplicate IDs | Worker duplicate/no-second-audit, successful response-loss replay, D1 changed-intent key rejection, and fresh `assignmentId` after revoke/re-add; component same-key retryable-5xx test; source seams: `account-access.ts:1132-1147,1474-1485,1550-1576,1716-1727`, `mutations.ts:6-16,876-918`. |
+| Scope labels/history and audit reason | Worker scope snapshot preservation and `account_access_revoke` audit-reason assertions; component `renders concrete scope labels and unique dialog heading IDs`; source seams: `account-access.ts:581-616,1032-1063,1909-1932,2275-2287`. |
+
+### Manual gates, upstream separation, and scope
+
+- `C-486-M1` keyboard-only review and `C-486-M2` screen-reader review remain **MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion checks. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made.
+- The historical #485 Cloudflare-pool `EvalError: Code generation from strings disallowed for this context` remains the separate upstream infrastructure failure recorded in earlier #485 sections; it is not part of this #486 run, and no unsafe-eval bypass was used.
+- **Changed path:** `docs/specs/s4-phase-c-acceptance-trace.md` only. No #487 path, source, test, migration, schema, fixture, geometry config, deployment, or external database write changed. No #486 focused blocker occurred; the branch remains stopped before Phase D. The doc-only evidence commit SHA is returned with delivery.
