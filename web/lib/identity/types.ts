@@ -84,6 +84,9 @@ export interface RoleAssignmentRow {
   assignment_id: string;
   account_user_id: string;
   role_definition_id: string;
+  /** Immutable Role Definition scope captured when the assignment was granted. */
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
   granted_by: string;
   granted_at: string;
   revoked_by: string | null;

@@ -73,6 +73,7 @@ export type {
   RoleHierarchyDefinition,
   RoleHierarchyAction,
   RoleHierarchyActionAffordance,
+  RoleLifecycleActionAffordance,
   RoleHierarchyScopeOption,
   RoleHierarchyOrderTarget,
   RoleRenameInput,
@@ -140,6 +141,7 @@ export type {
   RoleDefinitionLifecycleInput,
   RoleDefinitionLifecycleResult,
   AccountAccessImpact,
+  AccountAccessLifecycleImpact,
 } from "./account-access";
 export type {
   RoleCategoryKey,

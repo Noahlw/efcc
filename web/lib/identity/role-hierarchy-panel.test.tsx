@@ -164,6 +164,7 @@ const VIEW: RoleHierarchyView = {
           isProtected: false,
           isArchived: false,
           assignmentCount: 0,
+          lifecycleActions: [{ action: "archive", label: "停用" }],
           grantCount: 0,
           actions: [],
           reorderActions: [{ action: "reorder", label: "調整順序" }],
@@ -283,7 +284,21 @@ describe(RoleHierarchyPanel, () => {
     });
     await userEvent.setup().click(access);
     expect(mocks.router.push).toHaveBeenCalledWith(
-      "/management?module=accounts&account=account-1&view=access&return=%2Fmanagement%3Fmodule%3Droles"
+      `/management?module=accounts&roleDefinition=${MANAGER_ROLE}&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D${MANAGER_ROLE}%26view%3Ddetail`
+    );
+  });
+  test("identity-first zero-assignment role still opens Account Access lifecycle entry", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=roles&role=018f3b8a-0000-7000-8000-1000000000bb&view=detail"
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    const access = await screen.findByRole("button", {
+      name: "管理已指派帳戶",
+    });
+    await userEvent.setup().click(access);
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      "/management?module=accounts&roleDefinition=018f3b8a-0000-7000-8000-1000000000bb&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D018f3b8a-0000-7000-8000-1000000000bb%26view%3Ddetail"
     );
   });
 

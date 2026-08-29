@@ -308,13 +308,42 @@ describe("#476 disposable D1 schema contract", () => {
         .prepare(
           `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
              VALUES ('018f3b8a-0000-7000-8000-aaaa00000001', ?, ?,
-                     ?, '2026-08-27T00:00:00.000Z', NULL, NULL, NULL)`
+                     ?, '2026-08-27T00:00:00.000Z', 'Department',
+                     '018f3b8a-0000-7000-8000-000000000002', NULL, NULL, NULL)`
         )
         .bind(dmUser, roleId, "E2E_DISPOSABLE_ADMIN")
         .run();
     }, "UNIQUE constraint failed");
+  });
+  test("D1 backfills assignment scope snapshots and keeps them immutable", async () => {
+    const snapshot = await readScalar<{
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT scope_kind, scope_id
+         FROM role_assignments
+        WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+          AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+          AND revoked_at IS NULL`
+    );
+    expect(snapshot).toEqual({
+      scope_kind: "Department",
+      scope_id: "018f3b8a-0000-7000-8000-000000000002",
+    });
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_assignments
+              SET scope_kind = 'Global', scope_id = NULL
+            WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+              AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+              AND revoked_at IS NULL`
+        )
+        .run();
+    }, "scope snapshot is immutable");
   });
 
   test("D1 rejects a grant whose capability is not in the closed catalog", async () => {
@@ -651,6 +680,8 @@ describe("#476 disposable D1 schema contract", () => {
           assignment_id: newAssignmentId,
           account_user_id: memberUser,
           role_definition_id: newRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
         },
       ],
       audit_summary: {
@@ -1030,6 +1061,8 @@ describe("#476 disposable D1 schema contract", () => {
           assignment_id: newAssignmentId,
           account_user_id: memberUser,
           role_definition_id: newRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
         },
       ],
       audit_summary: {
@@ -1097,9 +1130,11 @@ describe("#476 disposable D1 schema contract", () => {
         .prepare(
           `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
              VALUES ('018f3b8a-0000-7000-8000-1000000000d0-a2', ?, ?,
-                     ?, '2026-08-27T05:31:00.000Z', NULL, NULL, NULL)`
+                     ?, '2026-08-27T05:31:00.000Z', 'Program',
+                     '018f3b8a-0000-7000-8000-300000000001', NULL, NULL, NULL)`
         )
         .bind(memberUser, newRoleId, adminUser)
         .run();

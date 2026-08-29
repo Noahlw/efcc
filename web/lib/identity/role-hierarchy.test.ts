@@ -836,12 +836,16 @@ describe("#478 role hierarchy and rename contract", () => {
           assignment_id: `${actorRoleId}-${actor}`,
           account_user_id: actor,
           role_definition_id: actorRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-8000-300000000001",
         },
         {
           kind: "grant_assignment" as const,
           assignment_id: `${MEMBER_ROLE}-${actor}`,
           account_user_id: actor,
           role_definition_id: MEMBER_ROLE,
+          scope_kind: "Global" as const,
+          scope_id: null,
         },
       ],
       audit_summary: {
@@ -898,6 +902,8 @@ describe("#478 role hierarchy and rename contract", () => {
           assignment_id: `${customRoleId}-member`,
           account_user_id: MEMBER,
           role_definition_id: customRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-8000-300000000001",
         },
       ],
       audit_summary: {
@@ -984,8 +990,11 @@ describe("#478 role hierarchy and rename contract", () => {
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Program',
+                 '018f3b8a-0000-7000-8000-300000000001',
+                 NULL, NULL, NULL)`
       )
       .bind(
         `${scopedRoleId}-${scopedAccount}`,
@@ -1002,8 +1011,9 @@ describe("#478 role hierarchy and rename contract", () => {
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Global', NULL, NULL, NULL, NULL)`
       )
       .bind(
         `${MEMBER_ROLE}-${scopedAccount}`,
@@ -1828,8 +1838,11 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       .prepare(
         `INSERT INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Department',
+                 '018f3b8a-0000-7000-8000-000000000002',
+                 NULL, NULL, NULL)`
       )
       .bind(
         "b479-rescope-assignment",
@@ -2278,8 +2291,11 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .prepare(
           `INSERT OR IGNORE INTO role_assignments
              (assignment_id, account_user_id, role_definition_id,
-              granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-           VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           VALUES (?, ?, ?, ?, ?, 'Program',
+                   '018f3b8a-0000-7000-8000-300000000001',
+                   NULL, NULL, NULL)`
         )
         .bind(assignment, actor, PROGRAM_LEADER_ROLE, ADMIN, NOW),
     ]);

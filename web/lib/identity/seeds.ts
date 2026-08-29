@@ -466,15 +466,20 @@ export async function seedDisposableIdentity(
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                NULL, NULL, NULL
+           FROM role_definitions rd
+          WHERE rd.role_definition_id = ?`
       )
       .bind(
         id,
         assignment.account,
         assignment.roleDefinitionId,
         DISPOSABLE_ACCOUNTS.ADMIN.user_id,
-        CREATED_AT
+        CREATED_AT,
+        assignment.roleDefinitionId
       )
       .run();
   }

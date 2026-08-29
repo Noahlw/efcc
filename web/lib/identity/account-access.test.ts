@@ -9,6 +9,7 @@ import {
   searchEligibleAccounts,
 } from "./account-access";
 import { seedDisposableIdentity } from "./index";
+import { createRoleDefinition, rescopeRoleDefinition } from "./role-hierarchy";
 
 const ADMIN = "E2E_DISPOSABLE_ADMIN";
 const STAFF = "E2E_DISPOSABLE_STAFF";
@@ -69,6 +70,148 @@ describe("#486 Account Access domain", () => {
     ).toContain("program.enroll");
   });
 
+  test("rejects an unauthorized absent revoke before returning Account Access", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    await expect(
+      revokeAccountAssignments(testDb(), {
+        actor_user_id: MEMBER,
+        account_user_id: STAFF,
+        base_revision: before.revision,
+        role_definition_ids: [DEPARTMENT_ROLE],
+        idempotency_key: "account-access-red-unauthorized-absent-revoke",
+        now: "2026-08-29T00:00:30.000Z",
+        audit_id: "account-access-red-unauthorized-absent-revoke-audit",
+        correlation_id:
+          "account-access-red-unauthorized-absent-revoke-correlation",
+      })
+    ).rejects.toThrow("ROLE_FORBIDDEN");
+  });
+
+  test("rejects an unauthorized active duplicate before returning Account Access", async () => {
+    const revision = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: "E2E_DISPOSABLE_DM",
+      base_revision: revision?.revision ?? 1,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-unauthorized-duplicate-seed",
+      now: "2026-08-29T00:00:45.000Z",
+      audit_id: "account-access-red-unauthorized-duplicate-seed-audit",
+      correlation_id:
+        "account-access-red-unauthorized-duplicate-seed-correlation",
+    });
+    const before = await loadAccountAccess(
+      testDb(),
+      ADMIN,
+      "E2E_DISPOSABLE_DM"
+    );
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        actor_user_id: MEMBER,
+        account_user_id: "E2E_DISPOSABLE_DM",
+        base_revision: before.revision,
+        role_definition_ids: [DEPARTMENT_ROLE],
+        idempotency_key: "account-access-red-unauthorized-duplicate",
+        now: "2026-08-29T00:00:50.000Z",
+        audit_id: "account-access-red-unauthorized-duplicate-audit",
+        correlation_id: "account-access-red-unauthorized-duplicate-correlation",
+      })
+    ).rejects.toThrow("ROLE_FORBIDDEN");
+  });
+
+  test("preserves assignment scope snapshot after role rescope and revoke history", async () => {
+    const current = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    const created = await createRoleDefinition(testDb(), {
+      actor_user_id: ADMIN,
+      idempotency_key: "account-access-red-scope-snapshot-create",
+      base_revision: current?.revision ?? 1,
+      category_key: "Program",
+      label: "快照歷史測試身份組",
+      description: "",
+      scope_kind: "Program",
+      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+      now: "2026-08-29T00:00:55.000Z",
+      audit_id: "account-access-red-scope-snapshot-create-audit",
+      correlation_id: "account-access-red-scope-snapshot-create-correlation",
+    });
+    const added = await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: created.revision,
+      role_definition_ids: [created.roleDefinitionId],
+      idempotency_key: "account-access-red-scope-snapshot-add",
+      now: "2026-08-29T00:01:00.000Z",
+      audit_id: "account-access-red-scope-snapshot-add-audit",
+      correlation_id: "account-access-red-scope-snapshot-add-correlation",
+    });
+    const rescoped = await rescopeRoleDefinition(testDb(), {
+      actor_user_id: ADMIN,
+      idempotency_key: "account-access-red-scope-snapshot-rescope",
+      base_revision: added.revision,
+      role_definition_id: created.roleDefinitionId,
+      category_key: "Department",
+      scope_kind: "Department",
+      scope_id: "018f3b8a-0000-7000-8000-000000000002",
+      now: "2026-08-29T00:01:05.000Z",
+      audit_id: "account-access-red-scope-snapshot-rescope-audit",
+      correlation_id: "account-access-red-scope-snapshot-rescope-correlation",
+    });
+    expect(rescoped.scopeKind).toBe("Department");
+    const rescopeView = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const active = rescopeView.activeAssignments.find(
+      (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
+    );
+    expect(active).toMatchObject({
+      scopeKind: "Department",
+      scopeId: "018f3b8a-0000-7000-8000-000000000002",
+    });
+    const revoked = await revokeAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: rescopeView.revision,
+      role_definition_ids: [created.roleDefinitionId],
+      idempotency_key: "account-access-red-scope-snapshot-revoke",
+      now: "2026-08-29T00:01:10.000Z",
+      audit_id: "account-access-red-scope-snapshot-revoke-audit",
+      correlation_id: "account-access-red-scope-snapshot-revoke-correlation",
+    });
+    const history = revoked.revokedAssignments.find(
+      (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
+    );
+    expect(history).toMatchObject({
+      scopeKind: "Program",
+      scopeId: "018f3b8a-0000-7000-8000-300000000001",
+    });
+    const duplicateRevoke = await revokeAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: revoked.revision,
+      role_definition_ids: [created.roleDefinitionId],
+      idempotency_key: "account-access-red-scope-snapshot-duplicate-revoke",
+      now: "2026-08-29T00:01:15.000Z",
+      audit_id: "account-access-red-scope-snapshot-duplicate-revoke-audit",
+      correlation_id:
+        "account-access-red-scope-snapshot-duplicate-revoke-correlation",
+    });
+    expect(duplicateRevoke.duplicateRoleDefinitionIds).toEqual([
+      created.roleDefinitionId,
+    ]);
+    const audit = await testDb()
+      .prepare(
+        "SELECT action, outcome FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-scope-snapshot-duplicate-revoke-audit")
+      .first<{ action: string; outcome: string }>();
+    expect(audit).toEqual({
+      action: "ROLE_ASSIGNMENT_REVOKE",
+      outcome: "DUPLICATE",
+    });
+  });
+
   test("atomically adds several lower identities and reports active duplicates", async () => {
     const revision = await testDb()
       .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
@@ -91,6 +234,7 @@ describe("#486 Account Access domain", () => {
     expect(result.effectiveAccess.Department.length).toBeGreaterThan(0);
     expect(result.effectiveAccess.Program.length).toBeGreaterThan(0);
   });
+
   test("active identities are a named duplicate no-op and replay without a second audit", async () => {
     const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
     const result = await mutateAccountAssignments(testDb(), {
@@ -198,6 +342,20 @@ describe("#486 Account Access domain", () => {
 
   test("archives all live assignments and restores definition without assignments", async () => {
     const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(before.actions.archiveRoleDefinitionIds).toContain(PROGRAM_ROLE);
+    expect(before.lifecycleImpacts[PROGRAM_ROLE]).toMatchObject({
+      roleDefinitionId: PROGRAM_ROLE,
+      action: "archive",
+      label: "青少年查經帶領",
+    });
+    expect(
+      before.lifecycleImpacts[PROGRAM_ROLE]?.lost.Program.length
+    ).toBeGreaterThan(0);
+    expect(
+      before.lifecycleImpacts[PROGRAM_ROLE]?.retained.Global.some((grant) =>
+        grant.sources.includes("會友基礎")
+      )
+    ).toBe(true);
     const lifecycle = await mutateRoleDefinitionLifecycle(testDb(), {
       actor_user_id: ADMIN,
       role_definition_id: PROGRAM_ROLE,

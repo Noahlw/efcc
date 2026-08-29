@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AccountAccessPanel } from "@/app/management/account-access-panel";
+import { RpcError } from "@/lib/api";
 import type { AccountAccessView } from "@/lib/identity/account-access";
 import type { RoleHierarchyView } from "@/lib/identity/role-hierarchy";
 
@@ -63,8 +64,17 @@ const view: AccountAccessView = {
     Department: [],
     Program: [],
   },
+  lifecycleImpacts: {},
   revision: 3,
-  actions: { assign: true, revoke: false, archive: false, restore: false },
+  actions: {
+    assign: true,
+    revoke: false,
+    archive: false,
+    restore: false,
+    revokeRoleDefinitionIds: [],
+    archiveRoleDefinitionIds: [],
+    restoreRoleDefinitionIds: [],
+  },
 };
 const revokeView: AccountAccessView = {
   ...view,
@@ -94,7 +104,77 @@ const revokeView: AccountAccessView = {
       },
     ],
   },
-  actions: { assign: false, revoke: true, archive: false, restore: false },
+  actions: {
+    assign: false,
+    revoke: true,
+    archive: false,
+    restore: false,
+    revokeRoleDefinitionIds: ["role-lower"],
+    archiveRoleDefinitionIds: [],
+    restoreRoleDefinitionIds: [],
+  },
+};
+const lifecycleView: AccountAccessView = {
+  ...view,
+  activeAssignments: [
+    {
+      assignmentId: "assignment-role-a",
+      roleDefinitionId: "role-a",
+      label: "身份組甲",
+      scopeKind: "Global",
+      scopeId: null,
+      scopeLabel: null,
+      position: 4,
+      state: "ACTIVE",
+      grantedAt: "2026-08-29T00:00:00.000Z",
+      revokedAt: null,
+      revokedBy: null,
+      revokeReason: null,
+    },
+    {
+      assignmentId: "assignment-role-b",
+      roleDefinitionId: "role-b",
+      label: "身份組乙",
+      scopeKind: "Department",
+      scopeId: "department-a",
+      scopeLabel: "成人部門",
+      position: 5,
+      state: "ACTIVE",
+      grantedAt: "2026-08-29T00:00:00.000Z",
+      revokedAt: null,
+      revokedBy: null,
+      revokeReason: null,
+    },
+  ],
+  actions: {
+    assign: false,
+    revoke: true,
+    archive: true,
+    restore: false,
+    revokeRoleDefinitionIds: ["role-a", "role-b"],
+    archiveRoleDefinitionIds: ["role-a", "role-b"],
+    restoreRoleDefinitionIds: [],
+  },
+  lifecycleImpacts: {
+    "role-a": {
+      roleDefinitionId: "role-a",
+      label: "身份組甲",
+      action: "archive",
+      lost: view.effectiveAccess,
+      retained: { Global: [], Department: [], Program: [] },
+    },
+    "role-b": {
+      roleDefinitionId: "role-b",
+      label: "身份組乙",
+      action: "archive",
+      lost: {
+        Global: [],
+        Department: [],
+        Program: view.effectiveAccess.Global,
+      },
+      retained: view.effectiveAccess,
+    },
+  },
 };
 
 const hierarchy: RoleHierarchyView = {
@@ -106,7 +186,7 @@ const hierarchy: RoleHierarchyView = {
       label: "全教會",
       description: "",
       displayOrder: 0,
-      childCount: 1,
+      childCount: 2,
       createOptions: [],
       definitions: [
         {
@@ -125,12 +205,31 @@ const hierarchy: RoleHierarchyView = {
           actions: [],
           reorderActions: [],
         },
+        {
+          roleDefinitionId: "role-lower-2",
+          label: "部門助理",
+          description: "",
+          kind: "GLOBAL",
+          scopeKind: "Global",
+          scopeId: null,
+          scopeLabel: null,
+          position: 5,
+          isProtected: false,
+          isArchived: false,
+          assignmentCount: 0,
+          grantCount: 1,
+          actions: [],
+          reorderActions: [],
+        },
       ],
     },
   ],
 };
 
 beforeEach(() => {
+  mocks.searchParams = new URLSearchParams(
+    "module=accounts&account=target&view=access"
+  );
   mocks.getAccountAccess.mockResolvedValue(view);
   mocks.searchEligibleAccounts.mockResolvedValue({
     accounts: [],
@@ -181,6 +280,22 @@ describe("AccountAccessPanel", () => {
     expect(mocks.router.push).toHaveBeenCalledWith(
       expect.stringContaining("module=accounts&account=other&view=access")
     );
+  });
+
+  test("renders each authorized lifecycle role with its server impact", async () => {
+    const user = userEvent.setup();
+    mocks.getAccountAccess.mockResolvedValue(lifecycleView);
+    render(<AccountAccessPanel />);
+    expect(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "停用 身份組乙" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "停用 身份組乙" }));
+    expect(
+      screen.getByRole("heading", { name: "確認停用身份組？" })
+    ).toBeTruthy();
+    expect(screen.getByText("身份組乙")).toBeTruthy();
+    expect(screen.getAllByText("Global").length).toBeGreaterThan(0);
   });
   test("reviews and submits multiple identities atomically", async () => {
     const user = userEvent.setup();
@@ -240,5 +355,83 @@ describe("AccountAccessPanel", () => {
     expect(
       screen.queryByText(/credential|phone|attendance|pastoral/i)
     ).toBeNull();
+  });
+
+  test("retries through the shared resource and focuses the settled state", async () => {
+    const user = userEvent.setup();
+    mocks.getAccountAccess
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockRejectedValueOnce(new Error("second failure"));
+    render(<AccountAccessPanel />);
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "重試" }));
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("alert").closest("[data-account-access-state]")
+    );
+  });
+
+  test("rotates an idempotency key after a server error before a different mutation", async () => {
+    const user = userEvent.setup();
+    mocks.mutateAccountAssignments
+      .mockRejectedValueOnce(
+        new RpcError({
+          status: 403,
+          code: "ROLE_FORBIDDEN",
+          title: "Forbidden",
+          detail: "forbidden",
+        })
+      )
+      .mockResolvedValueOnce({
+        ...view,
+        idempotent: false,
+        duplicateRoleDefinitionIds: [],
+      });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() =>
+      expect(mocks.mutateAccountAssignments).toHaveBeenCalledTimes(1)
+    );
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("switch", { name: "新增 課程協調者" }));
+    await user.click(screen.getByRole("switch", { name: "新增 部門助理" }));
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() =>
+      expect(mocks.mutateAccountAssignments).toHaveBeenCalledTimes(2)
+    );
+    const firstKey = mocks.mutateAccountAssignments.mock.calls[0]?.[2];
+    const secondKey = mocks.mutateAccountAssignments.mock.calls[1]?.[2];
+    expect(firstKey).toBeTypeOf("string");
+    expect(secondKey).toBeTypeOf("string");
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  test("opens an identity-first role entry with every assigned account", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.getRoleHierarchy.mockResolvedValue({
+      ...hierarchy,
+      categories: hierarchy.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) => ({
+          ...definition,
+          assignedAccountUserIds: ["account-1", "account-2"],
+        })),
+      })),
+    });
+    render(<AccountAccessPanel />);
+    expect(
+      await screen.findByRole("heading", { name: "課程協調者" })
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "account-1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "account-2" })).toBeTruthy();
   });
 });

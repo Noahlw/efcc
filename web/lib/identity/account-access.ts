@@ -75,6 +75,18 @@ export interface AccountAccessActions {
   revoke: boolean;
   archive: boolean;
   restore: boolean;
+  /** Exact role IDs the server authorized for each operation. */
+  revokeRoleDefinitionIds: string[];
+  archiveRoleDefinitionIds: string[];
+  restoreRoleDefinitionIds: string[];
+}
+
+export interface AccountAccessLifecycleImpact {
+  roleDefinitionId: string;
+  label: string;
+  action: "archive" | "restore";
+  lost: EffectiveAccessGroups;
+  retained: EffectiveAccessGroups;
 }
 
 export interface AccountAccessView {
@@ -84,6 +96,8 @@ export interface AccountAccessView {
   /** Alias retained in the projection so callers can name the audit/history tab. */
   assignmentHistory: AccountAccessIdentity[];
   effectiveAccess: EffectiveAccessGroups;
+  /** Per-role impact computed from normalized grants and assignments. */
+  lifecycleImpacts: Record<string, AccountAccessLifecycleImpact>;
   revision: number;
   actions: AccountAccessActions;
 }
@@ -160,6 +174,8 @@ interface AssignmentRecord {
   assignment_id: string;
   account_user_id: string;
   role_definition_id: string;
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
   granted_by: string;
   granted_at: string;
   revoked_by: string | null;
@@ -195,6 +211,7 @@ interface ProjectionOptions {
   stagedAdds?: readonly StagedAdd[];
   stagedRevokes?: readonly StagedRevoke[];
   revision?: number;
+  includeLifecycleImpacts?: boolean;
 }
 
 interface StoredMutation {
@@ -275,13 +292,27 @@ function roleIdentity(
   role: RoleRecord,
   names: ScopeNames
 ): AccountAccessIdentity {
+  const snapshot = {
+    scope_kind: assignment.scope_kind,
+    scope_id: assignment.scope_id,
+  };
+  const scope =
+    assignment.revoked_at === null
+      ? { scope_kind: role.scope_kind, scope_id: role.scope_id }
+      : snapshot;
   return {
     assignmentId: assignment.assignment_id,
     roleDefinitionId: role.role_definition_id,
     label: role.label,
-    scopeKind: role.scope_kind,
-    scopeId: role.scope_id,
-    scopeLabel: scopeLabel(role, names),
+    scopeKind: scope.scope_kind,
+    scopeId: scope.scope_id,
+    scopeLabel: scopeLabel(
+      {
+        ...role,
+        ...scope,
+      },
+      names
+    ),
     position: role.position,
     state: assignment.revoked_at === null ? "ACTIVE" : "REVOKED",
     grantedAt: assignment.granted_at,
@@ -527,7 +558,8 @@ async function readAssignments(
   const rows = await db
     .prepare(
       `SELECT assignment_id, account_user_id, role_definition_id,
-              granted_by, granted_at, revoked_by, revoked_at, revoke_reason
+              scope_kind, scope_id, granted_by, granted_at,
+              revoked_by, revoked_at, revoke_reason
          FROM role_assignments
         WHERE account_user_id = ? AND revoked_at IS ${revoked ? "NOT NULL" : "NULL"}
         ORDER BY ${revoked ? "revoked_at DESC, granted_at DESC" : "granted_at ASC"}, assignment_id ASC`
@@ -689,6 +721,77 @@ async function assertRoleManageable(
   }
 }
 
+async function lifecycleImpactsForProjection(
+  db: D1Database,
+  actorUserId: string,
+  accountUserId: string,
+  base: AccountAccessView,
+  activeAssignments: readonly AssignmentRecord[],
+  history: readonly AssignmentRecord[],
+  rolesById: ReadonlyMap<string, RoleRecord>,
+  revision: number
+): Promise<Record<string, AccountAccessLifecycleImpact>> {
+  const impacts: Record<string, AccountAccessLifecycleImpact> = {};
+  const now = new Date().toISOString();
+  const archivedRoleIds = new Set<string>();
+  for (const assignment of activeAssignments) {
+    const role = rolesById.get(assignment.role_definition_id);
+    if (
+      !role ||
+      role.is_protected === 1 ||
+      role.is_archived === 1 ||
+      archivedRoleIds.has(role.role_definition_id)
+    ) {
+      continue;
+    }
+    const after = await readProjection(db, actorUserId, accountUserId, {
+      stagedRevokes: [
+        {
+          assignment,
+          role,
+          revokedAt: now,
+          revokedBy: actorUserId,
+          reason: "role_archived",
+        },
+      ],
+      revision,
+      includeLifecycleImpacts: false,
+    });
+    impacts[role.role_definition_id] = {
+      roleDefinitionId: role.role_definition_id,
+      label: role.label,
+      action: "archive",
+      lost: differenceGroups(base.effectiveAccess, after.effectiveAccess),
+      retained: intersectGroups(base.effectiveAccess, after.effectiveAccess),
+    };
+    archivedRoleIds.add(role.role_definition_id);
+  }
+  for (const assignment of history) {
+    const role = rolesById.get(assignment.role_definition_id);
+    if (
+      !role ||
+      role.is_protected === 1 ||
+      role.is_archived !== 1 ||
+      archivedRoleIds.has(role.role_definition_id)
+    ) {
+      continue;
+    }
+    const after = await readProjection(db, actorUserId, accountUserId, {
+      revision,
+      includeLifecycleImpacts: false,
+    });
+    impacts[role.role_definition_id] = {
+      roleDefinitionId: role.role_definition_id,
+      label: role.label,
+      action: "restore",
+      lost: differenceGroups(base.effectiveAccess, after.effectiveAccess),
+      retained: intersectGroups(base.effectiveAccess, after.effectiveAccess),
+    };
+    archivedRoleIds.add(role.role_definition_id);
+  }
+  return impacts;
+}
+
 async function readProjection(
   db: D1Database,
   actorUserId: string,
@@ -719,6 +822,8 @@ async function readProjection(
       assignment_id: staged.assignmentId,
       account_user_id: accountUserId,
       role_definition_id: staged.role.role_definition_id,
+      scope_kind: staged.role.scope_kind,
+      scope_id: staged.role.scope_id,
       granted_by: actorUserId,
       granted_at: staged.grantedAt,
       revoked_by: null,
@@ -759,45 +864,54 @@ async function readProjection(
   const actorRoles = await loadActorRoles(db, actorUserId);
   const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
   const canAssign = actorCapabilities["role.assign"] === true;
-  const canRevoke = active.some((assignment) => {
-    const role = rolesById.get(assignment.role_definition_id);
-    return (
-      role !== undefined &&
-      role.is_archived === 0 &&
-      role.position > (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY) &&
-      withinActorScope(actorRoles, role)
+  const authorizedRoleIds = async (
+    assignments: readonly AssignmentRecord[],
+    capability: "role.revoke" | "role.delete",
+    allowArchived = false
+  ): Promise<string[]> => {
+    const ids = await Promise.all(
+      assignments.map(async (assignment) => {
+        const role = rolesById.get(assignment.role_definition_id);
+        if (!role) {
+          return null;
+        }
+        try {
+          await assertRoleManageable(
+            db,
+            actorUserId,
+            actorRoles,
+            role,
+            capability,
+            allowArchived
+          );
+          return role.role_definition_id;
+        } catch {
+          return null;
+        }
+      })
     );
-  });
-  const canArchive = active.some((assignment) => {
-    const role = rolesById.get(assignment.role_definition_id);
-    return (
-      role !== undefined &&
-      !role.is_protected &&
-      role.is_archived === 0 &&
-      role.position > (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY) &&
-      withinActorScope(actorRoles, role) &&
-      actorCapabilities["role.delete"] === true
-    );
-  });
-  const canRestore = history.some((assignment) => {
-    const role = rolesById.get(assignment.role_definition_id);
-    return (
-      role !== undefined &&
-      !role.is_protected &&
-      role.is_archived === 1 &&
-      role.position > (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY) &&
-      withinActorScope(actorRoles, role) &&
-      actorCapabilities["role.delete"] === true
-    );
-  });
+    return [...new Set(ids.filter((id): id is string => id !== null))];
+  };
+  const [
+    revokeRoleDefinitionIds,
+    archiveRoleDefinitionIds,
+    restoreRoleDefinitionIds,
+  ] = await Promise.all([
+    authorizedRoleIds(active, "role.revoke"),
+    authorizedRoleIds(active, "role.delete"),
+    authorizedRoleIds(history, "role.delete", true),
+  ]);
   const actions: AccountAccessActions = {
     assign: canAssign,
-    revoke: canRevoke && actorCapabilities["role.revoke"] === true,
-    archive: canArchive,
-    restore: canRestore,
+    revoke: revokeRoleDefinitionIds.length > 0,
+    archive: archiveRoleDefinitionIds.length > 0,
+    restore: restoreRoleDefinitionIds.length > 0,
+    revokeRoleDefinitionIds,
+    archiveRoleDefinitionIds,
+    restoreRoleDefinitionIds,
   };
   const projectionRevision = options.revision ?? revision;
-  return {
+  const projection: AccountAccessView = {
     account: asAccount(account),
     activeAssignments: active
       .map((assignment) => {
@@ -825,9 +939,23 @@ async function readProjection(
         (identity): identity is AccountAccessIdentity => identity !== null
       ),
     effectiveAccess: resolveEffectiveAccess(active, rolesById, grants, names),
+    lifecycleImpacts: {},
     revision: projectionRevision,
     actions,
   };
+  if (options.includeLifecycleImpacts !== false) {
+    projection.lifecycleImpacts = await lifecycleImpactsForProjection(
+      db,
+      actorUserId,
+      accountUserId,
+      projection,
+      active,
+      history,
+      rolesById,
+      projectionRevision
+    );
+  }
+  return projection;
 }
 
 async function assertAccountAccessRead(
@@ -1046,7 +1174,8 @@ async function duplicateResult(
   input: AccountAccessMutationInput,
   fingerprint: string,
   view: AccountAccessView,
-  duplicateRoleDefinitionIds: string[]
+  duplicateRoleDefinitionIds: string[],
+  auditAction: "ROLE_ASSIGNMENT_GRANT" | "ROLE_ASSIGNMENT_REVOKE"
 ): Promise<AccountAccessMutationResult> {
   const resultJson = JSON.stringify({
     requestId: input.correlation_id,
@@ -1064,7 +1193,7 @@ async function duplicateResult(
       correlation_id: input.correlation_id,
       desired: [],
       audit_summary: {
-        action: "ROLE_ASSIGNMENT_GRANT",
+        action: auditAction,
         entity_type: "account",
         entity_id: input.account_user_id,
         reason: "ROLE_ASSIGNMENT_DUPLICATE",
@@ -1290,6 +1419,8 @@ export async function mutateAccountAssignments(
     assignment_id: string;
     account_user_id: string;
     role_definition_id: string;
+    scope_kind: RoleScopeKind;
+    scope_id: string | null;
   }[] = [];
   try {
     for (const roleId of roleIds) {
@@ -1297,19 +1428,9 @@ export async function mutateAccountAssignments(
       if (!role) {
         throw new RoleTargetNotFoundError();
       }
-      if (adminRole(role)) {
-        throw new RoleAdminProtectedError();
-      }
-      if (baselineRole(role)) {
-        throw new RoleBaselineProtectedError();
-      }
-      if (role.is_archived === 1) {
-        throw new RoleArchivedError();
-      }
-      if (activeIds.has(roleId)) {
-        duplicates.push(roleId);
-        continue;
-      }
+      // Authorize every requested role before classifying an active duplicate.
+      // A no-op must not disclose the target projection to an unauthorized
+      // actor or bypass protected/archive/position/scope checks.
       await assertRoleManageable(
         db,
         input.actor_user_id,
@@ -1317,6 +1438,10 @@ export async function mutateAccountAssignments(
         role,
         "role.assign"
       );
+      if (activeIds.has(roleId)) {
+        duplicates.push(roleId);
+        continue;
+      }
       const assignmentId = crypto.randomUUID();
       additions.push({ assignmentId, role, grantedAt: input.now });
       desired.push({
@@ -1324,6 +1449,8 @@ export async function mutateAccountAssignments(
         assignment_id: assignmentId,
         account_user_id: input.account_user_id,
         role_definition_id: role.role_definition_id,
+        scope_kind: role.scope_kind,
+        scope_id: role.scope_id,
       });
     }
   } catch (error) {
@@ -1383,7 +1510,14 @@ export async function mutateAccountAssignments(
     input.account_user_id
   );
   if (desired.length === 0) {
-    return duplicateResult(db, input, fingerprint, viewBefore, duplicates);
+    return duplicateResult(
+      db,
+      input,
+      fingerprint,
+      viewBefore,
+      duplicates,
+      "ROLE_ASSIGNMENT_GRANT"
+    );
   }
   const projected = await readProjection(
     db,
@@ -1521,17 +1655,7 @@ export async function revokeAccountAssignments(
       if (!role) {
         throw new RoleTargetNotFoundError();
       }
-      if (adminRole(role)) {
-        throw new RoleAdminProtectedError();
-      }
-      if (baselineRole(role)) {
-        throw new RoleBaselineProtectedError();
-      }
-      const assignment = activeByRole.get(roleId);
-      if (!assignment) {
-        noops.push(roleId);
-        continue;
-      }
+      // An absent assignment is still an authorization-sensitive no-op.
       await assertRoleManageable(
         db,
         input.actor_user_id,
@@ -1539,6 +1663,11 @@ export async function revokeAccountAssignments(
         role,
         "role.revoke"
       );
+      const assignment = activeByRole.get(roleId);
+      if (!assignment) {
+        noops.push(roleId);
+        continue;
+      }
       staged.push({
         assignment,
         role,
@@ -1607,7 +1736,14 @@ export async function revokeAccountAssignments(
     input.account_user_id
   );
   if (desired.length === 0) {
-    return duplicateResult(db, input, fingerprint, before, noops);
+    return duplicateResult(
+      db,
+      input,
+      fingerprint,
+      before,
+      noops,
+      "ROLE_ASSIGNMENT_REVOKE"
+    );
   }
   const projected = await readProjection(
     db,
@@ -1706,7 +1842,8 @@ async function lifecycleImpact(
     const before = await readProjection(
       db,
       actorUserId,
-      assignment.account_user_id
+      assignment.account_user_id,
+      { includeLifecycleImpacts: false }
     );
     const role = await readRole(db, roleDefinitionId);
     if (!role) {
@@ -1727,6 +1864,7 @@ async function lifecycleImpact(
           },
         ],
         revision,
+        includeLifecycleImpacts: false,
       }
     );
     impacts.push({
@@ -1855,7 +1993,8 @@ export async function mutateRoleDefinitionLifecycle(
   const activeAssignments = await db
     .prepare(
       `SELECT assignment_id, account_user_id, role_definition_id,
-              granted_by, granted_at, revoked_by, revoked_at, revoke_reason
+              scope_kind, scope_id, granted_by, granted_at,
+              revoked_by, revoked_at, revoke_reason
          FROM role_assignments
         WHERE role_definition_id = ? AND revoked_at IS NULL`
     )

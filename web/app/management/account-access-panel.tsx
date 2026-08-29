@@ -34,6 +34,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { RpcError } from "@/lib/api";
 import type {
+  AccountAccessLifecycleImpact,
   AccountAccessMutationResult,
   AccountAccessView,
   EffectiveAccessGroups,
@@ -107,6 +108,20 @@ function statusKind(error: unknown): "error" | "conflict" {
     ? "conflict"
     : "error";
 }
+function preservesMutationKey(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return false;
+  }
+  const status = error.problem.status;
+  return (
+    status === 0 ||
+    error.problem.code === "NETWORK_ERROR" ||
+    (error.problem.code === "MALFORMED_RESPONSE" &&
+      status !== undefined &&
+      status >= 200 &&
+      status < 300)
+  );
+}
 
 function roleScopeLabel(
   role: Pick<RoleHierarchyDefinition, "scopeLabel">
@@ -161,17 +176,19 @@ function revokePreview(
 const Group = ({
   label,
   grants,
+  idPrefix,
 }: {
   label: keyof EffectiveAccessGroups;
   grants: EffectiveAccessGroups[keyof EffectiveAccessGroups];
+  idPrefix?: string;
 }) => (
   <section
-    aria-labelledby={`account-access-${label.toLowerCase()}-title`}
+    aria-labelledby={`${idPrefix ?? "account-access"}-${label.toLowerCase()}-title`}
     className="min-w-0"
   >
     <h3
       className="m-0 text-[0.95rem] font-extrabold"
-      id={`account-access-${label.toLowerCase()}-title`}
+      id={`${idPrefix ?? "account-access"}-${label.toLowerCase()}-title`}
     >
       {label}
     </h3>
@@ -200,6 +217,63 @@ const Group = ({
   </section>
 );
 
+const ImpactGroups = ({ impact }: { impact: AccountAccessLifecycleImpact }) => (
+  <div className="grid min-w-0 gap-3">
+    <strong className="wrap-anywhere block">
+      {impact.action === "archive" ? "停用影響" : "恢復影響"}：{impact.label}
+    </strong>
+    <section aria-labelledby="account-access-impact-lost-title">
+      <h4
+        className="m-0 text-sm font-extrabold"
+        id="account-access-impact-lost-title"
+      >
+        可能失去
+      </h4>
+      <div className="mt-2 grid min-w-0 gap-3">
+        <Group
+          idPrefix="account-access-impact-lost"
+          label="Global"
+          grants={impact.lost.Global}
+        />
+        <Group
+          idPrefix="account-access-impact-lost"
+          label="Department"
+          grants={impact.lost.Department}
+        />
+        <Group
+          idPrefix="account-access-impact-lost"
+          label="Program"
+          grants={impact.lost.Program}
+        />
+      </div>
+    </section>
+    <section aria-labelledby="account-access-impact-retained-title">
+      <h4
+        className="m-0 text-sm font-extrabold"
+        id="account-access-impact-retained-title"
+      >
+        保留
+      </h4>
+      <div className="mt-2 grid min-w-0 gap-3">
+        <Group
+          idPrefix="account-access-impact-retained"
+          label="Global"
+          grants={impact.retained.Global}
+        />
+        <Group
+          idPrefix="account-access-impact-retained"
+          label="Department"
+          grants={impact.retained.Department}
+        />
+        <Group
+          idPrefix="account-access-impact-retained"
+          label="Program"
+          grants={impact.retained.Program}
+        />
+      </div>
+    </section>
+  </div>
+);
 interface EligibleAccount {
   userId: string;
   name: string;
@@ -218,10 +292,12 @@ export const AccountAccessPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const accountUserId = searchParams.get("account");
+  const roleDefinitionId = searchParams.get("roleDefinition");
   const viewParam = searchParams.get("view");
-  const stateRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const mutationKeyRef = useRef<string | null>(null);
+  const mutationIntentRef = useRef<string | null>(null);
   const [view, setView] = useState<AccountAccessView | null>(null);
   const [hierarchy, setHierarchy] = useState<RoleHierarchyView | null>(null);
   const [search, setSearch] = useState("");
@@ -244,6 +320,20 @@ export const AccountAccessPanel = () => {
   const [retryKey, setRetryKey] = useState(0);
   const [mutating, setMutating] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const resetMutationKey = () => {
+    mutationKeyRef.current = null;
+    mutationIntentRef.current = null;
+  };
+  const mutationKeyFor = (intent: string): string => {
+    if (
+      mutationKeyRef.current === null ||
+      mutationIntentRef.current !== intent
+    ) {
+      mutationKeyRef.current = crypto.randomUUID();
+      mutationIntentRef.current = intent;
+    }
+    return mutationKeyRef.current;
+  };
   const accountResource = useAsyncResource<
     AccountAccessView,
     AccountResourceState
@@ -271,11 +361,16 @@ export const AccountAccessPanel = () => {
   );
 
   useEffect(() => {
+    mutationKeyRef.current = null;
+    mutationIntentRef.current = null;
+  }, [accountUserId, roleDefinitionId]);
+
+  useEffect(() => {
     if (!accountUserId || viewParam !== "access") return;
     setView(null);
     setStatus(null);
     void accountResource.run();
-  }, [accountResource.run, accountUserId, retryKey, viewParam]);
+  }, [accountResource.run, accountUserId, viewParam]);
 
   useEffect(() => {
     if (accountResource.state.kind === "ready") {
@@ -296,7 +391,7 @@ export const AccountAccessPanel = () => {
   }, [accountResource.state, router]);
 
   useEffect(() => {
-    if (!accountUserId || viewParam !== "access") return;
+    if ((!accountUserId && !roleDefinitionId) || viewParam !== "access") return;
     let current = true;
     void getRoleHierarchy()
       .then((result) => {
@@ -308,7 +403,7 @@ export const AccountAccessPanel = () => {
     return () => {
       current = false;
     };
-  }, [accountUserId, viewParam]);
+  }, [accountUserId, roleDefinitionId, viewParam]);
 
   useEffect(() => {
     if (!accountUserId || viewParam !== "access") return;
@@ -364,6 +459,10 @@ export const AccountAccessPanel = () => {
   const selectedRoles = assignableRoles.filter((role) =>
     selectedIds.includes(role.roleDefinitionId)
   );
+  const roleDefinition = hierarchy?.categories
+    .flatMap((category) => category.definitions)
+    .find((role) => role.roleDefinitionId === roleDefinitionId);
+  const roleFirst = !accountUserId && roleDefinitionId !== null;
   const revokeAssignment = view?.activeAssignments.find(
     (assignment) => assignment.roleDefinitionId === revokeRoleId
   );
@@ -371,20 +470,24 @@ export const AccountAccessPanel = () => {
     revokeAssignment && view
       ? revokePreview(view.effectiveAccess, revokeAssignment.label)
       : { lost: EMPTY_GROUPS, retained: EMPTY_GROUPS };
-  const lifecycleAssignment = lifecycleRoleId
-    ? view?.activeAssignments.find(
-        (assignment) => assignment.roleDefinitionId === lifecycleRoleId
-      )
-    : view?.activeAssignments[0];
-  const lifecycleHistory = lifecycleRoleId
-    ? view?.revokedAssignments.find(
-        (assignment) => assignment.roleDefinitionId === lifecycleRoleId
-      )
-    : view?.revokedAssignments[0];
+  const archiveRoleDefinitionIds = view?.actions.archiveRoleDefinitionIds ?? [];
+  const restoreRoleDefinitionIds = view?.actions.restoreRoleDefinitionIds ?? [];
+  const lifecycleAssignments =
+    view?.activeAssignments.filter((assignment) =>
+      archiveRoleDefinitionIds.includes(assignment.roleDefinitionId)
+    ) ?? [];
+  const lifecycleHistory =
+    view?.revokedAssignments.filter((assignment) =>
+      restoreRoleDefinitionIds.includes(assignment.roleDefinitionId)
+    ) ?? [];
+  const lifecycleImpact = lifecycleRoleId
+    ? view?.lifecycleImpacts[lifecycleRoleId]
+    : undefined;
 
   const goBack = () => router.replace(returnHref(searchParams.get("return")));
 
   const toggleRole = (roleId: string, checked: boolean) => {
+    resetMutationKey();
     setSelectedIds((current) =>
       checked
         ? [...new Set([...current, roleId])]
@@ -397,7 +500,10 @@ export const AccountAccessPanel = () => {
     if (!view || !accountUserId || selectedIds.length === 0) return;
     setMutating(true);
     setStatus(null);
-    mutationKeyRef.current ??= crypto.randomUUID();
+    const roleIds = [...selectedIds].sort().join(",");
+    const key = mutationKeyFor(
+      `grant|${accountUserId}|${view.revision}|${roleIds}`
+    );
     try {
       const result = await mutateAccountAssignments(
         accountUserId,
@@ -405,12 +511,12 @@ export const AccountAccessPanel = () => {
           baseRevision: view.revision,
           roleDefinitionIds: selectedIds,
         },
-        mutationKeyRef.current
+        key
       );
       setView(result);
       setSelectedIds([]);
       setReviewOpen(false);
-      mutationKeyRef.current = null;
+      resetMutationKey();
       setStatus({
         kind: "success",
         message:
@@ -420,6 +526,9 @@ export const AccountAccessPanel = () => {
       });
       announce("身份組已更新");
     } catch (error) {
+      if (!preservesMutationKey(error)) {
+        resetMutationKey();
+      }
       const message = errorMessage(error);
       setStatus({ kind: statusKind(error), message });
     } finally {
@@ -431,7 +540,9 @@ export const AccountAccessPanel = () => {
     if (!view || !accountUserId || !revokeRoleId) return;
     setMutating(true);
     setStatus(null);
-    mutationKeyRef.current ??= crypto.randomUUID();
+    const key = mutationKeyFor(
+      `revoke|${accountUserId}|${view.revision}|${revokeRoleId}`
+    );
     try {
       const result = await revokeAccountAssignments(
         accountUserId,
@@ -439,17 +550,20 @@ export const AccountAccessPanel = () => {
           baseRevision: view.revision,
           roleDefinitionIds: [revokeRoleId],
         },
-        mutationKeyRef.current
+        key
       );
       setView(result);
       setRevokeRoleId(null);
-      mutationKeyRef.current = null;
+      resetMutationKey();
       setStatus({
         kind: "success",
         message: "身份組已撤銷，歷史記錄仍然保留。",
       });
       announce("身份組已撤銷");
     } catch (error) {
+      if (!preservesMutationKey(error)) {
+        resetMutationKey();
+      }
       setStatus({ kind: statusKind(error), message: errorMessage(error) });
     } finally {
       setMutating(false);
@@ -457,20 +571,24 @@ export const AccountAccessPanel = () => {
   };
 
   const confirmLifecycle = async () => {
-    if (!view || !lifecycleRoleId) return;
+    if (!lifecycleRoleId) return;
+    const baseRevision = view?.revision ?? hierarchy?.revision;
+    if (baseRevision === undefined) return;
     setMutating(true);
     setStatus(null);
-    mutationKeyRef.current ??= crypto.randomUUID();
+    const key = mutationKeyFor(
+      `lifecycle|${lifecycleAction}|${lifecycleRoleId}|${baseRevision}`
+    );
     try {
       const result = await updateRoleDefinitionLifecycle(
         lifecycleRoleId,
         {
           action: lifecycleAction,
-          baseRevision: view.revision,
+          baseRevision,
         },
-        mutationKeyRef.current
+        key
       );
-      mutationKeyRef.current = null;
+      resetMutationKey();
       setLifecycleRoleId(null);
       setStatus({
         kind: "success",
@@ -480,19 +598,38 @@ export const AccountAccessPanel = () => {
             : "身份組已恢復；歷史指派沒有自動重新啟用。",
       });
       announce(lifecycleAction === "archive" ? "身份組已停用" : "身份組已恢復");
-      if (accountUserId) setView(await getAccountAccess(accountUserId));
+      if (accountUserId) {
+        setView(await getAccountAccess(accountUserId));
+      } else {
+        setHierarchy(await getRoleHierarchy());
+      }
       void result;
     } catch (error) {
+      if (!preservesMutationKey(error)) {
+        resetMutationKey();
+      }
       setStatus({ kind: statusKind(error), message: errorMessage(error) });
     } finally {
       setMutating(false);
     }
   };
 
-  if (!accountUserId || viewParam !== "access") {
+  const retryAccount = () => {
+    setRetryKey((key) => key + 1);
+    accountResource.retry();
+  };
+
+  if ((!accountUserId && !roleDefinitionId) || viewParam !== "access") {
     return (
       <section className={panelVariants({ mode: "safe" })}>
-        <div className={stateClass} ref={stateRef} role="status" tabIndex={-1}>
+        <div
+          className={stateClass}
+          ref={(node) => {
+            stateRef.current = node;
+          }}
+          role="status"
+          tabIndex={-1}
+        >
           <h1 className="m-0 text-xl font-extrabold">帳戶權限</h1>
           <p className="m-0">請從帳戶名錄選擇一個帳戶。</p>
           <Button
@@ -513,6 +650,151 @@ export const AccountAccessPanel = () => {
   const failed = resourceState.kind === "error";
   const loadError =
     resourceState.kind === "error" ? resourceState.message : null;
+  const roleLifecycleActions = roleDefinition?.lifecycleActions ?? [];
+  const roleFirstDetail = roleFirst ? (
+    hierarchy === null ? (
+      <section
+        className={stateClass}
+        data-account-access-state
+        ref={stateRef}
+        role="status"
+        tabIndex={-1}
+      >
+        正在載入身份組…
+      </section>
+    ) : !roleDefinition ? (
+      <section
+        className={stateClass}
+        data-account-access-state
+        ref={stateRef}
+        role="alert"
+        tabIndex={-1}
+      >
+        <strong>找不到指定的身份組。</strong>
+        <Button
+          className={actionClass}
+          onClick={goBack}
+          type="button"
+          variant="outline"
+        >
+          返回身份組列表
+        </Button>
+      </section>
+    ) : (
+      <article
+        aria-labelledby="account-access-role-title"
+        className={cn(
+          "grid min-w-0 gap-[var(--space-4)]",
+          panelVariants({ mode: "detail" })
+        )}
+        ref={detailRef}
+        tabIndex={-1}
+      >
+        <header className={cardClass}>
+          <Button
+            className="mb-3 min-h-11 px-3"
+            onClick={goBack}
+            type="button"
+            variant="ghost"
+          >
+            ‹ 返回
+          </Button>
+          <span className="text-xs font-extrabold tracking-[0.08em] text-[var(--accent)]">
+            ACCOUNT ACCESS
+          </span>
+          <h1
+            className="m-0 mt-1 wrap-anywhere text-[1.45rem] font-extrabold"
+            id="account-access-role-title"
+          >
+            {roleDefinition.label}
+          </h1>
+          <p className="m-0 mt-1 wrap-anywhere text-sm text-[var(--ink-muted)]">
+            {roleScopeLabel(roleDefinition)} · 目前版本：{hierarchy.revision}
+          </p>
+          {status && (
+            <p
+              aria-live="polite"
+              className="m-0 mt-3 wrap-anywhere rounded-[var(--radius-sm)] border p-3"
+              role={status.kind === "success" ? "status" : "alert"}
+            >
+              {status.message}
+            </p>
+          )}
+        </header>
+        <section
+          aria-labelledby="account-access-role-accounts-title"
+          className={cardClass}
+        >
+          <h2
+            className="m-0 text-base font-extrabold"
+            id="account-access-role-accounts-title"
+          >
+            已指派帳戶
+          </h2>
+          {(roleDefinition.assignedAccountUserIds ?? []).length === 0 ? (
+            <p className="m-0 mt-3 text-sm text-[var(--ink-muted)]">
+              目前沒有已指派帳戶。
+            </p>
+          ) : (
+            <ul className="m-0 mt-3 grid min-w-0 gap-2 p-0 [list-style:none]">
+              {(roleDefinition.assignedAccountUserIds ?? []).map(
+                (assignedAccountUserId) => (
+                  <li key={assignedAccountUserId}>
+                    <Button
+                      className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
+                      onClick={() =>
+                        router.push(
+                          `/management?module=accounts&account=${encodeURIComponent(assignedAccountUserId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`
+                        )
+                      }
+                      type="button"
+                      variant="outline"
+                    >
+                      {assignedAccountUserId}
+                    </Button>
+                  </li>
+                )
+              )}
+            </ul>
+          )}
+        </section>
+        {roleLifecycleActions.length > 0 && (
+          <section
+            aria-labelledby="account-access-role-lifecycle-title"
+            className={cardClass}
+          >
+            <h2
+              className="m-0 text-base font-extrabold"
+              id="account-access-role-lifecycle-title"
+            >
+              身份組生命週期
+            </h2>
+            <p className="m-0 mt-1 text-sm text-[var(--ink-muted)]">
+              這項操作保留已指派帳戶歷史；恢復不會自動重新指派。
+            </p>
+            <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+              {roleLifecycleActions.map((action) => (
+                <Button
+                  className={actionClass}
+                  key={action.action}
+                  onClick={() => {
+                    resetMutationKey();
+                    setLifecycleRoleId(roleDefinition.roleDefinitionId);
+                    setLifecycleAction(action.action);
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  {action.action === "archive" ? "停用" : "恢復"}{" "}
+                  {roleDefinition.label}
+                </Button>
+              ))}
+            </div>
+          </section>
+        )}
+      </article>
+    )
+  ) : null;
 
   return (
     <DirectoryFrame
@@ -520,8 +802,18 @@ export const AccountAccessPanel = () => {
       className="min-w-0"
       content="detail"
       detail={
-        loading ? (
-          <output aria-busy="true" className={stateClass} tabIndex={-1}>
+        roleFirst ? (
+          roleFirstDetail
+        ) : loading ? (
+          <output
+            aria-busy="true"
+            className={stateClass}
+            data-account-access-state
+            ref={(node) => {
+              stateRef.current = node;
+            }}
+            tabIndex={-1}
+          >
             正在載入帳戶權限…
           </output>
         ) : failed || !view ? (
@@ -530,6 +822,7 @@ export const AccountAccessPanel = () => {
             className={stateClass}
             data-account-access-state
             ref={(node) => {
+              stateRef.current = node;
               detailRef.current = node;
             }}
             role="alert"
@@ -538,7 +831,7 @@ export const AccountAccessPanel = () => {
             <strong>{loadError ?? "帳戶權限暫時無法載入。"}</strong>
             <Button
               className={actionClass}
-              onClick={() => setRetryKey((key) => key + 1)}
+              onClick={retryAccount}
               type="button"
               variant="outline"
             >
@@ -643,14 +936,17 @@ export const AccountAccessPanel = () => {
                           {roleScopeLabel(assignment)} · {assignment.grantedAt}
                         </small>
                       </span>
-                      {view.actions.revoke && (
+                      {view.actions.revokeRoleDefinitionIds.includes(
+                        assignment.roleDefinitionId
+                      ) && (
                         <Button
                           aria-label={`撤銷 ${assignment.label}`}
                           className={actionClass}
                           disabled={mutating}
-                          onClick={() =>
-                            setRevokeRoleId(assignment.roleDefinitionId)
-                          }
+                          onClick={() => {
+                            resetMutationKey();
+                            setRevokeRoleId(assignment.roleDefinitionId);
+                          }}
                           type="button"
                           variant="outline"
                         >
@@ -680,6 +976,7 @@ export const AccountAccessPanel = () => {
                 <span className="text-sm font-bold">搜尋可用帳戶</span>
                 <Input
                   aria-describedby="account-access-search-hint"
+                  className="min-h-11"
                   id="account-access-search"
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="搜尋生效帳戶"
@@ -848,53 +1145,55 @@ export const AccountAccessPanel = () => {
                 ))}
             </section>
 
-            {(view.actions.archive || view.actions.restore) &&
-              (lifecycleAssignment || lifecycleHistory) && (
-                <section
-                  aria-labelledby="account-access-lifecycle-title"
-                  className={cardClass}
+            {(lifecycleAssignments.length > 0 ||
+              lifecycleHistory.length > 0) && (
+              <section
+                aria-labelledby="account-access-lifecycle-title"
+                className={cardClass}
+              >
+                <h2
+                  className="m-0 text-base font-extrabold"
+                  id="account-access-lifecycle-title"
                 >
-                  <h2
-                    className="m-0 text-base font-extrabold"
-                    id="account-access-lifecycle-title"
-                  >
-                    身份組生命週期
-                  </h2>
-                  <p className="m-0 mt-1 text-sm text-[var(--ink-muted)]">
-                    停用會撤銷所有生效指派；恢復不會自動重新指派。
-                  </p>
-                  <div className="mt-3 flex min-w-0 flex-wrap gap-2">
-                    {view.actions.archive && lifecycleAssignment && (
-                      <Button
-                        className={actionClass}
-                        onClick={() => {
-                          setLifecycleRoleId(
-                            lifecycleAssignment.roleDefinitionId
-                          );
-                          setLifecycleAction("archive");
-                        }}
-                        type="button"
-                        variant="outline"
-                      >
-                        停用 {lifecycleAssignment.label}
-                      </Button>
-                    )}
-                    {view.actions.restore && lifecycleHistory && (
-                      <Button
-                        className={actionClass}
-                        onClick={() => {
-                          setLifecycleRoleId(lifecycleHistory.roleDefinitionId);
-                          setLifecycleAction("restore");
-                        }}
-                        type="button"
-                        variant="outline"
-                      >
-                        恢復 {lifecycleHistory.label}
-                      </Button>
-                    )}
-                  </div>
-                </section>
-              )}
+                  身份組生命週期
+                </h2>
+                <p className="m-0 mt-1 text-sm text-[var(--ink-muted)]">
+                  停用會撤銷所有生效指派；恢復不會自動重新指派。
+                </p>
+                <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+                  {lifecycleAssignments.map((assignment) => (
+                    <Button
+                      className={actionClass}
+                      key={`archive-${assignment.roleDefinitionId}`}
+                      onClick={() => {
+                        resetMutationKey();
+                        setLifecycleRoleId(assignment.roleDefinitionId);
+                        setLifecycleAction("archive");
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      停用 {assignment.label}
+                    </Button>
+                  ))}
+                  {lifecycleHistory.map((assignment) => (
+                    <Button
+                      className={actionClass}
+                      key={`restore-${assignment.roleDefinitionId}`}
+                      onClick={() => {
+                        resetMutationKey();
+                        setLifecycleRoleId(assignment.roleDefinitionId);
+                        setLifecycleAction("restore");
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      恢復 {assignment.label}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+            )}
           </article>
         )
       }
@@ -906,9 +1205,30 @@ export const AccountAccessPanel = () => {
       }
       hasDetail
       search={null}
-      state="ready"
+      selection={{
+        selectedId: accountUserId,
+        onSelect: (selectedAccountUserId) =>
+          router.push(
+            `/management?module=accounts&account=${encodeURIComponent(selectedAccountUserId)}&view=access&return=${encodeURIComponent(returnHref(searchParams.get("return")))}`
+          ),
+      }}
+      state={
+        roleFirst
+          ? "ready"
+          : loading
+            ? "loading"
+            : failed || !view
+              ? "error"
+              : "ready"
+      }
       width="wide"
-      focus={{ detailRef, detailKey: retryKey, retryKey }}
+      focus={{
+        stateRef,
+        resultsRef: detailRef,
+        detailRef,
+        detailKey: accountResource.state.kind,
+        retryKey,
+      }}
     >
       <span />
       <Sheet onOpenChange={setReviewOpen} open={reviewOpen}>
@@ -1024,10 +1344,20 @@ export const AccountAccessPanel = () => {
                 ? "確認停用身份組？"
                 : "確認恢復身份組？"}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {lifecycleAction === "archive"
-                ? "停用會原子撤銷所有生效指派，並保留權限與歷史。"
-                : "恢復只會重新啟用身份組和權限，不會自動恢復任何帳戶指派。"}
+            <AlertDialogDescription asChild>
+              <div className="grid min-w-0 gap-3">
+                {lifecycleAction === "archive" && lifecycleImpact ? (
+                  <ImpactGroups impact={lifecycleImpact} />
+                ) : lifecycleAction === "archive" ? (
+                  <p className="m-0 text-sm text-[var(--ink-muted)]">
+                    目前沒有生效指派或有效權限會受影響。
+                  </p>
+                ) : (
+                  <p className="m-0 text-sm text-[var(--ink-muted)]">
+                    恢復不會自動重新啟用任何歷史指派。
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

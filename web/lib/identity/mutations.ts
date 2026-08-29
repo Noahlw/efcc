@@ -107,6 +107,9 @@ export type RoleDesiredChange =
       assignment_id: string;
       account_user_id: string;
       role_definition_id: string;
+      /** Immutable scope snapshot captured from the Role Definition. */
+      scope_kind: RoleScopeKind;
+      scope_id: string | null;
     }
   | {
       kind: "revoke_assignment";
@@ -876,9 +879,12 @@ export async function applyRoleMutation(
           .prepare(
             `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-             SELECT ?, ?, ?, ?, ?, NULL, NULL, NULL
-              WHERE ${gateClause}`
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
+             SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                    NULL, NULL, NULL
+               FROM role_definitions rd
+              WHERE rd.role_definition_id = ? AND ${gateClause}`
           )
           .bind(
             change.assignment_id,
@@ -886,6 +892,7 @@ export async function applyRoleMutation(
             change.role_definition_id,
             input.actor_user_id,
             input.now,
+            change.role_definition_id,
             ...bindGate(input)
           )
       );

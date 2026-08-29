@@ -26,7 +26,7 @@ const ManagementModule = () => {
   switch (module) {
     case "accounts": {
       return searchParams.get("view") === "access" &&
-        searchParams.get("account") ? (
+        (searchParams.get("account") || searchParams.get("roleDefinition")) ? (
         <AccountAccessPanel />
       ) : (
         <AccountDirectoryPanel />

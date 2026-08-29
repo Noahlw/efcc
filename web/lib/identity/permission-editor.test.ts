@@ -102,8 +102,9 @@ async function ensureWriteOnlyActor(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Global', NULL, NULL, NULL, NULL)`
       )
       .bind(
         WRITE_ONLY_ASSIGNMENT,
@@ -181,8 +182,9 @@ async function ensureReadOnlyActor(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
-            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Global', NULL, NULL, NULL, NULL)`
       )
       .bind(READ_ONLY_ASSIGNMENT, READ_ONLY_ACTOR, READ_ONLY_ROLE, ADMIN, NOW),
   ]);

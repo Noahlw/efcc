@@ -63,6 +63,12 @@ export const ROLE_HIERARCHY_ACTION = {
 export type RoleHierarchyAction =
   (typeof ROLE_HIERARCHY_ACTION)[keyof typeof ROLE_HIERARCHY_ACTION];
 
+/** Server-authorized lifecycle action for an identity-first entry. */
+export interface RoleLifecycleActionAffordance {
+  action: "archive" | "restore";
+  label: string;
+}
+
 /** Server-projected action affordance (H-03). */
 export interface RoleHierarchyActionAffordance {
   action: RoleHierarchyAction;
@@ -116,6 +122,8 @@ export interface RoleHierarchyDefinition {
   assignmentCount: number;
   /** Opaque IDs for identity-first Account Access entry links. */
   assignedAccountUserIds?: string[];
+  /** Server-authorized archive/restore actions for Account Access. */
+  lifecycleActions?: RoleLifecycleActionAffordance[];
   grantCount: number;
   /** Server-projected actions per the caller's capabilities (H-03). */
   actions: RoleHierarchyActionAffordance[];
@@ -709,6 +717,14 @@ export async function loadRoleHierarchy(
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
+        const canLifecycle =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.delete"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
 
         const actions: RoleHierarchyActionAffordance[] = [];
         if (canRename) {
@@ -729,6 +745,14 @@ export async function loadRoleHierarchy(
             label: "編輯權限",
           });
         }
+        const lifecycleActions: RoleLifecycleActionAffordance[] = canLifecycle
+          ? [
+              {
+                action: row.is_archived === 1 ? "restore" : "archive",
+                label: row.is_archived === 1 ? "恢復" : "停用",
+              },
+            ]
+          : [];
         return {
           roleDefinitionId: row.role_definition_id,
           label: row.label,
@@ -746,6 +770,7 @@ export async function loadRoleHierarchy(
             : [],
           grantCount: countsForRole?.grants ?? 0,
           actions,
+          lifecycleActions,
           scopeOptions: canRescope ? projectedScopeOptions : [],
           reorderActions: canReorder
             ? [{ action: ROLE_HIERARCHY_ACTION.REORDER, label: "調整順序" }]

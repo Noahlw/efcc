@@ -29,8 +29,17 @@ const VIEW = {
   revokedAssignments: [],
   assignmentHistory: [],
   effectiveAccess: { Global: [], Department: [], Program: [] },
+  lifecycleImpacts: {},
   revision: 3,
-  actions: { assign: true, revoke: false, archive: false, restore: false },
+  actions: {
+    assign: true,
+    revoke: false,
+    archive: false,
+    restore: false,
+    revokeRoleDefinitionIds: [],
+    archiveRoleDefinitionIds: [],
+    restoreRoleDefinitionIds: [],
+  },
 };
 const HIERARCHY = {
   revision: 3,
@@ -162,6 +171,9 @@ test("Account Access remains contained with 44px actions across W7", async ({
     const switches = [
       ...document.querySelectorAll<HTMLElement>('[role="switch"]'),
     ].map(box);
+    const input = box(
+      document.querySelector<HTMLElement>("#account-access-search")
+    );
     const content = document.querySelector<HTMLElement>("#shell-content");
     const dock = document.querySelector<HTMLElement>(".nav-phone");
     return {
@@ -176,6 +188,7 @@ test("Account Access remains contained with 44px actions across W7", async ({
       ),
       buttons,
       switches,
+      input,
       dock: box(dock),
       dockPosition: dock ? getComputedStyle(dock).position : null,
       paddingBottom: content ? getComputedStyle(content).paddingBottom : null,
@@ -183,6 +196,8 @@ test("Account Access remains contained with 44px actions across W7", async ({
   });
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(geometry.main).not.toBeNull();
+  expect(geometry.input).not.toBeNull();
+  expect(geometry.input?.height ?? 0).toBeGreaterThanOrEqual(44);
   expect(geometry.buttons.every((button) => (button?.height ?? 0) >= 44)).toBe(
     true
   );
