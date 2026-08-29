@@ -506,3 +506,46 @@ The existing `tests/e2e/role-hierarchy-geometry.test.ts` only matches `role-hier
 - `docs/specs/s4-phase-c-acceptance-trace.md` (this section appended; no prior section removed or edited)
 
 No production source, schema, migration, seed, fixture, test, or config file was changed in this commit. The temporary `tests/e2e/permission-editor-geometry.test.ts` and `tests/e2e/permission-editor-geometry.config.ts` that were created and verified during the rerun were removed before the commit; their outcome is summarised above as BLOCKED rather than retained as a second harness.
+
+### Permission Editor W7 numeric geometry coverage
+
+Command and result:
+
+```text
+$ pnpm test:role-hierarchy-geometry
+exit 0
+35 passed (33.0s)
+```
+
+The shared pinned static-export harness ran the existing 21 role-hierarchy
+scenarios plus 14 Permission Editor scenarios (detail and capped Sheet review)
+at every W7 width: `320, 390, 600, 799, 800, 1024, 1440` CSS px. No
+screenshots, image snapshots, or pixel diffs were used. The Permission Editor
+route was exercised as
+`/management?module=permissions&role=r-staff&view=permissions` with the
+server-shaped identity reads stubbed in-browser.
+
+Numeric selectors and measurements:
+
+- `Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+  - window.innerWidth <= 1` for horizontal overflow.
+- `#shell-content > main`, `[aria-label="連續權限清單"]`, and every
+  `[data-capability]` rectangle stayed within `[-1px, viewportWidth + 1px]`
+  on both horizontal edges.
+- The contextual Back link, every permission row, and the
+  `[aria-label="權限儲存操作"]` Action Surface measured at least `44px` high.
+  On phone widths, the in-flow Action Surface was scrolled into view and its
+  bottom edge stayed above the `.nav-phone` dock; `#shell-content` retained
+  `84px` bottom padding.
+- The named shell transition was measured at `799px`/`800px`:
+  `.nav-phone` computed `position` was `fixed` below the breakpoint and
+  `sticky` at/above it, while `#shell-content` bottom padding changed from
+  `84px` to `0px`.
+- With one ordinary change, `[data-slot="sheet-content"]` and
+  `[aria-label="待儲存權限變更"]` stayed horizontally inside the viewport and
+  the review item rectangle stayed inside the same bounds after the overlay
+  settled.
+
+This adds numeric Permission Editor evidence for C-485-04/C-485-06 while
+preserving the prior Worker-pool infrastructure blocker and manual-gate
+status recorded above.
