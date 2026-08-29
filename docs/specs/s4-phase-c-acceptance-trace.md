@@ -735,3 +735,156 @@ The shared pinned static-export harness ran 14 Permission Editor scenarios (deta
 - Only `docs/specs/s4-phase-c-acceptance-trace.md` was changed by this evidence append; no focused test/config correction was needed because the corrected geometry test is already matched by the single shared `role-hierarchy-geometry.config.ts`.
 - The prior `d269525d` geometry work is superseded by corrected integrated head `2d8e028423eed2dfd28d0bd6be686e26ae502774`; no competing geometry config exists.
 - The prior Cloudflare-pool infrastructure blocker remains honest and active. No implementation correction was launched, no production/schema/migration/seed/fixture file was edited, and no production or external database write was made.
+## #485 final-correction evidence — 2026-08-29
+
+**Evidence scope:** final focused validation of the corrected integrated #485 Permission Editor after the review blockers were corrected. This is one evidence-only append; all earlier evidence and blocker classifications remain intact. No production source, schema, migration, seed, fixture, deployment, screenshot, snapshot, or pixel-diff file was changed.
+
+### Provenance and exact runtimes
+
+- **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-485-evidence-final2`
+- **Branch:** `feat/s4-c-485-evidence-final2` (integrated Phase C branch is `feat/s4-c-stackable-identity-integration`)
+- **Phase B base SHA:** `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`
+- **Final correction commit:** `894d7993e8ca24741f951842aaca3773aa793dea` (`fix(identity): close remaining permission editor blockers`)
+- **Integrated head before this evidence:** `957c837d5015ddf0cefdde8e27ddaef15ffce69c` (`fix(identity): close remaining permission editor blockers`; same tree as the final correction commit)
+- **Evidence commit:** this trace-only append; its resulting SHA is returned with delivery because a commit cannot contain its own SHA.
+- **Node:** `v22.18.0`
+- **pnpm:** `11.7.0`
+- **Vitest:** `vitest/4.1.10 darwin-arm64 node-v22.18.0`
+- **Wrangler:** `4.127.1`
+- **Miniflare:** direct pinned web dependency `5.20260828.0-alpha`; the dependency query also reports an older transitive `5.20260730.0-alpha` under `wrangler@4.118.0`/the pool package.
+- **Playwright:** `1.62.1`
+- **Pinned Chromium:** Chrome for Testing `151.0.7922.34`, Playwright Chromium revision `v1234`, from `$HOME/Library/Caches/ms-playwright/chromium-1234`.
+- The runtime command recorded the exact Node, pnpm, Vitest, Wrangler, Playwright, TypeScript, Miniflare dependency graph, and pinned Chromium versions above.
+
+### Required Context7 CLI lookup
+
+The required lookup ran before validation. Selected authoritative sources were `/radix-ui/primitives`, `/joe-bell/cva`, and `/microsoft/playwright`:
+
+```text
+$ npx --yes ctx7@latest library radix-ui "Switch Root checked onCheckedChange disabled keyboard semantics"
+Selected: /radix-ui/primitives
+$ npx --yes ctx7@latest library class-variance-authority "CVA variants composition"
+Selected: /joe-bell/cva
+$ npx --yes ctx7@latest library playwright "viewport locator boundingBox CSS pixel geometry"
+Selected: /microsoft/playwright
+
+$ npx --yes ctx7@latest docs /radix-ui/primitives "Switch Root checked onCheckedChange disabled role keyboard behavior"
+Switch.Root renders a button with role="switch", aria-checked, disabled/data-disabled state, and onCheckedChange.
+$ npx --yes ctx7@latest docs /joe-bell/cva "type-safe variant composition class variance authority"
+CVA documents type-safe cva variants and composed variant props.
+$ npx --yes ctx7@latest docs /microsoft/playwright "Locator boundingBox viewport CSS pixels and test viewport"
+Locator.boundingBox returns the matching element rectangle relative to the main-frame viewport in pixels.
+```
+
+### Corrected review-blocker source audit versus direct execution
+
+Source inspection was completed against the corrected tree at `957c837d` (the exact tree of `894d7993`). The source audit is not substituted for runtime proof:
+
+| Corrected finding | Source-review coverage | Direct execution |
+| --- | --- | --- |
+| Target-error precedence | `web/lib/identity/permission-editor.ts:538-562,918-968` resolves target existence and keeps protected, archived, highest/self, scope, write, and per-capability checks distinct; `permission-editor.test.ts:689-715` covers protected errors before generic write denial. | Worker/domain test startup was blocked before assertions; no server error result is claimed. |
+| Terminal `DENIED`/`REJECTED` reservation and replay | `permission-editor.ts:712-745,790-835,837-895` and `mutations.ts:488-586` reserve one terminal ledger row and audit outcome, then replay by actor/fingerprint/key without a second audit; `permission-editor.test.ts:717-820` covers invalid and authority replay. | Worker/domain test startup was blocked before assertions; source-present regression tests are not counted as executed. |
+| `ROLE_NOT_FOUND` mapping | `permission-editor-handlers.ts:123-158` maps closed capabilities and unknown target IDs to the canonical code; `permission-editor-handlers.test.ts:315-361` distinguishes closed capability from malformed change. | Worker/domain test startup was blocked before assertions; no HTTP mapping result is claimed. |
+| Nested stale `data.authoritativeRevision` | `permission-editor-handlers.ts:104-112` passes `{ data: { authoritativeRevision } }` through `roleProblem`; `role-handlers.ts:109-151` preserves the RFC 9457 extension under `data`; handler tests at `:218-290` assert first stale response and replay shape. | Worker/domain test startup was blocked before assertions; no stale HTTP result is claimed. |
+| Original response request ID/data replay | `permission-editor.ts:790-833,1042-1102` stores and reuses the original response envelope/projection; `mutations.ts:617-641,975-997` persists `result_json`; domain tests `permission-editor.test.ts:414-473` and handler tests `:133-216` assert original revision/data/request ID and no duplicate audit. | Worker/domain test startup was blocked before assertions; no D1 replay or audit result is claimed. |
+| Detail action projection | `permission-editor.ts:329-395,605-621` and `role-hierarchy.ts:690-739` project the target-specific `permissions` affordance only after read, position, protection, archive, scope, and capability checks; domain test `permission-editor.test.ts:667-687` covers the projection. | Role-hierarchy component behavior passed 17 tests, including the server-projected `編輯權限` action and canonical URL; Worker projection execution remains blocked. |
+| Persistent panel idempotency key | `permission-editor-panel.tsx:277-278,416-429,491-530` retains one key across retryable save failure and clears it only at a new role, authoritative success, or explicit restart; `role-hierarchy-api.ts:121-137` forwards it. | Permission Editor component behavior passed; the retry test observed the same non-empty `Idempotency-Key` on both `503` attempts. |
+| Retry focus recovery | `permission-editor-panel.tsx:282-331,448-458` uses the shared resource and `resource.retry()` with `#permission-editor-state` as the focus target; `permission-editor-panel.test.tsx:502-519` asserts the failed-reload retry and focus. | Permission Editor component behavior passed, including retry focus recovery. |
+| One live-region owner | `web/lib/live-region.tsx:19-37` owns the single polite `role="status"` region; Permission Editor visible success/error/conflict surfaces at `permission-editor-panel.tsx:688-709` do not add a second live region. `role-hierarchy-panel.test.tsx:348-381` asserts one owner and no duplicate alert. | Role-hierarchy component behavior passed 17 tests, including the one-owner assertion; this is not a manual AT claim. |
+| Actual Switch target `>=44px` | The Permission Editor applies `min-h-11 min-w-11` to each local Switch at `permission-editor-panel.tsx:767-780`; numeric selectors and measurements are in `tests/e2e/permission-editor-geometry.test.ts:261-265,338-349`. | Geometry passed at every required W7 width; every rendered Permission Editor Switch measured at least `44px` in both dimensions. |
+| Local shadcn/Radix + CVA/cn | `permission-editor-panel.tsx:3-43,81-105,581-589,729-733` uses local `Button`, `Sheet`, `AlertDialog`, `Input`, `Switch`, CVA variants, and `cn`; local primitive composition is in `web/components/ui/button.tsx:1-7,44-64` and `web/components/ui/switch.tsx:1-29`. | Component tests and typechecks passed; Context7 semantics were used for the source audit. No source-class or implementation-name assertion is treated as behavior proof. |
+
+### Focused Worker/domain command
+
+Command:
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/permission-editor.test.ts lib/identity/permission-editor-handlers.test.ts
+```
+
+Result: **exit 1; external Cloudflare-pool infrastructure blocked before assertions.** Both files failed while starting the pool with:
+
+```text
+Caused by: EvalError: Code generation from strings disallowed for this context
+... vite@8.2.0/.../vite/dist/node/module-runner.js
+... getAsyncFunctionDeclarationPaddingLineCount
+Test Files  no tests
+     Tests  no tests
+   Errors  2 errors
+```
+
+This is classified as upstream/workerd plus `@cloudflare/vitest-pool-workers` infrastructure, per `docs/qa/2026-08-29-s4-phase-c-vitest-pool-research.md:306-339`: workerd disallows string code generation, the pool patches `Function` but not `AsyncFunction`, and the failure occurs before test discovery. No unsafe-eval workaround was used or recommended. **Product assertions: 0.** All Worker-only HTTP/D1/security/idempotency/audit/revision/denial/replay assertions for C-485-01 through C-485-06 are **BLOCKED by external infrastructure**, not product PASS or FAIL.
+
+### Focused client/component command
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts lib/permission-editor-panel.test.tsx lib/identity/role-hierarchy-panel.test.tsx
+
+ Test Files  2 passed (2)
+      Tests  25 passed (25)
+   Duration  7.19s
+```
+
+Direct client/component behavior is **PASS**. The focused files cover eight Permission Editor tests and 17 role-hierarchy tests: safe list/catalog search, malformed URL fallback, Switch role/checked/disabled/keyboard behavior, ordinary Sheet review, dirty-draft preservation, persistent retry key, high-risk dedicated review, conflict restart, Back/focus recovery, retry focus, the server-projected `編輯權限` Button action, and the single live-region owner. These tests do not claim Worker/D1 behavior, formal accessibility conformance, or manual AT completion.
+
+### TypeScript and web build commands
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json
+exit 0 (no output)
+
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.json
+exit 0 (no output)
+
+$ pnpm --dir web build
+▲ Next.js 16.2.12 (Turbopack)
+✓ Compiled successfully
+✓ Generating static pages using 9 workers (18/18)
+18 static routes prerendered
+exit 0
+```
+
+The worker TypeScript check, web TypeScript check, and `pnpm --dir web build` are directly exercised **PASS**. Next's workspace-root/multiple-lockfile warning was retained as a warning only and did not fail the build.
+
+### W7 numeric geometry command
+
+```text
+$ pnpm test:role-hierarchy-geometry
+$ playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts
+Running 35 tests using 1 worker
+35 passed (43.1s)
+```
+
+The shared config `tests/e2e/role-hierarchy-geometry.config.ts:10-29` matched both geometry files and ran the required W7 widths `320, 390, 600, 799, 800, 1024, 1440` CSS px. The suite directly ran 14 Permission Editor scenarios plus 21 role-hierarchy scenarios. Numeric checks passed for no horizontal overflow, main/list/row containment, Back and Action Surface heights, every Permission Editor Switch at least `44px` wide and high, phone-dock clearance and `84px` shell reserve, the fixed-to-sticky `799px`/`800px` transition, and the ordinary Sheet/review rectangles. No screenshot, image snapshot, or pixel-diff test was used. Geometry is directly exercised **PASS**; it does not certify Worker/D1 behavior or manual AT behavior.
+
+### C-485-01..06 mapping
+
+| Row | Direct result | Acceptance status |
+| --- | --- | --- |
+| C-485-01 | Client safe-list/catalog/search and malformed URL fallback **PASS**; detail action source projection is covered by source audit and hierarchy component tests. Worker detail envelope, assignment summary, and unknown/archived/unauthorized HTTP outcomes did not execute. | **BLOCKED — external Worker pool, 0 product assertions; criterion incomplete.** |
+| C-485-02 | Client Switch role/checked/disabled/keyboard behavior **PASS**; W7 numeric Switch targets `>=44px` **PASS**. Source audit covers the complete lock-reason matrix, but named server lock outcomes and manual focus/AT checks did not execute. | **BLOCKED — criterion incomplete; Worker-only cases blocked and manual gates unclaimed.** |
+| C-485-03 | Client dirty draft, ordinary Sheet, non-conflict draft preservation, retry-key stability, and busy source path **PASS by direct component/source evidence**. Worker authoritative revision and atomic write path did not execute; saving-lock behavior is source-reviewed but not separately asserted. | **BLOCKED — external Worker pool, 0 product assertions; criterion incomplete.** |
+| C-485-04 | Client ordinary Sheet/high-risk dedicated split **PASS**; W7 containment, dock clearance, and review rectangles **PASS**. Source threshold logic is present, but separate 1/2/3 versus 4 ordinary and every high-risk key were not each directly exercised. | **BLOCKED — criterion incomplete despite direct component/geometry PASS.** |
+| C-485-05 | Source audit covers actor-bound fingerprint, D1 terminal result, revision, one audit row, and original response replay. No HTTP/D1 grant patch, revision, audit, or replay assertion ran. | **BLOCKED — external Worker pool, 0 product assertions.** |
+| C-485-06 | Client conflict/restart, safe selection, and retry focus **PASS**; nested stale revision shape, closed-capability mapping, protected/denial replay, and changed-payload reuse are source/test-reviewed but did not execute in Worker infrastructure. | **BLOCKED — external Worker pool, 0 product assertions; criterion incomplete.** |
+
+### Corrected outcome classification
+
+- **Security/authority:** corrected target, scope, protected, caller read/write, system-only, and per-capability guards are present in source. No Worker assertion is claimed because the pool stopped before discovery.
+- **Idempotency/audit:** corrected terminal `DENIED`/`REJECTED`, stale conflict, no-op, and successful `result_json` reservation/replay paths are present in source and regression tests; only the client retry-key behavior ran directly. D1 mutation/audit proof remains blocked.
+- **Transport:** corrected cookie-only actor, `{ requestId, data }`, `X-Request-Id`, nested stale `data.authoritativeRevision`, and canonical `ROLE_NOT_FOUND` mappings are source-reviewed and covered by blocked Worker tests. No HTTP result is claimed.
+- **UI:** focused Permission Editor and hierarchy component behavior is **PASS** at 25/25 tests, including corrected action projection, retry/focus, persistent key, and one-owner live-region behavior. No WCAG or manual AT claim is made.
+- **Geometry:** shared pinned numeric geometry is **PASS** at 35/35 tests across all W7 widths, including actual Switch measurements `>=44px`; no screenshots or pixel diffs were used.
+- **Type/build:** both requested TypeScript projects and the web production build are **PASS** with exit 0.
+
+### Manual gates
+
+- `C-485-M1` keyboard-only review at 320/1440, focus order/visibility, target size, dock clearance, and save dialog: **MANUAL — unclaimed**.
+- `C-485-M2` screen-reader review of Switches, dirty/saving/success/error/conflict announcements, and high-risk acknowledgement: **MANUAL — unclaimed**.
+- No WCAG 2.2 AA, keyboard-only, screen-reader/AT, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, or production-promotion completion is claimed.
+
+### Scope and next state
+
+- Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No focused test/config correction was needed; the corrected Permission Editor geometry test is already matched by the single shared `role-hierarchy-geometry.config.ts`.
+- No correction worker was launched, no production/schema/migration/seed/fixture file was edited, and no Apps Script, Google Sheets, Cloudflare production, or external database write was made.
+- The final correction commit remains `894d7993e8ca24741f951842aaca3773aa793dea`; the integrated head before this evidence remains `957c837d5015ddf0cefdde8e27ddaef15ffce69c`. Phase C remains stopped before Phase D.
