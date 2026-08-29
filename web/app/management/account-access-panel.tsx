@@ -329,6 +329,17 @@ export const AccountAccessPanel = () => {
   const mutationKeyRef = useRef<string | null>(null);
   const revokePreviewRequestRef = useRef(0);
   const lifecyclePreviewRequestRef = useRef(0);
+  const routeKey = JSON.stringify([accountUserId, roleDefinitionId, viewParam]);
+  const routeKeyRef = useRef(routeKey);
+  const routeGenerationRef = useRef(0);
+  if (routeKeyRef.current !== routeKey) {
+    routeKeyRef.current = routeKey;
+    routeGenerationRef.current += 1;
+  }
+  const routeGeneration = routeGenerationRef.current;
+  const isCurrentRoute = (expectedKey: string, expectedGeneration: number) =>
+    routeKeyRef.current === expectedKey &&
+    routeGenerationRef.current === expectedGeneration;
   const mutationIntentRef = useRef<string | null>(null);
   const [view, setView] = useState<AccountAccessView | null>(null);
   const [hierarchy, setHierarchy] = useState<RoleHierarchyView | null>(null);
@@ -365,6 +376,7 @@ export const AccountAccessPanel = () => {
     kind: "error" | "success" | "conflict";
     message: string;
   } | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [mutating, setMutating] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -413,6 +425,9 @@ export const AccountAccessPanel = () => {
     lifecyclePreviewRequestRef.current += 1;
     resetMutationKey();
     setView(null);
+    setHierarchy(null);
+    setHierarchyLoading(false);
+    setHierarchyError(null);
     setSelectedIds([]);
     setReviewOpen(false);
     setDetailsOpen(false);
@@ -431,6 +446,8 @@ export const AccountAccessPanel = () => {
     setCandidateCount(0);
     setEligibleAccounts([]);
     setStatus(null);
+    setRefreshError(null);
+    setMutating(false);
   }, [accountUserId, roleDefinitionId, viewParam]);
   useEffect(() => {
     if (!accountUserId || viewParam !== "access") return;
@@ -441,11 +458,14 @@ export const AccountAccessPanel = () => {
 
   useEffect(() => {
     if (accountResource.state.kind === "ready") {
+      if (accountResource.state.data.account.userId !== accountUserId) {
+        return;
+      }
       setView(accountResource.state.data);
     } else if (accountResource.state.kind === "error") {
       setView(null);
     }
-  }, [accountResource.state]);
+  }, [accountResource.state, accountUserId]);
 
   useEffect(() => {
     if (
@@ -462,30 +482,50 @@ export const AccountAccessPanel = () => {
       setHierarchyLoading(false);
       return;
     }
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     let current = true;
     setHierarchy(null);
     setHierarchyError(null);
     setHierarchyLoading(true);
     void getRoleHierarchy()
       .then((result) => {
-        if (current) {
+        if (
+          current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setHierarchy(result);
           setHierarchyError(null);
         }
       })
       .catch((error) => {
-        if (current) {
+        if (
+          current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setHierarchy(null);
           setHierarchyError(errorMessage(error));
         }
       })
       .finally(() => {
-        if (current) setHierarchyLoading(false);
+        if (
+          current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
+          setHierarchyLoading(false);
+        }
       });
     return () => {
       current = false;
     };
-  }, [hierarchyRetryKey, roleFirst, viewParam]);
+  }, [
+    hierarchyRetryKey,
+    roleDefinitionId,
+    roleFirst,
+    routeGeneration,
+    routeKey,
+    viewParam,
+  ]);
 
   useEffect(() => {
     if ((!accountUserId && !roleFirst) || viewParam !== "access") return;
@@ -495,17 +535,26 @@ export const AccountAccessPanel = () => {
       setEligibleAccounts([]);
       return;
     }
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     let current = true;
     const timer = window.setTimeout(() => {
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       void searchEligibleAccounts(query, { offset: 0, limit: 20 })
         .then((result) => {
-          if (current) {
+          if (
+            current &&
+            isCurrentRoute(requestRouteKey, requestRouteGeneration)
+          ) {
             setCandidateCount(result.accounts.length);
             setEligibleAccounts(result.accounts);
           }
         })
         .catch(() => {
-          if (current) {
+          if (
+            current &&
+            isCurrentRoute(requestRouteKey, requestRouteGeneration)
+          ) {
             setCandidateCount(0);
             setEligibleAccounts([]);
           }
@@ -515,7 +564,15 @@ export const AccountAccessPanel = () => {
       current = false;
       window.clearTimeout(timer);
     };
-  }, [accountUserId, roleFirst, search, viewParam]);
+  }, [
+    accountUserId,
+    roleDefinitionId,
+    roleFirst,
+    routeGeneration,
+    routeKey,
+    search,
+    viewParam,
+  ]);
 
   const assignableRoles = accountUserId ? (view?.assignableRoles ?? []) : [];
   const selectedRoles = assignableRoles.filter((role) =>
@@ -565,26 +622,43 @@ export const AccountAccessPanel = () => {
   useEffect(() => {
     if (!lifecycleRoleId) return;
     const requestId = ++lifecyclePreviewRequestRef.current;
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     setLifecyclePreview(null);
     setLifecyclePreviewError(null);
     setLifecyclePreviewLoading(true);
     void getRoleDefinitionLifecyclePreview(lifecycleRoleId, lifecycleAction)
       .then((preview) => {
-        if (requestId === lifecyclePreviewRequestRef.current) {
+        if (
+          requestId === lifecyclePreviewRequestRef.current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setLifecyclePreview(preview);
         }
       })
       .catch((error) => {
-        if (requestId === lifecyclePreviewRequestRef.current) {
+        if (
+          requestId === lifecyclePreviewRequestRef.current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setLifecyclePreviewError(errorMessage(error));
         }
       })
       .finally(() => {
-        if (requestId === lifecyclePreviewRequestRef.current) {
+        if (
+          requestId === lifecyclePreviewRequestRef.current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setLifecyclePreviewLoading(false);
         }
       });
-  }, [lifecycleAction, lifecyclePreviewRetryKey, lifecycleRoleId]);
+  }, [
+    lifecycleAction,
+    lifecyclePreviewRetryKey,
+    lifecycleRoleId,
+    routeGeneration,
+    routeKey,
+  ]);
 
   const goBack = () => router.replace(returnHref(searchParams.get("return")));
 
@@ -600,6 +674,8 @@ export const AccountAccessPanel = () => {
 
   const confirmAdd = async () => {
     if (!view || !accountUserId || selectedIds.length === 0) return;
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     setMutating(true);
     setStatus(null);
     const roleIds = [...selectedIds].sort().join(",");
@@ -615,6 +691,7 @@ export const AccountAccessPanel = () => {
         },
         key
       );
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       setView(result);
       setSelectedIds([]);
       setReviewOpen(false);
@@ -627,17 +704,22 @@ export const AccountAccessPanel = () => {
             : "身份組已一次更新。",
       });
     } catch (error) {
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }
       const message = errorMessage(error);
       setStatus({ kind: statusKind(error), message });
     } finally {
-      setMutating(false);
+      if (isCurrentRoute(requestRouteKey, requestRouteGeneration)) {
+        setMutating(false);
+      }
     }
   };
 
   const openRevoke = (roleId: string) => {
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     resetMutationKey();
     setRevokeRoleId(roleId);
     setRevokePreviewView(null);
@@ -651,7 +733,12 @@ export const AccountAccessPanel = () => {
     setRevokePreviewLoading(true);
     void getAccountAccess(accountUserId)
       .then((freshView) => {
-        if (requestId !== revokePreviewRequestRef.current) return;
+        if (
+          requestId !== revokePreviewRequestRef.current ||
+          !isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
+          return;
+        }
         setView(freshView);
         setRevokePreviewView(freshView);
         if (
@@ -663,12 +750,18 @@ export const AccountAccessPanel = () => {
         }
       })
       .catch((error) => {
-        if (requestId === revokePreviewRequestRef.current) {
+        if (
+          requestId === revokePreviewRequestRef.current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setRevokePreviewError(errorMessage(error));
         }
       })
       .finally(() => {
-        if (requestId === revokePreviewRequestRef.current) {
+        if (
+          requestId === revokePreviewRequestRef.current &&
+          isCurrentRoute(requestRouteKey, requestRouteGeneration)
+        ) {
           setRevokePreviewLoading(false);
         }
       });
@@ -689,6 +782,8 @@ export const AccountAccessPanel = () => {
     ) {
       return;
     }
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     setMutating(true);
     setStatus(null);
     const key = mutationKeyFor(
@@ -703,6 +798,7 @@ export const AccountAccessPanel = () => {
         },
         key
       );
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       setView(result);
       setRevokeRoleId(null);
       setRevokePreviewView(null);
@@ -712,12 +808,15 @@ export const AccountAccessPanel = () => {
         message: "身份組已撤銷，歷史記錄仍然保留。",
       });
     } catch (error) {
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }
       setStatus({ kind: statusKind(error), message: errorMessage(error) });
     } finally {
-      setMutating(false);
+      if (isCurrentRoute(requestRouteKey, requestRouteGeneration)) {
+        setMutating(false);
+      }
     }
   };
 
@@ -732,6 +831,32 @@ export const AccountAccessPanel = () => {
   const retryLifecyclePreview = () => {
     setLifecyclePreviewRetryKey((key) => key + 1);
   };
+  const refreshAfterLifecycle = async (
+    expectedRouteKey: string,
+    expectedRouteGeneration: number
+  ): Promise<void> => {
+    if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+    setRefreshError(null);
+    try {
+      if (accountUserId) {
+        const refreshedView = await getAccountAccess(accountUserId);
+        if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+        setView(refreshedView);
+      } else if (roleFirst) {
+        const refreshedHierarchy = await getRoleHierarchy();
+        if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+        setHierarchy(refreshedHierarchy);
+      }
+    } catch (error) {
+      if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+      setRefreshError(errorMessage(error));
+    }
+  };
+
+  const retryLifecycleRefresh = () => {
+    void refreshAfterLifecycle(routeKey, routeGeneration);
+  };
+
   const confirmLifecycle = async () => {
     if (
       !lifecycleRoleId ||
@@ -741,9 +866,12 @@ export const AccountAccessPanel = () => {
     ) {
       return;
     }
+    const requestRouteKey = routeKey;
+    const requestRouteGeneration = routeGeneration;
     const baseRevision = lifecyclePreview.revision;
     setMutating(true);
     setStatus(null);
+    setRefreshError(null);
     const key = mutationKeyFor(
       `lifecycle|${lifecycleAction}|${lifecycleRoleId}|${baseRevision}`
     );
@@ -756,29 +884,28 @@ export const AccountAccessPanel = () => {
         },
         key
       );
-      resetMutationKey();
-      setLifecycleRoleId(null);
-      setLifecyclePreview(null);
-      setStatus({
-        kind: "success",
-        message:
-          lifecycleAction === "archive"
-            ? "身份組已停用並撤銷生效指派。"
-            : "身份組已恢復；歷史指派沒有自動重新啟用。",
-      });
-      if (accountUserId) {
-        setView(await getAccountAccess(accountUserId));
-      } else if (roleFirst) {
-        setHierarchy(await getRoleHierarchy());
-      }
     } catch (error) {
+      if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }
       setStatus({ kind: statusKind(error), message: errorMessage(error) });
-    } finally {
       setMutating(false);
+      return;
     }
+    if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
+    resetMutationKey();
+    setLifecycleRoleId(null);
+    setLifecyclePreview(null);
+    setStatus({
+      kind: "success",
+      message:
+        lifecycleAction === "archive"
+          ? "身份組已停用並撤銷生效指派。"
+          : "身份組已恢復；歷史指派沒有自動重新啟用。",
+    });
+    setMutating(false);
+    void refreshAfterLifecycle(requestRouteKey, requestRouteGeneration);
   };
 
   const retryAccount = () => {
@@ -909,6 +1036,24 @@ export const AccountAccessPanel = () => {
             >
               {status.message}
             </p>
+          )}
+          {refreshError && (
+            <div
+              className="mt-3 grid min-w-0 gap-2 rounded-[var(--radius-sm)] border border-[var(--error-border)] bg-[var(--error-surface)] p-3"
+              role="alert"
+            >
+              <p className="m-0 wrap-anywhere text-sm">
+                操作已完成，但最新資料未能重新整理。
+              </p>
+              <Button
+                className={actionClass}
+                onClick={retryLifecycleRefresh}
+                type="button"
+                variant="outline"
+              >
+                重試重新整理
+              </Button>
+            </div>
           )}
         </header>
         <section
@@ -1148,6 +1293,24 @@ export const AccountAccessPanel = () => {
                 >
                   {status.message}
                 </p>
+              )}
+              {refreshError && (
+                <div
+                  className="mt-3 grid min-w-0 gap-2 rounded-[var(--radius-sm)] border border-[var(--error-border)] bg-[var(--error-surface)] p-3"
+                  role="alert"
+                >
+                  <p className="m-0 wrap-anywhere text-sm">
+                    操作已完成，但最新資料未能重新整理。
+                  </p>
+                  <Button
+                    className={actionClass}
+                    onClick={retryLifecycleRefresh}
+                    type="button"
+                    variant="outline"
+                  >
+                    重試重新整理
+                  </Button>
+                </div>
               )}
             </header>
 

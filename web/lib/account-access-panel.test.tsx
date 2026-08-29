@@ -37,6 +37,14 @@ vi.mock("@/lib/identity/role-hierarchy-api", () => ({
   getRoleHierarchy: mocks.getRoleHierarchy,
 }));
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 const view: AccountAccessView = {
   account: {
     userId: "target",
@@ -497,6 +505,58 @@ describe("AccountAccessPanel", () => {
     ).not.toBeChecked();
     expect(screen.queryByRole("button", { name: "確認撤銷" })).toBeNull();
   });
+  test("ignores an in-flight add response after the account route changes", async () => {
+    const user = userEvent.setup();
+    const otherView: AccountAccessView = {
+      ...view,
+      account: { ...view.account, userId: "other", name: "Other Account" },
+    };
+    const staleResult = {
+      ...revokeView,
+      idempotent: false,
+      duplicateRoleDefinitionIds: [],
+    };
+    const pendingMutation = deferred<typeof staleResult>();
+    mocks.getAccountAccess
+      .mockReset()
+      .mockImplementation((accountId: string) =>
+        Promise.resolve(accountId === "other" ? otherView : view)
+      );
+    mocks.mutateAccountAssignments
+      .mockReset()
+      .mockReturnValueOnce(pendingMutation.promise);
+    const { rerender } = render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() =>
+      expect(mocks.mutateAccountAssignments).toHaveBeenCalledTimes(1)
+    );
+
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=other&view=access"
+    );
+    rerender(<AccountAccessPanel />);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "確認新增身份組" })
+      ).toBeNull()
+    );
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledWith("other")
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Other Account" })
+    ).toBeTruthy();
+
+    pendingMutation.resolve(staleResult);
+    await waitFor(() =>
+      expect(screen.queryByText("身份組已一次更新。")).toBeNull()
+    );
+    expect(screen.getByRole("heading", { name: "Other Account" })).toBeTruthy();
+  });
 
   test("keeps Account Access mutation feedback in one visible live region", async () => {
     const user = userEvent.setup();
@@ -584,6 +644,64 @@ describe("AccountAccessPanel", () => {
       )
     );
     expect(mocks.getRoleHierarchy).toHaveBeenCalledTimes(2);
+  });
+  test("refetches hierarchy and clears the previous role when role definition changes", async () => {
+    const roleA: RoleHierarchyView = {
+      ...hierarchy,
+      categories: [
+        {
+          ...hierarchy.categories[0],
+          definitions: [
+            {
+              ...hierarchy.categories[0]?.definitions[0],
+              roleDefinitionId: "role-a",
+              label: "身份組甲",
+            },
+          ],
+        },
+      ],
+    };
+    const roleB: RoleHierarchyView = {
+      ...hierarchy,
+      categories: [
+        {
+          ...hierarchy.categories[0],
+          definitions: [
+            {
+              ...hierarchy.categories[0]?.definitions[0],
+              roleDefinitionId: "role-b",
+              label: "身份組乙",
+            },
+          ],
+        },
+      ],
+    };
+    const nextHierarchy = deferred<RoleHierarchyView>();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-a&view=access"
+    );
+    mocks.getRoleHierarchy
+      .mockReset()
+      .mockResolvedValueOnce(roleA)
+      .mockReturnValueOnce(nextHierarchy.promise);
+    const { rerender } = render(<AccountAccessPanel />);
+    expect(
+      await screen.findByRole("heading", { name: "身份組甲" })
+    ).toBeTruthy();
+
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-b&view=access"
+    );
+    rerender(<AccountAccessPanel />);
+    await waitFor(() =>
+      expect(mocks.getRoleHierarchy).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.queryByRole("heading", { name: "身份組甲" })).toBeNull();
+
+    nextHierarchy.resolve(roleB);
+    expect(
+      await screen.findByRole("heading", { name: "身份組乙" })
+    ).toBeTruthy();
   });
 
   test("uses server-authorized account assignment options without loading role.read hierarchy", async () => {
@@ -716,6 +834,47 @@ describe("AccountAccessPanel", () => {
       .map((heading) => heading.id)
       .filter((id) => id.includes("account-access"));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("preserves lifecycle success when the follow-up account refresh fails", async () => {
+    const user = userEvent.setup();
+    mocks.getAccountAccess
+      .mockReset()
+      .mockResolvedValueOnce(lifecycleView)
+      .mockRejectedValueOnce(new Error("refresh failed"));
+    mocks.getRoleDefinitionLifecyclePreview.mockResolvedValue({
+      roleDefinitionId: "role-a",
+      action: "archive",
+      revision: lifecycleView.revision,
+      affectedAccountUserIds: ["target"],
+      impact: [],
+    });
+    mocks.updateRoleDefinitionLifecycle.mockResolvedValue({
+      roleDefinitionId: "role-a",
+      action: "archive",
+      isArchived: true,
+      revision: lifecycleView.revision + 1,
+      affectedAccountUserIds: ["target"],
+      impact: [],
+      idempotent: false,
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    );
+    await screen.findByRole("heading", { name: "確認停用身份組？" });
+    await user.click(screen.getByRole("button", { name: "確認" }));
+
+    await waitFor(() =>
+      expect(mocks.updateRoleDefinitionLifecycle).toHaveBeenCalledTimes(1)
+    );
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      await screen.findByText("身份組已停用並撤銷生效指派。")
+    ).toBeTruthy();
+    expect(screen.queryByText("refresh failed")).toBeNull();
   });
 
   test("loads authoritative lifecycle impact before identity-first archive", async () => {

@@ -18,6 +18,110 @@ const STAFF = "E2E_DISPOSABLE_STAFF";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
 const DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000001";
 const PROGRAM_ROLE = "018f3b8a-0000-7000-8000-100000000002";
+const BASELINE_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
+const SCOPED_ACTOR = "E2E_ACCOUNT_ACCESS_SCOPED_ACTOR";
+const MIXED_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_MIXED_TARGET";
+const OUT_OF_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_OUT_OF_SCOPE_TARGET";
+const FIXTURE_NOW = "2026-08-29T00:00:00.000Z";
+
+async function ensureMixedScopeFixtures(): Promise<void> {
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO accounts
+           (user_id, name, username, username_normalized, credential_hash,
+            credential_kind, credential_version, account_status, role, phone,
+            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+            failed_attempts, locked_until, lock_since, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+      )
+      .bind(
+        SCOPED_ACTOR,
+        "Scoped Account Access Actor",
+        "account-access-scoped-actor",
+        "account-access-scoped-actor",
+        Date.parse(FIXTURE_NOW),
+        Date.parse(FIXTURE_NOW)
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO accounts
+           (user_id, name, username, username_normalized, credential_hash,
+            credential_kind, credential_version, account_status, role, phone,
+            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+            failed_attempts, locked_until, lock_since, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+      )
+      .bind(
+        MIXED_SCOPE_TARGET,
+        "Mixed Scope Target",
+        "account-access-mixed-target",
+        "account-access-mixed-target",
+        Date.parse(FIXTURE_NOW),
+        Date.parse(FIXTURE_NOW)
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO accounts
+           (user_id, name, username, username_normalized, credential_hash,
+            credential_kind, credential_version, account_status, role, phone,
+            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+            failed_attempts, locked_until, lock_since, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+      )
+      .bind(
+        OUT_OF_SCOPE_TARGET,
+        "Out Of Scope Target",
+        "account-access-out-of-scope-target",
+        "account-access-out-of-scope-target",
+        Date.parse(FIXTURE_NOW),
+        Date.parse(FIXTURE_NOW)
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                NULL, NULL, NULL
+           FROM role_definitions rd
+          WHERE rd.role_definition_id = ?`
+      )
+      .bind(
+        "account-access-scoped-actor-department",
+        SCOPED_ACTOR,
+        DEPARTMENT_ROLE,
+        ADMIN,
+        Date.parse(FIXTURE_NOW),
+        DEPARTMENT_ROLE
+      ),
+    ...[
+      [MIXED_SCOPE_TARGET, "account-access-mixed-baseline", BASELINE_ROLE],
+      [MIXED_SCOPE_TARGET, "account-access-mixed-department", DEPARTMENT_ROLE],
+      [MIXED_SCOPE_TARGET, "account-access-mixed-program", PROGRAM_ROLE],
+      [OUT_OF_SCOPE_TARGET, "account-access-outside-baseline", BASELINE_ROLE],
+      [OUT_OF_SCOPE_TARGET, "account-access-outside-program", PROGRAM_ROLE],
+    ].map(([account, assignment, role]) =>
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                  NULL, NULL, NULL
+             FROM role_definitions rd
+            WHERE rd.role_definition_id = ?`
+        )
+        .bind(assignment, account, role, ADMIN, Date.parse(FIXTURE_NOW), role)
+    ),
+  ]);
+}
+
 type AccountAccessViewWithAssignmentOptions = AccountAccessView & {
   assignableRoles: readonly { roleDefinitionId: string }[];
 };
@@ -27,6 +131,7 @@ beforeAll(async () => {
   await seedDisposableIdentity(testDb(), {
     databaseName: "E2E_account-access-red",
   });
+  await ensureMixedScopeFixtures();
 });
 
 describe("#486 Account Access domain", () => {
@@ -70,6 +175,39 @@ describe("#486 Account Access domain", () => {
     const view = await loadAccountAccess(testDb(), ADMIN, MEMBER);
     expect(view.activeAssignments).toHaveLength(1);
     expect(view.activeAssignments[0]?.label).toBe("會友基礎");
+    expect(
+      view.effectiveAccess.Global.map((grant) => grant.capability)
+    ).toContain("program.enroll");
+  });
+  test("keeps mixed-scope targets eligible while filtering out-of-scope access", async () => {
+    const view = await loadAccountAccess(
+      testDb(),
+      SCOPED_ACTOR,
+      MIXED_SCOPE_TARGET
+    );
+    const activeRoleIds = view.activeAssignments.map(
+      (assignment) => assignment.roleDefinitionId
+    );
+    expect(activeRoleIds).toEqual(
+      expect.arrayContaining([BASELINE_ROLE, DEPARTMENT_ROLE])
+    );
+    expect(activeRoleIds).not.toContain(PROGRAM_ROLE);
+    expect(view.effectiveAccess.Department.length).toBeGreaterThan(0);
+    expect(view.effectiveAccess.Program).toHaveLength(0);
+    expect(JSON.stringify(view)).not.toContain("青少年查經帶領");
+  });
+
+  test("keeps targets with only out-of-scope assignments eligible with baseline access", async () => {
+    const view = await loadAccountAccess(
+      testDb(),
+      SCOPED_ACTOR,
+      OUT_OF_SCOPE_TARGET
+    );
+    expect(
+      view.activeAssignments.map((assignment) => assignment.roleDefinitionId)
+    ).toEqual([BASELINE_ROLE]);
+    expect(view.effectiveAccess.Department).toHaveLength(0);
+    expect(view.effectiveAccess.Program).toHaveLength(0);
     expect(
       view.effectiveAccess.Global.map((grant) => grant.capability)
     ).toContain("program.enroll");
@@ -238,6 +376,11 @@ describe("#486 Account Access domain", () => {
     ).toEqual(expect.arrayContaining([DEPARTMENT_ROLE, PROGRAM_ROLE]));
     expect(result.effectiveAccess.Department.length).toBeGreaterThan(0);
     expect(result.effectiveAccess.Program.length).toBeGreaterThan(0);
+    const audit = await testDb()
+      .prepare("SELECT reason FROM role_audit_events WHERE audit_id = ?")
+      .bind("account-access-red-add-audit")
+      .first<{ reason: string | null }>();
+    expect(audit?.reason).toBe("account_access_grant");
   });
 
   test("active identities are a named duplicate no-op and replay without a second audit", async () => {

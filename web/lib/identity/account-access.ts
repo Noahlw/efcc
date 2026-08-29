@@ -643,8 +643,10 @@ function baselineRole(role: RoleRecord): boolean {
   return role.stable_key === PROTECTED_STABLE_KEYS.MEMBER;
 }
 
+type ActorScope = Pick<RoleRecord, "scope_kind" | "scope_id">;
+
 function withinActorScope(
-  actorRoles: Awaited<ReturnType<typeof loadActorRoles>>,
+  actorRoles: readonly ActorScope[],
   role: Pick<RoleRecord, "scope_kind" | "scope_id">
 ): boolean {
   const highest = actorRoles[0];
@@ -658,6 +660,48 @@ function withinActorScope(
     highest.scope_kind === role.scope_kind &&
     highest.scope_id !== null &&
     highest.scope_id === role.scope_id
+  );
+}
+async function filterAuthorizedAssignments(
+  db: D1Database,
+  actorUserId: string,
+  actorRoles: readonly ActorScope[],
+  assignments: readonly AssignmentRecord[],
+  rolesById: ReadonlyMap<string, RoleRecord>
+): Promise<AssignmentRecord[]> {
+  const visible = await Promise.all(
+    assignments.map(async (assignment) => {
+      const role = rolesById.get(assignment.role_definition_id);
+      if (!role) {
+        return null;
+      }
+      if (baselineRole(role)) {
+        return assignment;
+      }
+      const scopedRole =
+        assignment.revoked_at === null
+          ? role
+          : {
+              ...role,
+              scope_kind: assignment.scope_kind,
+              scope_id: assignment.scope_id,
+            };
+      if (!withinActorScope(actorRoles, scopedRole)) {
+        return null;
+      }
+      const capabilities = await resolveActorCapabilities(
+        db,
+        actorUserId,
+        scopeForRole(scopedRole)
+      );
+      return capabilities["role.assign"] === true ||
+        capabilities["role.revoke"] === true
+        ? assignment
+        : null;
+    })
+  );
+  return visible.filter(
+    (assignment): assignment is AssignmentRecord => assignment !== null
   );
 }
 
@@ -890,7 +934,46 @@ async function readProjection(
   ]);
   const stagedAdds = [...(options.stagedAdds ?? [])];
   const stagedRevokes = [...(options.stagedRevokes ?? [])];
-  const active = activeRows.filter(
+  const roleIds = [
+    ...new Set([
+      ...activeRows.map((assignment) => assignment.role_definition_id),
+      ...revokedRows.map((assignment) => assignment.role_definition_id),
+      ...stagedAdds.map((staged) => staged.role.role_definition_id),
+    ]),
+  ];
+  const [roles, grants, baselineFromDb, allRoles] = await Promise.all([
+    readRoles(db, roleIds),
+    readGrants(db, roleIds),
+    readRoleByStableKey(db, PROTECTED_STABLE_KEYS.MEMBER),
+    readAllRoles(db),
+  ]);
+  const rolesById = new Map(
+    roles.map((role) => [role.role_definition_id, role])
+  );
+  const baseline =
+    roles.find((role) => role.stable_key === PROTECTED_STABLE_KEYS.MEMBER) ??
+    baselineFromDb;
+  if (baseline) {
+    rolesById.set("__member_baseline__", baseline);
+  }
+  const actorRoles = await loadActorRoles(db, actorUserId);
+  const [visibleActiveRows, visibleRevokedRows] = await Promise.all([
+    filterAuthorizedAssignments(
+      db,
+      actorUserId,
+      actorRoles,
+      activeRows,
+      rolesById
+    ),
+    filterAuthorizedAssignments(
+      db,
+      actorUserId,
+      actorRoles,
+      revokedRows,
+      rolesById
+    ),
+  ]);
+  const active = visibleActiveRows.filter(
     (assignment) =>
       !stagedRevokes.some(
         (revoked) =>
@@ -911,7 +994,7 @@ async function readProjection(
       revoke_reason: null,
     });
   }
-  const history = [...revokedRows];
+  const history = [...visibleRevokedRows];
   for (const staged of stagedRevokes) {
     history.unshift({
       ...staged.assignment,
@@ -920,29 +1003,6 @@ async function readProjection(
       revoke_reason: staged.reason,
     });
   }
-  const roleIds = [
-    ...new Set([
-      ...active.map((assignment) => assignment.role_definition_id),
-      ...history.map((assignment) => assignment.role_definition_id),
-      ...stagedAdds.map((staged) => staged.role.role_definition_id),
-    ]),
-  ];
-  const [roles, grants, baselineFromDb, allRoles] = await Promise.all([
-    readRoles(db, roleIds),
-    readGrants(db, roleIds),
-    readRoleByStableKey(db, PROTECTED_STABLE_KEYS.MEMBER),
-    readAllRoles(db),
-  ]);
-  const rolesById = new Map(
-    roles.map((role) => [role.role_definition_id, role])
-  );
-  const baseline =
-    roles.find((role) => role.stable_key === PROTECTED_STABLE_KEYS.MEMBER) ??
-    baselineFromDb;
-  if (baseline) {
-    rolesById.set("__member_baseline__", baseline);
-  }
-  const actorRoles = await loadActorRoles(db, actorUserId);
   const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
   const canAssign = actorCapabilities["role.assign"] === true;
   const activeRoleIds = new Set(
@@ -1097,35 +1157,9 @@ async function assertAccountAccessRead(
     throw new AccountSelfProtectedError();
   }
   await assertNonAdminTarget(db, accountUserId);
-  const active = await readAssignments(db, accountUserId, false);
-  const roles = await readRoles(
-    db,
-    active.map((assignment) => assignment.role_definition_id)
-  );
-  const canRead = await Promise.all(
-    roles.map(async (role) => {
-      if (
-        role.is_archived === 1 ||
-        !withinActorScope(eligibility.actorRoles, role)
-      ) {
-        return false;
-      }
-      const capabilities = await resolveActorCapabilities(
-        db,
-        actorUserId,
-        scopeForRole(role)
-      );
-      return (
-        capabilities["role.assign"] === true ||
-        capabilities["role.revoke"] === true
-      );
-    })
-  );
-  // A scoped actor may hold a capability elsewhere while this target has no
-  // visible assignment in the actor's exact scope.
-  if (roles.some((role) => !baselineRole(role)) && !canRead.some(Boolean)) {
-    throw new RoleScopeMismatchError();
-  }
+  // Target eligibility is independent of which assignment scopes are visible.
+  // `readProjection` applies the actor's exact scope to assignments, history,
+  // effective grants, and lifecycle affordances without disclosing other scopes.
   return eligibility;
 }
 
@@ -1679,6 +1713,7 @@ export async function mutateAccountAssignments(
       action: "ROLE_ASSIGNMENT_GRANT",
       entity_type: "account",
       entity_id: input.account_user_id,
+      reason: "account_access_grant",
       old_value_json: JSON.stringify(
         viewBefore.activeAssignments.map(
           (assignment) => assignment.roleDefinitionId
