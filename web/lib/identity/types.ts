@@ -13,7 +13,6 @@ import type { Capability } from "./capability-catalog";
 export { CAPABILITY_CATALOG, isCapability };
 export type { Capability };
 
-
 export const ROLE_CATEGORY_KEY = {
   GLOBAL: "Global",
   DEPARTMENT: "Department",
@@ -109,6 +108,8 @@ export interface RolePolicyMutationRecord {
   base_revision: number;
   outcome: RoleMutationOutcome;
   resulting_revision: number | null;
+  /** Serialized authoritative terminal response projection, when provided. */
+  result_json: string | null;
 }
 
 export type RoleAuditOutcome =

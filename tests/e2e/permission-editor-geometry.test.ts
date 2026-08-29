@@ -259,7 +259,9 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
       ...document.querySelectorAll<HTMLElement>("[data-capability]"),
     ];
     const switches = [
-      ...document.querySelectorAll<HTMLElement>('[role="switch"]'),
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-capability] [role="switch"]'
+      ),
     ];
     const back = document.querySelector<HTMLElement>(
       'a[href*="module=permissions"]'
@@ -333,6 +335,19 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
     geometry.switches.length,
     "each permission has a switch projection"
   ).toBe(PERMISSIONS.length);
+  for (const [index, item] of geometry.switches.entries()) {
+    expect(item, `permission switch ${index + 1} must render`).not.toBeNull();
+    if (item) {
+      expect(
+        item.width,
+        `permission switch ${index + 1} width`
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        item.height,
+        `permission switch ${index + 1} height`
+      ).toBeGreaterThanOrEqual(44);
+    }
+  }
 
   if (W7_PHONE_PROJECTS[testInfo.project.name] === true) {
     expect(geometry.dockPosition).toBe("fixed");

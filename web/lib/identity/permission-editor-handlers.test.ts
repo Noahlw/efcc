@@ -10,8 +10,8 @@ import type { Env } from "../../worker";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { signAccessToken } from "../auth/sessions";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
 import { CAPABILITY_CATALOG } from "./capability-catalog";
+import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
@@ -31,7 +31,11 @@ function testEnv(overrides: Partial<Env> = {}): Env {
 
 function request(
   path: string,
-  init: { method?: string; headers?: Record<string, string>; body?: unknown } = {}
+  init: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  } = {}
 ): Request {
   return new Request(`${HOST}${path}`, {
     method: init.method ?? "GET",
@@ -101,19 +105,22 @@ describe("#485 Permission Editor Worker seam", () => {
   test("PATCH rejects a body actor and keeps the exact cookie-only request shape", async () => {
     const before = await currentRevision();
     const response = await worker.fetch(
-      request(`/api/v1/identity/role-definitions/${PROGRAM_LEADER_ROLE}/grants`, {
-        method: "PATCH",
-        headers: {
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": "permission-editor-handler-body-actor",
-        },
-        body: {
-          base_revision: before,
-          changes: [{ capability: "home.publish", value: true }],
-          actor_user_id: ADMIN,
-        },
-      }),
+      request(
+        `/api/v1/identity/role-definitions/${PROGRAM_LEADER_ROLE}/grants`,
+        {
+          method: "PATCH",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "permission-editor-handler-body-actor",
+          },
+          body: {
+            base_revision: before,
+            changes: [{ capability: "home.publish", value: true }],
+            actor_user_id: ADMIN,
+          },
+        }
+      ),
       testEnv()
     );
     assert.equal(response.status, 422);
@@ -143,7 +150,11 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(first.status, 200);
     const firstBody = await bodyOf(first);
     assert.equal(first.headers.get("X-Request-Id"), firstBody.requestId);
-    const firstData = firstBody.data as { revision: number; idempotent: boolean };
+    const firstData = firstBody.data as {
+      revision: number;
+      idempotent: boolean;
+      permissions: readonly { capability: string; value: boolean }[];
+    };
     assert.equal(firstData.revision, before + 1);
     assert.equal(firstData.idempotent, false);
 
@@ -157,12 +168,40 @@ describe("#485 Permission Editor Worker seam", () => {
       .first<{ correlation_id: string; outcome: string }>();
     assert.equal(audit?.correlation_id, firstBody.requestId);
     assert.equal(audit?.outcome, "SUCCESS");
+    const current = await worker.fetch(
+      request(path, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `${key}-current`,
+        },
+        body: {
+          base_revision: firstData.revision,
+          changes: [{ capability: "home.publish", value: false }],
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(current.status, 200);
 
     const replay = await worker.fetch(request(path, init), testEnv());
     assert.equal(replay.status, 200);
     const replayBody = await bodyOf(replay);
     assert.equal(replay.headers.get("X-Request-Id"), replayBody.requestId);
-    assert.equal((replayBody.data as { idempotent: boolean }).idempotent, true);
+    const replayData = replayBody.data as {
+      idempotent: boolean;
+      revision: number;
+      permissions: readonly { capability: string; value: boolean }[];
+    };
+    assert.equal(replayData.idempotent, true);
+    assert.equal(replayData.revision, firstData.revision);
+    assert.equal(
+      replayData.permissions.find(
+        (permission) => permission.capability === "home.publish"
+      )?.value,
+      true
+    );
     const auditCount = await testDb()
       .prepare(
         `SELECT COUNT(*) AS count FROM role_audit_events
@@ -170,7 +209,7 @@ describe("#485 Permission Editor Worker seam", () => {
       )
       .bind(PROGRAM_LEADER_ROLE)
       .first<{ count: number }>();
-    assert.equal(auditCount?.count, 1);
+    assert.equal(auditCount?.count, 2);
   });
 
   test("stale PATCH returns the authoritative revision and Member is forbidden", async () => {
@@ -195,6 +234,34 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(staleBody.code, "ROLE_POLICY_CONFLICT");
     assert.equal(staleBody.currentRevision, current);
     assert.equal(stale.headers.get("X-Request-Id"), staleBody.requestId);
+    const staleReplay = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${STAFF_ROLE}/grants`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "permission-editor-handler-stale",
+        },
+        body: {
+          base_revision: current - 1,
+          changes: [{ capability: "role.read", value: false }],
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(staleReplay.status, 409);
+    const staleReplayBody = await bodyOf(staleReplay);
+    assert.equal(staleReplayBody.code, "ROLE_POLICY_CONFLICT");
+    assert.equal(staleReplayBody.currentRevision, current);
+    const staleAudits = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_POLICY_UPDATE'
+            AND entity_id = ? AND outcome = 'CONFLICT'`
+      )
+      .bind(STAFF_ROLE)
+      .first<{ count: number }>();
+    assert.equal(staleAudits?.count, 1);
 
     const forbidden = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${STAFF_ROLE}/grants`, {
@@ -214,6 +281,9 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(forbidden.status, 403);
     const forbiddenBody = await bodyOf(forbidden);
     assert.equal(forbiddenBody.code, "ROLE_FORBIDDEN");
-    assert.equal(forbidden.headers.get("X-Request-Id"), forbiddenBody.requestId);
+    assert.equal(
+      forbidden.headers.get("X-Request-Id"),
+      forbiddenBody.requestId
+    );
   });
 });

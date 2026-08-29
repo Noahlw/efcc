@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type {
@@ -19,6 +20,7 @@ import {
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 import { safeManagementReturnHref } from "./management-action-framework";
 import { SettingsBackLink } from "./settings-ui";
@@ -1233,17 +1235,23 @@ export const RoleHierarchyPanel = () => {
                 {SCOPE_EDIT_LABEL}
               </button>
             )}
-          <button
-            className={styles.renameButton}
-            onClick={() =>
-              router.push(
-                `/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`
-              )
-            }
-            type="button"
-          >
-            {PERMISSION_EDIT_LABEL}
-          </button>
+          {selected.actions.some(
+            (action) => action.action === "permissions"
+          ) && (
+            <Button
+              className={cn(styles.renameButton, "min-h-11")}
+              onClick={() =>
+                router.push(
+                  `/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`
+                )
+              }
+              size="lg"
+              type="button"
+              variant="default"
+            >
+              {PERMISSION_EDIT_LABEL}
+            </Button>
+          )}
           {scopeState.kind !== "idle" && (
             <section
               aria-labelledby="role-hierarchy-scope-title"

@@ -314,6 +314,7 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(manager?.actions.map((action) => action.action)).toEqual([
       "rename",
       "scope",
+      "permissions",
     ]);
   });
 
@@ -2237,5 +2238,75 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       outcome: "REJECTED",
       reason: "ROLE_IDEMPOTENCY_REUSE",
     });
+  });
+  test("C-485: Program Leader without permission-read has no permissions affordance", async () => {
+    const actor = "E2E_485_PROGRAM_ONLY";
+    const target = "018f3b8a-0000-7000-8000-100000000485";
+    const assignment = "E2E_485_PROGRAM_ONLY_ASSIGNMENT";
+    const program = "018f3b8a-0000-7000-8000-300000000001";
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO accounts
+             (user_id, name, username, username_normalized, credential_hash,
+              credential_kind, credential_version, account_status, role, phone,
+              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+              failed_attempts, locked_until, lock_since, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                   NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+        )
+        .bind(
+          actor,
+          "Permission-only test Program Leader",
+          "permission-only-program-leader",
+          "permission-only-program-leader",
+          Date.parse(NOW),
+          Date.parse(NOW)
+        ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+             (role_definition_id, category_key, stable_key, label, description,
+              scope_kind, scope_id, position, is_protected, is_archived,
+              created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Program', 'c485.permission-target', 'C-485 target',
+                   'Permission affordance target', 'Program', ?, 30, 0, 0,
+                   NULL, ?, NULL, ?)`
+        )
+        .bind(target, program, NOW, NOW),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+        )
+        .bind(assignment, actor, PROGRAM_LEADER_ROLE, ADMIN, NOW),
+    ]);
+    try {
+      const view = await loadRoleHierarchy(testDb(), actor);
+      const targetDefinition = view.categories
+        .flatMap((category) => category.definitions)
+        .find((definition) => definition.roleDefinitionId === target);
+      expect(targetDefinition).toBeDefined();
+      expect(
+        targetDefinition?.actions.some(
+          (action) => action.action === "permissions"
+        )
+      ).toBe(false);
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignment)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+        .bind(target)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM accounts WHERE user_id = ?")
+        .bind(actor)
+        .run();
+    }
   });
 });

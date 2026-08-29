@@ -572,6 +572,50 @@ describe("#476 disposable D1 schema contract", () => {
     expect(freshResult.outcome).toBe("SUCCESS");
     expect(freshResult.idempotent).toBe(false);
   });
+  test("kernel reserves terminal no-ops and rejects a changed key reuse", async () => {
+    const base = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    const input = {
+      idempotency_key: "t485-noop-reservation",
+      request_fingerprint: "fp-485-noop",
+      actor_user_id: "E2E_DISPOSABLE_ADMIN",
+      base_revision: base?.revision ?? 1,
+      now: "2026-08-29T08:00:00.000Z",
+      audit_id: "t485-noop-audit",
+      result_json: JSON.stringify({ revision: base?.revision ?? 1 }),
+      desired: [] as const,
+      audit_summary: {
+        action: "ROLE_DEFINITION_POLICY_UPDATE",
+        entity_type: "role_definition",
+        entity_id: "t485-noop",
+      },
+    };
+    const first = await applyRoleMutation(testDb(), input);
+    expect(first.outcome).toBe("SUCCESS");
+    expect(first.idempotent).toBe(false);
+    expect(first.resulting_revision).toBe(input.base_revision);
+    expect(first.result_json).toBe(input.result_json);
+    const unchanged = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    expect(unchanged?.revision).toBe(input.base_revision);
+    const auditCount = await readScalar<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM role_audit_events WHERE audit_id = ?`,
+      input.audit_id
+    );
+    expect(auditCount?.count).toBe(0);
+
+    const replay = await applyRoleMutation(testDb(), input);
+    expect(replay.idempotent).toBe(true);
+    expect(replay.result_json).toBe(input.result_json);
+    await expect(
+      applyRoleMutation(testDb(), {
+        ...input,
+        request_fingerprint: "fp-485-noop-changed",
+      })
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+  });
 
   test("applyRoleMutation succeeds once and replays idempotently with the same key", async () => {
     const adminUser = "E2E_DISPOSABLE_ADMIN";

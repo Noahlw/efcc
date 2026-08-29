@@ -1,3 +1,4 @@
+import { CAPABILITY_CATALOG } from "./capability-catalog";
 /**
  * #478/#479 — S5-A03 normalized read-only 身份組 hierarchy + the rename /
  * create / rescope / reorder mutation authority seam (Spec 091, ADR-0042).
@@ -47,7 +48,6 @@ import {
   RoleRevisionConflictError,
 } from "./mutations";
 import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
-import { CAPABILITY_CATALOG } from "./capability-catalog";
 import type { RoleAuditOutcome, RoleCategoryKey, RoleScopeKind } from "./types";
 
 /** Name contract (H-11): trimmed, non-empty, ≤ 60 characters (Spec 091 §8.2). */
@@ -57,6 +57,7 @@ export const ROLE_HIERARCHY_ACTION = {
   RENAME: "rename",
   SCOPE: "scope",
   REORDER: "reorder",
+  PERMISSIONS: "permissions",
 } as const;
 
 export type RoleHierarchyAction =
@@ -322,7 +323,6 @@ export class RoleInvalidTargetError extends Error {
   }
 }
 
-
 /** B-479-02/B-479-09: creation/reorder under an invalid parent Category. */
 export class RoleInvalidParentError extends Error {
   constructor() {
@@ -460,12 +460,13 @@ export async function loadActorRoles(
  * Effective capability resolution (Spec 091 §4.5/§6.1): Admin holds every
  * closed catalog capability; every Active Account receives the automatic
  * `program.enroll` baseline; all other capabilities are the union of grants
- * across active assignments. The highest assigned identity is still used by
- * role-management guards, never to subtract effective grants.
+ * across active assignments whose declared scope is Global or exactly matches
+ * the requested resource scope.
  */
 export async function resolveActorCapabilities(
   db: D1Database,
-  actorUserId: string
+  actorUserId: string,
+  scope?: { departmentId?: string; programId?: string } | null
 ): Promise<Record<string, boolean>> {
   const roles = await loadActorRoles(db, actorUserId);
   const capabilities: Record<string, boolean> = {};
@@ -476,28 +477,44 @@ export async function resolveActorCapabilities(
   if (account?.account_status === "Active") {
     capabilities["program.enroll"] = true;
   }
-  for (const role of roles) {
-    if (role.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
-      for (const entry of CAPABILITY_CATALOG) {
-        capabilities[entry.capability] = true;
-      }
-      return capabilities;
+  if (roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN)) {
+    for (const entry of CAPABILITY_CATALOG) {
+      capabilities[entry.capability] = true;
     }
+    return capabilities;
   }
-  const grants = await db
-    .prepare(
-      `SELECT DISTINCT rg.capability
-         FROM role_definition_grants rg
-         JOIN role_assignments ra
-           ON ra.role_definition_id = rg.role_definition_id
-         JOIN role_definitions rd
-           ON rd.role_definition_id = ra.role_definition_id
-        WHERE ra.account_user_id = ?
-          AND ra.revoked_at IS NULL
-          AND rd.is_archived = 0`
-    )
-    .bind(actorUserId)
-    .all<{ capability: string }>();
+
+  const scopedFilter = scope?.departmentId
+    ? `AND (
+         (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
+         OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
+       )`
+    : scope?.programId
+      ? `AND (
+           (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
+           OR (rd.scope_kind = 'Program' AND rd.scope_id = ?)
+         )`
+      : scope === null
+        ? `AND rd.scope_kind = 'Global' AND rd.scope_id IS NULL`
+        : "";
+  const statement = db.prepare(
+    `SELECT DISTINCT rg.capability
+       FROM role_definition_grants rg
+       JOIN role_assignments ra
+         ON ra.role_definition_id = rg.role_definition_id
+       JOIN role_definitions rd
+         ON rd.role_definition_id = ra.role_definition_id
+      WHERE ra.account_user_id = ?
+        AND ra.revoked_at IS NULL
+        AND rd.is_archived = 0
+        ${scopedFilter}`
+  );
+  const grants =
+    scope?.departmentId || scope?.programId
+      ? await statement
+          .bind(actorUserId, scope.departmentId ?? scope.programId)
+          .all<{ capability: string }>()
+      : await statement.bind(actorUserId).all<{ capability: string }>();
   for (const grant of grants.results ?? []) {
     capabilities[grant.capability] = true;
   }
@@ -618,6 +635,23 @@ export async function loadRoleHierarchy(
       : Number.POSITIVE_INFINITY;
   const projectedScopeOptions = scopeOptionsForActor(actorRoles, names);
 
+  const permissionCapabilities = new Map(
+    await Promise.all(
+      (definitions.results ?? []).map(async (row) => {
+        const scope =
+          row.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && row.scope_id
+            ? { departmentId: row.scope_id }
+            : row.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && row.scope_id
+              ? { programId: row.scope_id }
+              : null;
+        return [
+          row.role_definition_id,
+          await resolveActorCapabilities(db, actorUserId, scope),
+        ] as const;
+      })
+    )
+  );
+
   const categoriesView: RoleHierarchyCategory[] = (
     categories.results ?? []
   ).map((category) => {
@@ -653,6 +687,18 @@ export async function loadRoleHierarchy(
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
+        const canReadPermissions =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.permissions.read"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+
         const actions: RoleHierarchyActionAffordance[] = [];
         if (canRename) {
           actions.push({
@@ -664,6 +710,12 @@ export async function loadRoleHierarchy(
           actions.push({
             action: ROLE_HIERARCHY_ACTION.SCOPE,
             label: "編輯適用範圍",
+          });
+        }
+        if (canReadPermissions) {
+          actions.push({
+            action: ROLE_HIERARCHY_ACTION.PERMISSIONS,
+            label: "編輯權限",
           });
         }
         return {
@@ -2173,9 +2225,10 @@ export async function reorderRoleDefinitions(
       idempotent: result.idempotent,
     };
   } catch (error) {
-    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
+    if (error instanceof RoleRevisionConflictError) {
       // B-479-10: a stale order revision is rejected with the authoritative
-      // revision and the authoritative sibling order.
+      // revision and the authoritative sibling order. The mutation kernel
+      // already owns the conflict audit when auditWritten is true.
       const authoritative = await db
         .prepare(
           `SELECT role_definition_id FROM role_definitions
@@ -2187,17 +2240,19 @@ export async function reorderRoleDefinitions(
       const authoritativeIds =
         (authoritative.results ?? []).map((row) => row.role_definition_id) ??
         [];
-      await recordRoleDenialForCreate(db, {
-        actor_user_id: input.actor_user_id,
-        now: input.now,
-        audit_id: input.audit_id,
-        correlation_id: input.correlation_id,
-        action: "ROLE_DEFINITION_REORDER",
-        entity_type: "role_definition",
-        entity_id: auditEntityId,
-        reason: `ROLE_ORDER_CONFLICT:current=${error.currentRevision}`,
-        outcome: "CONFLICT",
-      });
+      if (!error.auditWritten) {
+        await recordRoleDenialForCreate(db, {
+          actor_user_id: input.actor_user_id,
+          now: input.now,
+          audit_id: input.audit_id,
+          correlation_id: input.correlation_id,
+          action: "ROLE_DEFINITION_REORDER",
+          entity_type: "role_definition",
+          entity_id: auditEntityId,
+          reason: `ROLE_ORDER_CONFLICT:current=${error.currentRevision}`,
+          outcome: "CONFLICT",
+        });
+      }
       throw new RoleOrderConflictError(error.currentRevision, authoritativeIds);
     }
     if (error instanceof RoleIdempotencyConflictError) {

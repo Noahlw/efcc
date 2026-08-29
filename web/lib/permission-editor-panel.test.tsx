@@ -39,6 +39,11 @@ const mocks = vi.hoisted(() => ({
     push: vi.fn<(href: string) => void>(),
     prefetch: vi.fn<(href: string) => void>(),
   },
+  announce: vi.fn<(message: string) => void>(),
+}));
+
+vi.mock(import("@/lib/live-region"), () => ({
+  announce: mocks.announce,
 }));
 
 vi.mock(import("next/navigation"), () => ({
@@ -161,7 +166,10 @@ function installDetail(detailView = detail()) {
       ({ params }) =>
         HttpResponse.json({
           requestId: "detail-request",
-          data: String(params.roleDefinitionId) === ROLE_ID ? detailView : detail(OTHER_ROLE_ID),
+          data:
+            String(params.roleDefinitionId) === ROLE_ID
+              ? detailView
+              : detail(OTHER_ROLE_ID),
         })
     ),
     http.patch(
@@ -178,6 +186,7 @@ afterEach(() => {
   mocks.searchParams = new URLSearchParams();
   mocks.router.push.mockClear();
   mocks.router.replace.mockClear();
+  mocks.announce.mockClear();
   window.history.replaceState(null, "", "/management?module=permissions");
 });
 afterAll(() => server.close());
@@ -189,14 +198,22 @@ describe("PermissionEditorPanel", () => {
 
     const list = await screen.findByRole("list", { name: "身份組列表" });
     expect(within(list).getByText("青少年查經帶領")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /青少年查經帶領/u }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /青少年查經帶領/u })
+    );
 
     expect(
       await screen.findByRole("heading", { name: /青少年查經帶領/u, level: 2 })
     ).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "搜尋權限" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "身份組管理", level: 3 })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "課程", level: 3 })).toBeInTheDocument();
+    expect(
+      screen.getByRole("searchbox", { name: "搜尋權限" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "身份組管理", level: 3 })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "課程", level: 3 })
+    ).toBeInTheDocument();
 
     const search = screen.getByRole("searchbox", { name: "搜尋權限" });
     await userEvent.type(search, "課程");
@@ -207,11 +224,19 @@ describe("PermissionEditorPanel", () => {
 
   test("normalizes malformed identity and view parameters to the safe role list", async () => {
     installDetail();
-    mocks.searchParams = new URLSearchParams("module=permissions&role=&view=bad");
-    window.history.replaceState(null, "", "/management?module=permissions&role=&view=bad");
+    mocks.searchParams = new URLSearchParams(
+      "module=permissions&role=&view=bad"
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/management?module=permissions&role=&view=bad"
+    );
     render(<PermissionEditorPanel />);
 
-    expect(await screen.findByRole("list", { name: "身份組列表" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("list", { name: "身份組列表" })
+    ).toBeInTheDocument();
     expect(window.location.search).toBe("?module=permissions");
   });
 
@@ -223,7 +248,10 @@ describe("PermissionEditorPanel", () => {
     });
     installDetail(
       detail(ROLE_ID, {
-        permissions: [locked, ...CAPABILITY_CATALOG.slice(1).map((item) => permission(item))],
+        permissions: [
+          locked,
+          ...CAPABILITY_CATALOG.slice(1).map((item) => permission(item)),
+        ],
       })
     );
     mocks.searchParams = new URLSearchParams(
@@ -231,13 +259,13 @@ describe("PermissionEditorPanel", () => {
     );
     render(<PermissionEditorPanel />);
 
-    const switchControl = await screen.findByRole("switch", { name: "檢視身份組" });
+    const switchControl = await screen.findByRole("switch", {
+      name: "檢視身份組",
+    });
     expect(switchControl).toHaveAttribute("aria-checked", "false");
     expect(switchControl).toBeDisabled();
     expect(switchControl).toHaveAttribute("aria-disabled", "true");
-    expect(
-      screen.getByText(/不可修改自己或更高順位/u)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/不可修改自己或更高順位/u)).toBeInTheDocument();
 
     const editable = screen.getByRole("switch", { name: "部門管理" });
     editable.focus();
@@ -247,41 +275,71 @@ describe("PermissionEditorPanel", () => {
   });
 
   test("opens a capped Sheet for ordinary changes and replaces the draft with the authoritative revision", async () => {
-    const ordinary = permission(CAPABILITY_CATALOG.find((item) => item.capability === "department.manage")!);
-    installDetail(detail(ROLE_ID, {
-      permissions: [ordinary, ...CAPABILITY_CATALOG.filter((item) => item.capability !== "department.manage").map((item) => permission(item))],
-      revision: 7,
-    }));
+    const ordinary = permission(
+      CAPABILITY_CATALOG.find(
+        (item) => item.capability === "department.manage"
+      )!
+    );
+    installDetail(
+      detail(ROLE_ID, {
+        permissions: [
+          ordinary,
+          ...CAPABILITY_CATALOG.filter(
+            (item) => item.capability !== "department.manage"
+          ).map((item) => permission(item)),
+        ],
+        revision: 7,
+      })
+    );
     mocks.searchParams = new URLSearchParams(
       `module=permissions&role=${ROLE_ID}&view=permissions`
     );
     let patchBody: unknown;
     server.use(
-      http.patch("/api/v1/identity/role-definitions/:roleDefinitionId/grants", async ({ request }) => {
-        patchBody = await request.json();
-        return HttpResponse.json({
-          requestId: "patch-request",
-          data: detail(ROLE_ID, {
-            permissions: [{ ...ordinary, value: true }, ...CAPABILITY_CATALOG.filter((item) => item.capability !== "department.manage").map((item) => permission(item))],
-            revision: 8,
-          }),
-        });
-      })
+      http.patch(
+        "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
+        async ({ request }) => {
+          patchBody = await request.json();
+          return HttpResponse.json({
+            requestId: "patch-request",
+            data: detail(ROLE_ID, {
+              permissions: [
+                { ...ordinary, value: true },
+                ...CAPABILITY_CATALOG.filter(
+                  (item) => item.capability !== "department.manage"
+                ).map((item) => permission(item)),
+              ],
+              revision: 8,
+            }),
+          });
+        }
+      )
     );
     render(<PermissionEditorPanel />);
+    mocks.announce.mockClear();
 
-    await userEvent.click(await screen.findByRole("switch", { name: "部門管理" }));
+    await userEvent.click(
+      await screen.findByRole("switch", { name: "部門管理" })
+    );
     await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("確認權限變更")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "確認儲存" }));
 
-    await waitFor(() => expect(screen.getByText(/版本 8/u)).toBeInTheDocument());
+    expect(mocks.announce).not.toHaveBeenCalledWith(
+      "權限已儲存，顯示最新政策版本。"
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/版本 8/u)).toBeInTheDocument()
+    );
     expect(patchBody).toEqual({
       base_revision: 7,
       changes: [{ capability: "department.manage", value: true }],
     });
-    expect(screen.getByRole("switch", { name: "部門管理" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "部門管理" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
   });
 
   test("preserves the dirty draft and unlocks controls after a non-conflict failure", async () => {
@@ -289,14 +347,17 @@ describe("PermissionEditorPanel", () => {
     mocks.searchParams = new URLSearchParams(
       `module=permissions&role=${ROLE_ID}&view=permissions`
     );
+    const idempotencyKeys: string[] = [];
     server.use(
       http.patch(
         "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
-        () =>
-          HttpResponse.json(
+        ({ request }) => {
+          idempotencyKeys.push(request.headers.get("Idempotency-Key") ?? "");
+          return HttpResponse.json(
             { status: 503, code: "UNAVAILABLE", requestId: "unavailable" },
             { status: 503 }
-          )
+          );
+        }
       )
     );
     render(<PermissionEditorPanel />);
@@ -307,43 +368,107 @@ describe("PermissionEditorPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "確認儲存" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/草稿仍保留/u);
+    expect(mocks.announce).not.toHaveBeenCalledWith(
+      "未能儲存權限；草稿仍保留，請稍後再試。"
+    );
     expect(screen.getByRole("switch", { name: "部門管理" })).toHaveAttribute(
       "aria-checked",
       "true"
     );
+    await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
+    await userEvent.click(screen.getByRole("button", { name: "確認儲存" }));
+    await waitFor(() => expect(idempotencyKeys).toHaveLength(2));
+    expect(idempotencyKeys[0]).toBeTruthy();
+    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
     expect(screen.getByRole("button", { name: "儲存變更" })).toBeEnabled();
   });
 
   test("uses dedicated review for high-risk changes and preserves a dirty draft after conflict recovery", async () => {
-    const highRisk = permission(CAPABILITY_CATALOG.find((item) => item.capability === "role.read")!);
+    const highRisk = permission(
+      CAPABILITY_CATALOG.find((item) => item.capability === "role.read")!
+    );
     const latest = detail(ROLE_ID, {
-      permissions: [permission(CAPABILITY_CATALOG.find((item) => item.capability === "role.read")!), ...CAPABILITY_CATALOG.filter((item) => item.capability !== "role.read").map((item) => permission(item))],
+      permissions: [
+        permission(
+          CAPABILITY_CATALOG.find((item) => item.capability === "role.read")!
+        ),
+        ...CAPABILITY_CATALOG.filter(
+          (item) => item.capability !== "role.read"
+        ).map((item) => permission(item)),
+      ],
       revision: 10,
     });
-    installDetail(detail(ROLE_ID, { permissions: [highRisk, ...CAPABILITY_CATALOG.filter((item) => item.capability !== "role.read").map((item) => permission(item))], revision: 9 }));
+    installDetail(
+      detail(ROLE_ID, {
+        permissions: [
+          highRisk,
+          ...CAPABILITY_CATALOG.filter(
+            (item) => item.capability !== "role.read"
+          ).map((item) => permission(item)),
+        ],
+        revision: 9,
+      })
+    );
     mocks.searchParams = new URLSearchParams(
       `module=permissions&role=${ROLE_ID}&view=permissions`
     );
     let detailCalls = 0;
     server.resetHandlers(
-      http.get("/api/v1/identity/roles", () => HttpResponse.json({ requestId: "hierarchy-request", data: HIERARCHY })),
+      http.get("/api/v1/identity/roles", () =>
+        HttpResponse.json({ requestId: "hierarchy-request", data: HIERARCHY })
+      ),
       http.get("/api/v1/identity/role-definitions/:roleDefinitionId", () => {
         detailCalls += 1;
-        return HttpResponse.json({ requestId: `detail-${detailCalls}`, data: detailCalls > 1 ? latest : detail(ROLE_ID, { permissions: [highRisk, ...CAPABILITY_CATALOG.filter((item) => item.capability !== "role.read").map((item) => permission(item))], revision: 9 }) });
+        return HttpResponse.json({
+          requestId: `detail-${detailCalls}`,
+          data:
+            detailCalls > 1
+              ? latest
+              : detail(ROLE_ID, {
+                  permissions: [
+                    highRisk,
+                    ...CAPABILITY_CATALOG.filter(
+                      (item) => item.capability !== "role.read"
+                    ).map((item) => permission(item)),
+                  ],
+                  revision: 9,
+                }),
+        });
       }),
-      http.patch("/api/v1/identity/role-definitions/:roleDefinitionId/grants", () => HttpResponse.json({ status: 409, code: "ROLE_POLICY_CONFLICT", requestId: "conflict" }, { status: 409 }))
+      http.patch(
+        "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
+        () =>
+          HttpResponse.json(
+            {
+              status: 409,
+              code: "ROLE_POLICY_CONFLICT",
+              requestId: "conflict",
+            },
+            { status: 409 }
+          )
+      )
     );
     render(<PermissionEditorPanel />);
 
-    await userEvent.click(await screen.findByRole("switch", { name: "檢視身份組" }));
+    await userEvent.click(
+      await screen.findByRole("switch", { name: "檢視身份組" })
+    );
     await userEvent.click(screen.getByRole("button", { name: "儲存變更" }));
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "確認儲存" }));
 
     expect(await screen.findByText(/權限政策已有更新/u)).toBeInTheDocument();
+    expect(mocks.announce).not.toHaveBeenCalledWith(
+      "權限政策已有更新；草稿未被覆寫。請先查看最新版本，再選擇重新開始。"
+    );
     expect(screen.getByText("捨棄草稿並重新開始")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "檢視身份組" })).toHaveAttribute("aria-checked", "true");
-    await userEvent.click(screen.getByRole("button", { name: "捨棄草稿並重新開始" }));
+    expect(screen.getByRole("switch", { name: "檢視身份組" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "捨棄草稿並重新開始" })
+    );
     expect(screen.queryByText("捨棄草稿並重新開始")).not.toBeInTheDocument();
   });
 
@@ -365,11 +490,29 @@ describe("PermissionEditorPanel", () => {
         level: 2,
       })
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("link", { name: "返回身份組列表" })
-    );
-    expect(await screen.findByRole("list", { name: "身份組列表" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "返回身份組列表" }));
+    expect(
+      await screen.findByRole("list", { name: "身份組列表" })
+    ).toBeInTheDocument();
     expect(window.location.search).toBe("?module=permissions");
     expect(document.activeElement).toHaveTextContent("身份組列表");
+  });
+  test("retry uses the shared resource focus target after a failed reload", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/v1/identity/roles", () => {
+        attempts += 1;
+        return HttpResponse.json(
+          { status: 503, code: "UNAVAILABLE", requestId: "reload-failed" },
+          { status: 503 }
+        );
+      })
+    );
+    render(<PermissionEditorPanel />);
+
+    await screen.findByRole("alert");
+    await userEvent.click(screen.getByRole("button", { name: "重試連接" }));
+    await waitFor(() => expect(attempts).toBe(2));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
   });
 });

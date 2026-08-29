@@ -5,14 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,9 +16,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { RpcError } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import type {
   PermissionGrantChange,
   RoleDefinitionDetailView,
@@ -41,6 +40,7 @@ import {
 import { announce } from "@/lib/live-region";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 import {
   ActionSurface,
@@ -61,7 +61,8 @@ const SAVE = "儲存變更";
 const SAVING = "正在儲存…";
 const SUCCESS = "權限已儲存，顯示最新政策版本。";
 const ERROR = "未能儲存權限；草稿仍保留，請稍後再試。";
-const CONFLICT = "權限政策已有更新；草稿未被覆寫。請先查看最新版本，再選擇重新開始。";
+const CONFLICT =
+  "權限政策已有更新；草稿未被覆寫。請先查看最新版本，再選擇重新開始。";
 const FORBIDDEN = "您沒有權限查看或編輯此身份組。";
 const LOAD_ERROR = "身份組資料暫時無法載入，請稍後再試。";
 const REVIEW_TITLE = "確認權限變更";
@@ -105,7 +106,13 @@ const permissionRowVariants = cva(
 
 type Draft = Record<string, boolean>;
 type ReviewKind = "sheet" | "dedicated" | null;
-type SaveState = "clean" | "dirty" | "saving" | "success" | "error" | "conflict";
+type SaveState =
+  | "clean"
+  | "dirty"
+  | "saving"
+  | "success"
+  | "error"
+  | "conflict";
 
 type LoadedData = {
   hierarchy: RoleHierarchyView;
@@ -131,13 +138,18 @@ function initialRoleId(params: URLSearchParams): string | null {
 
 function isKnownRole(hierarchy: RoleHierarchyView, roleId: string): boolean {
   return hierarchy.categories.some((category) =>
-    category.definitions.some((definition) => definition.roleDefinitionId === roleId)
+    category.definitions.some(
+      (definition) => definition.roleDefinitionId === roleId
+    )
   );
 }
 
 function draftFromDetail(detail: RoleDefinitionDetailView): Draft {
   return Object.fromEntries(
-    detail.permissions.map((permission) => [permission.capability, permission.value])
+    detail.permissions.map((permission) => [
+      permission.capability,
+      permission.value,
+    ])
   );
 }
 
@@ -156,11 +168,19 @@ function changedPermissions(
   });
 }
 
-function capabilityMatches(permission: RoleDefinitionPermission, query: string): boolean {
+function capabilityMatches(
+  permission: RoleDefinitionPermission,
+  query: string
+): boolean {
   if (!query) {
     return true;
   }
-  return [permission.group, permission.label, permission.description, permission.capability]
+  return [
+    permission.group,
+    permission.label,
+    permission.description,
+    permission.capability,
+  ]
     .join(" ")
     .toLocaleLowerCase()
     .includes(query);
@@ -170,7 +190,8 @@ function permissionGroups(
   permissions: readonly RoleDefinitionPermission[],
   query: string
 ): { group: string; permissions: RoleDefinitionPermission[] }[] {
-  const groups: { group: string; permissions: RoleDefinitionPermission[] }[] = [];
+  const groups: { group: string; permissions: RoleDefinitionPermission[] }[] =
+    [];
   for (const permission of permissions) {
     if (!capabilityMatches(permission, query)) {
       continue;
@@ -185,11 +206,18 @@ function permissionGroups(
   return groups;
 }
 
-function isHighRisk(change: PermissionGrantChange, permissions: readonly RoleDefinitionPermission[]): boolean {
+function isHighRisk(
+  change: PermissionGrantChange,
+  permissions: readonly RoleDefinitionPermission[]
+): boolean {
   if (HIGH_RISK_KEYS.has(change.capability)) {
     return true;
   }
-  return permissions.find((permission) => permission.capability === change.capability)?.risk === "high";
+  return (
+    permissions.find(
+      (permission) => permission.capability === change.capability
+    )?.risk === "high"
+  );
 }
 
 function displayValue(value: boolean): string {
@@ -203,14 +231,18 @@ function reviewChanges(
   return (
     <ul className="grid gap-2" aria-label="待儲存權限變更">
       {changes.map((change) => {
-        const permission = permissions.find((item) => item.capability === change.capability);
+        const permission = permissions.find(
+          (item) => item.capability === change.capability
+        );
         return (
           <li
             className="grid gap-1 rounded-lg border border-border bg-background p-3"
             key={change.capability}
           >
             <strong>{permission?.label ?? change.capability}</strong>
-            <span className="text-muted-foreground text-xs">{displayValue(change.value)}</span>
+            <span className="text-muted-foreground text-xs">
+              {displayValue(change.value)}
+            </span>
             {isHighRisk(change, permissions) && (
               <span className="text-destructive text-xs">高風險變更</span>
             )}
@@ -228,18 +260,22 @@ function switchId(capability: string): string {
 export const PermissionEditorPanel = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnHref = safeManagementReturnHref(searchParams.get("return"), "/management");
+  const returnHref = safeManagementReturnHref(
+    searchParams.get("return"),
+    "/management"
+  );
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(() =>
     initialRoleId(new URLSearchParams(searchParams.toString()))
   );
-  const [retryToken, setRetryToken] = useState(0);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseRevision, setBaseRevision] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("clean");
   const [review, setReview] = useState<ReviewKind>(null);
-  const [detailOverride, setDetailOverride] = useState<RoleDefinitionDetailView | null>(null);
+  const [detailOverride, setDetailOverride] =
+    useState<RoleDefinitionDetailView | null>(null);
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
   const detailRoleRef = useRef<string | null>(null);
   const listHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
@@ -256,7 +292,10 @@ export const PermissionEditorPanel = () => {
           roleId: selectedRoleId,
         };
       } catch (error) {
-        if (error instanceof RpcError && error.problem.code === "ROLE_NOT_FOUND") {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "ROLE_NOT_FOUND"
+        ) {
           return { hierarchy, detail: null, roleId: selectedRoleId };
         }
         throw error;
@@ -264,9 +303,13 @@ export const PermissionEditorPanel = () => {
     },
     {
       toLoading: () => ({ kind: "loading" }),
-      toReady: (data) => (data.detail ? { kind: "detail", data } : { kind: "list", data }),
+      toReady: (data) =>
+        data.detail ? { kind: "detail", data } : { kind: "list", data },
       onError: (error) => {
-        if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
@@ -275,7 +318,9 @@ export const PermissionEditorPanel = () => {
         }
         if (
           error instanceof RpcError &&
-          ["ROLE_FORBIDDEN", "ROLE_SCOPE_MISMATCH"].includes(error.problem.code ?? "")
+          ["ROLE_FORBIDDEN", "ROLE_SCOPE_MISMATCH"].includes(
+            error.problem.code ?? ""
+          )
         ) {
           return { kind: "forbidden", message: FORBIDDEN };
         }
@@ -284,7 +329,7 @@ export const PermissionEditorPanel = () => {
       announceLoading: "正在載入權限…",
       focusTarget: "#permission-editor-state",
     },
-    [selectedRoleId, retryToken, router]
+    [selectedRoleId, router]
   );
 
   useEffect(() => {
@@ -294,6 +339,7 @@ export const PermissionEditorPanel = () => {
   useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
+      idempotencyKeyRef.current = null;
       setSelectedRoleId(initialRoleId(params));
       setDetailOverride(null);
       setDraft(null);
@@ -305,7 +351,8 @@ export const PermissionEditorPanel = () => {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const loadedDetail = resource.state.kind === "detail" ? resource.state.data.detail : null;
+  const loadedDetail =
+    resource.state.kind === "detail" ? resource.state.data.detail : null;
   const detail = detailOverride ?? loadedDetail;
 
   useEffect(() => {
@@ -316,8 +363,7 @@ export const PermissionEditorPanel = () => {
     if (data.roleId !== selectedRoleId) {
       return;
     }
-    const invalidSelectedRole =
-      selectedRoleId !== null && data.detail === null;
+    const invalidSelectedRole = selectedRoleId !== null && data.detail === null;
     const malformedUrl =
       selectedRoleId === null &&
       (searchParams.get("role") !== null || searchParams.get("view") !== null);
@@ -329,6 +375,7 @@ export const PermissionEditorPanel = () => {
     setDetailOverride(null);
     setDraft(null);
     setBaseRevision(null);
+    idempotencyKeyRef.current = null;
     setSaveState("clean");
   }, [resource.state, searchParams, selectedRoleId]);
 
@@ -337,6 +384,7 @@ export const PermissionEditorPanel = () => {
     if (!loadedDetail || roleId === null || detailRoleRef.current === roleId) {
       return;
     }
+    idempotencyKeyRef.current = null;
     detailRoleRef.current = roleId;
     setDetailOverride(null);
     setDraft(draftFromDetail(loadedDetail));
@@ -360,11 +408,14 @@ export const PermissionEditorPanel = () => {
     [detail, draft]
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const groups = detail ? permissionGroups(detail.permissions, normalizedQuery) : [];
+  const groups = detail
+    ? permissionGroups(detail.permissions, normalizedQuery)
+    : [];
   const busy = saveState === "saving";
 
   const selectRole = (roleId: string, label: string) => {
     detailRoleRef.current = null;
+    idempotencyKeyRef.current = null;
     setSelectedRoleId(roleId);
     setDetailOverride(null);
     setDraft(null);
@@ -381,6 +432,7 @@ export const PermissionEditorPanel = () => {
 
   const goToRoleList = () => {
     detailRoleRef.current = null;
+    idempotencyKeyRef.current = null;
     setSelectedRoleId(null);
     setDetailOverride(null);
     setDraft(null);
@@ -395,14 +447,20 @@ export const PermissionEditorPanel = () => {
 
   const retryLoad = () => {
     detailRoleRef.current = null;
+    idempotencyKeyRef.current = null;
     setDetailOverride(null);
     setDraft(null);
+    setBaseRevision(null);
+    setConflictRevision(null);
     setReview(null);
     setSaveState("clean");
-    setRetryToken((token) => token + 1);
+    resource.retry();
   };
 
-  const togglePermission = (permission: RoleDefinitionPermission, value: boolean) => {
+  const togglePermission = (
+    permission: RoleDefinitionPermission,
+    value: boolean
+  ) => {
     if (!detail || !draft || busy || !permission.editable) {
       return;
     }
@@ -415,10 +473,18 @@ export const PermissionEditorPanel = () => {
   };
 
   const openReview = () => {
-    if (!detail || !baseRevision || changes.length === 0 || busy || !detail.caller.canWrite) {
+    if (
+      !detail ||
+      !baseRevision ||
+      changes.length === 0 ||
+      busy ||
+      !detail.caller.canWrite
+    ) {
       return;
     }
-    const dedicated = changes.length > 3 || changes.some((change) => isHighRisk(change, detail.permissions));
+    const dedicated =
+      changes.length > 3 ||
+      changes.some((change) => isHighRisk(change, detail.permissions));
     setReview(dedicated ? "dedicated" : "sheet");
   };
 
@@ -427,6 +493,7 @@ export const PermissionEditorPanel = () => {
       return;
     }
     setDraft(draftFromDetail(detail));
+    idempotencyKeyRef.current = null;
     setBaseRevision(detail.revision);
     setConflictRevision(null);
     setSaveState("clean");
@@ -435,26 +502,37 @@ export const PermissionEditorPanel = () => {
   };
 
   const submitChanges = async () => {
-    if (!detail || !draft || baseRevision === null || changes.length === 0 || busy) {
+    if (
+      !detail ||
+      !draft ||
+      baseRevision === null ||
+      changes.length === 0 ||
+      busy
+    ) {
       return;
     }
     setReview(null);
     setSaveState("saving");
     announce(SAVING);
+    const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
+    idempotencyKeyRef.current = idempotencyKey;
     try {
       const result = await updateRoleDefinitionGrants(
         detail.roleDefinition.roleDefinitionId,
         { baseRevision, changes },
-        crypto.randomUUID()
+        idempotencyKey
       );
       setDetailOverride(result);
       setDraft(draftFromDetail(result));
       setBaseRevision(result.revision);
       setConflictRevision(null);
       setSaveState("success");
-      announce(SUCCESS);
+      idempotencyKeyRef.current = null;
     } catch (error) {
-      if (error instanceof RpcError && error.problem.code === "ROLE_POLICY_CONFLICT") {
+      if (
+        error instanceof RpcError &&
+        error.problem.code === "ROLE_POLICY_CONFLICT"
+      ) {
         setSaveState("conflict");
         const extension = error.problem as typeof error.problem & {
           currentRevision?: unknown;
@@ -462,22 +540,25 @@ export const PermissionEditorPanel = () => {
         const revision = extension.currentRevision;
         setConflictRevision(typeof revision === "number" ? revision : null);
         try {
-          const latest = await getRoleDefinitionDetail(detail.roleDefinition.roleDefinitionId);
+          const latest = await getRoleDefinitionDetail(
+            detail.roleDefinition.roleDefinitionId
+          );
           setDetailOverride(latest);
           setConflictRevision(latest.revision);
         } catch {
           // Keep the dirty draft visible if authoritative recovery is unavailable.
         }
-        announce(CONFLICT);
         return;
       }
       setSaveState("error");
-      announce(ERROR);
     }
   };
 
   const renderRoleList = (hierarchy: RoleHierarchyView) => (
-    <section className="grid gap-4" aria-labelledby="permission-editor-list-title">
+    <section
+      className="grid gap-4"
+      aria-labelledby="permission-editor-list-title"
+    >
       <h2
         className="text-lg font-semibold"
         id="permission-editor-list-title"
@@ -489,7 +570,9 @@ export const PermissionEditorPanel = () => {
       <ul aria-label={ROLE_LIST_LABEL} className="grid gap-3">
         {hierarchy.categories.map((category) => (
           <li className="grid gap-2" key={category.categoryKey}>
-            <h3 className="text-sm font-semibold text-muted-foreground">{category.label}</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              {category.label}
+            </h3>
             <ul className="grid gap-2">
               {category.definitions.map((definition) => (
                 <li key={definition.roleDefinitionId}>
@@ -502,17 +585,24 @@ export const PermissionEditorPanel = () => {
                             : "default",
                       })
                     )}
-                    onClick={() => selectRole(definition.roleDefinitionId, definition.label)}
+                    onClick={() =>
+                      selectRole(definition.roleDefinitionId, definition.label)
+                    }
                     type="button"
                     variant="outline"
                   >
                     <span className="grid gap-1 text-left">
                       <strong>{definition.label}</strong>
                       <span className="text-muted-foreground text-xs">
-                        {definition.scopeLabel ?? "全教會"} · {definition.assignmentCount} 個已指派 · {definition.grantCount} 項能力
+                        {definition.scopeLabel ?? "全教會"} ·{" "}
+                        {definition.assignmentCount} 個已指派 ·{" "}
+                        {definition.grantCount} 項能力
                       </span>
                     </span>
-                    <span aria-hidden="true" className="ml-auto text-muted-foreground text-xl">
+                    <span
+                      aria-hidden="true"
+                      className="ml-auto text-muted-foreground text-xl"
+                    >
                       ›
                     </span>
                   </Button>
@@ -533,7 +623,15 @@ export const PermissionEditorPanel = () => {
       <>
         <ActionSurface
           label={`權限編輯：${detail.roleDefinition.label}`}
-          state={saveState === "conflict" ? "conflict" : saveState === "error" ? "failure" : saveState === "saving" ? "busy" : "selection"}
+          state={
+            saveState === "conflict"
+              ? "conflict"
+              : saveState === "error"
+                ? "failure"
+                : saveState === "saving"
+                  ? "busy"
+                  : "selection"
+          }
           busy={busy}
         >
           <div className="grid gap-4 p-4">
@@ -546,16 +644,22 @@ export const PermissionEditorPanel = () => {
               >
                 {detail.roleDefinition.label}
               </h2>
-              <p className="text-muted-foreground text-sm">{detail.roleDefinition.description}</p>
+              <p className="text-muted-foreground text-sm">
+                {detail.roleDefinition.description}
+              </p>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <div>
                 <dt className="text-muted-foreground">適用範圍</dt>
-                <dd className="font-medium">{detail.roleDefinition.scopeLabel ?? "全教會"}</dd>
+                <dd className="font-medium">
+                  {detail.roleDefinition.scopeLabel ?? "全教會"}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">已指派帳戶</dt>
-                <dd className="font-medium">{detail.assignedAccounts.length}</dd>
+                <dd className="font-medium">
+                  {detail.assignedAccounts.length}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">目前版本</dt>
@@ -563,7 +667,9 @@ export const PermissionEditorPanel = () => {
               </div>
               <div>
                 <dt className="text-muted-foreground">狀態</dt>
-                <dd className="font-medium">{detail.roleDefinition.isArchived ? "已停用" : "生效"}</dd>
+                <dd className="font-medium">
+                  {detail.roleDefinition.isArchived ? "已停用" : "生效"}
+                </dd>
               </div>
             </dl>
             <label className="grid gap-2" htmlFor="permission-search">
@@ -578,13 +684,21 @@ export const PermissionEditorPanel = () => {
               />
             </label>
             {(saveState === "error" || saveState === "conflict") && (
-              <div className="grid gap-2" id="permission-editor-feedback" role="alert">
+              <div
+                className="grid gap-2"
+                id="permission-editor-feedback"
+                role="alert"
+              >
                 <p>{saveState === "conflict" ? CONFLICT : ERROR}</p>
                 {saveState === "conflict" && conflictRevision !== null && (
                   <p className="text-sm">最新政策版本：{conflictRevision}</p>
                 )}
                 {saveState === "conflict" && (
-                  <Button onClick={discardAndRestart} type="button" variant="outline">
+                  <Button
+                    onClick={discardAndRestart}
+                    type="button"
+                    variant="outline"
+                  >
                     {DISCARD_RESTART}
                   </Button>
                 )}
@@ -592,15 +706,21 @@ export const PermissionEditorPanel = () => {
             )}
             {saveState === "success" && <p role="status">{SUCCESS}</p>}
             <div className="grid gap-5" aria-label="連續權限清單">
-              {groups.length === 0 && <p className="text-muted-foreground">找不到符合的權限。</p>}
+              {groups.length === 0 && (
+                <p className="text-muted-foreground">找不到符合的權限。</p>
+              )}
               {groups.map((group) => (
                 <section className="grid gap-2" key={group.group}>
-                  <h3 className="border-b border-border pb-2 text-base font-semibold">{group.group}</h3>
+                  <h3 className="border-b border-border pb-2 text-base font-semibold">
+                    {group.group}
+                  </h3>
                   <ul className="grid gap-2">
                     {group.permissions.map((permission) => {
-                      const value = draft?.[permission.capability] ?? permission.value;
+                      const value =
+                        draft?.[permission.capability] ?? permission.value;
                       const changed = value !== permission.value;
-                      const disabled = permission.locked || !permission.editable || busy;
+                      const disabled =
+                        permission.locked || !permission.editable || busy;
                       const id = switchId(permission.capability);
                       return (
                         <li
@@ -613,30 +733,51 @@ export const PermissionEditorPanel = () => {
                           data-capability={permission.capability}
                           key={permission.capability}
                         >
-                          <div className="grid min-w-0 gap-1" id={`${id}-description`}>
+                          <div
+                            className="grid min-w-0 gap-1"
+                            id={`${id}-description`}
+                          >
                             <label className="font-medium" htmlFor={id}>
                               {permission.label}
-                              {changed && <span className="ml-2 text-primary text-xs">待儲存</span>}
+                              {changed && (
+                                <span className="ml-2 text-primary text-xs">
+                                  待儲存
+                                </span>
+                              )}
                             </label>
-                            <span className="text-muted-foreground text-sm">{permission.description}</span>
+                            <span className="text-muted-foreground text-sm">
+                              {permission.description}
+                            </span>
                             <span className="text-muted-foreground text-xs">
                               {displayValue(value)} · {permission.capability}
                             </span>
                             {permission.locked && (
-                              <span className="text-muted-foreground text-xs" id={`${id}-lock-reason`}>
-                                {LOCKED}：{permission.lockReason ?? "此項權限目前不可修改。"}
+                              <span
+                                className="text-muted-foreground text-xs"
+                                id={`${id}-lock-reason`}
+                              >
+                                {LOCKED}：
+                                {permission.lockReason ??
+                                  "此項權限目前不可修改。"}
                               </span>
                             )}
                           </div>
                           <Switch
-                            aria-describedby={permission.locked ? `${id}-lock-reason` : `${id}-description`}
+                            aria-describedby={
+                              permission.locked
+                                ? `${id}-lock-reason`
+                                : `${id}-description`
+                            }
                             aria-disabled={disabled || undefined}
                             aria-label={permission.label}
                             aria-busy={busy || undefined}
                             checked={value}
+                            className="min-h-11 min-w-11"
                             disabled={disabled}
                             id={id}
-                            onCheckedChange={(checked) => togglePermission(permission, checked)}
+                            onCheckedChange={(checked) =>
+                              togglePermission(permission, checked)
+                            }
                           />
                         </li>
                       );
@@ -652,13 +793,31 @@ export const PermissionEditorPanel = () => {
             busy={busy}
             disabled={changes.length === 0 || busy || saveState === "conflict"}
             label="權限儲存操作"
-            state={saveState === "conflict" ? "conflict" : saveState === "error" ? "failure" : busy ? "busy" : changes.length > 0 ? "dirty" : "save"}
+            state={
+              saveState === "conflict"
+                ? "conflict"
+                : saveState === "error"
+                  ? "failure"
+                  : busy
+                    ? "busy"
+                    : changes.length > 0
+                      ? "dirty"
+                      : "save"
+            }
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-muted-foreground text-sm">
-                {changes.length > 0 ? `${changes.length} 項待儲存 · 版本 ${baseRevision ?? detail.revision}` : `版本 ${detail.revision}`}
+                {changes.length > 0
+                  ? `${changes.length} 項待儲存 · 版本 ${baseRevision ?? detail.revision}`
+                  : `版本 ${detail.revision}`}
               </span>
-              <Button disabled={changes.length === 0 || busy || saveState === "conflict"} onClick={openReview} type="button">
+              <Button
+                disabled={
+                  changes.length === 0 || busy || saveState === "conflict"
+                }
+                onClick={openReview}
+                type="button"
+              >
                 {busy ? SAVING : SAVE}
               </Button>
             </div>
@@ -666,7 +825,9 @@ export const PermissionEditorPanel = () => {
         )}
         {!detail.caller.canWrite && (
           <p className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm">
-            {detail.roleDefinition.isProtected ? "受保護身份的權限由系統固定。" : "您只有查看此身份組權限。"}
+            {detail.roleDefinition.isProtected
+              ? "受保護身份的權限由系統固定。"
+              : "您只有查看此身份組權限。"}
           </p>
         )}
       </>
@@ -674,7 +835,9 @@ export const PermissionEditorPanel = () => {
   };
 
   const state = resource.state;
-  const headerTitle = detail ? `${LIST_TITLE} · ${detail.roleDefinition.label}` : LIST_TITLE;
+  const headerTitle = detail
+    ? `${LIST_TITLE} · ${detail.roleDefinition.label}`
+    : LIST_TITLE;
   const headerLead = detail ? DETAIL_LEAD : LIST_LEAD;
 
   return (
@@ -691,18 +854,35 @@ export const PermissionEditorPanel = () => {
         titleId="permission-editor-title"
       />
       {state.kind === "loading" && (
-        <output aria-busy="true" className="mt-6 block rounded-lg border border-border p-4" id="permission-editor-state" tabIndex={-1}>
+        <output
+          aria-busy="true"
+          className="mt-6 block rounded-lg border border-border p-4"
+          id="permission-editor-state"
+          tabIndex={-1}
+        >
           正在載入權限…
         </output>
       )}
       {state.kind === "error" && (
-        <section className="mt-6 grid gap-3 rounded-lg border border-destructive bg-destructive/10 p-4" id="permission-editor-state" role="alert" tabIndex={-1}>
+        <section
+          className="mt-6 grid gap-3 rounded-lg border border-destructive bg-destructive/10 p-4"
+          id="permission-editor-state"
+          role="alert"
+          tabIndex={-1}
+        >
           <p>{state.message}</p>
-          <Button onClick={retryLoad} type="button" variant="outline">重試連接</Button>
+          <Button onClick={retryLoad} type="button" variant="outline">
+            重試連接
+          </Button>
         </section>
       )}
       {state.kind === "forbidden" && (
-        <section className="mt-6 rounded-lg border border-destructive bg-destructive/10 p-4" id="permission-editor-state" role="alert" tabIndex={-1}>
+        <section
+          className="mt-6 rounded-lg border border-destructive bg-destructive/10 p-4"
+          id="permission-editor-state"
+          role="alert"
+          tabIndex={-1}
+        >
           {state.message}
         </section>
       )}
@@ -711,25 +891,47 @@ export const PermissionEditorPanel = () => {
       )}
       {state.kind === "detail" && <div className="mt-6">{renderDetail()}</div>}
 
-      <Sheet open={review === "sheet"} onOpenChange={(open) => !open && setReview(null)}>
-        <SheetContent className="max-h-[min(70dvh,32rem)] pb-[calc(5rem+env(safe-area-inset-bottom,0px))]" side="bottom">
+      <Sheet
+        open={review === "sheet"}
+        onOpenChange={(open) => !open && setReview(null)}
+      >
+        <SheetContent
+          className="max-h-[min(70dvh,32rem)] pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
+          side="bottom"
+        >
           <SheetHeader>
             <SheetTitle>{REVIEW_TITLE}</SheetTitle>
-            <SheetDescription>請核對今次變更；確認後會以一個政策版本儲存。</SheetDescription>
+            <SheetDescription>
+              請核對今次變更；確認後會以一個政策版本儲存。
+            </SheetDescription>
           </SheetHeader>
-          <div className="overflow-y-auto px-4">{detail && reviewChanges(changes, detail.permissions)}</div>
+          <div className="overflow-y-auto px-4">
+            {detail && reviewChanges(changes, detail.permissions)}
+          </div>
           <SheetFooter>
-            <Button disabled={busy} onClick={() => setReview(null)} type="button" variant="outline">
+            <Button
+              disabled={busy}
+              onClick={() => setReview(null)}
+              type="button"
+              variant="outline"
+            >
               {REVIEW_CANCEL}
             </Button>
-            <Button disabled={busy} onClick={() => void submitChanges()} type="button">
+            <Button
+              disabled={busy}
+              onClick={() => void submitChanges()}
+              type="button"
+            >
               {REVIEW_CONFIRM}
             </Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={review === "dedicated"} onOpenChange={(open) => !open && setReview(null)}>
+      <AlertDialog
+        open={review === "dedicated"}
+        onOpenChange={(open) => !open && setReview(null)}
+      >
         <AlertDialogContent className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">
           <AlertDialogHeader>
             <AlertDialogTitle>{DEDICATED_REVIEW_TITLE}</AlertDialogTitle>
@@ -742,7 +944,10 @@ export const PermissionEditorPanel = () => {
             <AlertDialogCancel disabled={busy} onClick={() => setReview(null)}>
               {REVIEW_CANCEL}
             </AlertDialogCancel>
-            <AlertDialogAction disabled={busy} onClick={() => void submitChanges()}>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={() => void submitChanges()}
+            >
               {REVIEW_CONFIRM}
             </AlertDialogAction>
           </AlertDialogFooter>

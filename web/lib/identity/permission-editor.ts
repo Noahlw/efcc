@@ -1,3 +1,5 @@
+import { CAPABILITY_CATALOG, isCapability } from "./capability-catalog";
+import type { Capability, CapabilityMetadata } from "./capability-catalog";
 /**
  * #485 — normalized Role Definition detail and permission mutation authority.
  *
@@ -6,17 +8,16 @@
  * delegates all writes to applyRoleMutation.
  */
 /* oxlint-disable eslint/complexity, eslint/no-await-in-loop, eslint/no-unused-vars, unicorn/no-lonely-if -- the authority sequence mirrors the identity mutation vocabulary and every guard is explicit. */
-import { applyRoleMutation, readCurrentRevision, recordRoleDenial } from "./mutations";
 import {
+  applyRoleMutation,
+  readCurrentRevision,
+  recordRoleDenial,
+  reserveRoleMutationConflict,
+  reserveRoleMutationNoop,
   RoleCapabilityCatalogError,
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
-import {
-  CAPABILITY_CATALOG,
-  isCapability,
-} from "./capability-catalog";
-import type { Capability, CapabilityMetadata } from "./capability-catalog";
 import {
   loadActorRoles,
   resolveActorCapabilities,
@@ -114,6 +115,7 @@ interface MutationRecord {
   actor_user_id: string;
   outcome: "PENDING" | "SUCCESS" | "CONFLICT" | "DENIED";
   resulting_revision: number | null;
+  result_json: string | null;
 }
 
 function roleKind(
@@ -185,7 +187,6 @@ async function readScopeLabel(
   }
   return scopeLabel(target.scope_kind, target.scope_id);
 }
-
 
 async function findRoleDefinition(
   db: D1Database,
@@ -265,7 +266,7 @@ async function readMutation(
   return db
     .prepare(
       `SELECT idempotency_key, request_fingerprint, actor_user_id,
-              outcome, resulting_revision
+              outcome, resulting_revision, result_json
          FROM role_policy_mutations
         WHERE idempotency_key = ?`
     )
@@ -334,6 +335,62 @@ function toRoleDefinition(
   };
 }
 
+function capabilityScopeFor(
+  target: RoleDefinitionRecord
+): { departmentId?: string; programId?: string } | null {
+  if (target.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && target.scope_id) {
+    return { departmentId: target.scope_id };
+  }
+  if (target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && target.scope_id) {
+    return { programId: target.scope_id };
+  }
+  return null;
+}
+
+function projectTerminalDetail(
+  detail: RoleDefinitionDetailView,
+  changes: readonly PermissionGrantChange[],
+  revision: number
+): RoleDefinitionDetailView {
+  const changedByCapability = new Map(
+    changes.map((change) => [change.capability, change.value])
+  );
+  const grantDelta = changes.reduce(
+    (delta, change) => delta + (change.value ? 1 : -1),
+    0
+  );
+  return {
+    ...detail,
+    roleDefinition: {
+      ...detail.roleDefinition,
+      grantCount: Math.max(0, detail.roleDefinition.grantCount + grantDelta),
+    },
+    permissions: detail.permissions.map((permission) => {
+      const value = changedByCapability.get(permission.capability);
+      return value === undefined ? permission : { ...permission, value };
+    }),
+    revision,
+  };
+}
+
+function parseStoredDetail(
+  resultJson: string | null
+): RoleDefinitionDetailView | null {
+  if (!resultJson) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(resultJson) as Partial<RoleDefinitionDetailView>;
+    return parsed.roleDefinition &&
+      Array.isArray(parsed.permissions) &&
+      typeof parsed.revision === "number"
+      ? (parsed as RoleDefinitionDetailView)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function canonicalPermissionFingerprint(input: {
   actor_user_id: string;
   role_definition_id: string;
@@ -361,13 +418,17 @@ export async function loadRoleDefinitionDetail(
   if (!roleDefinitionId) {
     throw new RoleInvalidTargetError();
   }
-  const capabilities = await resolveActorCapabilities(db, actorUserId);
-  if (!capabilities["role.permissions.read"]) {
-    throw new RoleCapabilityDeniedError();
-  }
   const target = await findRoleDefinition(db, roleDefinitionId);
   if (!target) {
     throw new RoleTargetNotFoundError();
+  }
+  const capabilities = await resolveActorCapabilities(
+    db,
+    actorUserId,
+    capabilityScopeFor(target)
+  );
+  if (!capabilities["role.permissions.read"]) {
+    throw new RoleCapabilityDeniedError();
   }
   const actorRoles = await loadActorRoles(db, actorUserId);
   const highest = actorRoles[0];
@@ -475,9 +536,7 @@ export async function updateRoleDefinitionGrants(
   if (!target) {
     throw new RoleTargetNotFoundError();
   }
-  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
-  const actorRoles = await loadActorRoles(db, input.actor_user_id);
-  const highest = actorRoles[0];
+
   const rawChanges = input.changes as readonly {
     capability: unknown;
     value: unknown;
@@ -520,6 +579,12 @@ export async function updateRoleDefinitionGrants(
   const requestedChanges = [...normalized.entries()].map(
     ([capability, value]) => ({ capability: capability as Capability, value })
   );
+  const fingerprint = canonicalPermissionFingerprint({
+    actor_user_id: input.actor_user_id,
+    role_definition_id: input.role_definition_id,
+    base_revision: input.base_revision,
+    changes: requestedChanges,
+  });
   const reject = async (
     error: Error,
     outcome: Exclude<RoleAuditOutcome, "SUCCESS" | "DUPLICATE"> = "DENIED"
@@ -533,7 +598,66 @@ export async function updateRoleDefinitionGrants(
     );
     throw error;
   };
-  if (capabilities["role.permissions.write"] !== true) {
+
+  // Replays are resolved from the terminal ledger before current authority
+  // checks. This is required for response-loss recovery after permissions
+  // have since changed, and the stored projection is the original response.
+  const existing = await readMutation(db, input.idempotency_key);
+  if (existing) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== fingerprint
+    ) {
+      return reject(new RoleIdempotencyConflictError(), "REJECTED");
+    }
+    if (existing.outcome === "SUCCESS") {
+      const stored = parseStoredDetail(existing.result_json);
+      if (stored) {
+        return { ...stored, idempotent: true };
+      }
+      // Rows written before 0023 have no projection; re-read them explicitly
+      // rather than treating a missing result as an empty response.
+      const detail = await loadRoleDefinitionDetail(
+        db,
+        input.actor_user_id,
+        input.role_definition_id
+      );
+      return { ...detail, idempotent: true };
+    }
+    if (existing.outcome === "CONFLICT") {
+      throw new RoleRevisionConflictError(
+        existing.resulting_revision ?? (await readCurrentRevision(db)),
+        true,
+        true
+      );
+    }
+  }
+
+  let detail: RoleDefinitionDetailView;
+  try {
+    detail = await loadRoleDefinitionDetail(
+      db,
+      input.actor_user_id,
+      input.role_definition_id
+    );
+  } catch (error) {
+    if (
+      error instanceof RoleCapabilityDeniedError ||
+      error instanceof RoleScopeMismatchError
+    ) {
+      await recordPermissionOutcome(
+        db,
+        input,
+        requestedChanges,
+        error.message.split(":", 1)[0] ?? error.name,
+        "DENIED"
+      );
+    }
+    throw error;
+  }
+  const actorRoles = await loadActorRoles(db, input.actor_user_id);
+  const highest = actorRoles[0];
+  if (!detail.caller.canWrite) {
     return reject(new RoleCapabilityDeniedError());
   }
   if (target.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
@@ -551,56 +675,47 @@ export async function updateRoleDefinitionGrants(
   if (!withinActorScope(actorRoles, target)) {
     return reject(new RoleScopeMismatchError());
   }
-  const fingerprint = canonicalPermissionFingerprint({
-    actor_user_id: input.actor_user_id,
-    role_definition_id: input.role_definition_id,
-    base_revision: input.base_revision,
-    changes: requestedChanges,
-  });
-  const existing = await readMutation(db, input.idempotency_key);
-  if (existing) {
-    if (
-      existing.actor_user_id !== input.actor_user_id ||
-      existing.request_fingerprint !== fingerprint
-    ) {
-      const error = new RoleIdempotencyConflictError();
-      await recordPermissionOutcome(
-        db,
-        input,
-        requestedChanges,
-        "ROLE_IDEMPOTENCY_REUSE",
-        "REJECTED"
-      );
-      throw error;
+  for (const change of requestedChanges) {
+    const permission = detail.permissions.find(
+      (item) => item.capability === change.capability
+    );
+    if (!permission || !permission.editable) {
+      return reject(new RoleCapabilityDeniedError());
     }
-    if (existing.outcome === "SUCCESS") {
-      const detail = await loadRoleDefinitionDetail(
-        db,
-        input.actor_user_id,
-        input.role_definition_id
-      );
-      return { ...detail, idempotent: true };
-    }
-    if (existing.outcome === "CONFLICT") {
+  }
+
+  const currentRevision = await readCurrentRevision(db);
+  if (currentRevision !== input.base_revision) {
+    const conflict = await reserveRoleMutationConflict(db, {
+      idempotency_key: input.idempotency_key,
+      request_fingerprint: fingerprint,
+      actor_user_id: input.actor_user_id,
+      base_revision: input.base_revision,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      desired: [],
+      audit_summary: {
+        action: "ROLE_DEFINITION_POLICY_UPDATE",
+        entity_type: "role_definition",
+        entity_id: input.role_definition_id,
+        reason: `ROLE_POLICY_CONFLICT:current=${currentRevision}`,
+        new_value_json: JSON.stringify(requestedChanges),
+      },
+    });
+    if (conflict.outcome === "CONFLICT") {
       throw new RoleRevisionConflictError(
-        existing.resulting_revision ?? (await readCurrentRevision(db)),
-        true,
+        conflict.resulting_revision,
+        conflict.idempotent,
         true
       );
     }
+    return {
+      ...(parseStoredDetail(conflict.result_json) ?? detail),
+      idempotent: conflict.idempotent,
+    };
   }
-  const currentRevision = await readCurrentRevision(db);
-  if (currentRevision !== input.base_revision) {
-    const error = new RoleRevisionConflictError(currentRevision, false);
-    await recordPermissionOutcome(
-      db,
-      input,
-      requestedChanges,
-      "ROLE_POLICY_CONFLICT",
-      "CONFLICT"
-    );
-    throw error;
-  }
+
   const grants = await readRoleGrants(db, input.role_definition_id);
   const effectiveCurrent = new Map<string, boolean>();
   for (const metadata of CAPABILITY_CATALOG) {
@@ -609,72 +724,88 @@ export async function updateRoleDefinitionGrants(
   const actualChanges = requestedChanges.filter(
     (change) => effectiveCurrent.get(change.capability) !== change.value
   );
-  if (actualChanges.length === 0) {
-    const detail = await loadRoleDefinitionDetail(
-      db,
-      input.actor_user_id,
-      input.role_definition_id
-    );
-    return { ...detail, idempotent: false };
-  }
-  const desired = actualChanges.map((change) => ({
-    kind: change.value ? ("add_grant" as const) : ("remove_grant" as const),
-    role_definition_id: input.role_definition_id,
-    capability: change.capability,
-  }));
-  const allGranted = actualChanges.every((change) => change.value);
-  const allRevoked = actualChanges.every((change) => !change.value);
+  const resultRevision =
+    actualChanges.length === 0 ? detail.revision : input.base_revision + 1;
+  const projectedDetail = projectTerminalDetail(
+    detail,
+    actualChanges,
+    resultRevision
+  );
+  const allGranted =
+    actualChanges.length > 0 && actualChanges.every((change) => change.value);
+  const allRevoked =
+    actualChanges.length > 0 && actualChanges.every((change) => !change.value);
+  const auditSummary = {
+    action: allGranted
+      ? "ROLE_DEFINITION_GRANT"
+      : allRevoked
+        ? "ROLE_DEFINITION_REVOKE"
+        : "ROLE_DEFINITION_POLICY_UPDATE",
+    entity_type: "role_definition",
+    entity_id: input.role_definition_id,
+    reason: `base=${input.base_revision};new=${input.base_revision + 1};idem=${input.idempotency_key}`,
+    old_value_json: JSON.stringify(
+      actualChanges.map((change) => ({
+        capability: change.capability,
+        value: effectiveCurrent.get(change.capability) === true,
+      }))
+    ),
+    new_value_json: JSON.stringify(actualChanges),
+  };
+
   try {
-    const result = await applyRoleMutation(db, {
-      idempotency_key: input.idempotency_key,
-      request_fingerprint: fingerprint,
-      actor_user_id: input.actor_user_id,
-      base_revision: input.base_revision,
-      now: input.now,
-      audit_id: input.audit_id,
-      correlation_id: input.correlation_id,
-      desired,
-      audit_summary: {
-        action: allGranted
-          ? "ROLE_DEFINITION_GRANT"
-          : allRevoked
-            ? "ROLE_DEFINITION_REVOKE"
-            : "ROLE_DEFINITION_POLICY_UPDATE",
-        entity_type: "role_definition",
-        entity_id: input.role_definition_id,
-        reason: `base=${input.base_revision};new=${input.base_revision + 1};idem=${input.idempotency_key}`,
-        old_value_json: JSON.stringify(
-          actualChanges.map((change) => ({
-            capability: change.capability,
-            value: effectiveCurrent.get(change.capability) === true,
-          }))
-        ),
-        new_value_json: JSON.stringify(actualChanges),
-      },
-    });
-    const detail = await loadRoleDefinitionDetail(
-      db,
-      input.actor_user_id,
-      input.role_definition_id
-    );
-    return { ...detail, idempotent: result.idempotent };
+    const result =
+      actualChanges.length === 0
+        ? await reserveRoleMutationNoop(db, {
+            idempotency_key: input.idempotency_key,
+            request_fingerprint: fingerprint,
+            actor_user_id: input.actor_user_id,
+            base_revision: input.base_revision,
+            now: input.now,
+            audit_id: input.audit_id,
+            correlation_id: input.correlation_id,
+            desired: [],
+            result_json: JSON.stringify(projectedDetail),
+            audit_summary: auditSummary,
+          })
+        : await applyRoleMutation(db, {
+            idempotency_key: input.idempotency_key,
+            request_fingerprint: fingerprint,
+            actor_user_id: input.actor_user_id,
+            base_revision: input.base_revision,
+            now: input.now,
+            audit_id: input.audit_id,
+            correlation_id: input.correlation_id,
+            desired: actualChanges.map((change) => ({
+              kind: change.value
+                ? ("add_grant" as const)
+                : ("remove_grant" as const),
+              role_definition_id: input.role_definition_id,
+              capability: change.capability,
+            })),
+            result_json: JSON.stringify(projectedDetail),
+            audit_summary: auditSummary,
+          });
+    if (result.outcome === "CONFLICT") {
+      throw new RoleRevisionConflictError(
+        result.resulting_revision,
+        result.idempotent,
+        true
+      );
+    }
+    const resultDetail =
+      parseStoredDetail(result.result_json) ??
+      (result.idempotent
+        ? await loadRoleDefinitionDetail(
+            db,
+            input.actor_user_id,
+            input.role_definition_id
+          )
+        : projectedDetail);
+    return { ...resultDetail, idempotent: result.idempotent };
   } catch (error) {
-    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
-      await recordPermissionOutcome(
-        db,
-        input,
-        actualChanges,
-        "ROLE_POLICY_CONFLICT",
-        "CONFLICT"
-      );
-    } else if (error instanceof RoleIdempotencyConflictError) {
-      await recordPermissionOutcome(
-        db,
-        input,
-        actualChanges,
-        "ROLE_IDEMPOTENCY_REUSE",
-        "REJECTED"
-      );
+    if (error instanceof RoleIdempotencyConflictError) {
+      return reject(error, "REJECTED");
     }
     throw error;
   }

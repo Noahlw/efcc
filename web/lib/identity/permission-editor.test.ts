@@ -11,28 +11,34 @@ import assert from "node:assert/strict";
 import { beforeAll, describe, test } from "vitest";
 
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import {
-  loadRoleDefinitionDetail,
-  updateRoleDefinitionGrants,
-} from "./permission-editor";
+import { CAPABILITY_CATALOG } from "./capability-catalog";
+import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
 import {
   RoleCapabilityCatalogError,
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
 import {
-  preflightDisposableSchema,
-  seedDisposableIdentity,
-} from "./index";
-import { CAPABILITY_CATALOG } from "./capability-catalog";
-import { resolveActorCapabilities } from "./role-hierarchy";
-
+  loadRoleDefinitionDetail,
+  updateRoleDefinitionGrants,
+} from "./permission-editor";
+import {
+  RoleCapabilityDeniedError,
+  resolveActorCapabilities,
+} from "./role-hierarchy";
 const DISPOSABLE_DATABASE = "E2E_disposable-local";
 const ADMIN = "E2E_DISPOSABLE_ADMIN";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
 const STAFF_ROLE = "018f3b8a-0000-7000-8000-000000000a02";
+const DEPARTMENT_MANAGER = "E2E_DISPOSABLE_DM";
+const ADULT_DEPARTMENT = "018f3b8a-0000-7000-8000-000000000002";
+const YOUTH_DEPARTMENT = "018f3b8a-0000-7000-8000-000000000001";
+const YOUTH_PROGRAM = "018f3b8a-0000-7000-8000-300000000001";
 const MEMBER_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
 const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002";
+const WRITE_ONLY_ACTOR = "E2E_485_WRITE_ONLY";
+const WRITE_ONLY_ROLE = "018f3b8a-0000-7000-8000-100000000485";
+const WRITE_ONLY_ASSIGNMENT = "E2E_485_WRITE_ONLY_ASSIGNMENT";
 const NOW = "2026-08-29T00:00:00.000Z";
 
 async function revision(): Promise<number> {
@@ -40,6 +46,68 @@ async function revision(): Promise<number> {
     .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
     .first<{ revision: number }>();
   return row?.revision ?? 0;
+}
+
+async function ensureWriteOnlyActor(): Promise<void> {
+  const timestamp = Date.parse(NOW);
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO accounts
+           (user_id, name, username, username_normalized, credential_hash,
+            credential_kind, credential_version, account_status, role, phone,
+            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+            failed_attempts, locked_until, lock_since, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+      )
+      .bind(
+        WRITE_ONLY_ACTOR,
+        "Permission Editor Write Only",
+        "permission-editor-write-only",
+        "permission-editor-write-only",
+        timestamp,
+        timestamp
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+           (role_definition_id, category_key, stable_key, label, description,
+            scope_kind, scope_id, position, is_protected, is_archived,
+            created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Global', ?, ?, ?, 'Global', NULL, 5, 0, 0,
+                 NULL, ?, NULL, ?)`
+      )
+      .bind(
+        WRITE_ONLY_ROLE,
+        "permission-editor.write-only",
+        "Permission Editor Write Only",
+        "Test actor with write but no read",
+        NOW,
+        NOW
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'role.permissions.write', NULL, ?)`
+      )
+      .bind(WRITE_ONLY_ROLE, NOW),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`
+      )
+      .bind(
+        WRITE_ONLY_ASSIGNMENT,
+        WRITE_ONLY_ACTOR,
+        WRITE_ONLY_ROLE,
+        ADMIN,
+        NOW
+      ),
+  ]);
 }
 
 describe("#485 Permission Editor domain seam", () => {
@@ -62,8 +130,9 @@ describe("#485 Permission Editor domain seam", () => {
     assert.equal(admin.caller.canRead, true);
     assert.equal(admin.caller.canWrite, true);
     assert.equal(
-      admin.permissions.find((permission) => permission.capability === "role.read")
-        ?.label,
+      admin.permissions.find(
+        (permission) => permission.capability === "role.read"
+      )?.label,
       "檢視身份組"
     );
     assert.equal(
@@ -87,10 +156,18 @@ describe("#485 Permission Editor domain seam", () => {
       ADMIN,
       "018f3b8a-0000-7000-8000-000000000a01"
     );
-    assert.ok(protectedAdmin.permissions.every((permission) => permission.value));
-    assert.ok(protectedAdmin.permissions.every((permission) => permission.locked));
+    assert.ok(
+      protectedAdmin.permissions.every((permission) => permission.value)
+    );
+    assert.ok(
+      protectedAdmin.permissions.every((permission) => permission.locked)
+    );
 
-    const baseline = await loadRoleDefinitionDetail(testDb(), ADMIN, MEMBER_ROLE);
+    const baseline = await loadRoleDefinitionDetail(
+      testDb(),
+      ADMIN,
+      MEMBER_ROLE
+    );
     const enroll = baseline.permissions.find(
       (permission) => permission.capability === "program.enroll"
     );
@@ -98,6 +175,75 @@ describe("#485 Permission Editor domain seam", () => {
     assert.equal(enroll?.locked, true);
     const memberCapabilities = await resolveActorCapabilities(testDb(), MEMBER);
     assert.equal(memberCapabilities["program.enroll"], true);
+  });
+  test("resolves global and exact scoped grants without widening", async () => {
+    const inside = await resolveActorCapabilities(
+      testDb(),
+      DEPARTMENT_MANAGER,
+      {
+        departmentId: ADULT_DEPARTMENT,
+      }
+    );
+    const outside = await resolveActorCapabilities(
+      testDb(),
+      DEPARTMENT_MANAGER,
+      { departmentId: YOUTH_DEPARTMENT }
+    );
+    const program = await resolveActorCapabilities(
+      testDb(),
+      DEPARTMENT_MANAGER,
+      { programId: YOUTH_PROGRAM }
+    );
+    assert.equal(inside["department.manage"], true);
+    assert.equal(outside["department.manage"], undefined);
+    assert.equal(program["department.manage"], undefined);
+    assert.equal(outside["role.permissions.read"], true);
+    assert.equal(outside["program.enroll"], true);
+  });
+
+  test("rejects write-only actors and capability-grant bypasses before mutation", async () => {
+    await ensureWriteOnlyActor();
+    const before = await revision();
+    await assert.rejects(
+      updateRoleDefinitionGrants(testDb(), {
+        actor_user_id: WRITE_ONLY_ACTOR,
+        role_definition_id: PROGRAM_LEADER_ROLE,
+        base_revision: before,
+        idempotency_key: "permission-editor-write-only",
+        changes: [{ capability: "registration.approval.manage", value: true }],
+        now: NOW,
+        audit_id: "permission-editor-audit-write-only",
+        correlation_id: "permission-editor-correlation-write-only",
+      }),
+      (error: unknown) => error instanceof RoleCapabilityDeniedError
+    );
+    assert.equal(await revision(), before);
+    const writeOnlyAudit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM role_audit_events
+           WHERE audit_id = ?`
+      )
+      .bind("permission-editor-audit-write-only")
+      .first<{ outcome: string; reason: string }>();
+    assert.deepEqual(writeOnlyAudit, {
+      outcome: "DENIED",
+      reason: "ROLE_FORBIDDEN",
+    });
+
+    await assert.rejects(
+      updateRoleDefinitionGrants(testDb(), {
+        actor_user_id: DEPARTMENT_MANAGER,
+        role_definition_id: PROGRAM_LEADER_ROLE,
+        base_revision: before,
+        idempotency_key: "permission-editor-grant-bypass",
+        changes: [{ capability: "registration.approval.manage", value: true }],
+        now: NOW,
+        audit_id: "permission-editor-audit-grant-bypass",
+        correlation_id: "permission-editor-correlation-grant-bypass",
+      }),
+      (error: unknown) => error instanceof RoleCapabilityDeniedError
+    );
+    assert.equal(await revision(), before);
   });
 
   test("adds/removes normalized grants with homogeneous and mixed audit actions", async () => {
@@ -116,8 +262,9 @@ describe("#485 Permission Editor domain seam", () => {
     assert.equal(added.idempotent, false);
     assert.equal(added.revision, addRevision + 1);
     assert.equal(
-      added.permissions.find((permission) => permission.capability === "home.publish")
-        ?.value,
+      added.permissions.find(
+        (permission) => permission.capability === "home.publish"
+      )?.value,
       true
     );
 
@@ -162,16 +309,84 @@ describe("#485 Permission Editor domain seam", () => {
       )
       .all<{ action: string; outcome: string; correlation_id: string }>();
     assert.deepEqual(
-      actions.results?.map((row) => [row.action, row.outcome, row.correlation_id]),
+      actions.results?.map((row) => [
+        row.action,
+        row.outcome,
+        row.correlation_id,
+      ]),
       [
-        ["ROLE_DEFINITION_GRANT", "SUCCESS", "permission-editor-correlation-add"],
-        ["ROLE_DEFINITION_REVOKE", "SUCCESS", "permission-editor-correlation-remove"],
+        [
+          "ROLE_DEFINITION_GRANT",
+          "SUCCESS",
+          "permission-editor-correlation-add",
+        ],
+        [
+          "ROLE_DEFINITION_REVOKE",
+          "SUCCESS",
+          "permission-editor-correlation-remove",
+        ],
         [
           "ROLE_DEFINITION_POLICY_UPDATE",
           "SUCCESS",
           "permission-editor-correlation-mixed",
         ],
       ]
+    );
+  });
+  test("replays the stored original detail instead of projecting current state", async () => {
+    const firstRevision = await revision();
+    const first = await updateRoleDefinitionGrants(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_LEADER_ROLE,
+      base_revision: firstRevision,
+      idempotency_key: "permission-editor-stored-original",
+      changes: [{ capability: "account.directory.read", value: true }],
+      now: NOW,
+      audit_id: "permission-editor-audit-stored-original",
+      correlation_id: "permission-editor-correlation-stored-original",
+    });
+    assert.equal(first.revision, firstRevision + 1);
+    assert.equal(
+      first.permissions.find(
+        (permission) => permission.capability === "account.directory.read"
+      )?.value,
+      true
+    );
+
+    const second = await updateRoleDefinitionGrants(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_LEADER_ROLE,
+      base_revision: first.revision,
+      idempotency_key: "permission-editor-stored-current",
+      changes: [{ capability: "account.directory.read", value: false }],
+      now: NOW,
+      audit_id: "permission-editor-audit-stored-current",
+      correlation_id: "permission-editor-correlation-stored-current",
+    });
+    assert.equal(
+      second.permissions.find(
+        (permission) => permission.capability === "account.directory.read"
+      )?.value,
+      false
+    );
+
+    const replay = await updateRoleDefinitionGrants(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_LEADER_ROLE,
+      base_revision: firstRevision,
+      idempotency_key: "permission-editor-stored-original",
+      changes: [{ capability: "account.directory.read", value: true }],
+      now: NOW,
+      audit_id: "permission-editor-audit-stored-replay",
+      correlation_id: "permission-editor-correlation-stored-replay",
+    });
+    assert.equal(replay.idempotent, true);
+    assert.equal(replay.revision, first.revision);
+    assert.equal(
+      replay.permissions.find(
+        (permission) => permission.capability === "account.directory.read"
+      )?.value,
+      true
     );
   });
 
@@ -208,6 +423,46 @@ describe("#485 Permission Editor domain seam", () => {
       .bind("permission-editor-audit-no-op")
       .first();
     assert.equal(noOpAudit, null);
+    const noOpLedger = await testDb()
+      .prepare(
+        `SELECT outcome, resulting_revision, result_json
+           FROM role_policy_mutations
+          WHERE idempotency_key = ?`
+      )
+      .bind("permission-editor-no-op")
+      .first<{
+        outcome: string;
+        resulting_revision: number;
+        result_json: string | null;
+      }>();
+    assert.equal(noOpLedger?.outcome, "SUCCESS");
+    assert.equal(noOpLedger?.resulting_revision, noOpBefore);
+    assert.ok(noOpLedger?.result_json);
+    const noOpReplay = await updateRoleDefinitionGrants(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_LEADER_ROLE,
+      base_revision: noOpBefore,
+      idempotency_key: "permission-editor-no-op",
+      changes: [{ capability: "home.publish", value: true }],
+      now: NOW,
+      audit_id: "permission-editor-audit-no-op-replay",
+      correlation_id: "permission-editor-correlation-no-op-replay",
+    });
+    assert.equal(noOpReplay.idempotent, true);
+    assert.equal(noOpReplay.revision, noOpBefore);
+    await assert.rejects(
+      updateRoleDefinitionGrants(testDb(), {
+        actor_user_id: ADMIN,
+        role_definition_id: PROGRAM_LEADER_ROLE,
+        base_revision: noOpBefore,
+        idempotency_key: "permission-editor-no-op",
+        changes: [{ capability: "home.publish", value: false }],
+        now: NOW,
+        audit_id: "permission-editor-audit-no-op-reuse",
+        correlation_id: "permission-editor-correlation-no-op-reuse",
+      }),
+      (error: unknown) => error instanceof RoleIdempotencyConflictError
+    );
 
     await assert.rejects(
       updateRoleDefinitionGrants(testDb(), {
@@ -288,5 +543,38 @@ describe("#485 Permission Editor domain seam", () => {
         error instanceof Error && error.name === "RoleRevisionConflictError"
     );
     assert.equal(await revision(), current);
+    await assert.rejects(
+      updateRoleDefinitionGrants(testDb(), {
+        actor_user_id: ADMIN,
+        role_definition_id: STAFF_ROLE,
+        base_revision: current - 1,
+        idempotency_key: "permission-editor-stale",
+        changes: [{ capability: "role.read", value: false }],
+        now: NOW,
+        audit_id: "permission-editor-audit-stale-replay",
+        correlation_id: "permission-editor-correlation-stale-replay",
+      }),
+      (error: unknown) => error instanceof RoleRevisionConflictError
+    );
+    const staleLedger = await testDb()
+      .prepare(
+        `SELECT outcome, resulting_revision FROM role_policy_mutations
+          WHERE idempotency_key = ?`
+      )
+      .bind("permission-editor-stale")
+      .first<{ outcome: string; resulting_revision: number }>();
+    assert.deepEqual(staleLedger, {
+      outcome: "CONFLICT",
+      resulting_revision: current,
+    });
+    const staleAudits = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count FROM role_audit_events
+          WHERE action = 'ROLE_DEFINITION_POLICY_UPDATE'
+            AND entity_id = ? AND outcome = 'CONFLICT'`
+      )
+      .bind(STAFF_ROLE)
+      .first<{ count: number }>();
+    assert.equal(staleAudits?.count, 1);
   });
 });

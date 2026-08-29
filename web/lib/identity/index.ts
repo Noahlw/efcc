@@ -14,6 +14,8 @@ export type { SeedResult } from "./seeds";
 
 export {
   applyRoleMutation,
+  reserveRoleMutationNoop,
+  reserveRoleMutationConflict,
   recordRoleDenial,
   readCurrentRevision,
   RoleIdempotencyConflictError,

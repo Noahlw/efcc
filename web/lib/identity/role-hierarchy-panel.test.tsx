@@ -145,7 +145,10 @@ const VIEW: RoleHierarchyView = {
           isArchived: false,
           assignmentCount: 1,
           grantCount: 12,
-          actions: [{ action: "rename", label: "重新命名" }],
+          actions: [
+            { action: "rename", label: "重新命名" },
+            { action: "permissions", label: "編輯權限" },
+          ],
           reorderActions: [{ action: "reorder", label: "調整順序" }],
         },
         {
@@ -247,7 +250,25 @@ describe(RoleHierarchyPanel, () => {
     ).resolves.toBeTruthy();
     expect(screen.getByText(/成區/u)).toBeTruthy();
     expect(screen.getByText("11")).toBeInTheDocument();
+
     expect(screen.getByRole("button", { name: "重新命名" })).toBeTruthy();
+  });
+  test("H-03: renders the server-projected permissions action with the local Button", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+
+    const permissions = await screen.findByRole("button", {
+      name: "編輯權限",
+    });
+    expect(permissions).toHaveAttribute("data-slot", "button");
+    await user.click(permissions);
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      `/management?module=permissions&role=${MANAGER_ROLE}&view=permissions`
+    );
   });
 
   test("H-18: a malformed role parameter falls back to the safe list", async () => {
