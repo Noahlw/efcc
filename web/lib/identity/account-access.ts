@@ -228,6 +228,8 @@ interface ProjectionOptions {
   stagedRevokes?: readonly StagedRevoke[];
   revision?: number;
   includeLifecycleImpacts?: boolean;
+  /** Capability the projection must resolve for each managed assignment (defaults to assign-or-revoke). */
+  manageCapability?: "role.assign" | "role.revoke" | "role.delete";
 }
 
 interface StoredMutation {
@@ -643,7 +645,10 @@ function baselineRole(role: RoleRecord): boolean {
   return role.stable_key === PROTECTED_STABLE_KEYS.MEMBER;
 }
 
-type ActorScope = Pick<RoleRecord, "scope_kind" | "scope_id">;
+type ActorScope = Pick<
+  RoleRecord,
+  "scope_kind" | "scope_id" | "position" | "stable_key"
+>;
 
 function withinActorScope(
   actorRoles: readonly ActorScope[],
@@ -667,7 +672,8 @@ async function filterAuthorizedAssignments(
   actorUserId: string,
   actorRoles: readonly ActorScope[],
   assignments: readonly AssignmentRecord[],
-  rolesById: ReadonlyMap<string, RoleRecord>
+  rolesById: ReadonlyMap<string, RoleRecord>,
+  manageCapability?: "role.assign" | "role.revoke" | "role.delete"
 ): Promise<AssignmentRecord[]> {
   const visible = await Promise.all(
     assignments.map(async (assignment) => {
@@ -689,11 +695,22 @@ async function filterAuthorizedAssignments(
       if (!withinActorScope(actorRoles, scopedRole)) {
         return null;
       }
+      const highest = actorRoles[0];
+      if (
+        !highest ||
+        highest.stable_key === PROTECTED_STABLE_KEYS.MEMBER ||
+        scopedRole.position <= highest.position
+      ) {
+        return null;
+      }
       const capabilities = await resolveActorCapabilities(
         db,
         actorUserId,
         scopeForRole(scopedRole)
       );
+      if (manageCapability) {
+        return capabilities[manageCapability] === true ? assignment : null;
+      }
       return capabilities["role.assign"] === true ||
         capabilities["role.revoke"] === true
         ? assignment
@@ -963,14 +980,16 @@ async function readProjection(
       actorUserId,
       actorRoles,
       activeRows,
-      rolesById
+      rolesById,
+      options.manageCapability
     ),
     filterAuthorizedAssignments(
       db,
       actorUserId,
       actorRoles,
       revokedRows,
-      rolesById
+      rolesById,
+      options.manageCapability
     ),
   ]);
   const active = visibleActiveRows.filter(
@@ -1077,7 +1096,14 @@ async function readProjection(
   ] = await Promise.all([
     authorizedRoleIds(active, "role.revoke"),
     authorizedRoleIds(active, "role.delete"),
-    authorizedRoleIds(history, "role.delete", true),
+    authorizedRoleIds(
+      history.filter(
+        (assignment) =>
+          rolesById.get(assignment.role_definition_id)?.is_archived === 1
+      ),
+      "role.delete",
+      true
+    ),
   ]);
   const actions: AccountAccessActions = {
     assign: canAssign,
@@ -1280,6 +1306,19 @@ async function replayIfTerminal<T>(
   return null;
 }
 
+function auditOutcomeFor(errorCode: string): "DENIED" | "REJECTED" {
+  switch (errorCode) {
+    case "ROLE_FORBIDDEN":
+    case "ROLE_ADMIN_PROTECTED":
+    case "ROLE_BASELINE_PROTECTED":
+    case "ROLE_HIGHEST_PROTECTED":
+    case "ROLE_SCOPE_MISMATCH":
+      return "DENIED";
+    default:
+      return "REJECTED";
+  }
+}
+
 async function deny(
   db: D1Database,
   input: AccountAccessMutationInput | RoleDefinitionLifecycleInput,
@@ -1288,7 +1327,8 @@ async function deny(
   errorCode: string,
   auditAction: string,
   entityType: string,
-  entityId: string
+  entityId: string,
+  auditOutcome: "DENIED" | "REJECTED" = "REJECTED"
 ): Promise<never> {
   await reserveRoleMutationDenial(
     db,
@@ -1310,7 +1350,7 @@ async function deny(
     },
     {
       errorCode,
-      auditOutcome: "REJECTED",
+      auditOutcome,
       resultJson: JSON.stringify({
         errorCode,
         requestId: input.correlation_id,
@@ -1461,11 +1501,18 @@ export async function searchEligibleAccounts(
       const rolesById = new Map(
         roles.map((role) => [role.role_definition_id, role])
       );
+      const visibleAssignments = await filterAuthorizedAssignments(
+        db,
+        actorUserId,
+        actorRoles,
+        assignments,
+        rolesById
+      );
       return {
         userId: row.user_id,
         name: row.name,
         username: row.username,
-        identities: assignments
+        identities: visibleAssignments
           .map((assignment) => {
             const role = rolesById.get(assignment.role_definition_id);
             if (!role || adminRole(role) || baselineRole(role)) {
@@ -1561,7 +1608,8 @@ export async function mutateAccountAssignments(
       code,
       "ROLE_ASSIGNMENT_GRANT",
       "account",
-      input.account_user_id
+      input.account_user_id,
+      auditOutcomeFor(code)
     );
   }
   const roles = await readRoles(db, roleIds);
@@ -1640,7 +1688,8 @@ export async function mutateAccountAssignments(
       code,
       "ROLE_ASSIGNMENT_GRANT",
       "account",
-      input.account_user_id
+      input.account_user_id,
+      auditOutcomeFor(code)
     );
   }
 
@@ -1715,14 +1764,10 @@ export async function mutateAccountAssignments(
       entity_id: input.account_user_id,
       reason: "account_access_grant",
       old_value_json: JSON.stringify(
-        viewBefore.activeAssignments.map(
-          (assignment) => assignment.roleDefinitionId
-        )
+        activeRows.map((assignment) => assignment.role_definition_id)
       ),
       new_value_json: JSON.stringify([
-        ...viewBefore.activeAssignments.map(
-          (assignment) => assignment.roleDefinitionId
-        ),
+        ...activeRows.map((assignment) => assignment.role_definition_id),
         ...desired.map((change) => change.role_definition_id),
       ]),
     },
@@ -1804,7 +1849,8 @@ export async function revokeAccountAssignments(
       code,
       "ROLE_ASSIGNMENT_REVOKE",
       "account",
-      input.account_user_id
+      input.account_user_id,
+      auditOutcomeFor(code)
     );
   }
   const activeRows = await readAssignments(db, input.account_user_id, false);
@@ -1881,9 +1927,11 @@ export async function revokeAccountAssignments(
       code,
       "ROLE_ASSIGNMENT_REVOKE",
       "account",
-      input.account_user_id
+      input.account_user_id,
+      auditOutcomeFor(code)
     );
   }
+
   const currentRevision = await readCurrentRevision(db);
   if (currentRevision !== input.base_revision) {
     const conflict = await reserveRoleMutationConflict(db, {
@@ -1965,14 +2013,18 @@ export async function revokeAccountAssignments(
       entity_id: input.account_user_id,
       reason: "account_access_revoke",
       old_value_json: JSON.stringify(
-        before.activeAssignments.map(
-          (assignment) => assignment.roleDefinitionId
-        )
+        activeRows.map((assignment) => assignment.role_definition_id)
       ),
       new_value_json: JSON.stringify(
-        projected.activeAssignments.map(
-          (assignment) => assignment.roleDefinitionId
-        )
+        activeRows
+          .filter(
+            (assignment) =>
+              !staged.some(
+                (revoke) =>
+                  revoke.assignment.assignment_id === assignment.assignment_id
+              )
+          )
+          .map((assignment) => assignment.role_definition_id)
       ),
     },
   });
@@ -2022,7 +2074,7 @@ async function lifecycleImpact(
       db,
       actorUserId,
       assignment.account_user_id,
-      { includeLifecycleImpacts: false }
+      { includeLifecycleImpacts: false, manageCapability: "role.delete" }
     );
     const role = await readRole(db, roleDefinitionId);
     if (!role) {
@@ -2044,6 +2096,7 @@ async function lifecycleImpact(
         ],
         revision,
         includeLifecycleImpacts: false,
+        manageCapability: "role.delete",
       }
     );
     impacts.push({
@@ -2151,7 +2204,8 @@ export async function mutateRoleDefinitionLifecycle(
       "ROLE_FORBIDDEN",
       "ROLE_DEFINITION_LIFECYCLE",
       "role_definition",
-      input.role_definition_id
+      input.role_definition_id,
+      "DENIED"
     );
   }
   const role = await readRole(db, input.role_definition_id);
@@ -2223,7 +2277,8 @@ export async function mutateRoleDefinitionLifecycle(
         ? "ROLE_DEFINITION_ARCHIVE"
         : "ROLE_DEFINITION_RESTORE",
       "role_definition",
-      role.role_definition_id
+      role.role_definition_id,
+      auditOutcomeFor(code)
     );
   }
   const currentRevision = await readCurrentRevision(db);

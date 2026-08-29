@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   revokeAccountAssignments: vi.fn(),
   updateRoleDefinitionLifecycle: vi.fn(),
   getRoleDefinitionLifecyclePreview: vi.fn(),
+  rememberDeepLink: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -35,6 +36,9 @@ vi.mock("@/lib/identity/account-access-api", () => ({
 }));
 vi.mock("@/lib/identity/role-hierarchy-api", () => ({
   getRoleHierarchy: mocks.getRoleHierarchy,
+}));
+vi.mock("@/lib/session", () => ({
+  rememberDeepLink: mocks.rememberDeepLink,
 }));
 
 function deferred<T>() {
@@ -414,6 +418,26 @@ describe("AccountAccessPanel", () => {
       screen.getByRole("alert").closest("[data-account-access-state]")
     );
   });
+  test("remembers the Account Access deep link before auth redirect", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#access"
+    );
+    mocks.getAccountAccess.mockRejectedValue(
+      new RpcError({
+        status: 401,
+        code: "AUTH_REQUIRED",
+        title: "Unauthorized",
+        detail: "Session expired",
+      })
+    );
+    render(<AccountAccessPanel />);
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#access"
+    );
+  });
 
   test("rotates an idempotency key after a server error before a different mutation", async () => {
     const user = userEvent.setup();
@@ -645,6 +669,57 @@ describe("AccountAccessPanel", () => {
     );
     expect(mocks.getRoleHierarchy).toHaveBeenCalledTimes(2);
   });
+  test("focuses the identity-first alert after initial and retry failures", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.getRoleHierarchy
+      .mockRejectedValueOnce(new Error("first hierarchy failure"))
+      .mockRejectedValueOnce(new Error("second hierarchy failure"));
+    render(<AccountAccessPanel />);
+    const firstRetry = await screen.findByRole("button", {
+      name: "重試身份組",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        firstRetry.closest("[data-account-access-state]")
+      )
+    );
+    await user.click(firstRetry);
+    const secondRetry = await screen.findByRole("button", {
+      name: "重試身份組",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        secondRetry.closest("[data-account-access-state]")
+      )
+    );
+  });
+  test("hands identity-first AUTH_REQUIRED through the shared deep-link redirect", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.getRoleHierarchy.mockRejectedValue(
+      new RpcError({
+        status: 401,
+        code: "AUTH_REQUIRED",
+        title: "Unauthorized",
+        detail: "Session expired",
+      })
+    );
+    render(<AccountAccessPanel />);
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&roleDefinition=role-lower&view=access"
+    );
+    expect(screen.queryByRole("button", { name: "重試身份組" })).toBeNull();
+  });
   test("refetches hierarchy and clears the previous role when role definition changes", async () => {
     const roleA: RoleHierarchyView = {
       ...hierarchy,
@@ -875,6 +950,46 @@ describe("AccountAccessPanel", () => {
       await screen.findByText("身份組已停用並撤銷生效指派。")
     ).toBeTruthy();
     expect(screen.queryByText("refresh failed")).toBeNull();
+  });
+  test("ignores an older lifecycle refresh on the same route", async () => {
+    const user = userEvent.setup();
+    const firstRefresh = deferred<AccountAccessView>();
+    const secondRefresh = deferred<AccountAccessView>();
+    mocks.getAccountAccess
+      .mockReset()
+      .mockResolvedValueOnce(lifecycleView)
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(secondRefresh.promise);
+    mocks.updateRoleDefinitionLifecycle.mockResolvedValue({
+      roleDefinitionId: "role-a",
+      action: "archive",
+      isArchived: true,
+      revision: 4,
+      affectedAccountUserIds: ["target"],
+      impact: [],
+      idempotent: false,
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    );
+    await user.click(await screen.findByRole("button", { name: "確認" }));
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組乙" })
+    );
+    await user.click(await screen.findByRole("button", { name: "確認" }));
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(3)
+    );
+
+    secondRefresh.resolve({ ...lifecycleView, revision: 5 });
+    await screen.findByText("目前版本：5");
+    firstRefresh.resolve({ ...lifecycleView, revision: 4 });
+    await waitFor(() => expect(screen.getByText("目前版本：5")).toBeTruthy());
   });
 
   test("loads authoritative lifecycle impact before identity-first archive", async () => {

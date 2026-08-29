@@ -18,8 +18,12 @@ const STAFF = "E2E_DISPOSABLE_STAFF";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
 const DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000001";
 const PROGRAM_ROLE = "018f3b8a-0000-7000-8000-100000000002";
+const LOWER_DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000003";
+const GRANTABLE_DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000005";
+const DELETE_ONLY_ROLE = "018f3b8a-0000-7000-8000-100000000004";
 const BASELINE_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
 const SCOPED_ACTOR = "E2E_ACCOUNT_ACCESS_SCOPED_ACTOR";
+const DELETE_ONLY_ACTOR = "E2E_ACCOUNT_ACCESS_DELETE_ONLY_ACTOR";
 const MIXED_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_MIXED_TARGET";
 const OUT_OF_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_OUT_OF_SCOPE_TARGET";
 const FIXTURE_NOW = "2026-08-29T00:00:00.000Z";
@@ -82,6 +86,142 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       ),
     testDb()
       .prepare(
+        `INSERT OR IGNORE INTO accounts
+           (user_id, name, username, username_normalized, credential_hash,
+            credential_kind, credential_version, account_status, role, phone,
+            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+            failed_attempts, locked_until, lock_since, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+      )
+      .bind(
+        DELETE_ONLY_ACTOR,
+        "Delete Only Actor",
+        "account-access-delete-only-actor",
+        "account-access-delete-only-actor",
+        Date.parse(FIXTURE_NOW),
+        Date.parse(FIXTURE_NOW)
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+           (role_definition_id, category_key, stable_key, label, description,
+            scope_kind, scope_id, position, is_protected, is_archived,
+            created_by, created_at, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(
+        LOWER_DEPARTMENT_ROLE,
+        "Department",
+        "account-access-lower-department",
+        "部門下級測試身份組",
+        "",
+        "Department",
+        "018f3b8a-0000-7000-8000-000000000002",
+        30,
+        FIXTURE_NOW,
+        FIXTURE_NOW
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(LOWER_DEPARTMENT_ROLE, "department.publish", ADMIN, FIXTURE_NOW),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+           (role_definition_id, category_key, stable_key, label, description,
+            scope_kind, scope_id, position, is_protected, is_archived,
+            created_by, created_at, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(
+        DELETE_ONLY_ROLE,
+        "Global",
+        "account-access-delete-only",
+        "只可停用測試身份組",
+        "",
+        "Global",
+        5,
+        FIXTURE_NOW,
+        FIXTURE_NOW
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(DELETE_ONLY_ROLE, "role.delete", ADMIN, FIXTURE_NOW),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+           (role_definition_id, category_key, stable_key, label, description,
+            scope_kind, scope_id, position, is_protected, is_archived,
+            created_by, created_at, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(
+        GRANTABLE_DEPARTMENT_ROLE,
+        "Department",
+        "account-access-grantable-department",
+        "部門授權測試身份組",
+        "",
+        "Department",
+        "018f3b8a-0000-7000-8000-000000000002",
+        40,
+        FIXTURE_NOW,
+        FIXTURE_NOW
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(GRANTABLE_DEPARTMENT_ROLE, "department.manage", ADMIN, FIXTURE_NOW),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                NULL, NULL, NULL
+           FROM role_definitions rd
+          WHERE rd.role_definition_id = ?`
+      )
+      .bind(
+        "account-access-delete-only-role",
+        DELETE_ONLY_ACTOR,
+        DELETE_ONLY_ROLE,
+        ADMIN,
+        Date.parse(FIXTURE_NOW),
+        DELETE_ONLY_ROLE
+      ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                NULL, NULL, NULL
+           FROM role_definitions rd
+          WHERE rd.role_definition_id = ?`
+      )
+      .bind(
+        "account-access-delete-only-baseline",
+        DELETE_ONLY_ACTOR,
+        BASELINE_ROLE,
+        ADMIN,
+        Date.parse(FIXTURE_NOW),
+        BASELINE_ROLE
+      ),
+    testDb()
+      .prepare(
         `INSERT OR IGNORE INTO role_assignments
            (assignment_id, account_user_id, role_definition_id,
             granted_by, granted_at, scope_kind, scope_id,
@@ -119,6 +259,25 @@ async function ensureMixedScopeFixtures(): Promise<void> {
         )
         .bind(assignment, account, role, ADMIN, Date.parse(FIXTURE_NOW), role)
     ),
+    testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                NULL, NULL, NULL
+           FROM role_definitions rd
+          WHERE rd.role_definition_id = ?`
+      )
+      .bind(
+        "account-access-mixed-lower-department",
+        MIXED_SCOPE_TARGET,
+        LOWER_DEPARTMENT_ROLE,
+        ADMIN,
+        Date.parse(FIXTURE_NOW),
+        LOWER_DEPARTMENT_ROLE
+      ),
   ]);
 }
 
@@ -189,12 +348,30 @@ describe("#486 Account Access domain", () => {
       (assignment) => assignment.roleDefinitionId
     );
     expect(activeRoleIds).toEqual(
-      expect.arrayContaining([BASELINE_ROLE, DEPARTMENT_ROLE])
+      expect.arrayContaining([BASELINE_ROLE, LOWER_DEPARTMENT_ROLE])
     );
+    expect(activeRoleIds).not.toContain(DEPARTMENT_ROLE);
     expect(activeRoleIds).not.toContain(PROGRAM_ROLE);
     expect(view.effectiveAccess.Department.length).toBeGreaterThan(0);
     expect(view.effectiveAccess.Program).toHaveLength(0);
     expect(JSON.stringify(view)).not.toContain("青少年查經帶領");
+  });
+
+  test("searches identity metadata within exact lower role scope", async () => {
+    const result = await searchEligibleAccounts(
+      testDb(),
+      SCOPED_ACTOR,
+      "Mixed Scope",
+      0,
+      20
+    );
+    const target = result.accounts.find(
+      (account) => account.userId === MIXED_SCOPE_TARGET
+    );
+    expect(target).toBeDefined();
+    expect(
+      target?.identities.map((identity) => identity.roleDefinitionId)
+    ).toEqual([LOWER_DEPARTMENT_ROLE]);
   });
 
   test("keeps targets with only out-of-scope assignments eligible with baseline access", async () => {
@@ -228,6 +405,11 @@ describe("#486 Account Access domain", () => {
           "account-access-red-unauthorized-absent-revoke-correlation",
       })
     ).rejects.toThrow("ROLE_FORBIDDEN");
+    const audit = await testDb()
+      .prepare("SELECT outcome FROM role_audit_events WHERE audit_id = ?")
+      .bind("account-access-red-unauthorized-absent-revoke-audit")
+      .first<{ outcome: string }>();
+    expect(audit?.outcome).toBe("DENIED");
   });
 
   test("rejects an unauthorized active duplicate before returning Account Access", async () => {
@@ -262,6 +444,11 @@ describe("#486 Account Access domain", () => {
         correlation_id: "account-access-red-unauthorized-duplicate-correlation",
       })
     ).rejects.toThrow("ROLE_FORBIDDEN");
+    const audit = await testDb()
+      .prepare("SELECT outcome FROM role_audit_events WHERE audit_id = ?")
+      .bind("account-access-red-unauthorized-duplicate-audit")
+      .first<{ outcome: string }>();
+    expect(audit?.outcome).toBe("DENIED");
   });
 
   test("preserves assignment scope snapshot after role rescope and revoke history", async () => {
@@ -329,6 +516,9 @@ describe("#486 Account Access domain", () => {
       scopeKind: "Program",
       scopeId: "018f3b8a-0000-7000-8000-300000000001",
     });
+    expect(revoked.actions.restoreRoleDefinitionIds).not.toContain(
+      created.roleDefinitionId
+    );
     const duplicateRevoke = await revokeAccountAssignments(testDb(), {
       actor_user_id: ADMIN,
       account_user_id: STAFF,
@@ -439,6 +629,11 @@ describe("#486 Account Access domain", () => {
       .prepare("SELECT COUNT(*) AS count FROM role_assignments")
       .first<{ count: number }>();
     expect(after?.count).toBe(before?.count);
+    const audit = await testDb()
+      .prepare("SELECT outcome FROM role_audit_events WHERE audit_id = ?")
+      .bind("account-access-red-invalid-audit")
+      .first<{ outcome: string }>();
+    expect(audit?.outcome).toBe("REJECTED");
   });
 
   test("revokes into immutable history and re-adds with a fresh assignment event", async () => {
@@ -554,6 +749,25 @@ describe("#486 Account Access domain", () => {
     expect(preview.impact[0]?.lost).toBeDefined();
     expect(preview.impact[0]?.retained).toBeDefined();
   });
+  test("computes lifecycle impact for a role.delete-only actor", async () => {
+    const preview = await getRoleDefinitionLifecyclePreview(
+      testDb(),
+      DELETE_ONLY_ACTOR,
+      DEPARTMENT_ROLE,
+      "archive"
+    );
+    const impact = preview.impact.find(
+      (item) => item.accountUserId === "E2E_DISPOSABLE_DM"
+    );
+    expect(impact?.lost.Department.length).toBeGreaterThan(0);
+    expect(
+      impact?.retained.Global.some(
+        (grant) =>
+          grant.capability === "program.enroll" &&
+          grant.sources.includes("會友基礎")
+      )
+    ).toBe(true);
+  });
 
   test("archives all live assignments and restores definition without assignments", async () => {
     const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
@@ -651,5 +865,66 @@ describe("#486 Account Access domain", () => {
       .bind(STAFF)
       .first<{ count: number }>();
     expect(auditCount?.count).toBeGreaterThanOrEqual(1);
+  });
+  test("records complete authoritative assignment summaries", async () => {
+    const initial = await loadAccountAccess(
+      testDb(),
+      SCOPED_ACTOR,
+      MIXED_SCOPE_TARGET
+    );
+    const authoritativeRows = await testDb()
+      .prepare(
+        "SELECT role_definition_id FROM role_assignments WHERE account_user_id = ? AND revoked_at IS NULL"
+      )
+      .bind(MIXED_SCOPE_TARGET)
+      .all<{ role_definition_id: string }>();
+    const fullBefore = (authoritativeRows.results ?? []).map(
+      (row) => row.role_definition_id
+    );
+    const grant = await mutateAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: initial.revision,
+      role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-authoritative-grant",
+      now: "2026-08-29T00:08:00.000Z",
+      audit_id: "account-access-red-authoritative-grant-audit",
+      correlation_id: "account-access-red-authoritative-grant-correlation",
+    });
+    const grantAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-authoritative-grant-audit")
+      .first<{ old_value_json: string; new_value_json: string }>();
+    expect(new Set(JSON.parse(grantAudit?.old_value_json ?? "[]"))).toEqual(
+      new Set(fullBefore)
+    );
+    expect(new Set(JSON.parse(grantAudit?.new_value_json ?? "[]"))).toEqual(
+      new Set([...fullBefore, GRANTABLE_DEPARTMENT_ROLE])
+    );
+
+    await revokeAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: grant.revision,
+      role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-authoritative-revoke",
+      now: "2026-08-29T00:08:30.000Z",
+      audit_id: "account-access-red-authoritative-revoke-audit",
+      correlation_id: "account-access-red-authoritative-revoke-correlation",
+    });
+    const revokeAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-authoritative-revoke-audit")
+      .first<{ old_value_json: string; new_value_json: string }>();
+    expect(new Set(JSON.parse(revokeAudit?.old_value_json ?? "[]"))).toEqual(
+      new Set([...fullBefore, GRANTABLE_DEPARTMENT_ROLE])
+    );
+    expect(new Set(JSON.parse(revokeAudit?.new_value_json ?? "[]"))).toEqual(
+      new Set(fullBefore)
+    );
   });
 });

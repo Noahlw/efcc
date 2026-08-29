@@ -52,6 +52,7 @@ import type {
 } from "@/lib/identity/role-hierarchy";
 import { getRoleHierarchy } from "@/lib/identity/role-hierarchy-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 import { DirectoryFrame } from "./directory-frame";
@@ -329,6 +330,7 @@ export const AccountAccessPanel = () => {
   const mutationKeyRef = useRef<string | null>(null);
   const revokePreviewRequestRef = useRef(0);
   const lifecyclePreviewRequestRef = useRef(0);
+  const lifecycleRefreshRequestRef = useRef(0);
   const routeKey = JSON.stringify([accountUserId, roleDefinitionId, viewParam]);
   const routeKeyRef = useRef(routeKey);
   const routeGenerationRef = useRef(0);
@@ -414,7 +416,12 @@ export const AccountAccessPanel = () => {
       announceLoading: "正在載入帳戶權限…",
       isAuthRequired: (error) =>
         error instanceof RpcError && error.problem.code === "AUTH_REQUIRED",
-      onAuthRequired: () => router.replace("/"),
+      onAuthRequired: () => {
+        rememberDeepLink(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+      },
       focusTarget: "[data-account-access-state]",
     },
     [accountUserId, router]
@@ -503,6 +510,16 @@ export const AccountAccessPanel = () => {
           current &&
           isCurrentRoute(requestRouteKey, requestRouteGeneration)
         ) {
+          if (
+            error instanceof RpcError &&
+            error.problem.code === "AUTH_REQUIRED"
+          ) {
+            rememberDeepLink(
+              `${window.location.pathname}${window.location.search}${window.location.hash}`
+            );
+            router.replace("/");
+            return;
+          }
           setHierarchy(null);
           setHierarchyError(errorMessage(error));
         }
@@ -526,6 +543,13 @@ export const AccountAccessPanel = () => {
     routeKey,
     viewParam,
   ]);
+  useEffect(() => {
+    if (!roleFirst || viewParam !== "access") return;
+    if (hierarchyLoading || (!hierarchy && !hierarchyError)) return;
+    if (hierarchyError) {
+      stateRef.current?.focus();
+    }
+  }, [hierarchyError, hierarchyLoading, hierarchy, roleFirst, viewParam]);
 
   useEffect(() => {
     if ((!accountUserId && !roleFirst) || viewParam !== "access") return;
@@ -836,19 +860,42 @@ export const AccountAccessPanel = () => {
     expectedRouteGeneration: number
   ): Promise<void> => {
     if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+    const refreshRequestId = ++lifecycleRefreshRequestRef.current;
     setRefreshError(null);
     try {
       if (accountUserId) {
         const refreshedView = await getAccountAccess(accountUserId);
-        if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+        if (
+          !isCurrentRoute(expectedRouteKey, expectedRouteGeneration) ||
+          refreshRequestId !== lifecycleRefreshRequestRef.current
+        ) {
+          return;
+        }
         setView(refreshedView);
       } else if (roleFirst) {
         const refreshedHierarchy = await getRoleHierarchy();
-        if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+        if (
+          !isCurrentRoute(expectedRouteKey, expectedRouteGeneration) ||
+          refreshRequestId !== lifecycleRefreshRequestRef.current
+        ) {
+          return;
+        }
         setHierarchy(refreshedHierarchy);
       }
     } catch (error) {
-      if (!isCurrentRoute(expectedRouteKey, expectedRouteGeneration)) return;
+      if (
+        !isCurrentRoute(expectedRouteKey, expectedRouteGeneration) ||
+        refreshRequestId !== lifecycleRefreshRequestRef.current
+      ) {
+        return;
+      }
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        rememberDeepLink(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+        return;
+      }
       setRefreshError(errorMessage(error));
     }
   };
