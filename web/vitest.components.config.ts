@@ -32,6 +32,8 @@ export default defineProject({
       "lib/ui-primitives.test.tsx",
       "lib/management-route-redirects.test.tsx",
       "lib/settings-hub.test.tsx",
+      "lib/account-access-panel.test.tsx",
+      "lib/account-access-api.test.ts",
       "lib/permission-editor-panel.test.tsx",
       "lib/member-directory-panel.test.tsx",
       "lib/directory-frame.test.tsx",

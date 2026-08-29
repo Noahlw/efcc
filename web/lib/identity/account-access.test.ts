@@ -1,0 +1,282 @@
+import { beforeAll, describe, expect, test } from "vitest";
+
+import { applyMigrations, testDb } from "../auth/test-bootstrap";
+import {
+  loadAccountAccess,
+  mutateAccountAssignments,
+  mutateRoleDefinitionLifecycle,
+  revokeAccountAssignments,
+  searchEligibleAccounts,
+} from "./account-access";
+import { seedDisposableIdentity } from "./index";
+
+const ADMIN = "E2E_DISPOSABLE_ADMIN";
+const STAFF = "E2E_DISPOSABLE_STAFF";
+const MEMBER = "E2E_DISPOSABLE_MEMBER";
+const DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000001";
+const PROGRAM_ROLE = "018f3b8a-0000-7000-8000-100000000002";
+
+beforeAll(async () => {
+  await applyMigrations();
+  await seedDisposableIdentity(testDb(), {
+    databaseName: "E2E_account-access-red",
+  });
+});
+
+describe("#486 Account Access domain", () => {
+  test("searches only eligible Active non-Admin accounts and omits private fields", async () => {
+    const result = await searchEligibleAccounts(
+      testDb(),
+      ADMIN,
+      "Disposable",
+      0,
+      20
+    );
+    expect(result.accounts.some((account) => account.userId === ADMIN)).toBe(
+      false
+    );
+    expect(result.accounts.every((account) => account.userId !== ADMIN)).toBe(
+      true
+    );
+    expect(
+      result.accounts.every((account) => "phone" in account === false)
+    ).toBe(true);
+    expect(
+      result.accounts.every((account) => "credential_hash" in account === false)
+    ).toBe(true);
+  });
+
+  test("loads effective access with automatic baseline and exact scope provenance", async () => {
+    const view = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(view.account).toMatchObject({
+      userId: STAFF,
+      status: "Active",
+    });
+    expect(
+      view.effectiveAccess.Global.some(
+        (grant) => grant.capability === "program.enroll"
+      )
+    ).toBe(true);
+    expect(JSON.stringify(view)).not.toContain("credential_hash");
+    expect(JSON.stringify(view)).not.toContain("phone");
+  });
+  test("includes the automatic baseline for an account with no lower identity", async () => {
+    const view = await loadAccountAccess(testDb(), ADMIN, MEMBER);
+    expect(view.activeAssignments).toHaveLength(1);
+    expect(view.activeAssignments[0]?.label).toBe("會友基礎");
+    expect(
+      view.effectiveAccess.Global.map((grant) => grant.capability)
+    ).toContain("program.enroll");
+  });
+
+  test("atomically adds several lower identities and reports active duplicates", async () => {
+    const revision = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    const result = await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: revision?.revision ?? 1,
+      role_definition_ids: [DEPARTMENT_ROLE, PROGRAM_ROLE],
+      idempotency_key: "account-access-red-add",
+      now: "2026-08-29T00:00:00.000Z",
+      audit_id: "account-access-red-add-audit",
+      correlation_id: "account-access-red-add-correlation",
+    });
+    expect(result.idempotent).toBe(false);
+    expect(result.duplicateRoleDefinitionIds).toEqual([]);
+    expect(
+      result.activeAssignments.map((assignment) => assignment.roleDefinitionId)
+    ).toEqual(expect.arrayContaining([DEPARTMENT_ROLE, PROGRAM_ROLE]));
+    expect(result.effectiveAccess.Department.length).toBeGreaterThan(0);
+    expect(result.effectiveAccess.Program.length).toBeGreaterThan(0);
+  });
+  test("active identities are a named duplicate no-op and replay without a second audit", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const result = await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-duplicate",
+      now: "2026-08-29T00:01:30.000Z",
+      audit_id: "account-access-red-duplicate-audit",
+      correlation_id: "account-access-red-duplicate-correlation",
+    });
+    expect(result.idempotent).toBe(false);
+    expect(result.duplicateRoleDefinitionIds).toEqual([DEPARTMENT_ROLE]);
+    const replay = await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-duplicate",
+      now: "2026-08-29T00:02:30.000Z",
+      audit_id: "account-access-red-duplicate-replay-audit",
+      correlation_id: "account-access-red-duplicate-replay-correlation",
+    });
+    expect(replay.idempotent).toBe(true);
+    const audits = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM role_audit_events WHERE correlation_id LIKE 'account-access-red-duplicate%'"
+      )
+      .first<{ count: number }>();
+    expect(audits?.count).toBe(1);
+  });
+
+  test("rejects an invalid identity before changing any assignment", async () => {
+    const before = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM role_assignments")
+      .first<{ count: number }>();
+    const revision = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        actor_user_id: ADMIN,
+        account_user_id: STAFF,
+        base_revision: revision?.revision ?? 1,
+        role_definition_ids: [DEPARTMENT_ROLE, "unknown-role-definition"],
+        idempotency_key: "account-access-red-invalid",
+        now: "2026-08-29T00:01:00.000Z",
+        audit_id: "account-access-red-invalid-audit",
+        correlation_id: "account-access-red-invalid-correlation",
+      })
+    ).rejects.toThrow(/ROLE_NOT_FOUND|ROLE_TARGET_INELIGIBLE/);
+    const after = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM role_assignments")
+      .first<{ count: number }>();
+    expect(after?.count).toBe(before?.count);
+  });
+
+  test("revokes into immutable history and re-adds with a fresh assignment event", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const assignment = before.activeAssignments.find(
+      (item) => item.roleDefinitionId === DEPARTMENT_ROLE
+    );
+    expect(assignment).toBeDefined();
+    const revoke = await revokeAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-revoke",
+      now: "2026-08-29T00:02:00.000Z",
+      audit_id: "account-access-red-revoke-audit",
+      correlation_id: "account-access-red-revoke-correlation",
+    });
+    expect(
+      revoke.activeAssignments.some(
+        (item) => item.roleDefinitionId === DEPARTMENT_ROLE
+      )
+    ).toBe(false);
+    expect(
+      revoke.revokedAssignments.some(
+        (item) => item.roleDefinitionId === DEPARTMENT_ROLE
+      )
+    ).toBe(true);
+    const readd = await mutateAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: revoke.revision,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-readd",
+      now: "2026-08-29T00:03:00.000Z",
+      audit_id: "account-access-red-readd-audit",
+      correlation_id: "account-access-red-readd-correlation",
+    });
+    const fresh = readd.activeAssignments.find(
+      (item) => item.roleDefinitionId === DEPARTMENT_ROLE
+    );
+    expect(fresh?.assignmentId).not.toBe(assignment?.assignmentId);
+    expect(
+      readd.revokedAssignments.filter(
+        (item) => item.roleDefinitionId === DEPARTMENT_ROLE
+      )
+    ).toHaveLength(1);
+  });
+
+  test("archives all live assignments and restores definition without assignments", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const lifecycle = await mutateRoleDefinitionLifecycle(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_ROLE,
+      action: "archive",
+      base_revision: before.revision,
+      idempotency_key: "account-access-red-archive",
+      now: "2026-08-29T00:04:00.000Z",
+      audit_id: "account-access-red-archive-audit",
+      correlation_id: "account-access-red-archive-correlation",
+    });
+    expect(lifecycle.isArchived).toBe(true);
+    const archived = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(
+      archived.activeAssignments.some(
+        (item) => item.roleDefinitionId === PROGRAM_ROLE
+      )
+    ).toBe(false);
+    const restored = await mutateRoleDefinitionLifecycle(testDb(), {
+      actor_user_id: ADMIN,
+      role_definition_id: PROGRAM_ROLE,
+      action: "restore",
+      base_revision: archived.revision,
+      idempotency_key: "account-access-red-restore",
+      now: "2026-08-29T00:05:00.000Z",
+      audit_id: "account-access-red-restore-audit",
+      correlation_id: "account-access-red-restore-correlation",
+    });
+    expect(restored.isArchived).toBe(false);
+    const afterRestore = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(
+      afterRestore.activeAssignments.some(
+        (item) => item.roleDefinitionId === PROGRAM_ROLE
+      )
+    ).toBe(false);
+    expect(
+      afterRestore.revokedAssignments.some(
+        (item) => item.roleDefinitionId === PROGRAM_ROLE
+      )
+    ).toBe(true);
+    const audit = await testDb()
+      .prepare(
+        "SELECT action, outcome, correlation_id FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-archive-audit")
+      .first<{ action: string; outcome: string; correlation_id: string }>();
+    expect(audit).toMatchObject({
+      action: "ROLE_DEFINITION_ARCHIVE",
+      outcome: "SUCCESS",
+      correlation_id: "account-access-red-archive-correlation",
+    });
+  });
+  test("replays the original successful projection after response loss", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const input = {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [PROGRAM_ROLE],
+      idempotency_key: "account-access-red-success-replay",
+      now: "2026-08-29T00:06:00.000Z",
+      audit_id: "account-access-red-success-replay-audit",
+      correlation_id: "account-access-red-success-replay-correlation",
+    };
+    const first = await mutateAccountAssignments(testDb(), input);
+    const replay = await mutateAccountAssignments(testDb(), {
+      ...input,
+      now: "2026-08-29T00:07:00.000Z",
+      audit_id: "account-access-red-success-replay-2-audit",
+      correlation_id: "account-access-red-success-replay-2-correlation",
+    });
+    expect(replay.idempotent).toBe(true);
+    expect(replay.revision).toBe(first.revision);
+    expect(replay.activeAssignments).toEqual(first.activeAssignments);
+    const auditCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM role_audit_events WHERE action = 'ROLE_ASSIGNMENT_GRANT' AND entity_id = ?"
+      )
+      .bind(STAFF)
+      .first<{ count: number }>();
+    expect(auditCount?.count).toBeGreaterThanOrEqual(1);
+  });
+});

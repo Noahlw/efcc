@@ -144,6 +144,7 @@ const VIEW: RoleHierarchyView = {
           isProtected: false,
           isArchived: false,
           assignmentCount: 1,
+          assignedAccountUserIds: ["account-1"],
           grantCount: 12,
           actions: [
             { action: "rename", label: "重新命名" },
@@ -268,6 +269,21 @@ describe(RoleHierarchyPanel, () => {
     await user.click(permissions);
     expect(mocks.router.push).toHaveBeenCalledWith(
       `/management?module=permissions&role=${MANAGER_ROLE}&view=permissions`
+    );
+  });
+  test("identity-first assigned account link converges on Account Access", async () => {
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+
+    const access = await screen.findByRole("button", {
+      name: "管理已指派帳戶",
+    });
+    await userEvent.setup().click(access);
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      "/management?module=accounts&account=account-1&view=access&return=%2Fmanagement%3Fmodule%3Droles"
     );
   });
 

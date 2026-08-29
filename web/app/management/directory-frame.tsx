@@ -1,7 +1,7 @@
 "use client";
 
-import { cva } from 'class-variance-authority';
-import type { VariantProps } from 'class-variance-authority';
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import { useEffect, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
@@ -111,6 +111,7 @@ export interface DirectoryFrameProps extends DirectoryFrameVariants {
   pagination?: DirectoryFramePagination;
   virtualization?: DirectoryVirtualization;
   focus?: DirectoryFrameFocus;
+  children?: ReactNode;
 }
 
 const Pagination = ({
@@ -196,6 +197,7 @@ export const DirectoryFrame = ({
   state = "ready",
   virtualization: virtualizationProp,
   width,
+  children,
 }: DirectoryFrameProps) => {
   const selectedId = selectionProp?.selectedId ?? null;
   const hasDetail = hasDetailProp ?? selectedId !== null;
@@ -327,6 +329,7 @@ export const DirectoryFrame = ({
           )}
         </div>
       )}
+      {children}
     </section>
   );
 };

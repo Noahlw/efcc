@@ -1252,6 +1252,24 @@ export const RoleHierarchyPanel = () => {
               {PERMISSION_EDIT_LABEL}
             </Button>
           )}
+          {selected.assignmentCount > 0 && (
+            <Button
+              className={cn(styles.renameButton, "min-h-11")}
+              onClick={() => {
+                const accountId = selected.assignedAccountUserIds?.[0];
+                router.push(
+                  accountId
+                    ? `/management?module=accounts&account=${encodeURIComponent(accountId)}&view=access&return=${encodeURIComponent("/management?module=roles")}`
+                    : `/management?module=accounts&roleDefinition=${encodeURIComponent(selected.roleDefinitionId)}`
+                );
+              }}
+              size="lg"
+              type="button"
+              variant="outline"
+            >
+              管理已指派帳戶
+            </Button>
+          )}
           {scopeState.kind !== "idle" && (
             <section
               aria-labelledby="role-hierarchy-scope-title"

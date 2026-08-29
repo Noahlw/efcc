@@ -9,7 +9,8 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /(?:role-hierarchy|permission-editor)-geometry\.test\.ts$/u,
+  testMatch:
+    /(?:role-hierarchy|permission-editor|account-access)-geometry\.test\.ts$/u,
   timeout: 30_000,
   retries: 1,
   fullyParallel: false,

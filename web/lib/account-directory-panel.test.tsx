@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -73,7 +79,10 @@ const ROWS: AccountRow[] = [
   },
 ] as const;
 
-function response(accounts: AccountRow[] = ROWS, nextCursor: string | null = null) {
+function response(
+  accounts: AccountRow[] = ROWS,
+  nextCursor: string | null = null
+) {
   return HttpResponse.json({
     requestId: "rid-account-directory",
     data: {
@@ -122,6 +131,13 @@ describe(AccountDirectoryPanel, () => {
     await user.click(row);
     expect(row).toHaveAttribute("aria-pressed", "true");
     expect(window.location.search).toContain("account=AD-001");
+    const accessLink = await screen.findByRole("button", {
+      name: "查看帳戶權限與身份組",
+    });
+    await user.click(accessLink);
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      expect.stringContaining("module=accounts&account=AD-001&view=access")
+    );
   });
 
   test("opens with a populated Account page before search", async () => {
@@ -226,9 +242,7 @@ describe(AccountDirectoryPanel, () => {
   });
 
   test("loads a bookmarked Account Detail without a prior list search", async () => {
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     server.use(
       http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () =>
@@ -296,9 +310,7 @@ describe(AccountDirectoryPanel, () => {
   test("recovers an Account detail error through the selected detail slot", async () => {
     const user = userEvent.setup();
     let failed = true;
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     server.use(
       http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () => {
@@ -362,9 +374,10 @@ describe(AccountDirectoryPanel, () => {
     render(<AccountDirectoryPanel />);
 
     expect(screen.getByLabelText(ACCOUNTS.searchLabel)).toHaveValue("大文");
-    expect(
-      screen.getByRole("link", { name: ACCOUNTS.back })
-    ).toHaveAttribute("href", "/management?module=settings");
+    expect(screen.getByRole("link", { name: ACCOUNTS.back })).toHaveAttribute(
+      "href",
+      "/management?module=settings"
+    );
     expect(
       await screen.findByRole("heading", { name: ROWS[0].name })
     ).toBeInTheDocument();
@@ -376,9 +389,7 @@ describe(AccountDirectoryPanel, () => {
     );
     window.dispatchEvent(new PopStateEvent("popstate"));
     await waitFor(() =>
-      expect(
-        screen.queryByRole("heading", { name: ROWS[0].name })
-      ).toBeNull()
+      expect(screen.queryByRole("heading", { name: ROWS[0].name })).toBeNull()
     );
   });
 
@@ -397,9 +408,7 @@ describe(AccountDirectoryPanel, () => {
         );
         const page = manyRows.slice(start, start + pageSize);
         const nextCursor =
-          start + pageSize < manyRows.length
-            ? String(start + pageSize)
-            : null;
+          start + pageSize < manyRows.length ? String(start + pageSize) : null;
         return response(page, nextCursor);
       })
     );
@@ -418,9 +427,7 @@ describe(AccountDirectoryPanel, () => {
     expect(screen.getAllByRole("button", { name: /帳戶 \d{3}/u })).toHaveLength(
       manyRows.length
     );
-    expect(
-      screen.queryByRole("button", { name: "載入更多帳戶" })
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "載入更多帳戶" })).toBeNull();
   });
   test("hands an AUTH_REQUIRED list load back through the deep-link seam", async () => {
     mocks.searchParams = new URLSearchParams(
@@ -445,9 +452,7 @@ describe(AccountDirectoryPanel, () => {
   });
 
   test("hands an AUTH_REQUIRED detail load back through the deep-link seam", async () => {
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     window.history.replaceState(
       {},
       "",

@@ -27,8 +27,8 @@ import type {
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
-import { DirectoryFrame } from './directory-frame';
-import type { DirectoryFrameState } from './directory-frame';
+import { DirectoryFrame } from "./directory-frame";
+import type { DirectoryFrameState } from "./directory-frame";
 import {
   ManagementFilterSheet,
   safeManagementReturnHref,
@@ -400,7 +400,7 @@ export const AccountDirectoryPanel = () => {
     [department, query, role, router, status]
   );
 
-  const {state} = listResource;
+  const { state } = listResource;
   const resourceView = state.kind === "ready" ? state.data : null;
   const accountView = appendedView ?? resourceView;
   const accounts = accountView?.accounts ?? [];
@@ -701,6 +701,17 @@ export const AccountDirectoryPanel = () => {
                   {COPY_ACCOUNT.detailReadOnly}
                 </p>
               </div>
+              <Button
+                className="mt-4 min-h-11 w-full bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                onClick={() =>
+                  router.push(
+                    `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(returnHref)}`
+                  )
+                }
+                type="button"
+              >
+                查看帳戶權限與身份組
+              </Button>
             </article>
           ) : null
         ) : null

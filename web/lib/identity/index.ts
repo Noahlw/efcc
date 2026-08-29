@@ -116,6 +116,31 @@ export type {
   PermissionGrantChange,
   UpdateRoleDefinitionGrantsInput,
 } from "./permission-editor";
+export {
+  loadAccountAccess,
+  searchEligibleAccounts,
+  mutateAccountAssignments,
+  revokeAccountAssignments,
+  mutateRoleDefinitionLifecycle,
+  updateRoleDefinitionLifecycle,
+  AccountTargetIneligibleError,
+  AccountAdminProtectedError,
+  AccountSelfProtectedError,
+  AccountRevokeTargetError,
+} from "./account-access";
+export type {
+  AccountAccessView,
+  AccountAccessAccount,
+  AccountAccessIdentity,
+  EffectiveAccessGrant,
+  EffectiveAccessGroups,
+  AccountAccessActions,
+  AccountAccessMutationResult,
+  AccountAccessMutationInput,
+  RoleDefinitionLifecycleInput,
+  RoleDefinitionLifecycleResult,
+  AccountAccessImpact,
+} from "./account-access";
 export type {
   RoleCategoryKey,
   RoleScopeKind,

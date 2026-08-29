@@ -1080,6 +1080,13 @@ export default {
         handleGetRoleDefinitionDetail,
         handleUpdateRoleDefinitionGrants,
       } = await import("./lib/identity/permission-editor-handlers");
+      const {
+        handleSearchEligibleAccounts,
+        handleGetAccountAccess,
+        handleMutateAccountAssignments,
+        handleRevokeAccountAssignments,
+        handleRoleDefinitionLifecycle,
+      } = await import("./lib/identity/account-access-handlers");
 
       if (
         url.pathname === "/api/v1/identity/roles" &&
@@ -1099,6 +1106,71 @@ export default {
       ) {
         return handleReorderRoleDefinitions(request, roleEnv);
       }
+      if (
+        url.pathname === "/api/v1/identity/accounts" &&
+        request.method === "GET"
+      ) {
+        return handleSearchEligibleAccounts(request, roleEnv);
+      }
+      const accountPrefix = "/api/v1/identity/accounts/";
+      if (url.pathname.startsWith(accountPrefix)) {
+        const accountPath = url.pathname.slice(accountPrefix.length);
+        const revokeSuffix = "/assignments/revoke";
+        const assignmentSuffix = "/assignments";
+        const isRevoke = accountPath.endsWith(revokeSuffix);
+        const suffix = isRevoke ? revokeSuffix : assignmentSuffix;
+        if (accountPath.endsWith(suffix)) {
+          const accountSegment = accountPath.slice(0, -suffix.length);
+          if (accountSegment.includes("/")) {
+            return authProblemResponse(
+              404,
+              "ROLE_TARGET_INELIGIBLE",
+              "Not found",
+              "找不到指定的帳戶。"
+            );
+          }
+          const accountUserId = decodePathSegment(accountSegment);
+          if (accountUserId === null || accountUserId.length === 0) {
+            return authProblemResponse(
+              404,
+              "ROLE_TARGET_INELIGIBLE",
+              "Not found",
+              "找不到指定的帳戶。"
+            );
+          }
+          if (request.method === "GET" && !isRevoke) {
+            return handleGetAccountAccess(request, roleEnv, accountUserId);
+          }
+          if (request.method === "POST") {
+            return isRevoke
+              ? handleRevokeAccountAssignments(request, roleEnv, accountUserId)
+              : handleMutateAccountAssignments(request, roleEnv, accountUserId);
+          }
+        }
+      }
+      const lifecyclePrefix = "/api/v1/identity/role-definitions/";
+      if (
+        url.pathname.startsWith(lifecyclePrefix) &&
+        url.pathname.endsWith("/lifecycle") &&
+        request.method === "POST"
+      ) {
+        const roleDefinitionId = decodePathSegment(
+          url.pathname.slice(lifecyclePrefix.length, -"/lifecycle".length)
+        );
+        if (roleDefinitionId === null || roleDefinitionId.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleRoleDefinitionLifecycle(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
+      }
       const detailPrefix = "/api/v1/identity/role-definitions/";
       const detailPath = url.pathname.slice(detailPrefix.length);
       if (
@@ -1115,7 +1187,11 @@ export default {
             "找不到指定的身份組。"
           );
         }
-        return handleGetRoleDefinitionDetail(request, roleEnv, roleDefinitionId);
+        return handleGetRoleDefinitionDetail(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
       }
       if (
         url.pathname.startsWith(detailPrefix) &&

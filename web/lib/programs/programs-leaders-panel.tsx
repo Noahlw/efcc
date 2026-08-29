@@ -172,6 +172,13 @@ export const LeadersPanel = ({
                 {leader.user_name ?? leader.user_id}
                 {leader.username ? ` (${leader.username})` : ""}
               </span>
+              <Button asChild className={styles.toggle}>
+                <a
+                  href={`/management?module=accounts&account=${encodeURIComponent(leader.user_id)}&view=access&return=${encodeURIComponent("/management?module=accounts")}`}
+                >
+                  查看身份組
+                </a>
+              </Button>
               <Badge className={styles.eventSource} variant="outline">
                 {hkWallDateTimeLabel(leader.granted_at)}
               </Badge>

@@ -380,6 +380,13 @@ export const DepartmentSettingsPanel = ({
                             {manager.user_name ?? manager.user_id}
                             {manager.username ? ` (${manager.username})` : ""}
                           </span>
+                          <Button asChild className={styles.toggle}>
+                            <a
+                              href={`/management?module=accounts&account=${encodeURIComponent(manager.user_id)}&view=access&return=${encodeURIComponent("/management?module=accounts")}`}
+                            >
+                              查看身份組
+                            </a>
+                          </Button>
                           {confirmingUserId === manager.user_id ? (
                             <div className={styles.confirmRow}>
                               <span>

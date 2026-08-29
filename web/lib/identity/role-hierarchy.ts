@@ -114,6 +114,8 @@ export interface RoleHierarchyDefinition {
   isProtected: boolean;
   isArchived: boolean;
   assignmentCount: number;
+  /** Opaque IDs for identity-first Account Access entry links. */
+  assignedAccountUserIds?: string[];
   grantCount: number;
   /** Server-projected actions per the caller's capabilities (H-03). */
   actions: RoleHierarchyActionAffordance[];
@@ -388,6 +390,7 @@ interface CategoryRow {
 interface CountRow {
   role_definition_id: string;
   assignments: number;
+  assignment_user_ids: string | null;
   grants: number;
 }
 
@@ -609,6 +612,10 @@ export async function loadRoleHierarchy(
                   (SELECT COUNT(*) FROM role_assignments ra
                     WHERE ra.role_definition_id = rd.role_definition_id
                       AND ra.revoked_at IS NULL) AS assignments,
+                  (SELECT GROUP_CONCAT(ra.account_user_id)
+                     FROM role_assignments ra
+                    WHERE ra.role_definition_id = rd.role_definition_id
+                      AND ra.revoked_at IS NULL) AS assignment_user_ids,
                   (SELECT COUNT(*) FROM role_definition_grants rg
                     WHERE rg.role_definition_id = rd.role_definition_id) AS grants
              FROM role_definitions rd`
@@ -625,7 +632,11 @@ export async function loadRoleHierarchy(
   const countById = new Map(
     (counts.results ?? []).map((row) => [
       row.role_definition_id,
-      { assignments: row.assignments, grants: row.grants },
+      {
+        assignments: row.assignments,
+        assignment_user_ids: row.assignment_user_ids,
+        grants: row.grants,
+      },
     ])
   );
 
@@ -730,6 +741,9 @@ export async function loadRoleHierarchy(
           isProtected: row.is_protected === 1,
           isArchived: row.is_archived === 1,
           assignmentCount: countsForRole?.assignments ?? 0,
+          assignedAccountUserIds: countsForRole?.assignment_user_ids
+            ? countsForRole.assignment_user_ids.split(",")
+            : [],
           grantCount: countsForRole?.grants ?? 0,
           actions,
           scopeOptions: canRescope ? projectedScopeOptions : [],

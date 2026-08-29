@@ -71,6 +71,10 @@ export type RoleDesiredChange =
       role_definition_id: string;
     }
   | {
+      kind: "restore_role_definition";
+      role_definition_id: string;
+    }
+  | {
       kind: "rename_role_definition";
       role_definition_id: string;
       /** New display name (globally unique; Spec 091 §9.2 PATCH identity name). */
@@ -170,8 +174,9 @@ export class RoleCapabilityCatalogError extends Error {
 
 export interface RoleMutationDenialOptions {
   errorCode: string;
-  auditOutcome: "DENIED" | "REJECTED";
+  auditOutcome: "DENIED" | "REJECTED" | "DUPLICATE";
   capability?: string;
+  resultJson?: string | null;
 }
 
 interface RoleMutationRecord {
@@ -511,13 +516,15 @@ export async function reserveRoleMutationDenial(
     }
   }
 
-  const resultJson = JSON.stringify({
-    errorCode: options.errorCode,
-    requestId: input.correlation_id ?? null,
-    ...(options.capability === undefined
-      ? {}
-      : { capability: options.capability }),
-  });
+  const resultJson =
+    options.resultJson ??
+    JSON.stringify({
+      errorCode: options.errorCode,
+      requestId: input.correlation_id ?? null,
+      ...(options.capability === undefined
+        ? {}
+        : { capability: options.capability }),
+    });
   const results = await db.batch([
     db
       .prepare(
@@ -754,6 +761,24 @@ export async function applyRoleMutation(
             `UPDATE role_assignments
                 SET revoked_by = ?, revoked_at = ?, revoke_reason = 'role_archived'
               WHERE role_definition_id = ? AND revoked_at IS NULL
+                AND ${gateClause}`
+          )
+          .bind(
+            input.actor_user_id,
+            input.now,
+            change.role_definition_id,
+            ...bindGate(input)
+          )
+      );
+      continue;
+    }
+    if (change.kind === "restore_role_definition") {
+      statements.push(
+        db
+          .prepare(
+            `UPDATE role_definitions
+                SET is_archived = 0, updated_by = ?, updated_at = ?
+              WHERE role_definition_id = ? AND is_archived = 1
                 AND ${gateClause}`
           )
           .bind(
