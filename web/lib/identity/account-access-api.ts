@@ -4,6 +4,7 @@ import type { ProblemDetails } from "@/lib/api";
 import type {
   AccountAccessMutationResult,
   AccountAccessView,
+  RoleDefinitionLifecyclePreview,
   RoleDefinitionLifecycleResult,
 } from "./account-access";
 
@@ -143,6 +144,16 @@ export function revokeAccountAssignments(
   );
 }
 
+export function getRoleDefinitionLifecyclePreview(
+  roleDefinitionId: string,
+  action: "archive" | "restore"
+): Promise<RoleDefinitionLifecyclePreview> {
+  const params = new URLSearchParams({ action });
+  return accountFetch(
+    `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/lifecycle?${params.toString()}`,
+    "GET"
+  );
+}
 export function updateRoleDefinitionLifecycle(
   roleDefinitionId: string,
   input: {

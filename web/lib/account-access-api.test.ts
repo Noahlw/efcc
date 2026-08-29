@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   getAccountAccess,
+  getRoleDefinitionLifecyclePreview,
   mutateAccountAssignments,
   revokeAccountAssignments,
   searchEligibleAccounts,
@@ -60,6 +61,10 @@ describe("Account Access API", () => {
       "role-a",
       { action: "archive", baseRevision: 6, reason: "retire" },
       "key-c"
+    );
+    await getRoleDefinitionLifecyclePreview("role-a", "archive");
+    expect(fetchMock.mock.calls[5]?.[0]).toBe(
+      "/api/v1/identity/role-definitions/role-a/lifecycle?action=archive"
     );
     const calls = fetchMock.mock.calls;
     expect(calls[1]?.[0]).toBe(

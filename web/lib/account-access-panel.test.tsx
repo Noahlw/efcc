@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   mutateAccountAssignments: vi.fn(),
   revokeAccountAssignments: vi.fn(),
   updateRoleDefinitionLifecycle: vi.fn(),
+  getRoleDefinitionLifecyclePreview: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -30,6 +31,7 @@ vi.mock("@/lib/identity/account-access-api", () => ({
   mutateAccountAssignments: mocks.mutateAccountAssignments,
   revokeAccountAssignments: mocks.revokeAccountAssignments,
   updateRoleDefinitionLifecycle: mocks.updateRoleDefinitionLifecycle,
+  getRoleDefinitionLifecyclePreview: mocks.getRoleDefinitionLifecyclePreview,
 }));
 vi.mock("@/lib/identity/role-hierarchy-api", () => ({
   getRoleHierarchy: mocks.getRoleHierarchy,
@@ -75,6 +77,24 @@ const view: AccountAccessView = {
     archiveRoleDefinitionIds: [],
     restoreRoleDefinitionIds: [],
   },
+  assignableRoles: [
+    {
+      roleDefinitionId: "role-lower",
+      label: "課程協調者",
+      scopeKind: "Global",
+      scopeId: null,
+      scopeLabel: null,
+      position: 4,
+    },
+    {
+      roleDefinitionId: "role-lower-2",
+      label: "部門助理",
+      scopeKind: "Global",
+      scopeId: null,
+      scopeLabel: null,
+      position: 5,
+    },
+  ],
 };
 const revokeView: AccountAccessView = {
   ...view,
@@ -236,6 +256,20 @@ beforeEach(() => {
     nextOffset: null,
   });
   mocks.getRoleHierarchy.mockResolvedValue(hierarchy);
+  mocks.getRoleDefinitionLifecyclePreview.mockResolvedValue({
+    roleDefinitionId: "role-lower",
+    action: "archive",
+    isArchived: false,
+    revision: 3,
+    affectedAccountUserIds: ["target"],
+    impact: [
+      {
+        accountUserId: "target",
+        lost: view.effectiveAccess,
+        retained: { Global: [], Department: [], Program: [] },
+      },
+    ],
+  });
 });
 afterEach(() => {
   cleanup();
@@ -433,5 +467,299 @@ describe("AccountAccessPanel", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "account-1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "account-2" })).toBeTruthy();
+  });
+  test("clears account-scoped selection and dialogs when the route account changes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    expect(
+      screen.getByRole("heading", { name: "確認新增身份組" })
+    ).toBeTruthy();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=other&view=access"
+    );
+    mocks.getAccountAccess.mockResolvedValue({
+      ...view,
+      account: { ...view.account, userId: "other", name: "Other Account" },
+    });
+    rerender(<AccountAccessPanel />);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "確認新增身份組" })
+      ).toBeNull()
+    );
+    await screen.findByRole("heading", { name: "Other Account" });
+    expect(
+      screen.getByRole("switch", { name: "新增 課程協調者" })
+    ).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "確認撤銷" })).toBeNull();
+  });
+
+  test("keeps Account Access mutation feedback in one visible live region", async () => {
+    const user = userEvent.setup();
+    mocks.mutateAccountAssignments.mockResolvedValue({
+      ...view,
+      idempotent: false,
+      duplicateRoleDefinitionIds: [],
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await screen.findByText("身份組已一次更新。");
+    expect(document.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+  });
+
+  test("identity-first entry offers assignment for a zero-assignment role", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.searchEligibleAccounts.mockResolvedValue({
+      accounts: [
+        {
+          userId: "other",
+          name: "Other Account",
+          username: "other-user",
+          identities: [],
+        },
+      ],
+      nextOffset: null,
+    });
+    mocks.getRoleHierarchy.mockResolvedValue({
+      ...hierarchy,
+      categories: hierarchy.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) =>
+          Object.assign(
+            {
+              ...definition,
+              assignedAccountUserIds: [],
+              lifecycleActions: [],
+            },
+            {
+              assignmentActions: [{ action: "assign", label: "指派" }],
+            }
+          )
+        ),
+      })),
+    });
+    render(<AccountAccessPanel />);
+    expect(
+      await screen.findByRole("heading", { name: "課程協調者" })
+    ).toBeTruthy();
+    const searchbox = screen.getByRole("searchbox");
+    await user.type(searchbox, "Other");
+    await user.click(
+      await screen.findByRole("button", { name: /Other Account/ })
+    );
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "account=other&roleDefinition=role-lower&view=access"
+      )
+    );
+  });
+
+  test("focuses identity-first detail and exposes retryable hierarchy errors", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.getRoleHierarchy
+      .mockRejectedValueOnce(new Error("hierarchy unavailable"))
+      .mockResolvedValueOnce(hierarchy);
+    render(<AccountAccessPanel />);
+    const retry = await screen.findByRole("button", { name: "重試身份組" });
+    expect(screen.getByText("身份組暫時無法載入。")).toBeTruthy();
+    await user.click(retry);
+    await screen.findByRole("heading", { name: "課程協調者" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { name: "課程協調者" }).closest("article")
+      )
+    );
+    expect(mocks.getRoleHierarchy).toHaveBeenCalledTimes(2);
+  });
+
+  test("uses server-authorized account assignment options without loading role.read hierarchy", async () => {
+    mocks.getAccountAccess.mockResolvedValue({
+      ...view,
+      assignableRoles: view.assignableRoles.slice(0, 1),
+    });
+    mocks.getRoleHierarchy.mockRejectedValue(
+      new Error("role.read is not granted")
+    );
+    render(<AccountAccessPanel />);
+    expect(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    ).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "新增 部門助理" })).toBeNull();
+    expect(mocks.getRoleHierarchy).not.toHaveBeenCalled();
+  });
+
+  test("refreshes revoke preview before confirmation and uses its revision", async () => {
+    const user = userEvent.setup();
+    const fresh = {
+      ...revokeView,
+      revision: 9,
+      effectiveAccess: {
+        ...revokeView.effectiveAccess,
+        Global: revokeView.effectiveAccess.Global.map((grant) => ({
+          ...grant,
+          scopeLabel: "全教會",
+        })),
+      },
+    };
+    mocks.getAccountAccess
+      .mockResolvedValueOnce(revokeView)
+      .mockResolvedValueOnce(fresh);
+    mocks.revokeAccountAssignments.mockResolvedValue({
+      ...view,
+      revision: 10,
+      idempotent: false,
+      duplicateRoleDefinitionIds: [],
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "撤銷 課程協調者" })
+    );
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
+    );
+    await user.click(screen.getByRole("button", { name: "確認撤銷" }));
+    await waitFor(() =>
+      expect(mocks.revokeAccountAssignments).toHaveBeenCalledWith(
+        "target",
+        { baseRevision: 9, roleDefinitionIds: ["role-lower"] },
+        expect.any(String)
+      )
+    );
+  });
+
+  test("retains the idempotency key across retryable 5xx assignment failures", async () => {
+    const user = userEvent.setup();
+    mocks.mutateAccountAssignments
+      .mockRejectedValueOnce(
+        new RpcError({
+          status: 503,
+          code: "UNAVAILABLE",
+          title: "Unavailable",
+          detail: "retry",
+        })
+      )
+      .mockResolvedValueOnce({
+        ...view,
+        idempotent: false,
+        duplicateRoleDefinitionIds: [],
+      });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() =>
+      expect(mocks.mutateAccountAssignments).toHaveBeenCalledTimes(1)
+    );
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() =>
+      expect(mocks.mutateAccountAssignments).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.mutateAccountAssignments.mock.calls[1]?.[2]).toBe(
+      mocks.mutateAccountAssignments.mock.calls[0]?.[2]
+    );
+  });
+
+  test("renders concrete scope labels and unique dialog heading IDs", async () => {
+    const user = userEvent.setup();
+    mocks.getAccountAccess.mockResolvedValue({
+      ...view,
+      effectiveAccess: {
+        ...view.effectiveAccess,
+        Department: [
+          {
+            ...view.effectiveAccess.Global[0],
+            scopeKind: "Department",
+            scopeId: "department-a",
+            scopeLabel: "成人部門",
+            sources: ["身份組甲"],
+            sourceRoleDefinitionIds: ["role-a"],
+          },
+        ],
+      },
+      revokedAssignments: [
+        {
+          assignmentId: "revoked-1",
+          roleDefinitionId: "role-a",
+          label: "身份組甲",
+          scopeKind: "Department",
+          scopeId: "department-a",
+          scopeLabel: "成人部門",
+          position: 4,
+          state: "REVOKED",
+          grantedAt: "2026-08-28T00:00:00.000Z",
+          revokedAt: "2026-08-29T00:00:00.000Z",
+        },
+      ],
+    });
+    render(<AccountAccessPanel />);
+    expect(await screen.findByText("範圍：成人部門")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /查看歷史/ }));
+    expect(screen.getAllByText(/成人部門/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "查看權限詳情" }));
+    const ids = [...document.querySelectorAll("h3[id]")]
+      .map((heading) => heading.id)
+      .filter((id) => id.includes("account-access"));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("loads authoritative lifecycle impact before identity-first archive", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=role-lower&view=access"
+    );
+    mocks.getRoleHierarchy.mockResolvedValue({
+      ...hierarchy,
+      categories: hierarchy.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) => ({
+          ...definition,
+          assignedAccountUserIds: ["account-1"],
+          lifecycleActions: [{ action: "archive", label: "停用" }],
+        })),
+      })),
+    });
+    mocks.getRoleDefinitionLifecyclePreview.mockResolvedValue({
+      roleDefinitionId: "role-lower",
+      action: "archive",
+      revision: 3,
+      affectedAccountUserIds: ["account-1"],
+      impact: [
+        {
+          accountUserId: "account-1",
+          lost: view.effectiveAccess,
+          retained: { Global: [], Department: [], Program: [] },
+        },
+      ],
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 課程協調者" })
+    );
+    await waitFor(() =>
+      expect(mocks.getRoleDefinitionLifecyclePreview).toHaveBeenCalledWith(
+        "role-lower",
+        "archive"
+      )
+    );
+    expect(await screen.findByText(/可能失去/)).toBeTruthy();
+    expect(
+      screen.queryByText("目前沒有生效指派或有效權限會受影響。")
+    ).toBeNull();
   });
 });

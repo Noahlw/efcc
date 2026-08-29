@@ -40,6 +40,16 @@ const VIEW = {
     archiveRoleDefinitionIds: [],
     restoreRoleDefinitionIds: [],
   },
+  assignableRoles: [
+    {
+      roleDefinitionId: ROLE_ID,
+      label: "課程協調者",
+      scopeKind: "Global",
+      scopeId: null,
+      scopeLabel: null,
+      position: 4,
+    },
+  ],
 };
 const HIERARCHY = {
   revision: 3,

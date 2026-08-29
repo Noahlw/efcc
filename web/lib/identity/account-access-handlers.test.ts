@@ -58,6 +58,7 @@ async function problem(res: Response): Promise<Record<string, unknown>> {
 }
 
 let adminCookie = "";
+let memberCookie = "";
 
 beforeAll(async () => {
   await applyMigrations();
@@ -65,6 +66,7 @@ beforeAll(async () => {
     databaseName: "E2E_account-access-handlers",
   });
   adminCookie = await cookieFor(ADMIN);
+  memberCookie = await cookieFor("E2E_DISPOSABLE_MEMBER");
 });
 
 describe("#486 Account Access handlers", () => {
@@ -216,6 +218,94 @@ describe("#486 Account Access handlers", () => {
       )
     ).toBe(true);
   });
+
+  test("authorizes before revealing unknown targets or lifecycle state", async () => {
+    const headers = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}`,
+      "Content-Type": "application/json",
+    };
+    const accountRead = await worker.fetch(
+      request("/api/v1/identity/accounts/unknown-account/assignments", {
+        headers,
+      }),
+      testEnv()
+    );
+    expect(accountRead.status).toBe(403);
+    expect((await problem(accountRead)).code).toBe("ROLE_FORBIDDEN");
+
+    const accountWrite = await worker.fetch(
+      request("/api/v1/identity/accounts/unknown-account/assignments", {
+        method: "POST",
+        headers: { ...headers, "Idempotency-Key": "authorize-first-write" },
+        body: {
+          base_revision: await revision(),
+          role_definition_ids: [DEPARTMENT_ROLE],
+        },
+      }),
+      testEnv()
+    );
+    expect(accountWrite.status).toBe(403);
+    expect((await problem(accountWrite)).code).toBe("ROLE_FORBIDDEN");
+
+    const lifecycle = await worker.fetch(
+      request(
+        "/api/v1/identity/role-definitions/unknown-role-definition/lifecycle",
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Idempotency-Key": "authorize-first-lifecycle",
+          },
+          body: { action: "archive", base_revision: await revision() },
+        }
+      ),
+      testEnv()
+    );
+    expect(lifecycle.status).toBe(403);
+    expect((await problem(lifecycle)).code).toBe("ROLE_FORBIDDEN");
+  });
+
+  test("returns ROLE_FORBIDDEN for self-targeting a lower identity", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/accounts/${ADMIN}/assignments`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "self-lower-role",
+        },
+        body: {
+          base_revision: await revision(),
+          role_definition_ids: [PROGRAM_ROLE],
+        },
+      }),
+      testEnv()
+    );
+    expect(response.status).toBe(403);
+    expect((await problem(response)).code).toBe("ROLE_FORBIDDEN");
+  });
+
+  test("previews lifecycle impact through the identity route", async () => {
+    const response = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle?action=archive`,
+        { headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` } }
+      ),
+      testEnv()
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      requestId: string;
+      data: {
+        action: string;
+        impact: { lost: { Global: unknown[] } }[];
+      };
+    };
+    expect(body.requestId).toBe(response.headers.get("X-Request-Id"));
+    expect(body.data.action).toBe("archive");
+    expect(body.data.impact.length).toBeGreaterThan(0);
+  });
+
   test("archives and restores through the lifecycle route with revision-bound envelopes", async () => {
     const headers = () => ({
       Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
@@ -243,6 +333,22 @@ describe("#486 Account Access handlers", () => {
     };
     expect(archiveBody.requestId).toBe(archive.headers.get("X-Request-Id"));
     expect(archiveBody.data.isArchived).toBe(true);
+    const archivedAttempt = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...headers(),
+          "Idempotency-Key": "account-access-handler-archived-assignment",
+        },
+        body: {
+          base_revision: archiveBody.data.revision,
+          role_definition_ids: [PROGRAM_ROLE],
+        },
+      }),
+      testEnv()
+    );
+    expect(archivedAttempt.status).toBe(403);
+    expect((await problem(archivedAttempt)).code).toBe("ROLE_ARCHIVED");
     const restore = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
         method: "POST",

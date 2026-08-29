@@ -1254,6 +1254,7 @@ export const RoleHierarchyPanel = () => {
           )}
           {!selected.isProtected &&
             (selected.assignmentCount > 0 ||
+              (selected.assignmentActions ?? []).length > 0 ||
               (selected.lifecycleActions ?? []).length > 0) && (
               <Button
                 className={cn(styles.renameButton, "min-h-11")}

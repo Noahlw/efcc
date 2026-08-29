@@ -63,6 +63,12 @@ export const ROLE_HIERARCHY_ACTION = {
 export type RoleHierarchyAction =
   (typeof ROLE_HIERARCHY_ACTION)[keyof typeof ROLE_HIERARCHY_ACTION];
 
+/** Server-authorized identity assignment action. */
+export interface RoleAssignmentActionAffordance {
+  action: "assign" | "revoke";
+  label: string;
+}
+
 /** Server-authorized lifecycle action for an identity-first entry. */
 export interface RoleLifecycleActionAffordance {
   action: "archive" | "restore";
@@ -122,6 +128,8 @@ export interface RoleHierarchyDefinition {
   assignmentCount: number;
   /** Opaque IDs for identity-first Account Access entry links. */
   assignedAccountUserIds?: string[];
+  /** Server-authorized assignment actions for this definition. */
+  assignmentActions?: RoleAssignmentActionAffordance[];
   /** Server-authorized archive/restore actions for Account Access. */
   lifecycleActions?: RoleLifecycleActionAffordance[];
   grantCount: number;
@@ -706,6 +714,36 @@ export async function loadRoleHierarchy(
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
+        const canAssign =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.assign"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        const canRevoke =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.revoke"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        const assignmentActions: RoleAssignmentActionAffordance[] = [];
+        if (canAssign) {
+          assignmentActions.push({ action: "assign", label: "指派" });
+        }
+        if (canRevoke) {
+          assignmentActions.push({ action: "revoke", label: "撤銷" });
+        }
+        const canReadAssignments = assignmentActions.length > 0;
         const canReadPermissions =
           permissionCapabilities.get(row.role_definition_id)?.[
             "role.permissions.read"
@@ -764,10 +802,15 @@ export async function loadRoleHierarchy(
           position: row.position,
           isProtected: row.is_protected === 1,
           isArchived: row.is_archived === 1,
-          assignmentCount: countsForRole?.assignments ?? 0,
-          assignedAccountUserIds: countsForRole?.assignment_user_ids
-            ? countsForRole.assignment_user_ids.split(",")
+          assignmentCount: canReadAssignments
+            ? (countsForRole?.assignments ?? 0)
+            : 0,
+          assignedAccountUserIds: canReadAssignments
+            ? countsForRole?.assignment_user_ids
+              ? countsForRole.assignment_user_ids.split(",")
+              : []
             : [],
+          assignmentActions,
           grantCount: countsForRole?.grants ?? 0,
           actions,
           lifecycleActions,

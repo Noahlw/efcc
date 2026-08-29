@@ -224,6 +224,89 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(JSON.stringify(view)).not.toContain("department.manage");
   });
 
+  test("does not expose assigned-account membership without assignment authority", async () => {
+    const actor = "E2E_486_ROLE_READ_ONLY";
+    const roleId = "018f3b8a-0000-7000-8000-100000000486";
+    const assignmentId = "018f3b8a-0000-7000-8000-100000000486-a";
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO accounts
+             (user_id, name, username, username_normalized, credential_hash,
+              credential_kind, credential_version, account_status, role, phone,
+              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+              failed_attempts, locked_until, lock_since, created_at, updated_at)
+           VALUES (?, 'Role-read-only', ?, ?, NULL, 'password', 2, 'Active',
+                   'Member', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+        )
+        .bind(
+          actor,
+          "role-read-only",
+          "role-read-only",
+          Date.parse(NOW),
+          Date.parse(NOW)
+        ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+             (role_definition_id, category_key, stable_key, label, description,
+              scope_kind, scope_id, position, is_protected, is_archived,
+              created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Global', 'c486.role-read-only', '唯讀身份組',
+                   'role.read only fixture', 'Global', NULL, 40, 0, 0,
+                   NULL, ?, NULL, ?)`
+        )
+        .bind(roleId, NOW, NOW),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definition_grants
+             (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'role.read', 'E2E_DISPOSABLE_ADMIN', ?)`
+        )
+        .bind(roleId, NOW),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           VALUES (?, ?, ?, 'E2E_DISPOSABLE_ADMIN', ?, 'Global', NULL,
+                   NULL, NULL, NULL)`
+        )
+        .bind(assignmentId, actor, roleId, NOW),
+    ]);
+    try {
+      const view = await loadRoleHierarchy(testDb(), actor);
+      const department = view.categories.find(
+        (category) => category.categoryKey === ROLE_CATEGORY_KEY.DEPARTMENT
+      );
+      const manager = department?.definitions.find(
+        (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+      );
+      expect(manager?.assignmentCount).toBe(0);
+      expect(manager?.assignedAccountUserIds).toEqual([]);
+      expect(manager?.assignmentActions).toEqual([]);
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare(
+          "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+        )
+        .bind(roleId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+        .bind(roleId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM accounts WHERE user_id = ?")
+        .bind(actor)
+        .run();
+    }
+  });
   test("H-03 distinguishes a custom Global identity from system anchors", async () => {
     const roleId = "018f3b8a-0000-7000-8000-1000000000f1";
     const base = await readRevision();

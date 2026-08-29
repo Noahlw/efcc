@@ -2,12 +2,14 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import {
+  getRoleDefinitionLifecyclePreview,
   loadAccountAccess,
   mutateAccountAssignments,
   mutateRoleDefinitionLifecycle,
   revokeAccountAssignments,
   searchEligibleAccounts,
 } from "./account-access";
+import type { AccountAccessView } from "./account-access";
 import { seedDisposableIdentity } from "./index";
 import { createRoleDefinition, rescopeRoleDefinition } from "./role-hierarchy";
 
@@ -16,6 +18,9 @@ const STAFF = "E2E_DISPOSABLE_STAFF";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
 const DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000001";
 const PROGRAM_ROLE = "018f3b8a-0000-7000-8000-100000000002";
+type AccountAccessViewWithAssignmentOptions = AccountAccessView & {
+  assignableRoles: readonly { roleDefinitionId: string }[];
+};
 
 beforeAll(async () => {
   await applyMigrations();
@@ -338,6 +343,73 @@ describe("#486 Account Access domain", () => {
         (item) => item.roleDefinitionId === DEPARTMENT_ROLE
       )
     ).toHaveLength(1);
+    const audit = await testDb()
+      .prepare("SELECT reason FROM role_audit_events WHERE audit_id = ?")
+      .bind("account-access-red-revoke-audit")
+      .first<{ reason: string | null }>();
+    expect(audit?.reason).toBe("account_access_revoke");
+  });
+
+  test("authorizes Account Access and lifecycle before target disclosure", async () => {
+    const revision = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    const input = {
+      actor_user_id: MEMBER,
+      account_user_id: "unknown-account",
+      base_revision: revision?.revision ?? 1,
+      role_definition_ids: [DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-authorize-first-assignment",
+      now: "2026-08-29T00:03:30.000Z",
+      audit_id: "account-access-red-authorize-first-assignment-audit",
+      correlation_id:
+        "account-access-red-authorize-first-assignment-correlation",
+    };
+    await expect(mutateAccountAssignments(testDb(), input)).rejects.toThrow(
+      "ROLE_FORBIDDEN"
+    );
+    await expect(
+      loadAccountAccess(testDb(), MEMBER, "unknown-account")
+    ).rejects.toThrow("ROLE_FORBIDDEN");
+    await expect(
+      mutateRoleDefinitionLifecycle(testDb(), {
+        actor_user_id: MEMBER,
+        role_definition_id: "unknown-role-definition",
+        action: "archive",
+        base_revision: revision?.revision ?? 1,
+        idempotency_key: "account-access-red-authorize-first-lifecycle",
+        now: "2026-08-29T00:03:31.000Z",
+        audit_id: "account-access-red-authorize-first-lifecycle-audit",
+        correlation_id:
+          "account-access-red-authorize-first-lifecycle-correlation",
+      })
+    ).rejects.toThrow("ROLE_FORBIDDEN");
+  });
+
+  test("returns a server-authorized assignment picker and lifecycle impact preview", async () => {
+    const view = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const assignableRoles = (view as AccountAccessViewWithAssignmentOptions)
+      .assignableRoles;
+    expect(assignableRoles.length).toBeGreaterThan(0);
+    expect(
+      assignableRoles.every(
+        (role) =>
+          !view.activeAssignments.some(
+            (assignment) =>
+              assignment.roleDefinitionId === role.roleDefinitionId
+          )
+      )
+    ).toBe(true);
+    const preview = await getRoleDefinitionLifecyclePreview(
+      testDb(),
+      ADMIN,
+      PROGRAM_ROLE,
+      "archive"
+    );
+    expect(preview.revision).toBeGreaterThanOrEqual(view.revision);
+    expect(preview.impact.length).toBeGreaterThan(0);
+    expect(preview.impact[0]?.lost).toBeDefined();
+    expect(preview.impact[0]?.retained).toBeDefined();
   });
 
   test("archives all live assignments and restores definition without assignments", async () => {

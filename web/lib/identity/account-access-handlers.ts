@@ -3,6 +3,7 @@ import {
   AccountRevokeTargetError,
   AccountSelfProtectedError,
   AccountTargetIneligibleError,
+  getRoleDefinitionLifecyclePreview,
   loadAccountAccess,
   mutateAccountAssignments,
   mutateRoleDefinitionLifecycle,
@@ -115,9 +116,9 @@ function mapAccountAccessError(error: unknown, requestId: string): Response {
   }
   if (error instanceof RoleArchivedError) {
     return roleProblem(
-      409,
+      403,
       "ROLE_ARCHIVED",
-      "Conflict",
+      "Forbidden",
       "已停用的身份組不可指派。",
       requestId
     );
@@ -504,6 +505,40 @@ export async function handleRoleDefinitionLifecycle(
         audit_id: crypto.randomUUID(),
         correlation_id: requestId,
       });
+    return roleSuccess(200, data, requestId);
+  } catch (error) {
+    return mapAccountAccessError(error, requestId);
+  }
+}
+
+/** GET /api/v1/identity/role-definitions/:id/lifecycle?action=archive|restore */
+export async function handleGetRoleDefinitionLifecyclePreview(
+  request: Request,
+  env: RoleEnv,
+  roleDefinitionId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const action = new URL(request.url).searchParams.get("action");
+  if (action !== "archive" && action !== "restore") {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      "action 必須是 archive 或 restore。",
+      requestId
+    );
+  }
+  try {
+    const data = await getRoleDefinitionLifecyclePreview(
+      env.DB,
+      auth.account.user_id,
+      roleDefinitionId,
+      action
+    );
     return roleSuccess(200, data, requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);

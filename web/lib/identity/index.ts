@@ -73,6 +73,7 @@ export type {
   RoleHierarchyDefinition,
   RoleHierarchyAction,
   RoleHierarchyActionAffordance,
+  RoleAssignmentActionAffordance,
   RoleLifecycleActionAffordance,
   RoleHierarchyScopeOption,
   RoleHierarchyOrderTarget,
@@ -120,6 +121,7 @@ export type {
 export {
   loadAccountAccess,
   searchEligibleAccounts,
+  getRoleDefinitionLifecyclePreview,
   mutateAccountAssignments,
   revokeAccountAssignments,
   mutateRoleDefinitionLifecycle,
@@ -133,6 +135,7 @@ export type {
   AccountAccessView,
   AccountAccessAccount,
   AccountAccessIdentity,
+  AccountAccessAssignableRole,
   EffectiveAccessGrant,
   EffectiveAccessGroups,
   AccountAccessActions,
@@ -140,6 +143,7 @@ export type {
   AccountAccessMutationInput,
   RoleDefinitionLifecycleInput,
   RoleDefinitionLifecycleResult,
+  RoleDefinitionLifecyclePreview,
   AccountAccessImpact,
   AccountAccessLifecycleImpact,
 } from "./account-access";

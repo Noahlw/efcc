@@ -346,6 +346,111 @@ describe("#476 disposable D1 schema contract", () => {
     }, "scope snapshot is immutable");
   });
 
+  test("D1 permits only one active-to-revoked transition and protects terminal history", async () => {
+    const assignmentId = "018f3b8a-0000-7000-8000-aaaa00000024-terminal-guard";
+    const roleId = "018f3b8a-0000-7000-8000-100000000001";
+    await testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+         VALUES (?, 'E2E_DISPOSABLE_MEMBER', ?, 'E2E_DISPOSABLE_ADMIN',
+                 '2026-08-29T00:00:00.000Z', 'Department',
+                 '018f3b8a-0000-7000-8000-000000000002', NULL, NULL, NULL)`
+      )
+      .bind(assignmentId, roleId)
+      .run();
+    await testDb()
+      .prepare(
+        `UPDATE role_assignments
+            SET revoked_by = 'E2E_DISPOSABLE_ADMIN',
+                revoked_at = '2026-08-29T00:01:00.000Z',
+                revoke_reason = 'terminal-test'
+          WHERE assignment_id = ?`
+      )
+      .bind(assignmentId)
+      .run();
+
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET account_user_id = ? WHERE assignment_id = ?"
+          )
+          .bind("E2E_DISPOSABLE_ADMIN", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET role_definition_id = ? WHERE assignment_id = ?"
+          )
+          .bind("018f3b8a-0000-7000-8000-100000000002", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET granted_by = ? WHERE assignment_id = ?"
+          )
+          .bind("E2E_DISPOSABLE_MEMBER", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET granted_at = ? WHERE assignment_id = ?"
+          )
+          .bind("2026-08-29T00:02:00.000Z", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoked_by = NULL WHERE assignment_id = ?"
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoked_at = NULL WHERE assignment_id = ?"
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoke_reason = ? WHERE assignment_id = ?"
+          )
+          .bind("rewritten", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+  });
   test("D1 rejects a grant whose capability is not in the closed catalog", async () => {
     const roleId = "018f3b8a-0000-7000-8000-100000000001";
     await expectAbort(async () => {

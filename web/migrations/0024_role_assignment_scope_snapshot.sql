@@ -45,4 +45,34 @@ BEGIN
   SELECT RAISE(ABORT, 'role_assignments: scope snapshot is immutable');
 END;
 
+-- A revoked assignment is a terminal history event. The only permitted
+-- transition is active (revoked_at IS NULL) to revoked; all identity,
+-- granting, and revocation fields are immutable afterwards.
+CREATE TRIGGER role_assignments_terminal_update_guard
+BEFORE UPDATE ON role_assignments
+WHEN OLD.revoked_at IS NOT NULL
+  OR (
+    OLD.revoked_at IS NULL
+    AND NEW.revoked_at IS NOT NULL
+    AND (
+      NEW.assignment_id IS NOT OLD.assignment_id
+      OR NEW.account_user_id IS NOT OLD.account_user_id
+      OR NEW.role_definition_id IS NOT OLD.role_definition_id
+      OR NEW.scope_kind IS NOT OLD.scope_kind
+      OR NEW.scope_id IS NOT OLD.scope_id
+      OR NEW.granted_by IS NOT OLD.granted_by
+      OR NEW.granted_at IS NOT OLD.granted_at
+    )
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'role_assignments: terminal assignment rows are immutable');
+END;
+
+CREATE TRIGGER role_assignments_terminal_delete_guard
+BEFORE DELETE ON role_assignments
+WHEN OLD.revoked_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'role_assignments: terminal assignment rows are immutable');
+END;
+
 -- Migration ends here

@@ -81,6 +81,15 @@ export interface AccountAccessActions {
   restoreRoleDefinitionIds: string[];
 }
 
+export interface AccountAccessAssignableRole {
+  roleDefinitionId: string;
+  label: string;
+  scopeKind: RoleScopeKind;
+  scopeId: string | null;
+  scopeLabel: string | null;
+  position: number;
+}
+
 export interface AccountAccessLifecycleImpact {
   roleDefinitionId: string;
   label: string;
@@ -95,6 +104,8 @@ export interface AccountAccessView {
   revokedAssignments: AccountAccessIdentity[];
   /** Alias retained in the projection so callers can name the audit/history tab. */
   assignmentHistory: AccountAccessIdentity[];
+  /** Server-authorized lower identities available for assignment. */
+  assignableRoles: AccountAccessAssignableRole[];
   effectiveAccess: EffectiveAccessGroups;
   /** Per-role impact computed from normalized grants and assignments. */
   lifecycleImpacts: Record<string, AccountAccessLifecycleImpact>;
@@ -149,6 +160,11 @@ export interface RoleDefinitionLifecycleResult {
   }>;
   idempotent: boolean;
 }
+
+export type RoleDefinitionLifecyclePreview = Omit<
+  RoleDefinitionLifecycleResult,
+  "idempotent"
+>;
 
 interface AccountRecord {
   user_id: string;
@@ -550,6 +566,18 @@ async function readRoles(
   return rows.results ?? [];
 }
 
+async function readAllRoles(db: D1Database): Promise<RoleRecord[]> {
+  const rows = await db
+    .prepare(
+      `SELECT role_definition_id, stable_key, label, description,
+              category_key, scope_kind, scope_id, position,
+              is_protected, is_archived
+         FROM role_definitions`
+    )
+    .all<RoleRecord>();
+  return rows.results ?? [];
+}
+
 async function readAssignments(
   db: D1Database,
   accountUserId: string,
@@ -644,10 +672,39 @@ async function assertActiveActor(
   return loadActorRoles(db, actorUserId);
 }
 
+async function assertOperationCapability(
+  db: D1Database,
+  actorUserId: string,
+  capability: "role.assign" | "role.revoke" | "role.delete"
+): Promise<Awaited<ReturnType<typeof loadActorRoles>>> {
+  const actorRoles = await assertActiveActor(db, actorUserId);
+  const capabilities = await resolveActorCapabilities(db, actorUserId);
+  if (capabilities[capability] !== true) {
+    throw new RoleCapabilityDeniedError();
+  }
+  return actorRoles;
+}
+
+async function assertAccountAccessCapability(
+  db: D1Database,
+  actorUserId: string
+): Promise<Awaited<ReturnType<typeof loadActorRoles>>> {
+  const actorRoles = await assertActiveActor(db, actorUserId);
+  const capabilities = await resolveActorCapabilities(db, actorUserId);
+  if (
+    capabilities["role.assign"] !== true &&
+    capabilities["role.revoke"] !== true
+  ) {
+    throw new RoleCapabilityDeniedError();
+  }
+  return actorRoles;
+}
+
 async function assertEligibleAccount(
   db: D1Database,
   actorUserId: string,
-  accountUserId: string
+  accountUserId: string,
+  actorRoles?: Awaited<ReturnType<typeof loadActorRoles>>
 ): Promise<{
   actorRoles: Awaited<ReturnType<typeof loadActorRoles>>;
   account: AccountRecord;
@@ -655,14 +712,19 @@ async function assertEligibleAccount(
   if (!accountUserId) {
     throw new AccountTargetIneligibleError();
   }
-  const actorRoles = await assertActiveActor(db, actorUserId);
-  if (actorUserId === accountUserId) {
-    throw new AccountSelfProtectedError();
-  }
+  const resolvedActorRoles =
+    actorRoles ?? (await assertActiveActor(db, actorUserId));
   const account = await readAccount(db, accountUserId);
   if (!account || account.account_status !== "Active") {
     throw new AccountTargetIneligibleError();
   }
+  return { actorRoles: resolvedActorRoles, account };
+}
+
+async function assertNonAdminTarget(
+  db: D1Database,
+  accountUserId: string
+): Promise<void> {
   const hasAdminAssignment = await db
     .prepare(
       `SELECT 1
@@ -678,7 +740,25 @@ async function assertEligibleAccount(
   if (hasAdminAssignment) {
     throw new AccountAdminProtectedError();
   }
-  return { actorRoles, account };
+}
+
+function assertSelfTarget(
+  actorUserId: string,
+  accountUserId: string,
+  actorRoles: Awaited<ReturnType<typeof loadActorRoles>>,
+  role: RoleRecord
+): void {
+  if (actorUserId !== accountUserId) {
+    return;
+  }
+  if (adminRole(role)) {
+    throw new RoleAdminProtectedError();
+  }
+  const highest = actorRoles[0];
+  if (highest && role.position <= highest.position) {
+    throw new RoleHighestProtectedError();
+  }
+  throw new RoleCapabilityDeniedError();
 }
 
 async function assertRoleManageable(
@@ -847,10 +927,11 @@ async function readProjection(
       ...stagedAdds.map((staged) => staged.role.role_definition_id),
     ]),
   ];
-  const [roles, grants, baselineFromDb] = await Promise.all([
+  const [roles, grants, baselineFromDb, allRoles] = await Promise.all([
     readRoles(db, roleIds),
     readGrants(db, roleIds),
     readRoleByStableKey(db, PROTECTED_STABLE_KEYS.MEMBER),
+    readAllRoles(db),
   ]);
   const rolesById = new Map(
     roles.map((role) => [role.role_definition_id, role])
@@ -864,6 +945,43 @@ async function readProjection(
   const actorRoles = await loadActorRoles(db, actorUserId);
   const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
   const canAssign = actorCapabilities["role.assign"] === true;
+  const activeRoleIds = new Set(
+    active.map((assignment) => assignment.role_definition_id)
+  );
+  const assignableRoles = canAssign
+    ? (
+        await Promise.all(
+          allRoles
+            .filter(
+              (role) =>
+                role.is_protected === 0 &&
+                role.is_archived === 0 &&
+                !activeRoleIds.has(role.role_definition_id)
+            )
+            .map(async (role) => {
+              try {
+                await assertRoleManageable(
+                  db,
+                  actorUserId,
+                  actorRoles,
+                  role,
+                  "role.assign"
+                );
+                return {
+                  roleDefinitionId: role.role_definition_id,
+                  label: role.label,
+                  scopeKind: role.scope_kind,
+                  scopeId: role.scope_id,
+                  scopeLabel: scopeLabel(role, names),
+                  position: role.position,
+                } satisfies AccountAccessAssignableRole;
+              } catch {
+                return null;
+              }
+            })
+        )
+      ).filter((role): role is AccountAccessAssignableRole => role !== null)
+    : [];
   const authorizedRoleIds = async (
     assignments: readonly AssignmentRecord[],
     capability: "role.revoke" | "role.delete",
@@ -938,6 +1056,7 @@ async function readProjection(
       .filter(
         (identity): identity is AccountAccessIdentity => identity !== null
       ),
+    assignableRoles,
     effectiveAccess: resolveEffectiveAccess(active, rolesById, grants, names),
     lifecycleImpacts: {},
     revision: projectionRevision,
@@ -966,11 +1085,18 @@ async function assertAccountAccessRead(
   actorRoles: Awaited<ReturnType<typeof loadActorRoles>>;
   account: AccountRecord;
 }> {
+  // Authorization is deliberately resolved before any target account lookup.
+  const actorRoles = await assertAccountAccessCapability(db, actorUserId);
   const eligibility = await assertEligibleAccount(
     db,
     actorUserId,
-    accountUserId
+    accountUserId,
+    actorRoles
   );
+  if (actorUserId === accountUserId) {
+    throw new AccountSelfProtectedError();
+  }
+  await assertNonAdminTarget(db, accountUserId);
   const active = await readAssignments(db, accountUserId, false);
   const roles = await readRoles(
     db,
@@ -995,17 +1121,8 @@ async function assertAccountAccessRead(
       );
     })
   );
-  const broad = await resolveActorCapabilities(db, actorUserId);
-  if (
-    !broad["role.assign"] &&
-    !broad["role.revoke"] &&
-    !canRead.some(Boolean)
-  ) {
-    throw new RoleCapabilityDeniedError();
-  }
-  // An actor with a scoped highest identity cannot inspect a target whose
-  // assignments are all outside that exact scope. The target's safe name is
-  // never returned before this guard succeeds.
+  // A scoped actor may hold a capability elsewhere while this target has no
+  // visible assignment in the actor's exact scope.
   if (roles.some((role) => !baselineRole(role)) && !canRead.some(Boolean)) {
     throw new RoleScopeMismatchError();
   }
@@ -1381,20 +1498,27 @@ export async function mutateAccountAssignments(
   }
   let eligibility: Awaited<ReturnType<typeof assertEligibleAccount>>;
   try {
+    const actorRoles = await assertOperationCapability(
+      db,
+      input.actor_user_id,
+      "role.assign"
+    );
     eligibility = await assertEligibleAccount(
       db,
       input.actor_user_id,
-      input.account_user_id
+      input.account_user_id,
+      actorRoles
     );
+    if (input.actor_user_id !== input.account_user_id) {
+      await assertNonAdminTarget(db, input.account_user_id);
+    }
   } catch (error) {
     const code =
       error instanceof AccountAdminProtectedError
         ? "ROLE_ADMIN_PROTECTED"
-        : error instanceof AccountSelfProtectedError
-          ? "ROLE_HIGHEST_PROTECTED"
-          : error instanceof AccountTargetIneligibleError
-            ? "ROLE_TARGET_INELIGIBLE"
-            : "ROLE_FORBIDDEN";
+        : error instanceof AccountTargetIneligibleError
+          ? "ROLE_TARGET_INELIGIBLE"
+          : "ROLE_FORBIDDEN";
     return deny(
       db,
       input,
@@ -1428,6 +1552,12 @@ export async function mutateAccountAssignments(
       if (!role) {
         throw new RoleTargetNotFoundError();
       }
+      assertSelfTarget(
+        input.actor_user_id,
+        input.account_user_id,
+        eligibility.actorRoles,
+        role
+      );
       // Authorize every requested role before classifying an active duplicate.
       // A no-op must not disclose the target projection to an unauthorized
       // actor or bypass protected/archive/position/scope checks.
@@ -1610,20 +1740,27 @@ export async function revokeAccountAssignments(
   }
   let eligibility: Awaited<ReturnType<typeof assertEligibleAccount>>;
   try {
+    const actorRoles = await assertOperationCapability(
+      db,
+      input.actor_user_id,
+      "role.revoke"
+    );
     eligibility = await assertEligibleAccount(
       db,
       input.actor_user_id,
-      input.account_user_id
+      input.account_user_id,
+      actorRoles
     );
+    if (input.actor_user_id !== input.account_user_id) {
+      await assertNonAdminTarget(db, input.account_user_id);
+    }
   } catch (error) {
     const code =
       error instanceof AccountAdminProtectedError
         ? "ROLE_ADMIN_PROTECTED"
-        : error instanceof AccountSelfProtectedError
-          ? "ROLE_HIGHEST_PROTECTED"
-          : error instanceof AccountTargetIneligibleError
-            ? "ROLE_TARGET_INELIGIBLE"
-            : "ROLE_FORBIDDEN";
+        : error instanceof AccountTargetIneligibleError
+          ? "ROLE_TARGET_INELIGIBLE"
+          : "ROLE_FORBIDDEN";
     return deny(
       db,
       input,
@@ -1655,6 +1792,12 @@ export async function revokeAccountAssignments(
       if (!role) {
         throw new RoleTargetNotFoundError();
       }
+      assertSelfTarget(
+        input.actor_user_id,
+        input.account_user_id,
+        eligibility.actorRoles,
+        role
+      );
       // An absent assignment is still an authorization-sensitive no-op.
       await assertRoleManageable(
         db,
@@ -1785,6 +1928,7 @@ export async function revokeAccountAssignments(
       action: "ROLE_ASSIGNMENT_REVOKE",
       entity_type: "account",
       entity_id: input.account_user_id,
+      reason: "account_access_revoke",
       old_value_json: JSON.stringify(
         before.activeAssignments.map(
           (assignment) => assignment.roleDefinitionId
@@ -1876,6 +2020,72 @@ async function lifecycleImpact(
   return impacts;
 }
 
+/**
+ * Return a revision-bound lifecycle impact without writing state. The caller
+ * must already hold role.delete; target role state and assignments are read
+ * only after that capability check.
+ */
+export async function getRoleDefinitionLifecyclePreview(
+  db: D1Database,
+  actorUserId: string,
+  roleDefinitionId: string,
+  action: "archive" | "restore"
+): Promise<RoleDefinitionLifecyclePreview> {
+  const actorRoles = await assertOperationCapability(
+    db,
+    actorUserId,
+    "role.delete"
+  );
+  const role = await readRole(db, roleDefinitionId);
+  if (!role) {
+    throw new RoleTargetNotFoundError();
+  }
+  if (
+    (action === "archive" && role.is_archived === 1) ||
+    (action === "restore" && role.is_archived === 0)
+  ) {
+    throw new RoleArchivedError();
+  }
+  await assertRoleManageable(
+    db,
+    actorUserId,
+    actorRoles,
+    role,
+    "role.delete",
+    action === "restore"
+  );
+  const revision = await readCurrentRevision(db);
+  const assignments = await db
+    .prepare(
+      `SELECT assignment_id, account_user_id, role_definition_id,
+              scope_kind, scope_id, granted_by, granted_at,
+              revoked_by, revoked_at, revoke_reason
+         FROM role_assignments
+        WHERE role_definition_id = ? AND revoked_at IS NULL`
+    )
+    .bind(role.role_definition_id)
+    .all<AssignmentRecord>();
+  const activeRows = assignments.results ?? [];
+  return {
+    roleDefinitionId: role.role_definition_id,
+    action,
+    isArchived: role.is_archived === 1,
+    revision,
+    affectedAccountUserIds: activeRows.map(
+      (assignment) => assignment.account_user_id
+    ),
+    impact: await lifecycleImpact(
+      db,
+      actorUserId,
+      role.role_definition_id,
+      activeRows,
+      new Date().toISOString(),
+      action,
+      revision
+    ),
+  };
+}
+
 /** Archive/restore one Role Definition through the same mutation kernel. */
 export async function mutateRoleDefinitionLifecycle(
   db: D1Database,
@@ -1890,6 +2100,25 @@ export async function mutateRoleDefinitionLifecycle(
   if (replay) {
     return { ...replay.value, idempotent: true };
   }
+  let actorRoles: Awaited<ReturnType<typeof loadActorRoles>>;
+  try {
+    actorRoles = await assertOperationCapability(
+      db,
+      input.actor_user_id,
+      "role.delete"
+    );
+  } catch (error) {
+    return deny(
+      db,
+      input,
+      fingerprint,
+      error as Error,
+      "ROLE_FORBIDDEN",
+      "ROLE_DEFINITION_LIFECYCLE",
+      "role_definition",
+      input.role_definition_id
+    );
+  }
   const role = await readRole(db, input.role_definition_id);
   if (!role) {
     return deny(
@@ -1903,7 +2132,6 @@ export async function mutateRoleDefinitionLifecycle(
       input.role_definition_id
     );
   }
-  const actorRoles = await assertActiveActor(db, input.actor_user_id);
   if (input.action === "archive" && role.is_archived === 1) {
     return deny(
       db,

@@ -1085,6 +1085,7 @@ export default {
         handleGetAccountAccess,
         handleMutateAccountAssignments,
         handleRevokeAccountAssignments,
+        handleGetRoleDefinitionLifecyclePreview,
         handleRoleDefinitionLifecycle,
       } = await import("./lib/identity/account-access-handlers");
 
@@ -1149,6 +1150,28 @@ export default {
         }
       }
       const lifecyclePrefix = "/api/v1/identity/role-definitions/";
+      if (
+        url.pathname.startsWith(lifecyclePrefix) &&
+        url.pathname.endsWith("/lifecycle") &&
+        request.method === "GET"
+      ) {
+        const roleDefinitionId = decodePathSegment(
+          url.pathname.slice(lifecyclePrefix.length, -"/lifecycle".length)
+        );
+        if (roleDefinitionId === null || roleDefinitionId.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleGetRoleDefinitionLifecyclePreview(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
+      }
       if (
         url.pathname.startsWith(lifecyclePrefix) &&
         url.pathname.endsWith("/lifecycle") &&
