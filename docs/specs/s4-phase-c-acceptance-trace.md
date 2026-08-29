@@ -1738,7 +1738,7 @@ $ pnpm --dir web build
 exit 0
 ```
 
-**PASS — 18 static routes.** The emitted visible route table contained `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, and `/scanner`. Existing workspace-root/multiple-lockfile, no-cache, telemetry, and `NO_COLOR`/`FORCE_COLOR` notices did not fail the build.
+**PASS — 18 generated static pages (16 visible app routes).** The emitted visible route table contained `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, and `/scanner`; the remaining generated pages are the Next global-error and favicon entries. Existing workspace-root/multiple-lockfile, no-cache, telemetry, and `NO_COLOR`/`FORCE_COLOR` notices did not fail the build.
 
 #### Shared W7 numeric geometry
 
