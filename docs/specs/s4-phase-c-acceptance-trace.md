@@ -1362,3 +1362,206 @@ The following source audit was checked against the exact corrected HEAD; source 
 - `C-486-M1` keyboard-only review and `C-486-M2` screen-reader review remain **MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion checks. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made.
 - The historical #485 Cloudflare-pool `EvalError: Code generation from strings disallowed for this context` remains the separate upstream infrastructure failure recorded in earlier #485 sections; it is not part of this #486 run, and no unsafe-eval bypass was used.
 - **Changed path:** `docs/specs/s4-phase-c-acceptance-trace.md` only. No #487 path, source, test, migration, schema, fixture, geometry config, deployment, or external database write changed. No #486 focused blocker occurred; the branch remains stopped before Phase D. The doc-only evidence commit SHA is returned with delivery.
+
+## #486 final revalidation — 2026-08-30
+
+**Evidence scope:** fresh focused revalidation of #486 at corrected coordinator
+HEAD `69cc1f0d4f9bc8bce8f9cef48814fbd0e14f6d0c`
+(`fix(identity): close final account access review findings`). The child was
+created from that commit, not from any coordinator working-tree changes. This
+is one evidence-only append; all earlier sections remain unchanged.
+
+### Authority reread before checks
+
+Before running Context7 or any validation command, I reread implementation
+ticket `issue://486`, parent `issue://475`, Specs
+`docs/specs/091-stackable-identity-backend.md` and
+`docs/specs/092-discord-identity-design-system-adoption.md`, approved
+`local://s4-phase-c-identity-integration-plan.md`, the full current
+`docs/specs/s4-phase-c-acceptance-trace.md`, and ADRs
+`docs/adr/0042-discord-like-stackable-role-model.md` and
+`docs/adr/0043-owned-civic-design-system-governance.md`.
+
+### Provenance and runtimes
+
+- **Fresh child:** `/private/tmp/efcc-t486-final-revalidation`, branch
+  `evidence/486-final-revalidation`, created from exact HEAD
+  `69cc1f0d4f9bc8bce8f9cef48814fbd0e14f6d0c`.
+- **Coordinator reference:** `.worktrees/s4-phase-c`, branch
+  `feat/s4-c-stackable-identity-integration`, exact HEAD
+  `69cc1f0d4f9bc8bce8f9cef48814fbd0e14f6d0c`.
+- **Observed runtime:** Node `v22.18.0`; pnpm `11.7.0`; Vitest `4.1.10`;
+  Wrangler `4.127.1`; Playwright `1.62.1`; TypeScript `5.9.3`; direct web
+  Miniflare `5.20260828.0-alpha`; transitive Miniflare
+  `5.20260730.0-alpha` under Wrangler `4.118.0` /
+  `@cloudflare/vitest-pool-workers@0.20.1`; pinned Chrome for Testing
+  `151.0.7922.34` (Playwright Chromium revision `v1234`).
+
+### Required Context7 CLI lookups
+
+The required lookups used the Context7 CLI (`npx --yes ctx7@latest`), not MCP
+Context7, before validation:
+
+- `/radix-ui/primitives` — Switch Root source section: button with
+  `role="switch"`, `aria-checked`, `disabled`/`data-disabled`, `data-state`,
+  and click/`onCheckedChange` behavior.
+- `/joe-bell/cva` — cva API and variant-configuration sections: base classes,
+  variants, defaults, compound variants, composition, and type-safe props.
+- `/microsoft/playwright` — `Locator.boundingBox`, locator focus/press, and
+  `test.webServer` sections: viewport-relative CSS-pixel rectangles and
+  keyboard/focus assertions.
+- `/cloudflare/workers-sdk` — D1 prepared statements and `db.batch()` section:
+  `prepare`/`bind` statements collected into an atomic batch.
+
+### Focused checks and exact current results
+
+#### Worker identity Account Access, handlers, schema, and role hierarchy
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts \
+    lib/identity/account-access.test.ts \
+    lib/identity/account-access-handlers.test.ts \
+    lib/identity/d1-schema.test.ts \
+    lib/identity/role-hierarchy.test.ts
+
+Test Files  4 passed (4)
+Tests       86 passed (86)
+exit 0
+```
+
+**PASS — 86/86 assertions.** This disposable local D1 run covered eligible
+Active/non-Admin filtering, safe/private-field projection, mixed-scope
+privacy, baseline access, atomic multi-identity assignment, invalid-batch
+rollback, active duplicate no-op/replay, immutable revoke/re-add history,
+archive/restore without assignment recreation, effective-access provenance,
+authorization before target disclosure, response-loss replay, audit
+correlation/reasons, schema constraints, and changed-intent idempotency
+rejection. No remote, Apps Script, Google Sheets, Cloudflare production, or
+other external database write was made.
+
+#### Account Access/API/directory/role-hierarchy/Department/Programs components
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/account-access-panel.test.tsx \
+    lib/account-access-api.test.ts \
+    lib/account-directory-panel.test.tsx \
+    lib/identity/role-hierarchy-panel.test.tsx \
+    lib/programs/department-settings-panel.test.tsx \
+    lib/programs/programs-leaders-panel.test.tsx
+
+Test Files  6 passed (6)
+Tests       74 passed (74)
+exit 0
+```
+
+**PASS — 74/74 assertions.** The direct component run covered Account Access
+scope-group rendering, role-first and account-first links, zero-assignment
+role entry, server-authorized picker output, add/revoke review, canonical
+URLs, route-state reset, DirectoryFrame retry/focus recovery, one live-region
+owner, persistent retry idempotency keys, concrete scope/history labels,
+Account Directory behavior, Role Hierarchy behavior, and affected Department
+Settings / Programs Leaders states.
+
+#### Worker/web TypeScript
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && \
+    pnpm --dir web exec tsc --noEmit -p tsconfig.json
+(no output)
+exit 0
+```
+
+**PASS —** both requested TypeScript projects exited 0.
+
+#### Web production build and route count
+
+```text
+$ pnpm --dir web build
+✓ Compiled successfully
+✓ Generating static pages using 9 workers (18/18)
+○ (Static) prerendered as static content
+exit 0
+```
+
+**PASS — 18 static routes.** The emitted visible route table contained `/`,
+`/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`,
+`/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`,
+`/programs`, `/prototype`, `/register`, `/registrations`, and `/scanner`.
+Existing workspace-root/multiple-lockfile, no-cache, telemetry, and
+`NO_COLOR`/`FORCE_COLOR` notices did not fail the build.
+
+#### Shared W7 numeric geometry
+
+```text
+$ pnpm test:role-hierarchy-geometry
+Running 49 tests using 1 worker
+49 passed (47.8s)
+exit 0
+```
+
+**PASS — 49/49 numeric tests.** The shared config matched Account Access,
+Permission Editor, and Role Hierarchy geometry at W7
+`320, 390, 600, 799, 800, 1024, 1440` CSS px. Account Access contributed
+14/14 tests; the total was 14 Permission Editor + 14 Account Access + 21
+Role Hierarchy. Numeric checks covered containment/no horizontal overflow,
+44px app-facing Button/Switch targets, phone-dock clearance, the 84px phone
+reserve, the fixed-to-sticky 799px/800px transition, and the Account Access
+add-review surface. No screenshot, image snapshot, or pixel-diff test was
+used.
+
+### Required #486 regression coverage
+
+- **Mixed-scope privacy:** Worker tests
+  `keeps mixed-scope targets eligible while filtering out-of-scope access`
+  and `keeps targets with only out-of-scope assignments eligible with baseline
+  access` keep eligible targets visible while excluding unauthorized
+  Department/Program assignments and labels from the projection.
+- **Role route refetch:** component test
+  `refetches hierarchy and clears the previous role when role definition
+  changes` refetches the hierarchy, removes the old role detail, and renders
+  the new role.
+- **Route-generation guards:** `AccountAccessPanel` source uses a route key
+  and generation guard for hierarchy/search, add/revoke mutations, lifecycle
+  previews, and post-lifecycle refreshes. Component tests
+  `ignores an in-flight add response after the account route changes` and
+  `clears account-scoped selection and dialogs when the account route changes`
+  directly exercise stale-route suppression.
+- **Grant audit reason:** the Worker assertion reads the grant audit row and
+  requires `reason = "account_access_grant"`; the existing revoke assertion
+  requires `reason = "account_access_revoke"`.
+- **Lifecycle refresh failure:** component test
+  `preserves lifecycle success when the follow-up account refresh fails`
+  exercises a successful archive followed by a failed refresh and verifies
+  that the lifecycle success remains visible without leaking the raw refresh
+  error. The source path exposes a generic refresh retry action.
+- Prior #486 contracts remain covered by the current runs: eligible picker,
+  atomic one-account multi-identity add, invalid whole-batch rejection,
+  duplicate no-op, revoke/history/re-add, lost/retained scoped access and
+  provenance, archive revocation, restore with preserved history/grants but
+  no assignment recreation, request/envelope/correlation behavior, and
+  identity-first/account-first navigation.
+
+### Historical-count distinction, manual gates, and scope
+
+The earlier `## #486 corrected focused evidence — 2026-08-29` section at
+`ffb2999acfbda35a62cb2fed37202f785927a79e` remains **historical** and reported
+77/77 Worker assertions and 62/62 component assertions. The earlier
+`## #486 final corrected revalidation — 2026-08-30` section at
+`32829092668e16a5c46a92f13e6c0354450de0a9` remains **historical** and reported
+84/84 Worker assertions and 71/71 component assertions. Neither historical
+count is reused for this current `69cc1f0d` result.
+
+`C-486-M1` keyboard-only and `C-486-M2` screen-reader review remain
+**MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/
+text-spacing, real-device dock/safe-area, remote-CI, and
+production-promotion checks. No manual accessibility, WCAG, screenshot,
+image, or pixel-diff claim is made. The historical #485 Permission Editor
+Cloudflare-pool `EvalError: Code generation from strings disallowed for this
+context` remains external/separate; it is not part of this #486 run, and no
+unsafe-eval bypass was used.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
+No source, test, migration, schema, fixture, geometry config, deployment,
+external database, or **#487 path** changed. The branch remains stopped before
+Phase D.
